@@ -33121,10 +33121,16 @@ def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
                 )
             continue
         patch_report = read_json_if_exists(Path(str(patch_path_value)))
+        llm_evidence_wait = patch_report.get("status") == "llm_waiting_for_current_evidence"
         retry_without_real_tool = (
-            patch_report.get("status") == "blocked"
+            patch_report.get("status") in {"blocked", "llm_waiting_for_current_evidence"}
             and patch_report.get("retry_agent_without_real_tool") is True
         )
+        if llm_evidence_wait:
+            retry_without_real_tool_kinds.add("llm_observation_plan")
+            retry_without_real_tool_summaries.append(
+                "the LLM requested more evidence; require an executable observation plan for the next Layer-3 run"
+            )
         if retry_without_real_tool:
             retry_without_real_tool_kinds.add(
                 "agent_transaction_contract"
@@ -33148,7 +33154,7 @@ def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
                         separators=(",", ":"),
                     )
                 )
-        if result.get("status") == "blocked":
+        if result.get("status") in {"blocked", "llm_waiting_for_current_evidence"}:
             summary = str(result.get("summary") or "repair agent is blocked")
             if retry_without_real_tool:
                 retry_without_real_tool_summaries.append(summary)
@@ -33181,6 +33187,7 @@ def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
         }
     if retry_without_real_tool_summaries:
         transaction_retry = "agent_transaction_contract" in retry_without_real_tool_kinds
+        observation_plan_retry = "llm_observation_plan" in retry_without_real_tool_kinds
         return {
             "status": "continue",
             "summary": (
@@ -33188,6 +33195,9 @@ def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
                 "deterministic materializer blockers to the same Agent without relaunching "
                 "the real tool"
                 if transaction_retry
+                else "the LLM did not localize the current Layer-3 stop; require its explicit "
+                "missing-signal observation plan and execute it in the next real VCS epoch"
+                if observation_plan_retry
                 else
                 "a prior real-VCS failed board-source candidate was rejected before write; "
                 "return its content-addressed negative evidence to the same agent without "
@@ -33198,6 +33208,8 @@ def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
             "retry_reason": (
                 "agent_transaction_contract"
                 if transaction_retry
+                else "llm_observation_plan"
+                if observation_plan_retry
                 else "prior_failed_source_state"
             ),
             "rejection_summaries": retry_without_real_tool_summaries,
