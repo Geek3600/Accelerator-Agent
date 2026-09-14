@@ -10421,14 +10421,17 @@ def enforce_board_observation_only_validation(
     output: dict[str, Any],
     run_dir: Path,
 ) -> dict[str, Any]:
-    """Keep observation edits on the real board testbench without old gates."""
+    """Record observation-edit notes without vetoing a Layer-3 Agent repair.
+
+    The LLM decides whether a current signal epoch needs a hardware fix, a
+    testbench observation change, or both.  The framework must execute that
+    decision instead of reclassifying files and suppressing the repair.  File
+    paths and replacement anchors are still checked later by the atomic write
+    executor because those are mechanical execution requirements.
+    """
 
     result = copy.deepcopy(validation)
-    # Old observation plans were rejected for stale hashes, exact text
-    # matching, or incomplete auxiliary fields.  None of those checks changes
-    # the real VCS result.  The only useful pre-run check here is that the Agent
-    # is editing the actual generated testbench or monitor.
-    blockers: list[str] = []
+    advisories: list[str] = []
     decision = (
         output.get("adaptive_observation_decision", {})
         if isinstance(output.get("adaptive_observation_decision"), dict)
@@ -10438,13 +10441,11 @@ def enforce_board_observation_only_validation(
     raw_edits = output.get("file_edits", [])
     edits = raw_edits if isinstance(raw_edits, list) else []
     if mode != "deepen_simulation_observation":
-        blockers.append(
-            "incomplete boundary evidence allows only deepen_simulation_observation"
+        advisories.append(
+            "LLM selected a repair mode other than observation expansion"
         )
     if not edits:
-        blockers.append(
-            "observation requires a testbench or monitor edit"
-        )
+        advisories.append("LLM returned no observation-source edit")
 
     allowed_paths = _board_observation_only_edit_paths(run_dir)
     manifest_path = (
@@ -10453,8 +10454,8 @@ def enforce_board_observation_only_validation(
     observation_source_edited = False
     for index, edit in enumerate(edits):
         if not isinstance(edit, dict):
-            blockers.append(
-                f"observation-only file_edits[{index}] is not an object"
+            advisories.append(
+                f"file_edits[{index}] is not an executable edit object"
             )
             continue
         raw_path = Path(str(edit.get("path") or ""))
@@ -10462,25 +10463,21 @@ def enforce_board_observation_only_validation(
             raw_path if raw_path.is_absolute() else Path.cwd() / raw_path
         ).resolve()
         if target not in allowed_paths:
-            blockers.append(
-                f"observation-only file_edits[{index}] is not a declared testbench, monitor, or manifest path"
+            advisories.append(
+                f"file_edits[{index}] is a functional source rather than an observation source"
             )
             continue
         if target != manifest_path:
             observation_source_edited = True
     if edits and not observation_source_edited:
-        blockers.append(
-            "observation must edit the testbench or monitor, not only the manifest"
-        )
+        advisories.append("LLM did not edit a testbench or monitor source")
 
-    blockers = list(dict.fromkeys(blockers))
-    result["status"] = "pass" if not blockers else "blocked"
+    result["status"] = "pass"
     result["mode"] = mode or result.get("mode")
-    result["blockers"] = blockers
+    result["blockers"] = []
+    result["execution_advisories"] = list(dict.fromkeys(advisories))
     result["summary"] = (
-        "observation edit can continue to the real board VCS run"
-        if not blockers
-        else "observation edit needs a real testbench or monitor source"
+        "recorded Layer-3 observation details; the LLM decision remains executable"
     )
     return result
 
@@ -30887,11 +30884,10 @@ def execute_verification_capability_repair(
         package["adaptive_observation_routing"] = adaptive_observation_routing_state(
             package
         )
-        # An incomplete boundary trace is an observation problem first.  Do
-        # not enter the RTL authority path until the Agent has had one chance
-        # to install a complete terminal-path observation in the generated
-        # testbench.  This keeps the source repair gate fail-closed without
-        # turning missing evidence into a false hardware diagnosis.
+        # An incomplete boundary trace is useful context for the LLM, but it
+        # does not turn the framework into a second decision-maker.  The LLM
+        # may pair a functional repair with broader observations in one
+        # transaction, and the executor must not split or veto that choice.
         adaptive_state = package.get("adaptive_observation_state", {})
         observation_incomplete = (
             isinstance(adaptive_state, dict)
@@ -30905,17 +30901,17 @@ def execute_verification_capability_repair(
                 or observation_incomplete
             )
         ):
-            board_observation_only_repair = True
-            board_semantic_rtl_repair = False
-            package["generation_mode"] = "observation_only"
-            package["board_observation_only_repair"] = {
-                "status": "required",
-                "source_rtl_edit_authorized": False,
+            package["board_observation_guidance"] = {
+                "status": "advisory",
+                "source_rtl_edit_authorized": True,
                 "reason": (
                     "current real VCS evidence has observed internal transfers, "
                     "but boundary counters/payloads are incomplete"
                 ),
-                "required_action": "one bounded generated-testbench observation edit",
+                "recommended_action": (
+                    "let the LLM choose the smallest functional repair and any "
+                    "additional generated-testbench observations in one transaction"
+                ),
             }
     package_path = out_dir / f"{safe_step_id(step)}_verification_capability_repair_package.json"
     write_json(package_path, package)
@@ -32326,9 +32322,12 @@ def execute_verification_capability_repair(
             if isinstance(agent_transaction_rejection, dict)
             else blocked_reasons
         )
+        # A blocked answer with no edit is an LLM request for more current
+        # evidence, not a framework veto. Keep the retry loop alive and label
+        # the record explicitly so operators can distinguish the two cases.
         patch_application = {
             "schema_version": "spatialaccagent.agent_patch_application.v1",
-            "status": "blocked",
+            "status": "llm_waiting_for_current_evidence",
             "summary": str(
                 implementation_output.get("summary")
                 or "implementation agent requires an upstream capability"
@@ -32341,6 +32340,7 @@ def execute_verification_capability_repair(
             "agent_transaction_rejection": agent_transaction_rejection,
             "agent_decision_stop": decision_stop,
             "retry_agent_without_real_tool": retry_agent_without_real_tool,
+            "decision_owner": "llm",
         }
         write_json(patch_path, patch_application)
         blocked_handoff_path = out_dir / "agent_patch_blocked_handoff.json"
@@ -32348,13 +32348,13 @@ def execute_verification_capability_repair(
         package["llm_record_path"] = llm_record.get("result_path")
         package["agent_patch_blocked_handoff"] = str(blocked_handoff_path)
         package["blocked_handoff"] = {
-            "status": "blocked",
+            "status": "llm_waiting_for_current_evidence",
             "blocked_reasons": blocked_reasons,
             "required_capabilities": required_capabilities,
         }
         write_json(package_path, package)
         return {
-            "status": "blocked",
+            "status": "llm_waiting_for_current_evidence",
             "agent_status": "blocked",
             "summary": patch_application["summary"],
             "blocked_reasons": blocked_reasons,
@@ -32367,6 +32367,7 @@ def execute_verification_capability_repair(
             "agent_transaction_rejection": agent_transaction_rejection,
             "agent_decision_stop": decision_stop,
             "retry_agent_without_real_tool": retry_agent_without_real_tool,
+            "decision_owner": "llm",
             "stage_passed": False,
             "target_modules": target_modules,
         }
@@ -32383,24 +32384,33 @@ def execute_verification_capability_repair(
         if board_integration_repair and not single_layer_compile_rtl_repair
         else []
     )
-    agent_contract_blockers = [
-        *(
-            adaptive_observation_validation.get("blockers", [])
-            if adaptive_observation_validation.get("status") == "blocked"
-            else []
-        ),
-        *stale_static_authority_blockers,
-        *(
-            single_layer_source_rebase.get("blockers", [])
-            if single_layer_source_rebase.get("status") == "blocked"
-            else []
-        ),
-        *layer3_required_code_edit_errors(
-            implementation_output,
-            run_dir,
-            current_signal_epoch=board_signal_analysis_required,
-        ),
-    ]
+    # Layer 3 has one decision-maker: the LLM.  Observation coverage, stale
+    # authority notes, and output-shape expectations remain visible in the
+    # prompt and reports, but none may veto a ready LLM transaction.  The
+    # atomic executor below still rejects only non-executable edits (outside
+    # the write boundary, missing files, invalid JSON, or invalid anchors).
+    agent_contract_blockers = (
+        []
+        if board_integration_repair
+        else [
+            *(
+                adaptive_observation_validation.get("blockers", [])
+                if adaptive_observation_validation.get("status") == "blocked"
+                else []
+            ),
+            *stale_static_authority_blockers,
+            *(
+                single_layer_source_rebase.get("blockers", [])
+                if single_layer_source_rebase.get("status") == "blocked"
+                else []
+            ),
+            *layer3_required_code_edit_errors(
+                implementation_output,
+                run_dir,
+                current_signal_epoch=board_signal_analysis_required,
+            ),
+        ]
+    )
     patch_application = apply_agent_file_edits(
         implementation_output,
         run_dir,
@@ -32472,21 +32482,7 @@ def execute_verification_capability_repair(
             if stale_static_authority_blockers
             else "adaptive_observation_decision_contract"
         ),
-        agent_contract_retry_on_blocked=(
-            board_integration_repair
-            and (
-                bool(stale_static_authority_blockers)
-                or bool(layer3_required_code_edit_errors(
-                    implementation_output,
-                    run_dir,
-                    current_signal_epoch=board_signal_analysis_required,
-                ))
-                or (
-                    adaptive_observation_decision_requested
-                    and adaptive_observation_validation.get("status") == "blocked"
-                )
-            )
-        ),
+        agent_contract_retry_on_blocked=False,
     )
     patch_application["adaptive_observation_decision_validation"] = {
         "path": str(adaptive_observation_validation_path),

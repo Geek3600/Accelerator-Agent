@@ -298,7 +298,7 @@ class RepairPatchExecutionTest(TestCase):
             routing["incomplete_boundary_ids"], ["edge.input.to.output"]
         )
 
-    def test_observation_only_rejects_rtl_edit_and_empty_probe_replay(self) -> None:
+    def test_observation_notes_do_not_veto_llm_repair(self) -> None:
         with TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run"
             board_dir = run_dir / "generated" / "board_integration"
@@ -350,13 +350,13 @@ class RepairPatchExecutionTest(TestCase):
                 run_dir,
             )
 
-        self.assertEqual(rtl_edit["status"], "blocked")
+        self.assertEqual(rtl_edit["status"], "pass")
         self.assertTrue(
-            any("declared testbench, monitor, or manifest" in value for value in rtl_edit["blockers"])
+            any("functional source" in value for value in rtl_edit["execution_advisories"])
         )
-        self.assertEqual(empty_replay["status"], "blocked")
+        self.assertEqual(empty_replay["status"], "pass")
         self.assertTrue(
-            any("replaying an old probe" in value for value in empty_replay["blockers"])
+            any("no observation-source edit" in value for value in empty_replay["execution_advisories"])
         )
 
     def test_repair_ready_with_edit_is_executable(self) -> None:
