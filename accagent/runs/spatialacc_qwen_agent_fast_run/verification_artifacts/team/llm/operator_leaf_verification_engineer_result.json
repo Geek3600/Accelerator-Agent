@@ -1,0 +1,512 @@
+{
+  "agent": "operator_leaf_verification_engineer",
+  "duration_sec": 434.1452582970087,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "operator_leaf_verification_engineer",
+    "approval_required_for": [
+      "Only if a proposed repair changes constraint.numeric.policy, the explicit comparison tolerance, rounding, saturation, cast points, or target-model expected-output semantics.",
+      "Only if a proposed repair changes architecture, constraint.pipeline.structure, constraint.stream.order, constraint.beat.pipeline, memory layout or addressing, or another cross-stage interface contract.",
+      "Only if repair requires a major trusted-template/interface change or replacement beyond bounded repair of the currently selected template and generated glue.",
+      "Any proposal to expand DUT or golden scope beyond Transformer blocks, including embedding/tokenization, final model norm, LM head/logits, or sampling."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_reference_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "code_generation_manifest_static_check",
+          "stream_plan_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "artifact_hash_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "verification_gate_dag_refinement",
+        "consumes": [
+          "artifact.stage2.template_selection",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.design_artifact_manifest",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.functional_sim_real_tool_nodes",
+          "artifact.stage7.operator_leaf_promotion_certificate",
+          "candidate_stage_artifact.presence_summary",
+          "candidate_stage_artifact.stage_gate_policy.current_certificate_validation"
+        ],
+        "id": "operator_leaf.refine_current_contract_gate_dag",
+        "on_failure": "Keep operator-leaf execution and promotion blocked, report the exact missing or inconsistent stage row and owning upstream artifact to the evidence auditor, and do not fill omitted bindings with inferred defaults or reuse the stale certificate.",
+        "produces": [
+          "artifact.stage6.operator_leaf_gate_dag_refinement",
+          "artifact.stage6.operator_leaf_current_contract_revalidation_plan",
+          "artifact.stage6.operator_leaf_evidence_identity_contract",
+          "artifact.stage6.operator_leaf_repair_boundary_map",
+          "operator-leaf certificate invalidation record for transition.0006"
+        ],
+        "rationale": "Expand the coarse operator-leaf layer into nine explicit static-to-functional-to-golden subgraphs, bind each subgraph to current template, parameter, generated-module, stream, boundary, and identity artifacts, and record that transition.0006 certificate reuse is forbidden.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "sacg_validate",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "code_generation_manifest_static_check",
+          "stream_plan_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "artifact_hash_check",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "numeric_policy_check",
+          "case_real_weight_artifacts",
+          "case_target_model_reference",
+          "case_semantic_testbench",
+          "artifact_hash_check"
+        ],
+        "action_type": "verification_evidence_preparation",
+        "consumes": [
+          "artifact.input.case_adapter",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage6.operator_leaf_evidence_identity_contract",
+          "current case-adapter target checkpoint"
+        ],
+        "id": "operator_leaf.prepare_immutable_real_model_evidence",
+        "on_failure": "Classify absent target-model execution, incomplete tensor scope, missing explicit tolerance, or defective semantic harness as a verification/checker or golden-reference blocker. Do not generate random expected outputs, derive expected outputs from RTL, use sampled/default weights, or proceed to leaf simulation.",
+        "produces": [
+          "verification/real_weights/full_tensor_catalog.json",
+          "verification/real_weights/transformer_block_leaf_tensor_scope.json",
+          "verification/stimulus/stimulus_manifest.json",
+          "verification/model_reference/operator_leaf_reference_manifest.json",
+          "verification/semantic_testbench/operator_leaf_semantic_testbench_manifest.json",
+          "verification/semantic_testbench/dut_weight_binding_requirements.json",
+          "verification/operator_leaf/current_contract_identity.json"
+        ],
+        "rationale": "Create independent expected values and complete weight requirements before DUT execution. Random generation may create only the input stimulus; every expected leaf output must come from the real target model using the same immutable checkpoint and stimulus.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "model_config_check",
+          "numeric_policy_check",
+          "case_weight_manifest_generate",
+          "case_real_weight_artifacts",
+          "case_target_model_reference",
+          "case_semantic_testbench",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "codegen_package_static_check",
+          "stream_plan_check",
+          "repair_boundary_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "operator_leaf_static_boundary_verification",
+        "consumes": [
+          "artifact.stage2.template_selection",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.design_artifact_manifest",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage6.operator_leaf_gate_dag_refinement",
+          "artifact.stage6.operator_leaf_evidence_identity_contract",
+          "artifact.stage6.operator_leaf_repair_boundary_map"
+        ],
+        "id": "operator_leaf.materialize_nine_static_and_boundary_gates",
+        "on_failure": "Block only the failed leaf and dependent aggregate, identify whether the discrepancy originates in template selection, parameter binding, generated source identity, stream order, beat mapping, or boundary materialization, and route it to contract-guided localization without entering functional or higher-layer execution.",
+        "produces": [
+          "verification/operator_leaf/static/nine_stage_static_matrix.json",
+          "verification/operator_leaf/static/per_stage_module_identity_manifests",
+          "verification/debug_closure/operator_leaf_boundary_contracts.json",
+          "verification/debug_closure/operator_leaf_boundary_contract_hashes.json",
+          "verification/debug_closure/operator_leaf_repair_boundary_map.json"
+        ],
+        "rationale": "Prove that every generated leaf is the module selected by the current trusted template and parameter binding and that all 13 declared boundaries provide the data-order, transfer, latency, numeric, and trace contracts needed for localized repair.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_stage_leaf_static",
+          "boundary_contract_generate",
+          "boundary_contract_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "codegen_package_static_check",
+          "stream_plan_check",
+          "repair_boundary_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_leaf_functional",
+          "real_tool.case_leaf_functional",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "real_weight_semantic_evidence_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "operator_leaf_real_tool_execution",
+        "consumes": [
+          "artifact.stage5.generated_code_package",
+          "artifact.stage6.functional_sim_real_tool_nodes",
+          "verification/operator_leaf/current_contract_identity.json",
+          "verification/real_weights/full_tensor_catalog.json",
+          "verification/real_weights/transformer_block_leaf_tensor_scope.json",
+          "verification/model_reference/operator_leaf_reference_manifest.json",
+          "verification/semantic_testbench/operator_leaf_semantic_testbench_manifest.json",
+          "verification/semantic_testbench/dut_weight_binding_requirements.json",
+          "verification/operator_leaf/static/nine_stage_static_matrix.json",
+          "verification/debug_closure/operator_leaf_boundary_contracts.json"
+        ],
+        "id": "operator_leaf.execute_nine_leaf_functional_runs",
+        "on_failure": "Stop the failed leaf and every dependent merge edge, preserve unrelated passed leaves, and invoke operator_leaf.localize_failed_boundary. Do not skip to the connected single-transformer-layer kernel or infer correctness from compilation, liveness alone, or weight-file presence.",
+        "produces": [
+          "verification/operator_leaf/functional/per_stage_real_tool_run_manifests",
+          "verification/operator_leaf/functional/per_stage_simulator_logs",
+          "verification/operator_leaf/functional/per_stage_dut_outputs",
+          "verification/operator_leaf/functional/per_stage_liveness_and_order_reports",
+          "verification/operator_leaf/functional/per_stage_weight_consumption_ledgers",
+          "verification/debug_closure/operator_leaf_boundary_traces"
+        ],
+        "rationale": "Run each of the nine generated leaves independently with the immutable semantic vectors and bound loader. Capture real simulator evidence showing liveness, transaction and logical-index order, transfer counts, outputs, and actual consumption of every required checkpoint-derived tensor.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_leaf_functional",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "real_tool_evidence_check",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_leaf_golden_compare",
+          "real_tool.case_leaf_golden_compare",
+          "numeric_compare",
+          "artifact_hash_check",
+          "case_target_model_reference",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "operator_leaf_numeric_comparison",
+        "consumes": [
+          "verification/operator_leaf/current_contract_identity.json",
+          "verification/model_reference/operator_leaf_reference_manifest.json",
+          "verification/semantic_testbench/operator_leaf_semantic_testbench_manifest.json",
+          "verification/operator_leaf/functional/per_stage_real_tool_run_manifests",
+          "verification/operator_leaf/functional/per_stage_dut_outputs",
+          "verification/debug_closure/operator_leaf_boundary_contracts.json"
+        ],
+        "id": "operator_leaf.compare_nine_leaf_outputs",
+        "on_failure": "Retain the reference outputs and comparison policy unchanged, emit the earliest mismatching boundary and failure signature, and invoke operator_leaf.localize_failed_boundary. Never loosen tolerance, alter expected values, or regenerate them from the DUT.",
+        "produces": [
+          "verification/operator_leaf/golden_compare/per_stage_comparison_manifests",
+          "verification/operator_leaf/golden_compare/per_stage_first_mismatch_records",
+          "verification/operator_leaf/golden_compare/nine_stage_numeric_summary.json"
+        ],
+        "rationale": "Compare each DUT leaf output to the independently captured target-model boundary output using the exact immutable numeric policy and tolerance, including declared cast points, rounding behavior, saturation policy, lane order, and logical-index mapping.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_leaf_golden_compare",
+          "numeric_compare",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_operator_leaf_semantic_evidence",
+          "real_weight_semantic_evidence_check",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "operator_leaf_semantic_promotion",
+        "consumes": [
+          "artifact.stage6.operator_leaf_current_contract_revalidation_plan",
+          "artifact.stage6.operator_leaf_evidence_identity_contract",
+          "artifact.stage7.operator_leaf_promotion_certificate",
+          "verification/operator_leaf/current_contract_identity.json",
+          "verification/real_weights/full_tensor_catalog.json",
+          "verification/real_weights/transformer_block_leaf_tensor_scope.json",
+          "verification/model_reference/operator_leaf_reference_manifest.json",
+          "verification/semantic_testbench/operator_leaf_semantic_testbench_manifest.json",
+          "verification/operator_leaf/static/nine_stage_static_matrix.json",
+          "verification/operator_leaf/functional/per_stage_real_tool_run_manifests",
+          "verification/operator_leaf/functional/per_stage_weight_consumption_ledgers",
+          "verification/operator_leaf/golden_compare/nine_stage_numeric_summary.json",
+          "verification/debug_closure/operator_leaf_boundary_contracts.json"
+        ],
+        "id": "operator_leaf.aggregate_and_reissue_current_certificate",
+        "on_failure": "Leave current_contract_valid=false, produce no reusable promotion edge, identify the exact missing or failed leaf evidence row, and route that row to localization or checker repair. Do not modify or reinterpret the prior certificate as current.",
+        "produces": [
+          "verification/semantic_evidence/operator_leaf_current_contract.json",
+          "verification/operator_leaf/current_certificate_validation_summary.json",
+          "artifact.stage7.operator_leaf_promotion_certificate as a new immutable current-contract instance",
+          "verification_artifacts/verification_dag_evidence_auditor/operator_leaf_handoff.json",
+          "supersession link retaining transition.0006 certificate as invalid-for-current-reuse history"
+        ],
+        "rationale": "Create one checker-bound semantic aggregate across all nine leaves and issue a new immutable promotion certificate only after static, boundary, real functional, numeric, complete-weight-consumption, and identity checks all pass under spatialaccagent.real_weight_semantic_evidence.v2.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_operator_leaf_semantic_evidence",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check",
+          "real_tool_evidence_check",
+          "sacg_validate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_replay_check",
+          "causal_repair_context_check",
+          "boundary_contract_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "contract_guided_failure_localization",
+        "consumes": [
+          "artifact.stage6.operator_leaf_repair_boundary_map",
+          "verification/debug_closure/operator_leaf_boundary_contracts.json",
+          "verification/debug_closure/operator_leaf_boundary_traces",
+          "failed per-stage static, functional, liveness, order, weight-consumption, or numeric checker result",
+          "verification/operator_leaf/current_contract_identity.json"
+        ],
+        "id": "operator_leaf.localize_failed_boundary",
+        "on_failure": "Classify missing or defective trace, checker, target-model hook, or instrumentation capability as a verifier repair rather than a hardware correctness result, keep all dependent promotion edges blocked, and invoke operator_leaf.record_unresolved_repair_decision.",
+        "produces": [
+          "verification/debug_closure/failure_localization.json",
+          "verification/debug_closure/targeted_replay_result.json",
+          "verification/debug_closure/causal_repair_context.json",
+          "verification/debug_closure/failed_leaf_dependency_invalidation.json"
+        ],
+        "rationale": "Convert a failing real-tool result into a CCTG/boundary-guided causal slice identifying the earliest violated leaf boundary, root-candidate module, failed contract, targeted replay, and minimal repair context before any code change.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "failure_slice_localization",
+          "boundary_trace_rerun",
+          "targeted_replay",
+          "causal_repair_context_pack",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun",
+          "case_stage_leaf_static",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "numeric_compare",
+          "real_weight_semantic_evidence_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "bounded_operator_leaf_repair",
+        "consumes": [
+          "artifact.stage2.template_selection",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage6.operator_leaf_repair_boundary_map",
+          "verification/debug_closure/causal_repair_context.json",
+          "verification/operator_leaf/current_contract_identity.json",
+          "original failed-leaf semantic vectors and target-model references"
+        ],
+        "id": "operator_leaf.apply_bounded_repair_and_targeted_rerun",
+        "on_failure": "If the repair remains within the approved boundary but fails, invoke operator_leaf.record_unresolved_repair_decision with the new real-tool evidence. If repair_boundary_check requires architecture, pipeline, memory-layout, numeric-policy, tolerance, or major-template change, stop before modification and request approval; do not perform a free-form RTL rewrite.",
+        "produces": [
+          "verification/operator_leaf/repair/bounded_patch_manifest.json",
+          "verification/operator_leaf/repair/repaired_generated_source_hashes.json",
+          "verification/operator_leaf/repair/targeted_rerun_manifest.json",
+          "refreshed failed-leaf static, functional, consumption, boundary, and numeric evidence",
+          "dependency record requiring operator_leaf.aggregate_and_reissue_current_certificate after successful rerun"
+        ],
+        "rationale": "Repair only the localized generated leaf, selected-template implementation, or bounded glue allowed by the repair map while preserving checkpoint, stimulus, references, numeric policy, tolerance, semantic-testbench contract identity, and unrelated passed leaves. Then rerun the failed static, functional, and comparison gates.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "repair_boundary_check",
+          "bounded_template_repair",
+          "targeted_failed_checker_rerun",
+          "case_stage_leaf_static",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "numeric_compare",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_retry_request_check",
+          "stage_backtrack_request_check",
+          "stage_artifact_trust_barrier_check",
+          "sacg_memory_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "failure_escalation_decision",
+        "consumes": [
+          "verification/debug_closure/failure_localization.json",
+          "verification/debug_closure/causal_repair_context.json",
+          "verification/operator_leaf/repair/targeted_rerun_manifest.json if produced",
+          "verification/operator_leaf/current_contract_identity.json",
+          "artifact.stage6.operator_leaf_repair_boundary_map"
+        ],
+        "id": "operator_leaf.record_unresolved_repair_decision",
+        "on_failure": "Keep operator-leaf and all higher-layer promotion blocked and hand the unresolved checker evidence to verification_artifacts.verification_dag_evidence_auditor. Do not create a pass, silently discard the failure, or execute an unapproved cross-boundary repair.",
+        "produces": [
+          "artifact.stage6.operator_leaf_unresolved_failure_decision",
+          "conditional SACG same-stage retry request",
+          "conditional targeted upstream backtrack request",
+          "conditional artifact trust barrier when immutable evidence contamination is proven",
+          "conditional approval request for a cross-boundary change"
+        ],
+        "rationale": "Persist the next checker-grounded decision when localization or bounded repair cannot close the leaf, so downstream agents receive an explicit retry, targeted upstream backtrack, identity-contamination barrier, or approval request rather than relying on scripts or human memory.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "stage_retry_request",
+          "stage_backtrack_request",
+          "stage_artifact_trust_barrier",
+          "sacg_memory_update",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The current verification_artifact_contract_check passes, and the supplied Stage 3 pipeline, Stage 4 parameter, and Stage 5 compile/elaboration and package-static gates are visible as passed upstream evidence. Under stage_gate_policy, pending real-tool execution is a later verification obligation rather than a blocker to approving this refined Stage 6 contract.",
+      "The authoritative supplied SACG-memory state lists zero active contamination barriers and zero open retry or backtrack requests. Historical Stage 7 pass summaries therefore are recovery evidence, not active blockers, but they also do not establish validity under the current semantic evidence contract.",
+      "artifact.stage7.operator_leaf_promotion_certificate is present, but current_contract_valid=false, validation_status=missing_or_stale_for_current_contract, and reuse_allowed=false. Its trust metadata and artifact presence do not permit reuse. It must be retained only as superseded historical evidence until a new immutable certificate instance passes the current validator.",
+      "presence_summary declares nine stage agents and nine parameter-binding stage IDs. The compact role slice exposes only some detailed stage-agent and parameter rows, so omitted details are not treated as missing. The full nine-row template, parameter, generated-module, and source-hash table must nevertheless be materialized for checker consumption before leaf execution.",
+      "Each current-contract identity must bind the checkpoint catalog root and every tensor hash, target model code/config identity, stimulus bytes and generator provenance, per-stage reference outputs, numeric-policy hash, exact tolerance, rounding/saturation/cast rules, semantic-testbench source and executable hashes, template source hash, parameter-binding hash, generated leaf module hash, boundary-contract hash, loader/harness hash, tool command/version/log hashes, and executed DUT tensor-consumption ledger.",
+      "The compact slice does not expose the exact comparison tolerance value. This is not inferred as a current Stage 6 missing-field blocker because of the role-slice policy and passing contract checker, but numeric_policy_check and case_semantic_testbench must materialize and hash the exact value before any functional execution. It must not be loosened during repair.",
+      "Model, shape, and numeric checks must preserve causal GQA with 14 query heads, 2 KV heads, group size 7, head dimension 64, RoPE theta 1000000.0, sequence bound 16, hidden size 896, intermediate size 4864, eight lanes, the declared fp16/fp32 cast points, nearest-even rounding, no saturation, and RMSNorm epsilon 1e-6.",
+      "Complete evidence means a full target-checkpoint tensor catalog plus a leaf requirement map covering every checkpoint-derived tensor required by the nine Transformer-block stages. Residual and non-parameterized elementwise leaves may have an explicitly proven empty learned-tensor requirement set; filesystem presence or a load manifest alone is insufficient. Executed harness evidence must prove that every nonempty required set was actually consumed by the DUT.",
+      "Embedding and tokenization, final model norm, LM head or logits, and sampling remain outside the accelerator, weight-coverage, reference-output, and promotion-certificate boundaries. This operator-leaf specialist does not approve connected single-layer, board-wrapper, backend, bitstream, or board-runtime promotion.",
+      "The refined repair boundary preserves unrelated passed leaves. A failed leaf first enters tool-output collection, boundary/CCTG-guided earliest-violation localization, bounded selected-template or generated-glue repair, and exact-contract rerun. A higher layer cannot be entered while any required leaf gate remains pending or failed."
+    ],
+    "proposed_actions": [
+      "Materialize and checker-validate a nine-stage gate DAG, identity contract, current-certificate revalidation plan, and 13-boundary repair map.",
+      "Generate a complete checkpoint tensor catalog, deterministic or real stimulus manifest, independent real target-model per-leaf references, and semantic testbenches with explicit immutable numeric tolerance and DUT weight-binding requirements.",
+      "Run static template, parameter, generated-module, stream, and boundary checks for every declared leaf stage without inferring omitted role-slice details or inventing core names.",
+      "Execute independent functional simulation for all nine leaves and collect liveness, order, transfer-count, boundary-trace, output, and actual required-weight-consumption evidence.",
+      "Compare every leaf result against the corresponding target-model boundary output under the unchanged comparison policy and tolerance.",
+      "Aggregate all nine checker-bound evidence sets and issue a new certificate only if the current-contract validator returns true; hand the resulting evidence to verification_artifacts.verification_dag_evidence_auditor.",
+      "On failure, localize the earliest causal boundary, preserve unrelated passed leaves, perform only bounded approved-template or generated-glue repair, and rerun the failed leaf and invalidated dependent gates.",
+      "If bounded repair cannot close the failure, emit a checker-grounded retry, backtrack, contamination, or approval decision into SACG memory instead of relying on static scripts or human memory."
+    ],
+    "risks": [
+      "Operator-leaf promotion is currently blocked by the stale certificate. Consuming it based only on artifact presence would contaminate every higher-layer promotion decision.",
+      "A checkpoint, stimulus, target-model output, semantic-testbench, template, parameter, generated-module, loader, or numeric-policy hash mismatch could silently compare different computations unless the complete identity tuple is checked before each run.",
+      "A tensor manifest without executed per-stage consumption telemetry can hide default, sampled, omitted, misordered, or misaddressed weights. This is especially material for RMSNorm, attention projections, and MLP projections.",
+      "GQA head grouping, RoPE position indexing, causal masking, cast placement, residual precision, lane packing, transaction order, or tile/logical-index mapping can each produce numerically plausible but semantically wrong output. The earliest violated boundary must be localized before repair.",
+      "The visible coarse DAG represents leaf nodes as pending roots. If it is not expanded into explicit per-stage static, functional, comparison, identity, and failure-route edges, an aggregate checker could accept incomplete per-leaf evidence.",
+      "If a verifier, target-model hook, loader, or semantic harness is defective, treating the resulting absence or mismatch as hardware correctness would misdirect repair. Such failures require checker or golden-reference repair and a newly versioned identity contract, not a modified golden output.",
+      "Any attempt to repair by changing the checkpoint, stimulus, expected outputs, numeric policy, tolerance, semantic-testbench identity, or comparison rule would invalidate the repair loop rather than close it.",
+      "A leaf certificate only authorizes the first repair-loop layer. It cannot be used as evidence that stream composition, a connected transformer layer, AXI/DDR wrapping, exact board sources, backend implementation, or board runtime passed."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage2.template_selection",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.design_artifact_manifest",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.functional_sim_real_tool_nodes",
+        "artifact.stage7.operator_leaf_promotion_certificate",
+        "artifact.stage6.operator_leaf_gate_dag_refinement",
+        "artifact.stage6.operator_leaf_current_contract_revalidation_plan",
+        "artifact.stage6.operator_leaf_evidence_identity_contract",
+        "artifact.stage6.operator_leaf_repair_boundary_map"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.parameter.binding",
+        "constraint.pipeline.structure",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.verification.plan",
+        "constraint.verification.hierarchy",
+        "constraint.verification.artifacts",
+        "constraint.tool.protocols"
+      ],
+      "edges": [
+        "For each of the nine leaf stages, artifact.stage2.template_selection plus artifact.stage4.parameter_binding plus artifact.stage5.generated_code_package identity leads to the per-stage case_stage_leaf_static result.",
+        "case_real_weight_artifacts leads to case_target_model_reference using the same immutable checkpoint and stimulus provenance; expected outputs may only come from the real target-model execution.",
+        "case_real_weight_artifacts plus case_target_model_reference plus the immutable numeric policy and explicit tolerance lead to case_semantic_testbench.",
+        "artifact.stage3.pipeline_plan plus constraint.stream.order plus constraint.beat.pipeline lead to boundary_contract_check and the 13-boundary repair map.",
+        "For each leaf stage, its static result plus boundary contract plus semantic testbench plus bound weight requirements lead to its case_leaf_functional execution.",
+        "For each leaf stage, its functional output plus the corresponding independent target-model boundary output plus the unchanged numeric policy and tolerance lead to case_leaf_golden_compare.",
+        "All nine static, functional, golden-comparison, boundary, real-weight-consumption, and immutable-identity results lead to case_operator_leaf_semantic_evidence.",
+        "case_operator_leaf_semantic_evidence leads to a new operator-leaf promotion certificate only when the current validator returns current_contract_valid=true under spatialaccagent.real_weight_semantic_evidence.v2.",
+        "Any static, liveness, value, order, weight-consumption, or comparison failure leads to contract-guided earliest-boundary localization, bounded repair, and targeted rerun; it must not lead to single-layer or board promotion.",
+        "artifact.stage7.operator_leaf_promotion_certificate from transition.0006 has no promotion edge into the refined DAG because its current_contract_valid value is false."
+      ],
+      "nodes": [
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "boundary_contract_check",
+        "leaf_stage.stage_00_rms_norm_1",
+        "leaf_stage.stage_01_self_attention",
+        "leaf_stage.stage_02_residual_add_1",
+        "leaf_stage.stage_03_rms_norm_2",
+        "leaf_stage.stage_04_mlp_gate_proj",
+        "leaf_stage.stage_05_mlp_up_proj",
+        "leaf_stage.stage_06_activation_mul",
+        "leaf_stage.stage_07_mlp_down_proj",
+        "leaf_stage.stage_08_residual_add_2",
+        "case_stage_leaf_static",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_operator_leaf_semantic_evidence",
+        "operator_leaf_current_contract_certificate_validation",
+        "operator_leaf_failure_localization",
+        "operator_leaf_bounded_repair_and_targeted_rerun"
+      ]
+    },
+    "schema_version": "spatialaccagent.operator_leaf_gate_refinement.v0",
+    "stage": "verification_artifacts",
+    "status": "ready_for_execution_with_operator_leaf_promotion_blocked",
+    "summary": "The Stage 6 operator-leaf contract can be refined without an active SACG-memory blocker, but no operator-leaf functional pass is claimed. Presence-only reuse of artifact.stage7.operator_leaf_promotion_certificate from transition.0006 is explicitly invalid because current_contract_valid=false and reuse_allowed=false. Promotion remains blocked until all nine leaf stages are bound to immutable current-contract identities, executed with complete checkpoint-derived Transformer-block weight coverage and independent target-model references, compared under the unchanged numeric policy and tolerance, aggregated by case_operator_leaf_semantic_evidence, and issued a newly validated current-contract certificate."
+  },
+  "prompt_bytes": 92250,
+  "prompt_hash": "76e7072380fd18f15c6e82831b8009dfb7f844d15db606626d5d089cd27f7cca",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.operator_leaf_gate_refinement.v0\",\"agent\":\"operator_leaf_verification_engineer\",\"stage\":\"verification_artifacts\",\"status\":\"ready_for_execution_with_operator_leaf_promotion_blocked\",\"summary\":\"The Stage 6 operator-leaf contract can be refined without an active SACG-memory blocker, but no operator-leaf functional pass is claimed. Presence-only reuse of artifact.stage7.operator_leaf_promotion_certificate from transition.0006 is explicitly invalid because current_contract_valid=false and reuse_allowed=false. Promotion remains blocked until all nine leaf stages are bound to immutable current-contract identities, executed with complete checkpoint-derived Transformer-block weight coverage and independent target-model references, compared under the unchanged numeric policy and tolerance, aggregated by case_operator_leaf_semantic_evidence, and issued a newly validated current-contract certificate.\",\"sacg_focus\":{\"nodes\":[\"case_real_weight_artifacts\",\"case_target_model_reference\",\"case_semantic_testbench\",\"boundary_contract_check\",\"leaf_stage.stage_00_rms_norm_1\",\"leaf_stage.stage_01_self_attention\",\"leaf_stage.stage_02_residual_add_1\",\"leaf_stage.stage_03_rms_norm_2\",\"leaf_stage.stage_04_mlp_gate_proj\",\"leaf_stage.stage_05_mlp_up_proj\",\"leaf_stage.stage_06_activation_mul\",\"leaf_stage.stage_07_mlp_down_proj\",\"leaf_stage.stage_08_residual_add_2\",\"case_stage_leaf_static\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"case_operator_leaf_semantic_evidence\",\"operator_leaf_current_contract_certificate_validation\",\"operator_leaf_failure_localization\",\"operator_leaf_bounded_repair_and_targeted_rerun\"],\"edges\":[\"For each of the nine leaf stages, artifact.stage2.template_selection plus artifact.stage4.parameter_binding plus artifact.stage5.generated_code_package identity leads to the per-stage case_stage_leaf_static result.\",\"case_real_weight_artifacts leads to case_target_model_reference using the same immutable checkpoint and stimulus provenance; expected outputs may only come from the real target-model execution.\",\"case_real_weight_artifacts plus case_target_model_reference plus the immutable numeric policy and explicit tolerance lead to case_semantic_testbench.\",\"artifact.stage3.pipeline_plan plus constraint.stream.order plus constraint.beat.pipeline lead to boundary_contract_check and the 13-boundary repair map.\",\"For each leaf stage, its static result plus boundary contract plus semantic testbench plus bound weight requirements lead to its case_leaf_functional execution.\",\"For each leaf stage, its functional output plus the corresponding independent target-model boundary output plus the unchanged numeric policy and tolerance lead to case_leaf_golden_compare.\",\"All nine static, functional, golden-comparison, boundary, real-weight-consumption, and immutable-identity results lead to case_operator_leaf_semantic_evidence.\",\"case_operator_leaf_semantic_evidence leads to a new operator-leaf promotion certificate only when the current validator returns current_contract_valid=true under spatialaccagent.real_weight_semantic_evidence.v2.\",\"Any static, liveness, value, order, weight-consumption, or comparison failure leads to contract-guided earliest-boundary localization, bounded repair, and targeted rerun; it must not lead to single-layer or board promotion.\",\"artifact.stage7.operator_leaf_promotion_certificate from transition.0006 has no promotion edge into the refined DAG because its current_contract_valid value is false.\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.pipeline.structure\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.verification.artifacts\",\"constraint.tool.protocols\"],\"artifacts\":[\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.functional_sim_real_tool_nodes\",\"artifact.stage7.operator_leaf_promotion_certificate\",\"artifact.stage6.operator_leaf_gate_dag_refinement\",\"artifact.stage6.operator_leaf_current_contract_revalidation_plan\",\"artifact.stage6.operator_leaf_evidence_identity_contract\",\"artifact.stage6.operator_leaf_repair_boundary_map\"]},\"observations\":[\"The current verification_artifact_contract_check passes, and the supplied Stage 3 pipeline, Stage 4 parameter, and Stage 5 compile/elaboration and package-static gates are visible as passed upstream evidence. Under stage_gate_policy, pending real-tool execution is a later verification obligation rather than a blocker to approving this refined Stage 6 contract.\",\"The authoritative supplied SACG-memory state lists zero active contamination barriers and zero open retry or backtrack requests. Historical Stage 7 pass summaries therefore are recovery evidence, not active blockers, but they also do not establish validity under the current semantic evidence contract.\",\"artifact.stage7.operator_leaf_promotion_certificate is present, but current_contract_valid=false, validation_status=missing_or_stale_for_current_contract, and reuse_allowed=false. Its trust metadata and artifact presence do not permit reuse. It must be retained only as superseded historical evidence until a new immutable certificate instance passes the current validator.\",\"presence_summary declares nine stage agents and nine parameter-binding stage IDs. The compact role slice exposes only some detailed stage-agent and parameter rows, so omitted details are not treated as missing. The full nine-row template, parameter, generated-module, and source-hash table must nevertheless be materialized for checker consumption before leaf execution.\",\"Each current-contract identity must bind the checkpoint catalog root and every tensor hash, target model code/config identity, stimulus bytes and generator provenance, per-stage reference outputs, numeric-policy hash, exact tolerance, rounding/saturation/cast rules, semantic-testbench source and executable hashes, template source hash, parameter-binding hash, generated leaf module hash, boundary-contract hash, loader/harness hash, tool command/version/log hashes, and executed DUT tensor-consumption ledger.\",\"The compact slice does not expose the exact comparison tolerance value. This is not inferred as a current Stage 6 missing-field blocker because of the role-slice policy and passing contract checker, but numeric_policy_check and case_semantic_testbench must materialize and hash the exact value before any functional execution. It must not be loosened during repair.\",\"Model, shape, and numeric checks must preserve causal GQA with 14 query heads, 2 KV heads, group size 7, head dimension 64, RoPE theta 1000000.0, sequence bound 16, hidden size 896, intermediate size 4864, eight lanes, the declared fp16/fp32 cast points, nearest-even rounding, no saturation, and RMSNorm epsilon 1e-6.\",\"Complete evidence means a full target-checkpoint tensor catalog plus a leaf requirement map covering every checkpoint-derived tensor required by the nine Transformer-block stages. Residual and non-parameterized elementwise leaves may have an explicitly proven empty learned-tensor requirement set; filesystem presence or a load manifest alone is insufficient. Executed harness evidence must prove that every nonempty required set was actually consumed by the DUT.\",\"Embedding and tokenization, final model norm, LM head or logits, and sampling remain outside the accelerator, weight-coverage, reference-output, and promotion-certificate boundaries. This operator-leaf specialist does not approve connected single-layer, board-wrapper, backend, bitstream, or board-runtime promotion.\",\"The refined repair boundary preserves unrelated passed leaves. A failed leaf first enters tool-output collection, boundary/CCTG-guided earliest-violation localization, bounded selected-template or generated-glue repair, and exact-contract rerun. A higher layer cannot be entered while any required leaf gate remains pending or failed.\"],\"risks\":[\"Operator-leaf promotion is currently blocked by the stale certificate. Consuming it based only on artifact presence would contaminate every higher-layer promotion decision.\",\"A checkpoint, stimulus, target-model output, semantic-testbench, template, parameter, generated-module, loader, or numeric-policy hash mismatch could silently compare different computations unless the complete identity tuple is checked before each run.\",\"A tensor manifest without executed per-stage consumption telemetry can hide default, sampled, omitted, misordered, or misaddressed weights. This is especially material for RMSNorm, attention projections, and MLP projections.\",\"GQA head grouping, RoPE position indexing, causal masking, cast placement, residual precision, lane packing, transaction order, or tile/logical-index mapping can each produce numerically plausible but semantically wrong output. The earliest violated boundary must be localized before repair.\",\"The visible coarse DAG represents leaf nodes as pending roots. If it is not expanded into explicit per-stage static, functional, comparison, identity, and failure-route edges, an aggregate checker could accept incomplete per-leaf evidence.\",\"If a verifier, target-model hook, loader, or semantic harness is defective, treating the resulting absence or mismatch as hardware correctness would misdirect repair. Such failures require checker or golden-reference repair and a newly versioned identity contract, not a modified golden output.\",\"Any attempt to repair by changing the checkpoint, stimulus, expected outputs, numeric policy, tolerance, semantic-testbench identity, or comparison rule would invalidate the repair loop rather than close it.\",\"A leaf certificate only authorizes the first repair-loop layer. It cannot be used as evidence that stream composition, a connected transformer layer, AXI/DDR wrapping, exact board sources, backend implementation, or board runtime passed.\"],\"proposed_actions\":[\"Materialize and checker-validate a nine-stage gate DAG, identity contract, current-certificate revalidation plan, and 13-boundary repair map.\",\"Generate a complete checkpoint tensor catalog, deterministic or real stimulus manifest, independent real target-model per-leaf references, and semantic testbenches with explicit immutable numeric tolerance and DUT weight-binding requirements.\",\"Run static template, parameter, generated-module, stream, and boundary checks for every declared leaf stage without inferring omitted role-slice details or inventing core names.\",\"Execute independent functional simulation for all nine leaves and collect liveness, order, transfer-count, boundary-trace, output, and actual required-weight-consumption evidence.\",\"Compare every leaf result against the corresponding target-model boundary output under the unchanged comparison policy and tolerance.\",\"Aggregate all nine checker-bound evidence sets and issue a new certificate only if the current-contract validator returns true; hand the resulting evidence to verification_artifacts.verification_dag_evidence_auditor.\",\"On failure, localize the earliest causal boundary, preserve unrelated passed leaves, perform only bounded approved-template or generated-glue repair, and rerun the failed leaf and invalidated dependent gates.\",\"If bounded repair cannot close the failure, emit a checker-grounded retry, backtrack, contamination, or approval decision into SACG memory instead of relying on static scripts or human memory.\"],\"executable_actions\":[{\"id\":\"operator_leaf.refine_current_contract_gate_dag\",\"stage\":\"verification_artifacts\",\"action_type\":\"verification_gate_dag_refinement\",\"rationale\":\"Expand the coarse operator-leaf layer into nine explicit static-to-functional-to-golden subgraphs, bind each subgraph to current template, parameter, generated-module, stream, boundary, and identity artifacts, and record that transition.0006 certificate reuse is forbidden.\",\"consumes\":[\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.functional_sim_real_tool_nodes\",\"artifact.stage7.operator_leaf_promotion_certificate\",\"candidate_stage_artifact.presence_summary\",\"candidate_stage_artifact.stage_gate_policy.current_certificate_validation\"],\"produces\":[\"artifact.stage6.operator_leaf_gate_dag_refinement\",\"artifact.stage6.operator_leaf_current_contract_revalidation_plan\",\"artifact.stage6.operator_leaf_evidence_identity_contract\",\"artifact.stage6.operator_leaf_repair_boundary_map\",\"operator-leaf certificate invalidation record for transition.0006\"],\"tool_roles\":[\"sacg_validate\",\"template_coverage_check\",\"parameter_binding_static_check\",\"code_generation_manifest_static_check\",\"stream_plan_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"artifact_hash_check\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"sacg_reference_check\",\"template_binding_static_check\",\"parameter_binding_static_check\",\"code_generation_manifest_static_check\",\"stream_plan_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"artifact_hash_check\",\"repair_boundary_check\"],\"on_failure\":\"Keep operator-leaf execution and promotion blocked, report the exact missing or inconsistent stage row and owning upstream artifact to the evidence auditor, and do not fill omitted bindings with inferred defaults or reuse the stale certificate.\",\"requires_approval\":false},{\"id\":\"operator_leaf.prepare_immutable_real_model_evidence\",\"stage\":\"verification\",\"action_type\":\"verification_evidence_preparation\",\"rationale\":\"Create independent expected values and complete weight requirements before DUT execution. Random generation may create only the input stimulus; every expected leaf output must come from the real target model using the same immutable checkpoint and stimulus.\",\"consumes\":[\"artifact.input.case_adapter\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.memory_layout\",\"artifact.stage5.generated_code_package\",\"artifact.stage6.operator_leaf_evidence_identity_contract\",\"current case-adapter target checkpoint\"],\"produces\":[\"verification/real_weights/full_tensor_catalog.json\",\"verification/real_weights/transformer_block_leaf_tensor_scope.json\",\"verification/stimulus/stimulus_manifest.json\",\"verification/model_reference/operator_leaf_reference_manifest.json\",\"verification/semantic_testbench/operator_leaf_semantic_testbench_manifest.json\",\"verification/semantic_testbench/dut_weight_binding_requirements.json\",\"verification/operator_leaf/current_contract_identity.json\"],\"tool_roles\":[\"model_config_check\",\"numeric_policy_check\",\"case_weight_manifest_generate\",\"case_real_weight_artifacts\",\"case_target_model_reference\",\"case_semantic_testbench\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"model_config_check\",\"numeric_policy_check\",\"case_real_weight_artifacts\",\"case_target_model_reference\",\"case_semantic_testbench\",\"artifact_hash_check\"],\"on_failure\":\"Classify absent target-model execution, incomplete tensor scope, missing explicit tolerance, or defective semantic harness as a verification/checker or golden-reference blocker. Do not generate random expected outputs, derive expected outputs from RTL, use sampled/default weights, or proceed to leaf simulation.\",\"requires_approval\":false},{\"id\":\"operator_leaf.materialize_nine_static_and_boundary_gates\",\"stage\":\"verification\",\"action_type\":\"operator_leaf_static_boundary_verification\",\"rationale\":\"Prove that every generated leaf is the module selected by the current trusted template and parameter binding and that all 13 declared boundaries provide the data-order, transfer, latency, numeric, and trace contracts needed for localized repair.\",\"consumes\":[\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage6.operator_leaf_gate_dag_refinement\",\"artifact.stage6.operator_leaf_evidence_identity_contract\",\"artifact.stage6.operator_leaf_repair_boundary_map\"],\"produces\":[\"verification/operator_leaf/static/nine_stage_static_matrix.json\",\"verification/operator_leaf/static/per_stage_module_identity_manifests\",\"verification/debug_closure/operator_leaf_boundary_contracts.json\",\"verification/debug_closure/operator_leaf_boundary_contract_hashes.json\",\"verification/debug_closure/operator_leaf_repair_boundary_map.json\"],\"tool_roles\":[\"case_stage_leaf_static\",\"boundary_contract_generate\",\"boundary_contract_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"codegen_package_static_check\",\"stream_plan_check\",\"repair_boundary_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"case_stage_leaf_static\",\"boundary_contract_check\",\"template_binding_static_check\",\"parameter_binding_static_check\",\"codegen_package_static_check\",\"stream_plan_check\",\"repair_boundary_check\",\"artifact_hash_check\"],\"on_failure\":\"Block only the failed leaf and dependent aggregate, identify whether the discrepancy originates in template selection, parameter binding, generated source identity, stream order, beat mapping, or boundary materialization, and route it to contract-guided localization without entering functional or higher-layer execution.\",\"requires_approval\":false},{\"id\":\"operator_leaf.execute_nine_leaf_functional_runs\",\"stage\":\"verification\",\"action_type\":\"operator_leaf_real_tool_execution\",\"rationale\":\"Run each of the nine generated leaves independently with the immutable semantic vectors and bound loader. Capture real simulator evidence showing liveness, transaction and logical-index order, transfer counts, outputs, and actual consumption of every required checkpoint-derived tensor.\",\"consumes\":[\"artifact.stage5.generated_code_package\",\"artifact.stage6.functional_sim_real_tool_nodes\",\"verification/operator_leaf/current_contract_identity.json\",\"verification/real_weights/full_tensor_catalog.json\",\"verification/real_weights/transformer_block_leaf_tensor_scope.json\",\"verification/model_reference/operator_leaf_reference_manifest.json\",\"verification/semantic_testbench/operator_leaf_semantic_testbench_manifest.json\",\"verification/semantic_testbench/dut_weight_binding_requirements.json\",\"verification/operator_leaf/static/nine_stage_static_matrix.json\",\"verification/debug_closure/operator_leaf_boundary_contracts.json\"],\"produces\":[\"verification/operator_leaf/functional/per_stage_real_tool_run_manifests\",\"verification/operator_leaf/functional/per_stage_simulator_logs\",\"verification/operator_leaf/functional/per_stage_dut_outputs\",\"verification/operator_leaf/functional/per_stage_liveness_and_order_reports\",\"verification/operator_leaf/functional/per_stage_weight_consumption_ledgers\",\"verification/debug_closure/operator_leaf_boundary_traces\"],\"tool_roles\":[\"case_leaf_functional\",\"deadlock_watchdog\",\"data_order_trace_check\",\"transfer_count_check\",\"real_tool_evidence_check\",\"required_real_tool_evidence_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"case_leaf_functional\",\"real_tool.case_leaf_functional\",\"deadlock_watchdog\",\"data_order_trace_check\",\"transfer_count_check\",\"real_weight_semantic_evidence_check\",\"artifact_hash_check\"],\"on_failure\":\"Stop the failed leaf and every dependent merge edge, preserve unrelated passed leaves, and invoke operator_leaf.localize_failed_boundary. Do not skip to the connected single-transformer-layer kernel or infer correctness from compilation, liveness alone, or weight-file presence.\",\"requires_approval\":false},{\"id\":\"operator_leaf.compare_nine_leaf_outputs\",\"stage\":\"verification\",\"action_type\":\"operator_leaf_numeric_comparison\",\"rationale\":\"Compare each DUT leaf output to the independently captured target-model boundary output using the exact immutable numeric policy and tolerance, including declared cast points, rounding behavior, saturation policy, lane order, and logical-index mapping.\",\"consumes\":[\"verification/operator_leaf/current_contract_identity.json\",\"verification/model_reference/operator_leaf_reference_manifest.json\",\"verification/semantic_testbench/operator_leaf_semantic_testbench_manifest.json\",\"verification/operator_leaf/functional/per_stage_real_tool_run_manifests\",\"verification/operator_leaf/functional/per_stage_dut_outputs\",\"verification/debug_closure/operator_leaf_boundary_contracts.json\"],\"produces\":[\"verification/operator_leaf/golden_compare/per_stage_comparison_manifests\",\"verification/operator_leaf/golden_compare/per_stage_first_mismatch_records\",\"verification/operator_leaf/golden_compare/nine_stage_numeric_summary.json\"],\"tool_roles\":[\"case_leaf_golden_compare\",\"numeric_compare\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"case_leaf_golden_compare\",\"real_tool.case_leaf_golden_compare\",\"numeric_compare\",\"artifact_hash_check\",\"case_target_model_reference\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Retain the reference outputs and comparison policy unchanged, emit the earliest mismatching boundary and failure signature, and invoke operator_leaf.localize_failed_boundary. Never loosen tolerance, alter expected values, or regenerate them from the DUT.\",\"requires_approval\":false},{\"id\":\"operator_leaf.aggregate_and_reissue_current_certificate\",\"stage\":\"verification\",\"action_type\":\"operator_leaf_semantic_promotion\",\"rationale\":\"Create one checker-bound semantic aggregate across all nine leaves and issue a new immutable promotion certificate only after static, boundary, real functional, numeric, complete-weight-consumption, and identity checks all pass under spatialaccagent.real_weight_semantic_evidence.v2.\",\"consumes\":[\"artifact.stage6.operator_leaf_current_contract_revalidation_plan\",\"artifact.stage6.operator_leaf_evidence_identity_contract\",\"artifact.stage7.operator_leaf_promotion_certificate\",\"verification/operator_leaf/current_contract_identity.json\",\"verification/real_weights/full_tensor_catalog.json\",\"verification/real_weights/transformer_block_leaf_tensor_scope.json\",\"verification/model_reference/operator_leaf_reference_manifest.json\",\"verification/semantic_testbench/operator_leaf_semantic_testbench_manifest.json\",\"verification/operator_leaf/static/nine_stage_static_matrix.json\",\"verification/operator_leaf/functional/per_stage_real_tool_run_manifests\",\"verification/operator_leaf/functional/per_stage_weight_consumption_ledgers\",\"verification/operator_leaf/golden_compare/nine_stage_numeric_summary.json\",\"verification/debug_closure/operator_leaf_boundary_contracts.json\"],\"produces\":[\"verification/semantic_evidence/operator_leaf_current_contract.json\",\"verification/operator_leaf/current_certificate_validation_summary.json\",\"artifact.stage7.operator_leaf_promotion_certificate as a new immutable current-contract instance\",\"verification_artifacts/verification_dag_evidence_auditor/operator_leaf_handoff.json\",\"supersession link retaining transition.0006 certificate as invalid-for-current-reuse history\"],\"tool_roles\":[\"case_operator_leaf_semantic_evidence\",\"artifact_hash_check\",\"required_real_tool_evidence_check\",\"real_tool_evidence_check\",\"sacg_validate\"],\"acceptance_checkers\":[\"case_operator_leaf_semantic_evidence\",\"real_weight_semantic_evidence_check\",\"required_real_tool_evidence_check\",\"artifact_hash_check\",\"sacg_reference_check\"],\"on_failure\":\"Leave current_contract_valid=false, produce no reusable promotion edge, identify the exact missing or failed leaf evidence row, and route that row to localization or checker repair. Do not modify or reinterpret the prior certificate as current.\",\"requires_approval\":false},{\"id\":\"operator_leaf.localize_failed_boundary\",\"stage\":\"verification\",\"action_type\":\"contract_guided_failure_localization\",\"rationale\":\"Convert a failing real-tool result into a CCTG/boundary-guided causal slice identifying the earliest violated leaf boundary, root-candidate module, failed contract, targeted replay, and minimal repair context before any code change.\",\"consumes\":[\"artifact.stage6.operator_leaf_repair_boundary_map\",\"verification/debug_closure/operator_leaf_boundary_contracts.json\",\"verification/debug_closure/operator_leaf_boundary_traces\",\"failed per-stage static, functional, liveness, order, weight-consumption, or numeric checker result\",\"verification/operator_leaf/current_contract_identity.json\"],\"produces\":[\"verification/debug_closure/failure_localization.json\",\"verification/debug_closure/targeted_replay_result.json\",\"verification/debug_closure/causal_repair_context.json\",\"verification/debug_closure/failed_leaf_dependency_invalidation.json\"],\"tool_roles\":[\"failure_slice_localization\",\"boundary_trace_rerun\",\"targeted_replay\",\"causal_repair_context_pack\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"failure_localization_check\",\"targeted_replay_check\",\"causal_repair_context_check\",\"boundary_contract_check\",\"artifact_hash_check\"],\"on_failure\":\"Classify missing or defective trace, checker, target-model hook, or instrumentation capability as a verifier repair rather than a hardware correctness result, keep all dependent promotion edges blocked, and invoke operator_leaf.record_unresolved_repair_decision.\",\"requires_approval\":false},{\"id\":\"operator_leaf.apply_bounded_repair_and_targeted_rerun\",\"stage\":\"verification\",\"action_type\":\"bounded_operator_leaf_repair\",\"rationale\":\"Repair only the localized generated leaf, selected-template implementation, or bounded glue allowed by the repair map while preserving checkpoint, stimulus, references, numeric policy, tolerance, semantic-testbench contract identity, and unrelated passed leaves. Then rerun the failed static, functional, and comparison gates.\",\"consumes\":[\"artifact.stage2.template_selection\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.generated_code_package\",\"artifact.stage6.operator_leaf_repair_boundary_map\",\"verification/debug_closure/causal_repair_context.json\",\"verification/operator_leaf/current_contract_identity.json\",\"original failed-leaf semantic vectors and target-model references\"],\"produces\":[\"verification/operator_leaf/repair/bounded_patch_manifest.json\",\"verification/operator_leaf/repair/repaired_generated_source_hashes.json\",\"verification/operator_leaf/repair/targeted_rerun_manifest.json\",\"refreshed failed-leaf static, functional, consumption, boundary, and numeric evidence\",\"dependency record requiring operator_leaf.aggregate_and_reissue_current_certificate after successful rerun\"],\"tool_roles\":[\"repair_boundary_check\",\"bounded_template_repair\",\"targeted_failed_checker_rerun\",\"case_stage_leaf_static\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"numeric_compare\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"targeted_failed_checker_rerun\",\"case_stage_leaf_static\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"numeric_compare\",\"real_weight_semantic_evidence_check\",\"artifact_hash_check\"],\"on_failure\":\"If the repair remains within the approved boundary but fails, invoke operator_leaf.record_unresolved_repair_decision with the new real-tool evidence. If repair_boundary_check requires architecture, pipeline, memory-layout, numeric-policy, tolerance, or major-template change, stop before modification and request approval; do not perform a free-form RTL rewrite.\",\"requires_approval\":false},{\"id\":\"operator_leaf.record_unresolved_repair_decision\",\"stage\":\"verification_artifacts\",\"action_type\":\"failure_escalation_decision\",\"rationale\":\"Persist the next checker-grounded decision when localization or bounded repair cannot close the leaf, so downstream agents receive an explicit retry, targeted upstream backtrack, identity-contamination barrier, or approval request rather than relying on scripts or human memory.\",\"consumes\":[\"verification/debug_closure/failure_localization.json\",\"verification/debug_closure/causal_repair_context.json\",\"verification/operator_leaf/repair/targeted_rerun_manifest.json if produced\",\"verification/operator_leaf/current_contract_identity.json\",\"artifact.stage6.operator_leaf_repair_boundary_map\"],\"produces\":[\"artifact.stage6.operator_leaf_unresolved_failure_decision\",\"conditional SACG same-stage retry request\",\"conditional targeted upstream backtrack request\",\"conditional artifact trust barrier when immutable evidence contamination is proven\",\"conditional approval request for a cross-boundary change\"],\"tool_roles\":[\"stage_retry_request\",\"stage_backtrack_request\",\"stage_artifact_trust_barrier\",\"sacg_memory_update\",\"human_boundary_check\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"stage_retry_request_check\",\"stage_backtrack_request_check\",\"stage_artifact_trust_barrier_check\",\"sacg_memory_check\",\"human_boundary_check\",\"repair_boundary_check\"],\"on_failure\":\"Keep operator-leaf and all higher-layer promotion blocked and hand the unresolved checker evidence to verification_artifacts.verification_dag_evidence_auditor. Do not create a pass, silently discard the failure, or execute an unapproved cross-boundary repair.\",\"requires_approval\":false}],\"approval_required_for\":[\"Only if a proposed repair changes constraint.numeric.policy, the explicit comparison tolerance, rounding, saturation, cast points, or target-model expected-output semantics.\",\"Only if a proposed repair changes architecture, constraint.pipeline.structure, constraint.stream.order, constraint.beat.pipeline, memory layout or addressing, or another cross-stage interface contract.\",\"Only if repair requires a major trusted-template/interface change or replacement beyond bounded repair of the currently selected template and generated glue.\",\"Any proposal to expand DUT or golden scope beyond Transformer blocks, including embedding/tokenization, final model norm, LM head/logits, or sampling.\"]}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/operator_leaf_verification_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/operator_leaf_verification_engineer_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "verification_artifacts.operator-leaf semantic verification engineer",
+  "stream": true,
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

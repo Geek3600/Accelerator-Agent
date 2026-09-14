@@ -1,0 +1,325 @@
+{
+  "agent": "evidence_gate_auditor",
+  "duration_sec": 273.1234622570046,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "evidence_gate_auditor",
+    "approval_required_for": [
+      "Any architecture or pipeline-topology change beyond the accepted 9-stage operator_stream_pipeline plan.",
+      "Any memory layout, base-address assignment, or runtime ABI change beyond the current planning handoff.",
+      "Any numeric policy change from activation_bits=16, weight_bits=16, scale_bits=16, accumulator_bits=32, nearest_even rounding, and saturation=false.",
+      "Any major template change, free-form RTL generation, or buffer-depth policy change beyond trusted_queue_template bounded ready/valid FIFOs with allowed depths 32 and 64.",
+      "Any attempted waiver of required specialist evidence, checker evidence, or Stage 3 prohibition on hardware/timing/bitstream/board-pass claims."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "stream_plan_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "memory_runtime_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "human_boundary_check"
+        ],
+        "action_type": "evidence_completion",
+        "consumes": [
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.checker_summary",
+          "candidate_stage_artifact.stage_gate_policy",
+          "candidate_stage_artifact.stages",
+          "candidate_stage_artifact.stream_edges",
+          "candidate_stage_artifact.memory_schedule",
+          "artifact.stage2.template_selection",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "pipeline_planning.complete_specialist_evidence_pack",
+        "on_failure": "Keep Stage 3 blocked. Record which report or checker is missing or contradictory, then route only the implicated model, stream, numeric, template, or memory/runtime slice to the bounded repair action.",
+        "produces": [
+          "model_pipeline_audit_report.json",
+          "stream_liveness_audit_report.json",
+          "numeric_template_audit_report.json",
+          "memory_runtime_handoff_audit_report.json",
+          "checker_evidence_ledger.json"
+        ],
+        "rationale": "The visible candidate checker_results pass, but the role-required specialist audit report artifacts were not supplied; the evidence gate must not assume peer-specialist findings before promotion.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "team_aggregate",
+          "model_config_check",
+          "stream_plan_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "memory_runtime_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_action_audit_check",
+          "verification_artifact_contract_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "evidence_gate_decision",
+        "consumes": [
+          "model_pipeline_audit_report.json",
+          "stream_liveness_audit_report.json",
+          "numeric_template_audit_report.json",
+          "memory_runtime_handoff_audit_report.json",
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.stage_gate_policy",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "pipeline_planning.publish_gate_decision_after_evidence_pack",
+        "on_failure": "Block promotion. If the failure is missing evidence, return to evidence completion; if it is a checker-backed design inconsistency, route to the smallest valid repair boundary and rerun the failed checker before reconsidering promotion.",
+        "produces": [
+          "pipeline_planning_stage_gate_decision.json",
+          "checker_evidence_ledger.json",
+          "bounded_repair_or_promotion_decision.json"
+        ],
+        "rationale": "Promotion is allowed only after the completed evidence pack binds all pass/fail evidence to SACG constraints and verifies that Stage 3 makes no hardware, timing, bitstream, or board-pass claim.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "team_aggregate",
+          "verification_action_audit",
+          "repair_boundary_check",
+          "required_real_tool_evidence_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "bounded_repair",
+        "consumes": [
+          "checker_evidence_ledger.json",
+          "pipeline_planning_stage_gate_decision.json",
+          "candidate_stage_artifact"
+        ],
+        "id": "pipeline_planning.bound_repair_on_specialist_or_checker_failure",
+        "on_failure": "Escalate only with a specific violated SACG constraint via stage_retry_request or stage_backtrack_request; do not modify golden outputs, loosen tolerances, introduce free-form RTL, or promote to Stage 4.",
+        "produces": [
+          "refined_pipeline_plan.json",
+          "targeted_failed_checker_rerun_report.json",
+          "bounded_repair_or_promotion_decision.json"
+        ],
+        "rationale": "If the completed evidence pack exposes a current Stage 3 failure, repair must be localized to the earliest violated SACG boundary and remain within trusted templates and checker-backed contracts.",
+        "requires_approval": true,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "pipeline_repair",
+          "memory_runtime_repair",
+          "bounded_template_repair",
+          "targeted_failed_checker_rerun"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_coverage_check",
+          "boundary_contract_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "parameter_binding",
+        "consumes": [
+          "bounded_repair_or_promotion_decision.json",
+          "candidate_stage_artifact",
+          "artifact.stage2.template_selection",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.template.library"
+        ],
+        "id": "stage4.bind_parameters_after_stage3_promotion",
+        "on_failure": "Block code generation and route mismatched parameters to bounded_template_repair or pipeline_repair, then rerun the failed parameter or boundary checker.",
+        "produces": [
+          "artifact.stage4.parameter_binding_contract",
+          "artifact.stage4.bound_template_parameter_manifest"
+        ],
+        "rationale": "After the Stage 3 gate passes, bind final per-template parameters from the accepted pipeline contract while preserving model shape, numeric policy, stream order, and template boundaries.",
+        "requires_approval": false,
+        "stage": "Stage 4 parameter binding",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "template_coverage_check",
+          "boundary_contract_generate",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ],
+        "action_type": "memory_runtime_binding",
+        "consumes": [
+          "artifact.stage4.parameter_binding_contract",
+          "candidate_stage_artifact.memory_schedule",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "stage5.bind_memory_runtime_layout_and_abi",
+        "on_failure": "Route to memory_runtime_repair with the failing address, transfer-count, or tool-protocol evidence; do not claim board readiness.",
+        "produces": [
+          "artifact.stage5.memory_layout",
+          "generated/chisel/runtime/runtime_config.json"
+        ],
+        "rationale": "The Stage 3 memory_schedule is a handoff contract; a later stage must assign concrete base addresses and runtime ABI artifacts and recheck transfer counts before implementation or board work.",
+        "requires_approval": true,
+        "stage": "memory_runtime_handoff",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "tool_protocol_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "verification_plan_static_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "human_boundary_check"
+        ],
+        "action_type": "verification_plan",
+        "consumes": [
+          "artifact.stage4.parameter_binding_contract",
+          "artifact.stage5.memory_layout",
+          "generated/chisel/runtime/runtime_config.json",
+          "candidate_stage_artifact.stage_gate_policy"
+        ],
+        "id": "stage6.create_hierarchical_verification_plan_no_hardware_claims",
+        "on_failure": "Block simulator, Vivado, and board promotion until the verification plan or missing checker capability is repaired; do not skip layers or reinterpret missing verifier capability as hardware correctness.",
+        "produces": [
+          "artifact.stage6.hierarchical_verification_plan",
+          "artifact.stage6.verification_artifact_contract"
+        ],
+        "rationale": "Real hardware correctness is outside Stage 3. The downstream verification plan must enforce the three-layer loop: operator/leaf modules, connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapped system, with no promotion past a failed layer.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "hierarchical_verification_plan_check",
+          "verification_plan_static_check",
+          "required_real_tool_evidence_check",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "Candidate checker_summary reports passed=10, failed=0, errors=[], warnings=[]. The supplied passing checks cover operator order, stream/data edge mirroring, edge stream contracts, shape/numeric contracts, branch/join contracts, buffer contracts, liveness/backpressure, memory/runtime handoff, attention semantics, and template binding.",
+      "The candidate plan is a Qwen2 decoder-block operator_stream_pipeline with 9 stages in the expected order: rms_norm_1, self_attention, residual_add_1, rms_norm_2, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, residual_add_2.",
+      "Cross-layer planning facts are internally represented in the candidate artifact: seq_len_bound=16, hidden width=896, intermediate width=4864, GQA q_heads=14, kv_heads=2, head_dim=64, RoPE theta=1000000.0, ready_valid flow control, token/tile/lane/word transfer order, and 13 mirrored stream/data edges.",
+      "The buffer plan uses concrete bounded_ready_valid_fifo buffers from trusted_queue_template with depths 32 or 64; the candidate does not use ping-pong buffers as stream-edge buffers, consistent with the stage_gate_policy separation between pipeline buffers and later memory-layout artifacts.",
+      "The memory/runtime handoff is planning-level only: it defines 6 required regions, 512-bit AXI DDR4 facts, XDMA device templates, transfer counts, and runtime sequence-length constraints, but it does not assign a final Stage 5 address map or prove board behavior.",
+      "The candidate stage_gate_policy correctly states that symbolic_first_order latency is planning metadata only and must not be used as throughput, timing, or hardware pass evidence. No supplied artifact claims synthesis, implementation, bitstream, or board-runtime pass.",
+      "The liveness_backpressure_check summary is limited to directed-acyclic graph and bounded FIFO elasticity; it is not a latency-equality proof, timing proof, or hardware liveness proof.",
+      "The supplied state_summary.sacg_memory_truth reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests. No current SACG-memory blocker is visible.",
+      "The required specialist audit reports named in the role_assignment consumption list were not supplied. As evidence gate auditor, I cannot silently assume their findings or rewrite them; promotion is therefore blocked pending evidence-pack completion even though the visible candidate checker_results pass."
+    ],
+    "proposed_actions": [
+      "Stage orchestrator should attach or regenerate the four required specialist audit reports, then rerun the evidence-gate contract checks against the candidate pipeline plan and SACG constraints.",
+      "If the completed evidence pack remains consistent with the visible 10/10 passing checker_results, publish pipeline_planning_stage_gate_decision.json, checker_evidence_ledger.json, and bounded_repair_or_promotion_decision.json, then promote to Stage 4 parameter binding.",
+      "If a specialist report or gate checker contradicts the candidate plan, localize the violated SACG boundary and route only that slice to pipeline_repair, memory_runtime_repair, or bounded_template_repair; do not perform unbounded redesign.",
+      "Carry forward the stage_gate_policy: Stage 4 binds final per-template parameters, Stage 5 assigns concrete memory bases and runtime ABI artifacts, and Stage 6+ must supply real simulator/Vivado/board evidence before any hardware-pass claim.",
+      "Preserve the no-blocker SACG memory state unless a new failed checker creates an explicit retry request, backtrack request, or contamination barrier."
+    ],
+    "risks": [
+      "Current-stage evidence completeness risk: without model_pipeline_audit_report.json, stream_liveness_audit_report.json, numeric_template_audit_report.json, and memory_runtime_handoff_audit_report.json, the aggregate evidence ledger cannot verify that peer specialists completed without fallback or that no cross-specialist disagreement exists.",
+      "Gate-contract risk: the supplied planning checker_results are sufficient evidence for the candidate artifact itself, but downstream consumption still requires an evidence ledger accepted by verification_artifact_contract_check and sacg_reference_check so checker evidence is bound to SACG constraints rather than accepted as loose natural-language claims.",
+      "Boundary risk: any attempt to promote Stage 3 while bypassing missing specialist evidence, or to treat symbolic latency/liveness planning metadata as hardware, timing, bitstream, or board evidence, would violate the stage_gate_policy and human-boundary constraints."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.checker_summary",
+        "candidate_stage_artifact.stage_gate_policy",
+        "candidate_stage_artifact.stages",
+        "candidate_stage_artifact.stream_edges",
+        "candidate_stage_artifact.data_edges",
+        "candidate_stage_artifact.branch_join_contracts",
+        "candidate_stage_artifact.buffer_plan",
+        "candidate_stage_artifact.memory_schedule",
+        "model_pipeline_audit_report.json:not_supplied",
+        "stream_liveness_audit_report.json:not_supplied",
+        "numeric_template_audit_report.json:not_supplied",
+        "memory_runtime_handoff_audit_report.json:not_supplied",
+        "state_summary.sacg_memory_truth"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.human.boundary",
+        "constraint.cross_layer.input_consistency",
+        "constraint.tool.protocols",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output",
+        "memory_schedule.runtime_config_requirements"
+      ]
+    },
+    "schema_version": "spatialaccagent.evidence_gate_auditor.v0",
+    "stage": "pipeline_planning",
+    "status": "blocked_pending_specialist_evidence_pack",
+    "summary": "The visible candidate Stage 3 pipeline plan has checker-backed current-stage planning evidence with 10/10 supplied checker_results passing and no hardware, timing, bitstream, or board-pass claim. However, the role-required specialist audit reports were not supplied for aggregation, so this evidence gate cannot promote the plan to Stage 4 until the specialist evidence pack is attached or regenerated and accepted by the evidence-gate contract checks. No active SACG-memory blockers are reported in the supplied state summary."
+  },
+  "prompt_bytes": 69672,
+  "prompt_hash": "b8c876e3bce6724eef1a595e629db8477b426b65fcdcb0974c1b717aa717c4c4",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.evidence_gate_auditor.v0\",\"agent\":\"evidence_gate_auditor\",\"stage\":\"pipeline_planning\",\"status\":\"blocked_pending_specialist_evidence_pack\",\"summary\":\"The visible candidate Stage 3 pipeline plan has checker-backed current-stage planning evidence with 10/10 supplied checker_results passing and no hardware, timing, bitstream, or board-pass claim. However, the role-required specialist audit reports were not supplied for aggregation, so this evidence gate cannot promote the plan to Stage 4 until the specialist evidence pack is attached or regenerated and accepted by the evidence-gate contract checks. No active SACG-memory blockers are reported in the supplied state summary.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\",\"memory_schedule.runtime_config_requirements\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.human.boundary\",\"constraint.cross_layer.input_consistency\",\"constraint.tool.protocols\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"artifacts\":[\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.checker_summary\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.stages\",\"candidate_stage_artifact.stream_edges\",\"candidate_stage_artifact.data_edges\",\"candidate_stage_artifact.branch_join_contracts\",\"candidate_stage_artifact.buffer_plan\",\"candidate_stage_artifact.memory_schedule\",\"model_pipeline_audit_report.json:not_supplied\",\"stream_liveness_audit_report.json:not_supplied\",\"numeric_template_audit_report.json:not_supplied\",\"memory_runtime_handoff_audit_report.json:not_supplied\",\"state_summary.sacg_memory_truth\"]},\"observations\":[\"Candidate checker_summary reports passed=10, failed=0, errors=[], warnings=[]. The supplied passing checks cover operator order, stream/data edge mirroring, edge stream contracts, shape/numeric contracts, branch/join contracts, buffer contracts, liveness/backpressure, memory/runtime handoff, attention semantics, and template binding.\",\"The candidate plan is a Qwen2 decoder-block operator_stream_pipeline with 9 stages in the expected order: rms_norm_1, self_attention, residual_add_1, rms_norm_2, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, residual_add_2.\",\"Cross-layer planning facts are internally represented in the candidate artifact: seq_len_bound=16, hidden width=896, intermediate width=4864, GQA q_heads=14, kv_heads=2, head_dim=64, RoPE theta=1000000.0, ready_valid flow control, token/tile/lane/word transfer order, and 13 mirrored stream/data edges.\",\"The buffer plan uses concrete bounded_ready_valid_fifo buffers from trusted_queue_template with depths 32 or 64; the candidate does not use ping-pong buffers as stream-edge buffers, consistent with the stage_gate_policy separation between pipeline buffers and later memory-layout artifacts.\",\"The memory/runtime handoff is planning-level only: it defines 6 required regions, 512-bit AXI DDR4 facts, XDMA device templates, transfer counts, and runtime sequence-length constraints, but it does not assign a final Stage 5 address map or prove board behavior.\",\"The candidate stage_gate_policy correctly states that symbolic_first_order latency is planning metadata only and must not be used as throughput, timing, or hardware pass evidence. No supplied artifact claims synthesis, implementation, bitstream, or board-runtime pass.\",\"The liveness_backpressure_check summary is limited to directed-acyclic graph and bounded FIFO elasticity; it is not a latency-equality proof, timing proof, or hardware liveness proof.\",\"The supplied state_summary.sacg_memory_truth reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests. No current SACG-memory blocker is visible.\",\"The required specialist audit reports named in the role_assignment consumption list were not supplied. As evidence gate auditor, I cannot silently assume their findings or rewrite them; promotion is therefore blocked pending evidence-pack completion even though the visible candidate checker_results pass.\"],\"risks\":[\"Current-stage evidence completeness risk: without model_pipeline_audit_report.json, stream_liveness_audit_report.json, numeric_template_audit_report.json, and memory_runtime_handoff_audit_report.json, the aggregate evidence ledger cannot verify that peer specialists completed without fallback or that no cross-specialist disagreement exists.\",\"Gate-contract risk: the supplied planning checker_results are sufficient evidence for the candidate artifact itself, but downstream consumption still requires an evidence ledger accepted by verification_artifact_contract_check and sacg_reference_check so checker evidence is bound to SACG constraints rather than accepted as loose natural-language claims.\",\"Boundary risk: any attempt to promote Stage 3 while bypassing missing specialist evidence, or to treat symbolic latency/liveness planning metadata as hardware, timing, bitstream, or board evidence, would violate the stage_gate_policy and human-boundary constraints.\"],\"proposed_actions\":[\"Stage orchestrator should attach or regenerate the four required specialist audit reports, then rerun the evidence-gate contract checks against the candidate pipeline plan and SACG constraints.\",\"If the completed evidence pack remains consistent with the visible 10/10 passing checker_results, publish pipeline_planning_stage_gate_decision.json, checker_evidence_ledger.json, and bounded_repair_or_promotion_decision.json, then promote to Stage 4 parameter binding.\",\"If a specialist report or gate checker contradicts the candidate plan, localize the violated SACG boundary and route only that slice to pipeline_repair, memory_runtime_repair, or bounded_template_repair; do not perform unbounded redesign.\",\"Carry forward the stage_gate_policy: Stage 4 binds final per-template parameters, Stage 5 assigns concrete memory bases and runtime ABI artifacts, and Stage 6+ must supply real simulator/Vivado/board evidence before any hardware-pass claim.\",\"Preserve the no-blocker SACG memory state unless a new failed checker creates an explicit retry request, backtrack request, or contamination barrier.\"],\"executable_actions\":[{\"id\":\"pipeline_planning.complete_specialist_evidence_pack\",\"stage\":\"pipeline_planning\",\"action_type\":\"evidence_completion\",\"rationale\":\"The visible candidate checker_results pass, but the role-required specialist audit report artifacts were not supplied; the evidence gate must not assume peer-specialist findings before promotion.\",\"consumes\":[\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.checker_summary\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.stages\",\"candidate_stage_artifact.stream_edges\",\"candidate_stage_artifact.memory_schedule\",\"artifact.stage2.template_selection\",\"state_summary.sacg_memory_truth\"],\"produces\":[\"model_pipeline_audit_report.json\",\"stream_liveness_audit_report.json\",\"numeric_template_audit_report.json\",\"memory_runtime_handoff_audit_report.json\",\"checker_evidence_ledger.json\"],\"tool_roles\":[\"team_aggregate\",\"model_config_check\",\"stream_plan_check\",\"numeric_policy_check\",\"template_coverage_check\",\"memory_runtime_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"model_config_check\",\"stream_plan_check\",\"numeric_policy_check\",\"template_coverage_check\",\"memory_runtime_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"human_boundary_check\"],\"on_failure\":\"Keep Stage 3 blocked. Record which report or checker is missing or contradictory, then route only the implicated model, stream, numeric, template, or memory/runtime slice to the bounded repair action.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.publish_gate_decision_after_evidence_pack\",\"stage\":\"pipeline_planning\",\"action_type\":\"evidence_gate_decision\",\"rationale\":\"Promotion is allowed only after the completed evidence pack binds all pass/fail evidence to SACG constraints and verifies that Stage 3 makes no hardware, timing, bitstream, or board-pass claim.\",\"consumes\":[\"model_pipeline_audit_report.json\",\"stream_liveness_audit_report.json\",\"numeric_template_audit_report.json\",\"memory_runtime_handoff_audit_report.json\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.stage_gate_policy\",\"state_summary.sacg_memory_truth\"],\"produces\":[\"pipeline_planning_stage_gate_decision.json\",\"checker_evidence_ledger.json\",\"bounded_repair_or_promotion_decision.json\"],\"tool_roles\":[\"team_aggregate\",\"verification_action_audit\",\"repair_boundary_check\",\"required_real_tool_evidence_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"verification_action_audit_check\",\"verification_artifact_contract_check\",\"repair_boundary_check\",\"human_boundary_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Block promotion. If the failure is missing evidence, return to evidence completion; if it is a checker-backed design inconsistency, route to the smallest valid repair boundary and rerun the failed checker before reconsidering promotion.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.bound_repair_on_specialist_or_checker_failure\",\"stage\":\"pipeline_planning\",\"action_type\":\"bounded_repair\",\"rationale\":\"If the completed evidence pack exposes a current Stage 3 failure, repair must be localized to the earliest violated SACG boundary and remain within trusted templates and checker-backed contracts.\",\"consumes\":[\"checker_evidence_ledger.json\",\"pipeline_planning_stage_gate_decision.json\",\"candidate_stage_artifact\"],\"produces\":[\"refined_pipeline_plan.json\",\"targeted_failed_checker_rerun_report.json\",\"bounded_repair_or_promotion_decision.json\"],\"tool_roles\":[\"failure_slice_localization\",\"causal_repair_context_pack\",\"pipeline_repair\",\"memory_runtime_repair\",\"bounded_template_repair\",\"targeted_failed_checker_rerun\"],\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"repair_boundary_check\",\"targeted_failed_checker_rerun\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"template_binding_static_check\"],\"on_failure\":\"Escalate only with a specific violated SACG constraint via stage_retry_request or stage_backtrack_request; do not modify golden outputs, loosen tolerances, introduce free-form RTL, or promote to Stage 4.\",\"requires_approval\":true},{\"id\":\"stage4.bind_parameters_after_stage3_promotion\",\"stage\":\"Stage 4 parameter binding\",\"action_type\":\"parameter_binding\",\"rationale\":\"After the Stage 3 gate passes, bind final per-template parameters from the accepted pipeline contract while preserving model shape, numeric policy, stream order, and template boundaries.\",\"consumes\":[\"bounded_repair_or_promotion_decision.json\",\"candidate_stage_artifact\",\"artifact.stage2.template_selection\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\"],\"produces\":[\"artifact.stage4.parameter_binding_contract\",\"artifact.stage4.bound_template_parameter_manifest\"],\"tool_roles\":[\"parameter_binding_static_check\",\"template_coverage_check\",\"boundary_contract_generate\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"template_coverage_check\",\"boundary_contract_check\",\"sacg_reference_check\"],\"on_failure\":\"Block code generation and route mismatched parameters to bounded_template_repair or pipeline_repair, then rerun the failed parameter or boundary checker.\",\"requires_approval\":false},{\"id\":\"stage5.bind_memory_runtime_layout_and_abi\",\"stage\":\"memory_runtime_handoff\",\"action_type\":\"memory_runtime_binding\",\"rationale\":\"The Stage 3 memory_schedule is a handoff contract; a later stage must assign concrete base addresses and runtime ABI artifacts and recheck transfer counts before implementation or board work.\",\"consumes\":[\"artifact.stage4.parameter_binding_contract\",\"candidate_stage_artifact.memory_schedule\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\"],\"produces\":[\"artifact.stage5.memory_layout\",\"generated/chisel/runtime/runtime_config.json\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"tool_protocol_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"tool_protocol_check\",\"human_boundary_check\"],\"on_failure\":\"Route to memory_runtime_repair with the failing address, transfer-count, or tool-protocol evidence; do not claim board readiness.\",\"requires_approval\":true},{\"id\":\"stage6.create_hierarchical_verification_plan_no_hardware_claims\",\"stage\":\"verification\",\"action_type\":\"verification_plan\",\"rationale\":\"Real hardware correctness is outside Stage 3. The downstream verification plan must enforce the three-layer loop: operator/leaf modules, connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapped system, with no promotion past a failed layer.\",\"consumes\":[\"artifact.stage4.parameter_binding_contract\",\"artifact.stage5.memory_layout\",\"generated/chisel/runtime/runtime_config.json\",\"candidate_stage_artifact.stage_gate_policy\"],\"produces\":[\"artifact.stage6.hierarchical_verification_plan\",\"artifact.stage6.verification_artifact_contract\"],\"tool_roles\":[\"hierarchical_verification_plan_check\",\"verification_plan_static_check\",\"required_real_tool_evidence_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"hierarchical_verification_plan_check\",\"verification_plan_static_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"human_boundary_check\"],\"on_failure\":\"Block simulator, Vivado, and board promotion until the verification plan or missing checker capability is repaired; do not skip layers or reinterpret missing verifier capability as hardware correctness.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any architecture or pipeline-topology change beyond the accepted 9-stage operator_stream_pipeline plan.\",\"Any memory layout, base-address assignment, or runtime ABI change beyond the current planning handoff.\",\"Any numeric policy change from activation_bits=16, weight_bits=16, scale_bits=16, accumulator_bits=32, nearest_even rounding, and saturation=false.\",\"Any major template change, free-form RTL generation, or buffer-depth policy change beyond trusted_queue_template bounded ready/valid FIFOs with allowed depths 32 and 64.\",\"Any attempted waiver of required specialist evidence, checker evidence, or Stage 3 prohibition on hardware/timing/bitstream/board-pass claims.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/evidence_gate_auditor_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/evidence_gate_auditor_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "pipeline_planning.verification and repair-boundary auditor",
+  "used_fallback": false
+}

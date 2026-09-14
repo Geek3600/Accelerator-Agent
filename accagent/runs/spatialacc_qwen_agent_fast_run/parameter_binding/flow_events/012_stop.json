@@ -1,0 +1,282 @@
+{
+  "attempt_count": 1,
+  "decision": "stop",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "stage_backtrack_request_check",
+        "stage_artifact_trust_barrier_check",
+        "sacg_memory_check",
+        "sacg_static_check"
+      ],
+      "action_type": "control_flow_backtrack_request",
+      "consumes": [
+        "recent_stage_summary",
+        "command_log:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/30_parameter_binding.json",
+        "sacg_memory.active_contamination_barriers",
+        "flow_policy",
+        "llm_policy"
+      ],
+      "id": "parameter_binding.record_backtrack_due_to_stage3_barriers",
+      "on_failure": "Stop the autonomous flow to avoid artifact contamination; do not retry parameter_binding or start code_generation until the backtrack/trust-barrier record is valid.",
+      "produces": [
+        "artifact.flow.backtrack_request.to_pipeline_planning",
+        "updated_sacg_memory.backtrack_request",
+        "artifact.stage4.parameter_binding_failed_attempt_record",
+        "artifact.stage4.downstream_consumption_block"
+      ],
+      "rationale": "Materialize the flow decision that parameter_binding is blocked by active upstream Stage 3 trust barriers, preserve the barriers, and prevent downstream consumption of the failed or stale parameter_binding report.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "stage_backtrack_request",
+        "stage_artifact_trust_barrier",
+        "sacg_memory_update",
+        "sacg_validate"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "task_card_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "boundary_contract_check",
+        "human_boundary_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "bounded_repair_backtrack",
+      "consumes": [
+        "artifact.stage3.pipeline_plan as barriered_debug_evidence_only",
+        "artifact.stage3.pipeline_static_checks as barriered_debug_evidence_only",
+        "source_sacg_state:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+        "updated_sacg_memory.backtrack_request",
+        "constraint.cross_layer.input_consistency",
+        "flow_policy"
+      ],
+      "id": "pipeline_planning.repair_and_regate_barriered_stage3_plan",
+      "on_failure": "Keep contamination_barrier.0001 and contamination_barrier.0002 active, do not rerun parameter_binding, and return a bounded pipeline_planning repair failure with no promoted Stage 3 artifact.",
+      "produces": [
+        "candidate.artifact.stage3.pipeline_plan.repaired",
+        "candidate.artifact.stage3.pipeline_static_checks.repaired",
+        "candidate.artifact.stage3.pipeline_planning_gate_decision",
+        "sacg_memory.contamination_barrier_resolution_evidence"
+      ],
+      "rationale": "Resolve the upstream pipeline_planning failure that created contamination_barrier.0001 and contamination_barrier.0002. The barriered Stage 3 artifacts may be used only as planning/debug evidence; a repaired pipeline plan must pass static, model, numeric, template, stream, memory/runtime, boundary, and trust-barrier checks before it can become an authoritative input to parameter_binding.",
+      "requires_approval": false,
+      "stage": "pipeline_planning",
+      "tool_roles": [
+        "pipeline_repair",
+        "architecture_review",
+        "team_aggregate",
+        "sacg_validate",
+        "sacg_static_check",
+        "task_card_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "boundary_contract_check",
+        "human_boundary_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "parameter_binding_static_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "verification_plan_static_check",
+        "tool_protocol_check",
+        "verification_artifact_contract_check",
+        "repair_boundary_check",
+        "human_boundary_check",
+        "stage_artifact_trust_barrier_check",
+        "sacg_static_check"
+      ],
+      "action_type": "conditional_stage_retry",
+      "consumes": [
+        "promoted.artifact.stage3.pipeline_plan.clean",
+        "promoted.artifact.stage3.pipeline_static_checks.clean",
+        "updated_sacg_memory.with_stage3_barriers_retired_or_marked_irrelevant",
+        "constraint.parameter.binding",
+        "constraint.verification.plan",
+        "constraint.cross_layer.input_consistency",
+        "constraint.tool.protocols"
+      ],
+      "id": "parameter_binding.retry_only_after_clean_stage3_promotion",
+      "on_failure": "If Stage 3 barriers are still active, abort the retry and return to pipeline_planning repair. If parameter_binding checks fail after clean Stage 3 promotion, create a same-stage bounded repair/retry request and do not promote the candidate report.",
+      "produces": [
+        "candidate.artifact.stage4.parameter_binding_report",
+        "candidate.artifact.stage4.parameter_binding_static_checks",
+        "candidate.artifact.stage4.stage_gate_decision"
+      ],
+      "rationale": "The current stage has one failed attempt, so a retry is still within the bounded attempt policy, but it is only valid after pipeline_planning produces clean promoted artifacts and retires the relevant Stage 3 contamination barriers. The retry must bind parameters against validated model, numeric, template, stream, memory/runtime, and verification-plan constraints.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "team_aggregate",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "verification_plan_static_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "sacg_validate"
+      ]
+    }
+  ],
+  "flow_event_index": 12,
+  "llm_flow_controller": {
+    "agent_executable_actions": [
+      {
+        "acceptance_checkers": [
+          "stage_backtrack_request_check",
+          "stage_artifact_trust_barrier_check",
+          "sacg_memory_check",
+          "sacg_static_check"
+        ],
+        "action_type": "control_flow_backtrack_request",
+        "consumes": [
+          "recent_stage_summary",
+          "command_log:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/30_parameter_binding.json",
+          "sacg_memory.active_contamination_barriers",
+          "flow_policy",
+          "llm_policy"
+        ],
+        "id": "parameter_binding.record_backtrack_due_to_stage3_barriers",
+        "on_failure": "Stop the autonomous flow to avoid artifact contamination; do not retry parameter_binding or start code_generation until the backtrack/trust-barrier record is valid.",
+        "produces": [
+          "artifact.flow.backtrack_request.to_pipeline_planning",
+          "updated_sacg_memory.backtrack_request",
+          "artifact.stage4.parameter_binding_failed_attempt_record",
+          "artifact.stage4.downstream_consumption_block"
+        ],
+        "rationale": "Materialize the flow decision that parameter_binding is blocked by active upstream Stage 3 trust barriers, preserve the barriers, and prevent downstream consumption of the failed or stale parameter_binding report.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "stage_backtrack_request",
+          "stage_artifact_trust_barrier",
+          "sacg_memory_update",
+          "sacg_validate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "human_boundary_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "bounded_repair_backtrack",
+        "consumes": [
+          "artifact.stage3.pipeline_plan as barriered_debug_evidence_only",
+          "artifact.stage3.pipeline_static_checks as barriered_debug_evidence_only",
+          "source_sacg_state:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+          "updated_sacg_memory.backtrack_request",
+          "constraint.cross_layer.input_consistency",
+          "flow_policy"
+        ],
+        "id": "pipeline_planning.repair_and_regate_barriered_stage3_plan",
+        "on_failure": "Keep contamination_barrier.0001 and contamination_barrier.0002 active, do not rerun parameter_binding, and return a bounded pipeline_planning repair failure with no promoted Stage 3 artifact.",
+        "produces": [
+          "candidate.artifact.stage3.pipeline_plan.repaired",
+          "candidate.artifact.stage3.pipeline_static_checks.repaired",
+          "candidate.artifact.stage3.pipeline_planning_gate_decision",
+          "sacg_memory.contamination_barrier_resolution_evidence"
+        ],
+        "rationale": "Resolve the upstream pipeline_planning failure that created contamination_barrier.0001 and contamination_barrier.0002. The barriered Stage 3 artifacts may be used only as planning/debug evidence; a repaired pipeline plan must pass static, model, numeric, template, stream, memory/runtime, boundary, and trust-barrier checks before it can become an authoritative input to parameter_binding.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "pipeline_repair",
+          "architecture_review",
+          "team_aggregate",
+          "sacg_validate",
+          "sacg_static_check",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "verification_artifact_contract_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "stage_artifact_trust_barrier_check",
+          "sacg_static_check"
+        ],
+        "action_type": "conditional_stage_retry",
+        "consumes": [
+          "promoted.artifact.stage3.pipeline_plan.clean",
+          "promoted.artifact.stage3.pipeline_static_checks.clean",
+          "updated_sacg_memory.with_stage3_barriers_retired_or_marked_irrelevant",
+          "constraint.parameter.binding",
+          "constraint.verification.plan",
+          "constraint.cross_layer.input_consistency",
+          "constraint.tool.protocols"
+        ],
+        "id": "parameter_binding.retry_only_after_clean_stage3_promotion",
+        "on_failure": "If Stage 3 barriers are still active, abort the retry and return to pipeline_planning repair. If parameter_binding checks fail after clean Stage 3 promotion, create a same-stage bounded repair/retry request and do not promote the candidate report.",
+        "produces": [
+          "candidate.artifact.stage4.parameter_binding_report",
+          "candidate.artifact.stage4.parameter_binding_static_checks",
+          "candidate.artifact.stage4.stage_gate_decision"
+        ],
+        "rationale": "The current stage has one failed attempt, so a retry is still within the bounded attempt policy, but it is only valid after pipeline_planning produces clean promoted artifacts and retires the relevant Stage 3 contamination barriers. The retry must bind parameters against validated model, numeric, template, stream, memory/runtime, and verification-plan constraints.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "team_aggregate",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "sacg_validate"
+        ]
+      }
+    ],
+    "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/012_parameter_binding/llm/flow_controller_agent_result.json",
+    "agent_status": "backtrack_required_blocked_by_active_stage3_contamination_barrier",
+    "agent_summary": "Do not promote the failed parameter_binding attempt and do not proceed to code_generation. The attempt failed with return code 1, the stale parameter_binding report was explicitly ignored, and the current candidate was blocked because active Stage 3 pipeline_planning contamination barriers make the upstream pipeline plan/static checks invalid as design inputs. The bounded next step is to record a backtrack request, preserve the trust barriers, repair and re-gate pipeline_planning, then retry parameter_binding only after clean Stage 3 promotion retires the relevant barriers."
+  },
+  "reason": "stage failed and no bounded retry/backtrack/repair route is available",
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_event_action_record.v0",
+  "stage": "parameter_binding"
+}

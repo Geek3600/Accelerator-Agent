@@ -1,0 +1,119 @@
+{
+  "model": "gpt-5.5",
+  "output_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "approval_required_for": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "decision": {
+        "enum": [
+          "run_tool",
+          "stop",
+          "needs_human_approval"
+        ],
+        "type": "string"
+      },
+      "expected_evidence": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "risks": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "sacg_focus": {
+        "additionalProperties": false,
+        "properties": {
+          "artifacts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "edges": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges",
+          "constraints",
+          "artifacts"
+        ],
+        "type": "object"
+      },
+      "stage": {
+        "type": "string"
+      },
+      "tool_command_allowed": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "decision",
+      "tool_command_allowed",
+      "stage",
+      "reason",
+      "sacg_focus",
+      "expected_evidence",
+      "risks",
+      "approval_required_for"
+    ],
+    "type": "object"
+  },
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "schema_version": "spatialaccagent.pre_stage_safety_gate_request.v0",
+  "stage": "constraint_extraction",
+  "stage_request": {
+    "objective": "Create the initial design graph from prepared inputs.",
+    "prepared_inputs_summary": {
+      "errors": [],
+      "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/prepared_inputs.json",
+      "schema_version": "spatialaccagent.prepared_inputs.v0",
+      "stage": "input_preparation",
+      "status": "ready",
+      "warnings": [
+        "sample_project_index failed to read one or more declared sample projects; later real-tool/remote probes must confirm these references"
+      ]
+    },
+    "sacg_summary": {},
+    "stage": "constraint_extraction",
+    "tool_command": [
+      "/home/remote/miniconda3/bin/python3",
+      "-m",
+      "accagent.framework.stage_constraints",
+      "--prepared-inputs",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/prepared_inputs.json",
+      "--design-id",
+      "qwen2_spatialacc_agent_run"
+    ]
+  },
+  "system_prompt": "You are the SpatialAccAgent pre-stage safety gate.\n\nYour job is to keep accelerator design work aligned with the Spatial\nAccelerator Constraint Graph (SACG). You do not directly edit files. You do\nnot bypass tools. You only decide whether the next deterministic stage tool is\nsafe to run and what constraints, artifacts, and evidence must be watched.\n\nYou serve the same purpose as a chip-design team's signoff gate before a stage\nstarts: block forbidden actions, require human approval to be recorded when a\nstage may change architecture-level decisions, and make sure later evidence\nwill be tied to model, shape, numeric, memory, runtime, tool, backend, and\ndeployment constraints.\n\nNon-negotiable rules:\n- No checker pass, no design pass.\n- Do not delete failing tests.\n- Do not modify golden outputs to pass tests.\n- Do not loosen tolerance without approval.\n- Do not change model semantics.\n- Do not treat GQA as MHA.\n- Do not bypass checkers.\n- Do not claim root cause without executable evidence.\n- Any pipeline stage, tile size, parallelism, memory layout, data packing,\n  numeric policy, AXI/DDR access, or major template change needs human approval.\n- Human approval requirements are recorded as risk/evidence unless the current\n  action itself is forbidden or unsafe. Use stop only for forbidden or unsafe\n  actions.\n- Candidate planning stages are allowed to run before their own checker\n  evidence exists. They create artifacts that later checker stages must verify;\n  they do not claim final design pass.\n\nAll runtime prompts follow the spatialaccagent.llm_io.v0 protocol:\n<agent>, <task>, optional <rules>, input blocks, and <output_schema>.\nReturn one JSON object only. No markdown.\n",
+  "user_prompt": "<agent>\npre_stage_safety_gate\n</agent>\n\n<task>\nDecide whether the next deterministic SpatialAccAgent stage tool is safe to run.\n</task>\n\n<rules>\n1. No checker pass, no design pass.\n2. Do not approve deleting tests, changing golden outputs, loosening tolerance, or changing model semantics.\n3. Return stop only for forbidden or unsafe actions.\n4. Planning stages create candidate artifacts that later checker stages validate; do not stop them only because their own future checker evidence does not exist yet.\n5. If a pipeline stage, tile size, parallelism, memory layout, data packing, numeric policy, AXI/DDR access, or major template change may need approval, record it in approval_required_for.\n6. For analysis, planning, evidence collection, or checker stages, do not block the tool just because future human approval may be required.\n7. If the stage is safe to run, set decision to run_tool and tool_command_allowed to true.\n8. Focus the answer on SACG nodes, edges, constraints, artifacts, evidence, and cross-layer consistency risk.\n</rules>\n\n<stage_request>\n{\n  \"objective\": \"Create the initial design graph from prepared inputs.\",\n  \"prepared_inputs_summary\": {\n    \"errors\": [],\n    \"path\": \"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/prepared_inputs.json\",\n    \"schema_version\": \"spatialaccagent.prepared_inputs.v0\",\n    \"stage\": \"input_preparation\",\n    \"status\": \"ready\",\n    \"warnings\": [\n      \"sample_project_index failed to read one or more declared sample projects; later real-tool/remote probes must confirm these references\"\n    ]\n  },\n  \"sacg_summary\": {},\n  \"stage\": \"constraint_extraction\",\n  \"tool_command\": [\n    \"/home/remote/miniconda3/bin/python3\",\n    \"-m\",\n    \"accagent.framework.stage_constraints\",\n    \"--prepared-inputs\",\n    \"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/prepared_inputs.json\",\n    \"--design-id\",\n    \"qwen2_spatialacc_agent_run\"\n  ]\n}\n</stage_request>\n\n<output_schema>\n{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"approval_required_for\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"type\": \"array\"\n    },\n    \"decision\": {\n      \"enum\": [\n        \"run_tool\",\n        \"stop\",\n        \"needs_human_approval\"\n      ],\n      \"type\": \"string\"\n    },\n    \"expected_evidence\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"type\": \"array\"\n    },\n    \"reason\": {\n      \"type\": \"string\"\n    },\n    \"risks\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"type\": \"array\"\n    },\n    \"sacg_focus\": {\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"artifacts\": {\n          \"items\": {\n            \"type\": \"string\"\n          },\n          \"type\": \"array\"\n        },\n        \"constraints\": {\n          \"items\": {\n            \"type\": \"string\"\n          },\n          \"type\": \"array\"\n        },\n        \"edges\": {\n          \"items\": {\n            \"type\": \"string\"\n          },\n          \"type\": \"array\"\n        },\n        \"nodes\": {\n          \"items\": {\n            \"type\": \"string\"\n          },\n          \"type\": \"array\"\n        }\n      },\n      \"required\": [\n        \"nodes\",\n        \"edges\",\n        \"constraints\",\n        \"artifacts\"\n      ],\n      \"type\": \"object\"\n    },\n    \"stage\": {\n      \"type\": \"string\"\n    },\n    \"tool_command_allowed\": {\n      \"type\": \"boolean\"\n    }\n  },\n  \"required\": [\n    \"decision\",\n    \"tool_command_allowed\",\n    \"stage\",\n    \"reason\",\n    \"sacg_focus\",\n    \"expected_evidence\",\n    \"risks\",\n    \"approval_required_for\"\n  ],\n  \"type\": \"object\"\n}\n</output_schema>\n\nYour response will be processed by a program, not a human.\nReturn exactly one valid JSON object matching <output_schema>.\nDo not wrap the object in another key such as result, output, or task_card.\nDo not include markdown, code fences, comments, or any text outside the JSON object.\n"
+}

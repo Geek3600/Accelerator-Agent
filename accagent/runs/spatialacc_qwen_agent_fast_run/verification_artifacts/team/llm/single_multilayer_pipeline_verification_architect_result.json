@@ -1,0 +1,455 @@
+{
+  "agent": "single_multilayer_pipeline_verification_architect",
+  "duration_sec": 312.19503356800124,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "single_multilayer_pipeline_verification_architect",
+    "approval_required_for": [
+      "Any change to the bottom-up hierarchy or merge order, including bypassing leaf, single-layer, multilayer, or deadlock gates before AXI/DDR handoff.",
+      "Any change to Stage 4 numeric policy, cast points, rounding mode, saturation behavior, or numeric_compare tolerance.",
+      "Any change to Stage 3 stream order, beat pipeline, FIFO/liveness/watchdog policy, or multilayer pipeline structure.",
+      "Any change to memory layout, runtime ABI, DDR transfer units, or address map consumed by functional_sim or AXI/DDR handoff.",
+      "Any major generated-template, architecture, or board-wrapper repair beyond bounded contract-guided localization."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "stream_plan_check",
+          "data_order_trace_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.codegen_contract_check",
+          "candidate_stage_artifact.hierarchical_verification.merge_agents",
+          "candidate_stage_artifact.verification_artifact_contract.verification_gate_dag",
+          "candidate_stage_artifact.presence_summary",
+          "candidate_stage_artifact.checker_results"
+        ],
+        "id": "verification_artifacts.audit_merge_gate_dependency_review",
+        "on_failure": "Do not approve AXI/DDR handoff; return the failed dependency edge and violated SACG constraint to Stage 6 contract repair, and require approval if the repair changes hierarchy, stream order, or numeric policy.",
+        "produces": [
+          "merge_gate_dependency_review",
+          "sacg_bound_verification_gate_dag_review",
+          "handoff_note.to_verification_evidence_gate_auditor"
+        ],
+        "rationale": "Re-run the static verification DAG audit over the full unsliced merge_agents and gate_dag so attention, MLP, single-block, and presence_summary-declared multilayer merge details are bound to SACG stream order, beat alignment, and numeric policy before handoff.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "stream_plan_check",
+          "data_order_trace_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_real_weight_artifacts",
+          "real_tool.case_real_weight_artifacts",
+          "case_tb_scaffold",
+          "real_tool.case_tb_scaffold",
+          "artifact_hash_check",
+          "boundary_contract_check",
+          "tool_protocol_check"
+        ],
+        "action_type": "pre_sim_artifact_materialization",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "candidate_stage_artifact.verification_artifact_contract",
+          "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract"
+        ],
+        "id": "verification_artifacts.materialize_real_artifacts_and_tb_scaffold",
+        "on_failure": "Block case_leaf_functional, case_leaf_golden_compare, single_transformer_layer, multilayer, and functional_sim gates; repair the manifest/scaffold/golden-reference tooling rather than claiming hardware failure.",
+        "produces": [
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/case_real_weights/ddr_image_manifest.json",
+          "verification/tb_scaffold/tb_manifest.json",
+          "verification/tb_scaffold/artifact_hashes.json"
+        ],
+        "rationale": "Real input/weight manifests and a reproducible, hashable testbench scaffold are prerequisites for leaf, single-layer, multilayer, and functional_sim acceptance; default generated weights are explicitly not acceptance evidence.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_weight_manifest_generate",
+          "case_real_weight_artifacts",
+          "case_tb_scaffold_generate",
+          "case_tb_scaffold",
+          "artifact_hash_check",
+          "boundary_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "real_tool.boundary_contract_check",
+          "case_leaf_functional",
+          "real_tool.case_leaf_functional",
+          "case_leaf_golden_compare",
+          "real_tool.case_leaf_golden_compare",
+          "numeric_compare",
+          "data_order_trace_check",
+          "transfer_count_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding.numeric_binding_plan",
+          "artifact.stage5.generated_code_package",
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/tb_scaffold/tb_manifest.json",
+          "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract"
+        ],
+        "id": "verification_artifacts.close_operator_leaf_gates",
+        "on_failure": "Localize the earliest violated leaf boundary using the debug closure contract; do not run single_transformer_layer until the failed leaf checker is repaired and rerun.",
+        "produces": [
+          "operator_leaf_gate_coverage_matrix",
+          "verification/leaf/leaf_functional_evidence.json",
+          "verification/leaf/leaf_golden_compare.json",
+          "verification/leaf/data_order_trace.json",
+          "verification/leaf/transfer_count_report.json"
+        ],
+        "rationale": "Every spatial operator leaf stage must pass static boundary, functional, numeric golden, data-order, and transfer-count checks before attention/MLP merge or single-layer promotion.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "numeric_compare",
+          "data_order_trace_check",
+          "transfer_count_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "single_transformer_layer",
+          "case_single_transformer_layer",
+          "real_tool.case_single_transformer_layer",
+          "case_single_layer_functional",
+          "real_tool.case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "real_tool.case_single_layer_golden_compare",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "operator_leaf_gate_coverage_matrix",
+          "verification/leaf/leaf_functional_evidence.json",
+          "verification/leaf/leaf_golden_compare.json",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding.numeric_binding_plan",
+          "artifact.stage5.generated_code_package",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/tb_scaffold/tb_manifest.json",
+          "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract"
+        ],
+        "id": "verification_artifacts.run_single_layer_functional_and_golden",
+        "on_failure": "Stop before case_multilayer_pipeline; use boundary bisection across the connected leaf-to-layer path and rerun the failed checker after bounded repair.",
+        "produces": [
+          "single_layer_functional_acceptance_contract",
+          "verification/single_layer/single_transformer_layer_evidence.json",
+          "verification/single_layer/single_layer_golden_compare.json",
+          "verification/single_layer/data_order_trace.json",
+          "verification/single_layer/transfer_count_report.json"
+        ],
+        "rationale": "After leaf closure, connect the verified spatial stages into the single transformer layer and require real functional, golden compare, stream-order, and transfer-count evidence before any multilayer pipeline claim.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "single_transformer_layer",
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_multilayer_pipeline",
+          "case_multilayer_functional",
+          "real_tool.case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "real_tool.case_pipeline_deadlock_check",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "single_layer_functional_acceptance_contract",
+          "verification/single_layer/single_layer_golden_compare.json",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding.numeric_binding_plan",
+          "artifact.stage5.generated_code_package",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/tb_scaffold/tb_manifest.json",
+          "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract"
+        ],
+        "id": "verification_artifacts.run_multilayer_pipeline_liveness",
+        "on_failure": "Block case_board_interface_discovery and all AXI/DDR/backend gates; localize the earliest layer-to-layer or upstream leaf boundary before pipeline_repair, then rerun the failed gate.",
+        "produces": [
+          "multilayer_pipeline_liveness_contract",
+          "verification/multilayer/multilayer_pipeline_evidence.json",
+          "verification/multilayer/multilayer_functional_evidence.json",
+          "verification/multilayer/deadlock_watchdog_report.json",
+          "verification/multilayer/data_order_trace.json",
+          "verification/multilayer/transfer_count_report.json"
+        ],
+        "rationale": "Only after single-layer golden comparison may the multilayer scaffold be verified; liveness/deadlock evidence must be real tool output with stream-order, transfer-count, and numeric obligations preserved.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_multilayer_pipeline",
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "verification_action_audit_check",
+          "hierarchical_verification_plan_check"
+        ],
+        "action_type": "handoff_contract_generation",
+        "consumes": [
+          "candidate_stage_artifact.verification_artifact_contract.verification_gate_dag",
+          "candidate_stage_artifact.functional_sim_candidates",
+          "candidate_stage_artifact.checker_summary",
+          "multilayer_pipeline_liveness_contract",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config"
+        ],
+        "id": "verification_artifacts.publish_functional_sim_prebackend_blocking_rules",
+        "on_failure": "Keep functional_sim, Vivado, bitstream, and board_runtime blocked; repair the Stage 6 verification contract rather than relying on human memory or static scripts.",
+        "produces": [
+          "functional_sim_prebackend_blocking_rules",
+          "handoff_note.to_axi_ddr_runtime_verification_architect",
+          "handoff_note.to_verification_evidence_gate_auditor"
+        ],
+        "rationale": "Create enforceable rules for downstream agents: functional_sim is not satisfied by candidate labels or smoke runs, must use real input/weight artifacts, must follow multilayer deadlock and AXI/DDR roundtrip evidence, and must pass before Vivado/backend promotion.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "verification_action_audit"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "functional_sim",
+          "real_tool.case_vcs_functional_sim",
+          "data_order_trace_check",
+          "numeric_compare",
+          "deadlock_watchdog",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "functional_sim_prebackend_blocking_rules",
+          "multilayer_pipeline_liveness_contract",
+          "verification/axi_ddr/case_axi_protocol_check.json",
+          "verification/axi_ddr/case_ddr_image_roundtrip_evidence.json",
+          "verification/case_real_weights/ddr_image_manifest.json",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config"
+        ],
+        "id": "verification_after_axi_ddr.run_real_functional_sim_gate",
+        "on_failure": "Do not proceed to Vivado synthesis or implementation; send simulator evidence to contract-guided localization with the violated SACG constraints and earliest failing boundary.",
+        "produces": [
+          "verification/case_diagnostics/vcs_functional_diagnosis.json",
+          "verification/functional_sim/real_functional_sim_evidence.json",
+          "verification/functional_sim/data_order_trace.json",
+          "verification/functional_sim/numeric_compare.json"
+        ],
+        "rationale": "After AXI protocol and DDR image roundtrip evidence is produced by the downstream AXI/DDR specialist, run the real functional simulator with the declared manifests and enforce numeric, data-order, artifact-hash, and liveness checks before any backend promotion.",
+        "requires_approval": false,
+        "stage": "verification_after_axi_ddr",
+        "tool_roles": [
+          "functional_sim",
+          "case_vcs_functional_sim",
+          "case_vcs_evidence_analyzer",
+          "data_order_trace_check",
+          "numeric_compare",
+          "deadlock_watchdog",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_replay_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun"
+        ],
+        "action_type": "contract_guided_debug_on_failure",
+        "consumes": [
+          "verification/failed_gate_evidence.json",
+          "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding.numeric_binding_plan",
+          "artifact.stage5.generated_code_package"
+        ],
+        "id": "verification_artifacts.contract_guided_failure_localization_and_repair_loop",
+        "on_failure": "Keep the failed layer blocked and create a retry/backtrack request only with the failed checker, violated contract, and missing localization evidence; any architecture, pipeline, memory, numeric, or major template change requires explicit approval.",
+        "produces": [
+          "verification/debug_closure/failure_localization.json",
+          "verification/debug_closure/targeted_replay_report.json",
+          "verification/debug_closure/minimal_repair_context.json",
+          "verification/debug_closure/targeted_failed_checker_rerun.json"
+        ],
+        "rationale": "Any leaf, single-layer, multilayer, deadlock, or functional_sim failure must enter the three-layer repair loop: operator/leaf first, then connected single-transformer-layer, then AXI/DDR-wrapped system. Repairs must be bounded by the debug closure contract and rerun the failed checker.",
+        "requires_approval": false,
+        "stage": "verification_repair",
+        "tool_roles": [
+          "failure_slice_localization",
+          "boundary_trace_rerun",
+          "targeted_replay",
+          "causal_repair_context_pack",
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun",
+          "bounded_template_repair",
+          "pipeline_repair"
+        ]
+      }
+    ],
+    "observations": [
+      "SACG memory truth in the supplied state reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests; no current SACG-memory blocker applies to this review.",
+      "Upstream Stage 3, Stage 4, and Stage 5 evidence is visible and ready: pipeline planning has stream/data edges and attention semantics, parameter binding has numeric cast points and passed static checks, and code generation compile/elaboration and contract checks passed.",
+      "The current-stage contract status is pass, with hierarchical_verification_plan_check passing and data_order_trace_check passing as a static trace ledger. deadlock_watchdog is explicitly pending downstream, which is not a current-stage failure under the supplied stage_gate_policy.",
+      "The visible merge dependencies preserve bottom-up order: self-attention merge depends on rms_norm_1, self_attention, and residual_add_1; MLP merge depends on rms_norm_2, gate/up projections, activation_mul, down projection, and residual_add_2; single_decoder_block depends on the attention and MLP merges plus real weight, scaffold, single-layer functional, and single-layer golden gates.",
+      "presence_summary reports six merge agents, thirty-one DAG nodes, twenty-two evidence gates, and thirty-one evidence path requirements. Some detailed rows are omitted in this role slice, so missing-detail concerns are handoff audit items rather than current blockers while the visible checker status remains pass.",
+      "Numeric comparison obligations are declared at leaf and single-layer levels and must follow Stage 4 numeric policy: fp16 activations/weights, fp32 accumulator/residual paths, nearest_even rounding, no saturation, and the declared cast points. Golden comparisons must not loosen tolerance or change golden outputs.",
+      "Stream-order obligations are correctly carried from Stage 3 into downstream data_order_trace_check and transfer-count checks. GQA semantics are fixed as causal GQA with 14 query heads, 2 KV heads, group size 7, head_dim 64, RoPE theta 1000000.0, and seq_len_bound 16.",
+      "Functional simulation candidates are explicitly marked as not acceptance by label alone. Real input and weight artifacts, a hashable testbench scaffold, real functional simulation, numeric compare, data-order trace, and deadlock/liveness evidence remain required before backend promotion.",
+      "The DAG blocks AXI/DDR wrapping until case_multilayer_functional and case_pipeline_deadlock_check complete, and blocks Vivado/backend until functional_sim completes after AXI protocol and DDR image roundtrip evidence. This preserves the required leaf -> single layer -> multilayer -> AXI/DDR -> backend order."
+    ],
+    "proposed_actions": [
+      "Approve the current-stage single/multilayer verification DAG segment as a satisfiable static contract, while marking all real tool evidence as pending downstream execution.",
+      "Run an unsliced merge-gate dependency audit to bind all attention, MLP, single-block, and multilayer merge rows to SACG stream order, beat alignment, numeric policy, and hierarchy constraints.",
+      "Materialize real input/weight artifacts and a hashable testbench scaffold before any functional or golden comparison gate; reject default weights and smoke-only acceptance.",
+      "Execute closure strictly bottom-up: leaf static/functional/golden gates, then single_transformer_layer functional and golden compare, then multilayer pipeline functional and liveness/deadlock gates.",
+      "Require data_order_trace_check, transfer_count_check, numeric_compare, and deadlock_watchdog evidence at the integration boundaries where they are declared; do not promote on static hierarchy alone.",
+      "Hand off functional_sim_prebackend_blocking_rules to axi_ddr_runtime_verification_architect and verification_evidence_gate_auditor: functional_sim must wait for multilayer liveness plus AXI protocol and DDR image roundtrip evidence and must pass before Vivado/backend.",
+      "On any verification failure, use boundary-contract-guided localization and targeted replay to find the earliest causal boundary before bounded repair; do not skip directly to higher-layer or board repair."
+    ],
+    "risks": [
+      "Downstream execution risk: if pending deadlock_watchdog, real simulator, or board/backend gates are treated as pass based on contract declaration alone, SACG evidence would be contaminated. required_real_tool_evidence_check must gate promotion.",
+      "Handoff audit risk: the compact slice shows only part of the merge_agents and required_tool_protocols details, while presence_summary states the full classes exist. The evidence-gate auditor must check the unsliced artifact for all six merge agents and all required path/protocol rows.",
+      "Numeric consistency risk: a golden-reference or packer mismatch at fp16/fp32 cast boundaries could look like RTL failure. The first repair must classify missing or inconsistent checker/golden capability as checker/golden-reference repair, not hardware correctness.",
+      "Stream and transfer-count risk: GQA head grouping, RoPE ordering, lane mapping, residual precision, and layer-to-layer beat alignment can fail without violating static hierarchy. Downstream traces must include transaction, tile, logical index, lane mapping, and transfer-count evidence.",
+      "Liveness risk: fifo_depth 16, lanes 8, seq_len 16, and multilayer backpressure require real deadlock watchdog evidence. A timeout must localize the earliest leaf, single-layer, or layer-to-layer boundary before any repair is proposed.",
+      "Real-artifact risk: case_real_weight_artifacts and case_tb_scaffold are required pending execution. Default generated weights or smoke tests cannot satisfy functional correctness acceptance.",
+      "Cross-stage ABI risk: functional_sim depends on AXI/DDR protocol and DDR image roundtrip evidence after this role's segment. Any later memory-layout or runtime ABI change must preserve the already declared stream/numeric contracts or obtain approval before reuse."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage4.parameter_static_checks",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "artifact.stage5.codegen_compile_gate",
+        "artifact.stage5.codegen_contract_check",
+        "candidate_stage_artifact.hierarchical_verification",
+        "candidate_stage_artifact.verification_artifact_contract",
+        "candidate_stage_artifact.functional_sim_candidates",
+        "candidate_stage_artifact.checker_results",
+        "sacg_memory_truth"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.verification.hierarchy",
+        "constraint.verification.artifacts",
+        "constraint.pipeline.structure",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.liveness.pipeline",
+        "constraint.numeric.policy",
+        "constraint.tool.protocols",
+        "constraint.memory.board",
+        "constraint.runtime.board"
+      ],
+      "edges": [
+        "stage_00_rms_norm_1 + stage_01_self_attention + stage_02_residual_add_1 -> merge.self_attention",
+        "stage_03_rms_norm_2 + stage_04_mlp_gate_proj + stage_05_mlp_up_proj + stage_06_activation_mul + stage_07_mlp_down_proj + stage_08_residual_add_2 -> merge.mlp",
+        "merge.self_attention + merge.mlp -> merge.single_decoder_block",
+        "case_real_weight_artifacts + boundary_contract_check + case_stage_leaf_static -> case_leaf_functional -> case_leaf_golden_compare",
+        "case_leaf_golden_compare + case_tb_scaffold + case_real_weight_artifacts -> single_transformer_layer",
+        "single_transformer_layer -> case_single_layer_functional -> case_single_layer_golden_compare",
+        "case_single_layer_golden_compare + case_real_weight_artifacts -> case_multilayer_pipeline -> case_multilayer_functional -> case_pipeline_deadlock_check",
+        "case_pipeline_deadlock_check -> case_board_interface_discovery -> case_axi_ddr_interface -> case_axi_protocol_check -> case_ddr_image_roundtrip",
+        "case_real_weight_artifacts + case_single_layer_golden_compare + case_pipeline_deadlock_check + case_ddr_image_roundtrip -> functional_sim -> case_vivado_synthesis"
+      ],
+      "nodes": [
+        "leaf_stage.stage_00_rms_norm_1",
+        "leaf_stage.stage_01_self_attention",
+        "leaf_stage.stage_02_residual_add_1",
+        "leaf_stage.stage_03_rms_norm_2",
+        "leaf_stage.stage_04_mlp_gate_proj",
+        "leaf_stage.stage_05_mlp_up_proj",
+        "leaf_stage.stage_06_activation_mul",
+        "leaf_stage.stage_07_mlp_down_proj",
+        "leaf_stage.stage_08_residual_add_2",
+        "merge.self_attention",
+        "merge.mlp",
+        "merge.single_decoder_block",
+        "case_real_weight_artifacts",
+        "boundary_contract_check",
+        "case_stage_leaf_static",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_tb_scaffold",
+        "single_transformer_layer",
+        "case_single_layer_functional",
+        "case_single_layer_golden_compare",
+        "case_multilayer_pipeline",
+        "case_multilayer_functional",
+        "case_pipeline_deadlock_check",
+        "functional_sim"
+      ]
+    },
+    "schema_version": "spatialaccagent.single_multilayer_pipeline_verification_architect.v0",
+    "stage": "verification_artifacts",
+    "status": "ready_for_handoff_with_downstream_evidence_pending",
+    "summary": "The supplied Stage 6 verification contract is satisfiable for the single-layer and multilayer pipeline segment: bottom-up leaf gates, attention/MLP merges, single transformer layer gates, multilayer functional gates, deadlock/liveness gates, and pre-backend functional simulation rules are declared. Current-stage static checks are pass/ready, and SACG memory truth shows no active contamination barriers or open retry/backtrack blockers. No real simulator, deadlock, AXI/DDR, Vivado, bitstream, or board pass is claimed; those remain required downstream evidence gates."
+  },
+  "prompt_bytes": 74743,
+  "prompt_hash": "aba370be68c38c183d232409716fcfd3e214b8060d57fb20698014acd6c76c5d",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.single_multilayer_pipeline_verification_architect.v0\",\"agent\":\"single_multilayer_pipeline_verification_architect\",\"stage\":\"verification_artifacts\",\"status\":\"ready_for_handoff_with_downstream_evidence_pending\",\"summary\":\"The supplied Stage 6 verification contract is satisfiable for the single-layer and multilayer pipeline segment: bottom-up leaf gates, attention/MLP merges, single transformer layer gates, multilayer functional gates, deadlock/liveness gates, and pre-backend functional simulation rules are declared. Current-stage static checks are pass/ready, and SACG memory truth shows no active contamination barriers or open retry/backtrack blockers. No real simulator, deadlock, AXI/DDR, Vivado, bitstream, or board pass is claimed; those remain required downstream evidence gates.\",\"sacg_focus\":{\"nodes\":[\"leaf_stage.stage_00_rms_norm_1\",\"leaf_stage.stage_01_self_attention\",\"leaf_stage.stage_02_residual_add_1\",\"leaf_stage.stage_03_rms_norm_2\",\"leaf_stage.stage_04_mlp_gate_proj\",\"leaf_stage.stage_05_mlp_up_proj\",\"leaf_stage.stage_06_activation_mul\",\"leaf_stage.stage_07_mlp_down_proj\",\"leaf_stage.stage_08_residual_add_2\",\"merge.self_attention\",\"merge.mlp\",\"merge.single_decoder_block\",\"case_real_weight_artifacts\",\"boundary_contract_check\",\"case_stage_leaf_static\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"case_tb_scaffold\",\"single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"case_multilayer_pipeline\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"functional_sim\"],\"edges\":[\"stage_00_rms_norm_1 + stage_01_self_attention + stage_02_residual_add_1 -> merge.self_attention\",\"stage_03_rms_norm_2 + stage_04_mlp_gate_proj + stage_05_mlp_up_proj + stage_06_activation_mul + stage_07_mlp_down_proj + stage_08_residual_add_2 -> merge.mlp\",\"merge.self_attention + merge.mlp -> merge.single_decoder_block\",\"case_real_weight_artifacts + boundary_contract_check + case_stage_leaf_static -> case_leaf_functional -> case_leaf_golden_compare\",\"case_leaf_golden_compare + case_tb_scaffold + case_real_weight_artifacts -> single_transformer_layer\",\"single_transformer_layer -> case_single_layer_functional -> case_single_layer_golden_compare\",\"case_single_layer_golden_compare + case_real_weight_artifacts -> case_multilayer_pipeline -> case_multilayer_functional -> case_pipeline_deadlock_check\",\"case_pipeline_deadlock_check -> case_board_interface_discovery -> case_axi_ddr_interface -> case_axi_protocol_check -> case_ddr_image_roundtrip\",\"case_real_weight_artifacts + case_single_layer_golden_compare + case_pipeline_deadlock_check + case_ddr_image_roundtrip -> functional_sim -> case_vivado_synthesis\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.verification.artifacts\",\"constraint.pipeline.structure\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.liveness.pipeline\",\"constraint.numeric.policy\",\"constraint.tool.protocols\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"artifacts\":[\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage4.parameter_static_checks\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage5.codegen_compile_gate\",\"artifact.stage5.codegen_contract_check\",\"candidate_stage_artifact.hierarchical_verification\",\"candidate_stage_artifact.verification_artifact_contract\",\"candidate_stage_artifact.functional_sim_candidates\",\"candidate_stage_artifact.checker_results\",\"sacg_memory_truth\"]},\"observations\":[\"SACG memory truth in the supplied state reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests; no current SACG-memory blocker applies to this review.\",\"Upstream Stage 3, Stage 4, and Stage 5 evidence is visible and ready: pipeline planning has stream/data edges and attention semantics, parameter binding has numeric cast points and passed static checks, and code generation compile/elaboration and contract checks passed.\",\"The current-stage contract status is pass, with hierarchical_verification_plan_check passing and data_order_trace_check passing as a static trace ledger. deadlock_watchdog is explicitly pending downstream, which is not a current-stage failure under the supplied stage_gate_policy.\",\"The visible merge dependencies preserve bottom-up order: self-attention merge depends on rms_norm_1, self_attention, and residual_add_1; MLP merge depends on rms_norm_2, gate/up projections, activation_mul, down projection, and residual_add_2; single_decoder_block depends on the attention and MLP merges plus real weight, scaffold, single-layer functional, and single-layer golden gates.\",\"presence_summary reports six merge agents, thirty-one DAG nodes, twenty-two evidence gates, and thirty-one evidence path requirements. Some detailed rows are omitted in this role slice, so missing-detail concerns are handoff audit items rather than current blockers while the visible checker status remains pass.\",\"Numeric comparison obligations are declared at leaf and single-layer levels and must follow Stage 4 numeric policy: fp16 activations/weights, fp32 accumulator/residual paths, nearest_even rounding, no saturation, and the declared cast points. Golden comparisons must not loosen tolerance or change golden outputs.\",\"Stream-order obligations are correctly carried from Stage 3 into downstream data_order_trace_check and transfer-count checks. GQA semantics are fixed as causal GQA with 14 query heads, 2 KV heads, group size 7, head_dim 64, RoPE theta 1000000.0, and seq_len_bound 16.\",\"Functional simulation candidates are explicitly marked as not acceptance by label alone. Real input and weight artifacts, a hashable testbench scaffold, real functional simulation, numeric compare, data-order trace, and deadlock/liveness evidence remain required before backend promotion.\",\"The DAG blocks AXI/DDR wrapping until case_multilayer_functional and case_pipeline_deadlock_check complete, and blocks Vivado/backend until functional_sim completes after AXI protocol and DDR image roundtrip evidence. This preserves the required leaf -> single layer -> multilayer -> AXI/DDR -> backend order.\"],\"risks\":[\"Downstream execution risk: if pending deadlock_watchdog, real simulator, or board/backend gates are treated as pass based on contract declaration alone, SACG evidence would be contaminated. required_real_tool_evidence_check must gate promotion.\",\"Handoff audit risk: the compact slice shows only part of the merge_agents and required_tool_protocols details, while presence_summary states the full classes exist. The evidence-gate auditor must check the unsliced artifact for all six merge agents and all required path/protocol rows.\",\"Numeric consistency risk: a golden-reference or packer mismatch at fp16/fp32 cast boundaries could look like RTL failure. The first repair must classify missing or inconsistent checker/golden capability as checker/golden-reference repair, not hardware correctness.\",\"Stream and transfer-count risk: GQA head grouping, RoPE ordering, lane mapping, residual precision, and layer-to-layer beat alignment can fail without violating static hierarchy. Downstream traces must include transaction, tile, logical index, lane mapping, and transfer-count evidence.\",\"Liveness risk: fifo_depth 16, lanes 8, seq_len 16, and multilayer backpressure require real deadlock watchdog evidence. A timeout must localize the earliest leaf, single-layer, or layer-to-layer boundary before any repair is proposed.\",\"Real-artifact risk: case_real_weight_artifacts and case_tb_scaffold are required pending execution. Default generated weights or smoke tests cannot satisfy functional correctness acceptance.\",\"Cross-stage ABI risk: functional_sim depends on AXI/DDR protocol and DDR image roundtrip evidence after this role's segment. Any later memory-layout or runtime ABI change must preserve the already declared stream/numeric contracts or obtain approval before reuse.\"],\"proposed_actions\":[\"Approve the current-stage single/multilayer verification DAG segment as a satisfiable static contract, while marking all real tool evidence as pending downstream execution.\",\"Run an unsliced merge-gate dependency audit to bind all attention, MLP, single-block, and multilayer merge rows to SACG stream order, beat alignment, numeric policy, and hierarchy constraints.\",\"Materialize real input/weight artifacts and a hashable testbench scaffold before any functional or golden comparison gate; reject default weights and smoke-only acceptance.\",\"Execute closure strictly bottom-up: leaf static/functional/golden gates, then single_transformer_layer functional and golden compare, then multilayer pipeline functional and liveness/deadlock gates.\",\"Require data_order_trace_check, transfer_count_check, numeric_compare, and deadlock_watchdog evidence at the integration boundaries where they are declared; do not promote on static hierarchy alone.\",\"Hand off functional_sim_prebackend_blocking_rules to axi_ddr_runtime_verification_architect and verification_evidence_gate_auditor: functional_sim must wait for multilayer liveness plus AXI protocol and DDR image roundtrip evidence and must pass before Vivado/backend.\",\"On any verification failure, use boundary-contract-guided localization and targeted replay to find the earliest causal boundary before bounded repair; do not skip directly to higher-layer or board repair.\"],\"executable_actions\":[{\"id\":\"verification_artifacts.audit_merge_gate_dependency_review\",\"stage\":\"verification_artifacts\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"Re-run the static verification DAG audit over the full unsliced merge_agents and gate_dag so attention, MLP, single-block, and presence_summary-declared multilayer merge details are bound to SACG stream order, beat alignment, and numeric policy before handoff.\",\"consumes\":[\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.codegen_contract_check\",\"candidate_stage_artifact.hierarchical_verification.merge_agents\",\"candidate_stage_artifact.verification_artifact_contract.verification_gate_dag\",\"candidate_stage_artifact.presence_summary\",\"candidate_stage_artifact.checker_results\"],\"produces\":[\"merge_gate_dependency_review\",\"sacg_bound_verification_gate_dag_review\",\"handoff_note.to_verification_evidence_gate_auditor\"],\"tool_roles\":[\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"stream_plan_check\",\"data_order_trace_check\"],\"acceptance_checkers\":[\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"stream_plan_check\",\"data_order_trace_check\"],\"on_failure\":\"Do not approve AXI/DDR handoff; return the failed dependency edge and violated SACG constraint to Stage 6 contract repair, and require approval if the repair changes hierarchy, stream order, or numeric policy.\",\"requires_approval\":false},{\"id\":\"verification_artifacts.materialize_real_artifacts_and_tb_scaffold\",\"stage\":\"verification\",\"action_type\":\"pre_sim_artifact_materialization\",\"rationale\":\"Real input/weight manifests and a reproducible, hashable testbench scaffold are prerequisites for leaf, single-layer, multilayer, and functional_sim acceptance; default generated weights are explicitly not acceptance evidence.\",\"consumes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"candidate_stage_artifact.verification_artifact_contract\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\"],\"produces\":[\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/case_real_weights/ddr_image_manifest.json\",\"verification/tb_scaffold/tb_manifest.json\",\"verification/tb_scaffold/artifact_hashes.json\"],\"tool_roles\":[\"case_weight_manifest_generate\",\"case_real_weight_artifacts\",\"case_tb_scaffold_generate\",\"case_tb_scaffold\",\"artifact_hash_check\",\"boundary_contract_check\"],\"acceptance_checkers\":[\"case_real_weight_artifacts\",\"real_tool.case_real_weight_artifacts\",\"case_tb_scaffold\",\"real_tool.case_tb_scaffold\",\"artifact_hash_check\",\"boundary_contract_check\",\"tool_protocol_check\"],\"on_failure\":\"Block case_leaf_functional, case_leaf_golden_compare, single_transformer_layer, multilayer, and functional_sim gates; repair the manifest/scaffold/golden-reference tooling rather than claiming hardware failure.\",\"requires_approval\":false},{\"id\":\"verification_artifacts.close_operator_leaf_gates\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Every spatial operator leaf stage must pass static boundary, functional, numeric golden, data-order, and transfer-count checks before attention/MLP merge or single-layer promotion.\",\"consumes\":[\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding.numeric_binding_plan\",\"artifact.stage5.generated_code_package\",\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/tb_scaffold/tb_manifest.json\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\"],\"produces\":[\"operator_leaf_gate_coverage_matrix\",\"verification/leaf/leaf_functional_evidence.json\",\"verification/leaf/leaf_golden_compare.json\",\"verification/leaf/data_order_trace.json\",\"verification/leaf/transfer_count_report.json\"],\"tool_roles\":[\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"numeric_compare\",\"data_order_trace_check\",\"transfer_count_check\"],\"acceptance_checkers\":[\"case_stage_leaf_static\",\"boundary_contract_check\",\"real_tool.boundary_contract_check\",\"case_leaf_functional\",\"real_tool.case_leaf_functional\",\"case_leaf_golden_compare\",\"real_tool.case_leaf_golden_compare\",\"numeric_compare\",\"data_order_trace_check\",\"transfer_count_check\"],\"on_failure\":\"Localize the earliest violated leaf boundary using the debug closure contract; do not run single_transformer_layer until the failed leaf checker is repaired and rerun.\",\"requires_approval\":false},{\"id\":\"verification_artifacts.run_single_layer_functional_and_golden\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"After leaf closure, connect the verified spatial stages into the single transformer layer and require real functional, golden compare, stream-order, and transfer-count evidence before any multilayer pipeline claim.\",\"consumes\":[\"operator_leaf_gate_coverage_matrix\",\"verification/leaf/leaf_functional_evidence.json\",\"verification/leaf/leaf_golden_compare.json\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding.numeric_binding_plan\",\"artifact.stage5.generated_code_package\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/tb_scaffold/tb_manifest.json\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\"],\"produces\":[\"single_layer_functional_acceptance_contract\",\"verification/single_layer/single_transformer_layer_evidence.json\",\"verification/single_layer/single_layer_golden_compare.json\",\"verification/single_layer/data_order_trace.json\",\"verification/single_layer/transfer_count_report.json\"],\"tool_roles\":[\"single_transformer_layer\",\"case_single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"data_order_trace_check\",\"transfer_count_check\",\"numeric_compare\"],\"acceptance_checkers\":[\"single_transformer_layer\",\"case_single_transformer_layer\",\"real_tool.case_single_transformer_layer\",\"case_single_layer_functional\",\"real_tool.case_single_layer_functional\",\"case_single_layer_golden_compare\",\"real_tool.case_single_layer_golden_compare\",\"data_order_trace_check\",\"transfer_count_check\",\"numeric_compare\"],\"on_failure\":\"Stop before case_multilayer_pipeline; use boundary bisection across the connected leaf-to-layer path and rerun the failed checker after bounded repair.\",\"requires_approval\":false},{\"id\":\"verification_artifacts.run_multilayer_pipeline_liveness\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Only after single-layer golden comparison may the multilayer scaffold be verified; liveness/deadlock evidence must be real tool output with stream-order, transfer-count, and numeric obligations preserved.\",\"consumes\":[\"single_layer_functional_acceptance_contract\",\"verification/single_layer/single_layer_golden_compare.json\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding.numeric_binding_plan\",\"artifact.stage5.generated_code_package\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/tb_scaffold/tb_manifest.json\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\"],\"produces\":[\"multilayer_pipeline_liveness_contract\",\"verification/multilayer/multilayer_pipeline_evidence.json\",\"verification/multilayer/multilayer_functional_evidence.json\",\"verification/multilayer/deadlock_watchdog_report.json\",\"verification/multilayer/data_order_trace.json\",\"verification/multilayer/transfer_count_report.json\"],\"tool_roles\":[\"case_multilayer_pipeline\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"deadlock_watchdog\",\"data_order_trace_check\",\"transfer_count_check\",\"numeric_compare\"],\"acceptance_checkers\":[\"case_multilayer_pipeline\",\"case_multilayer_functional\",\"real_tool.case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"real_tool.case_pipeline_deadlock_check\",\"deadlock_watchdog\",\"data_order_trace_check\",\"transfer_count_check\",\"numeric_compare\"],\"on_failure\":\"Block case_board_interface_discovery and all AXI/DDR/backend gates; localize the earliest layer-to-layer or upstream leaf boundary before pipeline_repair, then rerun the failed gate.\",\"requires_approval\":false},{\"id\":\"verification_artifacts.publish_functional_sim_prebackend_blocking_rules\",\"stage\":\"verification_artifacts\",\"action_type\":\"handoff_contract_generation\",\"rationale\":\"Create enforceable rules for downstream agents: functional_sim is not satisfied by candidate labels or smoke runs, must use real input/weight artifacts, must follow multilayer deadlock and AXI/DDR roundtrip evidence, and must pass before Vivado/backend promotion.\",\"consumes\":[\"candidate_stage_artifact.verification_artifact_contract.verification_gate_dag\",\"candidate_stage_artifact.functional_sim_candidates\",\"candidate_stage_artifact.checker_summary\",\"multilayer_pipeline_liveness_contract\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\"],\"produces\":[\"functional_sim_prebackend_blocking_rules\",\"handoff_note.to_axi_ddr_runtime_verification_architect\",\"handoff_note.to_verification_evidence_gate_auditor\"],\"tool_roles\":[\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"verification_action_audit\"],\"acceptance_checkers\":[\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"verification_action_audit_check\",\"hierarchical_verification_plan_check\"],\"on_failure\":\"Keep functional_sim, Vivado, bitstream, and board_runtime blocked; repair the Stage 6 verification contract rather than relying on human memory or static scripts.\",\"requires_approval\":false},{\"id\":\"verification_after_axi_ddr.run_real_functional_sim_gate\",\"stage\":\"verification_after_axi_ddr\",\"action_type\":\"real_tool_execution\",\"rationale\":\"After AXI protocol and DDR image roundtrip evidence is produced by the downstream AXI/DDR specialist, run the real functional simulator with the declared manifests and enforce numeric, data-order, artifact-hash, and liveness checks before any backend promotion.\",\"consumes\":[\"functional_sim_prebackend_blocking_rules\",\"multilayer_pipeline_liveness_contract\",\"verification/axi_ddr/case_axi_protocol_check.json\",\"verification/axi_ddr/case_ddr_image_roundtrip_evidence.json\",\"verification/case_real_weights/ddr_image_manifest.json\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\"],\"produces\":[\"verification/case_diagnostics/vcs_functional_diagnosis.json\",\"verification/functional_sim/real_functional_sim_evidence.json\",\"verification/functional_sim/data_order_trace.json\",\"verification/functional_sim/numeric_compare.json\"],\"tool_roles\":[\"functional_sim\",\"case_vcs_functional_sim\",\"case_vcs_evidence_analyzer\",\"data_order_trace_check\",\"numeric_compare\",\"deadlock_watchdog\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"functional_sim\",\"real_tool.case_vcs_functional_sim\",\"data_order_trace_check\",\"numeric_compare\",\"deadlock_watchdog\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not proceed to Vivado synthesis or implementation; send simulator evidence to contract-guided localization with the violated SACG constraints and earliest failing boundary.\",\"requires_approval\":false},{\"id\":\"verification_artifacts.contract_guided_failure_localization_and_repair_loop\",\"stage\":\"verification_repair\",\"action_type\":\"contract_guided_debug_on_failure\",\"rationale\":\"Any leaf, single-layer, multilayer, deadlock, or functional_sim failure must enter the three-layer repair loop: operator/leaf first, then connected single-transformer-layer, then AXI/DDR-wrapped system. Repairs must be bounded by the debug closure contract and rerun the failed checker.\",\"consumes\":[\"verification/failed_gate_evidence.json\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding.numeric_binding_plan\",\"artifact.stage5.generated_code_package\"],\"produces\":[\"verification/debug_closure/failure_localization.json\",\"verification/debug_closure/targeted_replay_report.json\",\"verification/debug_closure/minimal_repair_context.json\",\"verification/debug_closure/targeted_failed_checker_rerun.json\"],\"tool_roles\":[\"failure_slice_localization\",\"boundary_trace_rerun\",\"targeted_replay\",\"causal_repair_context_pack\",\"repair_boundary_check\",\"targeted_failed_checker_rerun\",\"bounded_template_repair\",\"pipeline_repair\"],\"acceptance_checkers\":[\"failure_localization_check\",\"targeted_replay_check\",\"causal_repair_context_check\",\"repair_boundary_check\",\"targeted_failed_checker_rerun\"],\"on_failure\":\"Keep the failed layer blocked and create a retry/backtrack request only with the failed checker, violated contract, and missing localization evidence; any architecture, pipeline, memory, numeric, or major template change requires explicit approval.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any change to the bottom-up hierarchy or merge order, including bypassing leaf, single-layer, multilayer, or deadlock gates before AXI/DDR handoff.\",\"Any change to Stage 4 numeric policy, cast points, rounding mode, saturation behavior, or numeric_compare tolerance.\",\"Any change to Stage 3 stream order, beat pipeline, FIFO/liveness/watchdog policy, or multilayer pipeline structure.\",\"Any change to memory layout, runtime ABI, DDR transfer units, or address map consumed by functional_sim or AXI/DDR handoff.\",\"Any major generated-template, architecture, or board-wrapper repair beyond bounded contract-guided localization.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/single_multilayer_pipeline_verification_architect_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/single_multilayer_pipeline_verification_architect_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "verification_artifacts.single-layer and multilayer pipeline verification architect",
+  "used_fallback": false
+}

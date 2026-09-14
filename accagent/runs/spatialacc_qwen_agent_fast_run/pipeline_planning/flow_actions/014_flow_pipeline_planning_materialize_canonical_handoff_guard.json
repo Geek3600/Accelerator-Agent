@@ -1,0 +1,51 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "task_card_check",
+      "verification_action_audit_check",
+      "sacg_static_check",
+      "sacg_reference_check",
+      "sacg_memory_check"
+    ],
+    "action_type": "handoff_canonicalization",
+    "consumes": [
+      "recent_stage_summary.outputs.pipeline_plan",
+      "recent_stage_summary.outputs.pipeline_static_checks",
+      "recent_stage_summary.outputs.team_aggregate",
+      "recent_stage_summary.outputs.sacg_state",
+      "recent_stage_summary.llm_agent.executable_actions",
+      "sacg_memory_truth",
+      "action_grounding_registry"
+    ],
+    "id": "flow.pipeline_planning.materialize_canonical_handoff_guard",
+    "on_failure": "Hold downstream transition and report the conflicting producer, missing evidence, or SACG mismatch. Do not retry or repair the design unless the failure identifies a checker-backed Stage 3 contract violation; do not consume ambiguous handoff artifacts downstream.",
+    "produces": [
+      "pipeline_planning/canonical_handoff_manifest.json",
+      "pipeline_planning/checker_evidence_ledger.json",
+      "pipeline_planning/memory_address_semantics_guard.json",
+      "pipeline_planning/downstream_consumption_guard.json"
+    ],
+    "rationale": "The current stage passed, but the supplied team aggregate contains overlapping downstream handoff actions. Produce one ordered, checker-backed handoff manifest and evidence ledger so Stage 4 consumes the accepted Stage 3 contract without ambiguous artifact producers or accidental memory-address promotion.",
+    "requires_approval": false,
+    "stage": "pipeline_planning_to_parameter_binding",
+    "tool_roles": [
+      "team_aggregate",
+      "verification_action_audit",
+      "sacg_validate",
+      "sacg_reference_check",
+      "task_card_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "proceed",
+  "flow_event_index": 14,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/014_proceed.json",
+  "stage": "pipeline_planning"
+}

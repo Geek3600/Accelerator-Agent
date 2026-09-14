@@ -1,0 +1,56 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "targeted_failed_checker_rerun",
+      "verification_plan_static_check",
+      "hierarchical_verification_plan_check",
+      "verification_artifact_contract_check",
+      "sacg_reference_check",
+      "tool_protocol_check",
+      "required_real_tool_evidence_check",
+      "verification_action_audit_check",
+      "output_validity_check"
+    ],
+    "action_type": "stage_gate_rerun_after_bounded_repair",
+    "consumes": [
+      "artifact.stage6.verification_plan_candidate",
+      "artifact.stage6.verification_artifact_contract_candidate",
+      "artifact.stage6.hierarchical_repair_loop_contract",
+      "artifact.stage6.current_stage_risk_resolution_report",
+      "artifact.stage6.failed_attempt_trust_barrier_record",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json"
+    ],
+    "id": "stage6.rerun_repaired_stage6_gates",
+    "on_failure": "Keep Stage6 blocked, retain the failed-output trust barrier, and route the failed checker evidence to causal repair context. Do not proceed to debug_loop or backend_board.",
+    "produces": [
+      "artifact.stage6.verification_artifacts_report_promoted",
+      "artifact.stage6.verification_artifact_contract_promoted",
+      "artifact.stage6.stage_gate_evidence",
+      "updated_sacg_state_after_stage6"
+    ],
+    "rationale": "A new Stage6 candidate may be promoted only after the repaired verification plan and artifact contract pass the current-stage gates. This is not a blind third retry; it is a bounded repair-mode rerun with explicit candidate inputs and acceptance checks.",
+    "requires_approval": false,
+    "stage": "verification_artifacts",
+    "tool_roles": [
+      "targeted_failed_checker_rerun",
+      "verification_plan_static_check",
+      "hierarchical_verification_plan_check",
+      "verification_artifact_contract_check",
+      "real_tool_evidence_check",
+      "verification_action_audit",
+      "sacg_validate"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "stop",
+  "flow_event_index": 22,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/flow_events/022_stop.json",
+  "stage": "verification_artifacts"
+}

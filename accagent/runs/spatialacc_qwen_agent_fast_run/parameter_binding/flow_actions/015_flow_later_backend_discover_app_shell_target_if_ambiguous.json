@@ -1,0 +1,50 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "real_tool.app_shell_target_discovery_contract",
+      "real_tool.case_board_interface_discovery",
+      "backend_app_shell_target_discovery_check",
+      "backend_app_shell_target_hint_synthesis_check",
+      "backend_bounded_recovery_action_check",
+      "human_boundary_check"
+    ],
+    "action_type": "backend_target_discovery",
+    "consumes": [
+      "artifact.input.target_board_profile",
+      "artifact.input.tool_profile",
+      "backend_board/case_diagnostics/vivado_synthesis_report.json",
+      "backend_board/case_diagnostics/vivado_implementation_report.json",
+      "candidate_stage_artifact.bandwidth_estimate"
+    ],
+    "id": "flow.later.backend.discover_app_shell_target_if_ambiguous",
+    "on_failure": "Keep runtime bitstream and board runtime blocked until target, shell clock, and interface binding are supported by cited evidence or explicit approval.",
+    "produces": [
+      "artifact.stage9.app_shell_target_discovery_contract",
+      "artifact.stage9.app_shell_target_selection_decision",
+      "backend_bounded_recovery_actions_if_ambiguous.json"
+    ],
+    "rationale": "The Stage 4 artifact supplies AXI facts but not a proven app-shell target or shell clock. Backend discovery must cite real board/Vivado evidence, and ambiguous target or clock evidence requires bounded approval rather than guessed names.",
+    "requires_approval": true,
+    "stage": "backend_board",
+    "tool_roles": [
+      "app_shell_target_discovery_contract",
+      "case_board_interface_discovery",
+      "app_shell_target_hint_synthesis",
+      "app_shell_target_discovery_after_hint",
+      "backend_bounded_recovery_action",
+      "human_boundary_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "proceed",
+  "flow_event_index": 15,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/flow_events/015_proceed.json",
+  "stage": "parameter_binding"
+}

@@ -1,0 +1,256 @@
+{
+  "agent": "data_memory_runtime_specialist",
+  "duration_sec": 630.7258608020056,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "data_memory_runtime_specialist",
+    "approval_required_for": [
+      "Any concrete Stage 5 memory address assignment, base-address map, non-overlap policy, or address-alignment policy before runtime or board consumption.",
+      "Any change to Stage 3 stream_order, edge tensor shapes, edge bit widths, residual/branch edge semantics, or authoritative edge FIFO depths.",
+      "Any reinterpretation of the symbolic bandwidth_estimate as concrete board bandwidth, timing, throughput, or complete DDR scheduling evidence.",
+      "Any architecture, pipeline, numeric policy, cast/rounding, or major template change needed to repair a checker failure."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "transfer_count_check",
+          "data_order_trace_check"
+        ],
+        "action_type": "sacg_constraint_review_checker_run",
+        "consumes": [
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage3.pipeline_static_checks",
+          "artifact.input.target_board_profile",
+          "candidate_stage_artifact.bandwidth_estimate",
+          "candidate_stage_artifact.stream_contract_trace",
+          "candidate_stage_artifact.global_param_scope",
+          "candidate_stage_artifact.checker_results"
+        ],
+        "id": "parameter_binding.canonical_memory_stream_evidence_gate",
+        "on_failure": "Block promotion to downstream code generation; localize the violated constraint, distinguish arithmetic/count failure from evidence-binding failure, and route to bounded parameter-binding memory/runtime repair without changing Stage 3 contracts unless an approved backtrack request is opened.",
+        "produces": [
+          "parameter_binding.transfer_count_audit",
+          "axi_packing_consistency_notes",
+          "fifo_authority_boundary_report",
+          "parameter_binding.canonical_memory_stream_gate_report"
+        ],
+        "rationale": "Bind the visible static review to the exact canonical acceptance checkers requested by the subtask and produce the expected handoff artifacts without claiming hardware pass evidence.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "sacg_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "transfer_count_check",
+          "data_order_trace_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "later_stage_memory_layout_contract",
+        "consumes": [
+          "parameter_binding.transfer_count_audit",
+          "axi_packing_consistency_notes",
+          "artifact.input.target_board_profile",
+          "artifact.stage3.pipeline_plan",
+          "candidate_stage_artifact.bandwidth_estimate"
+        ],
+        "id": "stage5.generate_checked_address_map_from_transfer_audit",
+        "on_failure": "Keep runtime ABI, board package, and verification manifests blocked; do not infer addresses from Stage 4 byte counts. Return a bounded memory-layout recovery request with cited alignment/non-overlap evidence.",
+        "produces": [
+          "artifact.stage5.memory_address_map_contract",
+          "artifact.stage5.addr_map_check_report",
+          "artifact.stage5.memory_runtime_boundary_contract"
+        ],
+        "rationale": "Concrete base addresses, non-overlap, and alignment are owned by Stage 5, not by the parameter-binding artifact. This action converts approved symbolic byte/beat counts into a checked memory-layout contract only after the current-stage evidence gate passes.",
+        "requires_approval": true,
+        "stage": "code_generation",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "boundary_contract_generate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog"
+        ],
+        "action_type": "later_stage_real_tool_verification",
+        "consumes": [
+          "artifact.stage5.memory_address_map_contract",
+          "artifact.stage5.memory_runtime_boundary_contract",
+          "artifact.stage6.verification_artifact_contract",
+          "generated/chisel/runtime/runtime_config.json",
+          "parameter_binding.transfer_count_audit",
+          "axi_packing_consistency_notes"
+        ],
+        "id": "verification.single_layer_stream_transfer_liveness_check",
+        "on_failure": "Do not proceed to AXI/DDR wrapping or Vivado. Route simulator evidence to contract-guided localization at the earliest failing operator, stream edge, FIFO, or packing boundary, then perform bounded repair and rerun the failed layer.",
+        "produces": [
+          "verification/case_diagnostics/single_layer_stream_transfer_trace.json",
+          "verification/case_diagnostics/single_layer_deadlock_report.json",
+          "verification/case_diagnostics/single_layer_numeric_compare.json"
+        ],
+        "rationale": "Symbolic transfer counts and stream-order traces must be checked against generated RTL behavior before any hardware claim. This enforces the required debug loop at the connected single-transformer-layer level after leaf/operator evidence is available and before AXI/DDR board wrapping.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun"
+        ],
+        "action_type": "conditional_bounded_repair",
+        "consumes": [
+          "parameter_binding.canonical_memory_stream_gate_report",
+          "candidate_stage_artifact.bandwidth_estimate",
+          "candidate_stage_artifact.stream_contract_trace",
+          "candidate_stage_artifact.global_param_scope",
+          "artifact.stage3.pipeline_static_checks"
+        ],
+        "id": "parameter_binding.bounded_memory_runtime_repair_on_gate_failure",
+        "on_failure": "Open a stage_backtrack_request if repair would require changing Stage 3 stream order, edge tensor sizes, edge FIFO depths, numeric policy, architecture, or memory-layout ownership; otherwise keep downstream consumption blocked.",
+        "produces": [
+          "parameter_binding.repaired_memory_runtime_contract_candidate",
+          "parameter_binding.failed_constraint_localization_report",
+          "parameter_binding.targeted_checker_rerun_report"
+        ],
+        "rationale": "If the canonical gate finds a transfer-count, stream-order, AXI packing, or FIFO-scope mismatch, the next action must be evidence-driven localization and bounded repair rather than manual memory or golden-output edits.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "memory_runtime_repair",
+          "targeted_failed_checker_rerun"
+        ]
+      }
+    ],
+    "observations": [
+      "The supplied sacg_memory/state summary contains no open_backtrack_requests, open_retry_requests, active_contamination_barriers, or recent contamination barriers relevant to this stage; there is no same-stage retry reconciliation blocker visible in the supplied materials.",
+      "The board memory profile used by the candidate is one AXI DDR interface with data_width_bits=512, data_bytes=64, alignment_bytes=64, and addr_width_bits=37. Every visible bandwidth_estimate row has aligned_bytes equal to axi_beats multiplied by 64 bytes, and the row sum is total_aligned_bytes_per_layer=31,202,816 bytes.",
+      "AXI beat packing is statically clean for the visible bound data paths: lanes=8 with 16-bit elements gives 128-bit lane words, and lanes=8 with 32-bit elements gives 256-bit lane words; both fit within and divide the 512-bit board AXI beat width. The activation and weight byte counts shown are all multiples of the 64-byte alignment unit.",
+      "Visible edge tensor payload sizes match the Stage 3 shapes and numeric bit widths: seq_len=16,width=896 gives 14,336 elements, which is 28,672 bytes at 16 bits and 57,344 bytes at 32 bits; seq_len=16,width=4864 gives 77,824 elements, which is 155,648 bytes at 16 bits. These byte counts appear consistently in the stream_contract_trace and the relevant symbolic bandwidth rows.",
+      "All 13 stream_contract_trace entries use the same stream_order [token,tile,lane,word]. The visible src_output_bits, dst_input_bits, and element_bits agree on each edge, including fp32 residual paths and fp16 MLP branch paths.",
+      "The candidate checker_summary reports 6 passed, 0 failed, and 0 warnings. The named internal pass checks include edge_dtype_stream_contract_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check, which support the visible static consistency review. They are not the exact canonical checker names listed in the subtask acceptance_checkers, so final promotion should wait for the canonical evidence-gate action.",
+      "FIFO/default scope is correctly bounded in the candidate: global_param_scope.fifo_depth is described as a local template default only, while Stage 3 buffer_plan owns edge FIFO depths. The fifo_contract_check summary says edge_buffers=13 and confirms that Stage 3 edge buffer depths remain authoritative.",
+      "The candidate preserves the Stage 5 boundary: bandwidth_estimate notes explicitly state that Stage 5 assigns concrete base addresses and checks non-overlap/alignment. No concrete address assignment is made in the current artifact.",
+      "clock_target_mhz=0 is recorded as an unknown board shell clock/default and is not timing evidence. The symbolic transfer counts are only static packing/count evidence, not runtime throughput, implementation, timing, liveness, or board proof.",
+      "The visible bandwidth_estimate is a per-stage static I/O/weight packing estimate, not a complete concrete memory schedule. Multi-input operators such as residual_add and activation_mul have multiple stream edges in stream_contract_trace, so the downstream transfer_count_audit must label whether branch/skip payloads are counted as stream traffic, DDR traffic, or both to avoid silent undercounting or double counting in Stage 5."
+    ],
+    "proposed_actions": [
+      "Run the canonical parameter-binding evidence gate using the exact subtask checkers and bind results to the SACG constraints before promotion to parameter_binding.evidence_gate_auditor.",
+      "Produce parameter_binding.transfer_count_audit, axi_packing_consistency_notes, and fifo_authority_boundary_report from the candidate bandwidth_estimate, stream_contract_trace, Stage 3 pipeline contracts, and board memory profile.",
+      "Preserve the Stage 5 boundary: forward aligned byte/beat counts and stream/FIFO scope notes, but do not assign concrete base addresses or memory non-overlap in Stage 4.",
+      "In Stage 5, generate and check a concrete address-map contract from the approved transfer-count audit and board alignment rules before any runtime or board package consumes memory locations.",
+      "After code generation, verify actual stream order, transfer counts, FIFO liveness, and numeric/data-order behavior in the required three-layer order: leaf/operator modules, connected single-transformer-layer kernel, then AXI/DDR wrapped board system.",
+      "On any checker failure, localize the earliest violated SACG boundary and perform bounded repair; do not modify golden outputs, loosen numeric tolerance, or alter Stage 3 stream/FIFO contracts without an approved backtrack request."
+    ],
+    "risks": [
+      "Current-stage evidence-binding risk: the supplied checker_results are passing, but the exact canonical subtask checkers sacg_static_check, stream_plan_check, memory_runtime_plan_check, transfer_count_check, and data_order_trace_check are not shown as run by name. This blocks treating the candidate as a final checked contract until the evidence gate records those results or an approved checker mapping.",
+      "Downstream-consumption risk: if a later stage treats the symbolic per-stage bandwidth_estimate as concrete board bandwidth, timing, or a complete DDR schedule, it would overclaim evidence. The artifact must remain labeled as static transfer-count and AXI packing sanity only.",
+      "Memory-layout risk deferred to Stage 5: no concrete base addresses, non-overlap proof, or address alignment map exists in Stage 4 by design, so runtime or board artifacts must not infer addresses from the symbolic byte counts alone.",
+      "Transfer-count semantic risk for fan-in stages: residual and activation-multiply branch inputs are explicit stream edges, but the per-stage bandwidth table is not a per-edge transaction list. Stage 5 memory scheduling must consume the canonical transfer_count_audit rather than guessing how these fan-in tensors map to DDR or FIFOs.",
+      "Liveness risk deferred to later verification: FIFO authority is scoped correctly, but no real deadlock/watchdog or RTL flow-control evidence is supplied at this stage."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.target_board_profile",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage3.pipeline_static_checks",
+        "candidate_stage_artifact.bandwidth_estimate",
+        "candidate_stage_artifact.stream_contract_trace",
+        "candidate_stage_artifact.global_param_scope",
+        "candidate_stage_artifact.global_params",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.checker_results",
+        "parameter_binding.transfer_count_audit",
+        "axi_packing_consistency_notes",
+        "fifo_authority_boundary_report"
+      ],
+      "constraints": [
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.buffering.pipeline",
+        "constraint.memory_schedule.pipeline",
+        "constraint.liveness.pipeline",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.pipeline.structure",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "node.board_memory_profile.c0_ddr4_s_axi_512b_64B_align",
+        "node.block_input",
+        "node.stage_00_rms_norm_1",
+        "node.stage_01_self_attention",
+        "node.stage_02_residual_add_1",
+        "node.stage_03_rms_norm_2",
+        "node.stage_04_mlp_gate_proj",
+        "node.stage_05_mlp_up_proj",
+        "node.stage_06_activation_mul",
+        "node.stage_07_mlp_down_proj",
+        "node.stage_08_residual_add_2",
+        "node.block_output",
+        "node.stage3.buffer_plan_authority",
+        "node.parameter_binding.global_param_scope"
+      ]
+    },
+    "schema_version": "spatialaccagent.data_memory_runtime_specialist.v0",
+    "stage": "parameter_binding",
+    "status": "ready_for_canonical_evidence_gate",
+    "summary": "The visible candidate parameter-binding memory/runtime contract is arithmetically consistent at the static level with the supplied 512-bit AXI, 64-byte board memory profile, Stage 3 stream order, tensor bit widths, and FIFO authority boundary. It is not a hardware bandwidth, timing, address-map, or AXI-protocol pass. The exact canonical acceptance checker records requested by this subtask are not shown by name in checker_results, so the safe handoff is to run the evidence gate and produce the transfer-count audit, AXI packing notes, and FIFO authority report before downstream consumption."
+  },
+  "prompt_bytes": 49315,
+  "prompt_hash": "bd5c2a21d9a7617ac38ba3a26168a6e50a96ff2c15f6ea1d8cdbc05426463725",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.data_memory_runtime_specialist.v0\",\"agent\":\"data_memory_runtime_specialist\",\"stage\":\"parameter_binding\",\"status\":\"ready_for_canonical_evidence_gate\",\"summary\":\"The visible candidate parameter-binding memory/runtime contract is arithmetically consistent at the static level with the supplied 512-bit AXI, 64-byte board memory profile, Stage 3 stream order, tensor bit widths, and FIFO authority boundary. It is not a hardware bandwidth, timing, address-map, or AXI-protocol pass. The exact canonical acceptance checker records requested by this subtask are not shown by name in checker_results, so the safe handoff is to run the evidence gate and produce the transfer-count audit, AXI packing notes, and FIFO authority report before downstream consumption.\",\"sacg_focus\":{\"nodes\":[\"node.board_memory_profile.c0_ddr4_s_axi_512b_64B_align\",\"node.block_input\",\"node.stage_00_rms_norm_1\",\"node.stage_01_self_attention\",\"node.stage_02_residual_add_1\",\"node.stage_03_rms_norm_2\",\"node.stage_04_mlp_gate_proj\",\"node.stage_05_mlp_up_proj\",\"node.stage_06_activation_mul\",\"node.stage_07_mlp_down_proj\",\"node.stage_08_residual_add_2\",\"node.block_output\",\"node.stage3.buffer_plan_authority\",\"node.parameter_binding.global_param_scope\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.buffering.pipeline\",\"constraint.memory_schedule.pipeline\",\"constraint.liveness.pipeline\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.pipeline.structure\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"artifact.input.target_board_profile\",\"artifact.stage3.pipeline_plan\",\"artifact.stage3.pipeline_static_checks\",\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.global_param_scope\",\"candidate_stage_artifact.global_params\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.checker_results\",\"parameter_binding.transfer_count_audit\",\"axi_packing_consistency_notes\",\"fifo_authority_boundary_report\"]},\"observations\":[\"The supplied sacg_memory/state summary contains no open_backtrack_requests, open_retry_requests, active_contamination_barriers, or recent contamination barriers relevant to this stage; there is no same-stage retry reconciliation blocker visible in the supplied materials.\",\"The board memory profile used by the candidate is one AXI DDR interface with data_width_bits=512, data_bytes=64, alignment_bytes=64, and addr_width_bits=37. Every visible bandwidth_estimate row has aligned_bytes equal to axi_beats multiplied by 64 bytes, and the row sum is total_aligned_bytes_per_layer=31,202,816 bytes.\",\"AXI beat packing is statically clean for the visible bound data paths: lanes=8 with 16-bit elements gives 128-bit lane words, and lanes=8 with 32-bit elements gives 256-bit lane words; both fit within and divide the 512-bit board AXI beat width. The activation and weight byte counts shown are all multiples of the 64-byte alignment unit.\",\"Visible edge tensor payload sizes match the Stage 3 shapes and numeric bit widths: seq_len=16,width=896 gives 14,336 elements, which is 28,672 bytes at 16 bits and 57,344 bytes at 32 bits; seq_len=16,width=4864 gives 77,824 elements, which is 155,648 bytes at 16 bits. These byte counts appear consistently in the stream_contract_trace and the relevant symbolic bandwidth rows.\",\"All 13 stream_contract_trace entries use the same stream_order [token,tile,lane,word]. The visible src_output_bits, dst_input_bits, and element_bits agree on each edge, including fp32 residual paths and fp16 MLP branch paths.\",\"The candidate checker_summary reports 6 passed, 0 failed, and 0 warnings. The named internal pass checks include edge_dtype_stream_contract_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check, which support the visible static consistency review. They are not the exact canonical checker names listed in the subtask acceptance_checkers, so final promotion should wait for the canonical evidence-gate action.\",\"FIFO/default scope is correctly bounded in the candidate: global_param_scope.fifo_depth is described as a local template default only, while Stage 3 buffer_plan owns edge FIFO depths. The fifo_contract_check summary says edge_buffers=13 and confirms that Stage 3 edge buffer depths remain authoritative.\",\"The candidate preserves the Stage 5 boundary: bandwidth_estimate notes explicitly state that Stage 5 assigns concrete base addresses and checks non-overlap/alignment. No concrete address assignment is made in the current artifact.\",\"clock_target_mhz=0 is recorded as an unknown board shell clock/default and is not timing evidence. The symbolic transfer counts are only static packing/count evidence, not runtime throughput, implementation, timing, liveness, or board proof.\",\"The visible bandwidth_estimate is a per-stage static I/O/weight packing estimate, not a complete concrete memory schedule. Multi-input operators such as residual_add and activation_mul have multiple stream edges in stream_contract_trace, so the downstream transfer_count_audit must label whether branch/skip payloads are counted as stream traffic, DDR traffic, or both to avoid silent undercounting or double counting in Stage 5.\"],\"risks\":[\"Current-stage evidence-binding risk: the supplied checker_results are passing, but the exact canonical subtask checkers sacg_static_check, stream_plan_check, memory_runtime_plan_check, transfer_count_check, and data_order_trace_check are not shown as run by name. This blocks treating the candidate as a final checked contract until the evidence gate records those results or an approved checker mapping.\",\"Downstream-consumption risk: if a later stage treats the symbolic per-stage bandwidth_estimate as concrete board bandwidth, timing, or a complete DDR schedule, it would overclaim evidence. The artifact must remain labeled as static transfer-count and AXI packing sanity only.\",\"Memory-layout risk deferred to Stage 5: no concrete base addresses, non-overlap proof, or address alignment map exists in Stage 4 by design, so runtime or board artifacts must not infer addresses from the symbolic byte counts alone.\",\"Transfer-count semantic risk for fan-in stages: residual and activation-multiply branch inputs are explicit stream edges, but the per-stage bandwidth table is not a per-edge transaction list. Stage 5 memory scheduling must consume the canonical transfer_count_audit rather than guessing how these fan-in tensors map to DDR or FIFOs.\",\"Liveness risk deferred to later verification: FIFO authority is scoped correctly, but no real deadlock/watchdog or RTL flow-control evidence is supplied at this stage.\"],\"proposed_actions\":[\"Run the canonical parameter-binding evidence gate using the exact subtask checkers and bind results to the SACG constraints before promotion to parameter_binding.evidence_gate_auditor.\",\"Produce parameter_binding.transfer_count_audit, axi_packing_consistency_notes, and fifo_authority_boundary_report from the candidate bandwidth_estimate, stream_contract_trace, Stage 3 pipeline contracts, and board memory profile.\",\"Preserve the Stage 5 boundary: forward aligned byte/beat counts and stream/FIFO scope notes, but do not assign concrete base addresses or memory non-overlap in Stage 4.\",\"In Stage 5, generate and check a concrete address-map contract from the approved transfer-count audit and board alignment rules before any runtime or board package consumes memory locations.\",\"After code generation, verify actual stream order, transfer counts, FIFO liveness, and numeric/data-order behavior in the required three-layer order: leaf/operator modules, connected single-transformer-layer kernel, then AXI/DDR wrapped board system.\",\"On any checker failure, localize the earliest violated SACG boundary and perform bounded repair; do not modify golden outputs, loosen numeric tolerance, or alter Stage 3 stream/FIFO contracts without an approved backtrack request.\"],\"executable_actions\":[{\"id\":\"parameter_binding.canonical_memory_stream_evidence_gate\",\"stage\":\"parameter_binding\",\"action_type\":\"sacg_constraint_review_checker_run\",\"rationale\":\"Bind the visible static review to the exact canonical acceptance checkers requested by the subtask and produce the expected handoff artifacts without claiming hardware pass evidence.\",\"consumes\":[\"artifact.stage3.pipeline_plan\",\"artifact.stage3.pipeline_static_checks\",\"artifact.input.target_board_profile\",\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.global_param_scope\",\"candidate_stage_artifact.checker_results\"],\"produces\":[\"parameter_binding.transfer_count_audit\",\"axi_packing_consistency_notes\",\"fifo_authority_boundary_report\",\"parameter_binding.canonical_memory_stream_gate_report\"],\"tool_roles\":[\"sacg_static_check\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"transfer_count_check\",\"data_order_trace_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"transfer_count_check\",\"data_order_trace_check\"],\"on_failure\":\"Block promotion to downstream code generation; localize the violated constraint, distinguish arithmetic/count failure from evidence-binding failure, and route to bounded parameter-binding memory/runtime repair without changing Stage 3 contracts unless an approved backtrack request is opened.\",\"requires_approval\":false},{\"id\":\"stage5.generate_checked_address_map_from_transfer_audit\",\"stage\":\"code_generation\",\"action_type\":\"later_stage_memory_layout_contract\",\"rationale\":\"Concrete base addresses, non-overlap, and alignment are owned by Stage 5, not by the parameter-binding artifact. This action converts approved symbolic byte/beat counts into a checked memory-layout contract only after the current-stage evidence gate passes.\",\"consumes\":[\"parameter_binding.transfer_count_audit\",\"axi_packing_consistency_notes\",\"artifact.input.target_board_profile\",\"artifact.stage3.pipeline_plan\",\"candidate_stage_artifact.bandwidth_estimate\"],\"produces\":[\"artifact.stage5.memory_address_map_contract\",\"artifact.stage5.addr_map_check_report\",\"artifact.stage5.memory_runtime_boundary_contract\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"boundary_contract_generate\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"boundary_contract_check\"],\"on_failure\":\"Keep runtime ABI, board package, and verification manifests blocked; do not infer addresses from Stage 4 byte counts. Return a bounded memory-layout recovery request with cited alignment/non-overlap evidence.\",\"requires_approval\":true},{\"id\":\"verification.single_layer_stream_transfer_liveness_check\",\"stage\":\"verification\",\"action_type\":\"later_stage_real_tool_verification\",\"rationale\":\"Symbolic transfer counts and stream-order traces must be checked against generated RTL behavior before any hardware claim. This enforces the required debug loop at the connected single-transformer-layer level after leaf/operator evidence is available and before AXI/DDR board wrapping.\",\"consumes\":[\"artifact.stage5.memory_address_map_contract\",\"artifact.stage5.memory_runtime_boundary_contract\",\"artifact.stage6.verification_artifact_contract\",\"generated/chisel/runtime/runtime_config.json\",\"parameter_binding.transfer_count_audit\",\"axi_packing_consistency_notes\"],\"produces\":[\"verification/case_diagnostics/single_layer_stream_transfer_trace.json\",\"verification/case_diagnostics/single_layer_deadlock_report.json\",\"verification/case_diagnostics/single_layer_numeric_compare.json\"],\"tool_roles\":[\"case_single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\"],\"acceptance_checkers\":[\"case_single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\"],\"on_failure\":\"Do not proceed to AXI/DDR wrapping or Vivado. Route simulator evidence to contract-guided localization at the earliest failing operator, stream edge, FIFO, or packing boundary, then perform bounded repair and rerun the failed layer.\",\"requires_approval\":false},{\"id\":\"parameter_binding.bounded_memory_runtime_repair_on_gate_failure\",\"stage\":\"parameter_binding\",\"action_type\":\"conditional_bounded_repair\",\"rationale\":\"If the canonical gate finds a transfer-count, stream-order, AXI packing, or FIFO-scope mismatch, the next action must be evidence-driven localization and bounded repair rather than manual memory or golden-output edits.\",\"consumes\":[\"parameter_binding.canonical_memory_stream_gate_report\",\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.global_param_scope\",\"artifact.stage3.pipeline_static_checks\"],\"produces\":[\"parameter_binding.repaired_memory_runtime_contract_candidate\",\"parameter_binding.failed_constraint_localization_report\",\"parameter_binding.targeted_checker_rerun_report\"],\"tool_roles\":[\"failure_slice_localization\",\"causal_repair_context_pack\",\"memory_runtime_repair\",\"targeted_failed_checker_rerun\"],\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"repair_boundary_check\",\"targeted_failed_checker_rerun\"],\"on_failure\":\"Open a stage_backtrack_request if repair would require changing Stage 3 stream order, edge tensor sizes, edge FIFO depths, numeric policy, architecture, or memory-layout ownership; otherwise keep downstream consumption blocked.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any concrete Stage 5 memory address assignment, base-address map, non-overlap policy, or address-alignment policy before runtime or board consumption.\",\"Any change to Stage 3 stream_order, edge tensor shapes, edge bit widths, residual/branch edge semantics, or authoritative edge FIFO depths.\",\"Any reinterpretation of the symbolic bandwidth_estimate as concrete board bandwidth, timing, throughput, or complete DDR scheduling evidence.\",\"Any architecture, pipeline, numeric policy, cast/rounding, or major template change needed to repair a checker failure.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/data_memory_runtime_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/data_memory_runtime_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "parameter_binding.stream and memory interface engineer",
+  "used_fallback": false
+}

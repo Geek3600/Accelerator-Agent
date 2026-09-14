@@ -1,0 +1,287 @@
+{
+  "agent": "parameter_binding_evidence_gate_agent",
+  "duration_sec": 286.3522515839868,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "parameter_binding_evidence_gate_agent",
+    "approval_required_for": [
+      "Any architecture or pipeline topology change beyond the checked Stage 3 pipeline structure",
+      "Any numeric-policy change to dtype, cast points, rounding, saturation, residual precision, or comparison tolerance",
+      "Any Stage 5 memory layout, base-address, DDR partition, or runtime ABI assignment/change before promotion of memory/runtime artifacts",
+      "Any major template implementation change outside trusted template parameters and bounded glue code",
+      "Any board/app-shell target, shell clock, or deployment binding chosen from ambiguous evidence"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "parameter_binding_static_check",
+          "verification_artifact_contract_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "stage_retry_request_check",
+          "stage_backtrack_request_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "verification_evidence_gate",
+        "consumes": [
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.checker_summary",
+          "candidate_stage_artifact.stage_gate_policy",
+          "candidate_stage_artifact.bindings",
+          "candidate_stage_artifact.numeric_binding_plan",
+          "candidate_stage_artifact.stream_contract_trace",
+          "candidate_stage_artifact.bandwidth_estimate",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "parameter_binding.finalize_stage_gate_bundle",
+        "on_failure": "Block promotion; emit a bounded retry, backtrack, or trust-barrier recommendation naming the failed checker and violated constraints. Do not alter golden outputs, loosen tolerance, or claim hardware pass.",
+        "produces": [
+          "parameter_binding_stage_gate_decision.json",
+          "checker_evidence_matrix.json",
+          "cross_layer_consistency_closure_report.json",
+          "bounded_repair_routing_if_needed.json",
+          "sacg_memory_update_recommendation.json"
+        ],
+        "rationale": "The visible candidate satisfies current-stage criteria, but downstream consumption needs a materialized gate bundle and standard SACG/artifact-boundary checks rather than relying on prose evidence.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "sacg_validate",
+          "parameter_binding_static_check",
+          "verification_artifact_contract_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "stage_retry_request",
+          "stage_backtrack_request",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "code_generation_manifest_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "later_stage_handoff",
+        "consumes": [
+          "parameter_binding_stage_gate_decision.json",
+          "candidate_stage_artifact.bandwidth_estimate",
+          "candidate_stage_artifact.stream_contract_trace",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage3.pipeline_static_checks",
+          "artifact.input.target_board_profile"
+        ],
+        "id": "parameter_binding.handoff_stage5_memory_runtime_obligations",
+        "on_failure": "Keep memory/runtime handoff blocked; localize to address map, transfer count, memory schedule, or elaboration contract. Route to memory_runtime_repair, and require approval for any memory-layout or board-memory partition change.",
+        "produces": [
+          "memory_runtime_plan.json",
+          "addr_map.json",
+          "transfer_count_reconciliation.json",
+          "chisel_elaboration_manifest.json"
+        ],
+        "rationale": "The candidate exposes static transfer counts and board AXI facts only; Stage 5 must assign concrete memory layout, address ranges, non-overlap/alignment, and elaboration evidence before runtime use.",
+        "requires_approval": true,
+        "stage": "memory_runtime_planning",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "code_generation_manifest_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "codegen_contract_check",
+          "codegen_compile_gate_check",
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "data_order_trace_check",
+          "numeric_compare"
+        ],
+        "action_type": "later_stage_handoff",
+        "consumes": [
+          "parameter_binding_stage_gate_decision.json",
+          "candidate_stage_artifact.bindings",
+          "candidate_stage_artifact.numeric_binding_plan",
+          "candidate_stage_artifact.stream_contract_trace",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.numeric_policy",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "parameter_binding.handoff_codegen_numeric_stream_obligations",
+        "on_failure": "Do not proceed to simulation, synthesis, or board steps; localize the failure to template binding, cast/rounding behavior, stream order, or generated-code contract. Numeric-policy or major template changes require approval.",
+        "produces": [
+          "code_generation_manifest.json",
+          "generated_chisel_parameter_manifest.json",
+          "verification_artifact_contract.json",
+          "numeric_data_order_obligation_trace.json"
+        ],
+        "rationale": "Generated implementation must preserve the checked parameter bindings, dtype casts, stream order, and numeric policy; current evidence is static and does not prove functional simulation or hardware correctness.",
+        "requires_approval": false,
+        "stage": "code_generation_verification",
+        "tool_roles": [
+          "codegen_contract_check",
+          "codegen_compile_gate",
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "data_order_trace_check",
+          "numeric_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "targeted_failed_checker_rerun",
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "stream_plan_check",
+          "transfer_count_check",
+          "repair_boundary_check",
+          "stage_retry_request_check",
+          "stage_backtrack_request_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "bounded_repair_routing",
+        "consumes": [
+          "checker_evidence_matrix.json",
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.stage_gate_policy",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "parameter_binding.route_failed_binding_evidence",
+        "on_failure": "Keep parameter_binding unpromoted; create an active contamination barrier if evidence cannot be trusted, or a backtrack request if model, numeric, architecture, pipeline, memory layout, or template semantics would need to change.",
+        "produces": [
+          "bounded_repair_routing_if_needed.json",
+          "stage_retry_request_if_failed.json",
+          "stage_backtrack_request_if_semantic_change_needed.json",
+          "stage_artifact_trust_barrier_if_contaminated.json"
+        ],
+        "rationale": "No current failed checker is visible, but the gate must define a bounded route for any failed meta-checker or targeted rerun without unbounded repair or semantic redesign.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "targeted_failed_checker_rerun",
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "stream_plan_check",
+          "transfer_count_check",
+          "bounded_template_repair",
+          "stage_retry_request",
+          "stage_backtrack_request",
+          "stage_artifact_trust_barrier"
+        ]
+      }
+    ],
+    "observations": [
+      "Stage-gate acceptance item 1 is satisfied by visible evidence: parameter_stage_numeric_contract_check passed with bindings=9 and edge_dtype_stream_contract_check passed with edges=13; per-stage input/output bit widths in the stream_contract_trace match the binding plan across model, shape, numeric, and data-order boundaries.",
+      "Stage-gate acceptance item 2 is satisfied by visible evidence: tile_override_legality_check passed and the candidate explicitly states per-stage tile_k/tile_m/tile_n overrides are authoritative while global tile parameters are defaults only.",
+      "Stage-gate acceptance item 3 is satisfied by visible evidence: stream_packing_axi_check passed for a 512-bit AXI interface; lanes and bound bit widths are therefore accepted for static AXI packing at this stage.",
+      "Stage-gate acceptance item 4 is satisfied by visible evidence: bandwidth_memory_estimate_check passed with total_aligned_bytes_per_layer=31202816, per-stage aligned byte and AXI beat counts are present, and the artifact states these are static transfer-count sanity checks only, not board bandwidth, timing, synthesis, or hardware-pass evidence.",
+      "Stage-gate acceptance item 5 is satisfied by visible evidence: fifo_contract_check passed and the artifact scopes Stage 4 fifo_depth as a local template default while Stage 3 edge buffer depths remain authoritative.",
+      "Numeric binding is statically closed for this stage: fp16 activations/weights, fp32 accumulation/residual paths, cast points, eps source, and policy_id=current_run_numeric_policy.md are recorded. This is contract evidence only; generated implementation and golden comparison must still preserve the rounding/cast behavior downstream.",
+      "Resource estimates are symbolic_first_order and explicitly scoped as parameter-binding sanity checks only. clock_target_mhz=0 is correctly treated as unknown board-shell timing rather than timing evidence.",
+      "state_summary.sacg_memory_truth is the authoritative blocker set for this review and reports active_contamination_barrier_count=0, open_retry_request_count=0, and open_backtrack_request_count=0; no current SACG-memory blocker prevents promotion.",
+      "No retry_reconciliation_contract is required for this current-stage review because the authoritative blocker set has no open same-stage retry/backtrack requests and no active contamination barriers.",
+      "Standalone specialist audit filenames were not separately expanded in the prompt slice; the visible evidence for those audit classes is carried by candidate_stage_artifact bindings, numeric_binding_plan, stream_contract_trace, bandwidth_estimate, legality_errors, resource_estimate fields, and checker_results. The gate package should materialize the evidence matrix so downstream agents do not rely on prose reconstruction."
+    ],
+    "proposed_actions": [
+      "Promote the parameter_binding candidate to the next stage after the stage_orchestrator materializes parameter_binding_stage_gate_decision.json, checker_evidence_matrix.json, cross_layer_consistency_closure_report.json, bounded_repair_routing_if_needed.json, and sacg_memory_update_recommendation.json, with the declared gate checkers attached.",
+      "Handoff candidate_stage_artifact.bandwidth_estimate and stream_contract_trace to later_stage.memory_runtime_planner for Stage 5 address-map assignment, non-overlap/alignment checks, transfer-count reconciliation, and Chisel elaboration; do not treat transfer counts as board bandwidth or timing evidence.",
+      "Handoff bindings, numeric_binding_plan, and stream_contract_trace to later_stage.codegen_engineer so generated templates preserve per-stage params, dtype casts, stream order token/tile/lane/word, and Stage 3 FIFO authority.",
+      "Record in SACG memory that parameter_binding passed on static checker evidence with no active retry, backtrack, or contamination blockers, and record memory/runtime, codegen, simulation, synthesis, timing, and board checks as later-stage obligations.",
+      "If any gate meta-checker or targeted rerun fails, block promotion and route only the failing evidence slice through bounded repair: numeric/parameter failures to current-stage rebinding under the approved numeric policy; stream/FIFO contradictions to Stage 3 contract backtrack if the Stage 3 contract is wrong; AXI/transfer-count issues to transfer-count or memory-runtime repair; semantic model, numeric-policy, architecture, pipeline, memory-layout, or major template changes require approval."
+    ],
+    "risks": [
+      "Later-stage memory/runtime risk: concrete memory base addresses, non-overlap, alignment, DDR image layout, and runtime ABI are not assigned or proven by this stage; static transfer counts must be reconciled in Stage 5 before runtime use.",
+      "Later-stage implementation/numeric risk: fp16/fp32 casts, residual precision, and rounding handling must be preserved by generated Chisel and golden-reference comparison; the current static pass is not functional correctness evidence.",
+      "Later-stage resource/timing/board risk: symbolic resource estimates, clock_target_mhz=0, and bandwidth estimates do not prove Vivado synthesis, implementation timing, AXI protocol compliance, DDR behavior, or board execution.",
+      "Handoff packaging risk: if downstream tools require standalone audit files rather than embedded candidate fields, verification_artifact_contract_check must require materialized checker_evidence_matrix.json and closure reports before consumption."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.checker_summary",
+        "candidate_stage_artifact.stage_gate_policy",
+        "candidate_stage_artifact.bindings",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.stream_contract_trace",
+        "candidate_stage_artifact.bandwidth_estimate",
+        "template_numeric_binding_audit.json",
+        "stream_dtype_binding_trace.json",
+        "axi_packing_transfer_count_audit.json",
+        "dse_parameter_legality_audit.json",
+        "symbolic_resource_risk_register.json",
+        "later_stage_evidence_obligation_list.json",
+        "state_summary.sacg_memory_truth"
+      ],
+      "constraints": [
+        "constraint.parameter.binding",
+        "constraint.numeric.policy",
+        "constraint.stream.order",
+        "constraint.cross_layer.input_consistency",
+        "constraint.verification.plan",
+        "constraint.human.boundary",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.beat.pipeline",
+        "constraint.buffering.pipeline",
+        "constraint.memory_schedule.pipeline",
+        "constraint.resource.estimate",
+        "constraint.bandwidth.estimate"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output",
+        "board_axi.c0_ddr4_s_axi",
+        "ddr4_channel_0"
+      ]
+    },
+    "schema_version": "spatialaccagent.parameter_binding_evidence_gate.v0",
+    "stage": "parameter_binding",
+    "status": "pass",
+    "summary": "Current-stage parameter-binding evidence satisfies the supplied stage_gate_policy on visible artifacts: checker_summary reports 6 passed, 0 failed, 0 errors; all 9 bindings are ready with empty legality_errors; 13 stream edges have checked dtype/stream contracts; AXI packing and symbolic transfer counts are present and explicitly scoped as non-hardware evidence; state_summary.sacg_memory_truth reports no active contamination barriers, retry requests, or backtrack requests. Recommend promotion to the next stage after standard gate packaging, while preserving memory/runtime, codegen, simulation, synthesis, timing, and board evidence as later-stage obligations."
+  },
+  "prompt_bytes": 55376,
+  "prompt_hash": "be7ea39ce531b069597684463bc430e2142b790e09a0d82c617c3ec71be53c5b",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.parameter_binding_evidence_gate.v0\",\"agent\":\"parameter_binding_evidence_gate_agent\",\"stage\":\"parameter_binding\",\"status\":\"pass\",\"summary\":\"Current-stage parameter-binding evidence satisfies the supplied stage_gate_policy on visible artifacts: checker_summary reports 6 passed, 0 failed, 0 errors; all 9 bindings are ready with empty legality_errors; 13 stream edges have checked dtype/stream contracts; AXI packing and symbolic transfer counts are present and explicitly scoped as non-hardware evidence; state_summary.sacg_memory_truth reports no active contamination barriers, retry requests, or backtrack requests. Recommend promotion to the next stage after standard gate packaging, while preserving memory/runtime, codegen, simulation, synthesis, timing, and board evidence as later-stage obligations.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\",\"board_axi.c0_ddr4_s_axi\",\"ddr4_channel_0\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.parameter.binding\",\"constraint.numeric.policy\",\"constraint.stream.order\",\"constraint.cross_layer.input_consistency\",\"constraint.verification.plan\",\"constraint.human.boundary\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.beat.pipeline\",\"constraint.buffering.pipeline\",\"constraint.memory_schedule.pipeline\",\"constraint.resource.estimate\",\"constraint.bandwidth.estimate\"],\"artifacts\":[\"candidate_stage_artifact\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.checker_summary\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.bindings\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.bandwidth_estimate\",\"template_numeric_binding_audit.json\",\"stream_dtype_binding_trace.json\",\"axi_packing_transfer_count_audit.json\",\"dse_parameter_legality_audit.json\",\"symbolic_resource_risk_register.json\",\"later_stage_evidence_obligation_list.json\",\"state_summary.sacg_memory_truth\"]},\"observations\":[\"Stage-gate acceptance item 1 is satisfied by visible evidence: parameter_stage_numeric_contract_check passed with bindings=9 and edge_dtype_stream_contract_check passed with edges=13; per-stage input/output bit widths in the stream_contract_trace match the binding plan across model, shape, numeric, and data-order boundaries.\",\"Stage-gate acceptance item 2 is satisfied by visible evidence: tile_override_legality_check passed and the candidate explicitly states per-stage tile_k/tile_m/tile_n overrides are authoritative while global tile parameters are defaults only.\",\"Stage-gate acceptance item 3 is satisfied by visible evidence: stream_packing_axi_check passed for a 512-bit AXI interface; lanes and bound bit widths are therefore accepted for static AXI packing at this stage.\",\"Stage-gate acceptance item 4 is satisfied by visible evidence: bandwidth_memory_estimate_check passed with total_aligned_bytes_per_layer=31202816, per-stage aligned byte and AXI beat counts are present, and the artifact states these are static transfer-count sanity checks only, not board bandwidth, timing, synthesis, or hardware-pass evidence.\",\"Stage-gate acceptance item 5 is satisfied by visible evidence: fifo_contract_check passed and the artifact scopes Stage 4 fifo_depth as a local template default while Stage 3 edge buffer depths remain authoritative.\",\"Numeric binding is statically closed for this stage: fp16 activations/weights, fp32 accumulation/residual paths, cast points, eps source, and policy_id=current_run_numeric_policy.md are recorded. This is contract evidence only; generated implementation and golden comparison must still preserve the rounding/cast behavior downstream.\",\"Resource estimates are symbolic_first_order and explicitly scoped as parameter-binding sanity checks only. clock_target_mhz=0 is correctly treated as unknown board-shell timing rather than timing evidence.\",\"state_summary.sacg_memory_truth is the authoritative blocker set for this review and reports active_contamination_barrier_count=0, open_retry_request_count=0, and open_backtrack_request_count=0; no current SACG-memory blocker prevents promotion.\",\"No retry_reconciliation_contract is required for this current-stage review because the authoritative blocker set has no open same-stage retry/backtrack requests and no active contamination barriers.\",\"Standalone specialist audit filenames were not separately expanded in the prompt slice; the visible evidence for those audit classes is carried by candidate_stage_artifact bindings, numeric_binding_plan, stream_contract_trace, bandwidth_estimate, legality_errors, resource_estimate fields, and checker_results. The gate package should materialize the evidence matrix so downstream agents do not rely on prose reconstruction.\"],\"risks\":[\"Later-stage memory/runtime risk: concrete memory base addresses, non-overlap, alignment, DDR image layout, and runtime ABI are not assigned or proven by this stage; static transfer counts must be reconciled in Stage 5 before runtime use.\",\"Later-stage implementation/numeric risk: fp16/fp32 casts, residual precision, and rounding handling must be preserved by generated Chisel and golden-reference comparison; the current static pass is not functional correctness evidence.\",\"Later-stage resource/timing/board risk: symbolic resource estimates, clock_target_mhz=0, and bandwidth estimates do not prove Vivado synthesis, implementation timing, AXI protocol compliance, DDR behavior, or board execution.\",\"Handoff packaging risk: if downstream tools require standalone audit files rather than embedded candidate fields, verification_artifact_contract_check must require materialized checker_evidence_matrix.json and closure reports before consumption.\"],\"proposed_actions\":[\"Promote the parameter_binding candidate to the next stage after the stage_orchestrator materializes parameter_binding_stage_gate_decision.json, checker_evidence_matrix.json, cross_layer_consistency_closure_report.json, bounded_repair_routing_if_needed.json, and sacg_memory_update_recommendation.json, with the declared gate checkers attached.\",\"Handoff candidate_stage_artifact.bandwidth_estimate and stream_contract_trace to later_stage.memory_runtime_planner for Stage 5 address-map assignment, non-overlap/alignment checks, transfer-count reconciliation, and Chisel elaboration; do not treat transfer counts as board bandwidth or timing evidence.\",\"Handoff bindings, numeric_binding_plan, and stream_contract_trace to later_stage.codegen_engineer so generated templates preserve per-stage params, dtype casts, stream order token/tile/lane/word, and Stage 3 FIFO authority.\",\"Record in SACG memory that parameter_binding passed on static checker evidence with no active retry, backtrack, or contamination blockers, and record memory/runtime, codegen, simulation, synthesis, timing, and board checks as later-stage obligations.\",\"If any gate meta-checker or targeted rerun fails, block promotion and route only the failing evidence slice through bounded repair: numeric/parameter failures to current-stage rebinding under the approved numeric policy; stream/FIFO contradictions to Stage 3 contract backtrack if the Stage 3 contract is wrong; AXI/transfer-count issues to transfer-count or memory-runtime repair; semantic model, numeric-policy, architecture, pipeline, memory-layout, or major template changes require approval.\"],\"executable_actions\":[{\"id\":\"parameter_binding.finalize_stage_gate_bundle\",\"stage\":\"parameter_binding\",\"action_type\":\"verification_evidence_gate\",\"rationale\":\"The visible candidate satisfies current-stage criteria, but downstream consumption needs a materialized gate bundle and standard SACG/artifact-boundary checks rather than relying on prose evidence.\",\"consumes\":[\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.checker_summary\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.bindings\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.bandwidth_estimate\",\"state_summary.sacg_memory_truth\"],\"produces\":[\"parameter_binding_stage_gate_decision.json\",\"checker_evidence_matrix.json\",\"cross_layer_consistency_closure_report.json\",\"bounded_repair_routing_if_needed.json\",\"sacg_memory_update_recommendation.json\"],\"tool_roles\":[\"sacg_validate\",\"parameter_binding_static_check\",\"verification_artifact_contract_check\",\"repair_boundary_check\",\"human_boundary_check\",\"stage_retry_request\",\"stage_backtrack_request\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"sacg_static_check\",\"parameter_binding_static_check\",\"verification_artifact_contract_check\",\"repair_boundary_check\",\"human_boundary_check\",\"stage_retry_request_check\",\"stage_backtrack_request_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Block promotion; emit a bounded retry, backtrack, or trust-barrier recommendation naming the failed checker and violated constraints. Do not alter golden outputs, loosen tolerance, or claim hardware pass.\",\"requires_approval\":false},{\"id\":\"parameter_binding.handoff_stage5_memory_runtime_obligations\",\"stage\":\"memory_runtime_planning\",\"action_type\":\"later_stage_handoff\",\"rationale\":\"The candidate exposes static transfer counts and board AXI facts only; Stage 5 must assign concrete memory layout, address ranges, non-overlap/alignment, and elaboration evidence before runtime use.\",\"consumes\":[\"parameter_binding_stage_gate_decision.json\",\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.stream_contract_trace\",\"artifact.stage3.pipeline_plan\",\"artifact.stage3.pipeline_static_checks\",\"artifact.input.target_board_profile\"],\"produces\":[\"memory_runtime_plan.json\",\"addr_map.json\",\"transfer_count_reconciliation.json\",\"chisel_elaboration_manifest.json\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"code_generation_manifest_static_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"code_generation_manifest_static_check\",\"sacg_static_check\"],\"on_failure\":\"Keep memory/runtime handoff blocked; localize to address map, transfer count, memory schedule, or elaboration contract. Route to memory_runtime_repair, and require approval for any memory-layout or board-memory partition change.\",\"requires_approval\":true},{\"id\":\"parameter_binding.handoff_codegen_numeric_stream_obligations\",\"stage\":\"code_generation_verification\",\"action_type\":\"later_stage_handoff\",\"rationale\":\"Generated implementation must preserve the checked parameter bindings, dtype casts, stream order, and numeric policy; current evidence is static and does not prove functional simulation or hardware correctness.\",\"consumes\":[\"parameter_binding_stage_gate_decision.json\",\"candidate_stage_artifact.bindings\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.stream_contract_trace\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.numeric_policy\",\"artifact.input.tool_protocols\"],\"produces\":[\"code_generation_manifest.json\",\"generated_chisel_parameter_manifest.json\",\"verification_artifact_contract.json\",\"numeric_data_order_obligation_trace.json\"],\"tool_roles\":[\"codegen_contract_check\",\"codegen_compile_gate\",\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"data_order_trace_check\",\"numeric_compare\"],\"acceptance_checkers\":[\"codegen_contract_check\",\"codegen_compile_gate_check\",\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"data_order_trace_check\",\"numeric_compare\"],\"on_failure\":\"Do not proceed to simulation, synthesis, or board steps; localize the failure to template binding, cast/rounding behavior, stream order, or generated-code contract. Numeric-policy or major template changes require approval.\",\"requires_approval\":false},{\"id\":\"parameter_binding.route_failed_binding_evidence\",\"stage\":\"parameter_binding\",\"action_type\":\"bounded_repair_routing\",\"rationale\":\"No current failed checker is visible, but the gate must define a bounded route for any failed meta-checker or targeted rerun without unbounded repair or semantic redesign.\",\"consumes\":[\"checker_evidence_matrix.json\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.stage_gate_policy\",\"state_summary.sacg_memory_truth\"],\"produces\":[\"bounded_repair_routing_if_needed.json\",\"stage_retry_request_if_failed.json\",\"stage_backtrack_request_if_semantic_change_needed.json\",\"stage_artifact_trust_barrier_if_contaminated.json\"],\"tool_roles\":[\"targeted_failed_checker_rerun\",\"failure_slice_localization\",\"causal_repair_context_pack\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"stream_plan_check\",\"transfer_count_check\",\"bounded_template_repair\",\"stage_retry_request\",\"stage_backtrack_request\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"targeted_failed_checker_rerun\",\"failure_localization_check\",\"causal_repair_context_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"stream_plan_check\",\"transfer_count_check\",\"repair_boundary_check\",\"stage_retry_request_check\",\"stage_backtrack_request_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Keep parameter_binding unpromoted; create an active contamination barrier if evidence cannot be trusted, or a backtrack request if model, numeric, architecture, pipeline, memory layout, or template semantics would need to change.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any architecture or pipeline topology change beyond the checked Stage 3 pipeline structure\",\"Any numeric-policy change to dtype, cast points, rounding, saturation, residual precision, or comparison tolerance\",\"Any Stage 5 memory layout, base-address, DDR partition, or runtime ABI assignment/change before promotion of memory/runtime artifacts\",\"Any major template implementation change outside trusted template parameters and bounded glue code\",\"Any board/app-shell target, shell clock, or deployment binding chosen from ambiguous evidence\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/parameter_binding_evidence_gate_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/parameter_binding_evidence_gate_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "parameter_binding.checker evidence and repair-boundary auditor",
+  "used_fallback": false
+}

@@ -1,0 +1,346 @@
+{
+  "agent": "verification_repair_specialist",
+  "duration_sec": 1386.036672088012,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "verification_repair_specialist",
+    "approval_required_for": [
+      "Any architecture, pipeline, memory layout, numeric policy, golden-output, tolerance, or major-template change proposed after localization.",
+      "Any promotion or pass claim beyond operator-leaf closure, including single-transformer-layer, multilayer, AXI/DDR, bitstream, or board-runtime status.",
+      "Closing retry_request.0001 or releasing contamination_barrier.0001, contamination_barrier.0002, or contamination_barrier.0003; this specialist may classify evidence but may not close the retry or barriers.",
+      "Any Stage6 backtrack that changes the verification artifact contract rather than producing a bounded Stage7 retry with the existing accepted contract."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "evidence_and_repair_classification",
+        "consumes": [
+          "artifact.stage7.verification_result",
+          "artifact.stage7.real_tool_results",
+          "artifact.stage7.debug_closure",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.llm_action_audit",
+          "state_summary.sacg_memory_truth",
+          "candidate_stage_artifact.failures",
+          "candidate_stage_artifact.diagnostics.contract_guided_debug_closure"
+        ],
+        "id": "repair.classify_stage7_failed_invariants",
+        "on_failure": "Keep Stage7 artifacts classified as planning/debug evidence only and request full diagnostic rows before any repair or promotion decision.",
+        "produces": [
+          "artifact.repair.failure_classification_matrix",
+          "artifact.repair.violated_constraint_map",
+          "artifact.repair.contamination_aware_evidence_index"
+        ],
+        "rationale": "Convert contaminated Stage7 fail summaries into a constraint-cited failure matrix and evidence index, separating current operator-leaf blockers from later-scope pending gates and from non-validated pass-like debug evidence.",
+        "requires_approval": false,
+        "stage": "repair.operator_leaf_closure",
+        "tool_roles": [
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_real_weight_artifacts",
+          "case_stage_leaf_static",
+          "artifact_hash_check",
+          "addr_map_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check"
+        ],
+        "action_type": "artifact_generation_and_static_repair",
+        "consumes": [
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.llm_action_audit",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.case_adapter"
+        ],
+        "id": "repair.materialize_operator_leaf_real_weight_artifacts",
+        "on_failure": "Classify the failure as an artifact/golden-reference or Stage6 contract incompleteness issue; do not modify RTL and hand off the exact missing or inconsistent artifact edge to repair.real_weight_leaf_artifact_engineer.",
+        "produces": [
+          "verification/qwen_real_weights/weight_manifest.json",
+          "verification/qwen_real_weights/packed_weight_manifest.json",
+          "verification/qwen_real_weights/input_manifest.json",
+          "verification/qwen_real_weights/input_activation.u32.memh",
+          "verification/qwen_real_weights/weight_prefetch.u32.memh",
+          "verification/qwen_hierarchy/real_weights.json",
+          "verification/qwen_hierarchy/stage_leaf_static.json"
+        ],
+        "rationale": "The precondition failure names missing manifests, DDR images, and hierarchy reports that are required before leaf functional/golden gates can be trusted. This is a verifier/golden-reference artifact repair within the existing Stage6 contract, not an RTL, architecture, memory-layout, or numeric-policy change.",
+        "requires_approval": false,
+        "stage": "repair.operator_leaf_closure",
+        "tool_roles": [
+          "case_weight_manifest_generate",
+          "case_real_weight_artifacts",
+          "case_stage_leaf_static",
+          "artifact_hash_check",
+          "addr_map_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "tool_protocol_check",
+          "targeted_failed_checker_rerun",
+          "verification_action_audit_check"
+        ],
+        "action_type": "checker_protocol_reconciliation",
+        "consumes": [
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage6.functional_sim_real_tool_nodes",
+          "artifact.stage6.debug_trace_manifest_schema",
+          "artifact.stage6.failure_localization_schema",
+          "artifact.stage6.llm_action_audit",
+          "artifact.stage7.real_tool_results",
+          "artifact.stage7.debug_closure",
+          "artifact.repair.failure_classification_matrix",
+          "artifact.repair.contamination_aware_evidence_index"
+        ],
+        "id": "repair.reconcile_operator_leaf_gate_protocol_order",
+        "on_failure": "Propose a bounded Stage6 verification-artifact backtrack only with the exact unsatisfied contract edge; do not bypass the failed precondition or decision gate.",
+        "produces": [
+          "artifact.repair.operator_leaf_gate_protocol_delta",
+          "artifact.repair.required_real_tool_evidence_index",
+          "artifact.repair.checker_order_reconciliation_report"
+        ],
+        "rationale": "The decision diagnostic indicates a checker-order mismatch: a precondition saw artifacts missing while later real-tool evidence may have materialized them. Repair the gate protocol so materialization/static gates precede dependent leaf functional/golden gates and decision logic consumes fresh required_real_tool_evidence.",
+        "requires_approval": false,
+        "stage": "repair.operator_leaf_closure",
+        "tool_roles": [
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "tool_protocol_check",
+          "targeted_failed_checker_rerun",
+          "verification_action_audit"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "targeted_failed_checker_rerun",
+          "required_real_tool_evidence_check",
+          "real_tool.boundary_contract_check",
+          "real_tool.case_leaf_functional",
+          "real_tool.case_leaf_golden_compare",
+          "verification_action_audit_check",
+          "stage_retry_request_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "targeted_real_tool_rerun",
+        "consumes": [
+          "artifact.repair.operator_leaf_gate_protocol_delta",
+          "artifact.repair.required_real_tool_evidence_index",
+          "verification/qwen_real_weights/weight_manifest.json",
+          "verification/qwen_real_weights/packed_weight_manifest.json",
+          "verification/qwen_real_weights/input_manifest.json",
+          "verification/qwen_real_weights/input_activation.u32.memh",
+          "verification/qwen_real_weights/weight_prefetch.u32.memh",
+          "verification/qwen_hierarchy/real_weights.json",
+          "verification/qwen_hierarchy/stage_leaf_static.json",
+          "artifact.stage6.verification_artifact_contract"
+        ],
+        "id": "repair.rerun_operator_leaf_closure_after_artifact_and_gate_repair",
+        "on_failure": "Enter tool-output to contract-guided localization to bounded repair for the failing operator/leaf boundary; keep retry_request.0001 open and do not advance to single-layer or board scope.",
+        "produces": [
+          "artifact.stage7_retry.verification_result",
+          "artifact.stage7_retry.real_tool_results",
+          "artifact.stage7_retry.debug_closure",
+          "artifact.stage7_retry.operator_leaf_promotion_candidate"
+        ],
+        "rationale": "After artifact materialization and gate-protocol checks pass, rerun only the current operator-leaf closure gates. A successful retry may create a candidate operator-leaf promotion evidence package, but single-layer, AXI/DDR, bitstream, and board-runtime scopes remain deferred.",
+        "requires_approval": false,
+        "stage": "stage7.verification.retry.operator_leaf_closure",
+        "tool_roles": [
+          "targeted_failed_checker_rerun",
+          "required_real_tool_evidence_check",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "verification_action_audit",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_replay_check",
+          "causal_repair_context_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare",
+          "repair_boundary_check"
+        ],
+        "action_type": "causal_localization_before_bounded_repair",
+        "consumes": [
+          "artifact.stage7_retry.real_tool_results",
+          "artifact.stage7_retry.debug_closure",
+          "artifact.stage6.failure_localization_schema",
+          "artifact.stage6.debug_trace_manifest_schema",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.design_artifact_manifest",
+          "artifact.repair.required_real_tool_evidence_index"
+        ],
+        "id": "repair.localize_true_operator_leaf_design_failure_if_rerun_fails",
+        "on_failure": "Classify as insufficient debug evidence or checker/golden-reference gap and request contract/schema repair before any template or RTL change; do not promote or skip the hierarchy.",
+        "produces": [
+          "artifact.repair.operator_leaf_causal_slice",
+          "artifact.repair.bounded_repair_candidate_list",
+          "artifact.repair.leaf_boundary_replay_trace"
+        ],
+        "rationale": "If a fresh operator-leaf real-tool retry exposes a value, order, liveness, transfer, address, or protocol failure, localize the earliest causal boundary/root candidate before any code or template repair. This distinguishes a true design defect from the current artifact/checker-order gap.",
+        "requires_approval": false,
+        "stage": "repair.operator_leaf_closure",
+        "tool_roles": [
+          "failure_slice_localization",
+          "boundary_trace_rerun",
+          "targeted_replay",
+          "causal_repair_context_pack",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "human_boundary_check",
+          "repair_boundary_check",
+          "stage_backtrack_request_check"
+        ],
+        "action_type": "human_boundary_guard",
+        "consumes": [
+          "artifact.repair.bounded_repair_candidate_list",
+          "artifact.repair.operator_leaf_causal_slice",
+          "artifact.stage6.verification_artifact_contract",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "repair.enforce_boundary_for_out_of_scope_changes",
+        "on_failure": "Reject the out-of-scope repair candidate and keep repair limited to operator-leaf artifact, checker-order, and localization work.",
+        "produces": [
+          "artifact.repair.boundary_approval_request_or_scope_rejection"
+        ],
+        "rationale": "Any repair candidate that changes architecture, pipeline, memory layout, numeric policy, major templates, golden outputs, tolerance, or scope beyond operator-leaf closure exceeds this specialist's authority and must be explicitly approved or rejected by the boundary/audit path.",
+        "requires_approval": true,
+        "stage": "repair.boundary_review",
+        "tool_roles": [
+          "human_boundary_check",
+          "repair_boundary_check",
+          "architecture_review",
+          "stage_backtrack_request"
+        ]
+      }
+    ],
+    "observations": [
+      "Current SACG-memory blocker set, from state_summary.sacg_memory_truth, is active contamination_barrier.0001 for artifact.stage7.verification_result, contamination_barrier.0002 for artifact.stage7.real_tool_results, contamination_barrier.0003 for artifact.stage7.debug_closure, and open retry_request.0001 for stage7.verification. There are no open backtrack requests. These Stage7 artifacts may be used for planning/debug classification but not as validated design inputs or pass evidence.",
+      "failure_classification_matrix entry: invariant.case_functional_sim_precondition_check maps to category=required_artifact_precondition_failure/evidence_gap. The visible failure lists missing weight_manifest.json, packed_weight_manifest.json, input_manifest.json, input_activation.u32.memh, weight_prefetch.u32.memh, qwen_hierarchy/real_weights.json, and qwen_hierarchy/stage_leaf_static.json. Violated constraints are constraint.verification.plan, constraint.verification.hierarchy, constraint.tool.protocols, and constraint.cross_layer.input_consistency. This blocks case_leaf_functional and case_leaf_golden_compare, but by itself does not prove an RTL design defect.",
+      "failure_classification_matrix entry: invariant.verification_agent_decision_check maps to category=checker_order_or_evidence_reconciliation_gap. The diagnostic says selected operator-leaf real-tool gates report pass while the top-level verification_result remains fail because precondition evidence reported missing artifacts that later tools appear to materialize. Violated constraints are constraint.verification.plan, constraint.tool.protocols, and constraint.human.boundary. Because current SACG memory has active barriers, no operator-leaf promotion certificate can be issued from this evidence.",
+      "The dependency_blocked list separates current operator-leaf blockers from later scopes: case_leaf_functional and case_leaf_golden_compare are current blocked gates; case_single_layer_functional, multilayer pipeline/functional, AXI/DDR interface/protocol, DDR roundtrip, bitstream, and board-runtime items are pending later verification scope, not current design failures.",
+      "candidate_stage_artifact shows contract_guided_debug_closure and hierarchical_repair_loop objects are present but compacted to key summaries. Under the role-slice policy, missing detailed rows must not be inferred as absent; downstream repair should consume the full diagnostic artifacts through failure_localization_check and causal_repair_context_check.",
+      "candidate_stage_artifact notes that not_run real tools are evidence gaps, not automatic repair failures. The visible case_vcs_functional=null is therefore not classified as a hardware failure unless the Stage6 contract requires it for the current operator-leaf retry and required_real_tool_evidence_check confirms it is missing.",
+      "No supplied real RTL/tool evidence shows a concrete liveness, numeric value, stream order, transfer count, address map, or protocol mismatch at an operator/leaf module. The earliest causal boundary visible in the supplied summary is artifact availability and gate/protocol ordering, followed by possible leaf functional replay only after artifacts are materialized and checked.",
+      "Cross-layer consistency must be preserved when repairing the missing artifacts: real and packed weights, input activation DDR image, weight prefetch DDR image, manifests, memory layout, runtime config, numeric policy, and data order must be checked together before any leaf functional or golden compare rerun is trusted."
+    ],
+    "proposed_actions": [
+      "Preserve contamination barriers on Stage7 artifacts and treat them only as planning/debug evidence until a clean Stage7 retry passes accepted current-scope checks.",
+      "Handoff to repair.real_weight_leaf_artifact_engineer to materialize and statically verify the real-weight, packed-weight, input, DDR image, real_weights.json, and stage_leaf_static.json artifacts under the Stage6 verification contract.",
+      "Handoff to repair.gate_protocol_reconciliation_engineer to repair the operator-leaf gate ordering so artifact materialization/static checks precede leaf functional/golden gates and the decision gate consumes fresh required_real_tool_evidence.",
+      "Run a targeted operator-leaf closure retry only after artifact and gate-protocol repairs pass; keep single-layer, AXI/DDR, bitstream, and board-runtime scopes deferred.",
+      "If the fresh operator-leaf retry produces a real value/order/liveness/protocol mismatch, run contract-guided localization before proposing any bounded template/RTL repair.",
+      "Handoff to repair.boundary_approval_auditor for any scope escalation, retry closure, contamination-barrier release, or repair candidate that changes architecture, pipeline, memory layout, numeric policy, major templates, golden outputs, or tolerance."
+    ],
+    "risks": [
+      "Treating contaminated Stage7 pass-like real-tool evidence as validated would violate stage_artifact_trust_barrier_check and constraint.human.boundary.",
+      "Regenerating only filenames without artifact_hash_check, addr_map_check, transfer_count_check, and numeric_compare can hide model/numeric/memory/data-order mismatches.",
+      "Repairing the gate DAG by bypassing the failed precondition or decision checks would violate constraint.verification.plan and constraint.tool.protocols.",
+      "Starting RTL/template edits before a fresh operator-leaf replay localizes a value/order/liveness/protocol mismatch risks free-form repair outside the allowed causal slice.",
+      "Advancing to single-transformer-layer, AXI/DDR, bitstream, or board-runtime verification before operator-leaf closure passes would violate constraint.verification.hierarchy.",
+      "A Stage6 backtrack is not currently open; it should only be requested if the Stage7 retry proves the verification artifact contract or tool protocol is unsatisfiable as written."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage7.verification_result",
+        "artifact.stage7.real_tool_results",
+        "artifact.stage7.debug_closure",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.llm_action_audit",
+        "artifact.stage6.stage7_gate_selector_contract",
+        "artifact.stage6.functional_sim_real_tool_nodes",
+        "artifact.stage6.debug_trace_manifest_schema",
+        "artifact.stage6.failure_localization_schema",
+        "candidate_stage_artifact.failures",
+        "candidate_stage_artifact.diagnostics.contract_guided_debug_closure",
+        "artifact.repair.failure_classification_matrix",
+        "artifact.repair.violated_constraint_map",
+        "artifact.repair.bounded_repair_candidate_list",
+        "artifact.repair.contamination_aware_evidence_index"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.verification.hierarchy",
+        "constraint.tool.protocols",
+        "constraint.cross_layer.input_consistency",
+        "constraint.human.boundary"
+      ],
+      "edges": [
+        "artifact.stage6.verification_artifact_contract -> stage7.operator_leaf_preconditions",
+        "missing real/packed/input manifests and DDR memh images -> blocks case_real_weight_artifacts and case_stage_leaf_static",
+        "case_real_weight_artifacts + case_stage_leaf_static -> gate case_leaf_functional and case_leaf_golden_compare",
+        "transition.0006 rejection -> active contamination barriers on Stage7 artifacts",
+        "operator_leaf_closure -> defer single-layer, multilayer, AXI/DDR, bitstream, and board-runtime scopes",
+        "candidate contract_guided_debug_closure -> localization input only until trust barriers are resolved"
+      ],
+      "nodes": [
+        "qwen2_spatialacc_agent_run",
+        "stage7.verification",
+        "execution_scope.operator_leaf_closure",
+        "invariant.case_functional_sim_precondition_check",
+        "invariant.verification_agent_decision_check",
+        "case_real_weight_artifacts",
+        "case_stage_leaf_static",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "candidate_stage_artifact.diagnostics.contract_guided_debug_closure",
+        "candidate_stage_artifact.diagnostics.hierarchical_repair_loop",
+        "retry_request.0001",
+        "contamination_barrier.0001",
+        "contamination_barrier.0002",
+        "contamination_barrier.0003",
+        "deferred_scope.single_transformer_layer",
+        "deferred_scope.axi_ddr_bitstream_board_runtime"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair.verification_root_cause.v0",
+    "stage": "repair.operator_leaf_closure",
+    "status": "blocked_repair_candidates_defined",
+    "summary": "The Stage7 failure is classified as an operator-leaf closure evidence/artifact and checker-order reconciliation failure, not yet a proven RTL value/order/liveness/protocol design defect. Current state_summary.sacg_memory_truth lists contamination barriers on artifact.stage7.verification_result, artifact.stage7.real_tool_results, and artifact.stage7.debug_closure plus open retry_request.0001, so Stage7 outputs are planning/debug evidence only until a retry passes accepted checks."
+  },
+  "prompt_bytes": 48905,
+  "prompt_hash": "6175495adbfe1cef1c73b0a10d45e7f10bee261f0fb6016fb5867f6aa532519d",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.repair.verification_root_cause.v0\",\"agent\":\"verification_repair_specialist\",\"stage\":\"repair.operator_leaf_closure\",\"status\":\"blocked_repair_candidates_defined\",\"summary\":\"The Stage7 failure is classified as an operator-leaf closure evidence/artifact and checker-order reconciliation failure, not yet a proven RTL value/order/liveness/protocol design defect. Current state_summary.sacg_memory_truth lists contamination barriers on artifact.stage7.verification_result, artifact.stage7.real_tool_results, and artifact.stage7.debug_closure plus open retry_request.0001, so Stage7 outputs are planning/debug evidence only until a retry passes accepted checks.\",\"sacg_focus\":{\"nodes\":[\"qwen2_spatialacc_agent_run\",\"stage7.verification\",\"execution_scope.operator_leaf_closure\",\"invariant.case_functional_sim_precondition_check\",\"invariant.verification_agent_decision_check\",\"case_real_weight_artifacts\",\"case_stage_leaf_static\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"candidate_stage_artifact.diagnostics.contract_guided_debug_closure\",\"candidate_stage_artifact.diagnostics.hierarchical_repair_loop\",\"retry_request.0001\",\"contamination_barrier.0001\",\"contamination_barrier.0002\",\"contamination_barrier.0003\",\"deferred_scope.single_transformer_layer\",\"deferred_scope.axi_ddr_bitstream_board_runtime\"],\"edges\":[\"artifact.stage6.verification_artifact_contract -> stage7.operator_leaf_preconditions\",\"missing real/packed/input manifests and DDR memh images -> blocks case_real_weight_artifacts and case_stage_leaf_static\",\"case_real_weight_artifacts + case_stage_leaf_static -> gate case_leaf_functional and case_leaf_golden_compare\",\"transition.0006 rejection -> active contamination barriers on Stage7 artifacts\",\"operator_leaf_closure -> defer single-layer, multilayer, AXI/DDR, bitstream, and board-runtime scopes\",\"candidate contract_guided_debug_closure -> localization input only until trust barriers are resolved\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.tool.protocols\",\"constraint.cross_layer.input_consistency\",\"constraint.human.boundary\"],\"artifacts\":[\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.functional_sim_real_tool_nodes\",\"artifact.stage6.debug_trace_manifest_schema\",\"artifact.stage6.failure_localization_schema\",\"candidate_stage_artifact.failures\",\"candidate_stage_artifact.diagnostics.contract_guided_debug_closure\",\"artifact.repair.failure_classification_matrix\",\"artifact.repair.violated_constraint_map\",\"artifact.repair.bounded_repair_candidate_list\",\"artifact.repair.contamination_aware_evidence_index\"]},\"observations\":[\"Current SACG-memory blocker set, from state_summary.sacg_memory_truth, is active contamination_barrier.0001 for artifact.stage7.verification_result, contamination_barrier.0002 for artifact.stage7.real_tool_results, contamination_barrier.0003 for artifact.stage7.debug_closure, and open retry_request.0001 for stage7.verification. There are no open backtrack requests. These Stage7 artifacts may be used for planning/debug classification but not as validated design inputs or pass evidence.\",\"failure_classification_matrix entry: invariant.case_functional_sim_precondition_check maps to category=required_artifact_precondition_failure/evidence_gap. The visible failure lists missing weight_manifest.json, packed_weight_manifest.json, input_manifest.json, input_activation.u32.memh, weight_prefetch.u32.memh, qwen_hierarchy/real_weights.json, and qwen_hierarchy/stage_leaf_static.json. Violated constraints are constraint.verification.plan, constraint.verification.hierarchy, constraint.tool.protocols, and constraint.cross_layer.input_consistency. This blocks case_leaf_functional and case_leaf_golden_compare, but by itself does not prove an RTL design defect.\",\"failure_classification_matrix entry: invariant.verification_agent_decision_check maps to category=checker_order_or_evidence_reconciliation_gap. The diagnostic says selected operator-leaf real-tool gates report pass while the top-level verification_result remains fail because precondition evidence reported missing artifacts that later tools appear to materialize. Violated constraints are constraint.verification.plan, constraint.tool.protocols, and constraint.human.boundary. Because current SACG memory has active barriers, no operator-leaf promotion certificate can be issued from this evidence.\",\"The dependency_blocked list separates current operator-leaf blockers from later scopes: case_leaf_functional and case_leaf_golden_compare are current blocked gates; case_single_layer_functional, multilayer pipeline/functional, AXI/DDR interface/protocol, DDR roundtrip, bitstream, and board-runtime items are pending later verification scope, not current design failures.\",\"candidate_stage_artifact shows contract_guided_debug_closure and hierarchical_repair_loop objects are present but compacted to key summaries. Under the role-slice policy, missing detailed rows must not be inferred as absent; downstream repair should consume the full diagnostic artifacts through failure_localization_check and causal_repair_context_check.\",\"candidate_stage_artifact notes that not_run real tools are evidence gaps, not automatic repair failures. The visible case_vcs_functional=null is therefore not classified as a hardware failure unless the Stage6 contract requires it for the current operator-leaf retry and required_real_tool_evidence_check confirms it is missing.\",\"No supplied real RTL/tool evidence shows a concrete liveness, numeric value, stream order, transfer count, address map, or protocol mismatch at an operator/leaf module. The earliest causal boundary visible in the supplied summary is artifact availability and gate/protocol ordering, followed by possible leaf functional replay only after artifacts are materialized and checked.\",\"Cross-layer consistency must be preserved when repairing the missing artifacts: real and packed weights, input activation DDR image, weight prefetch DDR image, manifests, memory layout, runtime config, numeric policy, and data order must be checked together before any leaf functional or golden compare rerun is trusted.\"],\"risks\":[\"Treating contaminated Stage7 pass-like real-tool evidence as validated would violate stage_artifact_trust_barrier_check and constraint.human.boundary.\",\"Regenerating only filenames without artifact_hash_check, addr_map_check, transfer_count_check, and numeric_compare can hide model/numeric/memory/data-order mismatches.\",\"Repairing the gate DAG by bypassing the failed precondition or decision checks would violate constraint.verification.plan and constraint.tool.protocols.\",\"Starting RTL/template edits before a fresh operator-leaf replay localizes a value/order/liveness/protocol mismatch risks free-form repair outside the allowed causal slice.\",\"Advancing to single-transformer-layer, AXI/DDR, bitstream, or board-runtime verification before operator-leaf closure passes would violate constraint.verification.hierarchy.\",\"A Stage6 backtrack is not currently open; it should only be requested if the Stage7 retry proves the verification artifact contract or tool protocol is unsatisfiable as written.\"],\"proposed_actions\":[\"Preserve contamination barriers on Stage7 artifacts and treat them only as planning/debug evidence until a clean Stage7 retry passes accepted current-scope checks.\",\"Handoff to repair.real_weight_leaf_artifact_engineer to materialize and statically verify the real-weight, packed-weight, input, DDR image, real_weights.json, and stage_leaf_static.json artifacts under the Stage6 verification contract.\",\"Handoff to repair.gate_protocol_reconciliation_engineer to repair the operator-leaf gate ordering so artifact materialization/static checks precede leaf functional/golden gates and the decision gate consumes fresh required_real_tool_evidence.\",\"Run a targeted operator-leaf closure retry only after artifact and gate-protocol repairs pass; keep single-layer, AXI/DDR, bitstream, and board-runtime scopes deferred.\",\"If the fresh operator-leaf retry produces a real value/order/liveness/protocol mismatch, run contract-guided localization before proposing any bounded template/RTL repair.\",\"Handoff to repair.boundary_approval_auditor for any scope escalation, retry closure, contamination-barrier release, or repair candidate that changes architecture, pipeline, memory layout, numeric policy, major templates, golden outputs, or tolerance.\"],\"executable_actions\":[{\"id\":\"repair.classify_stage7_failed_invariants\",\"stage\":\"repair.operator_leaf_closure\",\"action_type\":\"evidence_and_repair_classification\",\"rationale\":\"Convert contaminated Stage7 fail summaries into a constraint-cited failure matrix and evidence index, separating current operator-leaf blockers from later-scope pending gates and from non-validated pass-like debug evidence.\",\"consumes\":[\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"state_summary.sacg_memory_truth\",\"candidate_stage_artifact.failures\",\"candidate_stage_artifact.diagnostics.contract_guided_debug_closure\"],\"produces\":[\"artifact.repair.failure_classification_matrix\",\"artifact.repair.violated_constraint_map\",\"artifact.repair.contamination_aware_evidence_index\"],\"tool_roles\":[\"failure_slice_localization\",\"causal_repair_context_pack\",\"sacg_static_check\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"sacg_static_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Keep Stage7 artifacts classified as planning/debug evidence only and request full diagnostic rows before any repair or promotion decision.\",\"requires_approval\":false},{\"id\":\"repair.materialize_operator_leaf_real_weight_artifacts\",\"stage\":\"repair.operator_leaf_closure\",\"action_type\":\"artifact_generation_and_static_repair\",\"rationale\":\"The precondition failure names missing manifests, DDR images, and hierarchy reports that are required before leaf functional/golden gates can be trusted. This is a verifier/golden-reference artifact repair within the existing Stage6 contract, not an RTL, architecture, memory-layout, or numeric-policy change.\",\"consumes\":[\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.case_adapter\"],\"produces\":[\"verification/qwen_real_weights/weight_manifest.json\",\"verification/qwen_real_weights/packed_weight_manifest.json\",\"verification/qwen_real_weights/input_manifest.json\",\"verification/qwen_real_weights/input_activation.u32.memh\",\"verification/qwen_real_weights/weight_prefetch.u32.memh\",\"verification/qwen_hierarchy/real_weights.json\",\"verification/qwen_hierarchy/stage_leaf_static.json\"],\"tool_roles\":[\"case_weight_manifest_generate\",\"case_real_weight_artifacts\",\"case_stage_leaf_static\",\"artifact_hash_check\",\"addr_map_check\",\"verification_artifact_contract_check\",\"tool_protocol_check\"],\"acceptance_checkers\":[\"case_real_weight_artifacts\",\"case_stage_leaf_static\",\"artifact_hash_check\",\"addr_map_check\",\"verification_artifact_contract_check\",\"tool_protocol_check\"],\"on_failure\":\"Classify the failure as an artifact/golden-reference or Stage6 contract incompleteness issue; do not modify RTL and hand off the exact missing or inconsistent artifact edge to repair.real_weight_leaf_artifact_engineer.\",\"requires_approval\":false},{\"id\":\"repair.reconcile_operator_leaf_gate_protocol_order\",\"stage\":\"repair.operator_leaf_closure\",\"action_type\":\"checker_protocol_reconciliation\",\"rationale\":\"The decision diagnostic indicates a checker-order mismatch: a precondition saw artifacts missing while later real-tool evidence may have materialized them. Repair the gate protocol so materialization/static gates precede dependent leaf functional/golden gates and decision logic consumes fresh required_real_tool_evidence.\",\"consumes\":[\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.functional_sim_real_tool_nodes\",\"artifact.stage6.debug_trace_manifest_schema\",\"artifact.stage6.failure_localization_schema\",\"artifact.stage6.llm_action_audit\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\",\"artifact.repair.failure_classification_matrix\",\"artifact.repair.contamination_aware_evidence_index\"],\"produces\":[\"artifact.repair.operator_leaf_gate_protocol_delta\",\"artifact.repair.required_real_tool_evidence_index\",\"artifact.repair.checker_order_reconciliation_report\"],\"tool_roles\":[\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"tool_protocol_check\",\"targeted_failed_checker_rerun\",\"verification_action_audit\"],\"acceptance_checkers\":[\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"tool_protocol_check\",\"targeted_failed_checker_rerun\",\"verification_action_audit_check\"],\"on_failure\":\"Propose a bounded Stage6 verification-artifact backtrack only with the exact unsatisfied contract edge; do not bypass the failed precondition or decision gate.\",\"requires_approval\":false},{\"id\":\"repair.rerun_operator_leaf_closure_after_artifact_and_gate_repair\",\"stage\":\"stage7.verification.retry.operator_leaf_closure\",\"action_type\":\"targeted_real_tool_rerun\",\"rationale\":\"After artifact materialization and gate-protocol checks pass, rerun only the current operator-leaf closure gates. A successful retry may create a candidate operator-leaf promotion evidence package, but single-layer, AXI/DDR, bitstream, and board-runtime scopes remain deferred.\",\"consumes\":[\"artifact.repair.operator_leaf_gate_protocol_delta\",\"artifact.repair.required_real_tool_evidence_index\",\"verification/qwen_real_weights/weight_manifest.json\",\"verification/qwen_real_weights/packed_weight_manifest.json\",\"verification/qwen_real_weights/input_manifest.json\",\"verification/qwen_real_weights/input_activation.u32.memh\",\"verification/qwen_real_weights/weight_prefetch.u32.memh\",\"verification/qwen_hierarchy/real_weights.json\",\"verification/qwen_hierarchy/stage_leaf_static.json\",\"artifact.stage6.verification_artifact_contract\"],\"produces\":[\"artifact.stage7_retry.verification_result\",\"artifact.stage7_retry.real_tool_results\",\"artifact.stage7_retry.debug_closure\",\"artifact.stage7_retry.operator_leaf_promotion_candidate\"],\"tool_roles\":[\"targeted_failed_checker_rerun\",\"required_real_tool_evidence_check\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"verification_action_audit\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"targeted_failed_checker_rerun\",\"required_real_tool_evidence_check\",\"real_tool.boundary_contract_check\",\"real_tool.case_leaf_functional\",\"real_tool.case_leaf_golden_compare\",\"verification_action_audit_check\",\"stage_retry_request_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Enter tool-output to contract-guided localization to bounded repair for the failing operator/leaf boundary; keep retry_request.0001 open and do not advance to single-layer or board scope.\",\"requires_approval\":false},{\"id\":\"repair.localize_true_operator_leaf_design_failure_if_rerun_fails\",\"stage\":\"repair.operator_leaf_closure\",\"action_type\":\"causal_localization_before_bounded_repair\",\"rationale\":\"If a fresh operator-leaf real-tool retry exposes a value, order, liveness, transfer, address, or protocol failure, localize the earliest causal boundary/root candidate before any code or template repair. This distinguishes a true design defect from the current artifact/checker-order gap.\",\"consumes\":[\"artifact.stage7_retry.real_tool_results\",\"artifact.stage7_retry.debug_closure\",\"artifact.stage6.failure_localization_schema\",\"artifact.stage6.debug_trace_manifest_schema\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.design_artifact_manifest\",\"artifact.repair.required_real_tool_evidence_index\"],\"produces\":[\"artifact.repair.operator_leaf_causal_slice\",\"artifact.repair.bounded_repair_candidate_list\",\"artifact.repair.leaf_boundary_replay_trace\"],\"tool_roles\":[\"failure_slice_localization\",\"boundary_trace_rerun\",\"targeted_replay\",\"causal_repair_context_pack\",\"data_order_trace_check\",\"transfer_count_check\",\"numeric_compare\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"failure_localization_check\",\"targeted_replay_check\",\"causal_repair_context_check\",\"data_order_trace_check\",\"transfer_count_check\",\"numeric_compare\",\"repair_boundary_check\"],\"on_failure\":\"Classify as insufficient debug evidence or checker/golden-reference gap and request contract/schema repair before any template or RTL change; do not promote or skip the hierarchy.\",\"requires_approval\":false},{\"id\":\"repair.enforce_boundary_for_out_of_scope_changes\",\"stage\":\"repair.boundary_review\",\"action_type\":\"human_boundary_guard\",\"rationale\":\"Any repair candidate that changes architecture, pipeline, memory layout, numeric policy, major templates, golden outputs, tolerance, or scope beyond operator-leaf closure exceeds this specialist's authority and must be explicitly approved or rejected by the boundary/audit path.\",\"consumes\":[\"artifact.repair.bounded_repair_candidate_list\",\"artifact.repair.operator_leaf_causal_slice\",\"artifact.stage6.verification_artifact_contract\",\"state_summary.sacg_memory_truth\"],\"produces\":[\"artifact.repair.boundary_approval_request_or_scope_rejection\"],\"tool_roles\":[\"human_boundary_check\",\"repair_boundary_check\",\"architecture_review\",\"stage_backtrack_request\"],\"acceptance_checkers\":[\"human_boundary_check\",\"repair_boundary_check\",\"stage_backtrack_request_check\"],\"on_failure\":\"Reject the out-of-scope repair candidate and keep repair limited to operator-leaf artifact, checker-order, and localization work.\",\"requires_approval\":true}],\"approval_required_for\":[\"Any architecture, pipeline, memory layout, numeric policy, golden-output, tolerance, or major-template change proposed after localization.\",\"Any promotion or pass claim beyond operator-leaf closure, including single-transformer-layer, multilayer, AXI/DDR, bitstream, or board-runtime status.\",\"Closing retry_request.0001 or releasing contamination_barrier.0001, contamination_barrier.0002, or contamination_barrier.0003; this specialist may classify evidence but may not close the retry or barriers.\",\"Any Stage6 backtrack that changes the verification artifact contract rather than producing a bounded Stage7 retry with the existing accepted contract.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/team/llm/verification_repair_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/team/llm/verification_repair_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032)>",
+    "attempt 2: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n",
+    "attempt 3: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n",
+    "attempt 4: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair.verification root-cause engineer",
+  "used_fallback": false
+}

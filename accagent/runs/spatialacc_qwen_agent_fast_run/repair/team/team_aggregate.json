@@ -1,0 +1,1502 @@
+{
+  "approval_required_for": [
+    "Any architecture, pipeline, memory-layout, or major template change if the boundary auditor determines that bounded generated loader/harness repair is insufficient.",
+    "Any architecture, pipeline, memory-layout, or major trusted-template change needed because the existing templates lack loader, fallback-guard, or consumption-instrumentation binding hooks. Free-form RTL generation remains excluded from this role.",
+    "Any proposed change beyond bounded loader/harness glue and instrumentation that alters architecture, pipeline structure, memory layout, runtime ABI, numeric format, trusted templates, or the exact board-wrapper source set.",
+    "Any proposed change to checkpoint, input stimulus, target-model reference, numeric policy, semantic-testbench contract, or acceptance golden identity rather than repairing the loader/harness that violated it.",
+    "Any proposed major template change after bounded loader/harness repair is shown insufficient. Changes to checkpoint, stimulus, target-model expected outputs, or exact board-wrapper identity are not approvable as an in-loop repair; they require a separately authorized new verification campaign.",
+    "Any repair that exceeds existing trusted templates or changes architecture, pipeline structure, memory layout, runtime ABI, numeric representation, or deployment integration.",
+    "Any widening of the repair boundary beyond the evidenced semantic contract and generated loader/harness slice.",
+    "Backtracking to Stage6 to define explicit atol, rtol, and max_mismatch_fraction in a new immutable numeric and verification contract; the current repair loop must not invent or loosen tolerance.",
+    "Human selection and approval of explicit atol, rtol, and max_mismatch_fraction for the superseding verification contract.",
+    "Human selection and authorization of exact atol, rtol, and max_mismatch_fraction values and the resulting numeric-policy hash; values must not be chosen from DUT results or loosened during repair.",
+    "Issuance of the Stage6 backtrack that binds the approved numeric comparison decision into a new immutable contract.",
+    "Reissuing any immutable Stage6 checkpoint, stimulus, target-reference, numeric-policy, or semantic-testbench identity if actual artifact hashes cannot be reconciled to the current contract.",
+    "Selection of explicit atol, rtol, and max_mismatch_fraction values and issuance of a new immutable numeric-policy/verification contract; the current role must not invent or relax them.",
+    "Superseding the current immutable Stage6 semantic identity and functional-simulation contract to start a new repair loop after the incomplete numeric policy is corrected."
+  ],
+  "completed_subtasks": 4,
+  "decomposition_source": "llm",
+  "errors": [],
+  "event_log_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/team/event_log.jsonl",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "failure_localization_check",
+        "causal_repair_context_check",
+        "sacg_reference_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "failure_evidence_classification",
+      "consumes": [
+        "artifact.stage6.failed_node_repair_route_matrix",
+        "artifact.stage6.failure_localization_schema",
+        "artifact.stage6.canonical_gate_dag_refinement",
+        "artifact.stage6.semantic_promotion_gate_matrix",
+        "artifact.stage7.verification_result as contaminated diagnostic evidence only",
+        "artifact.stage7.real_tool_results as contaminated diagnostic evidence only",
+        "artifact.stage7.debug_closure as contaminated diagnostic evidence only",
+        "candidate_stage_artifact.failures",
+        "candidate_stage_artifact.pending_evidence",
+        "sacg_memory_truth active barriers and retry_request.0001"
+      ],
+      "id": "stage8.materialize_operator_leaf_failure_classification",
+      "on_failure": "Keep all three Stage7 artifacts quarantined, mark the localization inconclusive, and block repair authorization rather than inferring an RTL root cause.",
+      "produces": [
+        "artifact.stage8.failure_classification_matrix",
+        "artifact.stage8.causal_failure_slice",
+        "artifact.stage8.dependency_blocked_evidence_map",
+        "artifact.stage8.causal_repair_context_pack"
+      ],
+      "rationale": "Convert the rejected Stage7 diagnostics into the three declared handoff artifacts while preserving the trust barrier and mapping every failed or not-run gate to the canonical DAG and named SACG constraints.",
+      "requires_approval": false,
+      "stage": "stage8.repair",
+      "tool_roles": [
+        "failure_slice_localization",
+        "causal_repair_context_pack",
+        "sacg_reference_check",
+        "stage_artifact_trust_barrier"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "repair_boundary_check",
+        "verification_artifact_contract_check",
+        "human_boundary_check",
+        "sacg_reference_check"
+      ],
+      "action_type": "repair_boundary_audit",
+      "consumes": [
+        "artifact.stage8.failure_classification_matrix",
+        "artifact.stage8.causal_failure_slice",
+        "artifact.stage8.dependency_blocked_evidence_map",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.immutable_semantic_identity_contract",
+        "artifact.stage6.canonical_functional_sim_binding_contract",
+        "artifact.stage6.failed_node_repair_route_matrix",
+        "artifact.input.numeric_policy"
+      ],
+      "id": "stage8.audit_semantic_loader_repair_boundary",
+      "on_failure": "Authorize no RTL, harness, tolerance, architecture, pipeline, or memory-layout edit; return the incomplete boundary contract to repair.repair_boundary_auditor.",
+      "produces": [
+        "artifact.stage8.repair_boundary_decision",
+        "artifact.stage8.stage6_backtrack_disposition",
+        "artifact.stage8.bounded_loader_harness_repair_authorization"
+      ],
+      "rationale": "The smallest evidenced boundary is the semantic contract plus generated weight loader/harness. The boundary auditor must distinguish the Stage6 numeric-contract deficiency from bounded generated-artifact repair before another specialist edits anything.",
+      "requires_approval": false,
+      "stage": "stage8.repair",
+      "tool_roles": [
+        "repair_boundary_check",
+        "verification_artifact_contract_check",
+        "human_boundary_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "stage_backtrack_request_check",
+        "human_boundary_check",
+        "numeric_policy_check",
+        "verification_artifact_contract_check"
+      ],
+      "action_type": "stage_backtrack_request",
+      "consumes": [
+        "artifact.stage8.causal_failure_slice",
+        "artifact.stage8.repair_boundary_decision",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.immutable_semantic_identity_contract",
+        "artifact.input.numeric_policy",
+        "retry_request.0001"
+      ],
+      "id": "stage8.request_stage6_numeric_contract_backtrack",
+      "on_failure": "Leave retry_request.0001 and all contamination barriers active; do not insert a default tolerance, loosen a tolerance, or rerun semantic comparison under an incomplete contract.",
+      "produces": [
+        "open Stage6 backtrack request for numeric comparison contract completion",
+        "human approval packet for explicit atol/rtol/max_mismatch_fraction",
+        "supersession plan preserving checkpoint, stimulus, target-model reference, testbench boundary, and transformer-block-only scope"
+      ],
+      "rationale": "The supplied diagnostic explicitly states that atol, rtol, and max_mismatch_fraction are absent and cannot be filled during this repair loop. Multi-agent approval is required to establish a superseding immutable verification contract rather than modifying the rejected golden policy.",
+      "requires_approval": true,
+      "stage": "stage6.verification_artifacts",
+      "tool_roles": [
+        "stage_backtrack_request",
+        "human_boundary_check",
+        "numeric_policy_check",
+        "verification_artifact_contract_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "case_tb_scaffold",
+        "artifact_hash_check",
+        "verification_artifact_contract_check"
+      ],
+      "action_type": "bounded_verifier_loader_harness_repair",
+      "consumes": [
+        "approved superseding artifact.stage6.verification_artifact_contract",
+        "approved superseding artifact.stage6.immutable_semantic_identity_contract",
+        "artifact.stage6.canonical_functional_sim_binding_contract",
+        "artifact.stage6.certificate_reuse_and_target_discovery_contract",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.case_adapter",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "current immutable target checkpoint",
+        "current immutable input stimulus and provenance"
+      ],
+      "id": "stage7.prepare_fresh_operator_leaf_semantic_candidate",
+      "on_failure": "Classify missing reference execution, complete tensor catalog, explicit approved tolerance, bound loader/harness, no-fallback semantics, or consumption proof as a verifier/code-generation capability failure; do not classify hardware correctness, edit the golden, or run operator RTL gates.",
+      "produces": [
+        "verification/real_weights/full_tensor_catalog.json",
+        "verification/model_reference/reference_manifest.json",
+        "generated/memory/dut_weight_binding_manifest.json",
+        "verification/semantic_testbench/semantic_testbench_manifest.json",
+        "transformer-block-only required-tensor coverage and DUT-consumption ledger",
+        "hashed per-leaf semantic testbench scaffolds",
+        "artifact.stage7.retry_candidate.semantic_identity_hash_ledger"
+      ],
+      "rationale": "After approval and promotion of a superseding Stage6 contract, repair only the generated binding and semantic harness boundary: execute the real target model on the same immutable checkpoint and stimulus, bind complete tensor hashes, prove consumption of every required current-scope weight, eliminate fallback paths, and regenerate hashed semantic leaf scaffolds.",
+      "requires_approval": false,
+      "stage": "stage7.verification_retry_preparation",
+      "tool_roles": [
+        "bounded_template_repair",
+        "case_weight_manifest_generate",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "case_tb_scaffold_generate",
+        "artifact_hash_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "case_semantic_testbench",
+        "case_tb_scaffold",
+        "case_stage_leaf_static",
+        "boundary_contract_check",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_operator_leaf_semantic_evidence",
+        "real_weight_semantic_evidence_check",
+        "required_real_tool_evidence_check",
+        "hierarchical_verification_plan_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "targeted_failed_gate_rerun",
+      "consumes": [
+        "approved superseding artifact.stage6.verification_artifact_contract",
+        "artifact.stage7.retry_candidate.semantic_identity_hash_ledger",
+        "verification/real_weights/full_tensor_catalog.json",
+        "verification/model_reference/reference_manifest.json",
+        "verification/semantic_testbench/semantic_testbench_manifest.json",
+        "generated/memory/dut_weight_binding_manifest.json",
+        "hashed per-leaf semantic testbench scaffolds",
+        "artifact.stage5.generated_code_package"
+      ],
+      "id": "stage7.rerun_operator_leaf_closure_only",
+      "on_failure": "Do not promote, clear retry_request.0001, or schedule single-layer execution. Route fresh simulator/tool outputs to stage8.localize_first_executed_operator_failure and retain the immutable checkpoint, stimulus, reference outputs, tolerance, testbench contract, and hashes.",
+      "produces": [
+        "fresh operator-leaf real-tool logs and return codes",
+        "fresh operator-leaf RTL output and boundary traces",
+        "artifact.stage7.retry_candidate.verification_result",
+        "artifact.stage7.retry_candidate.real_tool_results",
+        "artifact.stage7.retry_candidate.debug_closure",
+        "operator-leaf promotion certificate only if all selected checkers pass"
+      ],
+      "rationale": "Enforce the first layer of the hardware repair hierarchy. Only after fresh semantic preconditions pass may the canonical operator-leaf static, functional, golden-compare, and semantic-evidence gates execute against the immutable retry identity.",
+      "requires_approval": false,
+      "stage": "stage7.verification",
+      "tool_roles": [
+        "targeted_failed_checker_rerun",
+        "case_semantic_testbench",
+        "case_tb_scaffold",
+        "case_stage_leaf_static",
+        "boundary_contract_check",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_operator_leaf_semantic_evidence",
+        "real_tool_evidence_check",
+        "stage_artifact_trust_barrier"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "failure_localization_check",
+        "targeted_replay_check",
+        "causal_repair_context_check",
+        "boundary_contract_check",
+        "data_order_trace_check"
+      ],
+      "action_type": "contract_guided_tool_failure_localization",
+      "consumes": [
+        "artifact.stage7.retry_candidate.verification_result",
+        "artifact.stage7.retry_candidate.real_tool_results",
+        "artifact.stage7.retry_candidate.debug_closure",
+        "approved superseding artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.failed_node_repair_route_matrix",
+        "immutable retry semantic identity hash ledger"
+      ],
+      "id": "stage8.localize_first_executed_operator_failure",
+      "on_failure": "Mark the hardware cause inconclusive, collect additional bounded traces under the same immutable identity, and prohibit speculative RTL edits or promotion to the connected single-transformer-layer kernel.",
+      "produces": [
+        "fresh executed-transaction failure slice",
+        "earliest failing boundary and root-candidate set",
+        "targeted replay context",
+        "bounded operator-leaf repair route or inconclusive-evidence disposition"
+      ],
+      "rationale": "If the repaired retry reaches real RTL execution and fails, identify the earliest liveness, value, order, or protocol boundary before any code edit, then authorize only a bounded operator/leaf repair followed by the same-layer rerun.",
+      "requires_approval": false,
+      "stage": "stage8.repair",
+      "tool_roles": [
+        "boundary_trace_rerun",
+        "failure_slice_localization",
+        "targeted_replay",
+        "causal_repair_context_pack"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "verification_artifact_contract_check",
+        "verification_plan_static_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "sacg_reference_check"
+      ],
+      "action_type": "verification_contract_and_backtrack_classification",
+      "consumes": [
+        "artifact.input.numeric_policy",
+        "artifact.input.tool_protocols",
+        "artifact.stage6.verification_plan",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.canonical_gate_dag_refinement",
+        "artifact.stage6.immutable_semantic_identity_contract",
+        "artifact.stage6.canonical_functional_sim_binding_contract",
+        "artifact.stage6.failed_node_repair_route_matrix",
+        "artifact.stage6.llm_action_audit",
+        "artifact.stage7.verification_result as planning/debug evidence only",
+        "artifact.stage7.real_tool_results as planning/debug evidence only",
+        "retry_request.0001"
+      ],
+      "id": "repair.audit_stage6_contract_gap_matrix",
+      "on_failure": "Keep retry_request.0001 held. Record the failing contract/checker row without converting it into an RTL repair or bypassing the failed checker.",
+      "produces": [
+        "artifact.stage8.contract_gap_matrix"
+      ],
+      "rationale": "Convert the visible checker failures into a checker-grounded gap matrix without inferring absent rows from the compact artifact slice. Rejected Stage7 artifacts are consumed only as planning/debug evidence under active trust barriers.",
+      "requires_approval": false,
+      "stage": "repair",
+      "tool_roles": [
+        "verification_artifact_contract_check",
+        "verification_plan_static_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "sacg_reference_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "stage_retry_request_check",
+        "stage_artifact_trust_barrier_check",
+        "sacg_memory_check"
+      ],
+      "action_type": "retry_precondition_hold",
+      "consumes": [
+        "retry_request.0001",
+        "artifact.stage8.contract_gap_matrix",
+        "contamination_barrier.0001",
+        "contamination_barrier.0002",
+        "contamination_barrier.0003"
+      ],
+      "id": "repair.hold_retry_and_preserve_trust_barriers",
+      "on_failure": "Block all downstream consumption and promotion; do not close the retry or clear any contamination barrier from human memory or static-script state.",
+      "produces": [
+        "artifact.stage8.retry_precondition_plan",
+        "SACG retry-hold record bound to retry_request.0001"
+      ],
+      "rationale": "The open retry cannot consume rejected artifacts as validated inputs and must not rerun until a superseding Stage6 contract and bounded evidence repairs pass. This action maintains barriers; it does not clear them.",
+      "requires_approval": false,
+      "stage": "repair",
+      "tool_roles": [
+        "stage_retry_request",
+        "stage_artifact_trust_barrier",
+        "sacg_memory_update"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "human_boundary_check",
+        "stage_backtrack_request_check"
+      ],
+      "action_type": "stage6_backtrack_and_human_boundary_draft",
+      "consumes": [
+        "artifact.input.numeric_policy",
+        "artifact.stage6.verification_plan",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.immutable_semantic_identity_contract",
+        "artifact.stage6.canonical_functional_sim_binding_contract",
+        "artifact.stage8.contract_gap_matrix",
+        "retry_request.0001"
+      ],
+      "id": "repair.draft_numeric_policy_backtrack_request",
+      "on_failure": "Leave the proposed request unactivated and keep retry_request.0001 held; do not insert default tolerance values or modify the current immutable contract.",
+      "produces": [
+        "artifact.stage8.proposed_backtrack_request",
+        "artifact.stage8.approval_required_change_set"
+      ],
+      "rationale": "The numeric policy has no explicit acceptance tolerances, and Stage6 nevertheless admitted the contract. Drafting the request is bounded, but selecting values and applying the immutable-contract change require human approval.",
+      "requires_approval": false,
+      "stage": "repair",
+      "tool_roles": [
+        "human_boundary_check",
+        "stage_backtrack_request"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "stage_backtrack_request_check",
+        "numeric_policy_check",
+        "verification_plan_static_check",
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "tool_protocol_check",
+        "artifact_hash_check",
+        "verification_action_audit_check",
+        "targeted_failed_checker_rerun",
+        "human_boundary_check"
+      ],
+      "action_type": "approved_verification_contract_supersession",
+      "consumes": [
+        "human-approved artifact.stage8.approval_required_change_set",
+        "approved artifact.stage8.proposed_backtrack_request",
+        "artifact.input.numeric_policy",
+        "artifact.stage6.verification_plan",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.canonical_gate_dag_refinement",
+        "artifact.stage6.immutable_semantic_identity_contract",
+        "artifact.stage6.canonical_functional_sim_binding_contract",
+        "artifact.stage6.llm_action_audit"
+      ],
+      "id": "stage6.apply_approved_numeric_contract_backtrack",
+      "on_failure": "Do not promote the superseding Stage6 artifacts and do not begin loader/harness repair. Return the exact failed checker to the boundary auditor; never relax the approved tolerance or alter checkpoint/reference identities.",
+      "produces": [
+        "human-approved numeric policy revision with explicit atol/rtol/max_mismatch_fraction and sha256",
+        "superseding artifact.stage6.verification_plan",
+        "superseding artifact.stage6.verification_artifact_contract",
+        "superseding artifact.stage6.canonical_gate_dag_refinement",
+        "superseding artifact.stage6.immutable_semantic_identity_contract",
+        "superseding artifact.stage6.canonical_functional_sim_binding_contract",
+        "superseding artifact.stage6.llm_action_audit",
+        "new immutable repair-loop identity record preserving checkpoint/stimulus/reference hashes"
+      ],
+      "rationale": "After explicit human authorization, create a new immutable repair-loop contract with atol, rtol, max_mismatch_fraction, and numeric-policy hash. Preserve the exact checkpoint, stimulus, independent target-reference identity, Transformer-block scope, and source hashes; this is a backtrack, not an in-loop tolerance edit.",
+      "requires_approval": true,
+      "stage": "stage6.verification_artifacts",
+      "tool_roles": [
+        "stage_backtrack_request",
+        "numeric_policy_check",
+        "verification_plan_static_check",
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "tool_protocol_check",
+        "artifact_hash_check",
+        "verification_action_audit",
+        "targeted_failed_checker_rerun"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "memory_runtime_plan_check",
+        "case_real_weight_artifacts",
+        "case_semantic_testbench",
+        "artifact_hash_check",
+        "verification_artifact_contract_check",
+        "tool_protocol_check",
+        "verification_action_audit_check"
+      ],
+      "action_type": "same_stage_bounded_loader_harness_repair",
+      "consumes": [
+        "promoted superseding artifact.stage6.verification_artifact_contract",
+        "promoted superseding artifact.stage6.immutable_semantic_identity_contract",
+        "promoted superseding artifact.stage6.canonical_functional_sim_binding_contract",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "verification/real_weights/full_tensor_catalog.json",
+        "verification/model_reference/reference_manifest.json"
+      ],
+      "id": "repair.bind_real_weights_and_semantic_harness",
+      "on_failure": "Keep operator-leaf simulation blocked. If the failure is a generated loader/harness defect, return its exact causal slice for another bounded repair. If tool_protocol_check proves the Stage6 protocol itself cannot express the required bindings, append that proven omission to the Stage6 backtrack. If repair would change architecture, pipeline, memory layout, runtime ABI, numeric policy, or trusted templates, stop and request approval rather than broadening the repair.",
+      "produces": [
+        "generated/memory/dut_weight_binding_manifest.json",
+        "generated/memory/dut_weight_loader_harness_hash_manifest.json",
+        "verification/semantic_testbench/semantic_testbench_manifest.json",
+        "verification/semantic_testbench/testbench_artifact_loading.json",
+        "verification/semantic_testbench/per_stage_harness_hash_manifest.json",
+        "verification/semantic_testbench/dut_weight_consumption_instrumentation_contract.json"
+      ],
+      "rationale": "Repair the shared generated loader/harness boundary rather than nine leaf RTL modules. The repair is limited to existing memory layout and runtime ABI: Transformer-block-only scope, all 12 required current-scope tensor hashes, exact checkpoint/reference hashes, no default or identity fallback, required testbench bindings, and instrumentation for executed per-tensor consumption.",
+      "requires_approval": false,
+      "stage": "repair",
+      "tool_roles": [
+        "memory_runtime_repair",
+        "case_weight_manifest_generate",
+        "case_tb_scaffold_generate",
+        "case_semantic_testbench",
+        "artifact_hash_check",
+        "verification_action_audit"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "case_stage_leaf_static",
+        "boundary_contract_check",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_operator_leaf_semantic_evidence",
+        "real_weight_semantic_evidence_check",
+        "required_real_tool_evidence_check",
+        "numeric_compare",
+        "artifact_hash_check"
+      ],
+      "action_type": "operator_leaf_real_weight_retry",
+      "consumes": [
+        "artifact.stage8.retry_precondition_plan",
+        "promoted superseding artifact.stage6.verification_artifact_contract",
+        "promoted superseding artifact.stage6.immutable_semantic_identity_contract",
+        "promoted superseding artifact.stage6.canonical_functional_sim_binding_contract",
+        "verification/real_weights/full_tensor_catalog.json",
+        "verification/model_reference/reference_manifest.json",
+        "verification/semantic_testbench/semantic_testbench_manifest.json",
+        "generated/memory/dut_weight_binding_manifest.json",
+        "generated/memory/dut_weight_loader_harness_hash_manifest.json"
+      ],
+      "id": "stage7.rerun_clean_operator_leaf_semantics",
+      "on_failure": "Do not promote to the connected single-transformer-layer or board layer. If failure remains a precondition or verifier deficiency, return to bounded contract/harness repair. If real tool evidence demonstrates a value, order, liveness, or protocol failure, invoke repair.localize_clean_operator_leaf_failure on the earliest causal boundary.",
+      "produces": [
+        "clean candidate artifact.stage7.verification_result",
+        "clean candidate artifact.stage7.real_tool_results",
+        "operator-leaf functional simulation logs",
+        "executed per-tensor DUT weight-consumption report",
+        "operator-leaf golden comparison report",
+        "verification/semantic_evidence/operator_leaf_functional.json"
+      ],
+      "rationale": "Execute the first verification layer only after all immutable and real-weight preconditions pass. Expected outputs must be generated by independent target-model inference on the same immutable checkpoint and stimulus, never by random data or DUT output. Executed simulation must prove each required tensor was consumed before semantic promotion.",
+      "requires_approval": false,
+      "stage": "stage7.verification",
+      "tool_roles": [
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "case_stage_leaf_static",
+        "boundary_contract_check",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_operator_leaf_semantic_evidence",
+        "required_real_tool_evidence_check",
+        "numeric_compare",
+        "artifact_hash_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "failure_localization_check",
+        "targeted_replay_check",
+        "causal_repair_context_check",
+        "repair_boundary_check",
+        "boundary_contract_check"
+      ],
+      "action_type": "conditional_contract_guided_hardware_localization",
+      "consumes": [
+        "failed clean candidate artifact.stage7.verification_result",
+        "failed clean candidate artifact.stage7.real_tool_results",
+        "operator-leaf boundary trace",
+        "promoted superseding artifact.stage6.failed_node_repair_route_matrix",
+        "promoted superseding artifact.stage6.canonical_functional_sim_binding_contract"
+      ],
+      "id": "repair.localize_clean_operator_leaf_failure",
+      "on_failure": "Keep the operator-leaf layer failed and unpromoted. Do not guess a module, perform a broad RTL rewrite, or skip to connected-layer or board verification.",
+      "produces": [
+        "verification/debug_closure/failure_localization.json",
+        "verification/debug_closure/targeted_replay.json",
+        "verification/debug_closure/causal_repair_context.json",
+        "bounded operator/leaf repair request"
+      ],
+      "rationale": "A hardware repair is legal only after clean real-tool execution demonstrates a functional or protocol failure. Localize the earliest causal boundary and produce a bounded repair context before touching operator or leaf code.",
+      "requires_approval": false,
+      "stage": "repair",
+      "tool_roles": [
+        "failure_slice_localization",
+        "boundary_trace_rerun",
+        "targeted_replay",
+        "causal_repair_context_pack",
+        "repair_boundary_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "repair_boundary_check",
+        "template_binding_static_check",
+        "parameter_binding_static_check",
+        "artifact_hash_check",
+        "codegen_contract_check"
+      ],
+      "action_type": "bounded_template_repair_classification",
+      "consumes": [
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.case_adapter",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.design_artifact_manifest",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.codegen_contract_check",
+        "artifact.stage6.immutable_semantic_identity_contract",
+        "artifact.stage6.canonical_functional_sim_binding_contract",
+        "artifact.stage7.verification_result as contamination-barred planning/debug evidence only"
+      ],
+      "id": "stage8.classify_weight_and_harness_binding_deltas",
+      "on_failure": "Mark unsupported deltas as out of bounds and route them to the repair boundary auditor for backtrack or approval. Do not generate free-form RTL, change immutable identities, or alter numeric comparison policy.",
+      "produces": [
+        "artifact.stage8.weight_binding_repair_scope",
+        "artifact.stage8.template_binding_delta_plan",
+        "artifact.stage8.semantic_harness_binding_requirements",
+        "artifact.stage8.immutable_hash_reconciliation_plan"
+      ],
+      "rationale": "Resolve the visible defects into exact existing-template parameter, manifest, loader, fallback-guard, and harness deltas while checking whether the supplied trusted templates expose every required hook. Presence of the template artifacts is established, but the compact prompt does not expose detailed hook coverage, so checker evidence is required.",
+      "requires_approval": false,
+      "stage": "stage8.repair",
+      "tool_roles": [
+        "repair_boundary_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "artifact_hash_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "stage_backtrack_request_check",
+        "human_boundary_check",
+        "numeric_policy_check",
+        "artifact_hash_check"
+      ],
+      "action_type": "numeric_policy_approval_backtrack_request",
+      "consumes": [
+        "artifact.input.numeric_policy",
+        "artifact.input.human_agent_boundary",
+        "artifact.stage6.immutable_semantic_identity_contract",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage7.verification_result as contamination-barred failure evidence only"
+      ],
+      "id": "stage8.request_approved_numeric_tolerance_contract",
+      "on_failure": "Keep semantic-testbench readiness, operator-leaf functional execution, and Stage7 promotion blocked. Do not insert default tolerances, copy values from another model, or loosen comparison criteria.",
+      "produces": [
+        "stage_backtrack_request.numeric_policy_tolerance",
+        "human approval record for atol/rtol/max_mismatch_fraction",
+        "approved Stage6 numeric-policy refinement and reissued immutable identity contracts only if approval is granted"
+      ],
+      "rationale": "The visible failure explicitly reports missing atol, rtol, and max_mismatch_fraction. This is a policy-level gap, not a template-binding value that this specialist may choose. SACG memory currently has no open backtrack request for this gap, so a bounded approved Stage6 backtrack must be created before a ready semantic harness can bind the values.",
+      "requires_approval": true,
+      "stage": "stage8.repair",
+      "tool_roles": [
+        "stage_backtrack_request",
+        "numeric_policy_check",
+        "human_boundary_check",
+        "artifact_hash_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "template_binding_static_check",
+        "parameter_binding_static_check",
+        "codegen_contract_check",
+        "codegen_package_static_check",
+        "artifact_hash_check",
+        "case_real_weight_artifacts"
+      ],
+      "action_type": "bounded_real_weight_binding_repair",
+      "consumes": [
+        "artifact.stage8.weight_binding_repair_scope",
+        "artifact.stage8.template_binding_delta_plan",
+        "artifact.stage8.immutable_hash_reconciliation_plan",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.case_adapter",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage6.immutable_semantic_identity_contract",
+        "verification/real_weights/full_tensor_catalog.json or a newly generated complete catalog from the same immutable checkpoint"
+      ],
+      "id": "stage8.regenerate_canonical_dut_weight_binding",
+      "on_failure": "Do not copy expected hashes into the manifest or mark it pass manually. If actual checkpoint/reference bytes differ, request contract backtrack; if required loader or guard hooks are absent from trusted templates, classify the repair as a major-template gap requiring approval rather than emitting RTL.",
+      "produces": [
+        "generated/memory/dut_weight_binding_manifest.json",
+        "generated/memory/dut_weight_loader_binding_manifest.json",
+        "verification/real_weights/dut_scope_tensor_coverage_report.json",
+        "verification/real_weights/fallback_guard_report.json",
+        "artifact.stage8.executed_immutable_hash_reconciliation_report"
+      ],
+      "rationale": "Use existing code-generation bindings to restore the canonical manifest path and checker-owned status; set accelerator_scope to transformer_blocks_only; derive source_checkpoint_sha256 and source_reference_sha256 from the actual immutable artifacts; bind the exact required current-scope tensor set, including all 12 tensors reported missing by the visible operator-leaf diagnostics; and fail closed on absent, default, identity, sampled, synthetic, or hash-mismatched weights. The complete checkpoint catalog must remain distinct from DUT coverage: model-tail tensors may be cataloged but embedding/tokenization, final norm, LM head/logits, and sampling must be excluded from DUT requirements.",
+      "requires_approval": false,
+      "stage": "stage8.repair",
+      "tool_roles": [
+        "bounded_template_repair",
+        "case_weight_manifest_generate",
+        "artifact_hash_check",
+        "codegen_contract_check",
+        "codegen_package_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "template_binding_static_check",
+        "codegen_contract_check",
+        "artifact_hash_check",
+        "case_semantic_testbench"
+      ],
+      "action_type": "bounded_semantic_harness_binding_repair",
+      "consumes": [
+        "artifact.stage8.semantic_harness_binding_requirements",
+        "artifact.stage6.canonical_functional_sim_binding_contract",
+        "approved and reissued immutable numeric-policy contract with explicit tolerances",
+        "immutable input stimulus manifest",
+        "immutable target-model reference manifest produced by real target-model inference on the same checkpoint and stimulus",
+        "generated/memory/dut_weight_binding_manifest.json",
+        "generated/memory/dut_weight_loader_binding_manifest.json",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout"
+      ],
+      "id": "stage8.generate_bound_semantic_harness_candidate",
+      "on_failure": "Leave the semantic testbench status incomplete and block the Stage7 retry. Never generate expected outputs randomly, derive them from RTL, use an identity/default target model, alter the golden, or change the immutable tolerance. If generated testbench hashes conflict with the immutable contract, request contract reissuance instead of rewriting expected hashes.",
+      "produces": [
+        "verification/semantic_testbench/semantic_testbench_manifest.json",
+        "verification/semantic_testbench/semantic_testbench_source_hashes.json",
+        "verification/semantic_testbench/dut_weight_binding_requirements.json",
+        "verification/semantic_testbench/dut_weight_consumption_instrumentation_manifest.json"
+      ],
+      "rationale": "Generate only trusted-template harness and glue bindings. The manifest must explicitly bind target_model_inference, the same immutable checkpoint and stimulus, the independent target-reference hash, dut_weight_binding, numeric_policy_sha256, approved atol/rtol/max_mismatch_fraction, generated source hashes, fail-closed weight loading, and per-required-tensor consumption instrumentation. This action prepares proof instrumentation; only later executed DUT evidence can prove consumption.",
+      "requires_approval": false,
+      "stage": "stage8.repair",
+      "tool_roles": [
+        "bounded_template_repair",
+        "case_tb_scaffold_generate",
+        "artifact_hash_check",
+        "codegen_contract_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "template_binding_static_check",
+        "parameter_binding_static_check",
+        "codegen_contract_check",
+        "artifact_hash_check",
+        "case_real_weight_artifacts",
+        "case_semantic_testbench"
+      ],
+      "action_type": "post_repair_static_acceptance",
+      "consumes": [
+        "artifact.stage8.weight_binding_repair_scope",
+        "artifact.stage8.template_binding_delta_plan",
+        "artifact.stage8.semantic_harness_binding_requirements",
+        "artifact.stage8.executed_immutable_hash_reconciliation_report",
+        "generated/memory/dut_weight_binding_manifest.json",
+        "generated/memory/dut_weight_loader_binding_manifest.json",
+        "verification/semantic_testbench/semantic_testbench_manifest.json",
+        "verification/semantic_testbench/semantic_testbench_source_hashes.json"
+      ],
+      "id": "stage8.run_binding_and_harness_acceptance_checks",
+      "on_failure": "Return only the failing template, parameter, hash, manifest, fallback, tensor-coverage, or harness binding slice to bounded repair. Keep the numeric policy and golden identities fixed and do not infer a hardware-value failure from a precondition failure.",
+      "produces": [
+        "artifact.stage8.template_binding_acceptance_report",
+        "artifact.stage8.weight_artifact_acceptance_report",
+        "artifact.stage8.semantic_harness_acceptance_report",
+        "artifact.stage8.repair_boundary_auditor_packet"
+      ],
+      "rationale": "Provide checker-ready evidence to repair.repair_boundary_auditor without claiming hardware correctness. These checks must establish complete required tensor hashes, immutable source identity, transformer-block-only scope, fail-closed loading, and a bound semantic harness before any same-layer functional retry is considered.",
+      "requires_approval": false,
+      "stage": "stage8.repair",
+      "tool_roles": [
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "codegen_contract_check",
+        "artifact_hash_check",
+        "case_real_weight_artifacts",
+        "case_semantic_testbench"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "stage_artifact_trust_barrier_check",
+        "stage_retry_request_check",
+        "repair_boundary_check"
+      ],
+      "action_type": "contamination_safe_retry_handoff",
+      "consumes": [
+        "sacg_memory_truth active contamination barriers contamination_barrier.0001 through contamination_barrier.0003",
+        "sacg_memory_truth open retry_request.0001",
+        "artifact.stage8.repair_boundary_auditor_packet",
+        "artifact.stage8.template_binding_acceptance_report",
+        "artifact.stage8.weight_artifact_acceptance_report",
+        "artifact.stage8.semantic_harness_acceptance_report"
+      ],
+      "id": "stage8.preserve_stage7_barriers_and_prepare_same_layer_retry",
+      "on_failure": "Keep the three Stage7 artifacts contamination-barred and retry_request.0001 open. Do not reuse historical promotion certificates or advance to the connected single-layer or board-wrapped layers.",
+      "produces": [
+        "artifact.stage8.stage7_retry_prerequisite_handoff",
+        "artifact.stage8.contamination_barrier_disposition"
+      ],
+      "rationale": "The active barriers prevent artifact.stage7.verification_result, artifact.stage7.real_tool_results, and artifact.stage7.debug_closure from being consumed as validated evidence. They do not prevent creation and audit of new Stage8 candidate repairs, but the repair boundary auditor must require approved numeric policy plus all current-stage checker passes before routing a fresh operator-leaf retry. Actual weight-consumption proof and semantic comparison remain Stage7 execution responsibilities.",
+      "requires_approval": false,
+      "stage": "stage8.repair",
+      "tool_roles": [
+        "stage_artifact_trust_barrier",
+        "stage_retry_request",
+        "repair_boundary_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "repair_boundary_check",
+        "human_boundary_check",
+        "sacg_static_check",
+        "stage_retry_request_check",
+        "stage_backtrack_request_check",
+        "stage_artifact_trust_barrier_check",
+        "verification_action_audit_check"
+      ],
+      "action_type": "repair_boundary_evidence_gate",
+      "classification": "auto-allowed",
+      "consumes": [
+        "artifact.stage8.failure_classification_matrix",
+        "artifact.stage8.causal_failure_slice",
+        "artifact.stage8.weight_binding_repair_scope",
+        "artifact.stage8.template_binding_delta_plan",
+        "artifact.stage8.contract_gap_matrix",
+        "artifact.stage8.retry_precondition_plan",
+        "retry_request.0001",
+        "contamination_barrier.0001",
+        "contamination_barrier.0002",
+        "contamination_barrier.0003",
+        "constraint.human.boundary",
+        "constraint.verification.plan",
+        "constraint.numeric.policy"
+      ],
+      "id": "stage8.materialize_repair_disposition_and_quarantine",
+      "on_failure": "Do not dispatch repair or retry; retain retry_request.0001 and all three contamination barriers and return the conflicting classification to the responsible specialist through the declared handoff.",
+      "produces": [
+        "artifact.stage8.bounded_repair_action_manifest",
+        "artifact.stage8.retry_or_backtrack_decision",
+        "artifact.stage8.contamination_safe_handoff"
+      ],
+      "rationale": "Create the authoritative non-overlapping action manifest and safe routing without treating rejected Stage7 artifacts as validated design inputs.",
+      "requires_approval": false,
+      "stage": "repair",
+      "tool_roles": [
+        "team_aggregate",
+        "repair_boundary_check",
+        "human_boundary_check",
+        "sacg_validate",
+        "stage_artifact_trust_barrier",
+        "verification_action_audit"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "human_boundary_check",
+        "numeric_policy_check",
+        "repair_boundary_check",
+        "verification_action_audit_check"
+      ],
+      "action_type": "human_numeric_policy_approval",
+      "classification": "approval-required",
+      "consumes": [
+        "artifact.input.numeric_policy",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.immutable_semantic_identity_contract",
+        "artifact.stage8.contract_gap_matrix",
+        "artifact.stage8.approval_required_change_set",
+        "constraint.human.boundary",
+        "constraint.numeric.policy"
+      ],
+      "id": "stage8.obtain_human_numeric_policy_approval",
+      "on_failure": "Keep Stage6 backtrack dispatch, loader/harness repair, and Stage7 retry blocked. Do not infer default tolerances or modify the current golden/reference artifacts.",
+      "produces": [
+        "artifact.stage8.human_approval_request",
+        "human-approved numeric comparison decision record",
+        "approved numeric-policy decision hash"
+      ],
+      "rationale": "The checker-proven absence of explicit atol, rtol, and max_mismatch_fraction is a human-owned numeric-policy gap. The agent may package the decision request but may not choose or loosen these values.",
+      "requires_approval": true,
+      "stage": "repair",
+      "tool_roles": [
+        "human_boundary_check",
+        "numeric_policy_check",
+        "team_aggregate",
+        "verification_action_audit"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "stage_backtrack_request_check",
+        "sacg_static_check",
+        "human_boundary_check",
+        "repair_boundary_check"
+      ],
+      "action_type": "stage_backtrack_request",
+      "classification": "backtrack-required",
+      "consumes": [
+        "human-approved numeric comparison decision record",
+        "approved numeric-policy decision hash",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.immutable_semantic_identity_contract",
+        "artifact.stage6.canonical_functional_sim_binding_contract",
+        "artifact.stage8.contract_gap_matrix",
+        "artifact.stage8.proposed_backtrack_request"
+      ],
+      "id": "stage8.request_stage6_verification_contract_backtrack",
+      "on_failure": "Do not repair against the incomplete contract and do not release retry_request.0001. Preserve all active contamination barriers.",
+      "produces": [
+        "artifact.stage8.proposed_backtrack_request",
+        "open SACG backtrack request targeting stage6.verification_artifacts",
+        "Stage6 refinement handoff requiring superseding immutable verification, semantic-identity, and functional-simulation binding contracts"
+      ],
+      "rationale": "After human approval, Stage6 must issue a superseding immutable contract that explicitly binds the approved numeric policy while preserving checkpoint, stimulus, target-model reference, Transformer-block scope, and semantic-testbench identity. No open backtrack request currently exists, so one must be materialized rather than assumed.",
+      "requires_approval": true,
+      "stage": "repair",
+      "tool_roles": [
+        "stage_backtrack_request",
+        "sacg_memory_update",
+        "human_boundary_check",
+        "repair_boundary_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "repair_boundary_check",
+        "template_binding_static_check",
+        "codegen_contract_check",
+        "artifact_hash_check",
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "human_boundary_check"
+      ],
+      "action_type": "bounded_template_repair",
+      "classification": "auto-allowed",
+      "consumes": [
+        "promoted superseding artifact.stage6.verification_artifact_contract",
+        "promoted superseding artifact.stage6.immutable_semantic_identity_contract",
+        "promoted superseding artifact.stage6.canonical_functional_sim_binding_contract",
+        "artifact.stage8.weight_binding_repair_scope",
+        "artifact.stage8.template_binding_delta_plan",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "immutable complete target-checkpoint tensor catalog",
+        "immutable target-model reference manifest and expected-output hashes"
+      ],
+      "id": "stage8.repair_weight_loader_and_semantic_harness",
+      "on_failure": "Do not proceed to functional simulation. If the failure is another contract gap, route back to Stage6; if repair requires a major template, architecture, pipeline, memory-layout, or runtime change, issue a human approval request. Do not substitute identity/default behavior or alter expected outputs.",
+      "preconditions": [
+        "The Stage6 backtrack request is resolved by promoted superseding contracts.",
+        "The human-approved numeric-policy hash is bound by those contracts.",
+        "Checkpoint, stimulus, target-model reference, numeric policy, tolerance, semantic-testbench contract, and board-wrapper identities are frozen for the new retry loop."
+      ],
+      "produces": [
+        "generated/memory/dut_weight_binding_manifest.json with transformer_blocks_only scope and all 12 required current-scope tensor hashes",
+        "generated/memory/dut_weight_loader_manifest.json with bound loader and harness hashes",
+        "verification/semantic_testbench/semantic_testbench_manifest.json bound to target_model_inference, dut_weight_binding, and numeric_policy_sha256",
+        "verification/semantic_testbench/dut_weight_consumption_instrumentation.json",
+        "verification/model_reference/reproduction_check.json",
+        "artifact.stage8.template_binding_delta_result"
+      ],
+      "rationale": "Repair the demonstrated loader/harness and template-binding deficiencies without changing arithmetic architecture or golden behavior. Actual immutable artifacts must be bound; merely editing manifest declarations is insufficient.",
+      "requires_approval": false,
+      "stage": "repair",
+      "tool_roles": [
+        "bounded_template_repair",
+        "case_weight_manifest_generate",
+        "case_tb_scaffold_generate",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "artifact_hash_check",
+        "codegen_contract_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "stage_retry_request_check",
+        "verification_artifact_contract_check",
+        "artifact_hash_check",
+        "repair_boundary_check",
+        "stage_artifact_trust_barrier_check",
+        "verification_action_audit_check"
+      ],
+      "action_type": "stage_retry_authorization",
+      "classification": "retry-only",
+      "consumes": [
+        "retry_request.0001",
+        "artifact.stage8.retry_or_backtrack_decision",
+        "artifact.stage8.contamination_safe_handoff",
+        "promoted superseding Stage6 verification contracts",
+        "approved numeric-policy decision hash",
+        "generated/memory/dut_weight_binding_manifest.json",
+        "generated/memory/dut_weight_loader_manifest.json",
+        "verification/semantic_testbench/semantic_testbench_manifest.json",
+        "verification/model_reference/reproduction_check.json"
+      ],
+      "id": "stage7.authorize_operator_leaf_retry",
+      "on_failure": "Leave retry_request.0001 open but unreleased, keep contamination_barrier.0001 through contamination_barrier.0003 active, and route the failed precondition to Stage6 or bounded_template_repair according to its causal class.",
+      "produces": [
+        "operator-leaf retry execution envelope with immutable artifact hashes",
+        "retry_request.0001 authorized-for-execution state without promotion",
+        "dependency gate record blocking single-layer and board scopes"
+      ],
+      "rationale": "Release retry_request.0001 for execution only after the refined contract and repaired candidate artifacts are checker-verified. Active barriers remain in force during execution and prohibit use of the rejected Stage7 artifacts as validated inputs.",
+      "requires_approval": false,
+      "stage": "stage7.verification",
+      "tool_roles": [
+        "stage_retry_request",
+        "verification_artifact_contract_check",
+        "artifact_hash_check",
+        "repair_boundary_check",
+        "verification_action_audit"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "required_real_tool_evidence_check",
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "case_stage_leaf_static",
+        "boundary_contract_check",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_operator_leaf_semantic_evidence",
+        "real_weight_semantic_evidence_check",
+        "targeted_failed_checker_rerun"
+      ],
+      "action_type": "targeted_failed_checker_rerun",
+      "classification": "retry-only",
+      "consumes": [
+        "operator-leaf retry execution envelope with immutable artifact hashes",
+        "artifact.stage5.generated_code_package",
+        "promoted superseding artifact.stage6.verification_artifact_contract",
+        "immutable target-checkpoint tensor catalog",
+        "immutable target-model reference manifest and expected-output hashes",
+        "verification/semantic_testbench/semantic_testbench_manifest.json",
+        "generated/memory/dut_weight_binding_manifest.json",
+        "generated/memory/dut_weight_loader_manifest.json",
+        "verification/semantic_testbench/dut_weight_consumption_instrumentation.json"
+      ],
+      "id": "stage7.execute_operator_leaf_retry",
+      "on_failure": "Do not promote or run the single-transformer-layer scope. Contract, reference, or checker failures return to Stage6 or bounded harness repair. A real RTL value, liveness, order, or protocol failure must invoke stage7.localize_new_real_rtl_failure before any code repair, followed by a same-layer rerun.",
+      "produces": [
+        "candidate superseding artifact.stage7.verification_result",
+        "candidate superseding artifact.stage7.real_tool_results",
+        "candidate superseding artifact.stage7.debug_closure",
+        "executed per-tensor DUT weight-consumption evidence",
+        "operator-leaf functional outputs and target-model comparison report"
+      ],
+      "rationale": "Execute the first layer of the mandated repair hierarchy using the independent target-model reference, explicit immutable tolerance, generated semantic testbench, complete Transformer-block tensor binding, and executed DUT-consumption instrumentation. Expected outputs must come only from target-model inference on the same immutable checkpoint and stimulus.",
+      "requires_approval": false,
+      "stage": "stage7.verification",
+      "tool_roles": [
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "case_stage_leaf_static",
+        "boundary_contract_check",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_operator_leaf_semantic_evidence",
+        "required_real_tool_evidence_check",
+        "targeted_failed_checker_rerun"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "failure_localization_check",
+        "targeted_replay_check",
+        "causal_repair_context_check",
+        "boundary_contract_check",
+        "repair_boundary_check"
+      ],
+      "action_type": "contract_guided_failure_localization",
+      "classification": "auto-allowed",
+      "consumes": [
+        "failed operator-leaf retry logs",
+        "candidate superseding artifact.stage7.real_tool_results",
+        "candidate superseding artifact.stage7.debug_closure",
+        "artifact.stage6.failed_node_repair_route_matrix",
+        "artifact.stage6.debug_trace_manifest_schema",
+        "artifact.stage6.failure_localization_schema"
+      ],
+      "id": "stage7.localize_new_real_rtl_failure",
+      "on_failure": "Do not authorize a symptom-only code change. Reclassify the issue as a verifier capability gap or contract backtrack requirement and keep the operator-leaf retry and all higher layers blocked.",
+      "preconditions": [
+        "A new operator-leaf retry produced real simulator/tool evidence of a value, liveness, data-order, transfer, or protocol failure.",
+        "The failure is not merely a missing verifier capability, contract field, or dependency-blocked tool."
+      ],
+      "produces": [
+        "artifact.stage8.causal_failure_slice for the earliest failing boundary",
+        "checker-boundary trace package",
+        "bounded repair context identifying root-candidate modules and protected interfaces"
+      ],
+      "rationale": "Enforce tool-output to CCTG/contract-guided localization before proposing a bounded RTL or template repair. The currently supplied failure does not satisfy this precondition, so this action is conditional rather than an authorization to edit RTL now.",
+      "requires_approval": false,
+      "stage": "repair",
+      "tool_roles": [
+        "failure_slice_localization",
+        "boundary_trace_rerun",
+        "causal_repair_context_pack",
+        "targeted_replay",
+        "repair_boundary_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "required_real_tool_evidence_check",
+        "real_weight_semantic_evidence_check",
+        "stage_retry_request_check",
+        "stage_artifact_trust_barrier_check",
+        "sacg_static_check",
+        "artifact_hash_check",
+        "human_boundary_check",
+        "verification_action_audit_check"
+      ],
+      "action_type": "stage_retry_promotion",
+      "classification": "retry-only",
+      "consumes": [
+        "candidate superseding artifact.stage7.verification_result",
+        "candidate superseding artifact.stage7.real_tool_results",
+        "candidate superseding artifact.stage7.debug_closure",
+        "executed per-tensor DUT weight-consumption evidence",
+        "operator-leaf functional outputs and target-model comparison report",
+        "retry_request.0001",
+        "contamination_barrier.0001",
+        "contamination_barrier.0002",
+        "contamination_barrier.0003"
+      ],
+      "id": "stage7.promote_retry_and_retire_barriers",
+      "on_failure": "Keep the candidate Stage7 artifacts quarantined, leave the retry and barriers active, and prohibit single-layer, multilayer, backend, and board promotion.",
+      "produces": [
+        "promoted superseding artifact.stage7.verification_result",
+        "promoted superseding artifact.stage7.real_tool_results",
+        "promoted superseding artifact.stage7.debug_closure",
+        "closed retry_request.0001",
+        "retired contamination_barrier.0001",
+        "retired contamination_barrier.0002",
+        "retired contamination_barrier.0003",
+        "operator-leaf promotion eligibility record"
+      ],
+      "rationale": "Only complete current-scope real-tool and semantic evidence may supersede the rejected Stage7 revision, close retry_request.0001, and retire the three contamination barriers. This action is not a pass claim in advance of those checks.",
+      "requires_approval": false,
+      "stage": "stage7.verification",
+      "tool_roles": [
+        "required_real_tool_evidence_check",
+        "stage_retry_request",
+        "stage_artifact_trust_barrier",
+        "sacg_memory_update",
+        "artifact_hash_check",
+        "verification_action_audit"
+      ]
+    }
+  ],
+  "execution_groups": [
+    0,
+    1
+  ],
+  "llm_io_metrics": {
+    "executable_action_count": 27,
+    "max_duration_sec": 631.9578423099883,
+    "max_prompt_bytes": 68354,
+    "result_count": 4,
+    "subtasks_without_executable_actions": [],
+    "total_duration_sec": 1447.5690157979843,
+    "total_prompt_bytes": 271930
+  },
+  "observations": [
+    "Trust classification: artifact.stage7.verification_result, artifact.stage7.real_tool_results, and artifact.stage7.debug_closure are covered by active contamination barriers 0001 through 0003. They are consumed here only as rejected-transition diagnostics and are not validated design inputs. Earlier Stage7 pass summaries are historical evidence and do not clear the current barriers or retry request.",
+    "Current SACG-memory blockers are exactly the three active contamination barriers and retry_request.0001. There is no open backtrack request. This role cannot clear the retry request; promotion requires a fresh candidate retry accepted by the declared checkers.",
+    "Causal failure \u2014 real_tool.case_semantic_testbench: returncode 1 and incomplete status directly expose a non-pass DUT weight-binding contract, accelerator_scope not equal to transformer_blocks_only, checkpoint/reference hash mismatches, incomplete required tensor binding, and an incomplete semantic-testbench manifest. This violates constraint.verification.plan, constraint.tool.protocols, and constraint.cross_layer.input_consistency.",
+    "Causal failure \u2014 case_functional_sim_precondition_check: the canonical DUT weight-binding manifest is absent, while testbench artifact loading lacks target_model_inference, dut_weight_binding, and numeric_policy_sha256 bindings. This is an upstream verifier/loader-harness precondition failure under constraint.verification.plan, constraint.tool.protocols, and constraint.cross_layer.input_consistency; it is not evidence of an RTL value, liveness, ordering, or protocol defect.",
+    "Causal failure \u2014 real_weight_semantic_evidence_check: direct contract defects include an unbound failing semantic report, non-transformer-block-only acceptance scope, incomplete current-scope tensor coverage, missing tensor hashes, no executed proof that the DUT consumed every required weight, missing explicit atol/rtol/max_mismatch_fraction, fallback-capable or otherwise unproven real-weight loading, and incomplete per-operator evidence. Its comparison-not-pass clauses are downstream consequences because functional and golden comparisons did not execute. The gate as a whole remains causal because it independently proves semantic-evidence contract incompleteness.",
+    "Propagated dependency blocks \u2014 real_tool.case_tb_scaffold_generate__leaf_stage_stage_00_rms_norm_1, stage_01_self_attention, stage_02_residual_add_1, stage_03_rms_norm_2, stage_04_mlp_gate_proj, stage_05_mlp_up_proj, stage_06_activation_mul, stage_07_mlp_down_proj, and stage_08_residual_add_2 all returned failure from the same upstream binding/scope/hash preconditions. They do not establish nine independent operator or RTL defects.",
+    "Propagated dependency block \u2014 required_real_tool_evidence_check aggregates the failed semantic-testbench and leaf scaffold-generation results plus not-run canonical operator-leaf gates. It adds no independent causal boundary beyond the semantic contract and loader/harness slice.",
+    "Propagated dependency block \u2014 hierarchical_verification_maturity_check correctly blocks operator-leaf maturity because the semantic testbench failed and canonical leaf static, functional, golden-compare, and semantic-aggregation gates are not_run. The violated hierarchy edge is constraint.verification.hierarchy, not a separately demonstrated implementation defect.",
+    "Propagated dependency block \u2014 verification_agent_decision_check records blocked_current_scope and identifies semantic-contract and loader/harness deficiencies. Its failed invariant status is a policy consequence of the blocked closure, not proof that the classifier or RTL is defective.",
+    "Current-scope not_run gates classified as propagated dependency blocks are case_tb_scaffold, case_stage_leaf_static, case_leaf_functional, case_leaf_golden_compare, and case_operator_leaf_semantic_evidence. Their evidence is absent because upstream semantic and binding preconditions failed; none may be described as passed or as an RTL failure.",
+    "Later-scope not-run items classified as pending evidence are case_single_layer_functional, case_multilayer_pipeline, case_multilayer_functional, case_axi_ddr_interface, case_axi_protocol_check, and case_ddr_image_roundtrip. They are not current operator-leaf repair failures. Under constraint.verification.hierarchy they remain ineligible until fresh operator-leaf promotion.",
+    "The rejected-transition diagnostic says the full checkpoint catalog, independent target-model reference, boundary contract, and some per-stage static exposure reported pass. Those reports are not promoted here because they reside in contaminated Stage7 evidence. A retry must re-execute them or validate eligible reuse through the supplied certificate/hash contract before consumption.",
+    "The minimal causal slice contains verifier and generated integration artifacts: the DUT weight-binding manifest, complete-scope tensor hash bindings, loader/harness consumption instrumentation, semantic-testbench binding and fallback policy, immutable checkpoint/reference identity, and explicit comparison policy. No supplied real-tool result reaches an executed RTL transaction boundary, so an RTL root-cause assertion or operator RTL edit is unsupported.",
+    "Accelerator acceptance and DUT weight coverage must include Transformer blocks only. Embedding/tokenization, final model norm, LM head/logits, sampling, and other model-tail tensors must remain outside the DUT golden boundary and must not be added to repair the reported scope mismatch.",
+    "Cross-layer status: model/checkpoint and source-reference identity mismatches are causal; numeric tolerance is absent from the immutable acceptance contract; shape and data-order behavior were not exercised by canonical functional simulation; memory/runtime/board behavior belongs to later scopes; and no implementation liveness, value, order, or protocol defect has been demonstrated. The compact candidate rows do not justify treating omitted row details as missing artifacts.",
+    "Legal-acceptance verdict: the current contract must reject real-weight semantic acceptance because explicit atol, rtol, and max_mismatch_fraction are absent. This is not evidence of hardware incorrectness and must not be repaired by inventing or loosening tolerance during the active repair loop.",
+    "Human-approval-required policy change: an authorized human must select and approve the explicit comparison tolerance triple and resulting numeric-policy identity. The agent has no authority to choose these values.",
+    "Stage6 backtrack request: after approval, Stage6 must supersede the verification plan, artifact contract, canonical gate DAG, immutable semantic identity, and functional-simulation binding so that missing explicit tolerances cannot again pass Stage6 static admission. This is a verification-contract/checker repair, not an RTL repair.",
+    "Same-stage bounded repair: generated/memory/dut_weight_binding_manifest.json is missing or not pass, declares the wrong accelerator scope, and carries checkpoint/reference hashes inconsistent with verification preparation. Repair must bind the existing immutable checkpoint and reference hashes rather than changing either source.",
+    "Same-stage bounded repair: the DUT binding lacks all 12 required current-scope tensor hashes and complete coverage. Coverage is limited to Transformer-block tensors; embedding/tokenization, final model norm, LM head/logits, and sampling must remain excluded.",
+    "Same-stage bounded repair: the generated loader/harness permits default or identity fallback, lacks required stage harnesses, and does not prove that the DUT consumed every bound tensor. Remove fallback behavior, bind the loader and harness hashes, instrument per-tensor consumption, and obtain executed evidence; a pass-status manifest alone is insufficient.",
+    "Same-stage bounded repair: testbench_artifact_loading lacks the required target_model_inference, dut_weight_binding, and numeric_policy_sha256 bindings, and the semantic report does not bind the current evidence contract. Regenerate bounded testbench glue against the superseding contract; do not alter expected outputs.",
+    "The repeated semantic-testbench and nine leaf-scaffold failures share the same upstream binding precondition. They do not justify nine independent operator RTL repairs.",
+    "Leaf functional simulation, golden comparison, and semantic aggregation were dependency-blocked or not_run. They are pending evidence, not demonstrated liveness, value, order, or protocol failures. No hardware correctness conclusion is legal from these records.",
+    "The rejected logs report successful checkpoint-catalog, independent target-model-reference, boundary-contract, and leaf-static work, but the active contamination barriers make those Stage7 records planning/debug evidence only. Clean retry must rerun or hash-revalidate them under the superseding contract before acceptance.",
+    "The populated SACG truth reports three active contamination barriers and one open retry_request.0001, with no currently open backtrack request. The retry must remain open and held; this audit proposes, but does not silently activate or approve, the required Stage6 backtrack.",
+    "No missing planned_tool or planned_checker capability is established by the supplied summary. The registry already includes real-weight preparation, independent target-model reference, semantic-testbench, leaf simulation, golden comparison, semantic aggregation, and consumption-evidence checks.",
+    "Because the prompt contains compact artifact slices, omitted detailed contract rows are not treated as absent. If tool_protocol_check proves that the three required testbench bindings are absent from the Stage6 protocol itself rather than only from generated artifacts, that checker-proven omission must be added to the Stage6 backtrack instead of patched with an untracked script.",
+    "Data-order, transfer-count, flow-control, and protocol correctness remain unresolved because functional simulation did not execute. Board-wrapper identity is a later third-layer requirement and is not a current operator-leaf blocker; promotion must not skip directly to that layer.",
+    "The visible failure is a semantic-verification precondition and binding failure, not a demonstrated RTL value, order, liveness, or protocol mismatch. Operator-leaf functional simulation, golden comparison, and semantic aggregation were dependency-blocked and did not execute.",
+    "The authoritative state summary lists three active contamination barriers on artifact.stage7.verification_result, artifact.stage7.real_tool_results, and artifact.stage7.debug_closure, plus open retry_request.0001 for Stage7. Those artifacts may inform repair planning only and cannot substantiate a pass.",
+    "There is no open SACG backtrack request. Because explicit atol, rtol, and max_mismatch_fraction are absent, a new human-approved Stage6 numeric-policy backtrack is required; this specialist cannot fill those fields.",
+    "The prompt slice establishes that the template library, template metadata, parameter binding, generated package, memory layout, and case adapter exist. Their detailed rows are omitted, so missing template hooks must not be inferred; template_coverage_check must determine whether the required loader, guard, and instrumentation bindings already exist.",
+    "Canonical weight-manifest path/status repair, transformer_blocks_only scope binding, actual-source checkpoint/reference hash reconciliation, exact required tensor entries, fail-closed fallback configuration, and loader/harness references are binding-level defects suitable for bounded_template_repair when existing trusted template hooks cover them.",
+    "Immutable hash reconciliation must regenerate or bind artifacts from the actual Stage6 identities and then hash those bytes. Merely copying source_checkpoint_sha256 or source_reference_sha256 expected values into a manifest would conceal contamination and is not an acceptable repair.",
+    "A complete target-checkpoint tensor catalog and complete DUT tensor coverage are related but distinct. The catalog must cover the checkpoint; DUT coverage must include every tensor required by the Transformer-block scope, including all 12 current-scope tensors identified by the visible diagnostics, while excluding embedding/tokenization, final model norm, LM head/logits, and sampling.",
+    "Default, identity, synthetic, sampled-weight, or missing-file fallback paths must fail closed. Disabling such paths is template-bounded only when exposed by existing parameters or trusted loader/harness templates; otherwise it is a major-template gap, not permission for free-form RTL generation.",
+    "A manifest and tensor hashes do not prove consumption. Existing-template loader and harness instrumentation can prepare per-tensor load/read evidence, but proof requires later executed DUT evidence showing that every required bound tensor was loaded and consumed through the mapped interface.",
+    "The semantic harness can be repaired by binding the target-model inference reference, immutable stimulus, DUT weight manifest, numeric-policy hash, approved tolerance, and generated source hashes. Expected outputs must remain outputs of the real target model on the same immutable checkpoint and stimulus, never random data, RTL-derived output, or an identity/default implementation.",
+    "Cross-layer memory consistency remains checker-relevant: tensor names, shapes, dtype/precision, packing, data order, offsets, lengths, and addresses must agree across parameter binding, Stage5 memory layout, generated loader, runtime-visible image, and DUT read behavior.",
+    "Historical operator-leaf or single-layer outcomes cannot be used to bypass the failed current operator-leaf closure. After repair, the hierarchy must restart at operator/leaf execution; only a fresh pass may permit the connected single-transformer-layer stage.",
+    "Board wrapper facts are not implicated by the current operator-leaf precondition failure. Any later board-level retry must preserve the exact user sample-project wrapper and source hashes and must not substitute a simplified AXI/DDR shell.",
+    "sacg_memory_truth in the supplied state summary is authoritative and reports three active contamination barriers, one open Stage7 retry request, and zero open backtrack requests. The rejected artifact.stage7.verification_result, artifact.stage7.real_tool_results, and artifact.stage7.debug_closure remain planning/debug evidence only.",
+    "The active Stage7 failure is a verification-contract and DUT loader/harness binding failure. The semantic testbench and leaf scaffolds did not establish a real RTL value, liveness, data-order, transfer, or protocol mismatch; dependent leaf functional, golden-comparison, and semantic-aggregation tools were not_run.",
+    "Visible checker evidence identifies specific current blockers: the DUT binding status is not pass, accelerator_scope is not transformer_blocks_only, checkpoint and reference hashes do not match verification preparation, all 12 required current-scope tensor hashes and consumption proof are absent, default/identity fallback remains possible, required stage harness bindings are absent, and semantic testbench loading lacks target_model_inference, dut_weight_binding, and numeric_policy_sha256 bindings.",
+    "The effective comparison contract lacks explicit atol, rtol, and max_mismatch_fraction. Although a numeric-policy artifact exists, the checker-proven binding gap is current. Those values cannot be filled in or loosened during Stage8; human approval and a Stage6 contract backtrack are required.",
+    "The supplied failure narrative says complete-checkpoint catalog and independent target-model reference checks passed, but that statement is carried by rejected Stage7 evidence. It may guide recovery, but the retry must rebind and hash-check the independent reference against the promoted Stage6 immutable identity before it can support a pass.",
+    "Correcting scope or hash declarations alone is insufficient. The bounded repair must bind the actual immutable checkpoint/reference, remove fallback behavior, hash every required Transformer-block tensor, bind the loader and harness, and generate executed proof that the DUT consumed every required tensor.",
+    "The accelerator acceptance boundary remains Transformer blocks only. Embedding/tokenization, final model norm, LM head/logits, sampling, and other model-tail work are excluded from DUT implementation, weight coverage, and golden comparison.",
+    "Shape, stream order, transfer counts, memory addressing, runtime ABI, and board protocol correctness remain unresolved rather than failed because functional execution was dependency-blocked. They must not be reported as passed or used to justify a hardware code repair.",
+    "The compact candidate artifact intentionally omits detailed rows. No additional missing-field blocker is inferred from that compact representation; decisions are based on the visible checker failures and authoritative SACG blocker set.",
+    "Earlier historical operator-leaf or single-layer outcomes do not override the active failed transition. A numeric-contract revision can also invalidate certificate reuse unless immutable-identity and artifact-hash checks explicitly prove reuse eligibility.",
+    "The active Stage7 retry and barriers do not prevent producing this Stage8 disposition or a Stage6 backtrack request. They do block downstream consumption, promotion, single-layer execution, and board execution until a superseding retry passes."
+  ],
+  "parallel_execution": true,
+  "proposed_actions": [
+    "Materialize a checker-grounded Stage8 failure-classification matrix, causal slice, and dependency-blocked map while retaining the three Stage7 trust barriers.",
+    "Have repair.repair_boundary_auditor separate the approved Stage6 contract correction from bounded generated loader/harness repair and reject unsupported RTL edits.",
+    "Request an approved Stage6 backtrack to define explicit immutable comparison tolerances; do not inject tolerance into the current rejected Stage7 artifacts.",
+    "After an approved superseding contract exists, regenerate the complete checkpoint catalog, independent target-model reference, transformer-block-only DUT binding manifest, semantic harness, and per-leaf scaffold hashes with no fallback path.",
+    "Rerun only the operator/leaf closure. Promote only if every selected current-scope real-tool and semantic-evidence checker passes; otherwise feed fresh tool traces back through causal localization before any bounded repair.",
+    "Do not schedule single-layer or board-accurate AXI/DDR execution until fresh operator-leaf promotion succeeds.",
+    "Materialize artifact.stage8.contract_gap_matrix from checker-visible Stage6 contracts and rejected Stage7 diagnostics, with each deficiency assigned to bounded repair, Stage6 backtrack, or human approval.",
+    "Keep retry_request.0001 open and held, and retain all three contamination barriers until a clean promoted Stage7 result exists.",
+    "Draft artifact.stage8.approval_required_change_set and artifact.stage8.proposed_backtrack_request for explicit numeric tolerance and immutable Stage6 contract supersession.",
+    "After human approval, execute the bounded Stage6 backtrack while preserving checkpoint, stimulus, target-model reference, accelerator scope, and all non-numeric semantic identities.",
+    "Repair only the generated weight loader, binding manifest, semantic harness, and consumption instrumentation against the superseding contract; do not change RTL or trusted templates absent causal evidence.",
+    "Rerun only operator-leaf closure after every retry precondition passes. If a real simulator then reports a value, order, liveness, or protocol failure, localize the earliest causal boundary before any bounded code repair.",
+    "Classify only existing-template and parameter-binding deltas, and reject any proposed free-form RTL or numeric-policy edit.",
+    "Create a human-approved Stage6 backtrack request for explicit immutable atol, rtol, and max_mismatch_fraction before declaring the semantic harness ready.",
+    "Regenerate the canonical DUT weight-binding package from the immutable checkpoint and reference identities, with transformer-block-only coverage, all required tensor hashes, and fail-closed fallback guards.",
+    "Generate the semantic harness from trusted templates, binding the same immutable stimulus and independent target-model reference and emitting loader/consumption instrumentation requirements.",
+    "Run the declared template, parameter, codegen, hash, real-weight-artifact, and semantic-testbench acceptance checkers; do not manually set pass status.",
+    "Hand the checker reports to repair.repair_boundary_auditor while preserving the active Stage7 contamination barriers. If accepted, the verification executor\u2014not this specialist\u2014must rerun the operator-leaf layer and obtain actual consumption and numeric-comparison evidence before any higher-layer promotion.",
+    "AUTO-ALLOWED: Materialize the bounded repair manifest and contamination-safe handoff while keeping all rejected Stage7 artifacts quarantined.",
+    "APPROVAL-REQUIRED: Ask the human to approve explicit atol, rtol, and max_mismatch_fraction without changing checkpoint, stimulus, target-model reference, or acceptance scope.",
+    "BACKTRACK-REQUIRED: After approval, submit a Stage6 backtrack request for a superseding immutable verification and semantic-binding contract.",
+    "AUTO-ALLOWED: Once the refined Stage6 contract is promoted, repair the trusted-template DUT loader/harness binding, complete all required Transformer-block tensor hashes, remove fallback behavior, and add executable consumption instrumentation.",
+    "RETRY-ONLY: Gate and execute retry_request.0001 at operator-leaf scope using the exact refined contract and artifact hashes.",
+    "AUTO-ALLOWED CONDITIONAL: If new real simulator evidence demonstrates an RTL failure, localize the earliest causal boundary before authorizing any bounded code repair.",
+    "RETRY-ONLY: Promote the superseding Stage7 artifacts and retire the active retry/barriers only after all required current-scope real-tool and semantic-evidence checkers pass.",
+    "FORBIDDEN: Do not mutate golden outputs or immutable identities, bypass checkers, expand DUT scope beyond Transformer blocks, skip verification layers, or substitute a simplified board wrapper."
+  ],
+  "risks": [
+    "Repairing operator RTL now would target symptoms without an executed failing RTL transaction and could contaminate the smallest repairable boundary.",
+    "Filling in or loosening atol, rtol, or max_mismatch_fraction inside the current repair loop would alter immutable numeric policy. The missing tolerance requires an approved Stage6 backtrack and a new immutable verification contract.",
+    "Copying hashes from the rejected Stage7 manifests without regenerating and checking complete-scope bindings could falsely claim that the DUT consumed the checkpoint weights.",
+    "Using random expected outputs, RTL-derived outputs, an identity/default target model, or fallback stage harnesses would invalidate functional evidence. Random generation is allowed only for input stimulus, and expected outputs must come from the real target model on the same immutable checkpoint and stimulus.",
+    "Expanding DUT tensor coverage to embeddings, final norm, LM head/logits, or sampling to satisfy a manifest checker would violate the transformer-block-only accelerator boundary.",
+    "Reusing historical operator-leaf or single-layer promotion records without current identity and certificate checks could bypass the active contamination barriers and canonical hierarchy.",
+    "Skipping directly to single-layer, multilayer, backend, or board execution would violate the three-layer repair loop and could misclassify dependency-blocked gates as hardware failures.",
+    "Shape, stream order, transfer count, memory schedule, runtime ABI, and board-wrapper consistency remain untested by the blocked operator-leaf execution; absence of evidence must not be converted into either pass claims or speculative defect claims.",
+    "A bounded loader/harness repair may be insufficient if the missing tolerance originates in the Stage6 verification contract. Any architecture, pipeline, memory-layout, numeric-policy, or major template change requires boundary-auditor escalation and approval.",
+    "Choosing tolerance after observing DUT output, loosening it during repair, or omitting max_mismatch_fraction would contaminate the golden comparison and invalidate semantic acceptance.",
+    "Changing the checkpoint, stimulus, target-model outputs, source-reference hash, or expected outputs to match the DUT would bypass the independent-reference requirement.",
+    "Treating a weight manifest or memory image as consumption proof could accept a DUT that never loaded some or all required tensors.",
+    "Retaining default or identity loader fallback could produce apparently valid traffic while bypassing real checkpoint weights.",
+    "Using whole-model scope would incorrectly require or accept embedding, final norm, LM-head/logit, or sampling work outside the Transformer-block accelerator boundary.",
+    "Editing RTL before clean functional execution could misclassify a verification-capability or loader/harness failure as a hardware defect.",
+    "Reusing prior promotion certificates or contaminated Stage7 pass fragments without exact contract-hash eligibility checks could bypass the refined semantic contract.",
+    "A loader repair that silently changes memory layout, runtime ABI, pipeline structure, numeric format, trusted templates, or architecture would exceed the bounded repair authority and require approval/backtracking.",
+    "Running connected-layer or board-level verification before operator-leaf semantic closure would violate the three-layer repair hierarchy.",
+    "At board level, substituting a simplified AXI/DDR wrapper for the exact user sample-project wrapper would invalidate deployment evidence even if the simplified simulation passed.",
+    "Numeric comparison cannot pass under the current contract because explicit tolerance fields are absent; any locally invented value would contaminate the golden policy.",
+    "Copying expected checkpoint/reference hashes into the manifest without hashing the actual bound artifacts could make a wrong-checkpoint package appear consistent.",
+    "Including model-tail tensors in DUT coverage or golden boundaries would violate the Transformer-block-only accelerator scope; omitting any required Transformer-block tensor would leave coverage incomplete.",
+    "A complete catalog, manifest existence, or memory image alone can be mistaken for consumption proof unless executed loader/DUT read evidence is required for every bound tensor.",
+    "Loader packing, tensor order, offset, length, address, dtype, or shape disagreement with Stage5 memory layout can survive manifest-only checks and produce a later value failure.",
+    "If fallback disabling or per-tensor instrumentation is not exposed by the trusted template library, attempting to patch RTL would exceed this role and require a major-template or architecture decision.",
+    "Regenerating semantic-testbench sources may change hashes. Any conflict with immutable Stage6 testbench identities requires controlled contract reissuance, not silent hash replacement.",
+    "Using contamination-barred Stage7 artifacts or historical promotion certificates as validated evidence could improperly skip the operator-leaf layer.",
+    "Board-level work performed later against a substitute wrapper would invalidate deployment evidence even if the current binding repair succeeds.",
+    "Editing only the weight manifest labels could conceal rather than repair checkpoint, scope, tensor-coverage, or consumption defects.",
+    "Reusing a sampled tensor subset or treating file existence as complete weight evidence would permit unverified weights to reach the DUT.",
+    "Inventing tolerance values, loosening tolerance after failure, changing the expected output, or regenerating a reference from changed inputs would contaminate the verification contract.",
+    "Generating expected outputs randomly, from RTL output, or through identity/default behavior would invalidate functional correctness evidence. Random generation is permitted only for deterministic input stimulus.",
+    "A loader/harness repair that alters architecture, pipeline structure, memory layout, runtime ABI, or a major trusted template exceeds automatic repair authority and requires approval.",
+    "Running single-layer, multilayer, AXI/DDR, synthesis, implementation, or board runtime before current operator-leaf promotion would violate the required three-layer repair loop.",
+    "At board level, use of any wrapper other than the exact user-supplied sample-project wrapper and source hashes would invalidate board evidence; board work is not eligible in the current repair scope.",
+    "Stale historical certificates or contaminated Stage7 outputs could be accidentally consumed as validated inputs unless the retry envelope and barrier checks enforce revision identity.",
+    "Because leaf functional tools were not_run, proposing an arithmetic RTL change now would be symptom-driven and causally unsupported."
+  ],
+  "role_assignments": [
+    {
+      "agent": "failure_localization_specialist",
+      "role": "verification root-cause engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "failure_localization_check",
+            "causal_repair_context_check",
+            "sacg_reference_check",
+            "stage_artifact_trust_barrier_check"
+          ],
+          "consumes": {
+            "artifact_focus": [
+              "artifact.stage7.verification_result",
+              "artifact.stage7.real_tool_results",
+              "artifact.stage7.debug_closure"
+            ],
+            "constraints": [
+              "constraint.verification.plan",
+              "constraint.verification.hierarchy",
+              "constraint.tool.protocols"
+            ]
+          },
+          "handoff_to": [
+            "repair.repair_boundary_auditor"
+          ],
+          "produces": [
+            "artifact.stage8.failure_classification_matrix",
+            "artifact.stage8.causal_failure_slice",
+            "artifact.stage8.dependency_blocked_evidence_map"
+          ],
+          "tool_consumers": [
+            "failure_slice_localization",
+            "causal_repair_context_pack"
+          ]
+        },
+        "decision_authority": [
+          "Classify root, propagated, pending, and inconclusive evidence.",
+          "Block unsupported RTL-root-cause assertions.",
+          "Escalate incomplete gate contracts to the boundary auditor."
+        ],
+        "mission": "Own causal localization and evidence classification for the rejected operator-leaf closure.",
+        "out_of_scope": [
+          "Executing real tools.",
+          "Modifying immutable verification identity.",
+          "Clearing the open retry request."
+        ],
+        "primary_responsibilities": [
+          "Review checker reports and tool return codes.",
+          "Map each failure to constraints and repair-route matrix entries.",
+          "Identify the smallest repairable boundary.",
+          "Package evidence for the boundary auditor."
+        ],
+        "professional_family": "verification_repair"
+      },
+      "subtask_id": "repair.failure_localization_engineer"
+    },
+    {
+      "agent": "numeric_template_binding_specialist",
+      "role": "numeric and template binding engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "template_binding_static_check",
+            "parameter_binding_static_check",
+            "codegen_contract_check",
+            "artifact_hash_check",
+            "case_real_weight_artifacts",
+            "case_semantic_testbench"
+          ],
+          "consumes": {
+            "artifact_focus": [
+              "artifact.stage4.parameter_binding",
+              "artifact.stage5.generated_code_package",
+              "artifact.stage5.memory_layout",
+              "generated/memory/dut_weight_binding_manifest.json"
+            ],
+            "constraints": [
+              "constraint.numeric.policy",
+              "constraint.template.library",
+              "constraint.parameter.binding"
+            ]
+          },
+          "handoff_to": [
+            "repair.repair_boundary_auditor"
+          ],
+          "produces": [
+            "artifact.stage8.weight_binding_repair_scope",
+            "artifact.stage8.template_binding_delta_plan",
+            "artifact.stage8.semantic_harness_binding_requirements",
+            "artifact.stage8.immutable_hash_reconciliation_plan"
+          ],
+          "tool_consumers": [
+            "bounded_template_repair",
+            "case_weight_manifest_generate",
+            "case_tb_scaffold_generate"
+          ]
+        },
+        "decision_authority": [
+          "Classify a binding repair as template-bounded or out of bounds.",
+          "Require hash and tensor-coverage evidence before retry.",
+          "Block legacy or default-weight fallback paths."
+        ],
+        "mission": "Own the bounded code-generation and template-binding classification for the shared semantic-verification blocker.",
+        "out_of_scope": [
+          "Running the Stage7 retry.",
+          "Approving numeric-policy changes.",
+          "Promoting repaired artifacts."
+        ],
+        "primary_responsibilities": [
+          "Compare generated bindings with immutable Stage6 identities.",
+          "List exact template and manifest deltas.",
+          "Mark policy-level gaps that require backtrack or approval.",
+          "Provide checker-ready post-repair acceptance criteria."
+        ],
+        "professional_family": "numeric_template"
+      },
+      "subtask_id": "repair.weight_binding_engineer"
+    },
+    {
+      "agent": "verification_contract_specialist",
+      "role": "verification contract and retry-routing engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "verification_artifact_contract_check",
+            "verification_plan_static_check",
+            "tool_protocol_check",
+            "human_boundary_check",
+            "stage_retry_request_check",
+            "stage_backtrack_request_check"
+          ],
+          "consumes": {
+            "artifact_focus": [
+              "artifact.stage6.verification_artifact_contract",
+              "artifact.stage6.llm_action_audit",
+              "artifact.stage6.failed_node_repair_route_matrix",
+              "retry_request.0001"
+            ],
+            "constraints": [
+              "constraint.verification.plan",
+              "constraint.tool.protocols",
+              "constraint.human.boundary"
+            ]
+          },
+          "handoff_to": [
+            "repair.repair_boundary_auditor"
+          ],
+          "produces": [
+            "artifact.stage8.contract_gap_matrix",
+            "artifact.stage8.retry_precondition_plan",
+            "artifact.stage8.proposed_backtrack_request",
+            "artifact.stage8.approval_required_change_set"
+          ],
+          "tool_consumers": [
+            "stage_backtrack_request",
+            "stage_retry_request"
+          ]
+        },
+        "decision_authority": [
+          "Classify contract deficiencies and recommend routing.",
+          "Hold the active retry on unmet prerequisites.",
+          "Escalate approval-required changes to the boundary auditor."
+        ],
+        "mission": "Own contract-level recovery routing for the rejected Stage7 transition.",
+        "out_of_scope": [
+          "Changing trusted templates.",
+          "Executing functional simulation.",
+          "Clearing contamination barriers."
+        ],
+        "primary_responsibilities": [
+          "Compare failed evidence with immutable verification requirements.",
+          "Determine whether existing tools and contracts support the repair.",
+          "Draft a bounded backtrack request where policy or contract changes are unavoidable.",
+          "Prevent premature rerun or promotion."
+        ],
+        "professional_family": "verification_repair"
+      },
+      "subtask_id": "repair.verification_contract_engineer"
+    },
+    {
+      "agent": "repair_evidence_gate",
+      "role": "repair boundary and evidence-gate lead",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "repair_boundary_check",
+            "human_boundary_check",
+            "sacg_static_check",
+            "stage_retry_request_check",
+            "stage_backtrack_request_check",
+            "stage_artifact_trust_barrier_check",
+            "verification_action_audit_check"
+          ],
+          "consumes": {
+            "artifact_focus": [
+              "artifact.stage8.failure_classification_matrix",
+              "artifact.stage8.weight_binding_repair_scope",
+              "artifact.stage8.contract_gap_matrix"
+            ],
+            "constraints": [
+              "constraint.human.boundary",
+              "constraint.verification.plan",
+              "constraint.numeric.policy"
+            ]
+          },
+          "handoff_to": [
+            "bounded_template_repair",
+            "stage_backtrack_request",
+            "stage7.verification"
+          ],
+          "produces": [
+            "artifact.stage8.bounded_repair_action_manifest",
+            "artifact.stage8.human_approval_request",
+            "artifact.stage8.retry_or_backtrack_decision",
+            "artifact.stage8.contamination_safe_handoff"
+          ],
+          "tool_consumers": [
+            "repair_boundary_check",
+            "stage_backtrack_request",
+            "stage_retry_request",
+            "targeted_failed_checker_rerun"
+          ]
+        },
+        "decision_authority": [
+          "Authorize checker-bounded repair within existing templates and contracts.",
+          "Block or escalate all policy and immutable-identity changes.",
+          "Release the existing retry only when prerequisites are checker-verified."
+        ],
+        "mission": "Aggregate specialist evidence into the authoritative, human-boundary-compliant repair disposition.",
+        "out_of_scope": [
+          "Inventing missing verification requirements.",
+          "Making unapproved edits.",
+          "Treating prior rejected outputs as validated design artifacts."
+        ],
+        "primary_responsibilities": [
+          "Validate causal linkage and non-overlapping scope.",
+          "Assign auto-allowed, approval-required, backtrack-required, retry-only, or forbidden status.",
+          "Materialize safe downstream routing.",
+          "Keep contaminated evidence quarantined."
+        ],
+        "professional_family": "verification_repair"
+      },
+      "subtask_id": "repair.repair_boundary_auditor"
+    }
+  ],
+  "schema_version": "spatialaccagent.team_aggregate.v0",
+  "split_reason": "The repair stage is not atomic: the rejected Stage7 transition contains three independently reviewable concerns\u2014causal evidence localization, DUT real-weight/template binding defects, and immutable verification-contract gaps. SACG memory truth also shows one open Stage7 retry and three active contamination barriers, so a separate repair-boundary auditor must reconcile specialist classifications before any retry, backtrack, or artifact promotion. Parallel specialists can classify these concerns without modifying contaminated artifacts; a group-1 evidence gate can then enforce human approval and trust boundaries.",
+  "stage": "repair",
+  "status": "ready",
+  "subtask_count": 4,
+  "used_fallback_count": 0
+}

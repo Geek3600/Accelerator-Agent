@@ -1,0 +1,109 @@
+{
+  "decision": {
+    "approval_required_for": [
+      "Any pipeline stage boundaries or operator grouping decisions proposed by the pipeline plan before they are treated as architecture-level commitments.",
+      "Any tile size, unroll factor, PE/SIMD parallelism, buffering depth, or scheduling choice selected by the plan before implementation.",
+      "Any memory layout, tensor/data packing, KV-cache layout, on-chip buffer allocation, or AXI/DDR access pattern proposed by the plan before implementation.",
+      "Any numeric policy change, precision change, accumulation policy change, rounding/saturation behavior change, or tolerance loosening; these must not be applied without explicit approval.",
+      "Any major template adaptation beyond selecting and instantiating already-approved templates from artifact.stage2.template_selection."
+    ],
+    "decision": "run_tool",
+    "expected_evidence": [
+      "Pipeline planning output artifact should identify selected templates from artifact.stage2.template_selection and trace each planned stage back to template, model operator, and design-space constraints.",
+      "Later pipeline checker evidence must show model_order edges edge.model_order.00 through edge.model_order.07 are preserved and no model semantics are changed.",
+      "Later checker evidence must verify self_attention planning respects Qwen2 attention semantics, including not treating GQA as MHA if grouped-query attention is present in constraint.model.decoder or constraint.shape.model.",
+      "Later checker evidence must verify all tensor shapes, hidden dimensions, head/KV-head counts, MLP dimensions, and sequence/batch assumptions against artifact.input.model_config and constraint.shape.model.",
+      "Later checker evidence must verify numeric decisions against artifact.input.numeric_policy and constraint.numeric.policy with no unapproved precision, accumulation, rounding, saturation, or tolerance changes.",
+      "Later checker evidence must verify memory, buffering, data packing, and AXI/DDR assumptions against constraint.memory.board, constraint.deployment.board, constraint.runtime.board, and artifact.input.target_board_profile.",
+      "Later checker evidence must verify tool/backend compatibility against constraint.tool.profile, constraint.tool.protocols, artifact.input.tool_profile, artifact.input.tool_availability, and artifact.input.tool_protocols.",
+      "Later checker evidence must verify cross-layer consistency between task, model, template library, design space, board/runtime limits, case adapter, and human-agent boundary constraints.",
+      "The pipeline planning stage should produce candidate artifacts only and must not claim design pass until checker stages produce executable evidence."
+    ],
+    "reason": "pipeline_planning is a candidate planning stage that creates a spatial pipeline plan from an existing template selection. It does not inherently delete tests, modify golden outputs, loosen tolerances, change model semantics, or bypass checkers. Because planning stages are allowed to run before their own future checker evidence exists, the deterministic tool is safe to run, while architecture-level choices it proposes must be recorded for later approval and checker validation.",
+    "risks": [
+      "The SACG currently reports zero evidence and zero invariants, so the generated plan must be treated as candidate-only until checker evidence is produced.",
+      "Pipeline planning may introduce architecture-level decisions such as stage boundaries, tiling, parallelism, buffering, data packing, or memory access patterns that require human approval before implementation.",
+      "Cross-layer mismatch risk exists between selected templates, Qwen2 decoder/operator semantics, numeric policy, shape constraints, board memory/runtime limits, and tool/backend protocols.",
+      "Self-attention planning is high risk because GQA must not be treated as MHA; attention head and KV-head semantics require explicit later verification.",
+      "If the plan changes numeric precision, accumulation order, rounding/saturation, or tolerance assumptions, that would be unsafe without approval.",
+      "The SACG summary lists model_order edges through node.model_op.08 while the displayed node list is partial; the tool must use the full sacg_state artifact and later evidence must confirm all referenced nodes exist and remain ordered."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage2.template_selection",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary",
+        "expected artifact.stage3.pipeline_plan"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.case.adapter",
+        "constraint.human.boundary",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.model_order.00",
+        "edge.model_order.01",
+        "edge.model_order.02",
+        "edge.model_order.03",
+        "edge.model_order.04",
+        "edge.model_order.05",
+        "edge.model_order.06",
+        "edge.model_order.07",
+        "expected template_to_pipeline_stage edges",
+        "expected model_op_to_pipeline_stage edges",
+        "expected pipeline_stage_order edges"
+      ],
+      "nodes": [
+        "node.model",
+        "node.numeric_policy",
+        "node.template_library",
+        "node.design_space",
+        "node.target_board",
+        "node.tool_profile",
+        "node.tool_protocols",
+        "node.case_adapter",
+        "node.human_boundary",
+        "node.model_op.00_rms_norm_1",
+        "node.model_op.01_self_attention",
+        "node.model_op.02_residual_add_1",
+        "node.model_op.03_rms_norm_2",
+        "node.model_op.04_mlp_gate_proj",
+        "node.model_op.05_mlp_up_proj",
+        "node.model_op.06_activation_mul",
+        "node.model_op.07_mlp_down_proj",
+        "node.model_op.08_residual_add_2",
+        "expected node.pipeline_plan",
+        "expected node.pipeline_stage.*"
+      ]
+    },
+    "stage": "pipeline_planning",
+    "tool_command_allowed": true
+  },
+  "duration_sec": 43.66790221500196,
+  "enforced": true,
+  "error": null,
+  "mode": "llm",
+  "prompt_hash": "52e01914c1aa18acb2dec67a988c5d1d45992240418d8548d443964a50bb90f7",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/llm/07_pipeline_planning_request.json",
+  "schema_version": "spatialaccagent.pre_stage_safety_gate_decision.v0",
+  "stage": "pipeline_planning"
+}

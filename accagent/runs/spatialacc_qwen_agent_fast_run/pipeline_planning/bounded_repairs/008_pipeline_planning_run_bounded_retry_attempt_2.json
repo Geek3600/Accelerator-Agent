@@ -1,0 +1,59 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "llm_io_quality_check",
+      "llm_semantic_extraction_check",
+      "no_static_keyword_semantic_matching_check",
+      "sacg_static_check",
+      "numeric_policy_check",
+      "template_coverage_check",
+      "parameter_binding_static_check",
+      "stream_plan_check",
+      "memory_runtime_plan_check",
+      "boundary_contract_check",
+      "verification_plan_static_check"
+    ],
+    "action_type": "same_stage_bounded_repair_retry",
+    "consumes": [
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+      "pipeline_planning/retry_reconciliation_contract_attempt_2.json",
+      "pipeline_planning/failure_slice_attempt_1.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/numeric_template_specialist_result.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/data_memory_runtime_specialist__stream_and_liveness_engineer_result.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/data_memory_runtime_specialist__memory_dataflow_engineer_result.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/verification_repair_specialist_result.json"
+    ],
+    "id": "pipeline_planning.run_bounded_retry_attempt_2",
+    "on_failure": "Do not promote attempt-2 artifacts. Preserve diagnostics, keep downstream blocked, and create a bounded backtrack/escalation request because the per-stage retry budget would be exhausted.",
+    "produces": [
+      "pipeline_planning/pipeline_planning_report_attempt_2_candidate.json",
+      "pipeline_planning/sacg_state_attempt_2_candidate.json",
+      "pipeline_planning/current_stage_checker_results_attempt_2.json"
+    ],
+    "rationale": "A same-stage retry is permitted by the attempt budget and preferred by flow_policy. The retry must explicitly supersede failed attempt-1 artifacts only after passing all current-stage checks, while preserving upstream model, shape, numeric, template, data order, memory/runtime, and verification contracts unless approval is requested.",
+    "requires_approval": false,
+    "stage": "pipeline_planning",
+    "tool_roles": [
+      "architecture_review",
+      "pipeline_repair",
+      "memory_runtime_repair",
+      "team_aggregate",
+      "llm_io_quality_check",
+      "llm_semantic_extraction",
+      "no_static_keyword_semantic_matching",
+      "sacg_validate"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 8,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/008_retry.json",
+  "stage": "pipeline_planning"
+}

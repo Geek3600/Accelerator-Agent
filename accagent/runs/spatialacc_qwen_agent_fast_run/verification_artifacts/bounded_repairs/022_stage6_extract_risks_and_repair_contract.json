@@ -1,0 +1,55 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "verification_plan_static_check",
+      "hierarchical_verification_plan_check",
+      "verification_artifact_contract_check",
+      "sacg_reference_check",
+      "tool_protocol_check",
+      "required_real_tool_evidence_check",
+      "verification_action_audit_check"
+    ],
+    "action_type": "bounded_repair",
+    "consumes": [
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/39_verification_artifacts.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/llm/verification_planner_agent_result.json",
+      "artifact.stage4.parameter_binding",
+      "artifact.stage4.parameter_static_checks",
+      "artifact.stage5.design_artifact_manifest",
+      "artifact.stage5.generated_code_package",
+      "artifact.stage5.memory_layout",
+      "artifact.stage5.runtime_config"
+    ],
+    "id": "stage6.extract_risks_and_repair_contract",
+    "on_failure": "Do not retry blindly or promote Stage6. If unresolved risks require upstream design changes, hand off to stage6.open_explicit_backtrack_request; if the failure is only missing checker capability, declare a planned_checker gap rather than claiming hardware correctness.",
+    "produces": [
+      "artifact.stage6.unresolved_risk_extraction_report",
+      "artifact.stage6.verification_plan_candidate",
+      "artifact.stage6.verification_artifact_contract_candidate",
+      "artifact.stage6.hierarchical_repair_loop_contract",
+      "artifact.stage6.current_stage_risk_resolution_report"
+    ],
+    "rationale": "The planner explicitly requested bounded Stage6 contract updates and reported 2 current-stage unresolved risks. Repair must be confined to Stage6 verification plan/contract artifacts and must use validated upstream Stage4/Stage5 artifacts plus failed-attempt logs only as diagnostics.",
+    "requires_approval": false,
+    "stage": "verification_artifacts",
+    "tool_roles": [
+      "bounded_template_repair",
+      "boundary_contract_generate",
+      "verification_action_audit",
+      "sacg_validate"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "stop",
+  "flow_event_index": 22,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/flow_events/022_stop.json",
+  "stage": "verification_artifacts"
+}

@@ -1,0 +1,229 @@
+{
+  "agent": "flow_controller_agent",
+  "duration_sec": 175.21978274900175,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "flow_controller_agent",
+    "approval_required_for": [
+      "Any architecture, pipeline topology, stream order, FIFO/liveness policy, or multilayer pipeline change proposed while resolving the verification_artifacts risks.",
+      "Any memory layout, DDR image layout, runtime ABI, register map, address map, transfer count, alignment, or host launch protocol change.",
+      "Any numeric policy, dtype, cast point, rounding, saturation, tolerance, golden-reference, or comparison policy change.",
+      "Any major template/operator implementation replacement or structural RTL repair outside bounded verification-artifact planning repair.",
+      "Any ambiguous board/app-shell target selection or target_discovery_policy update based on incomplete evidence.",
+      "Any substitution of required real-tool evidence or checker capability with a planned_tool or planned_checker equivalent.",
+      "Any attempt to promote downstream debug, backend, hardware closure, or board-runtime claims before the current verification_artifacts gates and later real-tool evidence requirements pass."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "stage_artifact_trust_barrier_check",
+          "output_validity_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "artifact_trust_boundary",
+        "consumes": [
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/36_verification_artifacts.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/verification_artifacts_report.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json"
+        ],
+        "id": "verification_artifacts.attempt1_quarantine_failed_outputs",
+        "on_failure": "Stop before any downstream stage and require trust-boundary repair; do not consume the stale verification_artifacts report.",
+        "produces": [
+          "artifact.stage6.verification_artifacts_attempt1_invalidated_record",
+          "artifact.stage6.failed_output_trust_boundary_note"
+        ],
+        "rationale": "The stage command failed and the framework explicitly did not promote the verification_artifacts report; recording the failed-output boundary prevents downstream consumption of stale or partial artifacts without inventing a new SACG blocker.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "stage_artifact_trust_barrier",
+          "output_validity_check",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_failed_checker_rerun",
+          "causal_repair_context_check",
+          "verification_action_audit_check"
+        ],
+        "action_type": "bounded_failure_localization",
+        "consumes": [
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/36_verification_artifacts.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/llm/verification_planner_agent_result.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/verification_evidence_gate_auditor_result.json",
+          "artifact.stage6.verification_artifacts_attempt1_invalidated_record"
+        ],
+        "id": "verification_artifacts.localize_planner_unresolved_risks",
+        "on_failure": "Do not spend the final same-stage attempt without a localized risk slice; stop or request bounded controller intervention to avoid artifact contamination.",
+        "produces": [
+          "artifact.stage6.verification_planner_unresolved_risk_slice",
+          "artifact.stage6.verification_artifacts_retry_reconciliation_notes"
+        ],
+        "rationale": "The only supplied current-stage blocker is the planner's 2 unresolved risks; extract a bounded diagnostic slice so the retry explicitly addresses them instead of blindly regenerating artifacts.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "failure_slice_localization",
+          "targeted_failed_checker_rerun",
+          "causal_repair_context_pack",
+          "verification_action_audit"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_retry_request_check",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "sacg_reference_check",
+          "llm_io_quality_check"
+        ],
+        "action_type": "same_stage_retry",
+        "consumes": [
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage4.parameter_static_checks",
+          "artifact.stage5.design_artifact_manifest",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.stage6.verification_planner_unresolved_risk_slice",
+          "artifact.stage6.verification_artifacts_retry_reconciliation_notes"
+        ],
+        "id": "verification_artifacts.retry_stage_attempt2",
+        "on_failure": "After the second failed attempt, do not proceed to debug_loop or backend_board; keep all candidate outputs diagnostic-only and run post-retry failure classification for bounded repair or backtrack.",
+        "produces": [
+          "artifact.stage6.verification_artifacts_report",
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.hierarchical_verification_plan",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.required_real_tool_evidence_matrix",
+          "artifact.stage6.next_stage_gate_decision"
+        ],
+        "rationale": "There are no current SACG-memory blockers, prior stages are ready, and one bounded retry remains; rerun verification_artifacts with the localized risk slice and require all current-stage gates before promotion.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "stage_retry_request",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "sacg_reference_check",
+          "llm_io_quality_check",
+          "team_aggregate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "stage_backtrack_request_check",
+          "stage_retry_request_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "conditional_bounded_escalation",
+        "consumes": [
+          "artifact.stage6.verification_artifacts_attempt2_failed_report_if_any",
+          "artifact.stage6.verification_planner_unresolved_risk_slice",
+          "artifact.stage6.verification_artifacts_retry_reconciliation_notes",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json"
+        ],
+        "id": "verification_artifacts.classify_post_retry_failure_if_needed",
+        "on_failure": "Stop the autonomous flow to avoid contaminating later verification/debug/backend artifacts with unresolved stage evidence.",
+        "produces": [
+          "artifact.stage6.localized_post_retry_failure_classification",
+          "artifact.stage6.stage_retry_or_backtrack_request_if_required",
+          "artifact.stage6.approval_boundary_report_if_required"
+        ],
+        "rationale": "If the bounded retry fails, the controller needs a tool-driven decision identifying whether the earliest responsible boundary is current-stage planning, code_generation artifacts, parameter binding, or an approval-scoped design policy issue.",
+        "requires_approval": true,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "stage_backtrack_request",
+          "stage_retry_request",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "sacg_memory_truth is authoritative and reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests; no historical record should be treated as a current blocker.",
+      "The latest verification_artifacts command failed with returncode 1; the framework states the existing stage report was not promoted and stale output was ignored.",
+      "The visible failure is current-stage semantic gating: verification_planner_agent reported 2 unresolved current-stage risks. The supplied evidence does not show a validated verification artifact contract suitable for downstream use.",
+      "The prior parameter_binding and code_generation stages are recorded as ready, so there is no supplied evidence requiring immediate backtrack before one bounded retry.",
+      "Transient LLM 504 retries occurred, but the planner eventually returned; because LLM planning is mandatory, the retry must include LLM/tool protocol quality checks rather than consuming fallback or partial artifacts."
+    ],
+    "proposed_actions": [
+      "Preserve a trust boundary around the failed attempt: treat the stale/unpromoted verification_artifacts report as diagnostic only.",
+      "Localize the 2 unresolved verification_planner_agent risks from the command log and planner/auditor outputs before spending the second stage attempt.",
+      "Retry the current verification_artifacts stage once, requiring static plan, hierarchical plan, artifact contract, required-real-tool-evidence, SACG-reference, tool-protocol, and LLM-quality gates to pass before promotion.",
+      "If the second attempt fails, do not proceed downstream; classify the localized cause into a bounded same-stage repair request or a backtrack request to the earliest responsible prior stage."
+    ],
+    "risks": [
+      "Proceeding to debug_loop or backend_board would contaminate downstream stages with an unpromoted verification_artifacts report.",
+      "Retrying without extracting the two unresolved planner risks may repeat the same current-stage failure and consume the final bounded attempt without new diagnostic value.",
+      "The unresolved current-stage risks may represent cross-layer inconsistencies among model/shape, numeric policy, data order, memory layout, runtime ABI, implementation contract, or board evidence requirements; these remain unproven until the verification plan and artifact contract pass.",
+      "Any attempt to close the stage by loosening tolerances, modifying golden outputs, changing numeric policy, changing memory/runtime layout, or altering architecture/template structure would require approval and must not be hidden inside the retry.",
+      "LLM service instability could yield incomplete or malformed stage artifacts; the retry must be gated by llm_io_quality_check and tool_protocol_check."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/36_verification_artifacts.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/verification_artifacts_report.json:stale_or_unpromoted",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage4.parameter_static_checks",
+        "artifact.stage5.design_artifact_manifest",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config"
+      ],
+      "constraints": [
+        "bounded_attempts_per_stage=2 with attempt_count=1",
+        "do_not_use_failed_artifacts_as_validated_downstream_inputs=true",
+        "llm_is_required=true; fallback diagnostics are not successful agent decisions",
+        "honor_backtrack_requests_before_downstream_progress=true, but no open backtrack requests are current",
+        "no architecture, memory layout, runtime ABI, numeric policy, golden-reference, or major template changes without approval",
+        "no hardware pass or downstream backend/debug promotion without real tool evidence and passed verification artifact gates"
+      ],
+      "edges": [
+        "stage4.parameter_binding -> stage5.code_generation",
+        "stage5.generated_code_package/memory_layout/runtime_config -> stage6.verification_artifacts",
+        "failed stage6 candidate -/-> downstream promotion",
+        "localized current-stage risks -> bounded same-stage retry -> promotion only after gates pass"
+      ],
+      "nodes": [
+        "stage4.parameter_binding:ready",
+        "stage5.code_generation:ready",
+        "stage6.verification_artifacts:failed_candidate",
+        "verification_evidence_gate_auditor",
+        "verification_planner_agent",
+        "sacg_memory_truth:no_current_blockers"
+      ]
+    },
+    "schema_version": "spatialaccagent.flow_controller_decision.v0",
+    "stage": "verification_artifacts",
+    "status": "retry_current_stage",
+    "summary": "Do not proceed downstream. The verification_artifacts stage failed with returncode 1 because verification_planner_agent reported 2 current-stage unresolved risks. SACG memory truth shows no active contamination barriers and no open retry/backtrack requests, and prior parameter_binding and code_generation outcomes are ready. Because attempt_count is 1 and the per-stage bound is 2, run a bounded same-stage retry after localizing the unresolved planner risks. Treat the failed/stale verification_artifacts report as diagnostic only and do not promote it."
+  },
+  "prompt_bytes": 26502,
+  "prompt_hash": "f720679fab300b0f08ef67012c7a9d9bb48c89ec530fdef1b064a2217c0eda60",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.flow_controller_decision.v0\",\"agent\":\"flow_controller_agent\",\"stage\":\"verification_artifacts\",\"status\":\"retry_current_stage\",\"summary\":\"Do not proceed downstream. The verification_artifacts stage failed with returncode 1 because verification_planner_agent reported 2 current-stage unresolved risks. SACG memory truth shows no active contamination barriers and no open retry/backtrack requests, and prior parameter_binding and code_generation outcomes are ready. Because attempt_count is 1 and the per-stage bound is 2, run a bounded same-stage retry after localizing the unresolved planner risks. Treat the failed/stale verification_artifacts report as diagnostic only and do not promote it.\",\"sacg_focus\":{\"nodes\":[\"stage4.parameter_binding:ready\",\"stage5.code_generation:ready\",\"stage6.verification_artifacts:failed_candidate\",\"verification_evidence_gate_auditor\",\"verification_planner_agent\",\"sacg_memory_truth:no_current_blockers\"],\"edges\":[\"stage4.parameter_binding -> stage5.code_generation\",\"stage5.generated_code_package/memory_layout/runtime_config -> stage6.verification_artifacts\",\"failed stage6 candidate -/-> downstream promotion\",\"localized current-stage risks -> bounded same-stage retry -> promotion only after gates pass\"],\"constraints\":[\"bounded_attempts_per_stage=2 with attempt_count=1\",\"do_not_use_failed_artifacts_as_validated_downstream_inputs=true\",\"llm_is_required=true; fallback diagnostics are not successful agent decisions\",\"honor_backtrack_requests_before_downstream_progress=true, but no open backtrack requests are current\",\"no architecture, memory layout, runtime ABI, numeric policy, golden-reference, or major template changes without approval\",\"no hardware pass or downstream backend/debug promotion without real tool evidence and passed verification artifact gates\"],\"artifacts\":[\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/36_verification_artifacts.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/verification_artifacts_report.json:stale_or_unpromoted\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json\",\"artifact.stage4.parameter_binding\",\"artifact.stage4.parameter_static_checks\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\"]},\"observations\":[\"sacg_memory_truth is authoritative and reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests; no historical record should be treated as a current blocker.\",\"The latest verification_artifacts command failed with returncode 1; the framework states the existing stage report was not promoted and stale output was ignored.\",\"The visible failure is current-stage semantic gating: verification_planner_agent reported 2 unresolved current-stage risks. The supplied evidence does not show a validated verification artifact contract suitable for downstream use.\",\"The prior parameter_binding and code_generation stages are recorded as ready, so there is no supplied evidence requiring immediate backtrack before one bounded retry.\",\"Transient LLM 504 retries occurred, but the planner eventually returned; because LLM planning is mandatory, the retry must include LLM/tool protocol quality checks rather than consuming fallback or partial artifacts.\"],\"risks\":[\"Proceeding to debug_loop or backend_board would contaminate downstream stages with an unpromoted verification_artifacts report.\",\"Retrying without extracting the two unresolved planner risks may repeat the same current-stage failure and consume the final bounded attempt without new diagnostic value.\",\"The unresolved current-stage risks may represent cross-layer inconsistencies among model/shape, numeric policy, data order, memory layout, runtime ABI, implementation contract, or board evidence requirements; these remain unproven until the verification plan and artifact contract pass.\",\"Any attempt to close the stage by loosening tolerances, modifying golden outputs, changing numeric policy, changing memory/runtime layout, or altering architecture/template structure would require approval and must not be hidden inside the retry.\",\"LLM service instability could yield incomplete or malformed stage artifacts; the retry must be gated by llm_io_quality_check and tool_protocol_check.\"],\"proposed_actions\":[\"Preserve a trust boundary around the failed attempt: treat the stale/unpromoted verification_artifacts report as diagnostic only.\",\"Localize the 2 unresolved verification_planner_agent risks from the command log and planner/auditor outputs before spending the second stage attempt.\",\"Retry the current verification_artifacts stage once, requiring static plan, hierarchical plan, artifact contract, required-real-tool-evidence, SACG-reference, tool-protocol, and LLM-quality gates to pass before promotion.\",\"If the second attempt fails, do not proceed downstream; classify the localized cause into a bounded same-stage repair request or a backtrack request to the earliest responsible prior stage.\"],\"executable_actions\":[{\"id\":\"verification_artifacts.attempt1_quarantine_failed_outputs\",\"stage\":\"verification_artifacts\",\"action_type\":\"artifact_trust_boundary\",\"rationale\":\"The stage command failed and the framework explicitly did not promote the verification_artifacts report; recording the failed-output boundary prevents downstream consumption of stale or partial artifacts without inventing a new SACG blocker.\",\"consumes\":[\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/36_verification_artifacts.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/verification_artifacts_report.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json\"],\"produces\":[\"artifact.stage6.verification_artifacts_attempt1_invalidated_record\",\"artifact.stage6.failed_output_trust_boundary_note\"],\"tool_roles\":[\"stage_artifact_trust_barrier\",\"output_validity_check\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"stage_artifact_trust_barrier_check\",\"output_validity_check\",\"sacg_memory_check\"],\"on_failure\":\"Stop before any downstream stage and require trust-boundary repair; do not consume the stale verification_artifacts report.\",\"requires_approval\":false},{\"id\":\"verification_artifacts.localize_planner_unresolved_risks\",\"stage\":\"verification_artifacts\",\"action_type\":\"bounded_failure_localization\",\"rationale\":\"The only supplied current-stage blocker is the planner's 2 unresolved risks; extract a bounded diagnostic slice so the retry explicitly addresses them instead of blindly regenerating artifacts.\",\"consumes\":[\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/36_verification_artifacts.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/llm/verification_planner_agent_result.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/verification_evidence_gate_auditor_result.json\",\"artifact.stage6.verification_artifacts_attempt1_invalidated_record\"],\"produces\":[\"artifact.stage6.verification_planner_unresolved_risk_slice\",\"artifact.stage6.verification_artifacts_retry_reconciliation_notes\"],\"tool_roles\":[\"failure_slice_localization\",\"targeted_failed_checker_rerun\",\"causal_repair_context_pack\",\"verification_action_audit\"],\"acceptance_checkers\":[\"failure_localization_check\",\"targeted_failed_checker_rerun\",\"causal_repair_context_check\",\"verification_action_audit_check\"],\"on_failure\":\"Do not spend the final same-stage attempt without a localized risk slice; stop or request bounded controller intervention to avoid artifact contamination.\",\"requires_approval\":false},{\"id\":\"verification_artifacts.retry_stage_attempt2\",\"stage\":\"verification_artifacts\",\"action_type\":\"same_stage_retry\",\"rationale\":\"There are no current SACG-memory blockers, prior stages are ready, and one bounded retry remains; rerun verification_artifacts with the localized risk slice and require all current-stage gates before promotion.\",\"consumes\":[\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json\",\"artifact.stage4.parameter_binding\",\"artifact.stage4.parameter_static_checks\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage6.verification_planner_unresolved_risk_slice\",\"artifact.stage6.verification_artifacts_retry_reconciliation_notes\"],\"produces\":[\"artifact.stage6.verification_artifacts_report\",\"artifact.stage6.verification_plan\",\"artifact.stage6.hierarchical_verification_plan\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.required_real_tool_evidence_matrix\",\"artifact.stage6.next_stage_gate_decision\"],\"tool_roles\":[\"stage_retry_request\",\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"sacg_reference_check\",\"llm_io_quality_check\",\"team_aggregate\"],\"acceptance_checkers\":[\"stage_retry_request_check\",\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"sacg_reference_check\",\"llm_io_quality_check\"],\"on_failure\":\"After the second failed attempt, do not proceed to debug_loop or backend_board; keep all candidate outputs diagnostic-only and run post-retry failure classification for bounded repair or backtrack.\",\"requires_approval\":false},{\"id\":\"verification_artifacts.classify_post_retry_failure_if_needed\",\"stage\":\"verification_artifacts\",\"action_type\":\"conditional_bounded_escalation\",\"rationale\":\"If the bounded retry fails, the controller needs a tool-driven decision identifying whether the earliest responsible boundary is current-stage planning, code_generation artifacts, parameter binding, or an approval-scoped design policy issue.\",\"consumes\":[\"artifact.stage6.verification_artifacts_attempt2_failed_report_if_any\",\"artifact.stage6.verification_planner_unresolved_risk_slice\",\"artifact.stage6.verification_artifacts_retry_reconciliation_notes\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json\"],\"produces\":[\"artifact.stage6.localized_post_retry_failure_classification\",\"artifact.stage6.stage_retry_or_backtrack_request_if_required\",\"artifact.stage6.approval_boundary_report_if_required\"],\"tool_roles\":[\"failure_slice_localization\",\"causal_repair_context_pack\",\"stage_backtrack_request\",\"stage_retry_request\",\"human_boundary_check\"],\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"stage_backtrack_request_check\",\"stage_retry_request_check\",\"human_boundary_check\",\"repair_boundary_check\"],\"on_failure\":\"Stop the autonomous flow to avoid contaminating later verification/debug/backend artifacts with unresolved stage evidence.\",\"requires_approval\":true}],\"approval_required_for\":[\"Any architecture, pipeline topology, stream order, FIFO/liveness policy, or multilayer pipeline change proposed while resolving the verification_artifacts risks.\",\"Any memory layout, DDR image layout, runtime ABI, register map, address map, transfer count, alignment, or host launch protocol change.\",\"Any numeric policy, dtype, cast point, rounding, saturation, tolerance, golden-reference, or comparison policy change.\",\"Any major template/operator implementation replacement or structural RTL repair outside bounded verification-artifact planning repair.\",\"Any ambiguous board/app-shell target selection or target_discovery_policy update based on incomplete evidence.\",\"Any substitution of required real-tool evidence or checker capability with a planned_tool or planned_checker equivalent.\",\"Any attempt to promote downstream debug, backend, hardware closure, or board-runtime claims before the current verification_artifacts gates and later real-tool evidence requirements pass.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/019_verification_artifacts/llm/flow_controller_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/019_verification_artifacts/llm/flow_controller_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "flow_orchestration",
+  "used_fallback": false
+}

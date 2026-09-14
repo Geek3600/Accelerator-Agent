@@ -1,0 +1,23 @@
+package Softmax
+
+import QuantCommon.Precision._
+
+object FP32Param {
+  val BATCHSIZE = Param.BATCHSIZE
+  val SINGLE_QUERY_BATCH = Param.SINGLE_QUERY_BATCH
+  val SEQ_LEN = Param.SEQ_LEN
+  val V = Param.V
+  val TILE_SEQLEN = Param.TILE_SEQLEN
+  val TILE_COUNT = (SEQ_LEN + TILE_SEQLEN - 1) / TILE_SEQLEN
+
+  val ROW_WIDTH = V * FP32_WIDTH
+  val MEM_WIDTH = TILE_SEQLEN * FP32_WIDTH
+  val MEM_DEPTH = Param.MEM_DEPTH
+
+  val WMEM_WIDTH = Param.WMEM_WIDTH
+  val WMEM_DEPTH = Param.WMEM_DEPTH
+
+  val FIXED_INT_WIDTH = 8
+  val FIXED_FRAC_WIDTH = 8
+  val FIXED_WIDTH = FIXED_INT_WIDTH + FIXED_FRAC_WIDTH
+}

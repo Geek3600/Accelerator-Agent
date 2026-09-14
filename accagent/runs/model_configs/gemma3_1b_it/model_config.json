@@ -1,0 +1,58 @@
+{
+  "model_type": "gemma3_text",
+  "num_layers": 26,
+  "hidden_size": 1152,
+  "target_max_seq_len": 16,
+  "block": {
+    "type": "decoder",
+    "operator_sequence": [
+      "rms_norm_input",
+      "self_attention",
+      "rms_norm_post_attention",
+      "residual_add_1",
+      "rms_norm_pre_ffn",
+      "mlp_gate_proj",
+      "mlp_up_proj",
+      "activation_mul",
+      "mlp_down_proj",
+      "rms_norm_post_ffn",
+      "residual_add_2"
+    ]
+  },
+  "attention": {
+    "kind": "mqa",
+    "num_q_heads": 4,
+    "num_kv_heads": 1,
+    "head_dim": 256,
+    "causal": true,
+    "position_encoding": {
+      "type": "rope",
+      "rope_theta": 1000000,
+      "rope_local_base_freq": 10000
+    },
+    "qkv_bias": false,
+    "out_bias": false,
+    "qk_norm": true,
+    "sliding_window": 512,
+    "sliding_window_pattern": 6
+  },
+  "norm": {
+    "type": "rms_norm",
+    "position": "pre",
+    "eps": 1e-06,
+    "has_bias": false
+  },
+  "mlp": {
+    "type": "gated",
+    "intermediate_size": 6912,
+    "activation": "gelu_pytorch_tanh",
+    "up_bias": false,
+    "down_bias": false
+  },
+  "weight_layout": {
+    "qkv": "separate_q_k_v",
+    "out_proj": "dense",
+    "mlp": "gate_up_down",
+    "norm": "weight_only"
+  }
+}

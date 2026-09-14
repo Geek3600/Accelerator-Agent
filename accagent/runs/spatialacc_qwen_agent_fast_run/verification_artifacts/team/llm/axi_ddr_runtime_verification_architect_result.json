@@ -1,0 +1,411 @@
+{
+  "agent": "axi_ddr_runtime_verification_architect",
+  "duration_sec": 283.4664794919954,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "axi_ddr_runtime_verification_architect",
+    "approval_required_for": [
+      "Any change to artifact.stage5.memory_layout, including DDR base addresses, region sizes, alignment, strides, transfer-unit widths, or image schema.",
+      "Any change to artifact.stage5.runtime_config or runtime ABI, including register map, control/status bits, interrupt/polling semantics, host launch order, or buffer descriptor convention.",
+      "Any modification or replacement of the generated AXI/DDR top wrapper, board-shell adapter, or protocol glue beyond bounded template-compatible repair.",
+      "Any reordering of the verification DAG that would execute board discovery, AXI/DDR wrapper, AXI protocol, DDR image roundtrip, runtime bitstream, runtime ABI, or board runtime before multilayer functional and liveness closure.",
+      "Any ambiguous board/app-shell target selection after discovery or hint synthesis; the team must require bounded approval rather than guessing names.",
+      "Any attempt to treat smoke evidence, default generated weights, DDR roundtrip-only evidence, or relaxed numeric tolerance/golden outputs as functional correctness acceptance."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "memory_runtime_plan_check",
+          "tool_protocol_check",
+          "verification_action_audit_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_stage_artifact.verification_artifact_contract.verification_gate_dag",
+          "candidate_stage_artifact.verification_artifact_contract.required_tool_protocols",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.stage5.generated_code_package",
+          "constraint.verification.plan",
+          "constraint.verification.hierarchy",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.stream.order",
+          "constraint.beat.pipeline",
+          "constraint.tool.protocols"
+        ],
+        "id": "axi_ddr.audit_gate_dag_dependencies",
+        "on_failure": "Return the Stage 6 verification artifact for bounded plan repair and block board-wrapper, backend, bitstream, and board-runtime execution until the DAG and checker bindings pass again.",
+        "produces": [
+          "axi_ddr_gate_dependency_review",
+          "runtime_memory_layout_crosscheck_plan"
+        ],
+        "rationale": "Lock the AXI/DDR/runtime sub-DAG as a checker-consumable contract and verify that board discovery, wrapper interface, protocol, DDR roundtrip, runtime bitstream, runtime ABI, and board runtime remain ordered after multilayer functional and liveness closure. This action also binds addr_map_check and transfer_count_check to the relevant memory/runtime gates without claiming execution pass.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "memory_runtime_plan_check",
+          "tool_protocol_check",
+          "verification_action_audit"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "required_real_tool_evidence_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "case_multilayer_pipeline",
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "gate_enablement_check",
+        "consumes": [
+          "candidate_stage_artifact.verification_artifact_contract",
+          "case_stage_leaf_static evidence",
+          "case_leaf_functional evidence",
+          "case_leaf_golden_compare evidence",
+          "case_tb_scaffold evidence",
+          "single_transformer_layer evidence",
+          "case_single_layer_functional evidence",
+          "case_single_layer_golden_compare evidence",
+          "case_multilayer_pipeline evidence",
+          "case_multilayer_functional evidence",
+          "case_pipeline_deadlock_check evidence",
+          "case_real_weight_artifacts evidence"
+        ],
+        "id": "axi_ddr.verify_lower_layer_gate_enablement",
+        "on_failure": "Do not execute case_board_interface_discovery, case_axi_ddr_interface, protocol, DDR roundtrip, Vivado, bitstream, runtime ABI, or board runtime. Route the failing lower layer to the three-layer repair loop at its own boundary.",
+        "produces": [
+          "verification/axi_ddr/gate_enablement_certificate.json"
+        ],
+        "rationale": "AXI/DDR and runtime-interface gates must not execute until real lower-layer closure exists: operator leaf functional/golden, single-transformer-layer functional/golden, multilayer pipeline functional, and deadlock/liveness evidence. This prevents board-wrapper evidence from masking functional-layer defects.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "required_real_tool_evidence_check",
+          "hierarchical_verification_plan_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_board_interface_discovery",
+          "real_tool.case_board_interface_discovery",
+          "backend_app_shell_target_discovery_check",
+          "human_boundary_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "verification/axi_ddr/gate_enablement_certificate.json",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "artifact.stage5.generated_code_package",
+          "constraint.deployment.board",
+          "constraint.memory.board",
+          "constraint.runtime.board"
+        ],
+        "id": "axi_ddr.run_board_interface_discovery_after_closure",
+        "on_failure": "If discovery is missing or ambiguous, invoke bounded backend target recovery and require approval for target selection; do not proceed to AXI/DDR wrapper, Vivado, bitstream, runtime ABI, or board runtime by guessing names.",
+        "produces": [
+          "backend_board/case_board_interface_discovery.json",
+          "backend_board/app_shell_target_discovery_contract.json",
+          "backend_board/target_discovery_policy_update.json"
+        ],
+        "rationale": "Discover board/app-shell interface facts only after lower-layer functional and liveness closure, using supplied board materials and real tool evidence rather than guessed target names. The result is the required board-interface prerequisite for AXI/DDR wrapper and runtime ABI checks.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "case_board_interface_discovery",
+          "app_shell_target_discovery_contract",
+          "real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "data_order_trace_check",
+          "real_tool.case_axi_ddr_interface",
+          "real_tool.case_axi_protocol_check",
+          "real_tool.case_deadlock_axi_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "verification/axi_ddr/gate_enablement_certificate.json",
+          "backend_board/case_board_interface_discovery.json",
+          "artifact.stage5.generated_code_package AXI/DDR top wrapper",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.stage5.design_artifact_manifest",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.stream.order",
+          "constraint.beat.pipeline"
+        ],
+        "id": "axi_ddr.run_wrapper_interface_protocol_addr_transfer_checks",
+        "on_failure": "Stop before case_ddr_image_roundtrip, functional_sim, Vivado, bitstream, runtime ABI, or board runtime. Feed the failing report to axi_ddr.localize_wrapper_runtime_failure for earliest-boundary localization and targeted rerun.",
+        "produces": [
+          "verification/axi_ddr/case_axi_ddr_interface.json",
+          "verification/axi_ddr/case_axi_protocol_check.json",
+          "verification/axi_ddr/addr_map_check.json",
+          "verification/axi_ddr/transfer_count_check.json",
+          "verification/axi_ddr/data_order_trace_check.json",
+          "verification/axi_ddr/case_deadlock_axi_check.json"
+        ],
+        "rationale": "Run the board-accurate AXI/DDR wrapper evidence bundle after gate enablement and board discovery. The bundle must check wrapper connectivity, AXI protocol/order/address behavior, data-order preservation, transfer counts, and AXI liveness before DDR roundtrip or backend promotion.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "data_order_trace_check",
+          "case_deadlock_axi_check",
+          "real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_ddr_image_roundtrip",
+          "real_tool.case_ddr_image_roundtrip",
+          "addr_map_check",
+          "transfer_count_check",
+          "artifact_hash_check",
+          "data_order_trace_check",
+          "numeric_compare"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "verification/axi_ddr/case_axi_protocol_check.json",
+          "verification/axi_ddr/addr_map_check.json",
+          "verification/axi_ddr/transfer_count_check.json",
+          "verification/axi_ddr/data_order_trace_check.json",
+          "case_real_weight_artifacts evidence",
+          "case_tb_scaffold evidence",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.stage5.generated_code_package"
+        ],
+        "id": "axi_ddr.run_ddr_image_roundtrip_acceptance",
+        "on_failure": "Block functional_sim, Vivado, bitstream, runtime ABI, and board runtime. Localize whether the earliest cause is image packing, address mapping, transfer count, beat order, wrapper protocol, or runtime layout before proposing any bounded repair.",
+        "produces": [
+          "ddr_image_roundtrip_acceptance_contract",
+          "verification/axi_ddr/case_ddr_image_roundtrip.json",
+          "verification/axi_ddr/ddr_image_hashes.json",
+          "verification/axi_ddr/ddr_roundtrip_transfer_count_report.json"
+        ],
+        "rationale": "Prove real DDR image transfer paths through the verified wrapper using the real input and weight artifacts, generated memory layout, runtime config, address-map evidence, transfer counts, order trace, and image hashes. This is a transfer-integrity contract, not a standalone model-correctness claim.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_ddr_image_roundtrip",
+          "addr_map_check",
+          "transfer_count_check",
+          "artifact_hash_check",
+          "data_order_trace_check",
+          "numeric_compare",
+          "real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_runtime_abi_check",
+          "real_tool.case_runtime_abi_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "implementation_package_static",
+          "artifact_hash_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.stage5.runtime_config",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.generated_code_package",
+          "backend_board/case_board_interface_discovery.json",
+          "verification/axi_ddr/case_axi_ddr_interface.json",
+          "verification/axi_ddr/case_axi_protocol_check.json",
+          "verification/axi_ddr/addr_map_check.json",
+          "verification/axi_ddr/transfer_count_check.json",
+          "verification/axi_ddr/case_ddr_image_roundtrip.json",
+          "case_runtime_bitstream evidence",
+          "implementation package evidence"
+        ],
+        "id": "axi_ddr.run_runtime_abi_preboard_and_final_check",
+        "on_failure": "Block board_runtime. If the failure is a missing checker/golden-reference capability, classify it as checker repair; if real evidence shows ABI, register-map, address, transfer, or packaging mismatch, produce a bounded memory/runtime repair or backtrack request with approval for any layout or ABI change.",
+        "produces": [
+          "runtime_abi_preboard_checklist",
+          "backend_board/case_runtime_abi_check.json",
+          "backend_board/register_map_ddr_layout_crosscheck.json",
+          "backend_board/runtime_abi_artifact_hashes.json"
+        ],
+        "rationale": "Create a preboard runtime ABI checklist and execute the final runtime ABI check after bitstream packaging but before board runtime. The check must compare runtime_config, memory_layout, generated wrapper/register map, board discovery facts, implementation package, bitstream artifacts, address-map evidence, and transfer-count evidence.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "case_runtime_abi_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "implementation_package_static",
+          "artifact_hash_check",
+          "real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_replay_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun"
+        ],
+        "action_type": "contract_guided_debug_closure",
+        "consumes": [
+          "verification/axi_ddr/case_axi_ddr_interface.json or failing report",
+          "verification/axi_ddr/case_axi_protocol_check.json or failing report",
+          "verification/axi_ddr/case_ddr_image_roundtrip.json or failing report",
+          "backend_board/case_runtime_abi_check.json or failing report",
+          "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.stage5.generated_code_package"
+        ],
+        "id": "axi_ddr.localize_wrapper_runtime_failure",
+        "on_failure": "Keep AXI/DDR, backend, bitstream, runtime ABI, and board runtime promotion blocked and raise a Stage 6/verification backtrack or capability repair request; do not rely on static scripts or human memory as evidence.",
+        "produces": [
+          "verification/debug_closure/axi_ddr_failure_localization.json",
+          "verification/debug_closure/axi_ddr_targeted_replay_plan.json",
+          "verification/debug_closure/axi_ddr_causal_repair_context.json"
+        ],
+        "rationale": "Enforce the three-layer repair loop for AXI/DDR/runtime failures: after lower functional layers have passed, localize the earliest causal boundary in the board-accurate wrapper, address map, image packer, transfer counter, protocol adapter, or runtime ABI before any bounded repair. Do not reopen passed lower layers without contradictory boundary traces.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "failure_slice_localization",
+          "boundary_trace_rerun",
+          "targeted_replay",
+          "causal_repair_context_pack",
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun"
+        ]
+      }
+    ],
+    "observations": [
+      "sacg_memory_truth in the supplied state summary lists zero active contamination barriers, zero open retry requests, and zero open backtrack requests; there is no current SACG-memory blocker for this review.",
+      "Upstream Stage 3 pipeline planning, Stage 4 parameter binding, and Stage 5 code generation/static checks are visible as ready/pass evidence; Stage 5 elaborated the generated AXI/DDR top wrapper successfully, but this is compile/elaboration evidence only, not runtime correctness.",
+      "The current static checkers relevant to this role passed: tool_protocol_check reports required verification tool protocols configured, memory_runtime_plan_check reports generated code package, memory layout, and runtime config present, and data_order_trace_check reports the stream/numeric policy is available for downstream trace checks.",
+      "The DAG enforces bottom-up closure before AXI/DDR gates: case_board_interface_discovery depends on case_pipeline_deadlock_check, which depends on case_multilayer_functional; case_axi_ddr_interface then depends on both liveness closure and board-interface discovery.",
+      "case_axi_protocol_check and case_ddr_image_roundtrip are correctly downstream of the board wrapper/interface gate; case_ddr_image_roundtrip also depends on real weight/input artifacts, preserving the rule that smoke or default generated weights are not acceptance evidence.",
+      "case_runtime_abi_check is placed after case_runtime_bitstream and board_runtime is placed after runtime ABI, functional simulation, bitstream, and real artifacts. This is acceptable only if the executor preserves transitive dependencies through functional_sim back to DDR roundtrip and AXI protocol evidence.",
+      "Detailed memory_layout and runtime_config fields are not visible in the compact role slice, but presence_summary and memory_runtime_plan_check indicate these artifact classes exist; missing-detail concerns should be handled as downstream crosscheck actions rather than current-stage missing-field blockers.",
+      "addr_map_check and transfer_count_check are supplied as accepted checkers for this role but are not standalone DAG nodes in the visible graph; they must be explicitly bound as acceptance checkers for AXI protocol, DDR roundtrip, and runtime ABI evidence.",
+      "No planned_tool or planned_checker capability gap is required for the listed AXI/DDR/runtime gates because the action_grounding_registry includes board discovery, AXI/DDR interface, AXI protocol, DDR roundtrip, runtime ABI, address-map, transfer-count, data-order, artifact-hash, and real-tool evidence checkers."
+    ],
+    "proposed_actions": [
+      "Materialize an axi_ddr_gate_dependency_review that records the exact transitive prerequisites for case_board_interface_discovery, case_axi_ddr_interface, case_axi_protocol_check, case_ddr_image_roundtrip, case_runtime_bitstream, case_runtime_abi_check, and board_runtime.",
+      "Produce a runtime_memory_layout_crosscheck_plan that binds Stage 5 memory_layout and runtime_config to AXI base addresses, DDR regions, byte counts, burst/beat alignment, register map, control/status fields, and host ABI launch/order semantics.",
+      "Before any board discovery or AXI/DDR tool run, require a gate-enable certificate showing leaf functional/golden, single-layer functional/golden, multilayer functional, and pipeline deadlock/liveness evidence all passed with real artifacts.",
+      "Execute board-interface discovery only after the gate-enable certificate; if discovery evidence is ambiguous, hand off to backend_board_evidence_planner for bounded target recovery rather than guessing app-shell or Vivado target names.",
+      "Execute AXI/DDR interface, AXI protocol, address-map, transfer-count, data-order, and AXI deadlock checks as one ordered wrapper evidence bundle before DDR image roundtrip, functional_sim, Vivado, or bitstream gates.",
+      "Define the DDR image roundtrip acceptance contract around real input/weight/output images, artifact hashes, address ranges, exact byte counts, order traces, and numeric/golden linkage; block functional_sim and backend if it fails.",
+      "Create a runtime_abi_preboard_checklist and final case_runtime_abi_check that compare runtime_config, memory_layout, generated wrapper, board discovery, bitstream packaging, and transfer evidence before board_runtime.",
+      "For any AXI/DDR/runtime failure, invoke contract-guided localization and targeted replay, then bounded repair and targeted checker rerun; do not promote or skip to a higher layer with failed evidence."
+    ],
+    "risks": [
+      "Downstream risk: if a runner flattens the DAG and ignores transitive dependencies, case_runtime_bitstream or case_runtime_abi_check could be executed without completed case_axi_protocol_check and case_ddr_image_roundtrip evidence. The evidence auditor must verify transitive closure, not just direct parent names.",
+      "Downstream risk: address-map and transfer-count bugs can pass a smoke-level wrapper check unless addr_map_check and transfer_count_check consume the actual Stage 5 memory_layout, runtime_config, generated AXI/DDR top, and real image manifests.",
+      "Downstream risk: mixed fp16/fp32 stream widths, 8-lane packing, and residual fp32 boundaries make byte count, beat order, and lane mapping vulnerable to off-by-stride or dtype-size errors unless data_order_trace_check and transfer_count_check are tied to the same memory/runtime contract.",
+      "Downstream risk: board/app-shell discovery may expose ambiguous AXI port names, clock/reset domains, shell targets, or host ABI conventions. The team must not guess; ambiguous target selection requires bounded recovery and approval.",
+      "Downstream risk: DDR image roundtrip proves transfer path integrity only when hashes, address ranges, counts, and order are checked; it must not be misreported as model numeric correctness without golden/numeric comparison evidence from the functional gates.",
+      "Downstream risk: runtime ABI checking after bitstream can find register-map or DDR-layout mismatches late. A preboard checklist should be materialized before board_runtime and should also be available to backend planning before irreversible target-specific packaging.",
+      "Repair risk: if AXI/DDR or runtime evidence fails, the next step must be boundary/localization driven at the earliest causal wrapper, runtime, address-map, packer, or transfer-count boundary. Do not patch lower functional layers unless boundary traces contradict their prior accepted evidence."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.codegen_compile_gate",
+        "artifact.stage5.codegen_contract_check",
+        "artifact.stage5.codegen_package_static_check",
+        "candidate_stage_artifact.verification_artifact_contract",
+        "candidate_stage_artifact.verification_artifact_contract.required_tool_protocols",
+        "axi_ddr_gate_dependency_review",
+        "runtime_memory_layout_crosscheck_plan",
+        "ddr_image_roundtrip_acceptance_contract",
+        "runtime_abi_preboard_checklist"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.verification.hierarchy",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.tool.protocols",
+        "constraint.codegen.package"
+      ],
+      "edges": [
+        "case_multilayer_functional -> case_pipeline_deadlock_check",
+        "case_pipeline_deadlock_check -> case_board_interface_discovery",
+        "case_pipeline_deadlock_check + case_board_interface_discovery -> case_axi_ddr_interface",
+        "case_axi_ddr_interface + case_board_interface_discovery -> case_axi_protocol_check",
+        "case_axi_protocol_check + case_real_weight_artifacts -> case_ddr_image_roundtrip",
+        "case_real_weight_artifacts + case_single_layer_golden_compare + case_pipeline_deadlock_check + case_ddr_image_roundtrip -> functional_sim",
+        "functional_sim + case_axi_ddr_interface + case_board_interface_discovery -> case_vivado_synthesis",
+        "case_vivado_synthesis -> case_vivado_implementation",
+        "case_vivado_implementation + functional_sim + case_axi_ddr_interface + case_multilayer_pipeline -> case_runtime_bitstream",
+        "case_runtime_bitstream -> case_runtime_abi_check",
+        "case_runtime_bitstream + case_runtime_abi_check + functional_sim + case_real_weight_artifacts -> board_runtime",
+        "addr_map_check + transfer_count_check must be bound to case_axi_protocol_check, case_ddr_image_roundtrip, and case_runtime_abi_check"
+      ],
+      "nodes": [
+        "case_real_weight_artifacts",
+        "case_multilayer_pipeline",
+        "case_multilayer_functional",
+        "case_pipeline_deadlock_check",
+        "case_board_interface_discovery",
+        "case_axi_ddr_interface",
+        "case_axi_protocol_check",
+        "case_ddr_image_roundtrip",
+        "functional_sim",
+        "case_vivado_synthesis",
+        "case_vivado_implementation",
+        "case_runtime_bitstream",
+        "case_runtime_abi_check",
+        "board_runtime",
+        "addr_map_check",
+        "transfer_count_check",
+        "data_order_trace_check"
+      ]
+    },
+    "schema_version": "spatialaccagent.axi_ddr_runtime_verification_architect.v0",
+    "stage": "verification_artifacts",
+    "status": "ready_with_downstream_execution_required",
+    "summary": "The supplied Stage 6 static verification artifact is acceptable for AXI/DDR/runtime handoff planning: board-interface discovery, AXI/DDR wrapping, AXI protocol checking, DDR image roundtrip, runtime bitstream, runtime ABI, and board runtime are ordered after multilayer functional and liveness closure by the declared DAG. No AXI/DDR, DDR-transfer, runtime ABI, bitstream, or board pass is claimed; all such gates remain required downstream tool-evidence gates. Address-map and transfer-count evidence must be attached to the wrapper, protocol, roundtrip, and ABI gates before backend or board promotion."
+  },
+  "prompt_bytes": 74134,
+  "prompt_hash": "04d8cf5bbba690c5879cb46c66af2c8a6bf9567eb2fc762b5467d77450879da7",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.axi_ddr_runtime_verification_architect.v0\",\"agent\":\"axi_ddr_runtime_verification_architect\",\"stage\":\"verification_artifacts\",\"status\":\"ready_with_downstream_execution_required\",\"summary\":\"The supplied Stage 6 static verification artifact is acceptable for AXI/DDR/runtime handoff planning: board-interface discovery, AXI/DDR wrapping, AXI protocol checking, DDR image roundtrip, runtime bitstream, runtime ABI, and board runtime are ordered after multilayer functional and liveness closure by the declared DAG. No AXI/DDR, DDR-transfer, runtime ABI, bitstream, or board pass is claimed; all such gates remain required downstream tool-evidence gates. Address-map and transfer-count evidence must be attached to the wrapper, protocol, roundtrip, and ABI gates before backend or board promotion.\",\"sacg_focus\":{\"nodes\":[\"case_real_weight_artifacts\",\"case_multilayer_pipeline\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_board_interface_discovery\",\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"functional_sim\",\"case_vivado_synthesis\",\"case_vivado_implementation\",\"case_runtime_bitstream\",\"case_runtime_abi_check\",\"board_runtime\",\"addr_map_check\",\"transfer_count_check\",\"data_order_trace_check\"],\"edges\":[\"case_multilayer_functional -> case_pipeline_deadlock_check\",\"case_pipeline_deadlock_check -> case_board_interface_discovery\",\"case_pipeline_deadlock_check + case_board_interface_discovery -> case_axi_ddr_interface\",\"case_axi_ddr_interface + case_board_interface_discovery -> case_axi_protocol_check\",\"case_axi_protocol_check + case_real_weight_artifacts -> case_ddr_image_roundtrip\",\"case_real_weight_artifacts + case_single_layer_golden_compare + case_pipeline_deadlock_check + case_ddr_image_roundtrip -> functional_sim\",\"functional_sim + case_axi_ddr_interface + case_board_interface_discovery -> case_vivado_synthesis\",\"case_vivado_synthesis -> case_vivado_implementation\",\"case_vivado_implementation + functional_sim + case_axi_ddr_interface + case_multilayer_pipeline -> case_runtime_bitstream\",\"case_runtime_bitstream -> case_runtime_abi_check\",\"case_runtime_bitstream + case_runtime_abi_check + functional_sim + case_real_weight_artifacts -> board_runtime\",\"addr_map_check + transfer_count_check must be bound to case_axi_protocol_check, case_ddr_image_roundtrip, and case_runtime_abi_check\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.tool.protocols\",\"constraint.codegen.package\"],\"artifacts\":[\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.codegen_compile_gate\",\"artifact.stage5.codegen_contract_check\",\"artifact.stage5.codegen_package_static_check\",\"candidate_stage_artifact.verification_artifact_contract\",\"candidate_stage_artifact.verification_artifact_contract.required_tool_protocols\",\"axi_ddr_gate_dependency_review\",\"runtime_memory_layout_crosscheck_plan\",\"ddr_image_roundtrip_acceptance_contract\",\"runtime_abi_preboard_checklist\"]},\"observations\":[\"sacg_memory_truth in the supplied state summary lists zero active contamination barriers, zero open retry requests, and zero open backtrack requests; there is no current SACG-memory blocker for this review.\",\"Upstream Stage 3 pipeline planning, Stage 4 parameter binding, and Stage 5 code generation/static checks are visible as ready/pass evidence; Stage 5 elaborated the generated AXI/DDR top wrapper successfully, but this is compile/elaboration evidence only, not runtime correctness.\",\"The current static checkers relevant to this role passed: tool_protocol_check reports required verification tool protocols configured, memory_runtime_plan_check reports generated code package, memory layout, and runtime config present, and data_order_trace_check reports the stream/numeric policy is available for downstream trace checks.\",\"The DAG enforces bottom-up closure before AXI/DDR gates: case_board_interface_discovery depends on case_pipeline_deadlock_check, which depends on case_multilayer_functional; case_axi_ddr_interface then depends on both liveness closure and board-interface discovery.\",\"case_axi_protocol_check and case_ddr_image_roundtrip are correctly downstream of the board wrapper/interface gate; case_ddr_image_roundtrip also depends on real weight/input artifacts, preserving the rule that smoke or default generated weights are not acceptance evidence.\",\"case_runtime_abi_check is placed after case_runtime_bitstream and board_runtime is placed after runtime ABI, functional simulation, bitstream, and real artifacts. This is acceptable only if the executor preserves transitive dependencies through functional_sim back to DDR roundtrip and AXI protocol evidence.\",\"Detailed memory_layout and runtime_config fields are not visible in the compact role slice, but presence_summary and memory_runtime_plan_check indicate these artifact classes exist; missing-detail concerns should be handled as downstream crosscheck actions rather than current-stage missing-field blockers.\",\"addr_map_check and transfer_count_check are supplied as accepted checkers for this role but are not standalone DAG nodes in the visible graph; they must be explicitly bound as acceptance checkers for AXI protocol, DDR roundtrip, and runtime ABI evidence.\",\"No planned_tool or planned_checker capability gap is required for the listed AXI/DDR/runtime gates because the action_grounding_registry includes board discovery, AXI/DDR interface, AXI protocol, DDR roundtrip, runtime ABI, address-map, transfer-count, data-order, artifact-hash, and real-tool evidence checkers.\"],\"risks\":[\"Downstream risk: if a runner flattens the DAG and ignores transitive dependencies, case_runtime_bitstream or case_runtime_abi_check could be executed without completed case_axi_protocol_check and case_ddr_image_roundtrip evidence. The evidence auditor must verify transitive closure, not just direct parent names.\",\"Downstream risk: address-map and transfer-count bugs can pass a smoke-level wrapper check unless addr_map_check and transfer_count_check consume the actual Stage 5 memory_layout, runtime_config, generated AXI/DDR top, and real image manifests.\",\"Downstream risk: mixed fp16/fp32 stream widths, 8-lane packing, and residual fp32 boundaries make byte count, beat order, and lane mapping vulnerable to off-by-stride or dtype-size errors unless data_order_trace_check and transfer_count_check are tied to the same memory/runtime contract.\",\"Downstream risk: board/app-shell discovery may expose ambiguous AXI port names, clock/reset domains, shell targets, or host ABI conventions. The team must not guess; ambiguous target selection requires bounded recovery and approval.\",\"Downstream risk: DDR image roundtrip proves transfer path integrity only when hashes, address ranges, counts, and order are checked; it must not be misreported as model numeric correctness without golden/numeric comparison evidence from the functional gates.\",\"Downstream risk: runtime ABI checking after bitstream can find register-map or DDR-layout mismatches late. A preboard checklist should be materialized before board_runtime and should also be available to backend planning before irreversible target-specific packaging.\",\"Repair risk: if AXI/DDR or runtime evidence fails, the next step must be boundary/localization driven at the earliest causal wrapper, runtime, address-map, packer, or transfer-count boundary. Do not patch lower functional layers unless boundary traces contradict their prior accepted evidence.\"],\"proposed_actions\":[\"Materialize an axi_ddr_gate_dependency_review that records the exact transitive prerequisites for case_board_interface_discovery, case_axi_ddr_interface, case_axi_protocol_check, case_ddr_image_roundtrip, case_runtime_bitstream, case_runtime_abi_check, and board_runtime.\",\"Produce a runtime_memory_layout_crosscheck_plan that binds Stage 5 memory_layout and runtime_config to AXI base addresses, DDR regions, byte counts, burst/beat alignment, register map, control/status fields, and host ABI launch/order semantics.\",\"Before any board discovery or AXI/DDR tool run, require a gate-enable certificate showing leaf functional/golden, single-layer functional/golden, multilayer functional, and pipeline deadlock/liveness evidence all passed with real artifacts.\",\"Execute board-interface discovery only after the gate-enable certificate; if discovery evidence is ambiguous, hand off to backend_board_evidence_planner for bounded target recovery rather than guessing app-shell or Vivado target names.\",\"Execute AXI/DDR interface, AXI protocol, address-map, transfer-count, data-order, and AXI deadlock checks as one ordered wrapper evidence bundle before DDR image roundtrip, functional_sim, Vivado, or bitstream gates.\",\"Define the DDR image roundtrip acceptance contract around real input/weight/output images, artifact hashes, address ranges, exact byte counts, order traces, and numeric/golden linkage; block functional_sim and backend if it fails.\",\"Create a runtime_abi_preboard_checklist and final case_runtime_abi_check that compare runtime_config, memory_layout, generated wrapper, board discovery, bitstream packaging, and transfer evidence before board_runtime.\",\"For any AXI/DDR/runtime failure, invoke contract-guided localization and targeted replay, then bounded repair and targeted checker rerun; do not promote or skip to a higher layer with failed evidence.\"],\"executable_actions\":[{\"id\":\"axi_ddr.audit_gate_dag_dependencies\",\"stage\":\"verification_artifacts\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"Lock the AXI/DDR/runtime sub-DAG as a checker-consumable contract and verify that board discovery, wrapper interface, protocol, DDR roundtrip, runtime bitstream, runtime ABI, and board runtime remain ordered after multilayer functional and liveness closure. This action also binds addr_map_check and transfer_count_check to the relevant memory/runtime gates without claiming execution pass.\",\"consumes\":[\"candidate_stage_artifact.verification_artifact_contract.verification_gate_dag\",\"candidate_stage_artifact.verification_artifact_contract.required_tool_protocols\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage5.generated_code_package\",\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.tool.protocols\"],\"produces\":[\"axi_ddr_gate_dependency_review\",\"runtime_memory_layout_crosscheck_plan\"],\"tool_roles\":[\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"memory_runtime_plan_check\",\"tool_protocol_check\",\"verification_action_audit\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"memory_runtime_plan_check\",\"tool_protocol_check\",\"verification_action_audit_check\"],\"on_failure\":\"Return the Stage 6 verification artifact for bounded plan repair and block board-wrapper, backend, bitstream, and board-runtime execution until the DAG and checker bindings pass again.\",\"requires_approval\":false},{\"id\":\"axi_ddr.verify_lower_layer_gate_enablement\",\"stage\":\"verification\",\"action_type\":\"gate_enablement_check\",\"rationale\":\"AXI/DDR and runtime-interface gates must not execute until real lower-layer closure exists: operator leaf functional/golden, single-transformer-layer functional/golden, multilayer pipeline functional, and deadlock/liveness evidence. This prevents board-wrapper evidence from masking functional-layer defects.\",\"consumes\":[\"candidate_stage_artifact.verification_artifact_contract\",\"case_stage_leaf_static evidence\",\"case_leaf_functional evidence\",\"case_leaf_golden_compare evidence\",\"case_tb_scaffold evidence\",\"single_transformer_layer evidence\",\"case_single_layer_functional evidence\",\"case_single_layer_golden_compare evidence\",\"case_multilayer_pipeline evidence\",\"case_multilayer_functional evidence\",\"case_pipeline_deadlock_check evidence\",\"case_real_weight_artifacts evidence\"],\"produces\":[\"verification/axi_ddr/gate_enablement_certificate.json\"],\"tool_roles\":[\"required_real_tool_evidence_check\",\"hierarchical_verification_plan_check\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"required_real_tool_evidence_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"case_multilayer_pipeline\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"sacg_reference_check\"],\"on_failure\":\"Do not execute case_board_interface_discovery, case_axi_ddr_interface, protocol, DDR roundtrip, Vivado, bitstream, runtime ABI, or board runtime. Route the failing lower layer to the three-layer repair loop at its own boundary.\",\"requires_approval\":false},{\"id\":\"axi_ddr.run_board_interface_discovery_after_closure\",\"stage\":\"backend_board\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Discover board/app-shell interface facts only after lower-layer functional and liveness closure, using supplied board materials and real tool evidence rather than guessed target names. The result is the required board-interface prerequisite for AXI/DDR wrapper and runtime ABI checks.\",\"consumes\":[\"verification/axi_ddr/gate_enablement_certificate.json\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.input.case_adapter\",\"artifact.stage5.generated_code_package\",\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"produces\":[\"backend_board/case_board_interface_discovery.json\",\"backend_board/app_shell_target_discovery_contract.json\",\"backend_board/target_discovery_policy_update.json\"],\"tool_roles\":[\"case_board_interface_discovery\",\"app_shell_target_discovery_contract\",\"real_tool_evidence_check\"],\"acceptance_checkers\":[\"case_board_interface_discovery\",\"real_tool.case_board_interface_discovery\",\"backend_app_shell_target_discovery_check\",\"human_boundary_check\"],\"on_failure\":\"If discovery is missing or ambiguous, invoke bounded backend target recovery and require approval for target selection; do not proceed to AXI/DDR wrapper, Vivado, bitstream, runtime ABI, or board runtime by guessing names.\",\"requires_approval\":false},{\"id\":\"axi_ddr.run_wrapper_interface_protocol_addr_transfer_checks\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Run the board-accurate AXI/DDR wrapper evidence bundle after gate enablement and board discovery. The bundle must check wrapper connectivity, AXI protocol/order/address behavior, data-order preservation, transfer counts, and AXI liveness before DDR roundtrip or backend promotion.\",\"consumes\":[\"verification/axi_ddr/gate_enablement_certificate.json\",\"backend_board/case_board_interface_discovery.json\",\"artifact.stage5.generated_code_package AXI/DDR top wrapper\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage5.design_artifact_manifest\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.stream.order\",\"constraint.beat.pipeline\"],\"produces\":[\"verification/axi_ddr/case_axi_ddr_interface.json\",\"verification/axi_ddr/case_axi_protocol_check.json\",\"verification/axi_ddr/addr_map_check.json\",\"verification/axi_ddr/transfer_count_check.json\",\"verification/axi_ddr/data_order_trace_check.json\",\"verification/axi_ddr/case_deadlock_axi_check.json\"],\"tool_roles\":[\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"addr_map_check\",\"transfer_count_check\",\"data_order_trace_check\",\"case_deadlock_axi_check\",\"real_tool_evidence_check\"],\"acceptance_checkers\":[\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"addr_map_check\",\"transfer_count_check\",\"data_order_trace_check\",\"real_tool.case_axi_ddr_interface\",\"real_tool.case_axi_protocol_check\",\"real_tool.case_deadlock_axi_check\"],\"on_failure\":\"Stop before case_ddr_image_roundtrip, functional_sim, Vivado, bitstream, runtime ABI, or board runtime. Feed the failing report to axi_ddr.localize_wrapper_runtime_failure for earliest-boundary localization and targeted rerun.\",\"requires_approval\":false},{\"id\":\"axi_ddr.run_ddr_image_roundtrip_acceptance\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Prove real DDR image transfer paths through the verified wrapper using the real input and weight artifacts, generated memory layout, runtime config, address-map evidence, transfer counts, order trace, and image hashes. This is a transfer-integrity contract, not a standalone model-correctness claim.\",\"consumes\":[\"verification/axi_ddr/case_axi_protocol_check.json\",\"verification/axi_ddr/addr_map_check.json\",\"verification/axi_ddr/transfer_count_check.json\",\"verification/axi_ddr/data_order_trace_check.json\",\"case_real_weight_artifacts evidence\",\"case_tb_scaffold evidence\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage5.generated_code_package\"],\"produces\":[\"ddr_image_roundtrip_acceptance_contract\",\"verification/axi_ddr/case_ddr_image_roundtrip.json\",\"verification/axi_ddr/ddr_image_hashes.json\",\"verification/axi_ddr/ddr_roundtrip_transfer_count_report.json\"],\"tool_roles\":[\"case_ddr_image_roundtrip\",\"addr_map_check\",\"transfer_count_check\",\"artifact_hash_check\",\"data_order_trace_check\",\"numeric_compare\",\"real_tool_evidence_check\"],\"acceptance_checkers\":[\"case_ddr_image_roundtrip\",\"real_tool.case_ddr_image_roundtrip\",\"addr_map_check\",\"transfer_count_check\",\"artifact_hash_check\",\"data_order_trace_check\",\"numeric_compare\"],\"on_failure\":\"Block functional_sim, Vivado, bitstream, runtime ABI, and board runtime. Localize whether the earliest cause is image packing, address mapping, transfer count, beat order, wrapper protocol, or runtime layout before proposing any bounded repair.\",\"requires_approval\":false},{\"id\":\"axi_ddr.run_runtime_abi_preboard_and_final_check\",\"stage\":\"backend_board\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Create a preboard runtime ABI checklist and execute the final runtime ABI check after bitstream packaging but before board runtime. The check must compare runtime_config, memory_layout, generated wrapper/register map, board discovery facts, implementation package, bitstream artifacts, address-map evidence, and transfer-count evidence.\",\"consumes\":[\"artifact.stage5.runtime_config\",\"artifact.stage5.memory_layout\",\"artifact.stage5.generated_code_package\",\"backend_board/case_board_interface_discovery.json\",\"verification/axi_ddr/case_axi_ddr_interface.json\",\"verification/axi_ddr/case_axi_protocol_check.json\",\"verification/axi_ddr/addr_map_check.json\",\"verification/axi_ddr/transfer_count_check.json\",\"verification/axi_ddr/case_ddr_image_roundtrip.json\",\"case_runtime_bitstream evidence\",\"implementation package evidence\"],\"produces\":[\"runtime_abi_preboard_checklist\",\"backend_board/case_runtime_abi_check.json\",\"backend_board/register_map_ddr_layout_crosscheck.json\",\"backend_board/runtime_abi_artifact_hashes.json\"],\"tool_roles\":[\"case_runtime_abi_check\",\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"implementation_package_static\",\"artifact_hash_check\",\"real_tool_evidence_check\"],\"acceptance_checkers\":[\"case_runtime_abi_check\",\"real_tool.case_runtime_abi_check\",\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"implementation_package_static\",\"artifact_hash_check\"],\"on_failure\":\"Block board_runtime. If the failure is a missing checker/golden-reference capability, classify it as checker repair; if real evidence shows ABI, register-map, address, transfer, or packaging mismatch, produce a bounded memory/runtime repair or backtrack request with approval for any layout or ABI change.\",\"requires_approval\":false},{\"id\":\"axi_ddr.localize_wrapper_runtime_failure\",\"stage\":\"verification\",\"action_type\":\"contract_guided_debug_closure\",\"rationale\":\"Enforce the three-layer repair loop for AXI/DDR/runtime failures: after lower functional layers have passed, localize the earliest causal boundary in the board-accurate wrapper, address map, image packer, transfer counter, protocol adapter, or runtime ABI before any bounded repair. Do not reopen passed lower layers without contradictory boundary traces.\",\"consumes\":[\"verification/axi_ddr/case_axi_ddr_interface.json or failing report\",\"verification/axi_ddr/case_axi_protocol_check.json or failing report\",\"verification/axi_ddr/case_ddr_image_roundtrip.json or failing report\",\"backend_board/case_runtime_abi_check.json or failing report\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage5.generated_code_package\"],\"produces\":[\"verification/debug_closure/axi_ddr_failure_localization.json\",\"verification/debug_closure/axi_ddr_targeted_replay_plan.json\",\"verification/debug_closure/axi_ddr_causal_repair_context.json\"],\"tool_roles\":[\"failure_slice_localization\",\"boundary_trace_rerun\",\"targeted_replay\",\"causal_repair_context_pack\",\"repair_boundary_check\",\"targeted_failed_checker_rerun\"],\"acceptance_checkers\":[\"failure_localization_check\",\"targeted_replay_check\",\"causal_repair_context_check\",\"repair_boundary_check\",\"targeted_failed_checker_rerun\"],\"on_failure\":\"Keep AXI/DDR, backend, bitstream, runtime ABI, and board runtime promotion blocked and raise a Stage 6/verification backtrack or capability repair request; do not rely on static scripts or human memory as evidence.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any change to artifact.stage5.memory_layout, including DDR base addresses, region sizes, alignment, strides, transfer-unit widths, or image schema.\",\"Any change to artifact.stage5.runtime_config or runtime ABI, including register map, control/status bits, interrupt/polling semantics, host launch order, or buffer descriptor convention.\",\"Any modification or replacement of the generated AXI/DDR top wrapper, board-shell adapter, or protocol glue beyond bounded template-compatible repair.\",\"Any reordering of the verification DAG that would execute board discovery, AXI/DDR wrapper, AXI protocol, DDR image roundtrip, runtime bitstream, runtime ABI, or board runtime before multilayer functional and liveness closure.\",\"Any ambiguous board/app-shell target selection after discovery or hint synthesis; the team must require bounded approval rather than guessing names.\",\"Any attempt to treat smoke evidence, default generated weights, DDR roundtrip-only evidence, or relaxed numeric tolerance/golden outputs as functional correctness acceptance.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/axi_ddr_runtime_verification_architect_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/axi_ddr_runtime_verification_architect_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "verification_artifacts.AXI/DDR runtime interface verification architect",
+  "used_fallback": false
+}

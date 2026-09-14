@@ -1,0 +1,241 @@
+{
+  "agent": "repair_targeted_specialist_agent",
+  "duration_sec": 325.8016094689956,
+  "error": null,
+  "http_transport": "curl_direct_http1",
+  "live_transaction_id": "6b1cf96b9cd04a1b8d66aeba0d7ffb7e",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_targeted_specialist_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "agent": "repair_targeted_specialist_agent",
+    "approval_required_for": [
+      "Any modification to DUT RTL lifecycle handling, block_input, the connected single-transformer-layer kernel, or lower-layer implementation without a fresh bound board contradiction.",
+      "Any change to the exact user-supplied wrapper, its source closure, AXI ABI, compute-slot ABI, timing contract, or bound source hashes.",
+      "Any change to checkpoint, stimulus, target-model reference outputs, numeric policy, tolerance, semantic testbench contract, or required Transformer-block weight scope.",
+      "Any architecture, pipeline, memory-layout, numeric-format, or major template change.",
+      "Any reopening or rerun of operator-leaf or single-transformer-layer tools without a current trace that explicitly contradicts a named certified invariant.",
+      "Promotion to backend, bitstream, runtime-ABI, or board-runtime tools before all current board-layer gates pass."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "human_boundary_check",
+          "codegen_contract_check",
+          "artifact_hash_check",
+          "tool_protocol_check",
+          "verification_artifact_contract_check",
+          "sacg_static_check"
+        ],
+        "action_type": "bounded_verification_harness_repair",
+        "consumes": [
+          "verification/board_simulation/reports/compile.log",
+          "generated/board_integration/spatialacc_exact_board_multilayer_tb.sv",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/board_interface/board_source_identity.json with sha256 37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+          "verification/semantic_testbench/semantic_testbench_manifest.json with sha256 3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+          "generated/memory/dut_weight_binding_manifest.json with sha256 ad6e14c1317c656c107b3ff64cdafbc941456a2f36754b95ded6098183be91be",
+          "verification/case_diagnostics/sacg_cctg_causal_slice.json with sha256 1142355918920e199b71ef10fa5cb2f79adf2caa0098a3045389d891e044e307",
+          "current scoped SACG memory truth and active retry barriers"
+        ],
+        "id": "repair_step.board_tb_xmre_observability",
+        "on_failure": "Reject the patch and retain the board layer in needs_repair. Do not replace the exact wrapper, invent module or path names, delete all required current-DAG observations, or patch block_input or the connected kernel. If the source closure cannot provide a legal simulation-only observation binding, report that bounded capability gap rather than guessing.",
+        "produces": [
+          "patched generated board testbench source limited to the six unresolved observability references",
+          "simulation-only debug-observability implementation or bind manifest with valid schema and current-DAG boundary declarations",
+          "new generated-source and compile-source-closure hashes",
+          "repair manifest proving the exact sample wrapper, semantic testbench manifest, checkpoint, stimulus, target-model reference, numeric policy, and weight-binding manifest were not changed"
+        ],
+        "rationale": "The earliest real tool failure is VCS elaboration of the generated exact-board testbench, where six direct hierarchical references to unresolved mlp_*__bore symbols produce Error-[XMRE]. Repair only the generated simulation/testbench observability implementation and its compile binding. Derive legal probe or bind paths from the supplied source closure and compile plan; do not guess hierarchy names, modify DUT RTL, modify the exact sample wrapper, or alter the immutable semantic testbench contract.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "bounded_template_repair",
+          "codegen_contract_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "artifact_hash_check",
+          "tool_protocol_check",
+          "sacg_validate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "functional_sim",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check",
+          "tool_protocol_check",
+          "failure_localization_check"
+        ],
+        "action_type": "current_layer_real_tool_rerun",
+        "consumes": [
+          "repair_step.board_tb_xmre_observability repair manifest and patched generated sources",
+          "verification/board_interface/board_source_identity.json",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/semantic_testbench/semantic_testbench_manifest.json",
+          "verification/model_reference/reference_manifest.json",
+          "generated/memory/dut_weight_binding_manifest.json",
+          "immutable checkpoint and input provenance",
+          "immutable target-model inference expected outputs and numeric comparison policy"
+        ],
+        "id": "rerun_step.current_board_vcs_and_cctg",
+        "on_failure": "Use the first fresh real VCS or simulator error to create a new current-board causal slice. If XMRE remains, repair only the generated observability/compile slice again. If compilation succeeds and a runtime value, order, lifecycle, liveness, or protocol failure appears, localize that fresh board-layer boundary before proposing code changes. Do not reuse the pre-runtime kernel_start_precedes_stage0_input trace as a proven RTL root cause and do not reopen a lower layer.",
+        "produces": [
+          "fresh verification/board_simulation/reports/compile.log",
+          "fresh verification/vcs/case_board_vcs_functional.json",
+          "fresh elaborated hierarchy report bound to the exact sample source closure and compute-slot ABI",
+          "fresh simulator execution report and simulation log if compilation succeeds",
+          "fresh verification/debug_closure/boundary_trace.json and causal analyzer output if runtime begins",
+          "fresh source/input execution fingerprint and artifact trust record"
+        ],
+        "rationale": "After the testbench-only repair, rerun the same exact-board VCS functional gate and its evidence analyzer with the same checkpoint, deterministic stimulus, target-model expected outputs, numeric policy, semantic testbench hashes, exact wrapper hashes, and bound weight manifest. This establishes whether the compile contract is repaired before any runtime CCTG interpretation or dependent board gate execution.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "case_vcs_functional_sim",
+          "case_vcs_evidence_analyzer",
+          "functional_sim_contract_check",
+          "verification_artifact_contract_check",
+          "artifact_hash_check",
+          "failure_localization_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_board_semantic_evidence",
+          "real_weight_semantic_evidence_check",
+          "required_real_tool_evidence_check",
+          "verification_artifact_contract_check"
+        ],
+        "action_type": "current_layer_dependency_gates",
+        "consumes": [
+          "fresh passing exact-board VCS functional report",
+          "fresh elaborated hierarchy and exact source-closure binding",
+          "fresh simulation log, progress events, boundary trace, and AXI monitor evidence",
+          "verification/model_reference/reference_manifest.json",
+          "verification/semantic_testbench/semantic_testbench_manifest.json",
+          "generated/memory/dut_weight_binding_manifest.json",
+          "immutable checkpoint, stimulus, expected outputs, and numeric policy"
+        ],
+        "id": "rerun_step.current_board_closure_gates",
+        "on_failure": "Keep the board layer in needs_repair and route the fresh failed gate through CCTG contract-guided localization and a bounded board integration repair. Treat all dependent not_run results as evidence gaps, not hardware passes. Do not run synthesis, implementation, runtime-bitstream, or board-runtime tools until the complete current board closure passes.",
+        "produces": [
+          "verification/real_tools/case_multilayer_functional.json",
+          "verification/real_tools/case_pipeline_deadlock_check.json",
+          "verification/real_tools/case_axi_protocol_check.json",
+          "verification/real_tools/case_ddr_image_roundtrip.json",
+          "verification/semantic_evidence/board_axi_ddr.json",
+          "fresh runtime-loader, output-frontier, data-order, transfer-count, and AXI reports",
+          "current board-layer promotion decision"
+        ],
+        "rationale": "Only after the repaired exact-board functional simulation and its artifact identity checks pass, execute the remaining board_axi_ddr_wrapped_system gates in dependency order. These are current-layer gates, not higher-layer backend tools. Their acceptance must include real target-model comparison, complete required Transformer-block weight-consumption evidence for the selected board scope, AXI/protocol evidence, DDR roundtrip, lifecycle/output-frontier evidence, and the elastic variable-latency pipeline contract.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_board_semantic_evidence",
+          "required_real_tool_evidence_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The earliest authoritative failure is the current exact-board VCS compile: Error-[XMRE] at spatialacc_exact_board_multilayer_tb.sv lines 313, 316, 319, 322, 325, and 328 for unresolved dut.spatialacc_single_kernel.core.mlp_*__bore references. Simulation did not execute, so this is a generated testbench observability/elaboration contract failure, not evidence of a DUT arithmetic, lifecycle, AXI, or pipeline defect.",
+      "The current CCTG slice explicitly reports status not_applicable_before_runtime_execution and requires the earliest real tool error before runtime graph analysis. Its kernel_start_precedes_stage0_input and block_input localization records are therefore not admissible as the repair root cause for this compile-failed execution.",
+      "The verification decision also labels block_input/kernel_start_precedes_stage0_input a localization candidate rather than a proven RTL root cause, and the board-to-lower-layer contradiction evidence is insufficient. There is no current bound contradiction to the certified operator-leaf or single-transformer-layer certificates; no lower layer may be reopened.",
+      "The exact user-supplied board wrapper identity is passing and hash-bound: board_source_identity sha256 37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66, exact sample wrapper true, selected source closure sha256 6665a9df4e0b86fdbd47c48e76b63137069f4c2505d914d6ceee233447a1c5c5, compute-slot ABI and AXI identities present. The wrapper and its source hashes are human-bound and must remain unchanged.",
+      "The current board gate state is functional_sim fail; case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence are not_run or dependency-blocked. Existing case_deadlock_axi_check output with 23 blockers is downstream diagnostic evidence and cannot supersede the first VCS XMRE.",
+      "The exact-sample-testbench static failures additionally show that the debug observability schema and current-DAG boundary declaration are invalid or incomplete. The legal repair must preserve required simulation-only boundary observation while fixing the unresolved references; deleting observability wholesale would merely trade XMRE for a testbench-contract failure.",
+      "SACG truth shows 24 active scoped contamination barriers and 8 open same-scope retry requests, with no open scoped backtrack request. Rejected Stage7 and Stage8 artifacts remain debug evidence only. A fresh repaired source fingerprint and fresh Stage7 rerun are required before any result can be promoted; the open retries are downstream-consumption blockers, not a reason to broaden this current-stage patch.",
+      "Lower-layer learning is live and hash-validated: the connected kernel has certified elastic variable-latency token-pipeline ordering and cross-token overlap, and leaf/single-layer certificates do not claim board correctness. No board output-frontier claim or preselected lower-layer RTL cause can be made from the current compile failure.",
+      "The semantic comparison record retains target_model_inference as the expected-output source, but numeric metrics are not run and the current board validation scope reports all_target_layers false with a one-layer validation prefix. This is a later board-acceptance evidence gap, not authorization to change the model tail, add embedding/final norm/LM-head/sampling work, or alter the current immutable golden and weight contracts."
+    ],
+    "proposed_actions": [
+      "Apply a six-reference, testbench-only observability repair to the generated exact-board testbench and repair the debug-observability implementation schema without changing the immutable semantic testbench contract or exact user wrapper.",
+      "Rerun the exact current-layer VCS functional simulation and evidence analyzer using unchanged checkpoint, stimulus, target-model expected outputs, numeric policy, weight binding, and wrapper hashes.",
+      "If and only if functional_sim passes, execute the remaining board-layer gates in dependency order and keep all backend/runtime promotion blocked until board closure is complete.",
+      "Do not patch block_input, the connected kernel, leaf modules, wrapper.v, AXI ABI, model tail, numeric tolerance, or lower-layer certificates in this repair cycle."
+    ],
+    "risks": [
+      "Guessing replacement hierarchy names can produce another XMRE or silently bind an unrelated signal, so every repaired observation must be proven from the supplied source closure or a real elaborated hierarchy.",
+      "Removing the six unresolved probes without preserving the current-DAG boundary contract can make the exact-sample-testbench checker fail even if VCS compiles.",
+      "Changing DUT RTL to expose debug signals would violate the smallest legal repair and could invalidate lower-layer certificates; observability must remain simulation/testbench-only.",
+      "Changing the exact wrapper, AXI/DDR ABI, source closure identity, checkpoint, stimulus, target-model reference, tolerance, semantic testbench hash, or required Transformer-block weight scope would contaminate the repair loop.",
+      "A successful compile is not a functional pass. Fresh runtime evidence must still establish lifecycle ordering, output-frontier progress, token order, AXI protocol, DDR roundtrip, numeric comparison, and bound weight consumption; independent prefetch or AXI progress alone is insufficient.",
+      "The stale or pre-runtime CCTG block_input symptom must not be treated as a lower-layer contradiction. Only a fresh post-compile trace with direct core start acceptance, ingress completion, egress readiness, named causal boundary, and current certificate hashes could justify targeted lower-layer backtrack."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "verification/board_simulation/reports/compile.log",
+        "verification/case_diagnostics/sacg_cctg_causal_slice.json sha256 1142355918920e199b71ef10fa5cb2f79adf2caa0098a3045389d891e044e307",
+        "verification/board_interface/board_source_identity.json sha256 37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+        "verification/semantic_testbench/semantic_testbench_manifest.json sha256 3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+        "generated/memory/dut_weight_binding_manifest.json sha256 ad6e14c1317c656c107b3ff64cdafbc941456a2f36754b95ded6098183be91be",
+        "verification/board_simulation/board_simulation_manifest.json",
+        "sacg_memory_truth current active barriers and retry requests"
+      ],
+      "constraints": [
+        "earliest real tool error precedes runtime CCTG interpretation",
+        "exact user-supplied wrapper and source hashes are immutable",
+        "testbench semantic contract, checkpoint, stimulus, target-model reference, numeric policy, and tolerance are immutable",
+        "debug observability must remain simulation/testbench-only",
+        "three-layer repair order is mandatory",
+        "lower-layer reopening requires a current bound contradiction",
+        "Transformer blocks are the complete accelerator scope; model-tail work is excluded"
+      ],
+      "edges": [
+        "generated exact-board testbench -> VCS elaboration",
+        "debug observability implementation -> current-DAG boundary contract",
+        "exact sample wrapper/source closure -> simulator compile source set",
+        "functional_sim -> multilayer and AXI/DDR dependent gates",
+        "board runtime frontier -> lower-layer contradiction only when explicitly hash-bound"
+      ],
+      "nodes": [
+        "board_axi_ddr_wrapped_system",
+        "generated-board-source:exact_multilayer_tb",
+        "simulation-only debug observability contract",
+        "functional_sim",
+        "case_multilayer_functional",
+        "case_pipeline_deadlock_check",
+        "case_axi_protocol_check",
+        "case_ddr_image_roundtrip",
+        "case_board_semantic_evidence",
+        "block_input candidate localization",
+        "single_transformer_layer_kernel certified lower layer"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_targeted_specialist_review.v1",
+    "stage": "repair",
+    "status": "needs_repair",
+    "summary": "The earliest violated contract is the generated exact-board testbench elaboration and simulation-only observability binding: six unresolved cross-module references prevent VCS compilation. The kernel_start_precedes_stage0_input/block_input CCTG record is not actionable for this compile-failed run and does not contradict any certified lower-layer invariant. The smallest legal repair is a bounded testbench/observability-source fix preserving the exact user wrapper and all immutable semantic, model, numeric, checkpoint, stimulus, and weight artifacts, followed by a fresh same-layer VCS rerun and only then the remaining board closure gates."
+  },
+  "prompt_bytes": 280923,
+  "prompt_hash": "5ba79f46203e8c41331bb88b395d754cb104414c82044e85a433129fc4e46bc1",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"agent\":\"repair_targeted_specialist_agent\",\"approval_required_for\":[\"Any modification to DUT RTL lifecycle handling, block_input, the connected single-transformer-layer kernel, or lower-layer implementation without a fresh bound board contradiction.\",\"Any change to the exact user-supplied wrapper, its source closure, AXI ABI, compute-slot ABI, timing contract, or bound source hashes.\",\"Any change to checkpoint, stimulus, target-model reference outputs, numeric policy, tolerance, semantic testbench contract, or required Transformer-block weight scope.\",\"Any architecture, pipeline, memory-layout, numeric-format, or major template change.\",\"Any reopening or rerun of operator-leaf or single-transformer-layer tools without a current trace that explicitly contradicts a named certified invariant.\",\"Promotion to backend, bitstream, runtime-ABI, or board-runtime tools before all current board-layer gates pass.\"],\"executable_actions\":[{\"id\":\"repair_step.board_tb_xmre_observability\",\"stage\":\"repair\",\"action_type\":\"bounded_verification_harness_repair\",\"rationale\":\"The earliest real tool failure is VCS elaboration of the generated exact-board testbench, where six direct hierarchical references to unresolved mlp_*__bore symbols produce Error-[XMRE]. Repair only the generated simulation/testbench observability implementation and its compile binding. Derive legal probe or bind paths from the supplied source closure and compile plan; do not guess hierarchy names, modify DUT RTL, modify the exact sample wrapper, or alter the immutable semantic testbench contract.\",\"consumes\":[\"verification/board_simulation/reports/compile.log\",\"generated/board_integration/spatialacc_exact_board_multilayer_tb.sv\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/board_interface/board_source_identity.json with sha256 37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"verification/semantic_testbench/semantic_testbench_manifest.json with sha256 3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7\",\"generated/memory/dut_weight_binding_manifest.json with sha256 ad6e14c1317c656c107b3ff64cdafbc941456a2f36754b95ded6098183be91be\",\"verification/case_diagnostics/sacg_cctg_causal_slice.json with sha256 1142355918920e199b71ef10fa5cb2f79adf2caa0098a3045389d891e044e307\",\"current scoped SACG memory truth and active retry barriers\"],\"produces\":[\"patched generated board testbench source limited to the six unresolved observability references\",\"simulation-only debug-observability implementation or bind manifest with valid schema and current-DAG boundary declarations\",\"new generated-source and compile-source-closure hashes\",\"repair manifest proving the exact sample wrapper, semantic testbench manifest, checkpoint, stimulus, target-model reference, numeric policy, and weight-binding manifest were not changed\"],\"tool_roles\":[\"bounded_template_repair\",\"codegen_contract_check\",\"repair_boundary_check\",\"human_boundary_check\",\"artifact_hash_check\",\"tool_protocol_check\",\"sacg_validate\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"human_boundary_check\",\"codegen_contract_check\",\"artifact_hash_check\",\"tool_protocol_check\",\"verification_artifact_contract_check\",\"sacg_static_check\"],\"on_failure\":\"Reject the patch and retain the board layer in needs_repair. Do not replace the exact wrapper, invent module or path names, delete all required current-DAG observations, or patch block_input or the connected kernel. If the source closure cannot provide a legal simulation-only observation binding, report that bounded capability gap rather than guessing.\",\"requires_approval\":false},{\"id\":\"rerun_step.current_board_vcs_and_cctg\",\"stage\":\"repair\",\"action_type\":\"current_layer_real_tool_rerun\",\"rationale\":\"After the testbench-only repair, rerun the same exact-board VCS functional gate and its evidence analyzer with the same checkpoint, deterministic stimulus, target-model expected outputs, numeric policy, semantic testbench hashes, exact wrapper hashes, and bound weight manifest. This establishes whether the compile contract is repaired before any runtime CCTG interpretation or dependent board gate execution.\",\"consumes\":[\"repair_step.board_tb_xmre_observability repair manifest and patched generated sources\",\"verification/board_interface/board_source_identity.json\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/semantic_testbench/semantic_testbench_manifest.json\",\"verification/model_reference/reference_manifest.json\",\"generated/memory/dut_weight_binding_manifest.json\",\"immutable checkpoint and input provenance\",\"immutable target-model inference expected outputs and numeric comparison policy\"],\"produces\":[\"fresh verification/board_simulation/reports/compile.log\",\"fresh verification/vcs/case_board_vcs_functional.json\",\"fresh elaborated hierarchy report bound to the exact sample source closure and compute-slot ABI\",\"fresh simulator execution report and simulation log if compilation succeeds\",\"fresh verification/debug_closure/boundary_trace.json and causal analyzer output if runtime begins\",\"fresh source/input execution fingerprint and artifact trust record\"],\"tool_roles\":[\"case_vcs_functional_sim\",\"case_vcs_evidence_analyzer\",\"functional_sim_contract_check\",\"verification_artifact_contract_check\",\"artifact_hash_check\",\"failure_localization_check\"],\"acceptance_checkers\":[\"functional_sim\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"artifact_hash_check\",\"tool_protocol_check\",\"failure_localization_check\"],\"on_failure\":\"Use the first fresh real VCS or simulator error to create a new current-board causal slice. If XMRE remains, repair only the generated observability/compile slice again. If compilation succeeds and a runtime value, order, lifecycle, liveness, or protocol failure appears, localize that fresh board-layer boundary before proposing code changes. Do not reuse the pre-runtime kernel_start_precedes_stage0_input trace as a proven RTL root cause and do not reopen a lower layer.\",\"requires_approval\":false},{\"id\":\"rerun_step.current_board_closure_gates\",\"stage\":\"repair\",\"action_type\":\"current_layer_dependency_gates\",\"rationale\":\"Only after the repaired exact-board functional simulation and its artifact identity checks pass, execute the remaining board_axi_ddr_wrapped_system gates in dependency order. These are current-layer gates, not higher-layer backend tools. Their acceptance must include real target-model comparison, complete required Transformer-block weight-consumption evidence for the selected board scope, AXI/protocol evidence, DDR roundtrip, lifecycle/output-frontier evidence, and the elastic variable-latency pipeline contract.\",\"consumes\":[\"fresh passing exact-board VCS functional report\",\"fresh elaborated hierarchy and exact source-closure binding\",\"fresh simulation log, progress events, boundary trace, and AXI monitor evidence\",\"verification/model_reference/reference_manifest.json\",\"verification/semantic_testbench/semantic_testbench_manifest.json\",\"generated/memory/dut_weight_binding_manifest.json\",\"immutable checkpoint, stimulus, expected outputs, and numeric policy\"],\"produces\":[\"verification/real_tools/case_multilayer_functional.json\",\"verification/real_tools/case_pipeline_deadlock_check.json\",\"verification/real_tools/case_axi_protocol_check.json\",\"verification/real_tools/case_ddr_image_roundtrip.json\",\"verification/semantic_evidence/board_axi_ddr.json\",\"fresh runtime-loader, output-frontier, data-order, transfer-count, and AXI reports\",\"current board-layer promotion decision\"],\"tool_roles\":[\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_board_semantic_evidence\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_board_semantic_evidence\",\"real_weight_semantic_evidence_check\",\"required_real_tool_evidence_check\",\"verification_artifact_contract_check\"],\"on_failure\":\"Keep the board layer in needs_repair and route the fresh failed gate through CCTG contract-guided localization and a bounded board integration repair. Treat all dependent not_run results as evidence gaps, not hardware passes. Do not run synthesis, implementation, runtime-bitstream, or board-runtime tools until the complete current board closure passes.\",\"requires_approval\":false}],\"observations\":[\"The earliest authoritative failure is the current exact-board VCS compile: Error-[XMRE] at spatialacc_exact_board_multilayer_tb.sv lines 313, 316, 319, 322, 325, and 328 for unresolved dut.spatialacc_single_kernel.core.mlp_*__bore references. Simulation did not execute, so this is a generated testbench observability/elaboration contract failure, not evidence of a DUT arithmetic, lifecycle, AXI, or pipeline defect.\",\"The current CCTG slice explicitly reports status not_applicable_before_runtime_execution and requires the earliest real tool error before runtime graph analysis. Its kernel_start_precedes_stage0_input and block_input localization records are therefore not admissible as the repair root cause for this compile-failed execution.\",\"The verification decision also labels block_input/kernel_start_precedes_stage0_input a localization candidate rather than a proven RTL root cause, and the board-to-lower-layer contradiction evidence is insufficient. There is no current bound contradiction to the certified operator-leaf or single-transformer-layer certificates; no lower layer may be reopened.\",\"The exact user-supplied board wrapper identity is passing and hash-bound: board_source_identity sha256 37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66, exact sample wrapper true, selected source closure sha256 6665a9df4e0b86fdbd47c48e76b63137069f4c2505d914d6ceee233447a1c5c5, compute-slot ABI and AXI identities present. The wrapper and its source hashes are human-bound and must remain unchanged.\",\"The current board gate state is functional_sim fail; case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence are not_run or dependency-blocked. Existing case_deadlock_axi_check output with 23 blockers is downstream diagnostic evidence and cannot supersede the first VCS XMRE.\",\"The exact-sample-testbench static failures additionally show that the debug observability schema and current-DAG boundary declaration are invalid or incomplete. The legal repair must preserve required simulation-only boundary observation while fixing the unresolved references; deleting observability wholesale would merely trade XMRE for a testbench-contract failure.\",\"SACG truth shows 24 active scoped contamination barriers and 8 open same-scope retry requests, with no open scoped backtrack request. Rejected Stage7 and Stage8 artifacts remain debug evidence only. A fresh repaired source fingerprint and fresh Stage7 rerun are required before any result can be promoted; the open retries are downstream-consumption blockers, not a reason to broaden this current-stage patch.\",\"Lower-layer learning is live and hash-validated: the connected kernel has certified elastic variable-latency token-pipeline ordering and cross-token overlap, and leaf/single-layer certificates do not claim board correctness. No board output-frontier claim or preselected lower-layer RTL cause can be made from the current compile failure.\",\"The semantic comparison record retains target_model_inference as the expected-output source, but numeric metrics are not run and the current board validation scope reports all_target_layers false with a one-layer validation prefix. This is a later board-acceptance evidence gap, not authorization to change the model tail, add embedding/final norm/LM-head/sampling work, or alter the current immutable golden and weight contracts.\"],\"risks\":[\"Guessing replacement hierarchy names can produce another XMRE or silently bind an unrelated signal, so every repaired observation must be proven from the supplied source closure or a real elaborated hierarchy.\",\"Removing the six unresolved probes without preserving the current-DAG boundary contract can make the exact-sample-testbench checker fail even if VCS compiles.\",\"Changing DUT RTL to expose debug signals would violate the smallest legal repair and could invalidate lower-layer certificates; observability must remain simulation/testbench-only.\",\"Changing the exact wrapper, AXI/DDR ABI, source closure identity, checkpoint, stimulus, target-model reference, tolerance, semantic testbench hash, or required Transformer-block weight scope would contaminate the repair loop.\",\"A successful compile is not a functional pass. Fresh runtime evidence must still establish lifecycle ordering, output-frontier progress, token order, AXI protocol, DDR roundtrip, numeric comparison, and bound weight consumption; independent prefetch or AXI progress alone is insufficient.\",\"The stale or pre-runtime CCTG block_input symptom must not be treated as a lower-layer contradiction. Only a fresh post-compile trace with direct core start acceptance, ingress completion, egress readiness, named causal boundary, and current certificate hashes could justify targeted lower-layer backtrack.\"],\"proposed_actions\":[\"Apply a six-reference, testbench-only observability repair to the generated exact-board testbench and repair the debug-observability implementation schema without changing the immutable semantic testbench contract or exact user wrapper.\",\"Rerun the exact current-layer VCS functional simulation and evidence analyzer using unchanged checkpoint, stimulus, target-model expected outputs, numeric policy, weight binding, and wrapper hashes.\",\"If and only if functional_sim passes, execute the remaining board-layer gates in dependency order and keep all backend/runtime promotion blocked until board closure is complete.\",\"Do not patch block_input, the connected kernel, leaf modules, wrapper.v, AXI ABI, model tail, numeric tolerance, or lower-layer certificates in this repair cycle.\"],\"sacg_focus\":{\"nodes\":[\"board_axi_ddr_wrapped_system\",\"generated-board-source:exact_multilayer_tb\",\"simulation-only debug observability contract\",\"functional_sim\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_board_semantic_evidence\",\"block_input candidate localization\",\"single_transformer_layer_kernel certified lower layer\"],\"edges\":[\"generated exact-board testbench -> VCS elaboration\",\"debug observability implementation -> current-DAG boundary contract\",\"exact sample wrapper/source closure -> simulator compile source set\",\"functional_sim -> multilayer and AXI/DDR dependent gates\",\"board runtime frontier -> lower-layer contradiction only when explicitly hash-bound\"],\"constraints\":[\"earliest real tool error precedes runtime CCTG interpretation\",\"exact user-supplied wrapper and source hashes are immutable\",\"testbench semantic contract, checkpoint, stimulus, target-model reference, numeric policy, and tolerance are immutable\",\"debug observability must remain simulation/testbench-only\",\"three-layer repair order is mandatory\",\"lower-layer reopening requires a current bound contradiction\",\"Transformer blocks are the complete accelerator scope; model-tail work is excluded\"],\"artifacts\":[\"verification/board_simulation/reports/compile.log\",\"verification/case_diagnostics/sacg_cctg_causal_slice.json sha256 1142355918920e199b71ef10fa5cb2f79adf2caa0098a3045389d891e044e307\",\"verification/board_interface/board_source_identity.json sha256 37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"verification/semantic_testbench/semantic_testbench_manifest.json sha256 3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7\",\"generated/memory/dut_weight_binding_manifest.json sha256 ad6e14c1317c656c107b3ff64cdafbc941456a2f36754b95ded6098183be91be\",\"verification/board_simulation/board_simulation_manifest.json\",\"sacg_memory_truth current active barriers and retry requests\"]},\"schema_version\":\"spatialaccagent.repair_targeted_specialist_review.v1\",\"stage\":\"repair\",\"status\":\"needs_repair\",\"summary\":\"The earliest violated contract is the generated exact-board testbench elaboration and simulation-only observability binding: six unresolved cross-module references prevent VCS compilation. The kernel_start_precedes_stage0_input/block_input CCTG record is not actionable for this compile-failed run and does not contradict any certified lower-layer invariant. The smallest legal repair is a bounded testbench/observability-source fix preserving the exact user wrapper and all immutable semantic, model, numeric, checkpoint, stimulus, and weight artifacts, followed by a fresh same-layer VCS rerun and only then the remaining board closure gates.\"}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_targeted_specialist_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_targeted_specialist_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair.targeted_specialist",
+  "stream": true,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/history/repair_targeted_specialist_agent_result.c557d518388dbef5.cc73939a8bfb6b20.5ba79f46203e8c41.snapshot.json",
+    "replaced_prompt_hash": "6974c138ff18f1e87da5a312ce1225ab65b263abf224c7322ede40f6d01ac166",
+    "replaced_result_sha256": "c557d518388dbef5278dbb5f807255e2c37efe25953c175f7605a211f30733be",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "c557d518388dbef5.cc73939a8bfb6b20.5ba79f46203e8c41"
+  },
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

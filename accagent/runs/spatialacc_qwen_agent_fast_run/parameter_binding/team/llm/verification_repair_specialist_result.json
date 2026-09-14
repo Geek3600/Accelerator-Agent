@@ -1,0 +1,248 @@
+{
+  "agent": "verification_repair_specialist",
+  "duration_sec": 525.2383957849961,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "verification_repair_specialist",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "parameter_binding_static_check",
+          "verification_artifact_contract_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "evidence_gate_review",
+        "consumes": [
+          "candidate_stage_artifact.parameter_binding",
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.checker_summary",
+          "candidate_stage_artifact.stage_gate_policy",
+          "state_summary.sacg_memory",
+          "constraint.parameter.binding",
+          "constraint.verification.plan",
+          "constraint.human.boundary",
+          "constraint.cross_layer.input_consistency",
+          "constraint.tool.protocols"
+        ],
+        "id": "parameter_binding.materialize_stage_gate_decision",
+        "on_failure": "Do not promote the parameter_binding artifact; emit a bounded same-stage repair request naming the failed checker, violated SACG constraint, and contaminated or missing artifact field.",
+        "produces": [
+          "parameter_binding.stage_gate_decision",
+          "parameter_binding.checker_evidence_matrix",
+          "parameter_binding.repair_or_backtrack_requests_if_any"
+        ],
+        "rationale": "Convert the approved current-stage evidence into the expected gate artifacts while preserving SACG constraint citations and the trust barrier between static parameter checks and hardware proof.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "sacg_static_check",
+          "parameter_binding_static_check",
+          "verification_artifact_contract_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "human_boundary_check"
+        ],
+        "action_type": "bounded_next_stage_handoff",
+        "consumes": [
+          "parameter_binding.stage_gate_decision",
+          "parameter_binding.checker_evidence_matrix",
+          "candidate_stage_artifact.stream_contract_trace",
+          "candidate_stage_artifact.bandwidth_estimate",
+          "artifact.stage3.pipeline_plan",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.stream.order",
+          "constraint.beat.pipeline"
+        ],
+        "id": "parameter_binding.handoff_to_memory_runtime_planning",
+        "on_failure": "Backtrack only to the bounded memory/runtime planning inputs or parameter fields implicated by the failing checker; do not modify golden outputs, numeric policy, selected templates, or Stage 3 pipeline structure without explicit approval.",
+        "produces": [
+          "artifact.stage5.memory_runtime_plan",
+          "artifact.stage5.address_map_contract",
+          "artifact.stage5.transfer_count_contract"
+        ],
+        "rationale": "The current-stage parameter, dtype, tile, FIFO-scope, stream-packing, and symbolic transfer-count checks pass; the next stage must bind memory/runtime facts without altering model, numeric, pipeline, or template semantics.",
+        "requires_approval": false,
+        "stage": "memory_runtime_or_code_generation_planning",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_artifact_trust_barrier_check",
+          "required_real_tool_evidence_check",
+          "verification_action_audit_check"
+        ],
+        "action_type": "trust_barrier_propagation",
+        "consumes": [
+          "candidate_stage_artifact.bandwidth_estimate",
+          "candidate_stage_artifact.bindings.resource_estimate",
+          "candidate_stage_artifact.global_param_scope",
+          "candidate_stage_artifact.stage_gate_policy"
+        ],
+        "id": "parameter_binding.preserve_static_evidence_trust_barrier",
+        "on_failure": "Block downstream consumption of the contaminated estimate or manifest until the artifact is repaired to label static estimates as non-hardware evidence and to require real tool checks in verification/backend stages.",
+        "produces": [
+          "artifact.stage5.static_estimate_trust_barrier",
+          "artifact.stage5.later_stage_real_tool_evidence_requirements"
+        ],
+        "rationale": "Resource estimates, bandwidth estimates, and clock_target_mhz=0 are useful for static planning but are not real simulation, synthesis, timing, or board evidence; downstream manifests must preserve this boundary.",
+        "requires_approval": false,
+        "stage": "memory_runtime_or_code_generation_planning",
+        "tool_roles": [
+          "stage_artifact_trust_barrier",
+          "required_real_tool_evidence_check",
+          "verification_action_audit"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "sacg_reference_check",
+          "human_boundary_check"
+        ],
+        "action_type": "cross_layer_consistency_check",
+        "consumes": [
+          "candidate_stage_artifact.numeric_binding_plan",
+          "artifact.input.numeric_policy",
+          "constraint.numeric.policy",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "parameter_binding.numeric_policy_handoff_consistency_check",
+        "on_failure": "Stop promotion to code generation and issue a bounded numeric-policy clarification or approval request; do not alter rounding, saturation, dtype, or comparison tolerance implicitly.",
+        "produces": [
+          "artifact.stage5.numeric_policy_handoff_record"
+        ],
+        "rationale": "The candidate records nearest_even rounding while the stage policy cautions against later unapproved numeric-policy changes; the next-stage handoff must preserve the current numeric contract and surface any ambiguity without loosening tolerance or changing golden references.",
+        "requires_approval": false,
+        "stage": "memory_runtime_or_code_generation_planning",
+        "tool_roles": [
+          "numeric_policy_check",
+          "sacg_reference_check",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "sacg_memory contains no open_backtrack_requests, open_retry_requests, active_contamination_barriers, or recent contamination barriers relevant to parameter_binding, so there is no memory-recorded blocker to approving the refined current-stage artifact.",
+      "The candidate artifact status is ready and checker_summary reports passed=6, failed=0, errors=[], warnings=[] for the visible parameter-binding checks.",
+      "Current-stage numeric and stream consistency are supported by pass evidence from parameter_stage_numeric_contract_check and edge_dtype_stream_contract_check: nine stage bindings match the visible numeric_binding_plan and thirteen stream edges carry matching source/output, edge element, and destination/input bit widths.",
+      "Template-constrained method boundaries are preserved: every bound operation maps to an existing template_id, tile overrides are treated as per-stage authoritative parameters, global tile parameters are defaults only, and Stage 3 edge FIFO contracts remain authoritative over local template fifo_depth defaults.",
+      "The artifact explicitly prevents hardware-evidence contamination: resource_estimate entries are symbolic_first_order sanity data only, bandwidth_estimate is symbolic_transfer_count_from_bound_params only, clock_target_mhz=0 is recorded as unknown shell clock rather than timing evidence, and Stage 6+ is named as the source of real simulation, implementation, timing, and board evidence.",
+      "The stage_gate_policy correctly classifies Stage 5 memory base-address assignment and Stage 6+ simulation/synthesis/timing/board proof as later-stage obligations rather than current parameter_binding blockers.",
+      "Cross-layer facts visible in the artifact are internally aligned for the current stage: model shapes use seq_len=16, hidden_size=896, intermediate_size=4864, num_q_heads=14, num_kv_heads=2, head_dim=64; numeric policy uses fp16 activation/weights and fp32 accumulator/residual paths; stream_order is consistently token,tile,lane,word; lanes=8 packs with 16-bit and 32-bit element widths into the 512-bit board AXI data width.",
+      "The candidate constraints_touched explicitly cites constraint.parameter.binding, constraint.resource.estimate, and constraint.bandwidth.estimate. The gate review also binds the decision to the named audit constraints constraint.verification.plan, constraint.human.boundary, constraint.cross_layer.input_consistency, and constraint.tool.protocols as handoff obligations.",
+      "No approval is requested for architecture, pipeline, memory layout, numeric policy, or major template changes because the artifact does not propose such changes; it binds parameters within selected templates and defers memory layout/base addresses to the next stage."
+    ],
+    "proposed_actions": [
+      "Approve candidate_stage_artifact.parameter_binding for next_stage.memory_runtime_or_code_generation_planning as a parameter-binding-only contract, not as simulation, timing, implementation, or board evidence.",
+      "Materialize parameter_binding.stage_gate_decision, parameter_binding.checker_evidence_matrix, and parameter_binding.repair_or_backtrack_requests_if_any, citing the visible checker_results, named SACG constraints, and the no-open-memory-blocker observation.",
+      "Carry forward a trust barrier that symbolic_first_order resource estimates, symbolic transfer counts, and clock_target_mhz=0 are not hardware pass evidence.",
+      "In Stage 5, assign concrete memory base addresses and verify non-overlap, AXI alignment, transfer counts, stream order, and runtime ABI against the approved parameter_binding contract.",
+      "Before Stage 6+ hardware or verification promotion, require real tool evidence for leaf modules, the connected single-transformer-layer kernel, and then the board-accurate AXI/DDR wrapped system; do not skip a failed lower layer."
+    ],
+    "risks": [
+      "Later stages could accidentally consume symbolic resource/bandwidth estimates as implementation or hardware proof; the artifact mitigates this with explicit non-hardware-evidence notes, but the trust barrier must be preserved in downstream manifests.",
+      "Concrete memory base addresses, non-overlap, alignment, runtime ABI, and board shell clock remain unbound later-stage obligations and must not be inferred from this parameter_binding approval.",
+      "The visible checker names are stage-local evidence names; downstream aggregation should materialize a canonical checker evidence matrix mapping them to parameter_binding_static_check, stream_plan_check, transfer_count_check, memory_runtime_plan_check, repair_boundary_check, human_boundary_check, and stage_artifact_trust_barrier_check so later tools do not rely on human memory.",
+      "Numeric rounding is recorded as nearest_even in the candidate numeric_binding_plan while the stage_gate_policy says rounding remains later-stage recorded/unspecified unless approved; the next numeric-policy handoff should preserve the supplied numeric policy evidence and avoid silently changing tolerance or rounding semantics."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage2.template_selection",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage3.pipeline_static_checks",
+        "candidate_stage_artifact.parameter_binding",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.checker_summary",
+        "candidate_stage_artifact.stage_gate_policy",
+        "candidate_stage_artifact.stream_contract_trace",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.bandwidth_estimate"
+      ],
+      "constraints": [
+        "constraint.parameter.binding",
+        "constraint.resource.estimate",
+        "constraint.bandwidth.estimate",
+        "constraint.verification.plan",
+        "constraint.human.boundary",
+        "constraint.cross_layer.input_consistency",
+        "constraint.tool.protocols",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.shape.model",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.buffering.pipeline",
+        "constraint.memory.board",
+        "constraint.runtime.board"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "qwen2_spatialacc_agent_run",
+        "parameter_binding",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "next_stage.memory_runtime_or_code_generation_planning"
+      ]
+    },
+    "schema_version": "spatialaccagent.verification_repair_specialist.v0",
+    "stage": "parameter_binding",
+    "status": "approved_for_next_stage_with_handoff_actions",
+    "summary": "The supplied parameter_binding artifact is approved for the next memory/runtime or code-generation planning stage as a parameter-binding-only contract. The visible current-stage checker evidence reports 6/6 passes with no errors, preserves the template-constrained method boundary, and explicitly limits bandwidth/resource estimates to static sanity evidence rather than hardware/timing proof. No relevant open sacg_memory backtrack requests or contamination barriers are present. Handoff actions must carry the checker evidence matrix and later-stage obligations forward without treating symbolic estimates as real tool evidence."
+  },
+  "prompt_bytes": 49296,
+  "prompt_hash": "f01220de97cc145dfbc3661100b3829db1f24d7e28032a0949c382a22e6843be",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.verification_repair_specialist.v0\",\"agent\":\"verification_repair_specialist\",\"stage\":\"parameter_binding\",\"status\":\"approved_for_next_stage_with_handoff_actions\",\"summary\":\"The supplied parameter_binding artifact is approved for the next memory/runtime or code-generation planning stage as a parameter-binding-only contract. The visible current-stage checker evidence reports 6/6 passes with no errors, preserves the template-constrained method boundary, and explicitly limits bandwidth/resource estimates to static sanity evidence rather than hardware/timing proof. No relevant open sacg_memory backtrack requests or contamination barriers are present. Handoff actions must carry the checker evidence matrix and later-stage obligations forward without treating symbolic estimates as real tool evidence.\",\"sacg_focus\":{\"nodes\":[\"qwen2_spatialacc_agent_run\",\"parameter_binding\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"next_stage.memory_runtime_or_code_generation_planning\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.parameter.binding\",\"constraint.resource.estimate\",\"constraint.bandwidth.estimate\",\"constraint.verification.plan\",\"constraint.human.boundary\",\"constraint.cross_layer.input_consistency\",\"constraint.tool.protocols\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.shape.model\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.buffering.pipeline\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"artifacts\":[\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"artifact.stage3.pipeline_static_checks\",\"candidate_stage_artifact.parameter_binding\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.checker_summary\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.bandwidth_estimate\"]},\"observations\":[\"sacg_memory contains no open_backtrack_requests, open_retry_requests, active_contamination_barriers, or recent contamination barriers relevant to parameter_binding, so there is no memory-recorded blocker to approving the refined current-stage artifact.\",\"The candidate artifact status is ready and checker_summary reports passed=6, failed=0, errors=[], warnings=[] for the visible parameter-binding checks.\",\"Current-stage numeric and stream consistency are supported by pass evidence from parameter_stage_numeric_contract_check and edge_dtype_stream_contract_check: nine stage bindings match the visible numeric_binding_plan and thirteen stream edges carry matching source/output, edge element, and destination/input bit widths.\",\"Template-constrained method boundaries are preserved: every bound operation maps to an existing template_id, tile overrides are treated as per-stage authoritative parameters, global tile parameters are defaults only, and Stage 3 edge FIFO contracts remain authoritative over local template fifo_depth defaults.\",\"The artifact explicitly prevents hardware-evidence contamination: resource_estimate entries are symbolic_first_order sanity data only, bandwidth_estimate is symbolic_transfer_count_from_bound_params only, clock_target_mhz=0 is recorded as unknown shell clock rather than timing evidence, and Stage 6+ is named as the source of real simulation, implementation, timing, and board evidence.\",\"The stage_gate_policy correctly classifies Stage 5 memory base-address assignment and Stage 6+ simulation/synthesis/timing/board proof as later-stage obligations rather than current parameter_binding blockers.\",\"Cross-layer facts visible in the artifact are internally aligned for the current stage: model shapes use seq_len=16, hidden_size=896, intermediate_size=4864, num_q_heads=14, num_kv_heads=2, head_dim=64; numeric policy uses fp16 activation/weights and fp32 accumulator/residual paths; stream_order is consistently token,tile,lane,word; lanes=8 packs with 16-bit and 32-bit element widths into the 512-bit board AXI data width.\",\"The candidate constraints_touched explicitly cites constraint.parameter.binding, constraint.resource.estimate, and constraint.bandwidth.estimate. The gate review also binds the decision to the named audit constraints constraint.verification.plan, constraint.human.boundary, constraint.cross_layer.input_consistency, and constraint.tool.protocols as handoff obligations.\",\"No approval is requested for architecture, pipeline, memory layout, numeric policy, or major template changes because the artifact does not propose such changes; it binds parameters within selected templates and defers memory layout/base addresses to the next stage.\"],\"risks\":[\"Later stages could accidentally consume symbolic resource/bandwidth estimates as implementation or hardware proof; the artifact mitigates this with explicit non-hardware-evidence notes, but the trust barrier must be preserved in downstream manifests.\",\"Concrete memory base addresses, non-overlap, alignment, runtime ABI, and board shell clock remain unbound later-stage obligations and must not be inferred from this parameter_binding approval.\",\"The visible checker names are stage-local evidence names; downstream aggregation should materialize a canonical checker evidence matrix mapping them to parameter_binding_static_check, stream_plan_check, transfer_count_check, memory_runtime_plan_check, repair_boundary_check, human_boundary_check, and stage_artifact_trust_barrier_check so later tools do not rely on human memory.\",\"Numeric rounding is recorded as nearest_even in the candidate numeric_binding_plan while the stage_gate_policy says rounding remains later-stage recorded/unspecified unless approved; the next numeric-policy handoff should preserve the supplied numeric policy evidence and avoid silently changing tolerance or rounding semantics.\"],\"proposed_actions\":[\"Approve candidate_stage_artifact.parameter_binding for next_stage.memory_runtime_or_code_generation_planning as a parameter-binding-only contract, not as simulation, timing, implementation, or board evidence.\",\"Materialize parameter_binding.stage_gate_decision, parameter_binding.checker_evidence_matrix, and parameter_binding.repair_or_backtrack_requests_if_any, citing the visible checker_results, named SACG constraints, and the no-open-memory-blocker observation.\",\"Carry forward a trust barrier that symbolic_first_order resource estimates, symbolic transfer counts, and clock_target_mhz=0 are not hardware pass evidence.\",\"In Stage 5, assign concrete memory base addresses and verify non-overlap, AXI alignment, transfer counts, stream order, and runtime ABI against the approved parameter_binding contract.\",\"Before Stage 6+ hardware or verification promotion, require real tool evidence for leaf modules, the connected single-transformer-layer kernel, and then the board-accurate AXI/DDR wrapped system; do not skip a failed lower layer.\"],\"executable_actions\":[{\"id\":\"parameter_binding.materialize_stage_gate_decision\",\"stage\":\"parameter_binding\",\"action_type\":\"evidence_gate_review\",\"rationale\":\"Convert the approved current-stage evidence into the expected gate artifacts while preserving SACG constraint citations and the trust barrier between static parameter checks and hardware proof.\",\"consumes\":[\"candidate_stage_artifact.parameter_binding\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.checker_summary\",\"candidate_stage_artifact.stage_gate_policy\",\"state_summary.sacg_memory\",\"constraint.parameter.binding\",\"constraint.verification.plan\",\"constraint.human.boundary\",\"constraint.cross_layer.input_consistency\",\"constraint.tool.protocols\"],\"produces\":[\"parameter_binding.stage_gate_decision\",\"parameter_binding.checker_evidence_matrix\",\"parameter_binding.repair_or_backtrack_requests_if_any\"],\"tool_roles\":[\"sacg_static_check\",\"parameter_binding_static_check\",\"verification_artifact_contract_check\",\"repair_boundary_check\",\"human_boundary_check\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"sacg_static_check\",\"parameter_binding_static_check\",\"verification_artifact_contract_check\",\"repair_boundary_check\",\"human_boundary_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Do not promote the parameter_binding artifact; emit a bounded same-stage repair request naming the failed checker, violated SACG constraint, and contaminated or missing artifact field.\",\"requires_approval\":false},{\"id\":\"parameter_binding.handoff_to_memory_runtime_planning\",\"stage\":\"memory_runtime_or_code_generation_planning\",\"action_type\":\"bounded_next_stage_handoff\",\"rationale\":\"The current-stage parameter, dtype, tile, FIFO-scope, stream-packing, and symbolic transfer-count checks pass; the next stage must bind memory/runtime facts without altering model, numeric, pipeline, or template semantics.\",\"consumes\":[\"parameter_binding.stage_gate_decision\",\"parameter_binding.checker_evidence_matrix\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.bandwidth_estimate\",\"artifact.stage3.pipeline_plan\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.stream.order\",\"constraint.beat.pipeline\"],\"produces\":[\"artifact.stage5.memory_runtime_plan\",\"artifact.stage5.address_map_contract\",\"artifact.stage5.transfer_count_contract\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"stream_plan_check\",\"transfer_count_check\",\"addr_map_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"stream_plan_check\",\"transfer_count_check\",\"addr_map_check\",\"human_boundary_check\"],\"on_failure\":\"Backtrack only to the bounded memory/runtime planning inputs or parameter fields implicated by the failing checker; do not modify golden outputs, numeric policy, selected templates, or Stage 3 pipeline structure without explicit approval.\",\"requires_approval\":false},{\"id\":\"parameter_binding.preserve_static_evidence_trust_barrier\",\"stage\":\"memory_runtime_or_code_generation_planning\",\"action_type\":\"trust_barrier_propagation\",\"rationale\":\"Resource estimates, bandwidth estimates, and clock_target_mhz=0 are useful for static planning but are not real simulation, synthesis, timing, or board evidence; downstream manifests must preserve this boundary.\",\"consumes\":[\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.bindings.resource_estimate\",\"candidate_stage_artifact.global_param_scope\",\"candidate_stage_artifact.stage_gate_policy\"],\"produces\":[\"artifact.stage5.static_estimate_trust_barrier\",\"artifact.stage5.later_stage_real_tool_evidence_requirements\"],\"tool_roles\":[\"stage_artifact_trust_barrier\",\"required_real_tool_evidence_check\",\"verification_action_audit\"],\"acceptance_checkers\":[\"stage_artifact_trust_barrier_check\",\"required_real_tool_evidence_check\",\"verification_action_audit_check\"],\"on_failure\":\"Block downstream consumption of the contaminated estimate or manifest until the artifact is repaired to label static estimates as non-hardware evidence and to require real tool checks in verification/backend stages.\",\"requires_approval\":false},{\"id\":\"parameter_binding.numeric_policy_handoff_consistency_check\",\"stage\":\"memory_runtime_or_code_generation_planning\",\"action_type\":\"cross_layer_consistency_check\",\"rationale\":\"The candidate records nearest_even rounding while the stage policy cautions against later unapproved numeric-policy changes; the next-stage handoff must preserve the current numeric contract and surface any ambiguity without loosening tolerance or changing golden references.\",\"consumes\":[\"candidate_stage_artifact.numeric_binding_plan\",\"artifact.input.numeric_policy\",\"constraint.numeric.policy\",\"constraint.cross_layer.input_consistency\"],\"produces\":[\"artifact.stage5.numeric_policy_handoff_record\"],\"tool_roles\":[\"numeric_policy_check\",\"sacg_reference_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"numeric_policy_check\",\"sacg_reference_check\",\"human_boundary_check\"],\"on_failure\":\"Stop promotion to code generation and issue a bounded numeric-policy clarification or approval request; do not alter rounding, saturation, dtype, or comparison tolerance implicitly.\",\"requires_approval\":false}],\"approval_required_for\":[]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/verification_repair_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/verification_repair_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032)>",
+    "attempt 2: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032)>",
+    "attempt 3: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "parameter_binding.checker evidence gate auditor",
+  "used_fallback": false
+}

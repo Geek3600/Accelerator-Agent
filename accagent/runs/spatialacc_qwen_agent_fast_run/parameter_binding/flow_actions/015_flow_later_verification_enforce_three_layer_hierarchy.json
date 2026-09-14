@@ -1,0 +1,62 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "hierarchical_verification_plan_check",
+      "verification_artifact_contract_check",
+      "case_stage_leaf_static",
+      "case_leaf_functional",
+      "case_single_transformer_layer",
+      "case_single_layer_functional",
+      "deadlock_watchdog",
+      "case_axi_protocol_check",
+      "failure_localization_check",
+      "data_order_trace_check",
+      "numeric_compare"
+    ],
+    "action_type": "hierarchical_real_tool_verification_plan",
+    "consumes": [
+      "artifact.stage5.generated_chisel_parameter_manifest",
+      "artifact.stage5.memory_runtime_plan",
+      "artifact.stage5.numeric_data_order_obligation_trace",
+      "artifact.input.numeric_policy",
+      "peer_agent_parameter_binding_handoff_packet.json"
+    ],
+    "id": "flow.later.verification.enforce_three_layer_hierarchy",
+    "on_failure": "Do not promote to the next hierarchy layer. Convert tool output into contract-guided localization at the earliest causal boundary, apply bounded repair, and rerun the failed layer before any higher-layer, backend, timing, or board claim.",
+    "produces": [
+      "artifact.stage6.verification_artifact_contract",
+      "verification_hierarchy_gate_order.json",
+      "verification/leaf_operator_reports",
+      "verification/single_transformer_layer_report",
+      "verification/board_axi_ddr_wrapped_system_report",
+      "artifact.stage6.verification_hierarchy_pass_bundle",
+      "verification/failure_localization_if_failed"
+    ],
+    "rationale": "Static Stage 4 and codegen checks cannot prove functional correctness, numeric equivalence, data order, liveness, or AXI/DDR protocol behavior. Later verification must run the required leaf-to-single-layer-to-board-wrapped hierarchy and stop at the first failed layer.",
+    "requires_approval": false,
+    "stage": "verification_artifacts",
+    "tool_roles": [
+      "hierarchical_verification_plan_check",
+      "verification_artifact_contract_check",
+      "case_stage_leaf_static",
+      "case_leaf_functional",
+      "case_single_transformer_layer",
+      "case_single_layer_functional",
+      "case_deadlock_axi_check",
+      "case_axi_protocol_check",
+      "failure_slice_localization"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "proceed",
+  "flow_event_index": 15,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/flow_events/015_proceed.json",
+  "stage": "parameter_binding"
+}

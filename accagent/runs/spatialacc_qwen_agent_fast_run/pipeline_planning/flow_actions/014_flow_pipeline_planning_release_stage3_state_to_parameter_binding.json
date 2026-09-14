@@ -1,0 +1,49 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "sacg_static_check",
+      "sacg_memory_check",
+      "stage_retry_request_check",
+      "stage_backtrack_request_check",
+      "stage_artifact_trust_barrier_check"
+    ],
+    "action_type": "stage_transition",
+    "consumes": [
+      "pipeline_planning/canonical_handoff_manifest.json",
+      "pipeline_planning/checker_evidence_ledger.json",
+      "pipeline_planning/downstream_consumption_guard.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+      "sacg_memory_truth",
+      "flow_policy"
+    ],
+    "id": "flow.pipeline_planning.release_stage3_state_to_parameter_binding",
+    "on_failure": "If a new active barrier or open retry/backtrack request is detected, stop the transition and route according to that current SACG-memory blocker. If only handoff evidence is missing, return to the handoff guard action without treating historical closed records as active blockers.",
+    "produces": [
+      "flow_decision.proceed_to_parameter_binding.json",
+      "next_stage_invocation.parameter_binding",
+      "next_stage.source_sacg_state.pipeline_planning_sacg_state",
+      "stage_transition_contamination_guard.json"
+    ],
+    "rationale": "SACG memory has no active blockers and the stage passed. Release the pipeline_planning SACG state as the source for parameter_binding while preserving retry/backtrack and contamination-barrier checks at the boundary.",
+    "requires_approval": false,
+    "stage": "flow_control",
+    "tool_roles": [
+      "sacg_validate",
+      "sacg_static_check",
+      "sacg_memory_update",
+      "sacg_reference_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "proceed",
+  "flow_event_index": 14,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/014_proceed.json",
+  "stage": "pipeline_planning"
+}

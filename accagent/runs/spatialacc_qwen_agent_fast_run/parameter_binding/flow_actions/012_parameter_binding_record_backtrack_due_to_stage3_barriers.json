@@ -1,0 +1,47 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "stage_backtrack_request_check",
+      "stage_artifact_trust_barrier_check",
+      "sacg_memory_check",
+      "sacg_static_check"
+    ],
+    "action_type": "control_flow_backtrack_request",
+    "consumes": [
+      "recent_stage_summary",
+      "command_log:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/30_parameter_binding.json",
+      "sacg_memory.active_contamination_barriers",
+      "flow_policy",
+      "llm_policy"
+    ],
+    "id": "parameter_binding.record_backtrack_due_to_stage3_barriers",
+    "on_failure": "Stop the autonomous flow to avoid artifact contamination; do not retry parameter_binding or start code_generation until the backtrack/trust-barrier record is valid.",
+    "produces": [
+      "artifact.flow.backtrack_request.to_pipeline_planning",
+      "updated_sacg_memory.backtrack_request",
+      "artifact.stage4.parameter_binding_failed_attempt_record",
+      "artifact.stage4.downstream_consumption_block"
+    ],
+    "rationale": "Materialize the flow decision that parameter_binding is blocked by active upstream Stage 3 trust barriers, preserve the barriers, and prevent downstream consumption of the failed or stale parameter_binding report.",
+    "requires_approval": false,
+    "stage": "parameter_binding",
+    "tool_roles": [
+      "stage_backtrack_request",
+      "stage_artifact_trust_barrier",
+      "sacg_memory_update",
+      "sacg_validate"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "stop",
+  "flow_event_index": 12,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/flow_events/012_stop.json",
+  "stage": "parameter_binding"
+}

@@ -1,0 +1,859 @@
+{
+  "axi_ddr_memory_runtime_subchecks": [
+    {
+      "gate": "case_axi_ddr_interface",
+      "required_checkers": [
+        "addr_map_check",
+        "transfer_count_check",
+        "data_order_trace_check",
+        "memory_runtime_plan_check"
+      ],
+      "required_tool_roles": [
+        "board_interface_discovery",
+        "axi_ddr_interface"
+      ]
+    },
+    {
+      "gate": "case_axi_protocol_check",
+      "required_checkers": [
+        "axi_protocol_check",
+        "data_order_trace_check",
+        "deadlock_watchdog"
+      ],
+      "required_tool_roles": [
+        "axi_protocol_check"
+      ]
+    },
+    {
+      "gate": "case_ddr_image_roundtrip",
+      "required_checkers": [
+        "ddr_image_roundtrip",
+        "transfer_count_check",
+        "artifact_hash_check"
+      ],
+      "required_tool_roles": [
+        "ddr_image_roundtrip"
+      ]
+    }
+  ],
+  "board_axi_ddr_promotion_certificate": {
+    "blocks_until_present": [
+      "case_vivado_synthesis",
+      "case_vivado_implementation",
+      "case_runtime_bitstream",
+      "case_runtime_abi_check",
+      "board_runtime"
+    ],
+    "debug_layer": "board_axi_ddr_wrapped_system",
+    "evidence_contract": {
+      "accelerator_scope": "transformer_blocks_only",
+      "all_target_layers_required": true,
+      "complete_scope_weight_coverage_required": true,
+      "dut_weight_consumption_proof_required": true,
+      "exact_user_sample_board_wrapper_required": true,
+      "expected_output_must_use_same_input_and_weights": true,
+      "generated_semantic_testbench_required": true,
+      "independent_expected_output_required": true,
+      "input_seed_shape_dtype_and_hash_required": true,
+      "level_id": "axi_ddr_functional",
+      "non_transformer_model_regions_out_of_scope": true,
+      "numeric_policy_bound_reference_and_encoding_required": true,
+      "random_input_allowed": true,
+      "real_target_weights_required": true,
+      "rtl_derived_or_random_expected_output_forbidden": true,
+      "simulation_wrapper_hash_must_match_sample_source": true,
+      "version": "spatialaccagent.real_weight_semantic_evidence.v2"
+    },
+    "required_artifact": "artifact.stage7.board_axi_ddr_promotion_certificate",
+    "required_gates": [
+      "case_multilayer_pipeline",
+      "case_board_interface_discovery",
+      "case_axi_ddr_interface",
+      "functional_sim",
+      "case_multilayer_functional",
+      "case_pipeline_deadlock_check",
+      "case_axi_protocol_check",
+      "case_ddr_image_roundtrip",
+      "case_board_semantic_evidence"
+    ]
+  },
+  "debug_layers": [
+    "operator_leaf_modules",
+    "single_transformer_layer_kernel",
+    "board_axi_ddr_wrapped_system"
+  ],
+  "debug_loop_contract": {
+    "anti_spin_policy": {
+      "current_layer_failure_after_lower_pass_means": "debug current-layer integration, interconnect, wrapper, scheduler, data order, or boundary contract first",
+      "do_not_reopen_passed_lower_layer_without_contradicting_current_layer_trace": true,
+      "lower_layer_pass_evidence_is_reusable_not_absolute": true,
+      "passed_lower_layer_can_be_challenged_by_current_layer_trace": true,
+      "reopening_lower_layer_requires": [
+        "a current-layer boundary trace record that directly contradicts lower-layer pass evidence",
+        "or a SACG-approved design-contract change invalidating the previous lower-layer evidence"
+      ],
+      "when_reopened": [
+        "record the contradicted lower-layer gate/module and source trace in SACG",
+        "rerun only the challenged lower-layer scope with expanded boundary stimuli or corrected contract",
+        "after lower-layer revalidation, rerun the failed current layer before any higher-layer promotion"
+      ]
+    },
+    "cctg_policy": {
+      "first_action_when_trace_missing": "debug_trace_rerun for the failed current-layer gate",
+      "localized_action": "causal_slice_repair over the localized boundary or current-layer integration slice",
+      "purpose": "speed root-cause localization by mapping real-tool symptoms to the earliest violated contract/boundary",
+      "required_on_failure": true,
+      "trace_schema_is_case_adapter_driven": true
+    },
+    "layer_order": [
+      "operator_leaf_modules",
+      "single_transformer_layer_kernel",
+      "board_axi_ddr_wrapped_system"
+    ],
+    "layers": [
+      {
+        "entry_condition": "Stage6 verification gate DAG and real case-adapter tools are available",
+        "exit_condition": "all required gates for this layer pass with real-tool evidence and any required golden/numeric comparison",
+        "failure_loop": [
+          "run current-layer real tool",
+          "collect CCTG boundary trace or failure localization evidence",
+          "classify earliest violated boundary/current-layer contract",
+          "apply only bounded repair permitted by SACG/human-boundary rules",
+          "rerun the same current layer until pass before promotion"
+        ],
+        "id": "operator_leaf_modules",
+        "order": 0,
+        "promotion_target": "single_transformer_layer_kernel",
+        "purpose": "Debug every spatially parallel operator module before integration.",
+        "required_gates": [
+          "case_real_weight_artifacts",
+          "case_target_model_reference",
+          "case_semantic_testbench",
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "case_operator_leaf_semantic_evidence"
+        ]
+      },
+      {
+        "entry_condition": "all lower debug layers have pass evidence",
+        "exit_condition": "all required gates for this layer pass with real-tool evidence and any required golden/numeric comparison",
+        "failure_loop": [
+          "run current-layer real tool",
+          "collect CCTG boundary trace or failure localization evidence",
+          "classify earliest violated boundary/current-layer contract",
+          "apply only bounded repair permitted by SACG/human-boundary rules",
+          "rerun the same current layer until pass before promotion"
+        ],
+        "id": "single_transformer_layer_kernel",
+        "order": 1,
+        "promotion_target": "board_axi_ddr_wrapped_system",
+        "purpose": "Debug the connected one-layer transformer spatial kernel after leaf modules pass.",
+        "required_gates": [
+          "single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "case_single_layer_semantic_evidence"
+        ]
+      },
+      {
+        "entry_condition": "all lower debug layers have pass evidence",
+        "exit_condition": "all required gates for this layer pass with real-tool evidence and any required golden/numeric comparison",
+        "failure_loop": [
+          "run current-layer real tool",
+          "collect CCTG boundary trace or failure localization evidence",
+          "classify earliest violated boundary/current-layer contract",
+          "apply only bounded repair permitted by SACG/human-boundary rules",
+          "rerun the same current layer until pass before promotion"
+        ],
+        "id": "board_axi_ddr_wrapped_system",
+        "order": 2,
+        "promotion_target": "backend_bitstream_and_board_runtime",
+        "purpose": "Debug the accelerator behind the real board AXI/DDR wrapper and runtime ABI.",
+        "required_gates": [
+          "case_board_interface_discovery",
+          "case_multilayer_pipeline",
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "functional_sim",
+          "case_board_semantic_evidence"
+        ]
+      }
+    ],
+    "promotion_policy": {
+      "backend_or_board_runtime_requires_all_three_debug_layers_to_pass": true,
+      "dependency_skipped_or_smoke_evidence_cannot_promote": true,
+      "next_layer_requires_current_layer_certificate": true
+    },
+    "schema_version": "spatialaccagent.hierarchical_debug_loop_contract.v0"
+  },
+  "debug_scope_order": [
+    "operator_leaf_closure",
+    "single_layer_closure",
+    "board_axi_ddr_closure"
+  ],
+  "gate_aliases": {
+    "single_layer_kernel": {
+      "aliases": [
+        "case_single_transformer_layer",
+        "single_transformer_layer"
+      ],
+      "canonical_gate": "single_transformer_layer",
+      "policy": "all aliases refer to the connected single transformer-layer kernel gate; pass evidence must bind to the canonical gate"
+    }
+  },
+  "gates": [
+    {
+      "depends_on": [],
+      "evidence_status": "required_pending_execution",
+      "name": "case_real_weight_artifacts",
+      "phase": "real_weight_catalog",
+      "tool_roles": [
+        "weight_manifest_generate",
+        "real_weight_artifacts"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_real_weight_artifacts"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_target_model_reference",
+      "phase": "target_model_reference",
+      "tool_roles": [
+        "target_model_reference_generate"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_target_model_reference"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_semantic_testbench",
+      "phase": "semantic_testbench_generation",
+      "tool_roles": [
+        "semantic_testbench_generate"
+      ]
+    },
+    {
+      "depends_on": [],
+      "evidence_status": "required_pending_execution",
+      "name": "boundary_contract_check",
+      "phase": "debug_boundary_contract",
+      "tool_roles": [
+        "boundary_contract_check"
+      ]
+    },
+    {
+      "depends_on": [],
+      "evidence_status": "required_pending_execution",
+      "name": "leaf_stage.stage_00_rms_norm_1",
+      "phase": "operator_leaf_module",
+      "tool_roles": [
+        "stage_leaf_static"
+      ]
+    },
+    {
+      "depends_on": [],
+      "evidence_status": "required_pending_execution",
+      "name": "leaf_stage.stage_01_self_attention",
+      "phase": "operator_leaf_module",
+      "tool_roles": [
+        "stage_leaf_static"
+      ]
+    },
+    {
+      "depends_on": [],
+      "evidence_status": "required_pending_execution",
+      "name": "leaf_stage.stage_02_residual_add_1",
+      "phase": "operator_leaf_module",
+      "tool_roles": [
+        "stage_leaf_static"
+      ]
+    },
+    {
+      "depends_on": [],
+      "evidence_status": "required_pending_execution",
+      "name": "leaf_stage.stage_03_rms_norm_2",
+      "phase": "operator_leaf_module",
+      "tool_roles": [
+        "stage_leaf_static"
+      ]
+    },
+    {
+      "depends_on": [],
+      "evidence_status": "required_pending_execution",
+      "name": "leaf_stage.stage_04_mlp_gate_proj",
+      "phase": "operator_leaf_module",
+      "tool_roles": [
+        "stage_leaf_static"
+      ]
+    },
+    {
+      "depends_on": [],
+      "evidence_status": "required_pending_execution",
+      "name": "leaf_stage.stage_05_mlp_up_proj",
+      "phase": "operator_leaf_module",
+      "tool_roles": [
+        "stage_leaf_static"
+      ]
+    },
+    {
+      "depends_on": [],
+      "evidence_status": "required_pending_execution",
+      "name": "leaf_stage.stage_06_activation_mul",
+      "phase": "operator_leaf_module",
+      "tool_roles": [
+        "stage_leaf_static"
+      ]
+    },
+    {
+      "depends_on": [],
+      "evidence_status": "required_pending_execution",
+      "name": "leaf_stage.stage_07_mlp_down_proj",
+      "phase": "operator_leaf_module",
+      "tool_roles": [
+        "stage_leaf_static"
+      ]
+    },
+    {
+      "depends_on": [],
+      "evidence_status": "required_pending_execution",
+      "name": "leaf_stage.stage_08_residual_add_2",
+      "phase": "operator_leaf_module",
+      "tool_roles": [
+        "stage_leaf_static"
+      ]
+    },
+    {
+      "depends_on": [
+        "leaf_stage.stage_00_rms_norm_1",
+        "leaf_stage.stage_01_self_attention",
+        "leaf_stage.stage_02_residual_add_1",
+        "leaf_stage.stage_03_rms_norm_2",
+        "leaf_stage.stage_04_mlp_gate_proj",
+        "leaf_stage.stage_05_mlp_up_proj",
+        "leaf_stage.stage_06_activation_mul",
+        "leaf_stage.stage_07_mlp_down_proj",
+        "leaf_stage.stage_08_residual_add_2"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_stage_leaf_static",
+      "phase": "operator_leaf_aggregate",
+      "tool_roles": [
+        "stage_leaf_static"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_stage_leaf_static",
+        "boundary_contract_check",
+        "case_semantic_testbench"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_leaf_functional",
+      "phase": "operator_leaf_functional",
+      "tool_roles": [
+        "leaf_functional_sim"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_leaf_functional",
+        "boundary_contract_check",
+        "case_target_model_reference",
+        "case_semantic_testbench"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_leaf_golden_compare",
+      "phase": "operator_leaf_golden_compare",
+      "tool_roles": [
+        "leaf_golden_compare"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_leaf_golden_compare",
+        "case_leaf_functional",
+        "case_stage_leaf_static",
+        "boundary_contract_check",
+        "case_target_model_reference",
+        "case_semantic_testbench"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_operator_leaf_semantic_evidence",
+      "phase": "operator_leaf_semantic_aggregate",
+      "tool_roles": [
+        "operator_leaf_semantic_evidence"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_operator_leaf_semantic_evidence",
+        "case_semantic_testbench"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_tb_scaffold",
+      "phase": "testbench_scaffold",
+      "tool_roles": [
+        "tb_scaffold_generate",
+        "tb_scaffold"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_operator_leaf_semantic_evidence",
+        "case_tb_scaffold",
+        "case_semantic_testbench"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "single_transformer_layer",
+      "phase": "single_layer_kernel",
+      "tool_roles": [
+        "tb_scaffold_generate",
+        "stage_leaf_static",
+        "leaf_functional_sim",
+        "leaf_golden_compare",
+        "tb_scaffold",
+        "single_layer_kernel"
+      ]
+    },
+    {
+      "depends_on": [
+        "single_transformer_layer",
+        "case_operator_leaf_semantic_evidence",
+        "case_tb_scaffold",
+        "case_semantic_testbench"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_single_layer_functional",
+      "phase": "single_layer_functional",
+      "tool_roles": [
+        "single_layer_functional_sim"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_single_layer_functional",
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_single_layer_golden_compare",
+      "phase": "single_layer_golden_compare",
+      "tool_roles": [
+        "single_layer_golden_reference_builder",
+        "single_layer_golden_compare"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_single_layer_golden_compare",
+        "case_single_layer_functional",
+        "case_operator_leaf_semantic_evidence",
+        "case_target_model_reference",
+        "case_semantic_testbench"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_single_layer_semantic_evidence",
+      "phase": "single_layer_semantic_aggregate",
+      "tool_roles": [
+        "single_layer_semantic_evidence"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_single_layer_semantic_evidence"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_board_interface_discovery",
+      "phase": "board_interface_discovery",
+      "tool_roles": [
+        "board_interface_discovery"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_single_layer_semantic_evidence",
+        "case_semantic_testbench",
+        "case_board_interface_discovery"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_multilayer_pipeline",
+      "phase": "multilayer_pipeline",
+      "tool_roles": [
+        "tb_scaffold_generate",
+        "single_layer_kernel",
+        "single_layer_functional_sim",
+        "single_layer_golden_compare",
+        "multilayer_pipeline"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_multilayer_pipeline",
+        "case_board_interface_discovery"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_axi_ddr_interface",
+      "phase": "board_wrapper_interface",
+      "tool_roles": [
+        "axi_ddr_interface"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_semantic_testbench",
+        "case_single_layer_semantic_evidence",
+        "case_multilayer_pipeline",
+        "case_board_interface_discovery",
+        "case_axi_ddr_interface"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "functional_sim",
+      "phase": "functional_simulation",
+      "tool_roles": [
+        "vcs_functional_sim",
+        "vcs_evidence_analyzer",
+        "deadlock_axi_check"
+      ]
+    },
+    {
+      "depends_on": [
+        "functional_sim",
+        "case_multilayer_pipeline"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_multilayer_functional",
+      "phase": "multilayer_functional",
+      "tool_roles": [
+        "multilayer_functional_sim"
+      ]
+    },
+    {
+      "depends_on": [
+        "functional_sim",
+        "case_multilayer_functional"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_pipeline_deadlock_check",
+      "phase": "multilayer_deadlock_liveness",
+      "tool_roles": [
+        "pipeline_deadlock_check"
+      ]
+    },
+    {
+      "depends_on": [
+        "functional_sim",
+        "case_axi_ddr_interface",
+        "case_board_interface_discovery"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_axi_protocol_check",
+      "phase": "axi_protocol_check",
+      "tool_roles": [
+        "axi_protocol_check"
+      ]
+    },
+    {
+      "depends_on": [
+        "functional_sim",
+        "case_axi_protocol_check",
+        "case_real_weight_artifacts"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_ddr_image_roundtrip",
+      "phase": "ddr_image_roundtrip",
+      "tool_roles": [
+        "ddr_image_roundtrip"
+      ]
+    },
+    {
+      "depends_on": [
+        "functional_sim",
+        "case_multilayer_functional",
+        "case_pipeline_deadlock_check",
+        "case_axi_protocol_check",
+        "case_ddr_image_roundtrip",
+        "case_board_interface_discovery",
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_board_semantic_evidence",
+      "phase": "board_semantic_aggregate",
+      "tool_roles": [
+        "board_semantic_evidence"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_multilayer_pipeline",
+        "case_board_interface_discovery",
+        "case_axi_ddr_interface",
+        "functional_sim",
+        "case_multilayer_functional",
+        "case_pipeline_deadlock_check",
+        "case_axi_protocol_check",
+        "case_ddr_image_roundtrip",
+        "case_board_semantic_evidence"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_vivado_synthesis",
+      "phase": "vivado_synthesis",
+      "tool_roles": [
+        "vivado_synthesis",
+        "vivado_synthesis_report_check"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_vivado_synthesis",
+        "case_board_interface_discovery",
+        "case_board_semantic_evidence"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_vivado_implementation",
+      "phase": "vivado_implementation",
+      "tool_roles": [
+        "vivado_implementation",
+        "vivado_implementation_report_check"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_vivado_implementation",
+        "functional_sim",
+        "case_axi_ddr_interface",
+        "case_multilayer_pipeline",
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "case_board_interface_discovery",
+        "case_board_semantic_evidence"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_runtime_bitstream",
+      "phase": "vivado_bitstream",
+      "tool_roles": [
+        "runtime_bitstream"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_runtime_bitstream",
+        "case_board_interface_discovery",
+        "case_axi_ddr_interface",
+        "case_board_semantic_evidence"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "case_runtime_abi_check",
+      "phase": "runtime_abi",
+      "tool_roles": [
+        "runtime_abi_check"
+      ]
+    },
+    {
+      "depends_on": [
+        "case_runtime_bitstream",
+        "case_runtime_abi_check",
+        "functional_sim",
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "case_board_interface_discovery",
+        "case_axi_ddr_interface",
+        "case_board_semantic_evidence"
+      ],
+      "evidence_status": "required_pending_execution",
+      "name": "board_runtime",
+      "phase": "board_runtime",
+      "tool_roles": [
+        "board_runtime"
+      ]
+    }
+  ],
+  "hierarchical_order": [
+    "real_weight_catalog",
+    "target_model_reference",
+    "semantic_testbench_generation",
+    "operator_leaf_module",
+    "debug_boundary_contract",
+    "operator_leaf_functional",
+    "operator_leaf_golden_compare",
+    "operator_leaf_semantic_aggregate",
+    "testbench_scaffold",
+    "single_layer_kernel",
+    "single_layer_functional",
+    "single_layer_golden_compare",
+    "single_layer_semantic_aggregate",
+    "board_interface_discovery",
+    "multilayer_pipeline",
+    "board_wrapper_interface",
+    "functional_simulation",
+    "multilayer_functional",
+    "multilayer_deadlock_liveness",
+    "axi_protocol_check",
+    "ddr_image_roundtrip",
+    "board_semantic_aggregate",
+    "vivado_synthesis",
+    "vivado_implementation",
+    "vivado_bitstream",
+    "runtime_abi",
+    "board_runtime"
+  ],
+  "multilayer_promotion_certificate": {
+    "blocks_until_present": [
+      "case_axi_protocol_check",
+      "case_ddr_image_roundtrip",
+      "case_board_semantic_evidence",
+      "case_vivado_synthesis",
+      "case_vivado_implementation",
+      "case_runtime_bitstream",
+      "case_runtime_abi_check",
+      "board_runtime"
+    ],
+    "debug_layer": "board_axi_ddr_wrapped_system",
+    "evidence_contract": {
+      "accelerator_scope": "transformer_blocks_only",
+      "all_target_layers_required": true,
+      "complete_scope_weight_coverage_required": true,
+      "dut_weight_consumption_proof_required": true,
+      "expected_output_must_use_same_input_and_weights": true,
+      "generated_semantic_testbench_required": true,
+      "independent_expected_output_required": true,
+      "input_seed_shape_dtype_and_hash_required": true,
+      "level_id": "multilayer_pipeline_functional",
+      "non_transformer_model_regions_out_of_scope": true,
+      "numeric_policy_bound_reference_and_encoding_required": true,
+      "random_input_allowed": true,
+      "real_target_weights_required": true,
+      "rtl_derived_or_random_expected_output_forbidden": true,
+      "version": "spatialaccagent.real_weight_semantic_evidence.v2"
+    },
+    "required_artifact": "artifact.stage7.multilayer_pipeline_promotion_certificate",
+    "required_gates": [
+      "case_multilayer_pipeline",
+      "case_multilayer_functional",
+      "case_pipeline_deadlock_check"
+    ],
+    "third_layer_subgate": true
+  },
+  "operator_leaf_promotion_certificate": {
+    "blocks_until_present": [
+      "case_tb_scaffold",
+      "single_transformer_layer",
+      "case_single_layer_functional",
+      "case_single_layer_golden_compare",
+      "case_single_layer_semantic_evidence",
+      "case_board_interface_discovery",
+      "case_multilayer_pipeline",
+      "case_axi_ddr_interface",
+      "functional_sim",
+      "case_multilayer_functional",
+      "case_pipeline_deadlock_check",
+      "case_axi_protocol_check",
+      "case_ddr_image_roundtrip",
+      "case_board_semantic_evidence",
+      "case_vivado_synthesis",
+      "case_vivado_implementation",
+      "case_runtime_bitstream",
+      "case_runtime_abi_check",
+      "board_runtime"
+    ],
+    "evidence_contract": {
+      "accelerator_scope": "transformer_blocks_only",
+      "complete_scope_weight_coverage_required": true,
+      "dut_weight_consumption_proof_required": true,
+      "expected_output_must_use_same_input_and_weights": true,
+      "generated_semantic_testbench_required": true,
+      "independent_expected_output_required": true,
+      "input_seed_shape_dtype_and_hash_required": true,
+      "level_id": "operator_leaf_functional",
+      "non_transformer_model_regions_out_of_scope": true,
+      "numeric_policy_bound_reference_and_encoding_required": true,
+      "operator_semantic_coverage_complete_required": true,
+      "random_input_allowed": true,
+      "real_target_weights_required": true,
+      "rtl_derived_or_random_expected_output_forbidden": true,
+      "version": "spatialaccagent.real_weight_semantic_evidence.v2"
+    },
+    "evidence_semantics": {
+      "allows_next_hierarchical_layer": "single_transformer_layer_kernel",
+      "does_not_claim_full_model_semantic_correctness": true,
+      "does_not_claim_integration_or_board_correctness": true,
+      "higher_layer_cctg_trace_may_challenge_leaf_only_with_bound_gate_or_module": true
+    },
+    "required_artifact": "artifact.stage7.operator_leaf_promotion_certificate",
+    "required_gates": [
+      "case_real_weight_artifacts",
+      "case_target_model_reference",
+      "case_semantic_testbench",
+      "case_stage_leaf_static",
+      "boundary_contract_check",
+      "case_leaf_functional",
+      "case_leaf_golden_compare",
+      "case_operator_leaf_semantic_evidence"
+    ]
+  },
+  "schema_version": "spatialaccagent.stage7_gate_selector_contract.v0",
+  "selector_rules": [
+    "execute a gate only when every declared dependency gate has pass evidence from the current trusted run",
+    "when a gate fails, stop at that debug layer and route evidence to Stage8 repair before any higher-layer gate runs",
+    "contaminated Stage7/Stage8 artifacts may be used as debug clues only, never as pass certificates",
+    "lower-layer pass evidence is reusable evidence, not an absolute truth claim",
+    "reopen a passed lower-layer gate only when current-layer CCTG/boundary trace explicitly contradicts it and names the challenged gate or module",
+    "if a trace claims lower-layer contradiction without a challenged gate/module binding, rerun the failed current-layer trace before backtracking"
+  ],
+  "single_layer_promotion_certificate": {
+    "blocks_until_present": [
+      "case_board_interface_discovery",
+      "case_multilayer_pipeline",
+      "case_axi_ddr_interface",
+      "functional_sim",
+      "case_multilayer_functional",
+      "case_pipeline_deadlock_check",
+      "case_axi_protocol_check",
+      "case_ddr_image_roundtrip",
+      "case_board_semantic_evidence",
+      "case_vivado_synthesis",
+      "case_vivado_implementation",
+      "case_runtime_bitstream",
+      "case_runtime_abi_check",
+      "board_runtime"
+    ],
+    "evidence_contract": {
+      "accelerator_scope": "transformer_blocks_only",
+      "complete_scope_weight_coverage_required": true,
+      "connected_single_layer_semantics_required": true,
+      "dut_weight_consumption_proof_required": true,
+      "expected_output_must_use_same_input_and_weights": true,
+      "generated_semantic_testbench_required": true,
+      "independent_expected_output_required": true,
+      "input_seed_shape_dtype_and_hash_required": true,
+      "level_id": "single_layer_functional",
+      "non_transformer_model_regions_out_of_scope": true,
+      "numeric_policy_bound_reference_and_encoding_required": true,
+      "random_input_allowed": true,
+      "real_target_weights_required": true,
+      "rtl_derived_or_random_expected_output_forbidden": true,
+      "version": "spatialaccagent.real_weight_semantic_evidence.v2"
+    },
+    "required_artifact": "artifact.stage7.single_layer_promotion_certificate",
+    "required_gates": [
+      "case_tb_scaffold",
+      "single_transformer_layer",
+      "case_single_layer_functional",
+      "case_single_layer_golden_compare",
+      "case_single_layer_semantic_evidence"
+    ]
+  },
+  "source": "stage6_planner_action_materialization",
+  "status": "ready"
+}

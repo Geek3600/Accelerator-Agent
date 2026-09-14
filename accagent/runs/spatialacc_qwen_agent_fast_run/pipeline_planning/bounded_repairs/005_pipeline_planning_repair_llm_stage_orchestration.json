@@ -1,0 +1,45 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "llm_io_quality_check",
+      "tool_protocol_check",
+      "repair_boundary_check",
+      "stage_artifact_trust_barrier_check"
+    ],
+    "action_type": "bounded_repair",
+    "consumes": [
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/23_pipeline_planning.json",
+      "llm_policy",
+      "flow_policy",
+      "artifact.pipeline_planning.failed_attempt_23_trust_barrier"
+    ],
+    "id": "pipeline_planning.repair_llm_stage_orchestration",
+    "on_failure": "Keep pipeline_planning blocked and stop to avoid artifact contamination; record the failed repair as a SACG failure lesson before any further retry is considered.",
+    "produces": [
+      "artifact.pipeline_planning.llm_orchestration_repair_report",
+      "artifact.pipeline_planning.current_stage_replay_scope",
+      "artifact.pipeline_planning.retry_reconciliation_contract"
+    ],
+    "rationale": "The failed attempt is localized to current-stage LLM/tool orchestration evidence: transient 504s occurred and memory_runtime_engineer terminated with a remote connection close, leaving team aggregation incomplete. Repair must be limited to LLM I/O, tool protocol, and current-stage role replay plumbing, not pipeline topology, numeric policy, memory layout, or template changes.",
+    "requires_approval": false,
+    "stage": "pipeline_planning",
+    "tool_roles": [
+      "llm_io_quality_check",
+      "targeted_failed_checker_rerun",
+      "pipeline_repair",
+      "memory_runtime_repair"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "stop",
+  "flow_event_index": 5,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/005_stop.json",
+  "stage": "pipeline_planning"
+}

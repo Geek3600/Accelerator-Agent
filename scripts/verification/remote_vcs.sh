@@ -37,7 +37,7 @@ EOF
 remote_bash() {
   local cmd="$1"
   local remote_cmd
-  remote_cmd="mkdir -p \"${REMOTE_WORKDIR}\" \"${REMOTE_LOCK_DIR}\" && cd \"${REMOTE_WORKDIR}\" && source ~/.bashrc && conda activate \"${REMOTE_CONDA_ENV}\" && CONDA_ENV_PREFIX=\"\$CONDA_PREFIX\" && unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS && export PATH=\"${REMOTE_VCS_HOME}/bin:/usr/bin:/bin:\$PATH\" VCS_HOME=\"${REMOTE_VCS_HOME}\" PYTHON_BIN=\"\$CONDA_ENV_PREFIX/bin/python3\" CC=/usr/bin/gcc CXX=/usr/bin/g++ CPP=/usr/bin/cpp LINK=/usr/bin/g++ AR=/usr/bin/ar LD=/usr/bin/ld NM=/usr/bin/nm RANLIB=/usr/bin/ranlib STRIP=/usr/bin/strip LANG=C LC_ALL=C && ${cmd}"
+  remote_cmd="mkdir -p \"${REMOTE_WORKDIR}\" \"${REMOTE_LOCK_DIR}\" && cd \"${REMOTE_WORKDIR}\" && (source ~/.bashrc >/dev/null 2>&1 || true); if command -v conda >/dev/null 2>&1; then conda activate \"${REMOTE_CONDA_ENV}\" || true; fi; if [[ -n \"\${CONDA_PREFIX:-}\" && -x \"\${CONDA_PREFIX}/bin/python3\" ]]; then PYTHON_BIN=\"\${CONDA_PREFIX}/bin/python3\"; else PYTHON_BIN=\"\$(command -v python3)\"; fi; unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS; export PATH=\"${REMOTE_VCS_HOME}/bin:/usr/bin:/bin:\$PATH\" VCS_HOME=\"${REMOTE_VCS_HOME}\" VCS_TARGET_ARCH=linux64 PYTHON_BIN CC=/usr/bin/gcc CXX=/usr/bin/g++ CPP=/usr/bin/cpp LINK=/usr/bin/g++ AR=/usr/bin/ar LD=/usr/bin/ld NM=/usr/bin/nm RANLIB=/usr/bin/ranlib STRIP=/usr/bin/strip LANG=C LC_ALL=C; ${cmd}"
   local quoted_remote_cmd
   printf -v quoted_remote_cmd '%q' "${remote_cmd}"
   ssh "${SSH_OPTS[@]}" "${REMOTE_TARGET}" "bash -lc ${quoted_remote_cmd}"

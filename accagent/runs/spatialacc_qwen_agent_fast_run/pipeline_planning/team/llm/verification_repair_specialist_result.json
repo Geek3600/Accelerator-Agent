@@ -1,0 +1,301 @@
+{
+  "agent": "verification_repair_specialist",
+  "duration_sec": 612.1852771559934,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "verification_repair_specialist",
+    "approval_required_for": [
+      "Any architecture or pipeline-topology change beyond the checker-backed operator_stream_pipeline and operator order.",
+      "Any numeric precision, rounding, saturation, tolerance, or golden-output change.",
+      "Any memory-layout or AXI/DDR address-map change that departs from the checker-backed board/runtime constraints or requires a new memory policy.",
+      "Any major template substitution or free-form RTL generation outside the trusted template library.",
+      "Any ambiguous backend/app-shell target selection without cited board materials and real Vivado/tool evidence."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "verification_action_audit_check",
+          "verification_plan_static_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "sacg_memory_check",
+          "sacg_static_check"
+        ],
+        "action_type": "evidence_gate_audit",
+        "consumes": [
+          "candidate_stage_artifact.pipeline_planning_pipeline_plan",
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.checker_summary",
+          "candidate_stage_artifact.stage_gate_policy",
+          "state_summary.sacg_memory",
+          "artifact.input.human_agent_boundary",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "pipeline_planning.run_final_evidence_gate_audit",
+        "on_failure": "Block promotion, create a bounded stage_retry_request or stage_backtrack_request tied to the failed checker and SACG constraint, add a contamination barrier for unpromoted artifacts, and do not change golden outputs or tolerance.",
+        "produces": [
+          "artifact.pipeline_planning.evidence_gate_decision",
+          "artifact.pipeline_planning.checker_constraint_matrix",
+          "artifact.pipeline_planning.later_stage_obligation_handoff",
+          "sacg_memory.stage_outcome_record.pipeline_planning"
+        ],
+        "rationale": "Close the current-stage evidence gate by binding the supplied checker_results, stage_gate_policy, SACG memory state, human boundary, and tool protocols to the promotion decision. This action records Stage6+ real-tool evidence as not_run/not_applicable for Stage3 rather than treating it as a hardware pass or failure.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "verification_action_audit",
+          "verification_plan_static_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "sacg_validate",
+          "sacg_static_check",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "boundary_contract_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "next_stage_handoff",
+        "consumes": [
+          "artifact.pipeline_planning.evidence_gate_decision",
+          "candidate_stage_artifact.pipeline_planning_pipeline_plan",
+          "artifact.stage2.template_selection",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space"
+        ],
+        "id": "pipeline_planning.promote_contract_to_parameter_binding",
+        "on_failure": "Localize the failed Stage4 parameter or boundary contract; open a backtrack to pipeline_planning only if the promoted contract is inconsistent; quarantine unpromoted Stage4 artifacts.",
+        "produces": [
+          "artifact.stage4.parameter_binding_contract",
+          "artifact.stage4.boundary_contracts",
+          "artifact.stage4.parameter_binding_checker_results"
+        ],
+        "rationale": "With current Stage3 plan evidence passing, bind final template parameters from the stable pipeline contract while preserving the approved operator order, stream/data edges, numeric policy, and trusted-template boundary.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "boundary_contract_generate",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "code_generation_manifest_static_check",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "codegen_compile_gate_check",
+          "artifact_hash_check",
+          "sacg_static_check"
+        ],
+        "action_type": "later_stage_obligation",
+        "consumes": [
+          "artifact.stage4.parameter_binding_contract",
+          "candidate_stage_artifact.memory_schedule",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "artifact.input.template_library"
+        ],
+        "id": "memory_layout.codegen_prepare_checker_backed_addresses",
+        "on_failure": "Route to memory_runtime_repair or bounded_template_repair. If repair changes memory layout policy, AXI width/order, template choice, numeric policy, or pipeline topology, require approval and block promotion.",
+        "produces": [
+          "artifact.stage5.memory_layout_contract",
+          "artifact.stage5.codegen_manifest",
+          "artifact.stage5.elaboration_compile_report"
+        ],
+        "rationale": "Stage5 must convert the planning-level memory/runtime handoff into a checker-backed concrete address map and template-bound Chisel package. This is a later-stage obligation, not a current Stage3 blocker.",
+        "requires_approval": false,
+        "stage": "memory_layout",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "code_generation_manifest_static_check",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "codegen_compile_gate",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "case_stage_leaf_static",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "real_tool.case_vcs_functional_sim",
+          "real_tool.case_verilator_functional_sim",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare"
+        ],
+        "action_type": "later_stage_real_tool_verification",
+        "consumes": [
+          "artifact.stage5.codegen_manifest",
+          "artifact.stage5.memory_layout_contract",
+          "artifact.stage4.boundary_contracts",
+          "candidate_stage_artifact.pipeline_planning_pipeline_plan",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter"
+        ],
+        "id": "verification.enforce_hierarchical_real_tool_evidence",
+        "on_failure": "Do not promote to a higher verification layer. Convert tool output into CCTG/contract-guided localization of the earliest causal boundary, perform bounded repair, rerun the failed layer, and do not change golden outputs, tolerances, or numeric policy.",
+        "produces": [
+          "artifact.stage6.hierarchical_verification_plan",
+          "verification.case_diagnostics.leaf_results",
+          "verification.case_diagnostics.single_layer_results",
+          "verification.case_diagnostics.axi_ddr_wrapped_results"
+        ],
+        "rationale": "Stage6+ must prove implementation behavior with real tool evidence and the three-layer repair loop: operator/leaf modules, then connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapped system. Stage3 evidence must not be upgraded into a hardware pass.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_vcs_functional_sim",
+          "case_verilator_functional_sim",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare"
+        ]
+      }
+    ],
+    "observations": [
+      "Reviewed only the supplied candidate_stage_artifact, checker_results, checker_summary, stage_gate_policy, state_summary.sacg_memory, action_grounding_registry, and named constraints. No separate specialist_review_artifacts, retry_reconciliation_contract, presence_summary, or real tool logs were supplied.",
+      "SACG memory reports active_contamination_barriers=[], open_backtrack_requests=[], and open_retry_requests=[]; the standalone sacg_memory payload is empty, so no current-stage barrier, retry, or backtrack request requires repair action.",
+      "Checker matrix: 10 pass, 0 failed, 0 warnings. Passing checkers are operator_order_check, stream_data_edge_mirror_check, edge_stream_contract_check, shape_numeric_contract_check, branch_join_contract_check, buffer_contract_check, liveness_backpressure_check, memory_runtime_contract_check, attention_semantics_check, and template_binding_static_check.",
+      "Acceptance mapping is complete for this stage: operator order is backed by operator_order_check; stream/data edge graph and block boundary mirroring by stream_data_edge_mirror_check; flow control, transfer order, beat counts, and valid-byte policy by edge_stream_contract_check; tensor shapes, element widths, and 16/32-bit numeric policy by shape_numeric_contract_check; branch splits and joins by branch_join_contract_check; bounded FIFO templates/depths by buffer_contract_check; liveness/backpressure by liveness_backpressure_check; attention GQA/RoPE semantics by attention_semantics_check; trusted template use and no free-form RTL by template_binding_static_check; memory/runtime handoff by memory_runtime_contract_check.",
+      "Cross-layer consistency is currently checker-backed at planning granularity: qwen2 decoder block, GQA q=14 kv=2 head_dim=64 group_size=7, seq_len_bound=16, hidden width 896, intermediate width 4864, token/tile/lane/word order, full 64-byte AXI beats on a 512-bit interface, and ready_valid flow control are all represented in the candidate contract and covered by passing checks.",
+      "The candidate constraints_touched list omits constraint.numeric.policy even though numeric_stream_policy cites constraint.numeric.policy.default_rules; this audit includes constraint.numeric.policy in sacg_focus to preserve numeric cross-layer evidence. This is not a current-stage blocker because shape_numeric_contract_check passed.",
+      "Stage-gate policy is honored: symbolic_first_order latencies are annotated as planning estimates only, and liveness_backpressure_check explicitly states it is not a latency-equality, throughput, timing, or hardware-pass proof.",
+      "Buffer boundary is honored: stream buffers use trusted_queue_template bounded_ready_valid_fifo with allowed depths 32 or 64. Ping-pong activation and weight buffers appear only in memory_schedule handoff and remain later memory-layout artifacts.",
+      "Memory/runtime handoff is checker-backed for 6 regions and a 512-bit AXI board interface; final concrete address-map/package closure remains a Stage5 obligation rather than a Stage3 risk.",
+      "No hardware pass is claimed. VCS, Verilator, Vivado, bitstream, board runtime, and app-shell evidence are Stage6+ or backend obligations and must be recorded as not_run/not_applicable for Stage3 hardware evidence rather than treated as failed Stage3 checks."
+    ],
+    "proposed_actions": [
+      "Promote the pipeline_planning contract to Stage4 parameter binding after this evidence gate is accepted by verification_plan_static_check, verification_artifact_contract_check, required_real_tool_evidence_check, repair_boundary_check, human_boundary_check, sacg_memory_check, and sacg_static_check.",
+      "Do not open a Stage3 repair, retry, or backtrack request unless a final gate checker fails; if one fails, quarantine the unpromoted artifact and rerun only the failed bounded checker/repair path.",
+      "In Stage4, bind final per-template parameters from the checker-backed pipeline contract and preserve model, shape, numeric, data-order, stream, memory, and runtime constraints without architecture or numeric-policy changes.",
+      "In Stage5, assign concrete memory base addresses and generate/elaborate template-bound Chisel; run address-map, codegen, package, compile, memory/runtime, and artifact-hash checks before any verification consumption.",
+      "In Stage6+, obtain real tool evidence in the required hierarchy: operator/leaf modules first, connected single-transformer-layer kernel second, and board-accurate AXI/DDR wrapped system third. A failed layer must be localized with checker evidence and rerun after bounded repair; do not skip to a higher layer.",
+      "Maintain approval barriers for architecture, pipeline topology, memory layout policy, numeric precision/tolerance/golden outputs, major template substitution, and ambiguous backend/app-shell target choices."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.pipeline_planning_pipeline_plan",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.checker_summary",
+        "candidate_stage_artifact.stage_gate_policy",
+        "candidate_stage_artifact.memory_schedule",
+        "candidate_stage_artifact.attention_contract",
+        "candidate_stage_artifact.branch_join_contracts",
+        "artifact.stage2.template_selection",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_protocols",
+        "artifact.input.human_agent_boundary",
+        "state_summary.sacg_memory",
+        "artifact.pipeline_planning.evidence_gate_decision"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.human.boundary",
+        "constraint.cross_layer.input_consistency",
+        "constraint.tool.protocols",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output"
+      ]
+    },
+    "schema_version": "spatialaccagent.verification_repair_specialist.v0",
+    "stage": "pipeline_planning",
+    "status": "ready_for_checker_backed_handoff",
+    "summary": "Supplied pipeline_planning evidence has 10/10 current-stage plan checkers passing with no warnings or errors. Current-stage acceptance items are checker-backed for operator order, edge mirroring, stream contracts, shape/numeric widths, branch/join behavior, bounded FIFO buffers, liveness/backpressure, attention semantics, template binding, and memory/runtime handoff. No SACG retry, backtrack, or contamination barrier is open. Remaining work is correctly classified as later-stage obligations: Stage4 parameter binding, Stage5 memory layout/codegen, and Stage6+ real-tool verification; no Stage3 repair is requested."
+  },
+  "prompt_bytes": 64418,
+  "prompt_hash": "53a05a2545ffb8580b773329dd9dc2b59bacaf60ff1e744e524cdfb4df74d7e0",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.verification_repair_specialist.v0\",\"agent\":\"verification_repair_specialist\",\"stage\":\"pipeline_planning\",\"status\":\"ready_for_checker_backed_handoff\",\"summary\":\"Supplied pipeline_planning evidence has 10/10 current-stage plan checkers passing with no warnings or errors. Current-stage acceptance items are checker-backed for operator order, edge mirroring, stream contracts, shape/numeric widths, branch/join behavior, bounded FIFO buffers, liveness/backpressure, attention semantics, template binding, and memory/runtime handoff. No SACG retry, backtrack, or contamination barrier is open. Remaining work is correctly classified as later-stage obligations: Stage4 parameter binding, Stage5 memory layout/codegen, and Stage6+ real-tool verification; no Stage3 repair is requested.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.human.boundary\",\"constraint.cross_layer.input_consistency\",\"constraint.tool.protocols\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\"],\"artifacts\":[\"candidate_stage_artifact.pipeline_planning_pipeline_plan\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.checker_summary\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.memory_schedule\",\"candidate_stage_artifact.attention_contract\",\"candidate_stage_artifact.branch_join_contracts\",\"artifact.stage2.template_selection\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\",\"artifact.input.human_agent_boundary\",\"state_summary.sacg_memory\",\"artifact.pipeline_planning.evidence_gate_decision\"]},\"observations\":[\"Reviewed only the supplied candidate_stage_artifact, checker_results, checker_summary, stage_gate_policy, state_summary.sacg_memory, action_grounding_registry, and named constraints. No separate specialist_review_artifacts, retry_reconciliation_contract, presence_summary, or real tool logs were supplied.\",\"SACG memory reports active_contamination_barriers=[], open_backtrack_requests=[], and open_retry_requests=[]; the standalone sacg_memory payload is empty, so no current-stage barrier, retry, or backtrack request requires repair action.\",\"Checker matrix: 10 pass, 0 failed, 0 warnings. Passing checkers are operator_order_check, stream_data_edge_mirror_check, edge_stream_contract_check, shape_numeric_contract_check, branch_join_contract_check, buffer_contract_check, liveness_backpressure_check, memory_runtime_contract_check, attention_semantics_check, and template_binding_static_check.\",\"Acceptance mapping is complete for this stage: operator order is backed by operator_order_check; stream/data edge graph and block boundary mirroring by stream_data_edge_mirror_check; flow control, transfer order, beat counts, and valid-byte policy by edge_stream_contract_check; tensor shapes, element widths, and 16/32-bit numeric policy by shape_numeric_contract_check; branch splits and joins by branch_join_contract_check; bounded FIFO templates/depths by buffer_contract_check; liveness/backpressure by liveness_backpressure_check; attention GQA/RoPE semantics by attention_semantics_check; trusted template use and no free-form RTL by template_binding_static_check; memory/runtime handoff by memory_runtime_contract_check.\",\"Cross-layer consistency is currently checker-backed at planning granularity: qwen2 decoder block, GQA q=14 kv=2 head_dim=64 group_size=7, seq_len_bound=16, hidden width 896, intermediate width 4864, token/tile/lane/word order, full 64-byte AXI beats on a 512-bit interface, and ready_valid flow control are all represented in the candidate contract and covered by passing checks.\",\"The candidate constraints_touched list omits constraint.numeric.policy even though numeric_stream_policy cites constraint.numeric.policy.default_rules; this audit includes constraint.numeric.policy in sacg_focus to preserve numeric cross-layer evidence. This is not a current-stage blocker because shape_numeric_contract_check passed.\",\"Stage-gate policy is honored: symbolic_first_order latencies are annotated as planning estimates only, and liveness_backpressure_check explicitly states it is not a latency-equality, throughput, timing, or hardware-pass proof.\",\"Buffer boundary is honored: stream buffers use trusted_queue_template bounded_ready_valid_fifo with allowed depths 32 or 64. Ping-pong activation and weight buffers appear only in memory_schedule handoff and remain later memory-layout artifacts.\",\"Memory/runtime handoff is checker-backed for 6 regions and a 512-bit AXI board interface; final concrete address-map/package closure remains a Stage5 obligation rather than a Stage3 risk.\",\"No hardware pass is claimed. VCS, Verilator, Vivado, bitstream, board runtime, and app-shell evidence are Stage6+ or backend obligations and must be recorded as not_run/not_applicable for Stage3 hardware evidence rather than treated as failed Stage3 checks.\"],\"risks\":[],\"proposed_actions\":[\"Promote the pipeline_planning contract to Stage4 parameter binding after this evidence gate is accepted by verification_plan_static_check, verification_artifact_contract_check, required_real_tool_evidence_check, repair_boundary_check, human_boundary_check, sacg_memory_check, and sacg_static_check.\",\"Do not open a Stage3 repair, retry, or backtrack request unless a final gate checker fails; if one fails, quarantine the unpromoted artifact and rerun only the failed bounded checker/repair path.\",\"In Stage4, bind final per-template parameters from the checker-backed pipeline contract and preserve model, shape, numeric, data-order, stream, memory, and runtime constraints without architecture or numeric-policy changes.\",\"In Stage5, assign concrete memory base addresses and generate/elaborate template-bound Chisel; run address-map, codegen, package, compile, memory/runtime, and artifact-hash checks before any verification consumption.\",\"In Stage6+, obtain real tool evidence in the required hierarchy: operator/leaf modules first, connected single-transformer-layer kernel second, and board-accurate AXI/DDR wrapped system third. A failed layer must be localized with checker evidence and rerun after bounded repair; do not skip to a higher layer.\",\"Maintain approval barriers for architecture, pipeline topology, memory layout policy, numeric precision/tolerance/golden outputs, major template substitution, and ambiguous backend/app-shell target choices.\"],\"executable_actions\":[{\"id\":\"pipeline_planning.run_final_evidence_gate_audit\",\"stage\":\"pipeline_planning\",\"action_type\":\"evidence_gate_audit\",\"rationale\":\"Close the current-stage evidence gate by binding the supplied checker_results, stage_gate_policy, SACG memory state, human boundary, and tool protocols to the promotion decision. This action records Stage6+ real-tool evidence as not_run/not_applicable for Stage3 rather than treating it as a hardware pass or failure.\",\"consumes\":[\"candidate_stage_artifact.pipeline_planning_pipeline_plan\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.checker_summary\",\"candidate_stage_artifact.stage_gate_policy\",\"state_summary.sacg_memory\",\"artifact.input.human_agent_boundary\",\"artifact.input.tool_protocols\"],\"produces\":[\"artifact.pipeline_planning.evidence_gate_decision\",\"artifact.pipeline_planning.checker_constraint_matrix\",\"artifact.pipeline_planning.later_stage_obligation_handoff\",\"sacg_memory.stage_outcome_record.pipeline_planning\"],\"tool_roles\":[\"verification_action_audit\",\"verification_plan_static_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"repair_boundary_check\",\"human_boundary_check\",\"sacg_validate\",\"sacg_static_check\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"verification_action_audit_check\",\"verification_plan_static_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"repair_boundary_check\",\"human_boundary_check\",\"sacg_memory_check\",\"sacg_static_check\"],\"on_failure\":\"Block promotion, create a bounded stage_retry_request or stage_backtrack_request tied to the failed checker and SACG constraint, add a contamination barrier for unpromoted artifacts, and do not change golden outputs or tolerance.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.promote_contract_to_parameter_binding\",\"stage\":\"parameter_binding\",\"action_type\":\"next_stage_handoff\",\"rationale\":\"With current Stage3 plan evidence passing, bind final template parameters from the stable pipeline contract while preserving the approved operator order, stream/data edges, numeric policy, and trusted-template boundary.\",\"consumes\":[\"artifact.pipeline_planning.evidence_gate_decision\",\"candidate_stage_artifact.pipeline_planning_pipeline_plan\",\"artifact.stage2.template_selection\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_metadata\",\"artifact.input.design_space\"],\"produces\":[\"artifact.stage4.parameter_binding_contract\",\"artifact.stage4.boundary_contracts\",\"artifact.stage4.parameter_binding_checker_results\"],\"tool_roles\":[\"parameter_binding_static_check\",\"boundary_contract_generate\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"sacg_static_check\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"boundary_contract_check\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"template_binding_static_check\",\"sacg_static_check\"],\"on_failure\":\"Localize the failed Stage4 parameter or boundary contract; open a backtrack to pipeline_planning only if the promoted contract is inconsistent; quarantine unpromoted Stage4 artifacts.\",\"requires_approval\":false},{\"id\":\"memory_layout.codegen_prepare_checker_backed_addresses\",\"stage\":\"memory_layout\",\"action_type\":\"later_stage_obligation\",\"rationale\":\"Stage5 must convert the planning-level memory/runtime handoff into a checker-backed concrete address map and template-bound Chisel package. This is a later-stage obligation, not a current Stage3 blocker.\",\"consumes\":[\"artifact.stage4.parameter_binding_contract\",\"candidate_stage_artifact.memory_schedule\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.input.template_library\"],\"produces\":[\"artifact.stage5.memory_layout_contract\",\"artifact.stage5.codegen_manifest\",\"artifact.stage5.elaboration_compile_report\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"code_generation_manifest_static_check\",\"codegen_contract_check\",\"codegen_package_static_check\",\"codegen_compile_gate\",\"sacg_static_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"code_generation_manifest_static_check\",\"codegen_contract_check\",\"codegen_package_static_check\",\"codegen_compile_gate_check\",\"artifact_hash_check\",\"sacg_static_check\"],\"on_failure\":\"Route to memory_runtime_repair or bounded_template_repair. If repair changes memory layout policy, AXI width/order, template choice, numeric policy, or pipeline topology, require approval and block promotion.\",\"requires_approval\":false},{\"id\":\"verification.enforce_hierarchical_real_tool_evidence\",\"stage\":\"verification\",\"action_type\":\"later_stage_real_tool_verification\",\"rationale\":\"Stage6+ must prove implementation behavior with real tool evidence and the three-layer repair loop: operator/leaf modules, then connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapped system. Stage3 evidence must not be upgraded into a hardware pass.\",\"consumes\":[\"artifact.stage5.codegen_manifest\",\"artifact.stage5.memory_layout_contract\",\"artifact.stage4.boundary_contracts\",\"candidate_stage_artifact.pipeline_planning_pipeline_plan\",\"artifact.input.tool_protocols\",\"artifact.input.case_adapter\"],\"produces\":[\"artifact.stage6.hierarchical_verification_plan\",\"verification.case_diagnostics.leaf_results\",\"verification.case_diagnostics.single_layer_results\",\"verification.case_diagnostics.axi_ddr_wrapped_results\"],\"tool_roles\":[\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"case_single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_vcs_functional_sim\",\"case_verilator_functional_sim\",\"deadlock_watchdog\",\"data_order_trace_check\",\"transfer_count_check\",\"numeric_compare\"],\"acceptance_checkers\":[\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"case_stage_leaf_static\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"case_single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"real_tool.case_vcs_functional_sim\",\"real_tool.case_verilator_functional_sim\",\"deadlock_watchdog\",\"data_order_trace_check\",\"transfer_count_check\",\"numeric_compare\"],\"on_failure\":\"Do not promote to a higher verification layer. Convert tool output into CCTG/contract-guided localization of the earliest causal boundary, perform bounded repair, rerun the failed layer, and do not change golden outputs, tolerances, or numeric policy.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any architecture or pipeline-topology change beyond the checker-backed operator_stream_pipeline and operator order.\",\"Any numeric precision, rounding, saturation, tolerance, or golden-output change.\",\"Any memory-layout or AXI/DDR address-map change that departs from the checker-backed board/runtime constraints or requires a new memory policy.\",\"Any major template substitution or free-form RTL generation outside the trusted template library.\",\"Any ambiguous backend/app-shell target selection without cited board materials and real Vivado/tool evidence.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/verification_repair_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/verification_repair_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "pipeline_planning.verification evidence gate auditor",
+  "used_fallback": false
+}

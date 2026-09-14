@@ -1,0 +1,135 @@
+{
+  "agent": "repair_agent",
+  "duration_sec": 130.53096207603812,
+  "error": null,
+  "http_transport": "curl_direct_http1",
+  "live_transaction_id": "8fa5bdffcc3f47f9a2d1303fdb02f479",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "agent": "repair_agent",
+    "approval_required_for": [
+      "Any RTL or source change involving block_input, kernel lifecycle/start sequencing, MLP-down, residual2, scheduler, or connected-kernel pipeline behavior",
+      "Any exact sample wrapper, AXI/DDR interface, memory-layout, runtime-ABI, pipeline-template, or architecture change",
+      "Any lower-layer connected-kernel replay or reopening of certified operator-leaf or single-layer evidence",
+      "Any change to checkpoint, deterministic stimulus, target-model reference, golden outputs, numeric comparison policy, tolerance, semantic testbench, or Transformer-block weight coverage",
+      "Any VCS or dependent board-gate rerun before the authorized lifecycle/CCTG reconciliation completes",
+      "Any promotion to synthesis, implementation, bitstream, runtime ABI, or board runtime"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "causal_repair_context_check",
+          "connected_kernel_cctg_contradiction_reconciliation_check",
+          "artifact_hash_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "sacg_static_check"
+        ],
+        "action_type": "verification_capability_repair",
+        "consumes": [
+          "verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c",
+          "verification/debug_closure/boundary_trace.json sha256=04f0c39ba5a499c172cc3eadbe206aca798b583999872615f2cedfb6add93bef",
+          "verification/board_simulation/reports/progress_event_log.jsonl sha256=129dc61b63c19a3341143b11b26d53fc7cd2ea66450e594c32d03e3422713427",
+          "verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+          "verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+          "verification/board_simulation/board_simulation_executed_manifest.json sha256=bccc5d7460f2c9723d59655626f0d1bee025771ec2a72ccb75a74c5832046296",
+          "verification/certificates/single_layer_promotion_certificate.json sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7",
+          "repair_execution/repair_step_00_current_layer_causal_repair_context_package.json sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc"
+        ],
+        "id": "repair_step.00_reconcile_exact_board_lifecycle_cctg_observation_contract",
+        "on_failure": "Keep the board_axi_ddr_wrapped_system layer blocked and classify the result as a verification-capability or contract-reconciliation failure. Do not launch VCS, deadlock/AXI, DDR, dependent board, lower-layer, or higher-layer tools; do not edit RTL, wrapper sources, golden outputs, numeric policy, tolerance, checkpoint, stimulus, semantic testbench, or weight requirements. Require implementation of the planned tool or a separately approved bounded alternative.",
+        "produces": [
+          "repair_execution/exact_board_lifecycle_cctg_observation_reconciliation.json",
+          "artifact.stage8.repair_execution.lifecycle_cctg_reconciliation",
+          "updated repair_execution/repair_execution_report.json with record-only reconciliation status"
+        ],
+        "rationale": "The supplied authorization permits exactly one record-only board-layer reconciliation before any new simulation or source change. The current CCTG record labels the first input as preceding kernel start, but the immutable trace records an accepted input at cycle 20572946 and kernel start at cycle 20572948, consistent with the governing accepted-input-before-start lifecycle policy. Reconcile that observation contract while preserving every existing data-boundary valid/ready observation, count, payload digest, zero-egress frontier evidence, exact wrapper identity, immutable verification inputs, and the hash-bound closed connected-kernel capability. The required reconciliation role is absent from the action registry, so multi-agent capability implementation is required as planned_tool.reconcile_exact_board_lifecycle_cctg_observation_contract. This action must make no source change and must not launch VCS.",
+        "requires_approval": false,
+        "stage": "board_axi_ddr_wrapped_system",
+        "tool_roles": [
+          "causal_repair_context_pack",
+          "planned_tool.reconcile_exact_board_lifecycle_cctg_observation_contract"
+        ]
+      }
+    ],
+    "observations": [
+      "The exact user-supplied board wrapper is identity-bound and passing: board source identity sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66, with matching simulation source closure, AXI, ABI, timing, and Vivado fact hashes. It must remain unchanged.",
+      "The exact-board VCS execution is not a functional pass. It accepted all 1792 input beats for 16 tokens by cycle 20805737 while the ready output frontier accepted zero beats. This is a current board-layer output-frontier and intra-layer pipeline-liveness failure, not a timeout-only classification, but it does not by itself prove a specific RTL owner.",
+      "The CCTG start-order observation is inconsistent with the immutable input/start trace and the accepted-input-before-start policy. It must be reconciled as a verification-observability contract issue before any hardware repair or replay is authorized.",
+      "The supplied connected-kernel capability is hash-bound and closed: its targeted replay has 416 accepted trace records, ingress complete at 1792 beats, egress complete at 1792 beats, and status pass. The earlier board symptom does not authorize repeating or repairing that replay; no later supplied trace contradicts its named direct-lifecycle invariant.",
+      "The authoritative scoped SACG truth has zero open backtrack requests, eight open same-scope retry requests, and 24 active contamination barriers. Rejected artifacts remain diagnostic evidence only and cannot support promotion or downstream validation.",
+      "The target checkpoint, deterministic stimulus provenance, target-model reference, golden output, numeric comparison policy and tolerance, semantic testbench hash, exact wrapper hashes, and Transformer-block scope are immutable. No board-level numeric, output-count, AXI-order, DDR-roundtrip, semantic aggregate, or complete-scope DUT weight-consumption pass exists."
+    ],
+    "proposed_actions": [
+      "Execute only the hash-bound record-only exact-board lifecycle/CCTG observation reconciliation. If and only if its current contract checks pass, return the reconciled record to the board verification stage for a fresh exact-wrapper Stage7 rerun; do not schedule that rerun, any dependent gate, or any lower-layer replay as part of this action."
+    ],
+    "risks": [
+      "Changing block_input or kernel start sequencing from the inconsistent CCTG label would convert an observation-contract conflict into an unsupported hardware repair.",
+      "The board output-frontier stall must not be treated as proof that MLP-down, block_input, the connected kernel, or any certified lower-layer operator is defective.",
+      "Independent AXI reads, runtime-load completion, and prefetch counters show transport progress only; they do not establish lifecycle-frontier or output progress.",
+      "Running VCS or dependent board gates before reconciliation would create new artifacts under active contamination barriers and open retry requests.",
+      "Changing model-tail scope, weights, checkpoint, stimulus, target-model expected outputs, tolerance, golden data, semantic testbench, or exact board wrapper would invalidate the repair contract."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c",
+        "verification/debug_closure/boundary_trace.json sha256=04f0c39ba5a499c172cc3eadbe206aca798b583999872615f2cedfb6add93bef",
+        "verification/board_simulation/reports/progress_event_log.jsonl sha256=129dc61b63c19a3341143b11b26d53fc7cd2ea66450e594c32d03e3422713427",
+        "verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+        "verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7be2fc7cbd0195b027443d9c1b37a7",
+        "verification/certificates/single_layer_promotion_certificate.json sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7",
+        "repair_execution/repair_step_00_current_layer_causal_repair_context_package.json sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc"
+      ],
+      "constraints": [
+        "accepted_input_handshake_required_before_kernel_lifecycle_start",
+        "constraint.liveness.pipeline",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "current output or lifecycle frontier evidence is required for a board liveness claim",
+        "exact user sample wrapper and source hashes are immutable",
+        "checkpoint, stimulus, target-model reference, golden, numeric policy, tolerance, semantic testbench, and Transformer-block weight requirements are immutable",
+        "lower-layer replay requires a current trace that contradicts a named certified invariant"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "connected_kernel_input_to_output"
+      ],
+      "nodes": [
+        "node.pipeline.block_input",
+        "node.pipeline.stage_00_rms_norm_1",
+        "node.pipeline.stage_07_mlp_down_proj",
+        "node.pipeline.stage_08_residual_add_2",
+        "connected_kernel_input_to_output"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_agent_decision.v1",
+    "stage": "repair",
+    "status": "needs_repair",
+    "summary": "Fail closed at the board_axi_ddr_wrapped_system layer. The sole next action is a hash-bound record-only reconciliation of the inconsistent lifecycle/CCTG observation contract. The certified connected-kernel replay is closed and must not be rerun or repaired; no RTL, wrapper, checker-policy, verification-input, dependent-board-tool, promotion, or lower-layer action is authorized before reconciliation passes."
+  },
+  "prompt_bytes": 894687,
+  "prompt_hash": "215b74dc8400726e86b3f2b5800155bc6364723d6dab51bc79538b1b0186588e",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"agent\":\"repair_agent\",\"approval_required_for\":[\"Any RTL or source change involving block_input, kernel lifecycle/start sequencing, MLP-down, residual2, scheduler, or connected-kernel pipeline behavior\",\"Any exact sample wrapper, AXI/DDR interface, memory-layout, runtime-ABI, pipeline-template, or architecture change\",\"Any lower-layer connected-kernel replay or reopening of certified operator-leaf or single-layer evidence\",\"Any change to checkpoint, deterministic stimulus, target-model reference, golden outputs, numeric comparison policy, tolerance, semantic testbench, or Transformer-block weight coverage\",\"Any VCS or dependent board-gate rerun before the authorized lifecycle/CCTG reconciliation completes\",\"Any promotion to synthesis, implementation, bitstream, runtime ABI, or board runtime\"],\"executable_actions\":[{\"acceptance_checkers\":[\"causal_repair_context_check\",\"connected_kernel_cctg_contradiction_reconciliation_check\",\"artifact_hash_check\",\"repair_boundary_check\",\"human_boundary_check\",\"sacg_static_check\"],\"action_type\":\"verification_capability_repair\",\"consumes\":[\"verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c\",\"verification/debug_closure/boundary_trace.json sha256=04f0c39ba5a499c172cc3eadbe206aca798b583999872615f2cedfb6add93bef\",\"verification/board_simulation/reports/progress_event_log.jsonl sha256=129dc61b63c19a3341143b11b26d53fc7cd2ea66450e594c32d03e3422713427\",\"verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7\",\"verification/board_simulation/board_simulation_executed_manifest.json sha256=bccc5d7460f2c9723d59655626f0d1bee025771ec2a72ccb75a74c5832046296\",\"verification/certificates/single_layer_promotion_certificate.json sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7\",\"repair_execution/repair_step_00_current_layer_causal_repair_context_package.json sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc\"],\"id\":\"repair_step.00_reconcile_exact_board_lifecycle_cctg_observation_contract\",\"on_failure\":\"Keep the board_axi_ddr_wrapped_system layer blocked and classify the result as a verification-capability or contract-reconciliation failure. Do not launch VCS, deadlock/AXI, DDR, dependent board, lower-layer, or higher-layer tools; do not edit RTL, wrapper sources, golden outputs, numeric policy, tolerance, checkpoint, stimulus, semantic testbench, or weight requirements. Require implementation of the planned tool or a separately approved bounded alternative.\",\"produces\":[\"repair_execution/exact_board_lifecycle_cctg_observation_reconciliation.json\",\"artifact.stage8.repair_execution.lifecycle_cctg_reconciliation\",\"updated repair_execution/repair_execution_report.json with record-only reconciliation status\"],\"rationale\":\"The supplied authorization permits exactly one record-only board-layer reconciliation before any new simulation or source change. The current CCTG record labels the first input as preceding kernel start, but the immutable trace records an accepted input at cycle 20572946 and kernel start at cycle 20572948, consistent with the governing accepted-input-before-start lifecycle policy. Reconcile that observation contract while preserving every existing data-boundary valid/ready observation, count, payload digest, zero-egress frontier evidence, exact wrapper identity, immutable verification inputs, and the hash-bound closed connected-kernel capability. The required reconciliation role is absent from the action registry, so multi-agent capability implementation is required as planned_tool.reconcile_exact_board_lifecycle_cctg_observation_contract. This action must make no source change and must not launch VCS.\",\"requires_approval\":false,\"stage\":\"board_axi_ddr_wrapped_system\",\"tool_roles\":[\"causal_repair_context_pack\",\"planned_tool.reconcile_exact_board_lifecycle_cctg_observation_contract\"]}],\"observations\":[\"The exact user-supplied board wrapper is identity-bound and passing: board source identity sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66, with matching simulation source closure, AXI, ABI, timing, and Vivado fact hashes. It must remain unchanged.\",\"The exact-board VCS execution is not a functional pass. It accepted all 1792 input beats for 16 tokens by cycle 20805737 while the ready output frontier accepted zero beats. This is a current board-layer output-frontier and intra-layer pipeline-liveness failure, not a timeout-only classification, but it does not by itself prove a specific RTL owner.\",\"The CCTG start-order observation is inconsistent with the immutable input/start trace and the accepted-input-before-start policy. It must be reconciled as a verification-observability contract issue before any hardware repair or replay is authorized.\",\"The supplied connected-kernel capability is hash-bound and closed: its targeted replay has 416 accepted trace records, ingress complete at 1792 beats, egress complete at 1792 beats, and status pass. The earlier board symptom does not authorize repeating or repairing that replay; no later supplied trace contradicts its named direct-lifecycle invariant.\",\"The authoritative scoped SACG truth has zero open backtrack requests, eight open same-scope retry requests, and 24 active contamination barriers. Rejected artifacts remain diagnostic evidence only and cannot support promotion or downstream validation.\",\"The target checkpoint, deterministic stimulus provenance, target-model reference, golden output, numeric comparison policy and tolerance, semantic testbench hash, exact wrapper hashes, and Transformer-block scope are immutable. No board-level numeric, output-count, AXI-order, DDR-roundtrip, semantic aggregate, or complete-scope DUT weight-consumption pass exists.\"],\"proposed_actions\":[\"Execute only the hash-bound record-only exact-board lifecycle/CCTG observation reconciliation. If and only if its current contract checks pass, return the reconciled record to the board verification stage for a fresh exact-wrapper Stage7 rerun; do not schedule that rerun, any dependent gate, or any lower-layer replay as part of this action.\"],\"risks\":[\"Changing block_input or kernel start sequencing from the inconsistent CCTG label would convert an observation-contract conflict into an unsupported hardware repair.\",\"The board output-frontier stall must not be treated as proof that MLP-down, block_input, the connected kernel, or any certified lower-layer operator is defective.\",\"Independent AXI reads, runtime-load completion, and prefetch counters show transport progress only; they do not establish lifecycle-frontier or output progress.\",\"Running VCS or dependent board gates before reconciliation would create new artifacts under active contamination barriers and open retry requests.\",\"Changing model-tail scope, weights, checkpoint, stimulus, target-model expected outputs, tolerance, golden data, semantic testbench, or exact board wrapper would invalidate the repair contract.\"],\"sacg_focus\":{\"artifacts\":[\"verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c\",\"verification/debug_closure/boundary_trace.json sha256=04f0c39ba5a499c172cc3eadbe206aca798b583999872615f2cedfb6add93bef\",\"verification/board_simulation/reports/progress_event_log.jsonl sha256=129dc61b63c19a3341143b11b26d53fc7cd2ea66450e594c32d03e3422713427\",\"verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7be2fc7cbd0195b027443d9c1b37a7\",\"verification/certificates/single_layer_promotion_certificate.json sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7\",\"repair_execution/repair_step_00_current_layer_causal_repair_context_package.json sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc\"],\"constraints\":[\"accepted_input_handshake_required_before_kernel_lifecycle_start\",\"constraint.liveness.pipeline\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"current output or lifecycle frontier evidence is required for a board liveness claim\",\"exact user sample wrapper and source hashes are immutable\",\"checkpoint, stimulus, target-model reference, golden, numeric policy, tolerance, semantic testbench, and Transformer-block weight requirements are immutable\",\"lower-layer replay requires a current trace that contradicts a named certified invariant\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"connected_kernel_input_to_output\"],\"nodes\":[\"node.pipeline.block_input\",\"node.pipeline.stage_00_rms_norm_1\",\"node.pipeline.stage_07_mlp_down_proj\",\"node.pipeline.stage_08_residual_add_2\",\"connected_kernel_input_to_output\"]},\"schema_version\":\"spatialaccagent.repair_agent_decision.v1\",\"stage\":\"repair\",\"status\":\"needs_repair\",\"summary\":\"Fail closed at the board_axi_ddr_wrapped_system layer. The sole next action is a hash-bound record-only reconciliation of the inconsistent lifecycle/CCTG observation contract. The certified connected-kernel replay is closed and must not be rerun or repaired; no RTL, wrapper, checker-policy, verification-input, dependent-board-tool, promotion, or lower-layer action is authorized before reconciliation passes.\"}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair",
+  "stream": true,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/history/repair_agent_result.8e7dfc1b2d2b3cb3.9d327fece2208b3c.215b74dc8400726e.snapshot.json",
+    "replaced_prompt_hash": "d5898caea59a1247512d4042c3cd33dc09ab079cb99576e0ece07a9e152478d5",
+    "replaced_result_sha256": "8e7dfc1b2d2b3cb324ec9684e6c8ad6b663bd902e25e41a0d6d38c60783b975a",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "8e7dfc1b2d2b3cb3.9d327fece2208b3c.215b74dc8400726e"
+  },
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

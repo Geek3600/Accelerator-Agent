@@ -1,0 +1,1103 @@
+{
+  "adaptive_observation_routing": {
+    "boundary_observation_status": null,
+    "incomplete_boundary_ids": [],
+    "observed_boundary_count": null,
+    "proven_contradiction": false,
+    "required_boundary_count": null,
+    "schema_version": "spatialaccagent.adaptive_observation_routing.v1",
+    "status": "unconstrained"
+  },
+  "blockers": [],
+  "bound_observation_compile_repair": false,
+  "decision": {
+    "boundary_coverage_plan": {
+      "boundary_ids": [
+        "boundary.edge_data_block_input_to_stage_00_rms_norm_1_input",
+        "boundary.edge_data_block_input_to_stage_02_residual_add_1_residual_skip",
+        "boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main",
+        "boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main",
+        "boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main",
+        "boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip",
+        "boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch",
+        "boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch",
+        "boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul",
+        "boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul",
+        "boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main",
+        "boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main",
+        "boundary.edge_data_stage_08_residual_add_2_to_block_output_output"
+      ],
+      "required_fields": [
+        "valid",
+        "ready",
+        "transfer_or_fire",
+        "received_count",
+        "accepted_count",
+        "start",
+        "last",
+        "current_payload_unknown",
+        "current_payload_digest",
+        "first_accepted_payload_digest",
+        "last_accepted_payload_digest",
+        "first_waiting_after_upstream_progress",
+        "terminal_summary"
+      ]
+    },
+    "evidence_refs": [
+      "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation",
+      "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/progress_event_summary/latest_stall_snapshot/connected_kernel_internal_pipeline_observation",
+      "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/simulator_terminal_log/failure_lines"
+    ],
+    "field_observations": [
+      {
+        "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/output_accept_count",
+        "interpretation": "Twenty-one output beats were received before termination, so the output path started but did not complete a token.",
+        "observed_value": 21,
+        "semantic_role": "counter"
+      },
+      {
+        "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/output_ready",
+        "interpretation": "The output receiver was ready at the final record, so a low ready signal was not blocking the current output beat.",
+        "observed_value": 1,
+        "semantic_role": "handshake"
+      },
+      {
+        "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/input_accepted",
+        "interpretation": "Input data was still being received at the final record. The last observed internal boundary still transferring was stage_00_rms_norm_1 to stage_01_self_attention at token 8, followed by block input token 9; the first stopped internal boundary cannot yet be identified because all current DAG boundary records were not complete.",
+        "observed_value": 1,
+        "semantic_role": "handshake"
+      },
+      {
+        "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/simulator_terminal_log/failure_lines",
+        "interpretation": "The generated AXI monitor ended the simulation before the output completion contract could be observed.",
+        "observed_value": [
+          "Fatal: \"../sources/spatialacc_axi_protocol_monitor.sv\", 211: spatialacc_exact_board_multilayer_tb.tb_c0_ddr4_s_axi_monitor: at time 82823850000"
+        ],
+        "semantic_role": "error"
+      }
+    ],
+    "frontier_id": "kernel_output_stream_completion",
+    "mode": "deepen_simulation_observation",
+    "probe_plan": {
+      "add_or_update_probe_ids": [
+        "probe.current_dag_complete_boundary_terminal_path.6",
+        "probe.complete_core_scalar_status_trace.2",
+        "probe.complete_core_control_trace.1"
+      ],
+      "bounded_window": "One read-only record at each named transfer or waiting transition, plus one terminal summary. Each transition emits all exposed control scalars and the existing 1664 per-bit known-status scalars.",
+      "event_match": {
+        "frontier_id": "kernel_output_stream_completion",
+        "layer": 0
+      },
+      "required_event_fields": [
+        "stage",
+        "cycle",
+        "token",
+        "beat",
+        "event",
+        "signal",
+        "scalar_value",
+        "valid",
+        "ready",
+        "transfer_or_fire",
+        "received_count",
+        "accepted_count",
+        "start",
+        "last",
+        "current_payload_unknown",
+        "current_payload_digest",
+        "first_accepted_payload_digest",
+        "last_accepted_payload_digest"
+      ],
+      "retire_probe_ids": [],
+      "target_boundary": "kernel_output_stream_completion",
+      "trigger_condition": "At each stage input or output first transfer, last transfer, first waiting state after upstream progress, and terminal summary; never on every cycle."
+    },
+    "rationale": "The present internal records show accepted input data, a stage-00 to attention transfer, and 21 accepted output beats, but not a completed output token. The testbench already records all thirteen data boundaries; this edit adds named state, queue, waiting, memory, scheduler, and data-known scalar records at the same first record, last record, first waiting, and terminal transition points. The existing per-bit data-known loops emit 1664 distinct real core scalar records, and the added control task records the exposed operator and queue controls without sampling every cycle.",
+    "schema_version": "spatialaccagent.adaptive_observation_decision.v1",
+    "signal_binding_plan": [
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[0]",
+        "boundary_id": "boundary.edge_data_block_input_to_stage_00_rms_norm_1_input",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_data[0:255]",
+            "name": "payload_known_bits_0_through_255",
+            "role": "data_status"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.rms1.io_in_valid) && (dut.spatialacc_single_kernel.core.rms1.io_in_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.rms1.io_in_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.rms1.io_in_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[1]",
+        "boundary_id": "boundary.edge_data_block_input_to_stage_02_residual_add_1_residual_skip",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.io_residual_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.io_residual_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.residualQ.maybe_full",
+            "name": "residual_queue_full",
+            "role": "queue"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.add1.io_residual_valid) && (dut.spatialacc_single_kernel.core.add1.io_residual_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.add1.io_residual_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.add1.io_residual_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.add1.io_residual_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[2]",
+        "boundary_id": "boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_out_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_out_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.qkv.state",
+            "name": "qkv_state",
+            "role": "state"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.qkv.io_in_bits_data[0:127]",
+            "name": "payload_known_bits_0_through_127",
+            "role": "data_status"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.qkv.io_in_valid) && (dut.spatialacc_single_kernel.core.qkv.io_in_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.qkv.io_in_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.qkv.io_in_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.qkv.io_in_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[3]",
+        "boundary_id": "boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.io_computed_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.io_computed_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.io_computed_bits_data[0:255]",
+            "name": "payload_known_bits_0_through_255",
+            "role": "data_status"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.add1.io_computed_valid) && (dut.spatialacc_single_kernel.core.add1.io_computed_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.add1.io_computed_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.add1.io_computed_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.add1.io_computed_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[4]",
+        "boundary_id": "boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_bits_data[0:255]",
+            "name": "payload_known_bits_0_through_255",
+            "role": "data_status"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.rms2.io_in_valid) && (dut.spatialacc_single_kernel.core.rms2.io_in_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.rms2.io_in_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.rms2.io_in_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.rms2.io_in_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[5]",
+        "boundary_id": "boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.io_residual_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.io_residual_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.res2Q.maybe_full",
+            "name": "residual_queue_full",
+            "role": "queue"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.add2.io_residual_valid) && (dut.spatialacc_single_kernel.core.add2.io_residual_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.add2.io_residual_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.add2.io_residual_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.add2.io_residual_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[6]",
+        "boundary_id": "boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_data[0:127]",
+            "name": "payload_known_bits_0_through_127",
+            "role": "data_status"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid) && (dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[7]",
+        "boundary_id": "boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_data[0:127]",
+            "name": "payload_known_bits_0_through_127",
+            "role": "data_status"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.mlp.up.io_in_valid) && (dut.spatialacc_single_kernel.core.mlp.up.io_in_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.mlp.up.io_in_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.mlp.up.io_in_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[8]",
+        "boundary_id": "boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.actQ.maybe_full",
+            "name": "activation_queue_full",
+            "role": "queue"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid) && (dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[9]",
+        "boundary_id": "boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_out_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_out_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.upQ.maybe_full",
+            "name": "up_queue_full",
+            "role": "queue"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.mlp.up.io_out_valid) && (dut.spatialacc_single_kernel.core.mlp.up.io_out_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.mlp.up.io_out_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.mlp.up.io_out_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.mlp.up.io_out_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[10]",
+        "boundary_id": "boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.mul_io_out_bits_st__bore",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.mul_io_out_bits_last__bore",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp._mul_io_out_valid",
+            "name": "multiply_output_valid",
+            "role": "state"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_in_bits_data[0:127]",
+            "name": "payload_known_bits_0_through_127",
+            "role": "data_status"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.mlp.down.io_in_valid) && (dut.spatialacc_single_kernel.core.mlp.down.io_in_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.mlp.down.io_in_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.mlp.down.io_in_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.mlp.down.io_in_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[11]",
+        "boundary_id": "boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.io_computed_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.io_computed_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.io_computed_bits_data[0:255]",
+            "name": "payload_known_bits_0_through_255",
+            "role": "data_status"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.add2.io_computed_valid) && (dut.spatialacc_single_kernel.core.add2.io_computed_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.add2.io_computed_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.add2.io_computed_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.add2.io_computed_valid"
+      },
+      {
+        "accepted_count_source": "current_dag_boundary_accepted_count[12]",
+        "boundary_id": "boundary.edge_data_stage_08_residual_add_2_to_block_output_output",
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.io_out_bits_st",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.io_out_bits_last",
+            "name": "last",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.outputQ.maybe_full",
+            "name": "output_queue_full",
+            "role": "queue"
+          }
+        ],
+        "fire_source": "(dut.spatialacc_single_kernel.core.io_out_valid) && (dut.spatialacc_single_kernel.core.io_out_ready)",
+        "payload_source": "dut.spatialacc_single_kernel.core.io_out_bits_data",
+        "ready_source": "dut.spatialacc_single_kernel.core.io_out_ready",
+        "valid_source": "dut.spatialacc_single_kernel.core.io_out_valid"
+      }
+    ],
+    "stage_internal_signal_plan": [
+      {
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_weight_valid",
+            "name": "weight_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_weight_ready",
+            "name": "weight_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_valid",
+            "name": "input_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_ready",
+            "name": "input_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_out_valid",
+            "name": "output_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_out_ready",
+            "name": "output_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_addr[0:10]",
+            "name": "input_address_bits_0_through_10",
+            "role": "counter"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_data[0:255]",
+            "name": "input_payload_known_bits_0_through_255",
+            "role": "data_status"
+          }
+        ],
+        "input_boundary_ids": [
+          "boundary.edge_data_block_input_to_stage_00_rms_norm_1_input"
+        ],
+        "output_boundary_ids": [
+          "boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main"
+        ],
+        "stage_id": "stage_00_rms_norm_1",
+        "unavailable_roles": [
+          {
+            "role": "error",
+            "unavailable_reason": "The exposed RMSNorm instance has no stage-local error flag in the current hierarchy."
+          }
+        ]
+      },
+      {
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.qkv.state",
+            "name": "qkv_state",
+            "role": "state"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.qkv.collectBeat[0:7]",
+            "name": "qkv_collect_beat_bits_0_through_7",
+            "role": "counter"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.qkv.emitHead[0:3]",
+            "name": "qkv_emit_head_bits_0_through_3",
+            "role": "counter"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.qkv.emitBeat[0:2]",
+            "name": "qkv_emit_beat_bits_0_through_2",
+            "role": "counter"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.qkv.io_weight_valid",
+            "name": "qkv_weight_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.qkv.io_weight_ready",
+            "name": "qkv_weight_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.qkv.io_bias_valid",
+            "name": "qkv_bias_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.qkv.io_bias_ready",
+            "name": "qkv_bias_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rope.io_runtimeLoaded",
+            "name": "rope_runtime_loaded",
+            "role": "state"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.attn.io_out_valid",
+            "name": "attention_output_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.attn.io_out_ready",
+            "name": "attention_output_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.qkv.io_in_bits_data[0:127]",
+            "name": "qkv_input_payload_known_bits_0_through_127",
+            "role": "data_status"
+          }
+        ],
+        "input_boundary_ids": [
+          "boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main"
+        ],
+        "output_boundary_ids": [
+          "boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main"
+        ],
+        "stage_id": "stage_01_self_attention",
+        "unavailable_roles": [
+          {
+            "role": "error",
+            "unavailable_reason": "No stage-local attention error flag is declared in the exposed current hierarchy."
+          }
+        ]
+      },
+      {
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.pairValid",
+            "name": "pair_valid",
+            "role": "state"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.heldValid",
+            "name": "held_valid",
+            "role": "buffer"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.beatInToken[0:6]",
+            "name": "beat_in_token_bits_0_through_6",
+            "role": "counter"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.tokenInSequence[0:4]",
+            "name": "token_in_sequence_bits_0_through_4",
+            "role": "counter"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.res1Q.enq_ptr_value[0:10]",
+            "name": "residual_queue_write_pointer_bits_0_through_10",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.res1Q.deq_ptr_value[0:10]",
+            "name": "residual_queue_read_pointer_bits_0_through_10",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.res1Q.maybe_full",
+            "name": "residual_queue_full",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.computedQ.enq_ptr_value[0:6]",
+            "name": "computed_queue_write_pointer_bits_0_through_6",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.outputQ.maybe_full",
+            "name": "output_queue_full",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add1.io_computed_bits_data[0:255]",
+            "name": "computed_payload_known_bits_0_through_255",
+            "role": "data_status"
+          }
+        ],
+        "input_boundary_ids": [
+          "boundary.edge_data_block_input_to_stage_02_residual_add_1_residual_skip",
+          "boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main"
+        ],
+        "output_boundary_ids": [
+          "boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main",
+          "boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip"
+        ],
+        "stage_id": "stage_02_residual_add_1",
+        "unavailable_roles": [
+          {
+            "role": "error",
+            "unavailable_reason": "The exposed residual-add instance has no stage-local error flag."
+          }
+        ]
+      },
+      {
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms2.io_weight_valid",
+            "name": "weight_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms2.io_weight_ready",
+            "name": "weight_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_valid",
+            "name": "input_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_ready",
+            "name": "input_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms2.io_out_valid",
+            "name": "output_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms2.io_out_ready",
+            "name": "output_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_bits_data[0:255]",
+            "name": "input_payload_known_bits_0_through_255",
+            "role": "data_status"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.res2Q.maybe_full",
+            "name": "residual_skip_queue_full",
+            "role": "queue"
+          }
+        ],
+        "input_boundary_ids": [
+          "boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main"
+        ],
+        "output_boundary_ids": [
+          "boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch",
+          "boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch"
+        ],
+        "stage_id": "stage_03_rms_norm_2",
+        "unavailable_roles": [
+          {
+            "role": "error",
+            "unavailable_reason": "The exposed RMSNorm instance has no stage-local error flag in the current hierarchy."
+          }
+        ]
+      },
+      {
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_start",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_weight_valid",
+            "name": "weight_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_weight_ready",
+            "name": "weight_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid",
+            "name": "input_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready",
+            "name": "input_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid",
+            "name": "output_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready",
+            "name": "output_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_data[0:127]",
+            "name": "input_payload_known_bits_0_through_127",
+            "role": "data_status"
+          }
+        ],
+        "input_boundary_ids": [
+          "boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch"
+        ],
+        "output_boundary_ids": [
+          "boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul"
+        ],
+        "stage_id": "stage_04_mlp_gate_proj",
+        "unavailable_roles": [
+          {
+            "role": "error",
+            "unavailable_reason": "No gate-projection error flag is exposed by the current hierarchy."
+          }
+        ]
+      },
+      {
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_start",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_weight_valid",
+            "name": "weight_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_weight_ready",
+            "name": "weight_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_valid",
+            "name": "input_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_ready",
+            "name": "input_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_out_valid",
+            "name": "output_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_out_ready",
+            "name": "output_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_data[0:127]",
+            "name": "input_payload_known_bits_0_through_127",
+            "role": "data_status"
+          }
+        ],
+        "input_boundary_ids": [
+          "boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch"
+        ],
+        "output_boundary_ids": [
+          "boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul"
+        ],
+        "stage_id": "stage_05_mlp_up_proj",
+        "unavailable_roles": [
+          {
+            "role": "error",
+            "unavailable_reason": "No up-projection error flag is exposed by the current hierarchy."
+          }
+        ]
+      },
+      {
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp._act_io_in_ready",
+            "name": "activation_input_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp._act_io_out_valid",
+            "name": "activation_output_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.actQ.enq_ptr_value[0:1]",
+            "name": "activation_queue_write_pointer_bits_0_through_1",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.actQ.deq_ptr_value[0:1]",
+            "name": "activation_queue_read_pointer_bits_0_through_1",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.actQ.maybe_full",
+            "name": "activation_queue_full",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.upQ.enq_ptr_value[0:1]",
+            "name": "up_queue_write_pointer_bits_0_through_1",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.upQ.deq_ptr_value[0:1]",
+            "name": "up_queue_read_pointer_bits_0_through_1",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.upQ.maybe_full",
+            "name": "up_queue_full",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp._mul_io_lhs_ready",
+            "name": "multiply_left_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp._mul_io_rhs_ready",
+            "name": "multiply_right_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp._mul_io_out_valid",
+            "name": "multiply_output_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.mul_io_out_ready__bore",
+            "name": "multiply_output_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.mul.io_lhs_bits_data[0:127]",
+            "name": "multiply_input_payload_known_bits_0_through_127",
+            "role": "data_status"
+          }
+        ],
+        "input_boundary_ids": [
+          "boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul",
+          "boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul"
+        ],
+        "output_boundary_ids": [
+          "boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main"
+        ],
+        "stage_id": "stage_06_activation_mul",
+        "unavailable_roles": [
+          {
+            "role": "error",
+            "unavailable_reason": "No activation or multiply error flag is exposed by the current hierarchy."
+          }
+        ]
+      },
+      {
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_start",
+            "name": "start",
+            "role": "start_end"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_weight_valid",
+            "name": "weight_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_weight_ready",
+            "name": "weight_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_in_valid",
+            "name": "input_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_in_ready",
+            "name": "input_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_out_valid",
+            "name": "output_valid",
+            "role": "control"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_out_ready",
+            "name": "output_ready",
+            "role": "backpressure"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_out_bits_addr[0:10]",
+            "name": "output_address_bits_0_through_10",
+            "role": "counter"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_in_bits_data[0:127]",
+            "name": "input_payload_known_bits_0_through_127",
+            "role": "data_status"
+          }
+        ],
+        "input_boundary_ids": [
+          "boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main"
+        ],
+        "output_boundary_ids": [
+          "boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main"
+        ],
+        "stage_id": "stage_07_mlp_down_proj",
+        "unavailable_roles": [
+          {
+            "role": "error",
+            "unavailable_reason": "No down-projection error flag is exposed by the current hierarchy."
+          }
+        ]
+      },
+      {
+        "diagnostic_sources": [
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.pairValid",
+            "name": "pair_valid",
+            "role": "state"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.heldValid",
+            "name": "held_valid",
+            "role": "buffer"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.beatInToken[0:6]",
+            "name": "beat_in_token_bits_0_through_6",
+            "role": "counter"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.tokenInSequence[0:4]",
+            "name": "token_in_sequence_bits_0_through_4",
+            "role": "counter"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.res2Q.enq_ptr_value[0:10]",
+            "name": "residual_queue_write_pointer_bits_0_through_10",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.res2Q.deq_ptr_value[0:10]",
+            "name": "residual_queue_read_pointer_bits_0_through_10",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.res2Q.maybe_full",
+            "name": "residual_queue_full",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.computedQ.enq_ptr_value[0:6]",
+            "name": "computed_queue_write_pointer_bits_0_through_6",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.outputQ.enq_ptr_value",
+            "name": "output_queue_write_pointer",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.outputQ.deq_ptr_value",
+            "name": "output_queue_read_pointer",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.outputQ.maybe_full",
+            "name": "output_queue_full",
+            "role": "queue"
+          },
+          {
+            "expression": "dut.spatialacc_single_kernel.core.add2.io_computed_bits_data[0:255]",
+            "name": "computed_payload_known_bits_0_through_255",
+            "role": "data_status"
+          }
+        ],
+        "input_boundary_ids": [
+          "boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip",
+          "boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main"
+        ],
+        "output_boundary_ids": [
+          "boundary.edge_data_stage_08_residual_add_2_to_block_output_output"
+        ],
+        "stage_id": "stage_08_residual_add_2",
+        "unavailable_roles": [
+          {
+            "role": "error",
+            "unavailable_reason": "The exposed residual-add instance has no stage-local error flag."
+          }
+        ]
+      }
+    ]
+  },
+  "decision_sha256": "56382b9422220931123df67133b3b4d118e8cddb5a97b2e285b515a221dfa31d",
+  "frontier_id": "kernel_output_stream_completion",
+  "internal_boundary_field_observations": [],
+  "internal_signal_binding_plan": {
+    "blockers": [],
+    "status": "advisory",
+    "summary": "signal coverage is collected from the next real board run; it is not a pre-run blocking check"
+  },
+  "matched_evidence_sha256": [],
+  "mode": "deepen_simulation_observation",
+  "policy": {
+    "functional_edit_requires_bound_direct_evidence": true,
+    "insufficient_evidence_requires_observation_only_edit": true,
+    "observation_pointers_must_resolve_exact_current_values": true,
+    "rejection_occurs_before_any_file_write_or_real_tool_replay": true
+  },
+  "schema_version": "spatialaccagent.adaptive_observation_decision_validation.v1",
+  "status": "pass",
+  "summary": "observation edit can continue to the real board VCS run",
+  "valid_field_observations": [
+    {
+      "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/output_accept_count",
+      "interpretation": "Twenty-one output beats were received before termination, so the output path started but did not complete a token.",
+      "observed_value": 21,
+      "semantic_role": "counter"
+    },
+    {
+      "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/output_ready",
+      "interpretation": "The output receiver was ready at the final record, so a low ready signal was not blocking the current output beat.",
+      "observed_value": 1,
+      "semantic_role": "handshake"
+    },
+    {
+      "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/input_accepted",
+      "interpretation": "Input data was still being received at the final record. The last observed internal boundary still transferring was stage_00_rms_norm_1 to stage_01_self_attention at token 8, followed by block input token 9; the first stopped internal boundary cannot yet be identified because all current DAG boundary records were not complete.",
+      "observed_value": 1,
+      "semantic_role": "handshake"
+    },
+    {
+      "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/simulator_terminal_log/failure_lines",
+      "interpretation": "The generated AXI monitor ended the simulation before the output completion contract could be observed.",
+      "observed_value": [
+        "Fatal: \"../sources/spatialacc_axi_protocol_monitor.sv\", 211: spatialacc_exact_board_multilayer_tb.tb_c0_ddr4_s_axi_monitor: at time 82823850000"
+      ],
+      "semantic_role": "error"
+    }
+  ]
+}

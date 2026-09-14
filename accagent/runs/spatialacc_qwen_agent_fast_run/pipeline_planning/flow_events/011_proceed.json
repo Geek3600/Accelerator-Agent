@@ -1,0 +1,258 @@
+{
+  "attempt_count": 2,
+  "decision": "proceed",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "sacg_memory_check",
+        "stage_artifact_trust_barrier_check",
+        "verification_action_audit_check"
+      ],
+      "action_type": "stage_gate_promotion",
+      "consumes": [
+        "recent_stage_summary.checker_summary",
+        "recent_stage_summary.outputs.pipeline_plan",
+        "recent_stage_summary.outputs.pipeline_static_checks",
+        "recent_stage_summary.outputs.sacg_state",
+        "recent_stage_summary.design_team.action_normalization",
+        "recent_stage_summary.llm_agent",
+        "sacg_memory",
+        "flow_policy"
+      ],
+      "id": "flow.pipeline_planning_promote_checker_backed_contract",
+      "on_failure": "Block promotion, quarantine the unpromoted promotion artifact, and create a checker-localized stage_retry_request or stage_backtrack_request. Because the bounded attempt count is already reached, do not blindly rerun the whole stage or consume the failed artifact downstream.",
+      "produces": [
+        "artifact.pipeline_planning.sacg_committed_pipeline_contract",
+        "sacg_memory.stage_outcome_record.pipeline_planning",
+        "artifact.flow.pipeline_planning_promotion_decision",
+        "next_stage_input.parameter_binding.sacg_state"
+      ],
+      "rationale": "The current stage passed, SACG memory has no retry/backtrack/barrier blockers, and the supplied LLM result is ready. Promote only the unchanged checker-backed Stage 3 contract and record that it is planning evidence, not hardware evidence.",
+      "requires_approval": false,
+      "stage": "pipeline_planning",
+      "tool_roles": [
+        "sacg_validate",
+        "sacg_static_check",
+        "sacg_memory_update",
+        "stage_artifact_trust_barrier",
+        "verification_action_audit"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "parameter_binding_static_check",
+        "template_binding_static_check",
+        "template_coverage_check",
+        "numeric_policy_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "boundary_contract_check",
+        "sacg_static_check"
+      ],
+      "action_type": "next_stage_execution",
+      "consumes": [
+        "next_stage_input.parameter_binding.sacg_state",
+        "artifact.pipeline_planning.sacg_committed_pipeline_contract",
+        "recent_stage_summary.outputs.pipeline_plan",
+        "artifact.stage2.template_selection",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "constraint.template.library",
+        "constraint.parameter.binding",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "id": "flow.invoke_parameter_binding_from_promoted_pipeline_contract",
+      "on_failure": "Block code_generation and later stages, localize the mismatch to the affected parameter, edge, or template boundary, repair only within the promoted contract, and rerun the failed checker set. If repair requires architecture, topology, numeric-policy, memory-layout, or template-selection changes, open a backtrack request to pipeline_planning and require approval; quarantine failed Stage 4 artifacts.",
+      "produces": [
+        "artifact.stage4.parameter_binding_contract",
+        "artifact.stage4.boundary_contracts",
+        "artifact.stage4.parameter_binding_checker_results",
+        "parameter_binding/checker_reports/parameter_binding_static_check.json"
+      ],
+      "rationale": "Proceed to the next available stage by binding final template and boundary parameters from the promoted Stage 3 contract while preserving operator order, stream/data edges, numeric policy, memory/runtime handoff, and trusted-template boundaries.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "parameter_binding_static_check",
+        "template_coverage_check",
+        "numeric_policy_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "boundary_contract_generate",
+        "sacg_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "human_boundary_check",
+        "tool_protocol_check",
+        "verification_action_audit_check",
+        "sacg_memory_check",
+        "stage_artifact_trust_barrier_check",
+        "sacg_static_check"
+      ],
+      "action_type": "handoff_guard",
+      "consumes": [
+        "artifact.flow.pipeline_planning_promotion_decision",
+        "recent_stage_summary.llm_agent.approval_required_for",
+        "recent_stage_summary.design_team.executable_actions",
+        "sacg_memory",
+        "artifact.input.human_agent_boundary",
+        "artifact.input.tool_protocols"
+      ],
+      "id": "flow.attach_parameter_binding_approval_and_evidence_guards",
+      "on_failure": "Keep parameter_binding and all later-stage consumption blocked until the guard records approval boundaries and downstream evidence obligations; do not reinterpret Stage 3 planning evidence as implementation or hardware proof.",
+      "produces": [
+        "artifact.stage4.flow_guard.approval_boundary",
+        "artifact.stage4.downstream_obligation_index",
+        "sacg_memory.downstream_obligations.pipeline_planning"
+      ],
+      "rationale": "Carry forward the Stage 3 stage_gate_policy and approval boundaries so broad team actions are treated as downstream obligations, not as evidence that codegen, memory layout, verification, Vivado, or board runtime has already passed.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "human_boundary_check",
+        "tool_protocol_check",
+        "sacg_memory_update",
+        "verification_action_audit",
+        "stage_artifact_trust_barrier",
+        "sacg_static_check"
+      ]
+    }
+  ],
+  "flow_event_index": 11,
+  "llm_flow_controller": {
+    "agent_executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_memory_check",
+          "stage_artifact_trust_barrier_check",
+          "verification_action_audit_check"
+        ],
+        "action_type": "stage_gate_promotion",
+        "consumes": [
+          "recent_stage_summary.checker_summary",
+          "recent_stage_summary.outputs.pipeline_plan",
+          "recent_stage_summary.outputs.pipeline_static_checks",
+          "recent_stage_summary.outputs.sacg_state",
+          "recent_stage_summary.design_team.action_normalization",
+          "recent_stage_summary.llm_agent",
+          "sacg_memory",
+          "flow_policy"
+        ],
+        "id": "flow.pipeline_planning_promote_checker_backed_contract",
+        "on_failure": "Block promotion, quarantine the unpromoted promotion artifact, and create a checker-localized stage_retry_request or stage_backtrack_request. Because the bounded attempt count is already reached, do not blindly rerun the whole stage or consume the failed artifact downstream.",
+        "produces": [
+          "artifact.pipeline_planning.sacg_committed_pipeline_contract",
+          "sacg_memory.stage_outcome_record.pipeline_planning",
+          "artifact.flow.pipeline_planning_promotion_decision",
+          "next_stage_input.parameter_binding.sacg_state"
+        ],
+        "rationale": "The current stage passed, SACG memory has no retry/backtrack/barrier blockers, and the supplied LLM result is ready. Promote only the unchanged checker-backed Stage 3 contract and record that it is planning evidence, not hardware evidence.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "sacg_memory_update",
+          "stage_artifact_trust_barrier",
+          "verification_action_audit"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "template_coverage_check",
+          "numeric_policy_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "sacg_static_check"
+        ],
+        "action_type": "next_stage_execution",
+        "consumes": [
+          "next_stage_input.parameter_binding.sacg_state",
+          "artifact.pipeline_planning.sacg_committed_pipeline_contract",
+          "recent_stage_summary.outputs.pipeline_plan",
+          "artifact.stage2.template_selection",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "constraint.template.library",
+          "constraint.parameter.binding",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "flow.invoke_parameter_binding_from_promoted_pipeline_contract",
+        "on_failure": "Block code_generation and later stages, localize the mismatch to the affected parameter, edge, or template boundary, repair only within the promoted contract, and rerun the failed checker set. If repair requires architecture, topology, numeric-policy, memory-layout, or template-selection changes, open a backtrack request to pipeline_planning and require approval; quarantine failed Stage 4 artifacts.",
+        "produces": [
+          "artifact.stage4.parameter_binding_contract",
+          "artifact.stage4.boundary_contracts",
+          "artifact.stage4.parameter_binding_checker_results",
+          "parameter_binding/checker_reports/parameter_binding_static_check.json"
+        ],
+        "rationale": "Proceed to the next available stage by binding final template and boundary parameters from the promoted Stage 3 contract while preserving operator order, stream/data edges, numeric policy, memory/runtime handoff, and trusted-template boundaries.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "template_coverage_check",
+          "numeric_policy_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_generate",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "human_boundary_check",
+          "tool_protocol_check",
+          "verification_action_audit_check",
+          "sacg_memory_check",
+          "stage_artifact_trust_barrier_check",
+          "sacg_static_check"
+        ],
+        "action_type": "handoff_guard",
+        "consumes": [
+          "artifact.flow.pipeline_planning_promotion_decision",
+          "recent_stage_summary.llm_agent.approval_required_for",
+          "recent_stage_summary.design_team.executable_actions",
+          "sacg_memory",
+          "artifact.input.human_agent_boundary",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "flow.attach_parameter_binding_approval_and_evidence_guards",
+        "on_failure": "Keep parameter_binding and all later-stage consumption blocked until the guard records approval boundaries and downstream evidence obligations; do not reinterpret Stage 3 planning evidence as implementation or hardware proof.",
+        "produces": [
+          "artifact.stage4.flow_guard.approval_boundary",
+          "artifact.stage4.downstream_obligation_index",
+          "sacg_memory.downstream_obligations.pipeline_planning"
+        ],
+        "rationale": "Carry forward the Stage 3 stage_gate_policy and approval boundaries so broad team actions are treated as downstream obligations, not as evidence that codegen, memory layout, verification, Vivado, or board runtime has already passed.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "human_boundary_check",
+          "tool_protocol_check",
+          "sacg_memory_update",
+          "verification_action_audit",
+          "stage_artifact_trust_barrier",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/011_pipeline_planning/llm/flow_controller_agent_result.json",
+    "agent_status": "proceed_to_parameter_binding",
+    "agent_summary": "Proceed: the pipeline_planning stage passed with command return code 0, 10 checker passes, 0 failures, and no warnings. SACG memory contains no open retry requests, backtrack requests, or contamination barriers. No retry reconciliation contract is present. The safe next step is to promote the unchanged checker-backed Stage 3 contract and invoke parameter_binding; do not retry, backtrack, repair, stop, or treat planning evidence as hardware evidence."
+  },
+  "reason": "stage passed and no open backtrack request",
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_event_action_record.v0",
+  "stage": "pipeline_planning"
+}

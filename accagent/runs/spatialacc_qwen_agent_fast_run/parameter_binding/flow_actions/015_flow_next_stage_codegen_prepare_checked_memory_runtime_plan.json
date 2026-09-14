@@ -1,0 +1,52 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "memory_runtime_plan_check",
+      "addr_map_check",
+      "transfer_count_check",
+      "deployment_board_check",
+      "human_boundary_check"
+    ],
+    "action_type": "memory_runtime_plan",
+    "consumes": [
+      "artifact.stage4.parameter_binding_promoted",
+      "peer_agent_parameter_binding_handoff_packet.json",
+      "candidate_stage_artifact.bandwidth_estimate",
+      "candidate_stage_artifact.stream_contract_trace",
+      "candidate_stage_artifact.bindings",
+      "artifact.input.target_board_profile",
+      "artifact.stage3.pipeline_plan"
+    ],
+    "id": "flow.next_stage.codegen.prepare_checked_memory_runtime_plan",
+    "on_failure": "Keep memory/runtime, verification, backend, and board promotion blocked. Localize to address map, alignment, non-overlap, ABI, or transfer-count mismatch; route to memory_runtime_repair and require approval for any memory-layout, architecture, or parameter rebinding change.",
+    "produces": [
+      "artifact.stage5.memory_runtime_plan",
+      "artifact.stage5.addr_map",
+      "artifact.stage5.transfer_count_reconciliation",
+      "artifact.stage5.runtime_abi_binding",
+      "memory_layout_approval_record.json"
+    ],
+    "rationale": "The parameter_binding bandwidth estimate is symbolic; the next-stage plan must assign concrete memory regions and runtime ABI only under explicit approval while preserving 512-bit AXI packing, 64-byte alignment, non-overlap, stream order, branch precision, and transfer counts.",
+    "requires_approval": true,
+    "stage": "code_generation",
+    "tool_roles": [
+      "memory_runtime_plan_check",
+      "addr_map_check",
+      "transfer_count_check",
+      "deployment_board_check",
+      "human_boundary_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "proceed",
+  "flow_event_index": 15,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/flow_events/015_proceed.json",
+  "stage": "parameter_binding"
+}

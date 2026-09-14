@@ -1,0 +1,196 @@
+{
+  "agent": "stream_liveness_engineer",
+  "duration_sec": 132.3358450980013,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "stream_liveness_engineer",
+    "approval_required_for": [
+      "Any downstream change to operator order, edge topology, transfer_order, AXI full-beat policy, FIFO implementation template, FIFO depth outside the accepted bounded set, memory base address assignment, numeric width policy, or introduction of unsupported flow-control primitives."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "stream_plan_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "boundary_contract_check"
+        ],
+        "action_type": "cross_layer_rule_review",
+        "consumes": [
+          "candidate_stage_artifact.stream_edges",
+          "candidate_stage_artifact.data_edges",
+          "candidate_stage_artifact.flow_control",
+          "candidate_stage_artifact.buffer_plan",
+          "candidate_stage_artifact.branch_join_contracts",
+          "candidate_stage_artifact.checker_results",
+          "constraint.stream.order",
+          "constraint.beat.pipeline",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "pipeline_planning.emit_stream_liveness_handoff_artifacts",
+        "on_failure": "Block evidence-gate promotion and route the specific failing edge, buffer, splitter, or join to bounded pipeline_repair; do not relax transfer counts, reorder streams, or claim hardware pass.",
+        "produces": [
+          "stream_liveness_audit_report.json",
+          "edge_transfer_count_matrix.json",
+          "branch_join_buffer_liveness_findings.json"
+        ],
+        "rationale": "Convert the accepted static stream/liveness review into the expected handoff artifacts for the evidence gate, preserving exact edge mirrors, transfer counts, full-beat policy, branch/join contracts, and FIFO bindings.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "stream_plan_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "boundary_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "boundary_contract_check",
+          "stream_plan_check"
+        ],
+        "action_type": "contract_handoff",
+        "consumes": [
+          "stream_liveness_audit_report.json",
+          "edge_transfer_count_matrix.json",
+          "branch_join_buffer_liveness_findings.json",
+          "candidate_stage_artifact.stages",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata"
+        ],
+        "id": "parameter_binding.lock_ready_valid_stream_contract",
+        "on_failure": "Return to bounded pipeline_repair for only the affected edge, FIFO depth, splitter, or join. Require explicit approval before changing architecture, memory layout, numeric policy, or supported template primitives.",
+        "produces": [
+          "artifact.stage4.stream_fifo_join_parameter_bindings",
+          "artifact.stage4.boundary_stream_contract"
+        ],
+        "rationale": "Ensure the next stage binds the static plan to trusted templates without changing the ready/valid protocol, full-beat AXI assumptions, transfer order, FIFO depths, atomic split behavior, or all-valid join behavior.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "boundary_contract_generate",
+          "stream_plan_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "boundary_contract_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog"
+        ],
+        "action_type": "verification_plan_static_handoff",
+        "consumes": [
+          "stream_liveness_audit_report.json",
+          "edge_transfer_count_matrix.json",
+          "branch_join_buffer_liveness_findings.json",
+          "artifact.stage4.boundary_stream_contract"
+        ],
+        "id": "verification_planning.require_stream_order_deadlock_evidence",
+        "on_failure": "Keep verification planning blocked until the missing order/count/deadlock obligations are restored; do not proceed to real simulation, Vivado, or board runtime without these requirements.",
+        "produces": [
+          "artifact.stage6.stream_liveness_verification_requirements"
+        ],
+        "rationale": "Record that later generated RTL must be checked with data-order traces, transfer-count checks, and deadlock watchdogs before any implementation or hardware pass can be claimed.",
+        "requires_approval": false,
+        "stage": "verification_planning",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "boundary_contract_check"
+        ]
+      }
+    ],
+    "observations": [
+      "No active contamination barriers, open retry requests, or open backtrack requests are present in the supplied SACG state summary; no SACG-memory blocker is carried into this stream/liveness review.",
+      "stream_edges and data_edges are mirrored in the visible artifact for all 13 edges, including block_input boundary edges, residual-skip edges, the MLP gate/up branch, join inputs, and block_output. The supplied stream_data_edge_mirror_check passed with edges=13 and edge_stream_contract_check passed with checked_edges=13.",
+      "All visible edges use transfer_order [token, tile, lane, word], flow_control ready_valid, and valid_byte_policy full_beats_only. This preserves a single pairing key across residual joins and the activation-multiply join.",
+      "Transfer counts are coherent with tensor shape and 512-bit AXI beats: seven 32-bit hidden-width edges use seq_len=16, width=896, transfer_count_bytes=57344, axi_beats=896, stream_beats_per_axi_beat=2; three 16-bit hidden-width edges use transfer_count_bytes=28672, axi_beats=448, stream_beats_per_axi_beat=4; three 16-bit intermediate-width edges use width=4864, transfer_count_bytes=155648, axi_beats=2432, stream_beats_per_axi_beat=4. All listed byte counts are multiples of the 64-byte AXI beat size.",
+      "Branch/join contracts are liveness-safe at the static contract level: residual_add_1 joins block_input residual_skip with self_attention main at matching 896 AXI beats; activation_mul joins gate and up branches at matching 2432 AXI beats; residual_add_2 joins residual_skip and down_proj main at matching 896 AXI beats. All joins use all required inputs valid before fire and pairing_key [token, tile, lane, word].",
+      "The explicit split contract at stage_03_rms_norm_2 uses ready_valid_broadcast_with_per_output_fifo, accepts a source beat only when both branch FIFOs can enqueue the same token/tile/lane/word, and allows independent branch dequeue under downstream ready. This bounds skew without relying on equal latency.",
+      "The buffer plan contains 13 buffers for 13 edges. Every buffer is kind bounded_ready_valid_fifo, implementation trusted_queue_template, resource_class on_chip_fifo, with allowed depths 32 or 64. No unbounded buffer or ping-pong memory is used as a stream FIFO in the supplied plan.",
+      "The supplied branch_join_contract_check, buffer_contract_check, and liveness_backpressure_check passed. The liveness evidence is static: the graph is acyclic and bounded FIFOs provide elasticity and backpressure; it is not a latency-equality, throughput, or hardware pass claim.",
+      "memory_runtime_contract_check passed with regions=6 and axi_bits=512. The stream audit only checks handoff readiness to the 64-byte AXI beat policy and does not assign or approve final DDR base addresses.",
+      "Symbolic_first_order latency values in the stage records are correctly labeled as planning estimates only and must not be consumed as timing, throughput, or hardware evidence."
+    ],
+    "proposed_actions": [
+      "Hand off the accepted stream/liveness findings to pipeline_planning.evidence_gate_auditor with the checker-backed status and the explicit caveat that no real RTL/simulation/Vivado evidence is claimed at this stage.",
+      "Materialize edge_transfer_count_matrix.json and branch_join_buffer_liveness_findings.json from the accepted candidate artifact so downstream parameter binding can lock exact edge IDs, transfer_order, transfer_count_bytes, axi_beats, FIFO depths, and split/join rules.",
+      "During Stage 4 template binding, enforce trusted bounded ready/valid FIFO templates and the atomic broadcast/all-valid join semantics exactly; any deviation should be routed to bounded pipeline_repair rather than free-form RTL changes.",
+      "During later verification planning, require data-order traces, transfer-count checks, and deadlock watchdog evidence on generated RTL before any hardware or board-level pass is claimed."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.stream_edges",
+        "candidate_stage_artifact.data_edges",
+        "candidate_stage_artifact.flow_control",
+        "candidate_stage_artifact.buffer_plan",
+        "candidate_stage_artifact.branch_join_contracts",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.memory_schedule",
+        "stream_liveness_audit_report.json",
+        "edge_transfer_count_matrix.json",
+        "branch_join_buffer_liveness_findings.json"
+      ],
+      "constraints": [
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output"
+      ]
+    },
+    "schema_version": "spatialaccagent.stream_liveness_audit.v0",
+    "stage": "pipeline_planning",
+    "status": "accepted_static_contract_no_current_stage_blockers",
+    "summary": "Static pipeline-planning stream/liveness review accepts the supplied contract for downstream evidence-gate consumption. The supplied checker evidence shows 13 stream_edges mirrored by 13 data_edges, coherent full-beat 512-bit AXI transfer counts, ready/valid split and all-input-valid join contracts with matched pairing keys, and one bounded trusted FIFO per edge. This is not hardware, timing, or throughput proof; later template binding and verification must preserve and test the contract."
+  },
+  "prompt_bytes": 69434,
+  "prompt_hash": "67bddb4adfd833b638dda18c6d44628aa16a9ac3db4341b5e538b076b394b6d3",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.stream_liveness_audit.v0\",\"agent\":\"stream_liveness_engineer\",\"stage\":\"pipeline_planning\",\"status\":\"accepted_static_contract_no_current_stage_blockers\",\"summary\":\"Static pipeline-planning stream/liveness review accepts the supplied contract for downstream evidence-gate consumption. The supplied checker evidence shows 13 stream_edges mirrored by 13 data_edges, coherent full-beat 512-bit AXI transfer counts, ready/valid split and all-input-valid join contracts with matched pairing keys, and one bounded trusted FIFO per edge. This is not hardware, timing, or throughput proof; later template binding and verification must preserve and test the contract.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"candidate_stage_artifact.stream_edges\",\"candidate_stage_artifact.data_edges\",\"candidate_stage_artifact.flow_control\",\"candidate_stage_artifact.buffer_plan\",\"candidate_stage_artifact.branch_join_contracts\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.memory_schedule\",\"stream_liveness_audit_report.json\",\"edge_transfer_count_matrix.json\",\"branch_join_buffer_liveness_findings.json\"]},\"observations\":[\"No active contamination barriers, open retry requests, or open backtrack requests are present in the supplied SACG state summary; no SACG-memory blocker is carried into this stream/liveness review.\",\"stream_edges and data_edges are mirrored in the visible artifact for all 13 edges, including block_input boundary edges, residual-skip edges, the MLP gate/up branch, join inputs, and block_output. The supplied stream_data_edge_mirror_check passed with edges=13 and edge_stream_contract_check passed with checked_edges=13.\",\"All visible edges use transfer_order [token, tile, lane, word], flow_control ready_valid, and valid_byte_policy full_beats_only. This preserves a single pairing key across residual joins and the activation-multiply join.\",\"Transfer counts are coherent with tensor shape and 512-bit AXI beats: seven 32-bit hidden-width edges use seq_len=16, width=896, transfer_count_bytes=57344, axi_beats=896, stream_beats_per_axi_beat=2; three 16-bit hidden-width edges use transfer_count_bytes=28672, axi_beats=448, stream_beats_per_axi_beat=4; three 16-bit intermediate-width edges use width=4864, transfer_count_bytes=155648, axi_beats=2432, stream_beats_per_axi_beat=4. All listed byte counts are multiples of the 64-byte AXI beat size.\",\"Branch/join contracts are liveness-safe at the static contract level: residual_add_1 joins block_input residual_skip with self_attention main at matching 896 AXI beats; activation_mul joins gate and up branches at matching 2432 AXI beats; residual_add_2 joins residual_skip and down_proj main at matching 896 AXI beats. All joins use all required inputs valid before fire and pairing_key [token, tile, lane, word].\",\"The explicit split contract at stage_03_rms_norm_2 uses ready_valid_broadcast_with_per_output_fifo, accepts a source beat only when both branch FIFOs can enqueue the same token/tile/lane/word, and allows independent branch dequeue under downstream ready. This bounds skew without relying on equal latency.\",\"The buffer plan contains 13 buffers for 13 edges. Every buffer is kind bounded_ready_valid_fifo, implementation trusted_queue_template, resource_class on_chip_fifo, with allowed depths 32 or 64. No unbounded buffer or ping-pong memory is used as a stream FIFO in the supplied plan.\",\"The supplied branch_join_contract_check, buffer_contract_check, and liveness_backpressure_check passed. The liveness evidence is static: the graph is acyclic and bounded FIFOs provide elasticity and backpressure; it is not a latency-equality, throughput, or hardware pass claim.\",\"memory_runtime_contract_check passed with regions=6 and axi_bits=512. The stream audit only checks handoff readiness to the 64-byte AXI beat policy and does not assign or approve final DDR base addresses.\",\"Symbolic_first_order latency values in the stage records are correctly labeled as planning estimates only and must not be consumed as timing, throughput, or hardware evidence.\"],\"risks\":[],\"proposed_actions\":[\"Hand off the accepted stream/liveness findings to pipeline_planning.evidence_gate_auditor with the checker-backed status and the explicit caveat that no real RTL/simulation/Vivado evidence is claimed at this stage.\",\"Materialize edge_transfer_count_matrix.json and branch_join_buffer_liveness_findings.json from the accepted candidate artifact so downstream parameter binding can lock exact edge IDs, transfer_order, transfer_count_bytes, axi_beats, FIFO depths, and split/join rules.\",\"During Stage 4 template binding, enforce trusted bounded ready/valid FIFO templates and the atomic broadcast/all-valid join semantics exactly; any deviation should be routed to bounded pipeline_repair rather than free-form RTL changes.\",\"During later verification planning, require data-order traces, transfer-count checks, and deadlock watchdog evidence on generated RTL before any hardware or board-level pass is claimed.\"],\"executable_actions\":[{\"id\":\"pipeline_planning.emit_stream_liveness_handoff_artifacts\",\"stage\":\"pipeline_planning\",\"action_type\":\"cross_layer_rule_review\",\"rationale\":\"Convert the accepted static stream/liveness review into the expected handoff artifacts for the evidence gate, preserving exact edge mirrors, transfer counts, full-beat policy, branch/join contracts, and FIFO bindings.\",\"consumes\":[\"candidate_stage_artifact.stream_edges\",\"candidate_stage_artifact.data_edges\",\"candidate_stage_artifact.flow_control\",\"candidate_stage_artifact.buffer_plan\",\"candidate_stage_artifact.branch_join_contracts\",\"candidate_stage_artifact.checker_results\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.cross_layer.input_consistency\"],\"produces\":[\"stream_liveness_audit_report.json\",\"edge_transfer_count_matrix.json\",\"branch_join_buffer_liveness_findings.json\"],\"tool_roles\":[\"stream_plan_check\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"boundary_contract_check\"],\"acceptance_checkers\":[\"stream_plan_check\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"boundary_contract_check\"],\"on_failure\":\"Block evidence-gate promotion and route the specific failing edge, buffer, splitter, or join to bounded pipeline_repair; do not relax transfer counts, reorder streams, or claim hardware pass.\",\"requires_approval\":false},{\"id\":\"parameter_binding.lock_ready_valid_stream_contract\",\"stage\":\"parameter_binding\",\"action_type\":\"contract_handoff\",\"rationale\":\"Ensure the next stage binds the static plan to trusted templates without changing the ready/valid protocol, full-beat AXI assumptions, transfer order, FIFO depths, atomic split behavior, or all-valid join behavior.\",\"consumes\":[\"stream_liveness_audit_report.json\",\"edge_transfer_count_matrix.json\",\"branch_join_buffer_liveness_findings.json\",\"candidate_stage_artifact.stages\",\"artifact.input.template_library\",\"artifact.input.template_metadata\"],\"produces\":[\"artifact.stage4.stream_fifo_join_parameter_bindings\",\"artifact.stage4.boundary_stream_contract\"],\"tool_roles\":[\"parameter_binding_static_check\",\"boundary_contract_generate\",\"stream_plan_check\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"template_binding_static_check\",\"boundary_contract_check\",\"stream_plan_check\"],\"on_failure\":\"Return to bounded pipeline_repair for only the affected edge, FIFO depth, splitter, or join. Require explicit approval before changing architecture, memory layout, numeric policy, or supported template primitives.\",\"requires_approval\":false},{\"id\":\"verification_planning.require_stream_order_deadlock_evidence\",\"stage\":\"verification_planning\",\"action_type\":\"verification_plan_static_handoff\",\"rationale\":\"Record that later generated RTL must be checked with data-order traces, transfer-count checks, and deadlock watchdogs before any implementation or hardware pass can be claimed.\",\"consumes\":[\"stream_liveness_audit_report.json\",\"edge_transfer_count_matrix.json\",\"branch_join_buffer_liveness_findings.json\",\"artifact.stage4.boundary_stream_contract\"],\"produces\":[\"artifact.stage6.stream_liveness_verification_requirements\"],\"tool_roles\":[\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"boundary_contract_check\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"boundary_contract_check\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\"],\"on_failure\":\"Keep verification planning blocked until the missing order/count/deadlock obligations are restored; do not proceed to real simulation, Vivado, or board runtime without these requirements.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any downstream change to operator order, edge topology, transfer_order, AXI full-beat policy, FIFO implementation template, FIFO depth outside the accepted bounded set, memory base address assignment, numeric width policy, or introduction of unsupported flow-control primitives.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/stream_liveness_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/stream_liveness_engineer_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "pipeline_planning.stream and liveness engineer",
+  "used_fallback": false
+}

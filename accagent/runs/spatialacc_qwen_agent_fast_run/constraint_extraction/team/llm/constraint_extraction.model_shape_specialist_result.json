@@ -1,0 +1,176 @@
+{
+  "agent": "constraint_extraction.model_shape_specialist",
+  "duration_sec": 146.42026616000294,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "constraint_extraction.model_shape_specialist",
+    "approval_required_for": [
+      "Any inferred or changed sequence-length assumption, tensor layout/data order, hidden dimension, attention/head relationship, residual/operator ordering, architecture/pipeline mapping, memory layout, numeric-policy interpretation, or major template binding not directly evidenced by artifact.input.model_config and accepted SACG constraints."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "llm_semantic_extraction_check",
+          "model_config_check",
+          "sacg_reference_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "candidate_design_graph_summary",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "ce_model_shape_explicit_semantics_audit",
+        "on_failure": "Do not promote the initial design graph; emit a bounded gap report listing missing or ambiguous facts and route to graph repair or backtrack.",
+        "produces": [
+          "artifact.constraint_extraction.model_shape_review",
+          "model_shape_gap_report",
+          "sacg_node_edge_reference_findings"
+        ],
+        "rationale": "The visible candidate graph provides counts but not the explicit model-shape bindings required to approve decoder semantics and shape relationships.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "llm_semantic_extraction",
+          "model_config_check",
+          "sacg_reference_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_reference_check",
+          "sacg_static_check"
+        ],
+        "action_type": "cross_layer_consistency_audit",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols",
+          "candidate_design_graph_summary",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.deployment.board",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.tool.protocols",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "ce_model_shape_cross_layer_constraint_link_audit",
+        "on_failure": "Classify missing links as current-stage graph gaps when they prevent model/shape facts from being referenced; otherwise hand them off as later-stage consistency actions with exact constraint IDs.",
+        "produces": [
+          "model_shape_cross_layer_link_matrix",
+          "constraint_graph_auditor_handoff_findings"
+        ],
+        "rationale": "Model-shape facts must be reference-linked to cross-layer input consistency so later numeric, template, memory, runtime, implementation, and board checkers can consume them without relying on implicit assumptions.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_reference_check",
+          "team_aggregate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_backtrack_request_check",
+          "sacg_static_check",
+          "sacg_memory_check",
+          "model_config_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "bounded_repair_or_backtrack",
+        "consumes": [
+          "model_shape_gap_report",
+          "sacg_node_edge_reference_findings",
+          "candidate_design_graph_summary",
+          "artifact.input.model_config",
+          "sacg_memory"
+        ],
+        "id": "ce_bounded_model_shape_graph_repair_if_needed",
+        "on_failure": "Keep the design graph blocked for downstream codegen and verification; require bounded approval for any non-evidenced shape, sequence, architecture, pipeline, memory-layout, or numeric-policy assumption.",
+        "produces": [
+          "candidate_design_graph_summary.refined_model_shape_bindings",
+          "stage_backtrack_request_if_model_config_insufficient",
+          "sacg_memory.model_shape_audit_update"
+        ],
+        "rationale": "If the audit finds missing explicit nodes or edges, the graph must be repaired from model_config evidence or a backtrack request issued; no later stage should consume implicit semantics.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "stage_backtrack_request",
+          "sacg_validate",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "The supplied state summary lists artifact.input.model_config and the relevant constraints constraint.model.decoder, constraint.shape.model, and constraint.cross_layer.input_consistency.",
+      "The candidate design graph summary reports 21 nodes, 8 edges, 16 constraints, 50 evidence fields, validation_errors=[], and the state summary reports failed_invariants=[]. This is presence and structural-count evidence only.",
+      "The visible artifact summary does not expose detailed node IDs, edge IDs, extracted model facts, or checker outputs proving explicit representation of decoder semantics, operator order, residual paths, attention/head facts, hidden dimensions, sequence assumptions, or shape relationships.",
+      "No output from sacg_static_check, model_config_check, sacg_reference_check, or llm_semantic_extraction_check is supplied, so a model-shape pass cannot be claimed.",
+      "The supplied sacg_memory/state summary shows no active contamination barriers, open backtrack requests, or open retry requests relevant to this stage."
+    ],
+    "proposed_actions": [
+      "Run an explicit model-shape semantic extraction and SACG reference audit against artifact.input.model_config and candidate_design_graph_summary.",
+      "Produce a gap matrix that lists each required decoder and shape fact, its source in artifact.input.model_config, its SACG node ID, its SACG edge ID, and its links to constraint.model.decoder, constraint.shape.model, and constraint.cross_layer.input_consistency.",
+      "Classify any absent or ambiguous fact as a current-stage graph gap if it prevents model/shape references from being consumed downstream; otherwise hand it off with exact constraint IDs to the constraint graph auditor.",
+      "If gaps are found, perform a bounded graph repair using only evidenced model_config facts; if a required sequence, tensor layout, shape, numeric, architecture, pipeline, or memory assumption is not evidenced, emit a backtrack or approval request instead of guessing."
+    ],
+    "risks": [
+      "A graph that only satisfies node/constraint counts may still omit or implicitly encode decoder operator order, residual path connectivity, normalization placement, attention projection ordering, or other model semantics needed by later template binding and verification.",
+      "Attention/head relationships, hidden dimensions, sequence assumptions, and tensor shape equations may not be bound to cross-layer constraints, creating downstream risks in data order, transfer counts, stream plans, memory layout, runtime ABI, and board-facing buffer sizing.",
+      "If model-shape facts are not linked to constraint.cross_layer.input_consistency, later numeric policy, template coverage, memory/runtime planning, and implementation checks may consume incompatible assumptions without a clear SACG reference trail.",
+      "Because detailed rows are not visible, missing-detail concerns must be resolved by bounded checker-backed actions rather than by approving or rejecting individual model facts from the summary alone."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.model_config",
+        "candidate_design_graph_summary",
+        "artifact.constraint_extraction.model_shape_review",
+        "model_shape_gap_report",
+        "sacg_node_edge_reference_findings"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "candidate_design_graph_summary.edges(count=8, detailed edge IDs not visible)",
+        "required_reference: artifact.input.model_config -> constraint.model.decoder",
+        "required_reference: artifact.input.model_config -> constraint.shape.model",
+        "required_reference: constraint.model.decoder/constraint.shape.model -> constraint.cross_layer.input_consistency"
+      ],
+      "nodes": [
+        "artifact.input.model_config",
+        "candidate_design_graph_summary.node_ids(size=21, detailed IDs not visible)",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.cross_layer.input_consistency"
+      ]
+    },
+    "schema_version": "spatialaccagent.constraint_extraction.model_shape_review.v0",
+    "stage": "constraint_extraction",
+    "status": "blocked_pending_explicit_model_shape_reference_evidence",
+    "summary": "The supplied graph summary confirms presence of the model configuration artifact and the named model, shape, and cross-layer constraints, but it exposes only counts and validation status. It does not show explicit SACG node or edge references for decoder semantics, operator order, residual paths, attention/head facts, hidden dimensions, sequence assumptions, or shape equations. The initial design graph should not be promoted for downstream consumption until the required semantic extraction, model-config, SACG reference, and static checks bind those facts to concrete graph nodes and cross-layer constraints."
+  },
+  "prompt_bytes": 25279,
+  "prompt_hash": "f51ac2a17b000ae8f3361dfccd6c6cd4a4a91210c4f19c6eeb34057fc37f1a34",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.constraint_extraction.model_shape_review.v0\",\"agent\":\"constraint_extraction.model_shape_specialist\",\"stage\":\"constraint_extraction\",\"status\":\"blocked_pending_explicit_model_shape_reference_evidence\",\"summary\":\"The supplied graph summary confirms presence of the model configuration artifact and the named model, shape, and cross-layer constraints, but it exposes only counts and validation status. It does not show explicit SACG node or edge references for decoder semantics, operator order, residual paths, attention/head facts, hidden dimensions, sequence assumptions, or shape equations. The initial design graph should not be promoted for downstream consumption until the required semantic extraction, model-config, SACG reference, and static checks bind those facts to concrete graph nodes and cross-layer constraints.\",\"sacg_focus\":{\"nodes\":[\"artifact.input.model_config\",\"candidate_design_graph_summary.node_ids(size=21, detailed IDs not visible)\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.cross_layer.input_consistency\"],\"edges\":[\"candidate_design_graph_summary.edges(count=8, detailed edge IDs not visible)\",\"required_reference: artifact.input.model_config -> constraint.model.decoder\",\"required_reference: artifact.input.model_config -> constraint.shape.model\",\"required_reference: constraint.model.decoder/constraint.shape.model -> constraint.cross_layer.input_consistency\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"artifact.input.model_config\",\"candidate_design_graph_summary\",\"artifact.constraint_extraction.model_shape_review\",\"model_shape_gap_report\",\"sacg_node_edge_reference_findings\"]},\"observations\":[\"The supplied state summary lists artifact.input.model_config and the relevant constraints constraint.model.decoder, constraint.shape.model, and constraint.cross_layer.input_consistency.\",\"The candidate design graph summary reports 21 nodes, 8 edges, 16 constraints, 50 evidence fields, validation_errors=[], and the state summary reports failed_invariants=[]. This is presence and structural-count evidence only.\",\"The visible artifact summary does not expose detailed node IDs, edge IDs, extracted model facts, or checker outputs proving explicit representation of decoder semantics, operator order, residual paths, attention/head facts, hidden dimensions, sequence assumptions, or shape relationships.\",\"No output from sacg_static_check, model_config_check, sacg_reference_check, or llm_semantic_extraction_check is supplied, so a model-shape pass cannot be claimed.\",\"The supplied sacg_memory/state summary shows no active contamination barriers, open backtrack requests, or open retry requests relevant to this stage.\"],\"risks\":[\"A graph that only satisfies node/constraint counts may still omit or implicitly encode decoder operator order, residual path connectivity, normalization placement, attention projection ordering, or other model semantics needed by later template binding and verification.\",\"Attention/head relationships, hidden dimensions, sequence assumptions, and tensor shape equations may not be bound to cross-layer constraints, creating downstream risks in data order, transfer counts, stream plans, memory layout, runtime ABI, and board-facing buffer sizing.\",\"If model-shape facts are not linked to constraint.cross_layer.input_consistency, later numeric policy, template coverage, memory/runtime planning, and implementation checks may consume incompatible assumptions without a clear SACG reference trail.\",\"Because detailed rows are not visible, missing-detail concerns must be resolved by bounded checker-backed actions rather than by approving or rejecting individual model facts from the summary alone.\"],\"proposed_actions\":[\"Run an explicit model-shape semantic extraction and SACG reference audit against artifact.input.model_config and candidate_design_graph_summary.\",\"Produce a gap matrix that lists each required decoder and shape fact, its source in artifact.input.model_config, its SACG node ID, its SACG edge ID, and its links to constraint.model.decoder, constraint.shape.model, and constraint.cross_layer.input_consistency.\",\"Classify any absent or ambiguous fact as a current-stage graph gap if it prevents model/shape references from being consumed downstream; otherwise hand it off with exact constraint IDs to the constraint graph auditor.\",\"If gaps are found, perform a bounded graph repair using only evidenced model_config facts; if a required sequence, tensor layout, shape, numeric, architecture, pipeline, or memory assumption is not evidenced, emit a backtrack or approval request instead of guessing.\"],\"executable_actions\":[{\"id\":\"ce_model_shape_explicit_semantics_audit\",\"stage\":\"constraint_extraction\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"The visible candidate graph provides counts but not the explicit model-shape bindings required to approve decoder semantics and shape relationships.\",\"consumes\":[\"artifact.input.model_config\",\"candidate_design_graph_summary\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.cross_layer.input_consistency\"],\"produces\":[\"artifact.constraint_extraction.model_shape_review\",\"model_shape_gap_report\",\"sacg_node_edge_reference_findings\"],\"tool_roles\":[\"llm_semantic_extraction\",\"model_config_check\",\"sacg_reference_check\",\"sacg_static_check\"],\"acceptance_checkers\":[\"llm_semantic_extraction_check\",\"model_config_check\",\"sacg_reference_check\",\"sacg_static_check\"],\"on_failure\":\"Do not promote the initial design graph; emit a bounded gap report listing missing or ambiguous facts and route to graph repair or backtrack.\",\"requires_approval\":false},{\"id\":\"ce_model_shape_cross_layer_constraint_link_audit\",\"stage\":\"constraint_extraction\",\"action_type\":\"cross_layer_consistency_audit\",\"rationale\":\"Model-shape facts must be reference-linked to cross-layer input consistency so later numeric, template, memory, runtime, implementation, and board checkers can consume them without relying on implicit assumptions.\",\"consumes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\",\"candidate_design_graph_summary\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.protocols\",\"constraint.cross_layer.input_consistency\"],\"produces\":[\"model_shape_cross_layer_link_matrix\",\"constraint_graph_auditor_handoff_findings\"],\"tool_roles\":[\"sacg_reference_check\",\"team_aggregate\"],\"acceptance_checkers\":[\"sacg_reference_check\",\"sacg_static_check\"],\"on_failure\":\"Classify missing links as current-stage graph gaps when they prevent model/shape facts from being referenced; otherwise hand them off as later-stage consistency actions with exact constraint IDs.\",\"requires_approval\":false},{\"id\":\"ce_bounded_model_shape_graph_repair_if_needed\",\"stage\":\"constraint_extraction\",\"action_type\":\"bounded_repair_or_backtrack\",\"rationale\":\"If the audit finds missing explicit nodes or edges, the graph must be repaired from model_config evidence or a backtrack request issued; no later stage should consume implicit semantics.\",\"consumes\":[\"model_shape_gap_report\",\"sacg_node_edge_reference_findings\",\"candidate_design_graph_summary\",\"artifact.input.model_config\",\"sacg_memory\"],\"produces\":[\"candidate_design_graph_summary.refined_model_shape_bindings\",\"stage_backtrack_request_if_model_config_insufficient\",\"sacg_memory.model_shape_audit_update\"],\"tool_roles\":[\"stage_backtrack_request\",\"sacg_validate\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"stage_backtrack_request_check\",\"sacg_static_check\",\"sacg_memory_check\",\"model_config_check\",\"sacg_reference_check\"],\"on_failure\":\"Keep the design graph blocked for downstream codegen and verification; require bounded approval for any non-evidenced shape, sequence, architecture, pipeline, memory-layout, or numeric-policy assumption.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any inferred or changed sequence-length assumption, tensor layout/data order, hidden dimension, attention/head relationship, residual/operator ordering, architecture/pipeline mapping, memory layout, numeric-policy interpretation, or major template binding not directly evidenced by artifact.input.model_config and accepted SACG constraints.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/constraint_extraction.model_shape_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/constraint_extraction.model_shape_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction.model graph and shape engineer",
+  "used_fallback": false
+}

@@ -1,0 +1,709 @@
+{
+  "duration_sec": 93.7944280100055,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "reason": "The repair stage is not atomic: the rejected Stage7 transition contains three independently reviewable concerns\u2014causal evidence localization, DUT real-weight/template binding defects, and immutable verification-contract gaps. SACG memory truth also shows one open Stage7 retry and three active contamination barriers, so a separate repair-boundary auditor must reconcile specialist classifications before any retry, backtrack, or artifact promotion. Parallel specialists can classify these concerns without modifying contaminated artifacts; a group-1 evidence gate can then enforce human approval and trust boundaries.",
+    "schema_version": "spatialaccagent.team_decomposition.v0",
+    "split_required": true,
+    "stage": "repair",
+    "subtasks": [
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "sacg_reference_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "failure_evidence_classification",
+        "agent": "failure_localization_specialist",
+        "artifact_focus": [
+          "artifact.stage7.verification_result",
+          "artifact.stage7.real_tool_results",
+          "artifact.stage7.debug_closure",
+          "artifact.stage6.failed_node_repair_route_matrix",
+          "artifact.stage6.failure_localization_schema",
+          "candidate_stage_artifact.failures",
+          "candidate_stage_artifact.pending_evidence"
+        ],
+        "constraints": [
+          "constraint.verification.plan",
+          "constraint.verification.hierarchy",
+          "constraint.tool.protocols",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "artifact.stage8.failure_classification_matrix",
+          "artifact.stage8.causal_failure_slice",
+          "artifact.stage8.dependency_blocked_evidence_map"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "consumes_policy": "Use contaminated Stage7 artifacts only as planning and debug evidence under contamination_barrier.0001 through contamination_barrier.0003; use Stage6 contracts as trusted baselines.",
+          "on_reject": "Return the classification for evidence completion; do not authorize a Stage7 retry, RTL edit, or removal of any contamination barrier.",
+          "ready_when": [
+            "Every failed invariant is mapped to a failure class, violated constraint, causal root candidate, and bounded repair route.",
+            "The ten scaffold/semantic-testbench failures are deduplicated where they share the same weight-binding precondition cause.",
+            "Every not_run gate is labeled dependency_blocked or pending rather than misclassified as an independent implementation defect.",
+            "The causal slice distinguishes contract or harness deficiencies from demonstrated RTL numeric mismatches."
+          ],
+          "requires_planned_capability": false
+        },
+        "handoff_to": [
+          "repair.repair_boundary_auditor"
+        ],
+        "id": "repair.failure_localization_engineer",
+        "objective": "Classify each failed or not-run Stage7 gate as a causal failure, propagated dependency block, or pending evidence item, and map the minimal causal slice to violated SACG constraints without treating contaminated Stage7 artifacts as validated inputs.",
+        "parallel_group": 0,
+        "role": "verification root-cause engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "failure_localization_check",
+              "causal_repair_context_check",
+              "sacg_reference_check",
+              "stage_artifact_trust_barrier_check"
+            ],
+            "consumes": {
+              "artifact_focus": [
+                "artifact.stage7.verification_result",
+                "artifact.stage7.real_tool_results",
+                "artifact.stage7.debug_closure"
+              ],
+              "constraints": [
+                "constraint.verification.plan",
+                "constraint.verification.hierarchy",
+                "constraint.tool.protocols"
+              ]
+            },
+            "handoff_to": [
+              "repair.repair_boundary_auditor"
+            ],
+            "produces": [
+              "artifact.stage8.failure_classification_matrix",
+              "artifact.stage8.causal_failure_slice",
+              "artifact.stage8.dependency_blocked_evidence_map"
+            ],
+            "tool_consumers": [
+              "failure_slice_localization",
+              "causal_repair_context_pack"
+            ]
+          },
+          "decision_authority": [
+            "Classify root, propagated, pending, and inconclusive evidence.",
+            "Block unsupported RTL-root-cause assertions.",
+            "Escalate incomplete gate contracts to the boundary auditor."
+          ],
+          "mission": "Own causal localization and evidence classification for the rejected operator-leaf closure.",
+          "out_of_scope": [
+            "Executing real tools.",
+            "Modifying immutable verification identity.",
+            "Clearing the open retry request."
+          ],
+          "primary_responsibilities": [
+            "Review checker reports and tool return codes.",
+            "Map each failure to constraints and repair-route matrix entries.",
+            "Identify the smallest repairable boundary.",
+            "Package evidence for the boundary auditor."
+          ],
+          "professional_family": "verification_repair"
+        },
+        "role_profile": {
+          "capabilities": [
+            "classify evidence",
+            "map failures to violated constraints",
+            "localize causal slices",
+            "separate root failures from dependency-blocked gates"
+          ],
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "failure_localization_check",
+              "causal_repair_context_check",
+              "sacg_reference_check",
+              "stage_artifact_trust_barrier_check"
+            ],
+            "consumes": [
+              "artifact.stage6.verification_artifact_contract",
+              "artifact.stage6.failed_node_repair_route_matrix",
+              "artifact.stage7.verification_result",
+              "artifact.stage7.real_tool_results",
+              "artifact.stage7.debug_closure"
+            ],
+            "downstream_consumers": [
+              "repair.repair_boundary_auditor",
+              "failure_slice_localization",
+              "causal_repair_context_pack"
+            ],
+            "produces": [
+              "artifact.stage8.failure_classification_matrix",
+              "artifact.stage8.causal_failure_slice",
+              "artifact.stage8.dependency_blocked_evidence_map"
+            ]
+          },
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.verification.hierarchy",
+            "constraint.tool.protocols"
+          ],
+          "decision_authority": [
+            "May classify evidence and nominate a minimal causal slice.",
+            "May reject symptom-level repair proposals lacking causal evidence.",
+            "May not approve contract changes, code edits, retries, or artifact promotion."
+          ],
+          "family": "verification_repair",
+          "mission": "Produce a checker-grounded causal classification of the rejected Stage7 evidence.",
+          "out_of_scope": [
+            "Editing generated RTL or testbenches.",
+            "Choosing numeric tolerances.",
+            "Claiming that dependency-blocked tools passed."
+          ],
+          "primary_responsibilities": [
+            "Trace failed gates to their shared preconditions.",
+            "Separate evidence gaps from proven design defects.",
+            "Bind each proposed route to the canonical gate DAG and SACG constraint IDs.",
+            "Preserve active contamination barriers during analysis."
+          ]
+        },
+        "title": "Localize failed and dependency-blocked verification evidence"
+      },
+      {
+        "acceptance_checkers": [
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "codegen_contract_check",
+          "artifact_hash_check",
+          "case_real_weight_artifacts",
+          "case_semantic_testbench"
+        ],
+        "action_type": "bounded_template_repair_classification",
+        "agent": "numeric_template_binding_specialist",
+        "artifact_focus": [
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.case_adapter",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.design_artifact_manifest",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.codegen_contract_check",
+          "generated/memory/dut_weight_binding_manifest.json",
+          "verification/semantic_testbench/semantic_testbench_manifest.json"
+        ],
+        "constraints": [
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.parameter.binding",
+          "constraint.codegen.package",
+          "constraint.codegen.contract_check",
+          "constraint.case.adapter"
+        ],
+        "expected_artifacts": [
+          "artifact.stage8.weight_binding_repair_scope",
+          "artifact.stage8.template_binding_delta_plan",
+          "artifact.stage8.semantic_harness_binding_requirements",
+          "artifact.stage8.immutable_hash_reconciliation_plan"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "consumes_policy": "Inspect current generated and verification manifests as evidence; do not overwrite artifacts under active contamination barriers and do not silently substitute checkpoint or reference identities.",
+          "on_reject": "Classify the unresolved item as approval-required backtrack or unsupported repair; do not generate free-form RTL or rerun semantic verification.",
+          "ready_when": [
+            "Each proposed change names an existing trusted template, parameter binding, generated manifest field, or harness contract boundary.",
+            "The plan covers accelerator_scope, checkpoint and reference hashes, all required current-scope tensor hashes, fallback prohibition, stage harness availability, and DUT weight-consumption proof.",
+            "Any absent explicit atol, rtol, or max_mismatch_fraction is classified as an upstream numeric-policy or immutable-contract gap rather than filled with an inferred value.",
+            "No proposed action changes model semantics or introduces a case-specific core not supplied by the adapter."
+          ],
+          "requires_planned_capability": false
+        },
+        "handoff_to": [
+          "repair.repair_boundary_auditor"
+        ],
+        "id": "repair.weight_binding_engineer",
+        "objective": "Determine which observed weight-manifest, immutable-hash, accelerator-scope, tensor-coverage, fallback, harness, and consumption-proof defects can be repaired through existing template-constrained code-generation bindings, while explicitly excluding numeric-policy invention and free-form RTL generation.",
+        "parallel_group": 0,
+        "role": "numeric and template binding engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "template_binding_static_check",
+              "parameter_binding_static_check",
+              "codegen_contract_check",
+              "artifact_hash_check",
+              "case_real_weight_artifacts",
+              "case_semantic_testbench"
+            ],
+            "consumes": {
+              "artifact_focus": [
+                "artifact.stage4.parameter_binding",
+                "artifact.stage5.generated_code_package",
+                "artifact.stage5.memory_layout",
+                "generated/memory/dut_weight_binding_manifest.json"
+              ],
+              "constraints": [
+                "constraint.numeric.policy",
+                "constraint.template.library",
+                "constraint.parameter.binding"
+              ]
+            },
+            "handoff_to": [
+              "repair.repair_boundary_auditor"
+            ],
+            "produces": [
+              "artifact.stage8.weight_binding_repair_scope",
+              "artifact.stage8.template_binding_delta_plan",
+              "artifact.stage8.semantic_harness_binding_requirements",
+              "artifact.stage8.immutable_hash_reconciliation_plan"
+            ],
+            "tool_consumers": [
+              "bounded_template_repair",
+              "case_weight_manifest_generate",
+              "case_tb_scaffold_generate"
+            ]
+          },
+          "decision_authority": [
+            "Classify a binding repair as template-bounded or out of bounds.",
+            "Require hash and tensor-coverage evidence before retry.",
+            "Block legacy or default-weight fallback paths."
+          ],
+          "mission": "Own the bounded code-generation and template-binding classification for the shared semantic-verification blocker.",
+          "out_of_scope": [
+            "Running the Stage7 retry.",
+            "Approving numeric-policy changes.",
+            "Promoting repaired artifacts."
+          ],
+          "primary_responsibilities": [
+            "Compare generated bindings with immutable Stage6 identities.",
+            "List exact template and manifest deltas.",
+            "Mark policy-level gaps that require backtrack or approval.",
+            "Provide checker-ready post-repair acceptance criteria."
+          ],
+          "professional_family": "numeric_template"
+        },
+        "role_profile": {
+          "capabilities": [
+            "bind trusted templates",
+            "audit numeric policy",
+            "check parameter bindings",
+            "audit immutable artifact hashes"
+          ],
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "template_binding_static_check",
+              "parameter_binding_static_check",
+              "codegen_contract_check",
+              "artifact_hash_check",
+              "case_real_weight_artifacts",
+              "case_semantic_testbench"
+            ],
+            "consumes": [
+              "artifact.input.numeric_policy",
+              "artifact.input.template_library",
+              "artifact.stage4.parameter_binding",
+              "artifact.stage5.generated_code_package",
+              "artifact.stage6.immutable_semantic_identity_contract"
+            ],
+            "downstream_consumers": [
+              "repair.repair_boundary_auditor",
+              "bounded_template_repair",
+              "case_weight_manifest_generate",
+              "case_tb_scaffold_generate"
+            ],
+            "produces": [
+              "artifact.stage8.weight_binding_repair_scope",
+              "artifact.stage8.template_binding_delta_plan",
+              "artifact.stage8.semantic_harness_binding_requirements",
+              "artifact.stage8.immutable_hash_reconciliation_plan"
+            ]
+          },
+          "constraint_focus": [
+            "constraint.numeric.policy",
+            "constraint.template.library",
+            "constraint.parameter.binding"
+          ],
+          "decision_authority": [
+            "May propose bounded_template_repair actions against existing templates.",
+            "May reject default, identity, or synthetic-weight fallbacks.",
+            "May not choose missing tolerances or alter immutable source identities."
+          ],
+          "family": "numeric_template",
+          "mission": "Define the smallest template-constrained repair scope for real-weight and semantic-harness binding.",
+          "out_of_scope": [
+            "Free-form RTL generation.",
+            "Inventing numeric tolerances.",
+            "Changing the target model, checkpoint, or accelerator acceptance scope without approval."
+          ],
+          "primary_responsibilities": [
+            "Audit DUT weight-binding manifest fields against Stage6 verification identities.",
+            "Identify trusted template and parameter-binding deltas.",
+            "Specify tensor coverage and DUT consumption-proof requirements.",
+            "Separate repairable bindings from approval-required numeric-policy changes."
+          ]
+        },
+        "title": "Bound the DUT real-weight binding and semantic harness repair"
+      },
+      {
+        "acceptance_checkers": [
+          "verification_artifact_contract_check",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "stage_retry_request_check",
+          "stage_backtrack_request_check"
+        ],
+        "action_type": "verification_contract_and_backtrack_classification",
+        "agent": "verification_contract_specialist",
+        "artifact_focus": [
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.canonical_gate_dag_refinement",
+          "artifact.stage6.immutable_semantic_identity_contract",
+          "artifact.stage6.canonical_functional_sim_binding_contract",
+          "artifact.stage6.failed_node_repair_route_matrix",
+          "artifact.stage6.llm_action_audit",
+          "retry_request.0001"
+        ],
+        "constraints": [
+          "constraint.verification.plan",
+          "constraint.verification.artifacts",
+          "constraint.verification.hierarchy",
+          "constraint.tool.protocols",
+          "constraint.human.boundary",
+          "constraint.numeric.policy"
+        ],
+        "expected_artifacts": [
+          "artifact.stage8.contract_gap_matrix",
+          "artifact.stage8.retry_precondition_plan",
+          "artifact.stage8.proposed_backtrack_request",
+          "artifact.stage8.approval_required_change_set"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "consumes_policy": "Treat retry_request.0001 as active and authoritative; do not create a duplicate retry. There is currently no open backtrack request, so any backtrack is only a proposal until accepted.",
+          "on_reject": "Keep retry_request.0001 blocked and submit no contract mutation; unresolved approval items remain explicit blockers.",
+          "ready_when": [
+            "Every contract gap is classified as local repair, Stage6 contract backtrack, upstream numeric-policy backtrack, or no-action dependency block.",
+            "The missing explicit numeric comparison policy is not fabricated and is routed through the human boundary where required.",
+            "The proposed retry preconditions require semantic-testbench readiness, valid DUT binding, immutable hash agreement, and completion of selected prerequisite gates.",
+            "Any proposed backtrack cites the exact artifacts and constraints requiring revision."
+          ],
+          "requires_planned_capability": false
+        },
+        "handoff_to": [
+          "repair.repair_boundary_auditor"
+        ],
+        "id": "repair.verification_contract_engineer",
+        "objective": "Audit whether the current Stage6 verification contract and tool protocol can legally accept the required real-weight semantic evidence, and classify each deficiency as a same-stage bounded repair, a Stage6 backtrack request, or a human-approval-required policy change.",
+        "parallel_group": 0,
+        "role": "verification contract and retry-routing engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "verification_artifact_contract_check",
+              "verification_plan_static_check",
+              "tool_protocol_check",
+              "human_boundary_check",
+              "stage_retry_request_check",
+              "stage_backtrack_request_check"
+            ],
+            "consumes": {
+              "artifact_focus": [
+                "artifact.stage6.verification_artifact_contract",
+                "artifact.stage6.llm_action_audit",
+                "artifact.stage6.failed_node_repair_route_matrix",
+                "retry_request.0001"
+              ],
+              "constraints": [
+                "constraint.verification.plan",
+                "constraint.tool.protocols",
+                "constraint.human.boundary"
+              ]
+            },
+            "handoff_to": [
+              "repair.repair_boundary_auditor"
+            ],
+            "produces": [
+              "artifact.stage8.contract_gap_matrix",
+              "artifact.stage8.retry_precondition_plan",
+              "artifact.stage8.proposed_backtrack_request",
+              "artifact.stage8.approval_required_change_set"
+            ],
+            "tool_consumers": [
+              "stage_backtrack_request",
+              "stage_retry_request"
+            ]
+          },
+          "decision_authority": [
+            "Classify contract deficiencies and recommend routing.",
+            "Hold the active retry on unmet prerequisites.",
+            "Escalate approval-required changes to the boundary auditor."
+          ],
+          "mission": "Own contract-level recovery routing for the rejected Stage7 transition.",
+          "out_of_scope": [
+            "Changing trusted templates.",
+            "Executing functional simulation.",
+            "Clearing contamination barriers."
+          ],
+          "primary_responsibilities": [
+            "Compare failed evidence with immutable verification requirements.",
+            "Determine whether existing tools and contracts support the repair.",
+            "Draft a bounded backtrack request where policy or contract changes are unavoidable.",
+            "Prevent premature rerun or promotion."
+          ],
+          "professional_family": "verification_repair"
+        },
+        "role_profile": {
+          "capabilities": [
+            "audit verification contracts",
+            "classify evidence",
+            "map failures to violated constraints",
+            "route retry and backtrack requests"
+          ],
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "verification_artifact_contract_check",
+              "verification_plan_static_check",
+              "tool_protocol_check",
+              "human_boundary_check",
+              "stage_retry_request_check",
+              "stage_backtrack_request_check"
+            ],
+            "consumes": [
+              "artifact.stage6.verification_artifact_contract",
+              "artifact.stage6.immutable_semantic_identity_contract",
+              "artifact.stage6.canonical_functional_sim_binding_contract",
+              "retry_request.0001"
+            ],
+            "downstream_consumers": [
+              "repair.repair_boundary_auditor",
+              "stage_backtrack_request",
+              "stage_retry_request"
+            ],
+            "produces": [
+              "artifact.stage8.contract_gap_matrix",
+              "artifact.stage8.retry_precondition_plan",
+              "artifact.stage8.proposed_backtrack_request",
+              "artifact.stage8.approval_required_change_set"
+            ]
+          },
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.verification.hierarchy",
+            "constraint.human.boundary"
+          ],
+          "decision_authority": [
+            "May recommend bounded repair, retry hold, or backtrack request.",
+            "May reject a retry whose immutable evidence preconditions are unsatisfied.",
+            "May not approve a numeric-policy or immutable-contract change."
+          ],
+          "family": "verification_repair",
+          "mission": "Determine the legal recovery route for contract and policy deficiencies before a Stage7 rerun.",
+          "out_of_scope": [
+            "Implementing loader or harness changes.",
+            "Selecting tolerance values.",
+            "Closing the retry request before checker evidence passes."
+          ],
+          "primary_responsibilities": [
+            "Audit Stage6 gate and evidence contracts.",
+            "Check tool-protocol completeness for semantic verification.",
+            "Specify retry preconditions.",
+            "Identify approval-required backtracks."
+          ]
+        },
+        "title": "Classify contract repair, retry, and backtrack requirements"
+      },
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "human_boundary_check",
+          "sacg_static_check",
+          "stage_retry_request_check",
+          "stage_backtrack_request_check",
+          "stage_artifact_trust_barrier_check",
+          "verification_action_audit_check"
+        ],
+        "action_type": "repair_boundary_evidence_gate",
+        "agent": "repair_evidence_gate",
+        "artifact_focus": [
+          "artifact.stage8.failure_classification_matrix",
+          "artifact.stage8.causal_failure_slice",
+          "artifact.stage8.weight_binding_repair_scope",
+          "artifact.stage8.template_binding_delta_plan",
+          "artifact.stage8.contract_gap_matrix",
+          "artifact.stage8.retry_precondition_plan",
+          "artifact.stage8.proposed_backtrack_request",
+          "artifact.stage8.approval_required_change_set",
+          "retry_request.0001",
+          "contamination_barrier.0001",
+          "contamination_barrier.0002",
+          "contamination_barrier.0003"
+        ],
+        "constraints": [
+          "constraint.human.boundary",
+          "constraint.verification.plan",
+          "constraint.tool.protocols",
+          "constraint.codegen.contract_check",
+          "constraint.numeric.policy"
+        ],
+        "expected_artifacts": [
+          "artifact.stage8.bounded_repair_action_manifest",
+          "artifact.stage8.human_approval_request",
+          "artifact.stage8.retry_or_backtrack_decision",
+          "artifact.stage8.contamination_safe_handoff"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "consumes_policy": "Accept only specialist outputs that passed their declared checkers. Preserve all three active contamination barriers until a new checker-verified transition explicitly supersedes them.",
+          "on_accept": "Issue only the allowed bounded repair actions; if approval or contract revision is required, materialize the proposed stage_backtrack_request before any Stage7 retry. After approved repair, route only targeted prerequisite checkers and selected Stage7 gates.",
+          "on_reject": "Keep retry_request.0001 open and blocked, preserve contamination barriers, and return conflicting or unsupported actions to the responsible specialist.",
+          "ready_when": [
+            "Every action cites causal evidence, affected artifacts, violated constraints, allowed edit boundaries, required checker reruns, and rollback behavior.",
+            "Template-bounded loader, manifest, or harness actions are separated from numeric-policy and immutable-contract changes.",
+            "Any missing tolerance or semantic identity change is routed to explicit human approval and backtrack rather than silently repaired.",
+            "The existing Stage7 retry is released only after all declared repair and contract preconditions pass.",
+            "No contaminated Stage7 artifact is handed off as a validated design input."
+          ],
+          "requires_planned_capability": false
+        },
+        "handoff_to": [
+          "bounded_template_repair",
+          "stage_backtrack_request",
+          "stage7.verification"
+        ],
+        "id": "repair.repair_boundary_auditor",
+        "objective": "Reconcile the causal, template-binding, and verification-contract classifications into one non-overlapping repair decision that labels each action auto-allowed, approval-required, backtrack-required, retry-only, or forbidden while preserving active SACG contamination barriers.",
+        "parallel_group": 1,
+        "role": "repair boundary and evidence-gate lead",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "repair_boundary_check",
+              "human_boundary_check",
+              "sacg_static_check",
+              "stage_retry_request_check",
+              "stage_backtrack_request_check",
+              "stage_artifact_trust_barrier_check",
+              "verification_action_audit_check"
+            ],
+            "consumes": {
+              "artifact_focus": [
+                "artifact.stage8.failure_classification_matrix",
+                "artifact.stage8.weight_binding_repair_scope",
+                "artifact.stage8.contract_gap_matrix"
+              ],
+              "constraints": [
+                "constraint.human.boundary",
+                "constraint.verification.plan",
+                "constraint.numeric.policy"
+              ]
+            },
+            "handoff_to": [
+              "bounded_template_repair",
+              "stage_backtrack_request",
+              "stage7.verification"
+            ],
+            "produces": [
+              "artifact.stage8.bounded_repair_action_manifest",
+              "artifact.stage8.human_approval_request",
+              "artifact.stage8.retry_or_backtrack_decision",
+              "artifact.stage8.contamination_safe_handoff"
+            ],
+            "tool_consumers": [
+              "repair_boundary_check",
+              "stage_backtrack_request",
+              "stage_retry_request",
+              "targeted_failed_checker_rerun"
+            ]
+          },
+          "decision_authority": [
+            "Authorize checker-bounded repair within existing templates and contracts.",
+            "Block or escalate all policy and immutable-identity changes.",
+            "Release the existing retry only when prerequisites are checker-verified."
+          ],
+          "mission": "Aggregate specialist evidence into the authoritative, human-boundary-compliant repair disposition.",
+          "out_of_scope": [
+            "Inventing missing verification requirements.",
+            "Making unapproved edits.",
+            "Treating prior rejected outputs as validated design artifacts."
+          ],
+          "primary_responsibilities": [
+            "Validate causal linkage and non-overlapping scope.",
+            "Assign auto-allowed, approval-required, backtrack-required, retry-only, or forbidden status.",
+            "Materialize safe downstream routing.",
+            "Keep contaminated evidence quarantined."
+          ],
+          "professional_family": "verification_repair"
+        },
+        "role_profile": {
+          "capabilities": [
+            "classify evidence",
+            "enforce repair boundaries",
+            "audit human approval requirements",
+            "block unsupported pass claims"
+          ],
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "repair_boundary_check",
+              "human_boundary_check",
+              "sacg_static_check",
+              "stage_retry_request_check",
+              "stage_backtrack_request_check",
+              "stage_artifact_trust_barrier_check",
+              "verification_action_audit_check"
+            ],
+            "consumes": [
+              "artifact.stage8.failure_classification_matrix",
+              "artifact.stage8.weight_binding_repair_scope",
+              "artifact.stage8.contract_gap_matrix",
+              "artifact.stage8.retry_precondition_plan"
+            ],
+            "downstream_consumers": [
+              "bounded_template_repair",
+              "stage_backtrack_request",
+              "stage_retry_request",
+              "stage7.verification"
+            ],
+            "produces": [
+              "artifact.stage8.bounded_repair_action_manifest",
+              "artifact.stage8.human_approval_request",
+              "artifact.stage8.retry_or_backtrack_decision",
+              "artifact.stage8.contamination_safe_handoff"
+            ]
+          },
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.human.boundary"
+          ],
+          "decision_authority": [
+            "May approve auto-allowed bounded actions within existing contracts.",
+            "May require human approval or a backtrack request.",
+            "May block Stage7 retry and artifact promotion.",
+            "May not approve human-owned numeric-policy or immutable-contract changes on behalf of the human."
+          ],
+          "family": "verification_repair",
+          "mission": "Serve as the final repair-stage authority for bounded action, approval, retry, and backtrack routing.",
+          "out_of_scope": [
+            "Performing the underlying code repair.",
+            "Running synthesis or implementation.",
+            "Clearing barriers or declaring verification pass without new checker evidence."
+          ],
+          "primary_responsibilities": [
+            "Reconcile specialist repair classifications.",
+            "Enforce human-agent and contamination boundaries.",
+            "Prevent overlapping or symptom-only repairs.",
+            "Define checker-complete handoff conditions."
+          ]
+        },
+        "title": "Reconcile repair scopes and enforce approval and trust barriers"
+      }
+    ]
+  },
+  "prompt_hash": "0b083a4d848a0338e6e505b60f5690d0c7de9b79fad3377871380a36c8cd52a3",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.team_decomposition.v0\",\"stage\":\"repair\",\"split_required\":true,\"reason\":\"The repair stage is not atomic: the rejected Stage7 transition contains three independently reviewable concerns\u2014causal evidence localization, DUT real-weight/template binding defects, and immutable verification-contract gaps. SACG memory truth also shows one open Stage7 retry and three active contamination barriers, so a separate repair-boundary auditor must reconcile specialist classifications before any retry, backtrack, or artifact promotion. Parallel specialists can classify these concerns without modifying contaminated artifacts; a group-1 evidence gate can then enforce human approval and trust boundaries.\",\"subtasks\":[{\"id\":\"repair.failure_localization_engineer\",\"agent\":\"failure_localization_specialist\",\"role\":\"verification root-cause engineer\",\"title\":\"Localize failed and dependency-blocked verification evidence\",\"objective\":\"Classify each failed or not-run Stage7 gate as a causal failure, propagated dependency block, or pending evidence item, and map the minimal causal slice to violated SACG constraints without treating contaminated Stage7 artifacts as validated inputs.\",\"constraints\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.tool.protocols\",\"constraint.cross_layer.input_consistency\"],\"artifact_focus\":[\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\",\"artifact.stage6.failed_node_repair_route_matrix\",\"artifact.stage6.failure_localization_schema\",\"candidate_stage_artifact.failures\",\"candidate_stage_artifact.pending_evidence\"],\"parallel_group\":0,\"handoff_required\":true,\"action_type\":\"failure_evidence_classification\",\"expected_artifacts\":[\"artifact.stage8.failure_classification_matrix\",\"artifact.stage8.causal_failure_slice\",\"artifact.stage8.dependency_blocked_evidence_map\"],\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"sacg_reference_check\",\"stage_artifact_trust_barrier_check\"],\"handoff_to\":[\"repair.repair_boundary_auditor\"],\"handoff_rule\":{\"consumes_policy\":\"Use contaminated Stage7 artifacts only as planning and debug evidence under contamination_barrier.0001 through contamination_barrier.0003; use Stage6 contracts as trusted baselines.\",\"ready_when\":[\"Every failed invariant is mapped to a failure class, violated constraint, causal root candidate, and bounded repair route.\",\"The ten scaffold/semantic-testbench failures are deduplicated where they share the same weight-binding precondition cause.\",\"Every not_run gate is labeled dependency_blocked or pending rather than misclassified as an independent implementation defect.\",\"The causal slice distinguishes contract or harness deficiencies from demonstrated RTL numeric mismatches.\"],\"on_reject\":\"Return the classification for evidence completion; do not authorize a Stage7 retry, RTL edit, or removal of any contamination barrier.\",\"requires_planned_capability\":false},\"role_profile\":{\"family\":\"verification_repair\",\"capabilities\":[\"classify evidence\",\"map failures to violated constraints\",\"localize causal slices\",\"separate root failures from dependency-blocked gates\"],\"constraint_focus\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.tool.protocols\"],\"mission\":\"Produce a checker-grounded causal classification of the rejected Stage7 evidence.\",\"primary_responsibilities\":[\"Trace failed gates to their shared preconditions.\",\"Separate evidence gaps from proven design defects.\",\"Bind each proposed route to the canonical gate DAG and SACG constraint IDs.\",\"Preserve active contamination barriers during analysis.\"],\"decision_authority\":[\"May classify evidence and nominate a minimal causal slice.\",\"May reject symptom-level repair proposals lacking causal evidence.\",\"May not approve contract changes, code edits, retries, or artifact promotion.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.failed_node_repair_route_matrix\",\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\"],\"produces\":[\"artifact.stage8.failure_classification_matrix\",\"artifact.stage8.causal_failure_slice\",\"artifact.stage8.dependency_blocked_evidence_map\"],\"downstream_consumers\":[\"repair.repair_boundary_auditor\",\"failure_slice_localization\",\"causal_repair_context_pack\"],\"accepted_by\":[\"failure_localization_check\",\"causal_repair_context_check\",\"sacg_reference_check\",\"stage_artifact_trust_barrier_check\"]},\"out_of_scope\":[\"Editing generated RTL or testbenches.\",\"Choosing numeric tolerances.\",\"Claiming that dependency-blocked tools passed.\"]},\"role_assignment\":{\"professional_family\":\"verification_repair\",\"mission\":\"Own causal localization and evidence classification for the rejected operator-leaf closure.\",\"primary_responsibilities\":[\"Review checker reports and tool return codes.\",\"Map each failure to constraints and repair-route matrix entries.\",\"Identify the smallest repairable boundary.\",\"Package evidence for the boundary auditor.\"],\"decision_authority\":[\"Classify root, propagated, pending, and inconclusive evidence.\",\"Block unsupported RTL-root-cause assertions.\",\"Escalate incomplete gate contracts to the boundary auditor.\"],\"collaboration_interfaces\":{\"consumes\":{\"artifact_focus\":[\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.tool.protocols\"]},\"produces\":[\"artifact.stage8.failure_classification_matrix\",\"artifact.stage8.causal_failure_slice\",\"artifact.stage8.dependency_blocked_evidence_map\"],\"handoff_to\":[\"repair.repair_boundary_auditor\"],\"tool_consumers\":[\"failure_slice_localization\",\"causal_repair_context_pack\"],\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"sacg_reference_check\",\"stage_artifact_trust_barrier_check\"]},\"out_of_scope\":[\"Executing real tools.\",\"Modifying immutable verification identity.\",\"Clearing the open retry request.\"]}},{\"id\":\"repair.weight_binding_engineer\",\"agent\":\"numeric_template_binding_specialist\",\"role\":\"numeric and template binding engineer\",\"title\":\"Bound the DUT real-weight binding and semantic harness repair\",\"objective\":\"Determine which observed weight-manifest, immutable-hash, accelerator-scope, tensor-coverage, fallback, harness, and consumption-proof defects can be repaired through existing template-constrained code-generation bindings, while explicitly excluding numeric-policy invention and free-form RTL generation.\",\"constraints\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.codegen.package\",\"constraint.codegen.contract_check\",\"constraint.case.adapter\"],\"artifact_focus\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.case_adapter\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.codegen_contract_check\",\"generated/memory/dut_weight_binding_manifest.json\",\"verification/semantic_testbench/semantic_testbench_manifest.json\"],\"parallel_group\":0,\"handoff_required\":true,\"action_type\":\"bounded_template_repair_classification\",\"expected_artifacts\":[\"artifact.stage8.weight_binding_repair_scope\",\"artifact.stage8.template_binding_delta_plan\",\"artifact.stage8.semantic_harness_binding_requirements\",\"artifact.stage8.immutable_hash_reconciliation_plan\"],\"acceptance_checkers\":[\"template_binding_static_check\",\"parameter_binding_static_check\",\"codegen_contract_check\",\"artifact_hash_check\",\"case_real_weight_artifacts\",\"case_semantic_testbench\"],\"handoff_to\":[\"repair.repair_boundary_auditor\"],\"handoff_rule\":{\"consumes_policy\":\"Inspect current generated and verification manifests as evidence; do not overwrite artifacts under active contamination barriers and do not silently substitute checkpoint or reference identities.\",\"ready_when\":[\"Each proposed change names an existing trusted template, parameter binding, generated manifest field, or harness contract boundary.\",\"The plan covers accelerator_scope, checkpoint and reference hashes, all required current-scope tensor hashes, fallback prohibition, stage harness availability, and DUT weight-consumption proof.\",\"Any absent explicit atol, rtol, or max_mismatch_fraction is classified as an upstream numeric-policy or immutable-contract gap rather than filled with an inferred value.\",\"No proposed action changes model semantics or introduces a case-specific core not supplied by the adapter.\"],\"on_reject\":\"Classify the unresolved item as approval-required backtrack or unsupported repair; do not generate free-form RTL or rerun semantic verification.\",\"requires_planned_capability\":false},\"role_profile\":{\"family\":\"numeric_template\",\"capabilities\":[\"bind trusted templates\",\"audit numeric policy\",\"check parameter bindings\",\"audit immutable artifact hashes\"],\"constraint_focus\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\"],\"mission\":\"Define the smallest template-constrained repair scope for real-weight and semantic-harness binding.\",\"primary_responsibilities\":[\"Audit DUT weight-binding manifest fields against Stage6 verification identities.\",\"Identify trusted template and parameter-binding deltas.\",\"Specify tensor coverage and DUT consumption-proof requirements.\",\"Separate repairable bindings from approval-required numeric-policy changes.\"],\"decision_authority\":[\"May propose bounded_template_repair actions against existing templates.\",\"May reject default, identity, or synthetic-weight fallbacks.\",\"May not choose missing tolerances or alter immutable source identities.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.generated_code_package\",\"artifact.stage6.immutable_semantic_identity_contract\"],\"produces\":[\"artifact.stage8.weight_binding_repair_scope\",\"artifact.stage8.template_binding_delta_plan\",\"artifact.stage8.semantic_harness_binding_requirements\",\"artifact.stage8.immutable_hash_reconciliation_plan\"],\"downstream_consumers\":[\"repair.repair_boundary_auditor\",\"bounded_template_repair\",\"case_weight_manifest_generate\",\"case_tb_scaffold_generate\"],\"accepted_by\":[\"template_binding_static_check\",\"parameter_binding_static_check\",\"codegen_contract_check\",\"artifact_hash_check\",\"case_real_weight_artifacts\",\"case_semantic_testbench\"]},\"out_of_scope\":[\"Free-form RTL generation.\",\"Inventing numeric tolerances.\",\"Changing the target model, checkpoint, or accelerator acceptance scope without approval.\"]},\"role_assignment\":{\"professional_family\":\"numeric_template\",\"mission\":\"Own the bounded code-generation and template-binding classification for the shared semantic-verification blocker.\",\"primary_responsibilities\":[\"Compare generated bindings with immutable Stage6 identities.\",\"List exact template and manifest deltas.\",\"Mark policy-level gaps that require backtrack or approval.\",\"Provide checker-ready post-repair acceptance criteria.\"],\"decision_authority\":[\"Classify a binding repair as template-bounded or out of bounds.\",\"Require hash and tensor-coverage evidence before retry.\",\"Block legacy or default-weight fallback paths.\"],\"collaboration_interfaces\":{\"consumes\":{\"artifact_focus\":[\"artifact.stage4.parameter_binding\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"generated/memory/dut_weight_binding_manifest.json\"],\"constraints\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\"]},\"produces\":[\"artifact.stage8.weight_binding_repair_scope\",\"artifact.stage8.template_binding_delta_plan\",\"artifact.stage8.semantic_harness_binding_requirements\",\"artifact.stage8.immutable_hash_reconciliation_plan\"],\"handoff_to\":[\"repair.repair_boundary_auditor\"],\"tool_consumers\":[\"bounded_template_repair\",\"case_weight_manifest_generate\",\"case_tb_scaffold_generate\"],\"acceptance_checkers\":[\"template_binding_static_check\",\"parameter_binding_static_check\",\"codegen_contract_check\",\"artifact_hash_check\",\"case_real_weight_artifacts\",\"case_semantic_testbench\"]},\"out_of_scope\":[\"Running the Stage7 retry.\",\"Approving numeric-policy changes.\",\"Promoting repaired artifacts.\"]}},{\"id\":\"repair.verification_contract_engineer\",\"agent\":\"verification_contract_specialist\",\"role\":\"verification contract and retry-routing engineer\",\"title\":\"Classify contract repair, retry, and backtrack requirements\",\"objective\":\"Audit whether the current Stage6 verification contract and tool protocol can legally accept the required real-weight semantic evidence, and classify each deficiency as a same-stage bounded repair, a Stage6 backtrack request, or a human-approval-required policy change.\",\"constraints\":[\"constraint.verification.plan\",\"constraint.verification.artifacts\",\"constraint.verification.hierarchy\",\"constraint.tool.protocols\",\"constraint.human.boundary\",\"constraint.numeric.policy\"],\"artifact_focus\":[\"artifact.stage6.verification_plan\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.canonical_gate_dag_refinement\",\"artifact.stage6.immutable_semantic_identity_contract\",\"artifact.stage6.canonical_functional_sim_binding_contract\",\"artifact.stage6.failed_node_repair_route_matrix\",\"artifact.stage6.llm_action_audit\",\"retry_request.0001\"],\"parallel_group\":0,\"handoff_required\":true,\"action_type\":\"verification_contract_and_backtrack_classification\",\"expected_artifacts\":[\"artifact.stage8.contract_gap_matrix\",\"artifact.stage8.retry_precondition_plan\",\"artifact.stage8.proposed_backtrack_request\",\"artifact.stage8.approval_required_change_set\"],\"acceptance_checkers\":[\"verification_artifact_contract_check\",\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"stage_retry_request_check\",\"stage_backtrack_request_check\"],\"handoff_to\":[\"repair.repair_boundary_auditor\"],\"handoff_rule\":{\"consumes_policy\":\"Treat retry_request.0001 as active and authoritative; do not create a duplicate retry. There is currently no open backtrack request, so any backtrack is only a proposal until accepted.\",\"ready_when\":[\"Every contract gap is classified as local repair, Stage6 contract backtrack, upstream numeric-policy backtrack, or no-action dependency block.\",\"The missing explicit numeric comparison policy is not fabricated and is routed through the human boundary where required.\",\"The proposed retry preconditions require semantic-testbench readiness, valid DUT binding, immutable hash agreement, and completion of selected prerequisite gates.\",\"Any proposed backtrack cites the exact artifacts and constraints requiring revision.\"],\"on_reject\":\"Keep retry_request.0001 blocked and submit no contract mutation; unresolved approval items remain explicit blockers.\",\"requires_planned_capability\":false},\"role_profile\":{\"family\":\"verification_repair\",\"capabilities\":[\"audit verification contracts\",\"classify evidence\",\"map failures to violated constraints\",\"route retry and backtrack requests\"],\"constraint_focus\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.human.boundary\"],\"mission\":\"Determine the legal recovery route for contract and policy deficiencies before a Stage7 rerun.\",\"primary_responsibilities\":[\"Audit Stage6 gate and evidence contracts.\",\"Check tool-protocol completeness for semantic verification.\",\"Specify retry preconditions.\",\"Identify approval-required backtracks.\"],\"decision_authority\":[\"May recommend bounded repair, retry hold, or backtrack request.\",\"May reject a retry whose immutable evidence preconditions are unsatisfied.\",\"May not approve a numeric-policy or immutable-contract change.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.immutable_semantic_identity_contract\",\"artifact.stage6.canonical_functional_sim_binding_contract\",\"retry_request.0001\"],\"produces\":[\"artifact.stage8.contract_gap_matrix\",\"artifact.stage8.retry_precondition_plan\",\"artifact.stage8.proposed_backtrack_request\",\"artifact.stage8.approval_required_change_set\"],\"downstream_consumers\":[\"repair.repair_boundary_auditor\",\"stage_backtrack_request\",\"stage_retry_request\"],\"accepted_by\":[\"verification_artifact_contract_check\",\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"stage_retry_request_check\",\"stage_backtrack_request_check\"]},\"out_of_scope\":[\"Implementing loader or harness changes.\",\"Selecting tolerance values.\",\"Closing the retry request before checker evidence passes.\"]},\"role_assignment\":{\"professional_family\":\"verification_repair\",\"mission\":\"Own contract-level recovery routing for the rejected Stage7 transition.\",\"primary_responsibilities\":[\"Compare failed evidence with immutable verification requirements.\",\"Determine whether existing tools and contracts support the repair.\",\"Draft a bounded backtrack request where policy or contract changes are unavoidable.\",\"Prevent premature rerun or promotion.\"],\"decision_authority\":[\"Classify contract deficiencies and recommend routing.\",\"Hold the active retry on unmet prerequisites.\",\"Escalate approval-required changes to the boundary auditor.\"],\"collaboration_interfaces\":{\"consumes\":{\"artifact_focus\":[\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"artifact.stage6.failed_node_repair_route_matrix\",\"retry_request.0001\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.tool.protocols\",\"constraint.human.boundary\"]},\"produces\":[\"artifact.stage8.contract_gap_matrix\",\"artifact.stage8.retry_precondition_plan\",\"artifact.stage8.proposed_backtrack_request\",\"artifact.stage8.approval_required_change_set\"],\"handoff_to\":[\"repair.repair_boundary_auditor\"],\"tool_consumers\":[\"stage_backtrack_request\",\"stage_retry_request\"],\"acceptance_checkers\":[\"verification_artifact_contract_check\",\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"stage_retry_request_check\",\"stage_backtrack_request_check\"]},\"out_of_scope\":[\"Changing trusted templates.\",\"Executing functional simulation.\",\"Clearing contamination barriers.\"]}},{\"id\":\"repair.repair_boundary_auditor\",\"agent\":\"repair_evidence_gate\",\"role\":\"repair boundary and evidence-gate lead\",\"title\":\"Reconcile repair scopes and enforce approval and trust barriers\",\"objective\":\"Reconcile the causal, template-binding, and verification-contract classifications into one non-overlapping repair decision that labels each action auto-allowed, approval-required, backtrack-required, retry-only, or forbidden while preserving active SACG contamination barriers.\",\"constraints\":[\"constraint.human.boundary\",\"constraint.verification.plan\",\"constraint.tool.protocols\",\"constraint.codegen.contract_check\",\"constraint.numeric.policy\"],\"artifact_focus\":[\"artifact.stage8.failure_classification_matrix\",\"artifact.stage8.causal_failure_slice\",\"artifact.stage8.weight_binding_repair_scope\",\"artifact.stage8.template_binding_delta_plan\",\"artifact.stage8.contract_gap_matrix\",\"artifact.stage8.retry_precondition_plan\",\"artifact.stage8.proposed_backtrack_request\",\"artifact.stage8.approval_required_change_set\",\"retry_request.0001\",\"contamination_barrier.0001\",\"contamination_barrier.0002\",\"contamination_barrier.0003\"],\"parallel_group\":1,\"handoff_required\":true,\"action_type\":\"repair_boundary_evidence_gate\",\"expected_artifacts\":[\"artifact.stage8.bounded_repair_action_manifest\",\"artifact.stage8.human_approval_request\",\"artifact.stage8.retry_or_backtrack_decision\",\"artifact.stage8.contamination_safe_handoff\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"human_boundary_check\",\"sacg_static_check\",\"stage_retry_request_check\",\"stage_backtrack_request_check\",\"stage_artifact_trust_barrier_check\",\"verification_action_audit_check\"],\"handoff_to\":[\"bounded_template_repair\",\"stage_backtrack_request\",\"stage7.verification\"],\"handoff_rule\":{\"consumes_policy\":\"Accept only specialist outputs that passed their declared checkers. Preserve all three active contamination barriers until a new checker-verified transition explicitly supersedes them.\",\"ready_when\":[\"Every action cites causal evidence, affected artifacts, violated constraints, allowed edit boundaries, required checker reruns, and rollback behavior.\",\"Template-bounded loader, manifest, or harness actions are separated from numeric-policy and immutable-contract changes.\",\"Any missing tolerance or semantic identity change is routed to explicit human approval and backtrack rather than silently repaired.\",\"The existing Stage7 retry is released only after all declared repair and contract preconditions pass.\",\"No contaminated Stage7 artifact is handed off as a validated design input.\"],\"on_accept\":\"Issue only the allowed bounded repair actions; if approval or contract revision is required, materialize the proposed stage_backtrack_request before any Stage7 retry. After approved repair, route only targeted prerequisite checkers and selected Stage7 gates.\",\"on_reject\":\"Keep retry_request.0001 open and blocked, preserve contamination barriers, and return conflicting or unsupported actions to the responsible specialist.\",\"requires_planned_capability\":false},\"role_profile\":{\"family\":\"verification_repair\",\"capabilities\":[\"classify evidence\",\"enforce repair boundaries\",\"audit human approval requirements\",\"block unsupported pass claims\"],\"constraint_focus\":[\"constraint.verification.plan\",\"constraint.human.boundary\"],\"mission\":\"Serve as the final repair-stage authority for bounded action, approval, retry, and backtrack routing.\",\"primary_responsibilities\":[\"Reconcile specialist repair classifications.\",\"Enforce human-agent and contamination boundaries.\",\"Prevent overlapping or symptom-only repairs.\",\"Define checker-complete handoff conditions.\"],\"decision_authority\":[\"May approve auto-allowed bounded actions within existing contracts.\",\"May require human approval or a backtrack request.\",\"May block Stage7 retry and artifact promotion.\",\"May not approve human-owned numeric-policy or immutable-contract changes on behalf of the human.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.stage8.failure_classification_matrix\",\"artifact.stage8.weight_binding_repair_scope\",\"artifact.stage8.contract_gap_matrix\",\"artifact.stage8.retry_precondition_plan\"],\"produces\":[\"artifact.stage8.bounded_repair_action_manifest\",\"artifact.stage8.human_approval_request\",\"artifact.stage8.retry_or_backtrack_decision\",\"artifact.stage8.contamination_safe_handoff\"],\"downstream_consumers\":[\"bounded_template_repair\",\"stage_backtrack_request\",\"stage_retry_request\",\"stage7.verification\"],\"accepted_by\":[\"repair_boundary_check\",\"human_boundary_check\",\"sacg_static_check\",\"stage_retry_request_check\",\"stage_backtrack_request_check\",\"stage_artifact_trust_barrier_check\",\"verification_action_audit_check\"]},\"out_of_scope\":[\"Performing the underlying code repair.\",\"Running synthesis or implementation.\",\"Clearing barriers or declaring verification pass without new checker evidence.\"]},\"role_assignment\":{\"professional_family\":\"verification_repair\",\"mission\":\"Aggregate specialist evidence into the authoritative, human-boundary-compliant repair disposition.\",\"primary_responsibilities\":[\"Validate causal linkage and non-overlapping scope.\",\"Assign auto-allowed, approval-required, backtrack-required, retry-only, or forbidden status.\",\"Materialize safe downstream routing.\",\"Keep contaminated evidence quarantined.\"],\"decision_authority\":[\"Authorize checker-bounded repair within existing templates and contracts.\",\"Block or escalate all policy and immutable-identity changes.\",\"Release the existing retry only when prerequisites are checker-verified.\"],\"collaboration_interfaces\":{\"consumes\":{\"artifact_focus\":[\"artifact.stage8.failure_classification_matrix\",\"artifact.stage8.weight_binding_repair_scope\",\"artifact.stage8.contract_gap_matrix\"],\"constraints\":[\"constraint.human.boundary\",\"constraint.verification.plan\",\"constraint.numeric.policy\"]},\"produces\":[\"artifact.stage8.bounded_repair_action_manifest\",\"artifact.stage8.human_approval_request\",\"artifact.stage8.retry_or_backtrack_decision\",\"artifact.stage8.contamination_safe_handoff\"],\"handoff_to\":[\"bounded_template_repair\",\"stage_backtrack_request\",\"stage7.verification\"],\"tool_consumers\":[\"repair_boundary_check\",\"stage_backtrack_request\",\"stage_retry_request\",\"targeted_failed_checker_rerun\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"human_boundary_check\",\"sacg_static_check\",\"stage_retry_request_check\",\"stage_backtrack_request_check\",\"stage_artifact_trust_barrier_check\",\"verification_action_audit_check\"]},\"out_of_scope\":[\"Inventing missing verification requirements.\",\"Making unapproved edits.\",\"Treating prior rejected outputs as validated design artifacts.\"]}}]}",
+  "reasoning_effort": "medium",
+  "schema_version": "spatialaccagent.team_decomposer_record.v0",
+  "stream": true,
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

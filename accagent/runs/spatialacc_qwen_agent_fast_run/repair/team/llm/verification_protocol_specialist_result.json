@@ -1,0 +1,279 @@
+{
+  "agent": "verification_protocol_specialist",
+  "duration_sec": 210.43917546399462,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "verification_protocol_specialist",
+    "approval_required_for": [
+      "Any change to architecture, pipeline structure, memory layout, numeric policy, major templates, or RTL/parameter bindings; those changes are outside this verification-protocol role.",
+      "Any change to human approval policy or any attempt to waive/loosen real-tool evidence, golden comparison, or tolerance requirements.",
+      "Any claim or promotion beyond operator-leaf closure, including single-transformer-layer, multilayer pipeline, AXI/DDR, Vivado synthesis/implementation, bitstream, app-shell, or board runtime gates, before corresponding real-tool/checker evidence passes.",
+      "Any Stage6 backtrack that broadens verification execution scope rather than repairing only gate-DAG/tool-protocol/artifact-contract completeness."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "verification_action_audit_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "gate_protocol_reconciliation",
+        "consumes": [
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.dependency_blocked_manifest_schema",
+          "artifact.stage7.verification_result",
+          "artifact.stage7.real_tool_results",
+          "candidate_stage_artifact.note",
+          "candidate_stage_artifact.pending_evidence"
+        ],
+        "id": "repair.gate_dag_reconciliation.audit",
+        "on_failure": "Keep Stage7 contamination barriers active and route to repair.stage6.contract_backtrack_request if missing gate-DAG edges, artifact paths, artifact hashes, or supersession rules are confirmed.",
+        "produces": [
+          "artifact.repair.gate_dag_reconciliation_report",
+          "artifact.repair.blocked_scope_statement"
+        ],
+        "rationale": "Audit the Stage6 verification plan, Stage7 gate selector, artifact contract, dependency-blocked schema, and rejected Stage7 evidence to determine whether the mismatch is stale evidence ingestion, gate-DAG ordering, classifier aggregation, or incomplete Stage6 contract coverage. This action only classifies protocol correctness and cannot claim hardware pass.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "verification_action_audit"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "verification_artifact_contract_check",
+          "verification_action_audit_check",
+          "stage_retry_request_check",
+          "stage_artifact_trust_barrier_check",
+          "human_boundary_check"
+        ],
+        "action_type": "promotion_condition_patch_plan",
+        "consumes": [
+          "artifact.repair.gate_dag_reconciliation_report",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.dependency_blocked_manifest_schema",
+          "artifact.stage7.verification_result",
+          "artifact.stage7.real_tool_results"
+        ],
+        "id": "repair.promotion_condition_patch_plan.operator_leaf",
+        "on_failure": "Do not run a promotion retry. Keep the open Stage7 retry blocked and escalate to Stage6 backtrack if the promotion condition cannot be expressed under the existing Stage6 contracts.",
+        "produces": [
+          "artifact.repair.promotion_condition_patch_plan",
+          "artifact.repair.retry_or_backtrack_decision"
+        ],
+        "rationale": "Define a bounded patch for the promotion decision: operator-leaf promotion may be considered only when required real-weight artifacts, stage-leaf static evidence, leaf functional evidence, and leaf golden-compare evidence are all accepted under the Stage6 artifact contract, stale failed attempts are explicitly superseded by accepted reruns, active barriers are cleared by checkers, and higher scopes remain deferred rather than passed.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "tool_protocol_check",
+          "verification_artifact_contract_check",
+          "verification_action_audit",
+          "stage_retry_request",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "targeted_failed_checker_rerun",
+          "required_real_tool_evidence_check",
+          "real_tool.case_real_weight_artifacts",
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "real_tool.case_leaf_functional",
+          "real_tool.case_leaf_golden_compare",
+          "verification_action_audit_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "targeted_failed_checker_rerun",
+        "consumes": [
+          "artifact.repair.gate_dag_reconciliation_report",
+          "artifact.repair.promotion_condition_patch_plan",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage6.dependency_blocked_manifest_schema"
+        ],
+        "id": "repair.stage7.targeted_failed_checker_rerun_operator_leaf",
+        "on_failure": "If evidence is missing or unbound, keep Stage7 rejected and backtrack to Stage6 contract repair. If real-tool evidence shows liveness, value, order, or protocol failure, localize the earliest operator/leaf causal boundary before any code repair and do not promote to higher layers.",
+        "produces": [
+          "artifact.stage7.verification_result.retry_candidate",
+          "artifact.stage7.real_tool_results.retry_candidate",
+          "artifact.repair.retry_or_backtrack_decision"
+        ],
+        "rationale": "After the reconciliation report and promotion-condition patch are accepted, rerun only the failed/order-sensitive operator-leaf gates with path/hash-bound evidence. This retry must re-evaluate the real-weight artifacts, stage-leaf static evidence, boundary contract, leaf functional evidence, and leaf golden comparison; it must not run or promote single-layer, multilayer, AXI/DDR, synthesis, bitstream, or board-runtime gates.",
+        "requires_approval": false,
+        "stage": "stage7.verification",
+        "tool_roles": [
+          "targeted_failed_checker_rerun",
+          "required_real_tool_evidence_check",
+          "real_tool_evidence_check",
+          "case_real_weight_artifacts",
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_backtrack_request_check",
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "verification_action_audit_check"
+        ],
+        "action_type": "stage_backtrack_request",
+        "consumes": [
+          "artifact.repair.gate_dag_reconciliation_report",
+          "artifact.repair.promotion_condition_patch_plan",
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.dependency_blocked_manifest_schema",
+          "artifact.stage7.verification_result"
+        ],
+        "id": "repair.stage6.contract_backtrack_request",
+        "on_failure": "Keep the Stage7 retry open and contaminated artifacts blocked; do not consume rejected Stage7 real_tool_results as validated design inputs.",
+        "produces": [
+          "stage_backtrack_request.stage6.verification_artifacts",
+          "artifact.repair.retry_or_backtrack_decision"
+        ],
+        "rationale": "If the reconciliation audit shows that the existing Stage6 verification plan, gate selector, artifact contract, or dependency-blocked schema cannot express the required producer-consumer ordering and evidence supersession rules, request a bounded Stage6 backtrack. This backtrack is limited to verification contracts and must not generate missing testbenches, change RTL/templates, or alter architecture, memory layout, numeric policy, or human approval policy.",
+        "requires_approval": false,
+        "stage": "stage6.verification_artifacts",
+        "tool_roles": [
+          "stage_backtrack_request",
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_artifact_trust_barrier_check",
+          "sacg_memory_check",
+          "stage_retry_request_check",
+          "human_boundary_check"
+        ],
+        "action_type": "stage_artifact_trust_barrier",
+        "consumes": [
+          "artifact.stage7.verification_result",
+          "artifact.stage7.real_tool_results",
+          "artifact.stage7.debug_closure",
+          "artifact.repair.gate_dag_reconciliation_report"
+        ],
+        "id": "repair.stage7.trust_barrier_and_scope_guard",
+        "on_failure": "Stop team aggregation and hand off to repair.boundary_approval_auditor; no downstream stage may consume the rejected Stage7 artifacts as validated evidence.",
+        "produces": [
+          "artifact.repair.blocked_scope_statement",
+          "sacg_memory_update.stage7_reconciliation_barrier"
+        ],
+        "rationale": "Maintain current SACG contamination barriers and encode a blocked-scope statement while reconciliation is unresolved. Rejected Stage7 artifacts may be used only as planning/debug evidence, not as validated inputs for downstream stages.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "stage_artifact_trust_barrier",
+          "sacg_memory_update",
+          "stage_retry_request",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "Stage7 is currently rejected: the state summary lists failed invariants for case_functional_sim_precondition_check and verification_agent_decision_check, and the Stage7 outcome is needs_repair for execution_scope=operator_leaf_closure.",
+      "The precondition failure reports missing real-weight manifests, packed-weight manifests, real-input manifest, input/weight DDR images, and missing qwen_hierarchy reports for case_real_weight_artifacts and case_stage_leaf_static. It also reports dependency-blocked leaf functional/golden compare gates and later single-layer/board gates as pending later verification scope.",
+      "The decision-check failure explicitly identifies the mismatch: selected operator-leaf real-tool gates appear to pass while the top-level verification_result remains failed because an earlier precondition checker still sees missing artifacts/reports that later tools appear to materialize.",
+      "Current SACG truth in the supplied state summary has three active contamination barriers on artifact.stage7.verification_result, artifact.stage7.real_tool_results, and artifact.stage7.debug_closure, plus one open Stage7 retry request. There are no open Stage6 backtrack requests yet.",
+      "The diagnostic text inside the rejected Stage7 result cannot clear current barriers. Per the supplied SACG-memory-truth policy, only active barriers and open retry/backtrack requests in the current truth set determine blockers.",
+      "The candidate artifact note says failing checkers are classified and not_run real tools are evidence gaps, not automatic repair failures; this supports bounded reconciliation but does not promote any Stage7 artifact while trust barriers remain active.",
+      "The likely repair class is checker-order/evidence-ingestion/promotion-contract repair: case_real_weight_artifacts and case_stage_leaf_static must be verified as producer gates with path/hash-bound outputs before case_leaf_functional, case_leaf_golden_compare, and any functional-simulation precondition can be treated as satisfied.",
+      "No evidence in the supplied summary justifies promotion for single-transformer-layer, multilayer pipeline, AXI/DDR, Vivado synthesis/implementation, bitstream, app-shell, or board runtime gates."
+    ],
+    "proposed_actions": [
+      "Produce artifact.repair.gate_dag_reconciliation_report comparing selected Stage7 gate ordering against the failures for case_functional_sim_precondition_check, case_real_weight_artifacts, case_stage_leaf_static, case_leaf_functional, and case_leaf_golden_compare.",
+      "Produce artifact.repair.blocked_scope_statement that permits only operator-leaf reconciliation and explicitly blocks single-layer, multilayer, AXI/DDR, synthesis, bitstream, app-shell, and board-runtime claims.",
+      "If the audit proves Stage6 contracts are complete and later real-tool evidence is path/hash-bound, issue artifact.repair.promotion_condition_patch_plan and rerun the targeted failed/order-sensitive Stage7 checker set as a retry candidate.",
+      "If the audit finds missing producer-consumer edges, missing required artifact contracts, ambiguous path aliases, or no valid supersession rule for stale failed attempts, issue a Stage6 backtrack request to repair the verification plan, gate selector contract, artifact contract, and dependency-blocked schema.",
+      "Hand off the reconciliation report, patch plan, retry/backtrack decision, and blocked-scope statement to repair.boundary_approval_auditor for boundary review before any aggregate promotion decision."
+    ],
+    "risks": [
+      "A stale failed precondition result may be aggregated with later successful leaf-gate evidence unless attempt IDs, timestamps, artifact paths, and hashes are bound in the tool protocol.",
+      "A later apparent pass may be untrusted if it consumed artifacts outside artifact.stage6.verification_artifact_contract or outside the case_adapter-approved paths.",
+      "If case_real_weight_artifacts or case_stage_leaf_static are not explicit predecessors in the Stage6 gate selector contract, leaf functional/golden comparison can appear to pass without a complete dependency proof.",
+      "Treating not_run or deferred single-layer/board gates as pass would violate the hierarchical verification boundary and contaminate downstream implementation or deployment stages.",
+      "Cross-layer consistency remains at risk across model weights, numeric policy, data order, DDR image layout, runtime memory map, and implementation evidence until real-weight artifacts are hash-bound and consumed by the selected leaf gates.",
+      "Any attempt to fix this by changing golden outputs, loosening numeric tolerances, bypassing real-tool gates, or modifying RTL/template/parameter bindings would exceed this role's authority and violate the supplied constraints."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage6.verification_plan",
+        "artifact.stage6.stage7_gate_selector_contract",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.dependency_blocked_manifest_schema",
+        "artifact.stage7.verification_result",
+        "artifact.stage7.real_tool_results",
+        "candidate_stage_artifact.note",
+        "candidate_stage_artifact.pending_evidence",
+        "artifact.repair.gate_dag_reconciliation_report",
+        "artifact.repair.promotion_condition_patch_plan",
+        "artifact.repair.retry_or_backtrack_decision",
+        "artifact.repair.blocked_scope_statement"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.verification.hierarchy",
+        "constraint.verification.artifacts",
+        "constraint.tool.protocols",
+        "constraint.case.adapter",
+        "constraint.human.boundary"
+      ],
+      "edges": [
+        "artifact.stage6.verification_plan -> artifact.stage6.stage7_gate_selector_contract -> selected Stage7 operator-leaf gates",
+        "artifact.stage6.verification_artifact_contract -> required real-weight/input/stage-leaf evidence -> artifact.stage7.real_tool_results",
+        "artifact.stage6.dependency_blocked_manifest_schema -> dependency status for case_leaf_functional and case_leaf_golden_compare",
+        "artifact.stage7.real_tool_results -> artifact.stage7.verification_result top-level promotion decision",
+        "failed artifact.stage7.verification_result -> sacg_memory_truth active contamination barriers and open Stage7 retry request"
+      ],
+      "nodes": [
+        "stage7.execution_scope.operator_leaf_closure",
+        "case_functional_sim_precondition_check",
+        "case_real_weight_artifacts",
+        "case_stage_leaf_static",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "verification_agent_decision_check",
+        "single_transformer_layer_and_higher_scopes_deferred"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair.verification_protocol_specialist.v0",
+    "stage": "repair",
+    "status": "blocked_for_gate_protocol_reconciliation",
+    "summary": "The supplied evidence describes a Stage7 operator-leaf closure failure caused by inconsistent gate ordering/evidence ingestion: later selected operator-leaf real-tool gates appear to pass, but the top-level verification_result remains failed because the functional-simulation precondition checker reports missing manifests and missing real_weight/stage_leaf_static reports. This is not a hardware pass and not yet an RTL repair. The bounded decision is: first audit and repair the gate-DAG/tool-protocol promotion contract; if the Stage6 contracts are complete, perform a targeted Stage7 rerun of the failed/order-sensitive checker set; if producer-consumer/path/hash contracts are incomplete, issue a Stage6 verification-artifact backtrack. Higher scopes remain blocked."
+  },
+  "prompt_bytes": 48997,
+  "prompt_hash": "23a4d29700ae5a046aece2eb5c0da0123dc684f122b8fd373a7f9e5b7a07b01b",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.repair.verification_protocol_specialist.v0\",\"agent\":\"verification_protocol_specialist\",\"stage\":\"repair\",\"status\":\"blocked_for_gate_protocol_reconciliation\",\"summary\":\"The supplied evidence describes a Stage7 operator-leaf closure failure caused by inconsistent gate ordering/evidence ingestion: later selected operator-leaf real-tool gates appear to pass, but the top-level verification_result remains failed because the functional-simulation precondition checker reports missing manifests and missing real_weight/stage_leaf_static reports. This is not a hardware pass and not yet an RTL repair. The bounded decision is: first audit and repair the gate-DAG/tool-protocol promotion contract; if the Stage6 contracts are complete, perform a targeted Stage7 rerun of the failed/order-sensitive checker set; if producer-consumer/path/hash contracts are incomplete, issue a Stage6 verification-artifact backtrack. Higher scopes remain blocked.\",\"sacg_focus\":{\"nodes\":[\"stage7.execution_scope.operator_leaf_closure\",\"case_functional_sim_precondition_check\",\"case_real_weight_artifacts\",\"case_stage_leaf_static\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"verification_agent_decision_check\",\"single_transformer_layer_and_higher_scopes_deferred\"],\"edges\":[\"artifact.stage6.verification_plan -> artifact.stage6.stage7_gate_selector_contract -> selected Stage7 operator-leaf gates\",\"artifact.stage6.verification_artifact_contract -> required real-weight/input/stage-leaf evidence -> artifact.stage7.real_tool_results\",\"artifact.stage6.dependency_blocked_manifest_schema -> dependency status for case_leaf_functional and case_leaf_golden_compare\",\"artifact.stage7.real_tool_results -> artifact.stage7.verification_result top-level promotion decision\",\"failed artifact.stage7.verification_result -> sacg_memory_truth active contamination barriers and open Stage7 retry request\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.verification.artifacts\",\"constraint.tool.protocols\",\"constraint.case.adapter\",\"constraint.human.boundary\"],\"artifacts\":[\"artifact.stage6.verification_plan\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.dependency_blocked_manifest_schema\",\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"candidate_stage_artifact.note\",\"candidate_stage_artifact.pending_evidence\",\"artifact.repair.gate_dag_reconciliation_report\",\"artifact.repair.promotion_condition_patch_plan\",\"artifact.repair.retry_or_backtrack_decision\",\"artifact.repair.blocked_scope_statement\"]},\"observations\":[\"Stage7 is currently rejected: the state summary lists failed invariants for case_functional_sim_precondition_check and verification_agent_decision_check, and the Stage7 outcome is needs_repair for execution_scope=operator_leaf_closure.\",\"The precondition failure reports missing real-weight manifests, packed-weight manifests, real-input manifest, input/weight DDR images, and missing qwen_hierarchy reports for case_real_weight_artifacts and case_stage_leaf_static. It also reports dependency-blocked leaf functional/golden compare gates and later single-layer/board gates as pending later verification scope.\",\"The decision-check failure explicitly identifies the mismatch: selected operator-leaf real-tool gates appear to pass while the top-level verification_result remains failed because an earlier precondition checker still sees missing artifacts/reports that later tools appear to materialize.\",\"Current SACG truth in the supplied state summary has three active contamination barriers on artifact.stage7.verification_result, artifact.stage7.real_tool_results, and artifact.stage7.debug_closure, plus one open Stage7 retry request. There are no open Stage6 backtrack requests yet.\",\"The diagnostic text inside the rejected Stage7 result cannot clear current barriers. Per the supplied SACG-memory-truth policy, only active barriers and open retry/backtrack requests in the current truth set determine blockers.\",\"The candidate artifact note says failing checkers are classified and not_run real tools are evidence gaps, not automatic repair failures; this supports bounded reconciliation but does not promote any Stage7 artifact while trust barriers remain active.\",\"The likely repair class is checker-order/evidence-ingestion/promotion-contract repair: case_real_weight_artifacts and case_stage_leaf_static must be verified as producer gates with path/hash-bound outputs before case_leaf_functional, case_leaf_golden_compare, and any functional-simulation precondition can be treated as satisfied.\",\"No evidence in the supplied summary justifies promotion for single-transformer-layer, multilayer pipeline, AXI/DDR, Vivado synthesis/implementation, bitstream, app-shell, or board runtime gates.\"],\"risks\":[\"A stale failed precondition result may be aggregated with later successful leaf-gate evidence unless attempt IDs, timestamps, artifact paths, and hashes are bound in the tool protocol.\",\"A later apparent pass may be untrusted if it consumed artifacts outside artifact.stage6.verification_artifact_contract or outside the case_adapter-approved paths.\",\"If case_real_weight_artifacts or case_stage_leaf_static are not explicit predecessors in the Stage6 gate selector contract, leaf functional/golden comparison can appear to pass without a complete dependency proof.\",\"Treating not_run or deferred single-layer/board gates as pass would violate the hierarchical verification boundary and contaminate downstream implementation or deployment stages.\",\"Cross-layer consistency remains at risk across model weights, numeric policy, data order, DDR image layout, runtime memory map, and implementation evidence until real-weight artifacts are hash-bound and consumed by the selected leaf gates.\",\"Any attempt to fix this by changing golden outputs, loosening numeric tolerances, bypassing real-tool gates, or modifying RTL/template/parameter bindings would exceed this role's authority and violate the supplied constraints.\"],\"proposed_actions\":[\"Produce artifact.repair.gate_dag_reconciliation_report comparing selected Stage7 gate ordering against the failures for case_functional_sim_precondition_check, case_real_weight_artifacts, case_stage_leaf_static, case_leaf_functional, and case_leaf_golden_compare.\",\"Produce artifact.repair.blocked_scope_statement that permits only operator-leaf reconciliation and explicitly blocks single-layer, multilayer, AXI/DDR, synthesis, bitstream, app-shell, and board-runtime claims.\",\"If the audit proves Stage6 contracts are complete and later real-tool evidence is path/hash-bound, issue artifact.repair.promotion_condition_patch_plan and rerun the targeted failed/order-sensitive Stage7 checker set as a retry candidate.\",\"If the audit finds missing producer-consumer edges, missing required artifact contracts, ambiguous path aliases, or no valid supersession rule for stale failed attempts, issue a Stage6 backtrack request to repair the verification plan, gate selector contract, artifact contract, and dependency-blocked schema.\",\"Hand off the reconciliation report, patch plan, retry/backtrack decision, and blocked-scope statement to repair.boundary_approval_auditor for boundary review before any aggregate promotion decision.\"],\"executable_actions\":[{\"id\":\"repair.gate_dag_reconciliation.audit\",\"stage\":\"repair\",\"action_type\":\"gate_protocol_reconciliation\",\"rationale\":\"Audit the Stage6 verification plan, Stage7 gate selector, artifact contract, dependency-blocked schema, and rejected Stage7 evidence to determine whether the mismatch is stale evidence ingestion, gate-DAG ordering, classifier aggregation, or incomplete Stage6 contract coverage. This action only classifies protocol correctness and cannot claim hardware pass.\",\"consumes\":[\"artifact.stage6.verification_plan\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.dependency_blocked_manifest_schema\",\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"candidate_stage_artifact.note\",\"candidate_stage_artifact.pending_evidence\"],\"produces\":[\"artifact.repair.gate_dag_reconciliation_report\",\"artifact.repair.blocked_scope_statement\"],\"tool_roles\":[\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"verification_action_audit\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"verification_action_audit_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Keep Stage7 contamination barriers active and route to repair.stage6.contract_backtrack_request if missing gate-DAG edges, artifact paths, artifact hashes, or supersession rules are confirmed.\",\"requires_approval\":false},{\"id\":\"repair.promotion_condition_patch_plan.operator_leaf\",\"stage\":\"repair\",\"action_type\":\"promotion_condition_patch_plan\",\"rationale\":\"Define a bounded patch for the promotion decision: operator-leaf promotion may be considered only when required real-weight artifacts, stage-leaf static evidence, leaf functional evidence, and leaf golden-compare evidence are all accepted under the Stage6 artifact contract, stale failed attempts are explicitly superseded by accepted reruns, active barriers are cleared by checkers, and higher scopes remain deferred rather than passed.\",\"consumes\":[\"artifact.repair.gate_dag_reconciliation_report\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.dependency_blocked_manifest_schema\",\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\"],\"produces\":[\"artifact.repair.promotion_condition_patch_plan\",\"artifact.repair.retry_or_backtrack_decision\"],\"tool_roles\":[\"tool_protocol_check\",\"verification_artifact_contract_check\",\"verification_action_audit\",\"stage_retry_request\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"tool_protocol_check\",\"verification_artifact_contract_check\",\"verification_action_audit_check\",\"stage_retry_request_check\",\"stage_artifact_trust_barrier_check\",\"human_boundary_check\"],\"on_failure\":\"Do not run a promotion retry. Keep the open Stage7 retry blocked and escalate to Stage6 backtrack if the promotion condition cannot be expressed under the existing Stage6 contracts.\",\"requires_approval\":false},{\"id\":\"repair.stage7.targeted_failed_checker_rerun_operator_leaf\",\"stage\":\"stage7.verification\",\"action_type\":\"targeted_failed_checker_rerun\",\"rationale\":\"After the reconciliation report and promotion-condition patch are accepted, rerun only the failed/order-sensitive operator-leaf gates with path/hash-bound evidence. This retry must re-evaluate the real-weight artifacts, stage-leaf static evidence, boundary contract, leaf functional evidence, and leaf golden comparison; it must not run or promote single-layer, multilayer, AXI/DDR, synthesis, bitstream, or board-runtime gates.\",\"consumes\":[\"artifact.repair.gate_dag_reconciliation_report\",\"artifact.repair.promotion_condition_patch_plan\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.dependency_blocked_manifest_schema\"],\"produces\":[\"artifact.stage7.verification_result.retry_candidate\",\"artifact.stage7.real_tool_results.retry_candidate\",\"artifact.repair.retry_or_backtrack_decision\"],\"tool_roles\":[\"targeted_failed_checker_rerun\",\"required_real_tool_evidence_check\",\"real_tool_evidence_check\",\"case_real_weight_artifacts\",\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\"],\"acceptance_checkers\":[\"targeted_failed_checker_rerun\",\"required_real_tool_evidence_check\",\"real_tool.case_real_weight_artifacts\",\"case_stage_leaf_static\",\"boundary_contract_check\",\"real_tool.case_leaf_functional\",\"real_tool.case_leaf_golden_compare\",\"verification_action_audit_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"If evidence is missing or unbound, keep Stage7 rejected and backtrack to Stage6 contract repair. If real-tool evidence shows liveness, value, order, or protocol failure, localize the earliest operator/leaf causal boundary before any code repair and do not promote to higher layers.\",\"requires_approval\":false},{\"id\":\"repair.stage6.contract_backtrack_request\",\"stage\":\"stage6.verification_artifacts\",\"action_type\":\"stage_backtrack_request\",\"rationale\":\"If the reconciliation audit shows that the existing Stage6 verification plan, gate selector, artifact contract, or dependency-blocked schema cannot express the required producer-consumer ordering and evidence supersession rules, request a bounded Stage6 backtrack. This backtrack is limited to verification contracts and must not generate missing testbenches, change RTL/templates, or alter architecture, memory layout, numeric policy, or human approval policy.\",\"consumes\":[\"artifact.repair.gate_dag_reconciliation_report\",\"artifact.repair.promotion_condition_patch_plan\",\"artifact.stage6.verification_plan\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.dependency_blocked_manifest_schema\",\"artifact.stage7.verification_result\"],\"produces\":[\"stage_backtrack_request.stage6.verification_artifacts\",\"artifact.repair.retry_or_backtrack_decision\"],\"tool_roles\":[\"stage_backtrack_request\",\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"tool_protocol_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"stage_backtrack_request_check\",\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"tool_protocol_check\",\"human_boundary_check\",\"verification_action_audit_check\"],\"on_failure\":\"Keep the Stage7 retry open and contaminated artifacts blocked; do not consume rejected Stage7 real_tool_results as validated design inputs.\",\"requires_approval\":false},{\"id\":\"repair.stage7.trust_barrier_and_scope_guard\",\"stage\":\"repair\",\"action_type\":\"stage_artifact_trust_barrier\",\"rationale\":\"Maintain current SACG contamination barriers and encode a blocked-scope statement while reconciliation is unresolved. Rejected Stage7 artifacts may be used only as planning/debug evidence, not as validated inputs for downstream stages.\",\"consumes\":[\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\",\"artifact.repair.gate_dag_reconciliation_report\"],\"produces\":[\"artifact.repair.blocked_scope_statement\",\"sacg_memory_update.stage7_reconciliation_barrier\"],\"tool_roles\":[\"stage_artifact_trust_barrier\",\"sacg_memory_update\",\"stage_retry_request\",\"human_boundary_check\"],\"acceptance_checkers\":[\"stage_artifact_trust_barrier_check\",\"sacg_memory_check\",\"stage_retry_request_check\",\"human_boundary_check\"],\"on_failure\":\"Stop team aggregation and hand off to repair.boundary_approval_auditor; no downstream stage may consume the rejected Stage7 artifacts as validated evidence.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any change to architecture, pipeline structure, memory layout, numeric policy, major templates, or RTL/parameter bindings; those changes are outside this verification-protocol role.\",\"Any change to human approval policy or any attempt to waive/loosen real-tool evidence, golden comparison, or tolerance requirements.\",\"Any claim or promotion beyond operator-leaf closure, including single-transformer-layer, multilayer pipeline, AXI/DDR, Vivado synthesis/implementation, bitstream, app-shell, or board runtime gates, before corresponding real-tool/checker evidence passes.\",\"Any Stage6 backtrack that broadens verification execution scope rather than repairing only gate-DAG/tool-protocol/artifact-contract completeness.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/team/llm/verification_protocol_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/team/llm/verification_protocol_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair.verification gate-DAG reconciliation engineer",
+  "used_fallback": false
+}

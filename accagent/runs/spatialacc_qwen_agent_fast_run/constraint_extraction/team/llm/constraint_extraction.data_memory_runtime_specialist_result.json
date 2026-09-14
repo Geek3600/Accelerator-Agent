@@ -1,0 +1,299 @@
+{
+  "agent": "constraint_extraction.data_memory_runtime_specialist",
+  "duration_sec": 535.5270560190002,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "constraint_extraction.data_memory_runtime_specialist",
+    "approval_required_for": [
+      "Any change to DDR/AXI address map, DDR memory layout, transfer unit layout, or host/device buffer ownership.",
+      "Any change to board runtime ABI, deployment target, app-shell target_discovery_policy, or backend board integration target.",
+      "Any stream order, transfer-count, or liveness-contract change that alters pipeline/data-order semantics.",
+      "Any tool profile/protocol change that introduces unavailable tools, changes required real-tool evidence, or substitutes an unapproved equivalent tool."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "prepared_inputs_manifest",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.field_evidence"
+        ],
+        "id": "constraint_extraction.run_sacg_binding_static_audit",
+        "on_failure": "Block promotion to constraint_graph_auditor; emit a bounded constraint-enrichment request listing missing artifact-to-constraint evidence bindings and mark unproven evidence as not_run.",
+        "produces": [
+          "artifact.constraint_extraction.data_memory_runtime_review",
+          "artifact.constraint_extraction.sacg_binding_evidence_report"
+        ],
+        "rationale": "The compact summary shows relevant artifact and constraint classes, but not the actual evidence bindings. A SACG static/reference audit must prove that the full graph contains nodes, edges, and cited evidence for the required data/memory/runtime/tool constraints.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_reference_check",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stream_plan_check",
+          "transfer_count_check",
+          "data_order_trace_check"
+        ],
+        "action_type": "stream_memory_plan_validation",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_metadata",
+          "artifact.input.target_board_profile",
+          "artifact.input.field_evidence"
+        ],
+        "id": "constraint_extraction.audit_stream_order_transfer_liveness",
+        "on_failure": "Keep stream/data-order constraints unapproved; route the missing or inconsistent stream fields to bounded repair and require rerun of the failed stream/transfer checker before any code generation or functional simulation consumes the graph.",
+        "produces": [
+          "stream_memory_risk_report",
+          "artifact.constraint_extraction.stream_order_transfer_liveness_findings"
+        ],
+        "rationale": "Stream order, transfer count/unit, and liveness assumptions are required by this role, but are not visible in the compact summary. The static stream audit must bind model/template/runtime data order before later simulation or backend stages rely on it.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "stream_plan_check",
+          "transfer_count_check",
+          "data_order_trace_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "case_axi_ddr_interface",
+          "case_runtime_abi_check",
+          "deployment_board_check"
+        ],
+        "action_type": "memory_runtime_plan_validation",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "artifact.input.target_board_profile",
+          "artifact.input.field_evidence",
+          "artifact.input.case_adapter",
+          "artifact.input.tool_profile"
+        ],
+        "id": "constraint_extraction.audit_ddr_axi_runtime_addr_map",
+        "on_failure": "Do not promote memory/runtime constraints; localize the earliest missing or inconsistent boundary among board profile, DDR/AXI map, runtime ABI, or deployment target and request bounded repair with approval for any memory-layout or ABI change.",
+        "produces": [
+          "board_runtime_constraint_findings",
+          "artifact.constraint_extraction.ddr_axi_addr_map_findings",
+          "artifact.constraint_extraction.runtime_abi_deployment_findings"
+        ],
+        "rationale": "DDR layout, AXI address mapping, board runtime ABI, and deployment target are named audit targets, but detailed map fields are not visible. The memory/runtime plan must be checked against board evidence before downstream backend or runtime packaging.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "case_axi_ddr_interface",
+          "case_runtime_abi_check",
+          "deployment_board_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "tool_protocol_evidence_validation",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.field_evidence"
+        ],
+        "id": "constraint_extraction.audit_tool_profile_availability_protocols",
+        "on_failure": "Mark affected tools unavailable or not_run in the evidence map; block any downstream action requiring those tools until protocol/availability evidence is repaired or an approved equivalent is added.",
+        "produces": [
+          "tool_availability_evidence_map",
+          "artifact.constraint_extraction.tool_protocol_findings"
+        ],
+        "rationale": "Tool profile, availability, and protocols are present as input artifacts, but the summary does not prove their availability/status bindings or invocation protocols. This audit prevents downstream claims based on unavailable tools or fallback diagnostics.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "backend_app_shell_integration_contract_static_check",
+          "backend_app_shell_target_discovery_check",
+          "backend_app_shell_target_hint_synthesis_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "bounded_target_discovery",
+        "consumes": [
+          "artifact.input.target_board_profile",
+          "artifact.input.field_evidence",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "candidate_design_graph_summary",
+          "board_runtime_constraint_findings"
+        ],
+        "id": "backend_board.prepare_bounded_app_shell_target_discovery_if_needed",
+        "on_failure": "Keep board runtime bitstream and app-shell integration blocked; require bounded approval instead of selecting unproven target names.",
+        "produces": [
+          "artifact.backend_board.app_shell_target_discovery_contract",
+          "artifact.backend_board.target_discovery_policy_update",
+          "artifact.backend_board.ambiguous_target_approval_request"
+        ],
+        "rationale": "Deployment target and board runtime ABI must not be guessed. If the full evidence is ambiguous, the LLM board-integration role should synthesize a bounded target_discovery_policy update from supplied board materials and real Vivado/backend evidence, then require approval for ambiguous target selection.",
+        "requires_approval": true,
+        "stage": "backend_board",
+        "tool_roles": [
+          "app_shell_target_discovery_contract",
+          "app_shell_target_hint_synthesis",
+          "case_board_interface_discovery"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "sacg_static_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "tool_protocol_check",
+          "addr_map_check",
+          "stage_retry_request_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "bounded_repair",
+        "consumes": [
+          "artifact.constraint_extraction.sacg_binding_evidence_report",
+          "stream_memory_risk_report",
+          "board_runtime_constraint_findings",
+          "tool_availability_evidence_map",
+          "artifact.constraint_extraction.tool_protocol_findings"
+        ],
+        "id": "constraint_extraction.apply_bounded_constraint_enrichment_on_failed_audit",
+        "on_failure": "Open a stage_backtrack_request with the failed checker evidence and preserve a trust barrier against consuming the unpromoted graph in later stages.",
+        "produces": [
+          "artifact.constraint_extraction.refined_design_graph_patch",
+          "artifact.constraint_extraction.updated_data_memory_runtime_review",
+          "sacg_memory_update_entry"
+        ],
+        "rationale": "If the audits find missing stream, memory/runtime, address-map, deployment, or tool evidence, the current graph needs a bounded SACG repair rather than downstream agents relying on unstated assumptions.",
+        "requires_approval": true,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "memory_runtime_repair",
+          "repair_boundary_check",
+          "sacg_memory_update",
+          "stage_retry_request",
+          "stage_artifact_trust_barrier"
+        ]
+      }
+    ],
+    "observations": [
+      "State summary lists the required input artifacts for this role: artifact.input.target_board_profile, artifact.input.tool_profile, artifact.input.tool_availability, artifact.input.tool_protocols, and artifact.input.field_evidence.",
+      "State summary lists the relevant named constraints: constraint.memory.board, constraint.runtime.board, constraint.tool.profile, constraint.tool.protocols, constraint.deployment.board, and constraint.cross_layer.input_consistency.",
+      "candidate_design_graph_summary reports 21 nodes, 16 constraints, input_groups containing evidence/materials/tools, evidence_fields size 50, validation_errors empty, and state_summary.failed_invariants empty. This is class-level evidence only, not per-field coverage evidence.",
+      "The supplied summary does not expose the identities or citations of the 50 evidence fields, so this review cannot verify detailed representation of stream order, transfer counts, liveness assumptions, DDR base/offset/size/alignment rules, AXI interface mapping, runtime ABI, deployment target name, tool availability, or tool invocation protocols.",
+      "artifact.input.tool_availability is present, but no separate named constraint.tool.availability is listed. The full SACG must therefore show that tool availability is explicitly bound under constraint.tool.profile, constraint.tool.protocols, or constraint.source.evidence before downstream tools consume it.",
+      "SACG memory in state_summary shows active_contamination_barriers, open_backtrack_requests, and open_retry_requests are empty; the separate supplied sacg_memory object is empty. There are no visible memory blockers requiring special retry or contamination handling for this stage.",
+      "No stage_gate_policy, role_slice_policy, presence_summary, or retry_reconciliation_contract is supplied. Missing-detail concerns are therefore based on the visible compact artifact summary and must be resolved by running the named checkers on the full artifacts, not by inference."
+    ],
+    "proposed_actions": [
+      "Run a SACG static/reference audit on the full candidate graph to verify that each required artifact and constraint has explicit nodes, edges, and cited evidence fields.",
+      "Run stream_plan_check and transfer_count_check to inventory stream order, transfer units/counts, and liveness assumptions as design-graph constraints rather than implicit implementation memory.",
+      "Run memory_runtime_plan_check and addr_map_check to validate DDR layout, AXI mapping, runtime ABI, and deployment target bindings against target_board_profile and field_evidence.",
+      "Run tool_protocol_check and required_real_tool_evidence_check to map tool profile, tool availability, tool protocols, and not_run/available status into a checked evidence ledger.",
+      "If backend/app-shell target evidence is ambiguous, create a bounded target_discovery_policy update using board materials and real tool evidence, and require approval rather than guessing target names.",
+      "If any checker reports missing or ambiguous fields, perform a bounded constraint-enrichment repair with SACG memory update and rerun the same failed checkers before promotion."
+    ],
+    "risks": [
+      "Current-stage risk: high-level constraint/artifact presence can hide missing evidence bindings for stream order, transfer unit/count, and liveness assumptions, causing later data-order mismatches or deadlock.",
+      "Current-stage risk: DDR/AXI address mapping may be under-specified if base addresses, address spaces, offsets, tensor/image packing, alignment, burst sizing, byte order, and host/device ownership are not explicitly bound to constraint.memory.board and constraint.runtime.board.",
+      "Current-stage risk: board runtime ABI and deployment target may be represented only as input artifacts, not as checked SACG nodes/edges with cited evidence; guessing a backend/app-shell target would violate the target discovery policy.",
+      "Current-stage risk: tool availability is visible as an input artifact but not as a named constraint, so unsupported or unavailable tools could be consumed unless tool_availability_evidence_map is generated and checked.",
+      "Current-stage risk: tool protocol requirements, including real-tool evidence versus not_run status, are not visible in the compact summary; downstream stages must not claim hardware/tool pass without required_real_tool_evidence_check evidence.",
+      "Cross-layer risk: model/shape/numeric/template stream order, runtime packing, DDR layout, AXI transactions, and board ABI must remain consistent; no visible checker output proves those links yet."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.field_evidence",
+        "candidate_design_graph_summary",
+        "artifact.constraint_extraction.data_memory_runtime_review",
+        "board_runtime_constraint_findings",
+        "tool_availability_evidence_map",
+        "stream_memory_risk_report"
+      ],
+      "constraints": [
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.deployment.board",
+        "constraint.cross_layer.input_consistency",
+        "constraint.source.evidence"
+      ],
+      "edges": [
+        "candidate_design_graph_summary.declared_edges_count=8_edge_ids_not_visible",
+        "expected_evidence_binding: artifact.input.target_board_profile -> constraint.deployment.board",
+        "expected_evidence_binding: artifact.input.target_board_profile -> constraint.memory.board",
+        "expected_evidence_binding: artifact.input.target_board_profile -> constraint.runtime.board",
+        "expected_evidence_binding: artifact.input.tool_profile -> constraint.tool.profile",
+        "expected_evidence_binding: artifact.input.tool_availability -> constraint.tool.profile_or_constraint.tool.protocols",
+        "expected_evidence_binding: artifact.input.tool_protocols -> constraint.tool.protocols",
+        "expected_cross_layer_binding: constraint.cross_layer.input_consistency -> memory/runtime/deployment/tool constraints"
+      ],
+      "nodes": [
+        "candidate_design_graph_summary.nodes_count=21",
+        "candidate_design_graph_summary.constraints_count=16",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.field_evidence",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.deployment.board",
+        "constraint.cross_layer.input_consistency"
+      ]
+    },
+    "schema_version": "spatialaccagent.constraint_extraction.data_memory_runtime_review.v0",
+    "stage": "constraint_extraction",
+    "status": "not_approved_pending_static_evidence_checks",
+    "summary": "The supplied summary shows the initial design graph contains the relevant high-level artifact classes and named constraints for board memory/runtime, deployment, tool profile/protocols, and cross-layer consistency. However, the visible candidate_design_graph_summary only gives counts and compact field summaries, not the detailed evidence bindings needed to prove that stream order, transfer/liveness assumptions, DDR/AXI address mapping, board runtime ABI, deployment target, tool availability, and tool protocols are all represented with citations. No open SACG memory backtrack requests, retry requests, or contamination barriers are visible. Treat the detailed coverage as not_run until the listed SACG, stream, memory/runtime, address-map, tool-protocol, and real-tool-evidence checkers run on the full artifacts."
+  },
+  "prompt_bytes": 25598,
+  "prompt_hash": "13cb78a0d9978df0a9339695ec5dd6e7b9d8adcdd40f8865b71919eb6a15c6c4",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.constraint_extraction.data_memory_runtime_review.v0\",\"agent\":\"constraint_extraction.data_memory_runtime_specialist\",\"stage\":\"constraint_extraction\",\"status\":\"not_approved_pending_static_evidence_checks\",\"summary\":\"The supplied summary shows the initial design graph contains the relevant high-level artifact classes and named constraints for board memory/runtime, deployment, tool profile/protocols, and cross-layer consistency. However, the visible candidate_design_graph_summary only gives counts and compact field summaries, not the detailed evidence bindings needed to prove that stream order, transfer/liveness assumptions, DDR/AXI address mapping, board runtime ABI, deployment target, tool availability, and tool protocols are all represented with citations. No open SACG memory backtrack requests, retry requests, or contamination barriers are visible. Treat the detailed coverage as not_run until the listed SACG, stream, memory/runtime, address-map, tool-protocol, and real-tool-evidence checkers run on the full artifacts.\",\"sacg_focus\":{\"nodes\":[\"candidate_design_graph_summary.nodes_count=21\",\"candidate_design_graph_summary.constraints_count=16\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.field_evidence\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.profile\",\"constraint.tool.protocols\",\"constraint.deployment.board\",\"constraint.cross_layer.input_consistency\"],\"edges\":[\"candidate_design_graph_summary.declared_edges_count=8_edge_ids_not_visible\",\"expected_evidence_binding: artifact.input.target_board_profile -> constraint.deployment.board\",\"expected_evidence_binding: artifact.input.target_board_profile -> constraint.memory.board\",\"expected_evidence_binding: artifact.input.target_board_profile -> constraint.runtime.board\",\"expected_evidence_binding: artifact.input.tool_profile -> constraint.tool.profile\",\"expected_evidence_binding: artifact.input.tool_availability -> constraint.tool.profile_or_constraint.tool.protocols\",\"expected_evidence_binding: artifact.input.tool_protocols -> constraint.tool.protocols\",\"expected_cross_layer_binding: constraint.cross_layer.input_consistency -> memory/runtime/deployment/tool constraints\"],\"constraints\":[\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.profile\",\"constraint.tool.protocols\",\"constraint.deployment.board\",\"constraint.cross_layer.input_consistency\",\"constraint.source.evidence\"],\"artifacts\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.field_evidence\",\"candidate_design_graph_summary\",\"artifact.constraint_extraction.data_memory_runtime_review\",\"board_runtime_constraint_findings\",\"tool_availability_evidence_map\",\"stream_memory_risk_report\"]},\"observations\":[\"State summary lists the required input artifacts for this role: artifact.input.target_board_profile, artifact.input.tool_profile, artifact.input.tool_availability, artifact.input.tool_protocols, and artifact.input.field_evidence.\",\"State summary lists the relevant named constraints: constraint.memory.board, constraint.runtime.board, constraint.tool.profile, constraint.tool.protocols, constraint.deployment.board, and constraint.cross_layer.input_consistency.\",\"candidate_design_graph_summary reports 21 nodes, 16 constraints, input_groups containing evidence/materials/tools, evidence_fields size 50, validation_errors empty, and state_summary.failed_invariants empty. This is class-level evidence only, not per-field coverage evidence.\",\"The supplied summary does not expose the identities or citations of the 50 evidence fields, so this review cannot verify detailed representation of stream order, transfer counts, liveness assumptions, DDR base/offset/size/alignment rules, AXI interface mapping, runtime ABI, deployment target name, tool availability, or tool invocation protocols.\",\"artifact.input.tool_availability is present, but no separate named constraint.tool.availability is listed. The full SACG must therefore show that tool availability is explicitly bound under constraint.tool.profile, constraint.tool.protocols, or constraint.source.evidence before downstream tools consume it.\",\"SACG memory in state_summary shows active_contamination_barriers, open_backtrack_requests, and open_retry_requests are empty; the separate supplied sacg_memory object is empty. There are no visible memory blockers requiring special retry or contamination handling for this stage.\",\"No stage_gate_policy, role_slice_policy, presence_summary, or retry_reconciliation_contract is supplied. Missing-detail concerns are therefore based on the visible compact artifact summary and must be resolved by running the named checkers on the full artifacts, not by inference.\"],\"risks\":[\"Current-stage risk: high-level constraint/artifact presence can hide missing evidence bindings for stream order, transfer unit/count, and liveness assumptions, causing later data-order mismatches or deadlock.\",\"Current-stage risk: DDR/AXI address mapping may be under-specified if base addresses, address spaces, offsets, tensor/image packing, alignment, burst sizing, byte order, and host/device ownership are not explicitly bound to constraint.memory.board and constraint.runtime.board.\",\"Current-stage risk: board runtime ABI and deployment target may be represented only as input artifacts, not as checked SACG nodes/edges with cited evidence; guessing a backend/app-shell target would violate the target discovery policy.\",\"Current-stage risk: tool availability is visible as an input artifact but not as a named constraint, so unsupported or unavailable tools could be consumed unless tool_availability_evidence_map is generated and checked.\",\"Current-stage risk: tool protocol requirements, including real-tool evidence versus not_run status, are not visible in the compact summary; downstream stages must not claim hardware/tool pass without required_real_tool_evidence_check evidence.\",\"Cross-layer risk: model/shape/numeric/template stream order, runtime packing, DDR layout, AXI transactions, and board ABI must remain consistent; no visible checker output proves those links yet.\"],\"proposed_actions\":[\"Run a SACG static/reference audit on the full candidate graph to verify that each required artifact and constraint has explicit nodes, edges, and cited evidence fields.\",\"Run stream_plan_check and transfer_count_check to inventory stream order, transfer units/counts, and liveness assumptions as design-graph constraints rather than implicit implementation memory.\",\"Run memory_runtime_plan_check and addr_map_check to validate DDR layout, AXI mapping, runtime ABI, and deployment target bindings against target_board_profile and field_evidence.\",\"Run tool_protocol_check and required_real_tool_evidence_check to map tool profile, tool availability, tool protocols, and not_run/available status into a checked evidence ledger.\",\"If backend/app-shell target evidence is ambiguous, create a bounded target_discovery_policy update using board materials and real tool evidence, and require approval rather than guessing target names.\",\"If any checker reports missing or ambiguous fields, perform a bounded constraint-enrichment repair with SACG memory update and rerun the same failed checkers before promotion.\"],\"executable_actions\":[{\"id\":\"constraint_extraction.run_sacg_binding_static_audit\",\"stage\":\"constraint_extraction\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"The compact summary shows relevant artifact and constraint classes, but not the actual evidence bindings. A SACG static/reference audit must prove that the full graph contains nodes, edges, and cited evidence for the required data/memory/runtime/tool constraints.\",\"consumes\":[\"candidate_design_graph_summary\",\"prepared_inputs_manifest\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.field_evidence\"],\"produces\":[\"artifact.constraint_extraction.data_memory_runtime_review\",\"artifact.constraint_extraction.sacg_binding_evidence_report\"],\"tool_roles\":[\"sacg_validate\",\"sacg_reference_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"sacg_reference_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Block promotion to constraint_graph_auditor; emit a bounded constraint-enrichment request listing missing artifact-to-constraint evidence bindings and mark unproven evidence as not_run.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.audit_stream_order_transfer_liveness\",\"stage\":\"constraint_extraction\",\"action_type\":\"stream_memory_plan_validation\",\"rationale\":\"Stream order, transfer count/unit, and liveness assumptions are required by this role, but are not visible in the compact summary. The static stream audit must bind model/template/runtime data order before later simulation or backend stages rely on it.\",\"consumes\":[\"candidate_design_graph_summary\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_metadata\",\"artifact.input.target_board_profile\",\"artifact.input.field_evidence\"],\"produces\":[\"stream_memory_risk_report\",\"artifact.constraint_extraction.stream_order_transfer_liveness_findings\"],\"tool_roles\":[\"stream_plan_check\",\"transfer_count_check\",\"data_order_trace_check\"],\"acceptance_checkers\":[\"stream_plan_check\",\"transfer_count_check\",\"data_order_trace_check\"],\"on_failure\":\"Keep stream/data-order constraints unapproved; route the missing or inconsistent stream fields to bounded repair and require rerun of the failed stream/transfer checker before any code generation or functional simulation consumes the graph.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.audit_ddr_axi_runtime_addr_map\",\"stage\":\"constraint_extraction\",\"action_type\":\"memory_runtime_plan_validation\",\"rationale\":\"DDR layout, AXI address mapping, board runtime ABI, and deployment target are named audit targets, but detailed map fields are not visible. The memory/runtime plan must be checked against board evidence before downstream backend or runtime packaging.\",\"consumes\":[\"candidate_design_graph_summary\",\"artifact.input.target_board_profile\",\"artifact.input.field_evidence\",\"artifact.input.case_adapter\",\"artifact.input.tool_profile\"],\"produces\":[\"board_runtime_constraint_findings\",\"artifact.constraint_extraction.ddr_axi_addr_map_findings\",\"artifact.constraint_extraction.runtime_abi_deployment_findings\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"case_axi_ddr_interface\",\"case_runtime_abi_check\",\"deployment_board_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"case_axi_ddr_interface\",\"case_runtime_abi_check\",\"deployment_board_check\"],\"on_failure\":\"Do not promote memory/runtime constraints; localize the earliest missing or inconsistent boundary among board profile, DDR/AXI map, runtime ABI, or deployment target and request bounded repair with approval for any memory-layout or ABI change.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.audit_tool_profile_availability_protocols\",\"stage\":\"constraint_extraction\",\"action_type\":\"tool_protocol_evidence_validation\",\"rationale\":\"Tool profile, availability, and protocols are present as input artifacts, but the summary does not prove their availability/status bindings or invocation protocols. This audit prevents downstream claims based on unavailable tools or fallback diagnostics.\",\"consumes\":[\"candidate_design_graph_summary\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.field_evidence\"],\"produces\":[\"tool_availability_evidence_map\",\"artifact.constraint_extraction.tool_protocol_findings\"],\"tool_roles\":[\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"real_tool_evidence_check\"],\"acceptance_checkers\":[\"tool_protocol_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Mark affected tools unavailable or not_run in the evidence map; block any downstream action requiring those tools until protocol/availability evidence is repaired or an approved equivalent is added.\",\"requires_approval\":false},{\"id\":\"backend_board.prepare_bounded_app_shell_target_discovery_if_needed\",\"stage\":\"backend_board\",\"action_type\":\"bounded_target_discovery\",\"rationale\":\"Deployment target and board runtime ABI must not be guessed. If the full evidence is ambiguous, the LLM board-integration role should synthesize a bounded target_discovery_policy update from supplied board materials and real Vivado/backend evidence, then require approval for ambiguous target selection.\",\"consumes\":[\"artifact.input.target_board_profile\",\"artifact.input.field_evidence\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"candidate_design_graph_summary\",\"board_runtime_constraint_findings\"],\"produces\":[\"artifact.backend_board.app_shell_target_discovery_contract\",\"artifact.backend_board.target_discovery_policy_update\",\"artifact.backend_board.ambiguous_target_approval_request\"],\"tool_roles\":[\"app_shell_target_discovery_contract\",\"app_shell_target_hint_synthesis\",\"case_board_interface_discovery\"],\"acceptance_checkers\":[\"backend_app_shell_integration_contract_static_check\",\"backend_app_shell_target_discovery_check\",\"backend_app_shell_target_hint_synthesis_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Keep board runtime bitstream and app-shell integration blocked; require bounded approval instead of selecting unproven target names.\",\"requires_approval\":true},{\"id\":\"constraint_extraction.apply_bounded_constraint_enrichment_on_failed_audit\",\"stage\":\"constraint_extraction\",\"action_type\":\"bounded_repair\",\"rationale\":\"If the audits find missing stream, memory/runtime, address-map, deployment, or tool evidence, the current graph needs a bounded SACG repair rather than downstream agents relying on unstated assumptions.\",\"consumes\":[\"artifact.constraint_extraction.sacg_binding_evidence_report\",\"stream_memory_risk_report\",\"board_runtime_constraint_findings\",\"tool_availability_evidence_map\",\"artifact.constraint_extraction.tool_protocol_findings\"],\"produces\":[\"artifact.constraint_extraction.refined_design_graph_patch\",\"artifact.constraint_extraction.updated_data_memory_runtime_review\",\"sacg_memory_update_entry\"],\"tool_roles\":[\"memory_runtime_repair\",\"repair_boundary_check\",\"sacg_memory_update\",\"stage_retry_request\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"sacg_static_check\",\"memory_runtime_plan_check\",\"stream_plan_check\",\"tool_protocol_check\",\"addr_map_check\",\"stage_retry_request_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Open a stage_backtrack_request with the failed checker evidence and preserve a trust barrier against consuming the unpromoted graph in later stages.\",\"requires_approval\":true}],\"approval_required_for\":[\"Any change to DDR/AXI address map, DDR memory layout, transfer unit layout, or host/device buffer ownership.\",\"Any change to board runtime ABI, deployment target, app-shell target_discovery_policy, or backend board integration target.\",\"Any stream order, transfer-count, or liveness-contract change that alters pipeline/data-order semantics.\",\"Any tool profile/protocol change that introduces unavailable tools, changes required real-tool evidence, or substitutes an unapproved equivalent tool.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/constraint_extraction.data_memory_runtime_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/constraint_extraction.data_memory_runtime_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)",
+    "attempt 2: Remote end closed connection without response"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction.dataflow memory/runtime and tool-evidence engineer",
+  "used_fallback": false
+}

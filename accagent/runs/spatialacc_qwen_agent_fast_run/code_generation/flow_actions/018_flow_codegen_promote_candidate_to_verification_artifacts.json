@@ -1,0 +1,58 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "code_generation_manifest_static_check",
+      "codegen_package_static_check",
+      "codegen_compile_gate_check",
+      "codegen_contract_check",
+      "required_real_tool_evidence_check",
+      "sacg_memory_check"
+    ],
+    "action_type": "stage_transition_gate",
+    "consumes": [
+      "recent_stage_summary.compile_gate",
+      "recent_stage_summary.contract_check",
+      "recent_stage_summary.package_static_check",
+      "recent_stage_summary.outputs.generated_code_package",
+      "recent_stage_summary.outputs.memory_layout",
+      "recent_stage_summary.outputs.runtime_config",
+      "state_summary.sacg_memory_truth",
+      "constraint.codegen.package",
+      "constraint.codegen.compile_gate",
+      "constraint.codegen.contract_check",
+      "constraint.verification.plan"
+    ],
+    "id": "flow.codegen_promote_candidate_to_verification_artifacts",
+    "on_failure": "Do not promote the candidate to verification_artifacts. Quarantine the candidate, preserve failing checker evidence, and open a bounded stage_retry_request or stage_artifact_trust_barrier; do not launch a third code_generation attempt without an explicit approved blocker classification.",
+    "produces": [
+      "code_generation_stage_acceptance_decision.json",
+      "checker_evidence_matrix.json",
+      "repair_or_handoff_boundary_record.json",
+      "artifact.stage5.generated_code_package.promoted_for_verification_artifacts"
+    ],
+    "rationale": "The supplied current-stage package, compile, and contract checks pass and SACG memory truth has no active blockers, so freeze the code_generation candidate as the only accepted downstream input while recording that later hardware evidence is not implied.",
+    "requires_approval": false,
+    "stage": "code_generation",
+    "tool_roles": [
+      "code_generation_manifest_static_check",
+      "codegen_package_static_check",
+      "codegen_compile_gate",
+      "codegen_contract_check",
+      "required_real_tool_evidence_check",
+      "sacg_static_check",
+      "sacg_memory_update"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "proceed",
+  "flow_event_index": 18,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/flow_events/018_proceed.json",
+  "stage": "code_generation"
+}

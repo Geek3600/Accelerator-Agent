@@ -1,0 +1,179 @@
+{
+  "agent": "flow_controller_agent",
+  "duration_sec": 164.45056966599805,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "flow_controller_agent",
+    "approval_required_for": [
+      "Any architecture or pipeline topology change, including adding, removing, reordering stages, changing branch/join semantics, residual skip sources, or stream order.",
+      "Any change to numeric policy, element widths, accumulator bits, rounding, saturation, or data-order/transfer-unit policy.",
+      "Changing GQA head counts, group size, RoPE policy, causal mask policy, or sequence length bound.",
+      "Finalizing or changing memory layout, base addresses, AXI beat width, alignment, transfer-count policy, runtime sequence policy, activation/weight buffer sizing, or external KV-cache materialization.",
+      "Introducing new templates, replacing trusted template bindings, allowing free-form RTL generation, or making major template changes beyond bounded binding repair.",
+      "Any request to bypass mandatory LLM execution, consume fallback diagnostics as successful agent decisions, exceed bounded stage attempts, or use failed/stale artifacts downstream."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "stage_artifact_trust_barrier_check",
+          "artifact_hash_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "artifact_trust_barrier",
+        "consumes": [
+          "recent_stage_summary",
+          "command_log:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/21_pipeline_planning.json",
+          "stale_output:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json",
+          "source_sacg_state:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json"
+        ],
+        "id": "pipeline_planning.attempt1_quarantine_failed_artifacts",
+        "on_failure": "Stop before retry or downstream promotion; unresolved artifact trust would risk contaminating later stages.",
+        "produces": [
+          "pipeline_planning/trust_barriers/attempt_1_failed_stage_artifacts.json",
+          "sacg_memory_update.pipeline_planning_attempt_1_failure_lesson"
+        ],
+        "rationale": "The command failed and the visible report is stale/incomplete. A trust barrier is needed before any retry so partial or stale current-stage artifacts cannot contaminate parameter_binding.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "stage_artifact_trust_barrier",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "llm_io_quality_check",
+          "tool_protocol_check"
+        ],
+        "action_type": "pre_retry_health_check",
+        "consumes": [
+          "llm_policy",
+          "command_log:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/21_pipeline_planning.json",
+          "pipeline_planning/trust_barriers/attempt_1_failed_stage_artifacts.json"
+        ],
+        "id": "pipeline_planning.pre_retry_llm_transport_readiness",
+        "on_failure": "Hold pipeline_planning in failed state, preserve the trust barrier, and open a bounded tooling/LLM retry request instead of consuming fallback diagnostics as a successful decision.",
+        "produces": [
+          "pipeline_planning/diagnostics/llm_transport_readiness.json"
+        ],
+        "rationale": "The observed failure mode is repeated SSL transport failure during mandatory LLM roles. A bounded readiness check reduces the risk of wasting the final allowed current-stage retry on an unchanged transport fault.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "llm_io_quality_check",
+          "tool_protocol_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "llm_io_quality_check",
+          "sacg_static_check",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "verification_action_audit_check",
+          "stage_retry_request_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "retry_current_stage",
+        "consumes": [
+          "source_sacg_state:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+          "pipeline_planning/trust_barriers/attempt_1_failed_stage_artifacts.json",
+          "pipeline_planning/diagnostics/llm_transport_readiness.json",
+          "diagnostic_partial:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/llm/pipeline_architect_agent_result.json",
+          "diagnostic_partial:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/verification_repair_specialist_result.json"
+        ],
+        "id": "pipeline_planning.retry_team_decomposition_current_stage",
+        "on_failure": "Do not promote the candidate retry artifacts. If this consumes the second bounded attempt or leaves current-stage unresolved risks, update SACG memory with a retry/tooling failure lesson and stop for explicit bounded recovery rather than proceeding to parameter_binding.",
+        "produces": [
+          "pipeline_planning/pipeline_planning_report.json.candidate_retry",
+          "pipeline_planning/sacg_state.json.candidate_retry",
+          "pipeline_planning/team/aggregate_retry_result.json"
+        ],
+        "rationale": "Same-stage retry is preferred and permitted because there are no open SACG backtrack requests or active contamination barriers, the failed artifacts are quarantined, and attempt_count is still below the bounded limit. The retry must regenerate a complete current-stage contract rather than reusing partial failed outputs as validated evidence.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "architecture_review",
+          "memory_runtime_repair",
+          "pipeline_repair",
+          "team_aggregate",
+          "sacg_validate"
+        ]
+      }
+    ],
+    "observations": [
+      "sacg_memory contains no active contamination_barriers, open_backtrack_requests, or open_retry_requests relevant to pipeline_planning.",
+      "The current pipeline_planning command returned code 1 and stage_passed is false.",
+      "The recent_stage_summary states that the existing pipeline_planning_report.json was not promoted, was stale, and had status incomplete; it must not be used as a validated downstream input.",
+      "Mandatory LLM execution is enforced. The log shows repeated SSL DECRYPTION_FAILED_OR_BAD_RECORD_MAC errors for pipeline_planning team roles, including memory_runtime_engineer/evidence_gate_auditor, and verification_repair_specialist also failed after retries.",
+      "pipeline_architect_agent produced an output, but the stage remained incomplete and the architect status was blocked_for_sacg_commit_until_team_decomposition_repair with current-stage unresolved risks.",
+      "Attempt count is 1 and the configured bounded_attempts_per_stage is 2, so a same-stage retry is permitted before backtracking or stopping.",
+      "No evidence in the supplied summary justifies changing architecture, pipeline topology, numeric policy, memory layout, or templates during flow control."
+    ],
+    "proposed_actions": [
+      "Block downstream progress to parameter_binding until a fresh pipeline_planning report is produced and passes current-stage checks.",
+      "Record a trust barrier for attempt-1 failed/stale pipeline_planning artifacts so they cannot be promoted or consumed accidentally.",
+      "Run a bounded LLM I/O/tool-protocol readiness check before spending the final allowed same-stage retry.",
+      "Retry pipeline_planning once with team decomposition completion, specifically regenerating the missing memory/runtime and evidence-gate inputs and re-aggregating the current-stage contract.",
+      "If the retry fails or leaves unresolved current-stage risks, do not backtrack automatically to a design stage; instead stop or open a bounded retry/tooling repair request with SACG memory updated."
+    ],
+    "risks": [
+      "Artifact contamination risk is present if the stale incomplete pipeline_planning_report.json or partial LLM outputs are consumed by parameter_binding.",
+      "Because LLM planning is mandatory, fallback or partial records cannot be treated as successful agent decisions.",
+      "Cross-layer consistency remains unresolved until memory_runtime_engineer and evidence/evaluation roles complete: stream order, memory/runtime plan, boundary contracts, numeric policy, and downstream implementation assumptions may be inconsistent.",
+      "A second SSL/LLM transport failure would exhaust the bounded stage retry and should trigger a stop or explicit infrastructure/tooling repair path rather than repeated blind retries.",
+      "The current visible evidence does not prove a hardware or design failure; it proves an incomplete current-stage planning run."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/21_pipeline_planning.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/llm/pipeline_architect_agent_result.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/verification_repair_specialist_result.json"
+      ],
+      "constraints": [
+        "flow_policy.llm_is_required=true",
+        "flow_policy.do_not_use_failed_artifacts_as_validated_downstream_inputs=true",
+        "flow_policy.bounded_attempts_per_stage=2 with current attempt_count=1",
+        "stage_passed=false blocks downstream progress",
+        "preserve cross-layer consistency across model, shape, numeric policy, data order, memory, runtime, implementation, and board facts from the source SACG"
+      ],
+      "edges": [
+        "template_selection.sacg_state -> pipeline_planning candidate contract",
+        "pipeline_planning team specialist outputs -> team aggregate -> pipeline_architect_agent decision",
+        "validated pipeline_planning report -> parameter_binding only after current-stage checks pass",
+        "failed or stale pipeline_planning artifacts -/-> downstream consumption"
+      ],
+      "nodes": [
+        "source_sacg_state.template_selection",
+        "pipeline_planning.team.memory_runtime_engineer",
+        "pipeline_planning.team.evidence_gate_auditor",
+        "pipeline_planning.team.verification_repair_specialist",
+        "pipeline_planning.pipeline_architect_agent",
+        "pipeline_planning.stream_plan",
+        "pipeline_planning.memory_runtime_plan",
+        "pipeline_planning.boundary_contract"
+      ]
+    },
+    "schema_version": "spatialaccagent.flow_controller.v0",
+    "stage": "pipeline_planning",
+    "status": "retry_current_stage_not_promote",
+    "summary": "Do not proceed to parameter_binding. The pipeline_planning command failed on attempt 1 because mandatory LLM team roles were incomplete after SSL transport failures, and the existing pipeline_planning_report.json was explicitly stale/incomplete and not promoted. Since sacg_memory has no open backtrack, retry, or contamination blockers and the stage is within the bounded attempt limit, the correct next step is a bounded same-stage retry after quarantining failed artifacts and checking LLM I/O readiness."
+  },
+  "prompt_bytes": 23855,
+  "prompt_hash": "7965514be2fd2511971d346f8a7a293a4e936ed32242fca36c0683c654e58348",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.flow_controller.v0\",\"agent\":\"flow_controller_agent\",\"stage\":\"pipeline_planning\",\"status\":\"retry_current_stage_not_promote\",\"summary\":\"Do not proceed to parameter_binding. The pipeline_planning command failed on attempt 1 because mandatory LLM team roles were incomplete after SSL transport failures, and the existing pipeline_planning_report.json was explicitly stale/incomplete and not promoted. Since sacg_memory has no open backtrack, retry, or contamination blockers and the stage is within the bounded attempt limit, the correct next step is a bounded same-stage retry after quarantining failed artifacts and checking LLM I/O readiness.\",\"sacg_focus\":{\"nodes\":[\"source_sacg_state.template_selection\",\"pipeline_planning.team.memory_runtime_engineer\",\"pipeline_planning.team.evidence_gate_auditor\",\"pipeline_planning.team.verification_repair_specialist\",\"pipeline_planning.pipeline_architect_agent\",\"pipeline_planning.stream_plan\",\"pipeline_planning.memory_runtime_plan\",\"pipeline_planning.boundary_contract\"],\"edges\":[\"template_selection.sacg_state -> pipeline_planning candidate contract\",\"pipeline_planning team specialist outputs -> team aggregate -> pipeline_architect_agent decision\",\"validated pipeline_planning report -> parameter_binding only after current-stage checks pass\",\"failed or stale pipeline_planning artifacts -/-> downstream consumption\"],\"constraints\":[\"flow_policy.llm_is_required=true\",\"flow_policy.do_not_use_failed_artifacts_as_validated_downstream_inputs=true\",\"flow_policy.bounded_attempts_per_stage=2 with current attempt_count=1\",\"stage_passed=false blocks downstream progress\",\"preserve cross-layer consistency across model, shape, numeric policy, data order, memory, runtime, implementation, and board facts from the source SACG\"],\"artifacts\":[\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/21_pipeline_planning.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/llm/pipeline_architect_agent_result.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/verification_repair_specialist_result.json\"]},\"observations\":[\"sacg_memory contains no active contamination_barriers, open_backtrack_requests, or open_retry_requests relevant to pipeline_planning.\",\"The current pipeline_planning command returned code 1 and stage_passed is false.\",\"The recent_stage_summary states that the existing pipeline_planning_report.json was not promoted, was stale, and had status incomplete; it must not be used as a validated downstream input.\",\"Mandatory LLM execution is enforced. The log shows repeated SSL DECRYPTION_FAILED_OR_BAD_RECORD_MAC errors for pipeline_planning team roles, including memory_runtime_engineer/evidence_gate_auditor, and verification_repair_specialist also failed after retries.\",\"pipeline_architect_agent produced an output, but the stage remained incomplete and the architect status was blocked_for_sacg_commit_until_team_decomposition_repair with current-stage unresolved risks.\",\"Attempt count is 1 and the configured bounded_attempts_per_stage is 2, so a same-stage retry is permitted before backtracking or stopping.\",\"No evidence in the supplied summary justifies changing architecture, pipeline topology, numeric policy, memory layout, or templates during flow control.\"],\"risks\":[\"Artifact contamination risk is present if the stale incomplete pipeline_planning_report.json or partial LLM outputs are consumed by parameter_binding.\",\"Because LLM planning is mandatory, fallback or partial records cannot be treated as successful agent decisions.\",\"Cross-layer consistency remains unresolved until memory_runtime_engineer and evidence/evaluation roles complete: stream order, memory/runtime plan, boundary contracts, numeric policy, and downstream implementation assumptions may be inconsistent.\",\"A second SSL/LLM transport failure would exhaust the bounded stage retry and should trigger a stop or explicit infrastructure/tooling repair path rather than repeated blind retries.\",\"The current visible evidence does not prove a hardware or design failure; it proves an incomplete current-stage planning run.\"],\"proposed_actions\":[\"Block downstream progress to parameter_binding until a fresh pipeline_planning report is produced and passes current-stage checks.\",\"Record a trust barrier for attempt-1 failed/stale pipeline_planning artifacts so they cannot be promoted or consumed accidentally.\",\"Run a bounded LLM I/O/tool-protocol readiness check before spending the final allowed same-stage retry.\",\"Retry pipeline_planning once with team decomposition completion, specifically regenerating the missing memory/runtime and evidence-gate inputs and re-aggregating the current-stage contract.\",\"If the retry fails or leaves unresolved current-stage risks, do not backtrack automatically to a design stage; instead stop or open a bounded retry/tooling repair request with SACG memory updated.\"],\"executable_actions\":[{\"id\":\"pipeline_planning.attempt1_quarantine_failed_artifacts\",\"stage\":\"pipeline_planning\",\"action_type\":\"artifact_trust_barrier\",\"rationale\":\"The command failed and the visible report is stale/incomplete. A trust barrier is needed before any retry so partial or stale current-stage artifacts cannot contaminate parameter_binding.\",\"consumes\":[\"recent_stage_summary\",\"command_log:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/21_pipeline_planning.json\",\"stale_output:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json\",\"source_sacg_state:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json\"],\"produces\":[\"pipeline_planning/trust_barriers/attempt_1_failed_stage_artifacts.json\",\"sacg_memory_update.pipeline_planning_attempt_1_failure_lesson\"],\"tool_roles\":[\"stage_artifact_trust_barrier\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"stage_artifact_trust_barrier_check\",\"artifact_hash_check\",\"sacg_memory_check\"],\"on_failure\":\"Stop before retry or downstream promotion; unresolved artifact trust would risk contaminating later stages.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.pre_retry_llm_transport_readiness\",\"stage\":\"pipeline_planning\",\"action_type\":\"pre_retry_health_check\",\"rationale\":\"The observed failure mode is repeated SSL transport failure during mandatory LLM roles. A bounded readiness check reduces the risk of wasting the final allowed current-stage retry on an unchanged transport fault.\",\"consumes\":[\"llm_policy\",\"command_log:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/21_pipeline_planning.json\",\"pipeline_planning/trust_barriers/attempt_1_failed_stage_artifacts.json\"],\"produces\":[\"pipeline_planning/diagnostics/llm_transport_readiness.json\"],\"tool_roles\":[\"llm_io_quality_check\",\"tool_protocol_check\"],\"acceptance_checkers\":[\"llm_io_quality_check\",\"tool_protocol_check\"],\"on_failure\":\"Hold pipeline_planning in failed state, preserve the trust barrier, and open a bounded tooling/LLM retry request instead of consuming fallback diagnostics as a successful decision.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.retry_team_decomposition_current_stage\",\"stage\":\"pipeline_planning\",\"action_type\":\"retry_current_stage\",\"rationale\":\"Same-stage retry is preferred and permitted because there are no open SACG backtrack requests or active contamination barriers, the failed artifacts are quarantined, and attempt_count is still below the bounded limit. The retry must regenerate a complete current-stage contract rather than reusing partial failed outputs as validated evidence.\",\"consumes\":[\"source_sacg_state:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json\",\"pipeline_planning/trust_barriers/attempt_1_failed_stage_artifacts.json\",\"pipeline_planning/diagnostics/llm_transport_readiness.json\",\"diagnostic_partial:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/llm/pipeline_architect_agent_result.json\",\"diagnostic_partial:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/verification_repair_specialist_result.json\"],\"produces\":[\"pipeline_planning/pipeline_planning_report.json.candidate_retry\",\"pipeline_planning/sacg_state.json.candidate_retry\",\"pipeline_planning/team/aggregate_retry_result.json\"],\"tool_roles\":[\"architecture_review\",\"memory_runtime_repair\",\"pipeline_repair\",\"team_aggregate\",\"sacg_validate\"],\"acceptance_checkers\":[\"llm_io_quality_check\",\"sacg_static_check\",\"task_card_check\",\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"boundary_contract_check\",\"verification_action_audit_check\",\"stage_retry_request_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Do not promote the candidate retry artifacts. If this consumes the second bounded attempt or leaves current-stage unresolved risks, update SACG memory with a retry/tooling failure lesson and stop for explicit bounded recovery rather than proceeding to parameter_binding.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any architecture or pipeline topology change, including adding, removing, reordering stages, changing branch/join semantics, residual skip sources, or stream order.\",\"Any change to numeric policy, element widths, accumulator bits, rounding, saturation, or data-order/transfer-unit policy.\",\"Changing GQA head counts, group size, RoPE policy, causal mask policy, or sequence length bound.\",\"Finalizing or changing memory layout, base addresses, AXI beat width, alignment, transfer-count policy, runtime sequence policy, activation/weight buffer sizing, or external KV-cache materialization.\",\"Introducing new templates, replacing trusted template bindings, allowing free-form RTL generation, or making major template changes beyond bounded binding repair.\",\"Any request to bypass mandatory LLM execution, consume fallback diagnostics as successful agent decisions, exceed bounded stage attempts, or use failed/stale artifacts downstream.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/003_pipeline_planning/llm/flow_controller_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/003_pipeline_planning/llm/flow_controller_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "flow_orchestration",
+  "used_fallback": false
+}

@@ -1,0 +1,196 @@
+{
+  "agent": "verification_repair_gate_specialist",
+  "duration_sec": 160.97130865399959,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "verification_repair_gate_specialist",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "deployment_board_check",
+          "human_boundary_check"
+        ],
+        "action_type": "stage_gate_evidence_audit",
+        "consumes": [
+          "candidate_stage_artifact.cross_layer_trace",
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.stage_gate_policy",
+          "candidate_stage_artifact.selected_templates",
+          "candidate_stage_artifact.parameter_bindings",
+          "candidate_stage_artifact.template_source_checks",
+          "candidate_stage_artifact.forbidden_edits",
+          "state_summary.constraints",
+          "state_summary.sacg_memory"
+        ],
+        "id": "template_selection.final_cross_layer_gate_audit",
+        "on_failure": "Block promotion to code_generation, localize the failure to the missing or contradictory constraint/template/parameter/source/board fact, and issue a bounded repair request; do not reclassify absent VCS, Vivado, runtime, or board-run evidence as a template-selection failure.",
+        "produces": [
+          "template_selection_stage_gate_audit",
+          "cross_layer_trace_decision",
+          "repair_or_ready_classification"
+        ],
+        "rationale": "Aggregate the supplied checker evidence and stage_gate_policy to confirm that the required numeric, memory-board, runtime-board, deployment-board, and input-consistency constraints are present in the template-selection trace without claiming later hardware or simulation success.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "deployment_board_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "code_generation_manifest_static_check",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "handoff_contract_generation",
+        "consumes": [
+          "template_selection_stage_gate_audit",
+          "candidate_stage_artifact.selected_templates",
+          "candidate_stage_artifact.parameter_bindings",
+          "candidate_stage_artifact.template_source_checks",
+          "candidate_stage_artifact.cross_layer_trace",
+          "candidate_stage_artifact.forbidden_edits"
+        ],
+        "id": "code_generation.prepare_bound_template_contract",
+        "on_failure": "Hold at code_generation and return the bounded mismatch to the template-selection/codegen contract owner; do not modify golden outputs, loosen tolerance, or change numeric, memory, runtime, board, or template policy without approval.",
+        "produces": [
+          "artifact.next_stage.code_generation_manifest",
+          "artifact.next_stage.codegen_contract",
+          "artifact.next_stage.sacg_reference_map"
+        ],
+        "rationale": "The next stage should materialize a code-generation contract from trusted selected templates while preserving SACG references for model shape, numeric policy, memory board, runtime board, deployment board, and input-consistency facts.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "code_generation_manifest_static_check",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_action_audit_check",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ],
+        "action_type": "stage_boundary_annotation",
+        "consumes": [
+          "template_selection_stage_gate_audit",
+          "candidate_stage_artifact.stage_gate_policy",
+          "candidate_stage_artifact.cross_layer_trace_decision"
+        ],
+        "id": "stage_orchestrator.record_later_stage_gap_classification",
+        "on_failure": "Keep the handoff annotation unresolved and require orchestrator correction; do not add a current-stage risk unless a checker reports a concrete contradiction against the template-selection artifact or named SACG constraints.",
+        "produces": [
+          "artifact.stage_boundary.not_current_stage_gap_classification"
+        ],
+        "rationale": "Record that missing implementation, simulation, backend, runtime, and board-bring-up evidence is classified by the supplied stage_gate_policy as later-stage work so it is not misreported as a current template-selection failure.",
+        "requires_approval": false,
+        "stage": "stage_orchestrator",
+        "tool_roles": [
+          "team_aggregate",
+          "verification_action_audit",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "cross_layer_trace.status is pass and marks constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, constraint.deployment.board, and constraint.cross_layer.input_consistency as present=true.",
+      "The visible checker_results all pass: operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, attention_semantic_expansion_check, and cross_layer_trace_check report no errors.",
+      "Operator coverage is complete for the current template-selection scope: 9 required decoder operators are covered, a block wrapper exists, and missing_ops is empty.",
+      "Attention semantic expansion is covered for QKV projection, RoPE, GQA head mapping with 14 query heads and 2 KV heads, softmax, output projection, and causal mask; KV cache is explicitly marked not_required for this artifact.",
+      "All visible selected template parameter bindings are status=ready with no missing_params, legality_errors, or unsupported_bindings; numeric parameters are bound to constraint.numeric.policy and lanes are bound through architecture, memory-board, and numeric-policy sources.",
+      "Template source checks show each selected Chisel template source exists and passes constructor/metadata consistency checks with recorded source hashes; the forbidden_edits list blocks free-form RTL coverage closure, implicit constructor defaults where real inputs exist, and unapproved changes to template internals, data order, memory layout, numeric policy, or board/runtime assumptions.",
+      "SACG memory in the state summary reports no active contamination barriers, no open backtrack_requests, and no open retry_requests; the separately supplied sacg_memory object is empty, so there is no relevant same-stage memory blocker to address.",
+      "Under the supplied stage_gate_policy, absent VCS/Verilator simulation, Vivado synthesis/implementation/bitstream, generated final accelerator code, runtime driver, board wrapper, DDR/AXI top-level integration, later numeric-accuracy evidence, and board bring-up evidence are not current-stage blocks and must not be reported as template-selection failures.",
+      "The named subtask acceptance checkers for memory/runtime/address/deployment/human-boundary should be preserved as promotion/handoff checks, but the current-stage blocker being audited here is trace absence; the supplied trace contains the required board and input-consistency constraints."
+    ],
+    "proposed_actions": [
+      "Promote the candidate template-selection artifact as ready only with this gate audit attached and with the numeric, memory-board, runtime-board, deployment-board, and input-consistency trace facts locked as SACG handoff facts.",
+      "In code_generation, consume selected template IDs, source hashes, parameter bindings, forbidden edits, and cross-layer trace facts directly; do not alter numeric policy, memory layout, board/runtime assumptions, data order, or major template choices without explicit approval.",
+      "Record simulation, Vivado, runtime-driver, DDR/AXI-wrapper, bitstream, board-run, and later numeric-accuracy checks as later-stage planned work, not as current template-selection risks.",
+      "If a later checker finds a concrete contradiction in selected templates, parameter bindings, template metadata, or cross-layer trace facts, route it back as a bounded template-selection repair request with the violated SACG constraint cited."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.cross_layer_trace",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.selected_templates",
+        "candidate_stage_artifact.parameter_bindings",
+        "candidate_stage_artifact.template_source_checks",
+        "candidate_stage_artifact.attention_semantics",
+        "candidate_stage_artifact.forbidden_edits",
+        "candidate_stage_artifact.stage_gate_policy",
+        "state_summary.sacg_memory"
+      ],
+      "constraints": [
+        "constraint.numeric.policy",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.cross_layer.input_consistency",
+        "constraint.verification.plan",
+        "constraint.human.boundary",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.template.library",
+        "constraint.arch.design_space"
+      ],
+      "edges": [
+        "constraint.numeric.policy -> cross_layer_trace.constraints[present=true]",
+        "constraint.memory.board -> cross_layer_trace.constraints[present=true]",
+        "constraint.runtime.board -> cross_layer_trace.constraints[present=true]",
+        "constraint.deployment.board -> cross_layer_trace.constraints[present=true]",
+        "constraint.cross_layer.input_consistency -> cross_layer_trace.constraints[present=true]",
+        "selected_templates -> parameter_bindings[status=ready]",
+        "template_source_checks -> selected_templates[status=pass]",
+        "stage_gate_policy -> repair_or_ready_classification"
+      ],
+      "nodes": [
+        "qwen2_spatialacc_agent_run",
+        "template_selection",
+        "candidate_stage_artifact.cross_layer_trace",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.stage_gate_policy",
+        "qwen2_block",
+        "self_attention",
+        "attention_semantics",
+        "selected_templates",
+        "parameter_bindings"
+      ]
+    },
+    "schema_version": "spatialaccagent.template_selection_gate_audit.v0",
+    "stage": "template_selection",
+    "status": "ready",
+    "summary": "Template-selection gate audit is ready: the candidate trace explicitly includes numeric policy, memory board, runtime board, deployment board, and cross-layer input-consistency constraints, and the supplied deterministic template-selection checker results pass. Remaining implementation, simulation, Vivado, runtime-driver, DDR/AXI-wrapper, bitstream, board-run, and later numeric-accuracy evidence are classified by the supplied stage_gate_policy as not current-stage blockers."
+  },
+  "prompt_bytes": 54951,
+  "prompt_hash": "b7a0e89115c5698f333c0910f80aeac47fd51ff283f5880e195b77d5555a3ec9",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.template_selection_gate_audit.v0\",\"agent\":\"verification_repair_gate_specialist\",\"stage\":\"template_selection\",\"status\":\"ready\",\"summary\":\"Template-selection gate audit is ready: the candidate trace explicitly includes numeric policy, memory board, runtime board, deployment board, and cross-layer input-consistency constraints, and the supplied deterministic template-selection checker results pass. Remaining implementation, simulation, Vivado, runtime-driver, DDR/AXI-wrapper, bitstream, board-run, and later numeric-accuracy evidence are classified by the supplied stage_gate_policy as not current-stage blockers.\",\"sacg_focus\":{\"nodes\":[\"qwen2_spatialacc_agent_run\",\"template_selection\",\"candidate_stage_artifact.cross_layer_trace\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.stage_gate_policy\",\"qwen2_block\",\"self_attention\",\"attention_semantics\",\"selected_templates\",\"parameter_bindings\"],\"edges\":[\"constraint.numeric.policy -> cross_layer_trace.constraints[present=true]\",\"constraint.memory.board -> cross_layer_trace.constraints[present=true]\",\"constraint.runtime.board -> cross_layer_trace.constraints[present=true]\",\"constraint.deployment.board -> cross_layer_trace.constraints[present=true]\",\"constraint.cross_layer.input_consistency -> cross_layer_trace.constraints[present=true]\",\"selected_templates -> parameter_bindings[status=ready]\",\"template_source_checks -> selected_templates[status=pass]\",\"stage_gate_policy -> repair_or_ready_classification\"],\"constraints\":[\"constraint.numeric.policy\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.cross_layer.input_consistency\",\"constraint.verification.plan\",\"constraint.human.boundary\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.template.library\",\"constraint.arch.design_space\"],\"artifacts\":[\"candidate_stage_artifact.cross_layer_trace\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.selected_templates\",\"candidate_stage_artifact.parameter_bindings\",\"candidate_stage_artifact.template_source_checks\",\"candidate_stage_artifact.attention_semantics\",\"candidate_stage_artifact.forbidden_edits\",\"candidate_stage_artifact.stage_gate_policy\",\"state_summary.sacg_memory\"]},\"observations\":[\"cross_layer_trace.status is pass and marks constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, constraint.deployment.board, and constraint.cross_layer.input_consistency as present=true.\",\"The visible checker_results all pass: operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, attention_semantic_expansion_check, and cross_layer_trace_check report no errors.\",\"Operator coverage is complete for the current template-selection scope: 9 required decoder operators are covered, a block wrapper exists, and missing_ops is empty.\",\"Attention semantic expansion is covered for QKV projection, RoPE, GQA head mapping with 14 query heads and 2 KV heads, softmax, output projection, and causal mask; KV cache is explicitly marked not_required for this artifact.\",\"All visible selected template parameter bindings are status=ready with no missing_params, legality_errors, or unsupported_bindings; numeric parameters are bound to constraint.numeric.policy and lanes are bound through architecture, memory-board, and numeric-policy sources.\",\"Template source checks show each selected Chisel template source exists and passes constructor/metadata consistency checks with recorded source hashes; the forbidden_edits list blocks free-form RTL coverage closure, implicit constructor defaults where real inputs exist, and unapproved changes to template internals, data order, memory layout, numeric policy, or board/runtime assumptions.\",\"SACG memory in the state summary reports no active contamination barriers, no open backtrack_requests, and no open retry_requests; the separately supplied sacg_memory object is empty, so there is no relevant same-stage memory blocker to address.\",\"Under the supplied stage_gate_policy, absent VCS/Verilator simulation, Vivado synthesis/implementation/bitstream, generated final accelerator code, runtime driver, board wrapper, DDR/AXI top-level integration, later numeric-accuracy evidence, and board bring-up evidence are not current-stage blocks and must not be reported as template-selection failures.\",\"The named subtask acceptance checkers for memory/runtime/address/deployment/human-boundary should be preserved as promotion/handoff checks, but the current-stage blocker being audited here is trace absence; the supplied trace contains the required board and input-consistency constraints.\"],\"risks\":[],\"proposed_actions\":[\"Promote the candidate template-selection artifact as ready only with this gate audit attached and with the numeric, memory-board, runtime-board, deployment-board, and input-consistency trace facts locked as SACG handoff facts.\",\"In code_generation, consume selected template IDs, source hashes, parameter bindings, forbidden edits, and cross-layer trace facts directly; do not alter numeric policy, memory layout, board/runtime assumptions, data order, or major template choices without explicit approval.\",\"Record simulation, Vivado, runtime-driver, DDR/AXI-wrapper, bitstream, board-run, and later numeric-accuracy checks as later-stage planned work, not as current template-selection risks.\",\"If a later checker finds a concrete contradiction in selected templates, parameter bindings, template metadata, or cross-layer trace facts, route it back as a bounded template-selection repair request with the violated SACG constraint cited.\"],\"executable_actions\":[{\"id\":\"template_selection.final_cross_layer_gate_audit\",\"stage\":\"template_selection\",\"action_type\":\"stage_gate_evidence_audit\",\"rationale\":\"Aggregate the supplied checker evidence and stage_gate_policy to confirm that the required numeric, memory-board, runtime-board, deployment-board, and input-consistency constraints are present in the template-selection trace without claiming later hardware or simulation success.\",\"consumes\":[\"candidate_stage_artifact.cross_layer_trace\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.selected_templates\",\"candidate_stage_artifact.parameter_bindings\",\"candidate_stage_artifact.template_source_checks\",\"candidate_stage_artifact.forbidden_edits\",\"state_summary.constraints\",\"state_summary.sacg_memory\"],\"produces\":[\"template_selection_stage_gate_audit\",\"cross_layer_trace_decision\",\"repair_or_ready_classification\"],\"tool_roles\":[\"sacg_static_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"memory_runtime_plan_check\",\"addr_map_check\",\"deployment_board_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"memory_runtime_plan_check\",\"addr_map_check\",\"deployment_board_check\",\"human_boundary_check\"],\"on_failure\":\"Block promotion to code_generation, localize the failure to the missing or contradictory constraint/template/parameter/source/board fact, and issue a bounded repair request; do not reclassify absent VCS, Vivado, runtime, or board-run evidence as a template-selection failure.\",\"requires_approval\":false},{\"id\":\"code_generation.prepare_bound_template_contract\",\"stage\":\"code_generation\",\"action_type\":\"handoff_contract_generation\",\"rationale\":\"The next stage should materialize a code-generation contract from trusted selected templates while preserving SACG references for model shape, numeric policy, memory board, runtime board, deployment board, and input-consistency facts.\",\"consumes\":[\"template_selection_stage_gate_audit\",\"candidate_stage_artifact.selected_templates\",\"candidate_stage_artifact.parameter_bindings\",\"candidate_stage_artifact.template_source_checks\",\"candidate_stage_artifact.cross_layer_trace\",\"candidate_stage_artifact.forbidden_edits\"],\"produces\":[\"artifact.next_stage.code_generation_manifest\",\"artifact.next_stage.codegen_contract\",\"artifact.next_stage.sacg_reference_map\"],\"tool_roles\":[\"code_generation_manifest_static_check\",\"codegen_contract_check\",\"codegen_package_static_check\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"code_generation_manifest_static_check\",\"codegen_contract_check\",\"codegen_package_static_check\",\"sacg_reference_check\"],\"on_failure\":\"Hold at code_generation and return the bounded mismatch to the template-selection/codegen contract owner; do not modify golden outputs, loosen tolerance, or change numeric, memory, runtime, board, or template policy without approval.\",\"requires_approval\":false},{\"id\":\"stage_orchestrator.record_later_stage_gap_classification\",\"stage\":\"stage_orchestrator\",\"action_type\":\"stage_boundary_annotation\",\"rationale\":\"Record that missing implementation, simulation, backend, runtime, and board-bring-up evidence is classified by the supplied stage_gate_policy as later-stage work so it is not misreported as a current template-selection failure.\",\"consumes\":[\"template_selection_stage_gate_audit\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.cross_layer_trace_decision\"],\"produces\":[\"artifact.stage_boundary.not_current_stage_gap_classification\"],\"tool_roles\":[\"team_aggregate\",\"verification_action_audit\",\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"verification_action_audit_check\",\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\"],\"on_failure\":\"Keep the handoff annotation unresolved and require orchestrator correction; do not add a current-stage risk unless a checker reports a concrete contradiction against the template-selection artifact or named SACG constraints.\",\"requires_approval\":false}],\"approval_required_for\":[]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/verification_repair_gate_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/verification_repair_gate_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "template_selection.cross-layer gate engineer",
+  "used_fallback": false
+}

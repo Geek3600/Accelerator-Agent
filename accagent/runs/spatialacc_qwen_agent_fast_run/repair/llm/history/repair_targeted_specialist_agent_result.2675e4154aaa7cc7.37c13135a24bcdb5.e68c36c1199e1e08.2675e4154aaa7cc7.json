@@ -1,0 +1,202 @@
+{
+  "agent": "repair_targeted_specialist_agent",
+  "duration_sec": 248.08821768400958,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "f49b28bc3f2c4388a20a5287a380f691",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_targeted_specialist_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "agent": "repair_targeted_specialist_agent",
+    "approval_required_for": [
+      "Superseding the immutable CCTG/testbench lifecycle predicates kernel_start_precedes_stage0_input and kernel_start_precedes_direct_core_ingress with an explicitly documented observer contract consistent with accepted_input_handshake_required_before_kernel_lifecycle_start. Approval authorizes only a testbench/checker semantic correction; it does not authorize any wrapper, DUT, architecture, memory-layout, numeric-policy, tolerance, golden, checkpoint, or stimulus change."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "causal_repair_context_check",
+          "artifact_hash_check",
+          "sacg_reference_check",
+          "sacg_memory_check",
+          "stage_artifact_trust_barrier_check",
+          "human_boundary_check"
+        ],
+        "action_type": "causal_contract_reconciliation",
+        "consumes": [
+          "verification/case_diagnostics/sacg_cctg_causal_slice.json#sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c",
+          "verification/debug_closure/boundary_trace.json containing tx0 at cycle 20572946",
+          "verification/board_simulation/board_simulation_executed_manifest.json#sha256=bccc5d7460f2c9723d59655626f0c1bee025771ec2a72ccb75a74c5832046296",
+          "verification/board_interface/board_source_identity.json#sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+          "hierarchical_learning_context decision_policy and connected-kernel timing evidence",
+          "verification/certificates/single_layer_promotion_certificate.json#sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7",
+          "sacg_memory_truth active barriers and open retry requests"
+        ],
+        "id": "repair.reconcile_tx0_lifecycle_cctg_contract",
+        "on_failure": "Do not modify RTL, the generated accelerator, the wrapper, or the existing diagnostic predicate. Keep functional_sim failed and hold all dependent current-layer and higher-layer tools; escalate only the unresolved lifecycle-contract conflict for human review.",
+        "produces": [
+          "repair/lifecycle_cctg_reconciliation.json with quoted old and proposed lifecycle relations",
+          "repair/lifecycle_observer_supersession_approval_request.json",
+          "repair/current_layer_nonpromotion_record.json preserving active barrier and retry-request status"
+        ],
+        "rationale": "Resolve the explicit conflict between the earliest CCTG predicate requiring start before stage0/core ingress and the live board invariant requiring accepted input before kernel lifecycle start. This produces a bounded decision artifact only; it makes no hardware, wrapper, golden, tolerance, checkpoint, or numeric-policy modification.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "causal_repair_context_pack",
+          "artifact_hash_check",
+          "sacg_reference_check",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_artifact_contract_check",
+          "boundary_contract_check",
+          "artifact_hash_check",
+          "repair_boundary_check",
+          "codegen_contract_check",
+          "human_boundary_check"
+        ],
+        "action_type": "verification_capability_repair",
+        "consumes": [
+          "repair/lifecycle_cctg_reconciliation.json with matching artifact hashes",
+          "approved repair/lifecycle_observer_supersession_approval_request.json",
+          "verification/semantic_testbench/semantic_testbench_manifest.json#sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+          "verification/board_interface/board_source_identity.json#sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+          "existing boundary contracts and CCTG path declaration",
+          "immutable checkpoint, stimulus, target-model reference, expected-output hash, numeric policy, tolerance, DUT weight-binding manifest, and wrapper source closure"
+        ],
+        "id": "repair.apply_approved_testbench_only_lifecycle_observer_correction",
+        "on_failure": "Reject the candidate observer contract, retain the existing testbench contract and all active contamination barriers, and do not launch VCS or patch DUT/kernel/wrapper logic. Any attempted wrapper hash, golden, checkpoint, stimulus, numeric-policy, or tolerance change fails the repair boundary.",
+        "produces": [
+          "verification/semantic_testbench/candidate_exact_board_lifecycle_observer_contract.json",
+          "verification/semantic_testbench/candidate_exact_board_tb_manifest.json with generated source hashes",
+          "verification/debug_closure/candidate_lifecycle_boundary_schema.json declaring lifecycle, ingress, all 13 CCTG boundaries, and egress observations"
+        ],
+        "rationale": "After approval, repair only the exact-board simulation/testbench observer so it represents the certified lifecycle relation: accepted ingress may precede lifecycle start, lifecycle start must be explicitly observed, and ingress, stage0, all current-DAG boundaries, and core egress must remain schema-valid and source-hash-bound. This corrects an inconsistent checker contract; it is not a hardware correctness claim or a relaxed numeric/timing tolerance.",
+        "requires_approval": true,
+        "stage": "repair",
+        "tool_roles": [
+          "bounded_template_repair",
+          "boundary_contract_generate",
+          "case_tb_scaffold_generate",
+          "functional_sim_contract_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_vcs_functional_sim",
+          "functional_sim",
+          "failure_localization_check",
+          "targeted_failed_checker_rerun",
+          "artifact_hash_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "current_layer_causal_replay",
+        "consumes": [
+          "accepted verification/semantic_testbench/candidate_exact_board_tb_manifest.json",
+          "accepted verification/debug_closure/candidate_lifecycle_boundary_schema.json",
+          "verification/board_interface/board_source_identity.json#sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+          "generated/memory/dut_weight_binding_manifest.json",
+          "target-model expected-output artifact#sha256=92fc53de80c8caca6ea04cc69ab768a1f6db0e55a2ab0ebbd9ac0adc6e3c85b4",
+          "repair/lifecycle_cctg_reconciliation.json",
+          "sacg_memory_truth active contamination barriers and retry requests"
+        ],
+        "id": "repair.rerun_current_exact_board_vcs_after_lifecycle_reconciliation",
+        "on_failure": "If the corrected trace still has no ready egress, localize the next non-lifecycle board boundary and repair only its board integration/loader/harness slice. Reopen the connected kernel only if a new hash-bound trace directly contradicts a named certified invariant with direct start, ingress, egress, causal-boundary, and certificate evidence. Do not run dependent multilayer/AXI/DDR/semantic tools or any backend tool until functional_sim passes.",
+        "produces": [
+          "verification/vcs/case_board_vcs_functional_retry.json",
+          "verification/board_simulation/board_simulation_executed_manifest_retry.json",
+          "verification/debug_closure/boundary_trace_retry.json",
+          "verification/case_diagnostics/vcs_functional_diagnosis_retry.json with next earliest valid causal boundary or functional pass evidence"
+        ],
+        "rationale": "Rerun the failed current board-layer functional gate only after the approved observer correction. The run must use the exact immutable user wrapper/source closure, same checkpoint and stimulus, target-model expected output, fixed comparison policy, and full trace correlation of lifecycle, direct core ingress, stage0, the current CCTG DAG, and egress. This supplies the next tool-directed localization without reopening lower layers or advancing to dependent board gates.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "case_vcs_functional_sim",
+          "case_vcs_evidence_analyzer",
+          "boundary_trace_rerun",
+          "artifact_hash_check",
+          "targeted_failed_checker_rerun"
+        ]
+      }
+    ],
+    "observations": [
+      "functional_sim is the only executed failing current-layer gate. case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence are dependency-blocked/not_run and must not be run before functional_sim closes.",
+      "The first failing CCTG record is ordered boundary index 0: block_input to stage_00_rms_norm_1, tx_id 0, cycle 20572946. The paired direct-core record at the same cycle also reports a valid/ready core-ingress fire while kernel_start_q=0. The observed first lifecycle start is cycle 20572948.",
+      "The reported CCTG start-before-ingress predicates conflict with live hash-validated board knowledge stating accepted_input_handshake_required_before_kernel_lifecycle_start. The board trace ordering therefore supports the live board lifecycle invariant and exposes an observer/contract inconsistency, rather than proving block_input or the connected kernel violated its functional design contract.",
+      "The later ready-output symptom is real but not root-cause-specific: all 1792 core-ingress beats were accepted, core egress stayed ready with zero accepted beats, and stage0 had accepted only 1680 beats at the captured frontier. This blocks numeric, data-order, output-count, and liveness claims, but cannot legally select a kernel RTL edit until a corrected exact-wrapper trace identifies a non-lifecycle causal boundary.",
+      "The lower-layer reopening condition is not met. The current repair context says no current board-to-lower-layer contradiction, and the completed hash-bound connected-kernel replay reports 1792 ingress and egress beats, terminal egress last, boundary liveness pass, and fresh VCS execution. Preserve the certified elastic variable-latency pipeline semantics and do not rerun leaf or connected-kernel tools.",
+      "The exact user wrapper identity and source closure are presently hash-bound and pass, but the exact-sample testbench observability contract is invalid/not testbench-only and lacks current-DAG boundary declarations. The missing dynamic schema and elaborated-hierarchy closure are verification-capability defects; they do not prove hardware correctness.",
+      "Runtime-load activity reached 1056/1056 words, while the dynamic runtime-loader acceptance artifact is invalid. Thus runtime load progress is not proof of contiguous address order, image data equality, load-before-start, or complete DUT weight consumption. The target-model expected output, checkpoint, stimulus, numeric policy, tolerance, and wrapper hashes must remain unchanged.",
+      "sacg_memory_truth has 23 active same-scope contamination barriers and 8 open same-scope retry requests; there are no open same-scope backtrack requests. Rejected Stage7/Stage8 artifacts remain diagnostic/planning evidence only and remain downstream-consumption and promotion blockers until a new Stage7 pass is produced."
+    ],
+    "proposed_actions": [
+      "Create a hash-bound reconciliation record that compares the tx0 CCTG predicate with the live accepted-input-before-lifecycle-start invariant and explicitly classifies the start-before-ingress finding as a testbench/CCTG contract conflict.",
+      "Obtain bounded human approval before superseding only the lifecycle-observer predicate. The approved repair must be simulation/testbench-only, retain the exact wrapper closure, and emit complete lifecycle plus 13-boundary CCTG declarations with valid schemas.",
+      "After the approved observer correction, rerun only the current exact-board VCS functional gate and analyzer. Do not run dependent multilayer, AXI, DDR, semantic-aggregate, backend, synthesis, implementation, bitstream, or board-runtime tools first."
+    ],
+    "risks": [
+      "Changing kernel input gating to force start-before-ingress would contradict the live board lifecycle invariant, risk deadlock, and improperly reopen a certified connected kernel.",
+      "Silently replacing the CCTG predicate would alter an immutable testbench/verification contract. A human-approved supersession is required, and the replacement must be a semantic correction based on the stated accepted-input-before-start policy, not a timing relaxation.",
+      "The no-egress symptom may persist after observer repair. If it does, it remains a current board-layer integration, lifecycle, loader, or dataflow localization problem until a new hash-bound direct-core trace contradicts a named connected-kernel invariant.",
+      "No board-level target-model numeric comparison, output ordering proof, DDR roundtrip proof, AXI protocol pass, or complete-scope executed DUT weight-consumption proof exists. The zero-output run cannot be treated as a functional pass.",
+      "Changing the exact user-supplied wrapper, its simulation source closure, checkpoint, stimulus, expected output, tolerance, or numeric policy would invalidate the repair boundary and is prohibited."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "verification/case_diagnostics/sacg_cctg_causal_slice.json#sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c",
+        "verification/debug_closure/boundary_trace.json",
+        "verification/board_interface/board_source_identity.json#sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+        "verification/board_simulation/board_simulation_executed_manifest.json#sha256=bccc5d7460f2c9723d59655626f0c1bee025771ec2a72ccb75a74c5832046296",
+        "verification/certificates/single_layer_promotion_certificate.json#sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7",
+        "hierarchical_learning_context.connected_kernel_pipeline_timing#sha256=8475614f6ff71fd6b7ccb2c80a307fa12ed0ed6517b0eb71ac74b010b19f748f",
+        "sacg_memory_truth.active_contamination_barriers",
+        "sacg_memory_truth.open_retry_requests"
+      ],
+      "constraints": [
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.liveness.pipeline",
+        "constraint.human.boundary",
+        "constraint.verification.functional_scope"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input"
+      ],
+      "nodes": [
+        "node.pipeline.block_input",
+        "node.pipeline.stage_00_rms_norm_1",
+        "node.pipeline.stage_01_self_attention_main"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_targeted_specialist_agent.v1",
+    "stage": "repair",
+    "status": "needs_repair",
+    "summary": "The earliest observed CCTG failure is transaction 0 at boundary.edge_data_block_input_to_stage_00_rms_norm_1_input (cycle 20572946): the diagnostic predicate kernel_start_precedes_stage0_input expected kernel_start_to_core=1 while a valid/ready stage0/core-ingress transfer occurred with kernel_start_to_core=0. This is not yet a legal RTL root cause: the live hierarchical board policy requires an accepted input handshake before kernel lifecycle start, and the current trace itself records first core ingress at cycle 20572946 and start at cycle 20572948. Therefore the smallest legal repair is an approved, testbench-only CCTG lifecycle-observer reconciliation and exact-wrapper replay; do not gate or alter block_input, the connected kernel, weights, numeric policy, or the user wrapper before that reconciliation."
+  },
+  "prompt_bytes": 876940,
+  "prompt_hash": "c1dd5868fa63cf658adbdb5856da6781a95947a94b1244736c77be8bb2bb58d8",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.repair_targeted_specialist_agent.v1\",\"agent\":\"repair_targeted_specialist_agent\",\"stage\":\"repair\",\"status\":\"needs_repair\",\"summary\":\"The earliest observed CCTG failure is transaction 0 at boundary.edge_data_block_input_to_stage_00_rms_norm_1_input (cycle 20572946): the diagnostic predicate kernel_start_precedes_stage0_input expected kernel_start_to_core=1 while a valid/ready stage0/core-ingress transfer occurred with kernel_start_to_core=0. This is not yet a legal RTL root cause: the live hierarchical board policy requires an accepted input handshake before kernel lifecycle start, and the current trace itself records first core ingress at cycle 20572946 and start at cycle 20572948. Therefore the smallest legal repair is an approved, testbench-only CCTG lifecycle-observer reconciliation and exact-wrapper replay; do not gate or alter block_input, the connected kernel, weights, numeric policy, or the user wrapper before that reconciliation.\",\"sacg_focus\":{\"nodes\":[\"node.pipeline.block_input\",\"node.pipeline.stage_00_rms_norm_1\",\"node.pipeline.stage_01_self_attention_main\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\"],\"constraints\":[\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.liveness.pipeline\",\"constraint.human.boundary\",\"constraint.verification.functional_scope\"],\"artifacts\":[\"verification/case_diagnostics/sacg_cctg_causal_slice.json#sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c\",\"verification/debug_closure/boundary_trace.json\",\"verification/board_interface/board_source_identity.json#sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"verification/board_simulation/board_simulation_executed_manifest.json#sha256=bccc5d7460f2c9723d59655626f0c1bee025771ec2a72ccb75a74c5832046296\",\"verification/certificates/single_layer_promotion_certificate.json#sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7\",\"hierarchical_learning_context.connected_kernel_pipeline_timing#sha256=8475614f6ff71fd6b7ccb2c80a307fa12ed0ed6517b0eb71ac74b010b19f748f\",\"sacg_memory_truth.active_contamination_barriers\",\"sacg_memory_truth.open_retry_requests\"]},\"observations\":[\"functional_sim is the only executed failing current-layer gate. case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence are dependency-blocked/not_run and must not be run before functional_sim closes.\",\"The first failing CCTG record is ordered boundary index 0: block_input to stage_00_rms_norm_1, tx_id 0, cycle 20572946. The paired direct-core record at the same cycle also reports a valid/ready core-ingress fire while kernel_start_q=0. The observed first lifecycle start is cycle 20572948.\",\"The reported CCTG start-before-ingress predicates conflict with live hash-validated board knowledge stating accepted_input_handshake_required_before_kernel_lifecycle_start. The board trace ordering therefore supports the live board lifecycle invariant and exposes an observer/contract inconsistency, rather than proving block_input or the connected kernel violated its functional design contract.\",\"The later ready-output symptom is real but not root-cause-specific: all 1792 core-ingress beats were accepted, core egress stayed ready with zero accepted beats, and stage0 had accepted only 1680 beats at the captured frontier. This blocks numeric, data-order, output-count, and liveness claims, but cannot legally select a kernel RTL edit until a corrected exact-wrapper trace identifies a non-lifecycle causal boundary.\",\"The lower-layer reopening condition is not met. The current repair context says no current board-to-lower-layer contradiction, and the completed hash-bound connected-kernel replay reports 1792 ingress and egress beats, terminal egress last, boundary liveness pass, and fresh VCS execution. Preserve the certified elastic variable-latency pipeline semantics and do not rerun leaf or connected-kernel tools.\",\"The exact user wrapper identity and source closure are presently hash-bound and pass, but the exact-sample testbench observability contract is invalid/not testbench-only and lacks current-DAG boundary declarations. The missing dynamic schema and elaborated-hierarchy closure are verification-capability defects; they do not prove hardware correctness.\",\"Runtime-load activity reached 1056/1056 words, while the dynamic runtime-loader acceptance artifact is invalid. Thus runtime load progress is not proof of contiguous address order, image data equality, load-before-start, or complete DUT weight consumption. The target-model expected output, checkpoint, stimulus, numeric policy, tolerance, and wrapper hashes must remain unchanged.\",\"sacg_memory_truth has 23 active same-scope contamination barriers and 8 open same-scope retry requests; there are no open same-scope backtrack requests. Rejected Stage7/Stage8 artifacts remain diagnostic/planning evidence only and remain downstream-consumption and promotion blockers until a new Stage7 pass is produced.\"],\"risks\":[\"Changing kernel input gating to force start-before-ingress would contradict the live board lifecycle invariant, risk deadlock, and improperly reopen a certified connected kernel.\",\"Silently replacing the CCTG predicate would alter an immutable testbench/verification contract. A human-approved supersession is required, and the replacement must be a semantic correction based on the stated accepted-input-before-start policy, not a timing relaxation.\",\"The no-egress symptom may persist after observer repair. If it does, it remains a current board-layer integration, lifecycle, loader, or dataflow localization problem until a new hash-bound direct-core trace contradicts a named connected-kernel invariant.\",\"No board-level target-model numeric comparison, output ordering proof, DDR roundtrip proof, AXI protocol pass, or complete-scope executed DUT weight-consumption proof exists. The zero-output run cannot be treated as a functional pass.\",\"Changing the exact user-supplied wrapper, its simulation source closure, checkpoint, stimulus, expected output, tolerance, or numeric policy would invalidate the repair boundary and is prohibited.\"],\"proposed_actions\":[\"Create a hash-bound reconciliation record that compares the tx0 CCTG predicate with the live accepted-input-before-lifecycle-start invariant and explicitly classifies the start-before-ingress finding as a testbench/CCTG contract conflict.\",\"Obtain bounded human approval before superseding only the lifecycle-observer predicate. The approved repair must be simulation/testbench-only, retain the exact wrapper closure, and emit complete lifecycle plus 13-boundary CCTG declarations with valid schemas.\",\"After the approved observer correction, rerun only the current exact-board VCS functional gate and analyzer. Do not run dependent multilayer, AXI, DDR, semantic-aggregate, backend, synthesis, implementation, bitstream, or board-runtime tools first.\"],\"executable_actions\":[{\"id\":\"repair.reconcile_tx0_lifecycle_cctg_contract\",\"stage\":\"repair\",\"action_type\":\"causal_contract_reconciliation\",\"rationale\":\"Resolve the explicit conflict between the earliest CCTG predicate requiring start before stage0/core ingress and the live board invariant requiring accepted input before kernel lifecycle start. This produces a bounded decision artifact only; it makes no hardware, wrapper, golden, tolerance, checkpoint, or numeric-policy modification.\",\"consumes\":[\"verification/case_diagnostics/sacg_cctg_causal_slice.json#sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c\",\"verification/debug_closure/boundary_trace.json containing tx0 at cycle 20572946\",\"verification/board_simulation/board_simulation_executed_manifest.json#sha256=bccc5d7460f2c9723d59655626f0c1bee025771ec2a72ccb75a74c5832046296\",\"verification/board_interface/board_source_identity.json#sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"hierarchical_learning_context decision_policy and connected-kernel timing evidence\",\"verification/certificates/single_layer_promotion_certificate.json#sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7\",\"sacg_memory_truth active barriers and open retry requests\"],\"produces\":[\"repair/lifecycle_cctg_reconciliation.json with quoted old and proposed lifecycle relations\",\"repair/lifecycle_observer_supersession_approval_request.json\",\"repair/current_layer_nonpromotion_record.json preserving active barrier and retry-request status\"],\"tool_roles\":[\"causal_repair_context_pack\",\"artifact_hash_check\",\"sacg_reference_check\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"causal_repair_context_check\",\"artifact_hash_check\",\"sacg_reference_check\",\"sacg_memory_check\",\"stage_artifact_trust_barrier_check\",\"human_boundary_check\"],\"on_failure\":\"Do not modify RTL, the generated accelerator, the wrapper, or the existing diagnostic predicate. Keep functional_sim failed and hold all dependent current-layer and higher-layer tools; escalate only the unresolved lifecycle-contract conflict for human review.\",\"requires_approval\":false},{\"id\":\"repair.apply_approved_testbench_only_lifecycle_observer_correction\",\"stage\":\"repair\",\"action_type\":\"verification_capability_repair\",\"rationale\":\"After approval, repair only the exact-board simulation/testbench observer so it represents the certified lifecycle relation: accepted ingress may precede lifecycle start, lifecycle start must be explicitly observed, and ingress, stage0, all current-DAG boundaries, and core egress must remain schema-valid and source-hash-bound. This corrects an inconsistent checker contract; it is not a hardware correctness claim or a relaxed numeric/timing tolerance.\",\"consumes\":[\"repair/lifecycle_cctg_reconciliation.json with matching artifact hashes\",\"approved repair/lifecycle_observer_supersession_approval_request.json\",\"verification/semantic_testbench/semantic_testbench_manifest.json#sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7\",\"verification/board_interface/board_source_identity.json#sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"existing boundary contracts and CCTG path declaration\",\"immutable checkpoint, stimulus, target-model reference, expected-output hash, numeric policy, tolerance, DUT weight-binding manifest, and wrapper source closure\"],\"produces\":[\"verification/semantic_testbench/candidate_exact_board_lifecycle_observer_contract.json\",\"verification/semantic_testbench/candidate_exact_board_tb_manifest.json with generated source hashes\",\"verification/debug_closure/candidate_lifecycle_boundary_schema.json declaring lifecycle, ingress, all 13 CCTG boundaries, and egress observations\"],\"tool_roles\":[\"bounded_template_repair\",\"boundary_contract_generate\",\"case_tb_scaffold_generate\",\"functional_sim_contract_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"verification_artifact_contract_check\",\"boundary_contract_check\",\"artifact_hash_check\",\"repair_boundary_check\",\"codegen_contract_check\",\"human_boundary_check\"],\"on_failure\":\"Reject the candidate observer contract, retain the existing testbench contract and all active contamination barriers, and do not launch VCS or patch DUT/kernel/wrapper logic. Any attempted wrapper hash, golden, checkpoint, stimulus, numeric-policy, or tolerance change fails the repair boundary.\",\"requires_approval\":true},{\"id\":\"repair.rerun_current_exact_board_vcs_after_lifecycle_reconciliation\",\"stage\":\"repair\",\"action_type\":\"current_layer_causal_replay\",\"rationale\":\"Rerun the failed current board-layer functional gate only after the approved observer correction. The run must use the exact immutable user wrapper/source closure, same checkpoint and stimulus, target-model expected output, fixed comparison policy, and full trace correlation of lifecycle, direct core ingress, stage0, the current CCTG DAG, and egress. This supplies the next tool-directed localization without reopening lower layers or advancing to dependent board gates.\",\"consumes\":[\"accepted verification/semantic_testbench/candidate_exact_board_tb_manifest.json\",\"accepted verification/debug_closure/candidate_lifecycle_boundary_schema.json\",\"verification/board_interface/board_source_identity.json#sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"generated/memory/dut_weight_binding_manifest.json\",\"target-model expected-output artifact#sha256=92fc53de80c8caca6ea04cc69ab768a1f6db0e55a2ab0ebbd9ac0adc6e3c85b4\",\"repair/lifecycle_cctg_reconciliation.json\",\"sacg_memory_truth active contamination barriers and retry requests\"],\"produces\":[\"verification/vcs/case_board_vcs_functional_retry.json\",\"verification/board_simulation/board_simulation_executed_manifest_retry.json\",\"verification/debug_closure/boundary_trace_retry.json\",\"verification/case_diagnostics/vcs_functional_diagnosis_retry.json with next earliest valid causal boundary or functional pass evidence\"],\"tool_roles\":[\"case_vcs_functional_sim\",\"case_vcs_evidence_analyzer\",\"boundary_trace_rerun\",\"artifact_hash_check\",\"targeted_failed_checker_rerun\"],\"acceptance_checkers\":[\"real_tool.case_vcs_functional_sim\",\"functional_sim\",\"failure_localization_check\",\"targeted_failed_checker_rerun\",\"artifact_hash_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"If the corrected trace still has no ready egress, localize the next non-lifecycle board boundary and repair only its board integration/loader/harness slice. Reopen the connected kernel only if a new hash-bound trace directly contradicts a named certified invariant with direct start, ingress, egress, causal-boundary, and certificate evidence. Do not run dependent multilayer/AXI/DDR/semantic tools or any backend tool until functional_sim passes.\",\"requires_approval\":false}],\"approval_required_for\":[\"Superseding the immutable CCTG/testbench lifecycle predicates kernel_start_precedes_stage0_input and kernel_start_precedes_direct_core_ingress with an explicitly documented observer contract consistent with accepted_input_handshake_required_before_kernel_lifecycle_start. Approval authorizes only a testbench/checker semantic correction; it does not authorize any wrapper, DUT, architecture, memory-layout, numeric-policy, tolerance, golden, checkpoint, or stimulus change.\"]}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_targeted_specialist_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_targeted_specialist_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair.targeted_specialist",
+  "stream": true,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/history/repair_targeted_specialist_agent_result.57486b040880826d.f2e77282b35ef7c3.c1dd5868fa63cf65.snapshot.json",
+    "replaced_prompt_hash": "e81dd12f42ee3199a6c492abde1adf6b49fa413fbc79b000138a2358f87b73ef",
+    "replaced_result_sha256": "57486b040880826de80c19f06d8365115535f14cfe03317547df5aaa2fa3c529",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "57486b040880826d.f2e77282b35ef7c3.c1dd5868fa63cf65"
+  },
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

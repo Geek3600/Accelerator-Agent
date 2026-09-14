@@ -185,6 +185,20 @@ proc launch_runme_wait {run_dir} {
   exec /bin/sh -c "cd [list $run_dir] && ./runme.sh"
 }
 
+proc clear_synth_hooks {run} {
+  foreach prop {
+    STEPS.SYNTH_DESIGN.TCL.PRE
+    STEPS.SYNTH_DESIGN.TCL.POST
+  } {
+    if {![catch {set old_value [get_property $prop $run]}]} {
+      if {$old_value ne ""} {
+        puts "Clearing stale $prop=$old_value"
+      }
+      catch {set_property $prop "" $run}
+    }
+  }
+}
+
 set project_xpr [get_arg_or_default 0 "/home/hyyuan/workspace/v6.0_9p_cnn_2slr_4core_yolov8/v6.0_9p_cnn_v0825/app_shell_9p.xpr"]
 set ip_name     [get_arg_or_default 1 "app_shell_9p_opt_acc_core_0_3"]
 set run_name    [get_arg_or_default 2 "app_shell_9p_opt_acc_core_0_3_synth_1"]
@@ -259,6 +273,7 @@ export_ip_user_files -of_objects $regen_obj -no_script -sync -force -quiet
 sync_optacc_rtl_into_project $project_dir
 
 puts "=== Apply synthesis run properties ==="
+clear_synth_hooks $run
 set_property STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY rebuilt $run
 set_property STEPS.SYNTH_DESIGN.ARGS.DIRECTIVE RuntimeOptimized $run
 set_property STEPS.SYNTH_DESIGN.ARGS.RESOURCE_SHARING off $run

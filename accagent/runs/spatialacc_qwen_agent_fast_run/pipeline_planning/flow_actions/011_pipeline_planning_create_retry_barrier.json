@@ -1,0 +1,43 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "sacg_memory_check",
+      "stage_retry_request_check",
+      "stage_artifact_trust_barrier_check"
+    ],
+    "action_type": "stage_control",
+    "consumes": [
+      "sacg_memory",
+      "recent_stage_summary",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/29_pipeline_planning.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json"
+    ],
+    "id": "pipeline_planning.create_retry_barrier",
+    "on_failure": "Stop before rerun or downstream progress; keep stale and failed pipeline_planning artifacts invalid under flow_policy.do_not_use_failed_artifacts_as_validated_downstream_inputs.",
+    "produces": [
+      "artifact.sacg_memory.updated_with_pipeline_planning_retry_request",
+      "artifact.pipeline_planning.retry_reconciliation_contract",
+      "artifact.pipeline_planning.stage_artifact_trust_barrier"
+    ],
+    "rationale": "The current command failed and the prior pipeline_planning_report.json is stale/incomplete. A same-stage retry is allowed, but failed artifacts must be fenced from downstream consumption before retry artifacts are generated.",
+    "requires_approval": false,
+    "stage": "pipeline_planning",
+    "tool_roles": [
+      "sacg_memory_update",
+      "stage_retry_request",
+      "stage_artifact_trust_barrier"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 11,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/011_retry.json",
+  "stage": "pipeline_planning"
+}

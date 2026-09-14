@@ -1,0 +1,439 @@
+{
+  "agent": "repair_boundary_architect",
+  "duration_sec": 241.83483961800812,
+  "error": null,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "agent": "repair_boundary_architect",
+    "approval_required_for": [
+      "Any pipeline structure, buffering, scheduling, latency-contract, flow-control, or stream-order change.",
+      "Any memory layout, DDR address map, transfer-unit contract, runtime ABI, or register-map change.",
+      "Any architecture redesign, unsupported operator decomposition, template-family replacement, or free-form RTL rewrite; this role cannot authorize it and must hand off to architecture_review.",
+      "Any major trusted-template change beyond a localized generated implementation or binding repair.",
+      "Any numeric policy or tolerance change. Such values are immutable during a repair loop; an approved change requires a new run identity rather than mutation of current evidence.",
+      "Any attempt to alter checkpoint, stimulus, target-model reference, semantic-testbench contract, or exact user-supplied wrapper/source hashes; these changes require terminating the current repair identity and starting a separately approved run.",
+      "Any override of the two-attempt same-signature anti-spin limit or continuation without a new evidence-backed root hypothesis."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "boundary_contract_check",
+          "failure_localization_check",
+          "targeted_replay_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "artifact_hash_check",
+          "human_boundary_check"
+        ],
+        "action_type": "repair_boundary_refinement",
+        "consumes": [
+          "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.design_artifact_manifest",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary"
+        ],
+        "id": "repair_control.materialize_normalized_contracts",
+        "on_failure": "Keep the refined repair-control contract unpromoted and hand the exact schema/checker errors to the verification evidence-gate auditor; do not compensate with adapter-specific scripts, omit identity fields, or treat downstream hardware as failed.",
+        "produces": [
+          "verification/debug_closure/boundary_contracts.v1.json",
+          "verification/debug_closure/boundary_trace.schema.json",
+          "verification/debug_closure/failure_localization.schema.json",
+          "verification/debug_closure/targeted_replay.schema.json",
+          "verification/debug_closure/causal_repair_packet.schema.json",
+          "verification/debug_closure/cross_layer_failure_classification_matrix.json",
+          "verification/debug_closure/repair_control_dag.json",
+          "verification/debug_closure/certificate_invalidation_policy.json",
+          "verification/debug_closure/anti_spin_policy.json",
+          "verification/debug_closure/immutable_run_identity.schema.json"
+        ],
+        "rationale": "Convert the current debug-closure outline into checker-enforced, case-adapter-independent artifacts that peer repair agents and the evidence-gate auditor can consume without relying on case-specific names or human memory.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "boundary_contract_generate",
+          "repair_boundary_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "boundary_contract_check",
+          "failure_localization_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "failure_localization",
+        "consumes": [
+          "verification/debug_closure/boundary_contracts.v1.json",
+          "verification/debug_closure/boundary_trace.schema.json",
+          "verification/debug_closure/immutable_run_identity.schema.json",
+          "current failed simulator or checker report and raw waveform/log hashes",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage5.design_artifact_manifest",
+          "current immutable checkpoint, stimulus, target-reference, numeric-policy, tolerance, semantic-testbench, loader/harness, and source manifests",
+          "current scope promotion-certificate validation record"
+        ],
+        "id": "repair_control.normalize_and_localize_failure",
+        "on_failure": "Classify absent normalization, expected-value provenance, CCTG coverage, or localization support as a verifier-capability blocker, retain the failed layer, and prohibit code repair or higher-layer promotion until evidence can identify an earliest violation.",
+        "produces": [
+          "verification/debug_closure/trace_manifest.json",
+          "verification/debug_closure/boundary_trace.json",
+          "verification/debug_closure/failure_localization.json",
+          "verification/debug_closure/certificate_challenge.json",
+          "verification/debug_closure/targeted_replay_plan.json"
+        ],
+        "rationale": "Turn real tool or checker failures into a normalized trace and identify the earliest causal boundary before any repair is selected.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "boundary_trace_rerun",
+          "failure_slice_localization",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "targeted_replay_check",
+          "targeted_failed_checker_rerun",
+          "artifact_hash_check"
+        ],
+        "action_type": "targeted_replay",
+        "consumes": [
+          "verification/debug_closure/failure_localization.json",
+          "verification/debug_closure/targeted_replay_plan.json",
+          "verification/debug_closure/boundary_trace.json",
+          "verification/debug_closure/trace_manifest.json",
+          "current layer testbench and harness hashes",
+          "current target-model reference manifest",
+          "current tensor catalog and DUT weight-binding manifest",
+          "current numeric-policy and tolerance manifest",
+          "exact sample-project wrapper and source hash manifest when the failed layer is board_axi_ddr_wrapped_system"
+        ],
+        "id": "repair_control.execute_targeted_replay",
+        "on_failure": "Keep the layer failed and mark localization ambiguous; request narrower instrumentation or a new evidence-backed root hypothesis. Do not generate replacement expected outputs, alter tolerance, patch the sink symptom, reopen unrelated lower layers, or advance to a higher layer.",
+        "produces": [
+          "verification/debug_closure/targeted_replay.json",
+          "verification/debug_closure/targeted_replay_boundary_trace.json",
+          "verification/debug_closure/earliest_violation_confirmation.json",
+          "verification/debug_closure/failed_checker_rerun_evidence.json"
+        ],
+        "rationale": "Confirm or refute the root candidate with the smallest reproducible replay while preserving all semantic and wrapper identities.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "targeted_replay",
+          "boundary_trace_rerun",
+          "targeted_failed_checker_rerun",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "causal_repair_routing",
+        "consumes": [
+          "verification/debug_closure/failure_localization.json",
+          "verification/debug_closure/targeted_replay.json",
+          "verification/debug_closure/earliest_violation_confirmation.json",
+          "verification/debug_closure/cross_layer_failure_classification_matrix.json",
+          "verification/debug_closure/certificate_invalidation_policy.json",
+          "verification/debug_closure/anti_spin_policy.json",
+          "hashed source and parameter slices on the confirmed causal path"
+        ],
+        "id": "repair_control.package_and_route_causal_context",
+        "on_failure": "Reject the packet and return its missing provenance, ambiguity, scope, or authority fields to localization. Do not silently route it to generic RTL debugging or allow a repair agent to infer editable golden, tolerance, architecture, or wrapper fields.",
+        "produces": [
+          "verification/debug_closure/causal_repair_packet.json",
+          "verification/debug_closure/repair_family_routing_decision.json",
+          "verification/debug_closure/allowed_forbidden_edits.json",
+          "verification/debug_closure/certificate_invalidation_record.json",
+          "verification/debug_closure/required_rerun_set.json"
+        ],
+        "rationale": "Give exactly one downstream repair specialist a compact checker-grounded packet and reject non-causal, overbroad, or authority-violating edits.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "causal_repair_context_pack",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "template_binding_static_check",
+          "codegen_compile_gate_check",
+          "codegen_contract_check",
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun",
+          "artifact_hash_check"
+        ],
+        "action_type": "bounded_template_repair",
+        "consumes": [
+          "verification/debug_closure/causal_repair_packet.json with authorized repair_family=bounded_template_repair",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.generated_code_package",
+          "verification/debug_closure/allowed_forbidden_edits.json",
+          "verification/debug_closure/required_rerun_set.json"
+        ],
+        "id": "repair_control.apply_bounded_template_repair",
+        "on_failure": "Count the attempt against the anti-spin signature, retain the failed layer, invalidate affected and higher certificates, and return to localization after the bounded attempt limit. Do not broaden into free-form RTL rewriting or promote to the next verification layer.",
+        "produces": [
+          "verification/repair/template_patch.diff",
+          "verification/repair/template_patch_manifest.json",
+          "verification/repair/repaired_source_hashes.json",
+          "verification/repair/codegen_compile_evidence.json",
+          "verification/repair/targeted_failed_checker_rerun.json",
+          "verification/debug_closure/certificate_invalidation_record.updated.json"
+        ],
+        "rationale": "Repair only a confirmed local template binding, generated implementation, or bounded glue defect without changing architecture, pipeline structure, memory layout, numeric policy, golden evidence, or exact board wrapper.",
+        "requires_approval": false,
+        "stage": "verification_repair",
+        "tool_roles": [
+          "bounded_template_repair",
+          "codegen_compile_gate",
+          "codegen_contract_check",
+          "targeted_failed_checker_rerun",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stream_plan_check",
+          "parameter_binding_static_check",
+          "codegen_compile_gate_check",
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun",
+          "artifact_hash_check"
+        ],
+        "action_type": "pipeline_repair",
+        "consumes": [
+          "approved verification/debug_closure/causal_repair_packet.json with repair_family=pipeline_repair",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.generated_code_package",
+          "verification/debug_closure/allowed_forbidden_edits.json",
+          "verification/debug_closure/required_rerun_set.json"
+        ],
+        "id": "repair_control.apply_approved_pipeline_repair",
+        "on_failure": "Freeze the pipeline family after the anti-spin limit, preserve immutable semantic evidence, keep the current and higher layers blocked, and require a new localized hypothesis or architecture review rather than repeated FIFO or latency tuning.",
+        "produces": [
+          "verification/repair/pipeline_plan_candidate.json",
+          "verification/repair/pipeline_patch_manifest.json",
+          "verification/repair/repaired_source_hashes.json",
+          "verification/repair/pipeline_static_check_results.json",
+          "verification/repair/targeted_failed_checker_rerun.json",
+          "verification/debug_closure/certificate_invalidation_record.updated.json"
+        ],
+        "rationale": "Apply an evidence-backed change to flow control, stage connection, buffering, beat alignment, latency, liveness, or stream order only after explicit pipeline-change approval.",
+        "requires_approval": true,
+        "stage": "verification_repair",
+        "tool_roles": [
+          "pipeline_repair",
+          "stream_plan_check",
+          "parameter_binding_static_check",
+          "codegen_compile_gate",
+          "targeted_failed_checker_rerun",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun",
+          "artifact_hash_check"
+        ],
+        "action_type": "memory_runtime_repair",
+        "consumes": [
+          "approved verification/debug_closure/causal_repair_packet.json with repair_family=memory_runtime_repair",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "current complete tensor catalog and DUT weight-binding manifest",
+          "current board-interface discovery evidence when board scope applies",
+          "exact sample-project wrapper and source hash manifest",
+          "verification/debug_closure/required_rerun_set.json"
+        ],
+        "id": "repair_control.apply_approved_memory_runtime_repair",
+        "on_failure": "Retain the failed layer and exact wrapper identity, count the attempt against anti-spin, and return to localization. Never substitute a simplified AXI/DDR wrapper, sampled weights, or an unbound loader; do not proceed to backend tools.",
+        "produces": [
+          "verification/repair/memory_runtime_candidate.json",
+          "verification/repair/memory_runtime_patch_manifest.json",
+          "verification/repair/address_and_transfer_evidence.json",
+          "verification/repair/targeted_failed_checker_rerun.json",
+          "verification/debug_closure/certificate_invalidation_record.updated.json"
+        ],
+        "rationale": "Repair a confirmed loader, tensor binding, DDR mapping, transfer-unit, AXI ordering, register-map, or runtime ABI defect without changing semantic inputs, golden outputs, tolerance, or the exact user sample-project wrapper sources.",
+        "requires_approval": true,
+        "stage": "verification_repair",
+        "tool_roles": [
+          "memory_runtime_repair",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "targeted_failed_checker_rerun",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "required_real_tool_evidence_check",
+          "real_weight_semantic_evidence_check",
+          "artifact_hash_check",
+          "repair_boundary_check",
+          "human_boundary_check"
+        ],
+        "action_type": "promotion_certificate_validation",
+        "consumes": [
+          "verification/debug_closure/certificate_invalidation_policy.json",
+          "verification/debug_closure/certificate_invalidation_record.json",
+          "current layer tool evidence and targeted rerun evidence",
+          "current immutable run identity manifest",
+          "current complete tensor catalog and weight-consumption proof",
+          "current target-model reference and semantic-testbench manifests",
+          "current numeric-policy and tolerance manifest",
+          "exact sample-project wrapper/source hashes for board scope",
+          "candidate scope promotion certificate if present"
+        ],
+        "id": "repair_control.validate_certificate_reuse_and_promotion",
+        "on_failure": "Record current_contract_valid=false and reuse_allowed=false, keep the current and higher layers blocked, and route the exact failed evidence gate back through localization. Do not claim functional or hardware pass from a stale, merely present, smoke-only, or incomplete certificate.",
+        "produces": [
+          "verification/debug_closure/current_certificate_validation.json",
+          "verification/debug_closure/certificate_reuse_decision.json",
+          "current-scope promotion certificate only when every required gate passes"
+        ],
+        "rationale": "Ensure certificate reuse or reissue is based on current-contract real-tool and semantic evidence rather than artifact presence or historical pass status.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "required_real_tool_evidence_check",
+          "real_tool_evidence_check",
+          "artifact_hash_check",
+          "repair_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The declared verification hierarchy correctly enforces operator leaf modules before the connected single-transformer-layer kernel, and that kernel before the board-accurate AXI/DDR wrapped system. A failed layer must remain blocked until tool output is localized, repaired within authority, and rerun; backend execution remains downstream.",
+      "The visible debug contract already declares 13 boundaries, failure-first tracing, boundary bisection, earliest-violation replay, compact repair context, and prohibition of downstream symptom patching. Presence metadata also confirms that a trace schema and boundary contracts exist, so omitted role-slice detail is not treated as a missing-artifact blocker.",
+      "The normalized trace contract should bind every trace to a run identity containing debug layer and scope, contract and CCTG hashes, DUT and generated-source hashes, checkpoint tensor-catalog hash, loader/harness hash, stimulus provenance and hash, target-model reference hash, numeric-policy and immutable tolerance hash, semantic-testbench hash, tool identity, and exact sample-project wrapper/source hashes at layer three. Adapter-specific signal names belong only in a separately hashed adapter map; normalized boundary IDs and event fields must remain framework-generic.",
+      "Each normalized boundary event should identify cycle or timestamp, boundary and channel, direction, transaction, tile, layer/stage, logical tensor index, lane, valid/ready and transfer state, declared latency obligation, raw observed bits, interpreted dtype/shape/order, expected-value locator and target-reference hash when value comparison applies, runtime address/range when applicable, violated contract IDs, status, and mismatch metrics. Expected values may only reference the independent target-model run for the same immutable checkpoint and stimulus, never random data or DUT output.",
+      "The cross-layer failure classification is: missing or unbound golden/checker/schema evidence routes to verifier or golden-reference capability repair and is not hardware failure; compile, elaboration, local interface, or template-parameter violations route to bounded template repair; first value divergence with correct weight/address/order evidence routes to the earliest causal implementation boundary; valid/ready, latency, deadlock, beat, count, or stream-order failures route to pipeline repair; loader binding, tensor-hash coverage, DDR address/range, AXI ordering, transfer-unit, image-roundtrip, register-map, or runtime ABI failures route to memory/runtime repair; architecture or unsupported template-family changes require approval and architecture review.",
+      "Earliest-violation localization should first reject identity contamination, then classify the failing obligation, walk the bound SACG/CCTG causal graph from the failed sink, bisect comparable boundary references, and linearly confirm the first violating transaction and event between the last-known-good and first-known-bad boundaries. Liveness localization uses the first missed progress or latency obligation; protocol localization uses the first illegal handshake/address/order event. Fan-in branches, including residual and attention paths, must be represented as graph edges rather than assumed to be one unqualified linear path.",
+      "Targeted replay must preserve checkpoint, input stimulus, target-model output, tolerance, semantic testbench, loader binding, and exact board-wrapper hashes. It should replay the narrowest reproducible failed transaction with its predecessor and successor boundaries; if state cannot be injected safely, it must rerun the same failed layer with trace filtering rather than synthesize replacement state or skip to another layer.",
+      "The minimal causal repair packet should contain immutable run identity, failed checker and raw evidence hashes, failure class and signature, violated SACG constraints, earliest violating event, last-known-good event, root-candidate module and bounded ambiguity set, causal path, replay command and result, relevant source and parameter slices with hashes, predecessor/successor contracts, authorized repair family, allowed and forbidden edits, required certificate invalidations, and exact rerun checker list. Golden outputs, tolerance, checkpoint, stimulus, and unrelated source trees are excluded from editable context.",
+      "Certificate reuse is permitted only when current_contract_valid=true for the exact identity tuple. A matching higher-layer trace may suspend and challenge a lower-layer certificate only when it identifies a contradictory lower boundary; targeted replay must confirm the contradiction before invalidation. A leaf repair invalidates leaf, single-layer, and board certificates; a single-layer connection repair invalidates single-layer and board certificates while retaining unaffected leaf certificates; a board-only integration repair invalidates only board scope if lower identities remain unchanged. Any semantic identity change starts a new run and invalidates reuse rather than mutating the repair loop.",
+      "Anti-spin identity should be the tuple of immutable run identity, layer, checker, contract, boundary, transaction, and failure class. Every attempt must record the patch hash and predicted causal effect. After two unsuccessful repairs in the same family with the same signature, that family is frozen; continuation requires a new evidence-backed root hypothesis or explicit approval. Repeated downstream symptom patches, unchanged patches, broad unrelated edits, checker bypass, golden modification, or tolerance changes are rejected.",
+      "Functional promotion remains conditioned on a complete Transformer-block checkpoint tensor catalog, deterministic or real input provenance, independent target-model inference on the same checkpoint and input, resolved immutable comparison tolerances, semantic-testbench hashes, and executed proof that every required bound Transformer-block weight was consumed. Embedding/tokenization, final model norm, LM head/logits, and sampling remain outside the DUT and its weight/golden scope.",
+      "The three current promotion certificates are missing or stale for the current evidence contract. Under the stage-gate policy this is a downstream execution obligation, not a blocker to accepting the refined Stage 6 static contract. No lower-layer certificate may presently be reused."
+    ],
+    "proposed_actions": [
+      "Materialize versioned normalized schemas, the failure-classification matrix, the repair-control DAG, certificate rules, and anti-spin policy, then run the role acceptance checkers before auditor consumption.",
+      "On every simulator or checker failure, normalize raw evidence and localize the first violated boundary under the same immutable run identity before selecting a repair family.",
+      "Run a transaction- and boundary-targeted replay at the failed layer; do not promote, skip layers, or reopen a lower certificate without confirmed contradictory evidence.",
+      "Package only the causal source, parameter, contract, evidence, and rerun slices needed by the selected bounded repair agent.",
+      "Authorize bounded template repair only for local template or generated-glue defects; route pipeline and memory-layout/runtime contract changes through explicit approval.",
+      "After any repair, rerun the originally failed checker and necessary causal predecessors at the same layer, invalidate the affected and higher certificates, and prohibit higher-layer promotion until revalidated.",
+      "Validate every certificate against current evidence-contract and immutable identity hashes; artifact presence alone is never reuse authority.",
+      "Freeze a repair family after two unchanged-signature failures and require a new evidence-backed hypothesis or approval rather than repeating static scripts or downstream symptom patches."
+    ],
+    "risks": [
+      "The visible v0 trace-required field list does not itself show immutable run identity, expected-value provenance, valid/ready transfer state, source hashes, or board-wrapper identity. Because detailed rows may be omitted, this is a handoff verification risk rather than an assertion that the schema is absent; boundary_contract_check and artifact_hash_check must prove the refined fields.",
+      "The visible targeted-replay output list omits an explicit earliest-event locator, last-known-good boundary, replay evidence hash, failed checker, violated SACG constraints, immutable identity, and certificate effects. Without checker-enforced inclusion, a repair agent could receive a plausible but non-causal packet.",
+      "A declared causal_path_count of one may be insufficient for residual and attention fan-in unless it denotes a graph object containing all branch edges. Treating it as a simple linear path could mislocalize the first violation and encourage downstream symptom repair.",
+      "Cross-run contamination is possible if trace, reference, loader, tolerance, testbench, DUT, or exact wrapper hashes are not checked together before localization and certificate reuse.",
+      "A value mismatch may be misrouted to RTL when the actual defect is incomplete weight consumption, incorrect logical-index/lane order, cast-point mismatch, DDR mapping, or a missing target-model boundary reference. Classification must precede code repair.",
+      "A liveness symptom observed at the board wrapper can originate in a lower pipeline obligation, while an AXI address or transfer-unit defect can mimic a compute value error. Earliest causal boundary evidence must decide the route rather than the final checker name alone.",
+      "Broad template edits, pipeline restructuring, memory-layout changes, or wrapper substitution could invalidate previously valid evidence. Invalidation must flow only from the changed scope upward, and the exact user-supplied sample wrapper must never be replaced by a simplified substitute.",
+      "Downstream deadlock watchdog, implementation-package, real functional simulation, and board-runtime evidence remain pending. They are mandatory later-stage gates but are not classified as current Stage 6 failures."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.verification_artifact_contract",
+        "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.design_artifact_manifest",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "verification/debug_closure/boundary_trace.json",
+        "verification/debug_closure/failure_localization.json",
+        "verification/debug_closure/targeted_replay.json",
+        "verification/debug_closure/causal_repair_packet.json",
+        "verification/debug_closure/certificate_validation.json"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.verification.hierarchy",
+        "constraint.verification.artifacts",
+        "constraint.pipeline.structure",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.liveness.pipeline",
+        "constraint.tool.protocols",
+        "constraint.human.boundary",
+        "constraint.numeric.policy",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "raw simulator or checker evidence -> normalized case-adapter-independent boundary trace",
+        "boundary trace plus SACG/CCTG contracts -> earliest-violation localization",
+        "earliest violation plus immutable run identity -> targeted same-layer replay",
+        "confirmed replay result -> minimal causal repair packet",
+        "causal repair packet -> exactly one bounded template, pipeline, memory/runtime, verifier-capability, or approval route",
+        "bounded repair -> targeted failed-checker rerun at the failed layer",
+        "passing rerun plus complete immutable semantic evidence -> current-contract certificate validation",
+        "contradicting higher-layer trace -> targeted lower-layer certificate challenge, never unconditional reopening",
+        "repair or identity change -> affected-scope and downstream certificate invalidation"
+      ],
+      "nodes": [
+        "verification_artifact_contract.debug_closure_contract",
+        "boundary_contracts",
+        "boundary_trace_schema",
+        "failure_localization_schema",
+        "targeted_replay_contract",
+        "causal_repair_packet",
+        "cross_layer_failure_classification_matrix",
+        "certificate_validation_and_invalidation_policy",
+        "anti_spin_policy",
+        "operator_leaf_closure",
+        "single_layer_closure",
+        "board_axi_ddr_closure"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_boundary_architect.v1",
+    "stage": "verification_artifacts",
+    "status": "ready_for_refinement_execution",
+    "summary": "The Stage 6 verification plan is statically ready and SACG memory reports no active contamination barrier, retry request, or backtrack request. The shared repair-control plane should now be materialized as a case-adapter-independent contract with immutable run identity, normalized boundary events, earliest-violation localization, targeted same-layer replay, compact causal repair packets, bounded repair-family routing, anti-spin limits, and challengeable certificate rules. No downstream functional, implementation, or board pass is claimed; all current promotion certificates are absent or stale and therefore non-reusable until real-tool evidence is produced and validated."
+  },
+  "prompt_bytes": 86800,
+  "prompt_hash": "0a02f3b49844750cdb26c70ed30c9578afe1f1dfeb2b50fcfb1b749205736fd2",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.repair_boundary_architect.v1\",\"agent\":\"repair_boundary_architect\",\"stage\":\"verification_artifacts\",\"status\":\"ready_for_refinement_execution\",\"summary\":\"The Stage 6 verification plan is statically ready and SACG memory reports no active contamination barrier, retry request, or backtrack request. The shared repair-control plane should now be materialized as a case-adapter-independent contract with immutable run identity, normalized boundary events, earliest-violation localization, targeted same-layer replay, compact causal repair packets, bounded repair-family routing, anti-spin limits, and challengeable certificate rules. No downstream functional, implementation, or board pass is claimed; all current promotion certificates are absent or stale and therefore non-reusable until real-tool evidence is produced and validated.\",\"sacg_focus\":{\"nodes\":[\"verification_artifact_contract.debug_closure_contract\",\"boundary_contracts\",\"boundary_trace_schema\",\"failure_localization_schema\",\"targeted_replay_contract\",\"causal_repair_packet\",\"cross_layer_failure_classification_matrix\",\"certificate_validation_and_invalidation_policy\",\"anti_spin_policy\",\"operator_leaf_closure\",\"single_layer_closure\",\"board_axi_ddr_closure\"],\"edges\":[\"raw simulator or checker evidence -> normalized case-adapter-independent boundary trace\",\"boundary trace plus SACG/CCTG contracts -> earliest-violation localization\",\"earliest violation plus immutable run identity -> targeted same-layer replay\",\"confirmed replay result -> minimal causal repair packet\",\"causal repair packet -> exactly one bounded template, pipeline, memory/runtime, verifier-capability, or approval route\",\"bounded repair -> targeted failed-checker rerun at the failed layer\",\"passing rerun plus complete immutable semantic evidence -> current-contract certificate validation\",\"contradicting higher-layer trace -> targeted lower-layer certificate challenge, never unconditional reopening\",\"repair or identity change -> affected-scope and downstream certificate invalidation\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.verification.artifacts\",\"constraint.pipeline.structure\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.liveness.pipeline\",\"constraint.tool.protocols\",\"constraint.human.boundary\",\"constraint.numeric.policy\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"candidate_stage_artifact.verification_artifact_contract\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"verification/debug_closure/boundary_trace.json\",\"verification/debug_closure/failure_localization.json\",\"verification/debug_closure/targeted_replay.json\",\"verification/debug_closure/causal_repair_packet.json\",\"verification/debug_closure/certificate_validation.json\"]},\"observations\":[\"The declared verification hierarchy correctly enforces operator leaf modules before the connected single-transformer-layer kernel, and that kernel before the board-accurate AXI/DDR wrapped system. A failed layer must remain blocked until tool output is localized, repaired within authority, and rerun; backend execution remains downstream.\",\"The visible debug contract already declares 13 boundaries, failure-first tracing, boundary bisection, earliest-violation replay, compact repair context, and prohibition of downstream symptom patching. Presence metadata also confirms that a trace schema and boundary contracts exist, so omitted role-slice detail is not treated as a missing-artifact blocker.\",\"The normalized trace contract should bind every trace to a run identity containing debug layer and scope, contract and CCTG hashes, DUT and generated-source hashes, checkpoint tensor-catalog hash, loader/harness hash, stimulus provenance and hash, target-model reference hash, numeric-policy and immutable tolerance hash, semantic-testbench hash, tool identity, and exact sample-project wrapper/source hashes at layer three. Adapter-specific signal names belong only in a separately hashed adapter map; normalized boundary IDs and event fields must remain framework-generic.\",\"Each normalized boundary event should identify cycle or timestamp, boundary and channel, direction, transaction, tile, layer/stage, logical tensor index, lane, valid/ready and transfer state, declared latency obligation, raw observed bits, interpreted dtype/shape/order, expected-value locator and target-reference hash when value comparison applies, runtime address/range when applicable, violated contract IDs, status, and mismatch metrics. Expected values may only reference the independent target-model run for the same immutable checkpoint and stimulus, never random data or DUT output.\",\"The cross-layer failure classification is: missing or unbound golden/checker/schema evidence routes to verifier or golden-reference capability repair and is not hardware failure; compile, elaboration, local interface, or template-parameter violations route to bounded template repair; first value divergence with correct weight/address/order evidence routes to the earliest causal implementation boundary; valid/ready, latency, deadlock, beat, count, or stream-order failures route to pipeline repair; loader binding, tensor-hash coverage, DDR address/range, AXI ordering, transfer-unit, image-roundtrip, register-map, or runtime ABI failures route to memory/runtime repair; architecture or unsupported template-family changes require approval and architecture review.\",\"Earliest-violation localization should first reject identity contamination, then classify the failing obligation, walk the bound SACG/CCTG causal graph from the failed sink, bisect comparable boundary references, and linearly confirm the first violating transaction and event between the last-known-good and first-known-bad boundaries. Liveness localization uses the first missed progress or latency obligation; protocol localization uses the first illegal handshake/address/order event. Fan-in branches, including residual and attention paths, must be represented as graph edges rather than assumed to be one unqualified linear path.\",\"Targeted replay must preserve checkpoint, input stimulus, target-model output, tolerance, semantic testbench, loader binding, and exact board-wrapper hashes. It should replay the narrowest reproducible failed transaction with its predecessor and successor boundaries; if state cannot be injected safely, it must rerun the same failed layer with trace filtering rather than synthesize replacement state or skip to another layer.\",\"The minimal causal repair packet should contain immutable run identity, failed checker and raw evidence hashes, failure class and signature, violated SACG constraints, earliest violating event, last-known-good event, root-candidate module and bounded ambiguity set, causal path, replay command and result, relevant source and parameter slices with hashes, predecessor/successor contracts, authorized repair family, allowed and forbidden edits, required certificate invalidations, and exact rerun checker list. Golden outputs, tolerance, checkpoint, stimulus, and unrelated source trees are excluded from editable context.\",\"Certificate reuse is permitted only when current_contract_valid=true for the exact identity tuple. A matching higher-layer trace may suspend and challenge a lower-layer certificate only when it identifies a contradictory lower boundary; targeted replay must confirm the contradiction before invalidation. A leaf repair invalidates leaf, single-layer, and board certificates; a single-layer connection repair invalidates single-layer and board certificates while retaining unaffected leaf certificates; a board-only integration repair invalidates only board scope if lower identities remain unchanged. Any semantic identity change starts a new run and invalidates reuse rather than mutating the repair loop.\",\"Anti-spin identity should be the tuple of immutable run identity, layer, checker, contract, boundary, transaction, and failure class. Every attempt must record the patch hash and predicted causal effect. After two unsuccessful repairs in the same family with the same signature, that family is frozen; continuation requires a new evidence-backed root hypothesis or explicit approval. Repeated downstream symptom patches, unchanged patches, broad unrelated edits, checker bypass, golden modification, or tolerance changes are rejected.\",\"Functional promotion remains conditioned on a complete Transformer-block checkpoint tensor catalog, deterministic or real input provenance, independent target-model inference on the same checkpoint and input, resolved immutable comparison tolerances, semantic-testbench hashes, and executed proof that every required bound Transformer-block weight was consumed. Embedding/tokenization, final model norm, LM head/logits, and sampling remain outside the DUT and its weight/golden scope.\",\"The three current promotion certificates are missing or stale for the current evidence contract. Under the stage-gate policy this is a downstream execution obligation, not a blocker to accepting the refined Stage 6 static contract. No lower-layer certificate may presently be reused.\"],\"risks\":[\"The visible v0 trace-required field list does not itself show immutable run identity, expected-value provenance, valid/ready transfer state, source hashes, or board-wrapper identity. Because detailed rows may be omitted, this is a handoff verification risk rather than an assertion that the schema is absent; boundary_contract_check and artifact_hash_check must prove the refined fields.\",\"The visible targeted-replay output list omits an explicit earliest-event locator, last-known-good boundary, replay evidence hash, failed checker, violated SACG constraints, immutable identity, and certificate effects. Without checker-enforced inclusion, a repair agent could receive a plausible but non-causal packet.\",\"A declared causal_path_count of one may be insufficient for residual and attention fan-in unless it denotes a graph object containing all branch edges. Treating it as a simple linear path could mislocalize the first violation and encourage downstream symptom repair.\",\"Cross-run contamination is possible if trace, reference, loader, tolerance, testbench, DUT, or exact wrapper hashes are not checked together before localization and certificate reuse.\",\"A value mismatch may be misrouted to RTL when the actual defect is incomplete weight consumption, incorrect logical-index/lane order, cast-point mismatch, DDR mapping, or a missing target-model boundary reference. Classification must precede code repair.\",\"A liveness symptom observed at the board wrapper can originate in a lower pipeline obligation, while an AXI address or transfer-unit defect can mimic a compute value error. Earliest causal boundary evidence must decide the route rather than the final checker name alone.\",\"Broad template edits, pipeline restructuring, memory-layout changes, or wrapper substitution could invalidate previously valid evidence. Invalidation must flow only from the changed scope upward, and the exact user-supplied sample wrapper must never be replaced by a simplified substitute.\",\"Downstream deadlock watchdog, implementation-package, real functional simulation, and board-runtime evidence remain pending. They are mandatory later-stage gates but are not classified as current Stage 6 failures.\"],\"proposed_actions\":[\"Materialize versioned normalized schemas, the failure-classification matrix, the repair-control DAG, certificate rules, and anti-spin policy, then run the role acceptance checkers before auditor consumption.\",\"On every simulator or checker failure, normalize raw evidence and localize the first violated boundary under the same immutable run identity before selecting a repair family.\",\"Run a transaction- and boundary-targeted replay at the failed layer; do not promote, skip layers, or reopen a lower certificate without confirmed contradictory evidence.\",\"Package only the causal source, parameter, contract, evidence, and rerun slices needed by the selected bounded repair agent.\",\"Authorize bounded template repair only for local template or generated-glue defects; route pipeline and memory-layout/runtime contract changes through explicit approval.\",\"After any repair, rerun the originally failed checker and necessary causal predecessors at the same layer, invalidate the affected and higher certificates, and prohibit higher-layer promotion until revalidated.\",\"Validate every certificate against current evidence-contract and immutable identity hashes; artifact presence alone is never reuse authority.\",\"Freeze a repair family after two unchanged-signature failures and require a new evidence-backed hypothesis or approval rather than repeating static scripts or downstream symptom patches.\"],\"executable_actions\":[{\"id\":\"repair_control.materialize_normalized_contracts\",\"stage\":\"verification_artifacts\",\"action_type\":\"repair_boundary_refinement\",\"rationale\":\"Convert the current debug-closure outline into checker-enforced, case-adapter-independent artifacts that peer repair agents and the evidence-gate auditor can consume without relying on case-specific names or human memory.\",\"consumes\":[\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.input.numeric_policy\",\"artifact.input.tool_protocols\",\"artifact.input.case_adapter\",\"artifact.input.human_agent_boundary\"],\"produces\":[\"verification/debug_closure/boundary_contracts.v1.json\",\"verification/debug_closure/boundary_trace.schema.json\",\"verification/debug_closure/failure_localization.schema.json\",\"verification/debug_closure/targeted_replay.schema.json\",\"verification/debug_closure/causal_repair_packet.schema.json\",\"verification/debug_closure/cross_layer_failure_classification_matrix.json\",\"verification/debug_closure/repair_control_dag.json\",\"verification/debug_closure/certificate_invalidation_policy.json\",\"verification/debug_closure/anti_spin_policy.json\",\"verification/debug_closure/immutable_run_identity.schema.json\"],\"tool_roles\":[\"boundary_contract_generate\",\"repair_boundary_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"boundary_contract_check\",\"failure_localization_check\",\"targeted_replay_check\",\"causal_repair_context_check\",\"repair_boundary_check\",\"artifact_hash_check\",\"human_boundary_check\"],\"on_failure\":\"Keep the refined repair-control contract unpromoted and hand the exact schema/checker errors to the verification evidence-gate auditor; do not compensate with adapter-specific scripts, omit identity fields, or treat downstream hardware as failed.\",\"requires_approval\":false},{\"id\":\"repair_control.normalize_and_localize_failure\",\"stage\":\"verification\",\"action_type\":\"failure_localization\",\"rationale\":\"Turn real tool or checker failures into a normalized trace and identify the earliest causal boundary before any repair is selected.\",\"consumes\":[\"verification/debug_closure/boundary_contracts.v1.json\",\"verification/debug_closure/boundary_trace.schema.json\",\"verification/debug_closure/immutable_run_identity.schema.json\",\"current failed simulator or checker report and raw waveform/log hashes\",\"artifact.stage3.pipeline_plan\",\"artifact.stage5.design_artifact_manifest\",\"current immutable checkpoint, stimulus, target-reference, numeric-policy, tolerance, semantic-testbench, loader/harness, and source manifests\",\"current scope promotion-certificate validation record\"],\"produces\":[\"verification/debug_closure/trace_manifest.json\",\"verification/debug_closure/boundary_trace.json\",\"verification/debug_closure/failure_localization.json\",\"verification/debug_closure/certificate_challenge.json\",\"verification/debug_closure/targeted_replay_plan.json\"],\"tool_roles\":[\"boundary_trace_rerun\",\"failure_slice_localization\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"boundary_contract_check\",\"failure_localization_check\",\"artifact_hash_check\"],\"on_failure\":\"Classify absent normalization, expected-value provenance, CCTG coverage, or localization support as a verifier-capability blocker, retain the failed layer, and prohibit code repair or higher-layer promotion until evidence can identify an earliest violation.\",\"requires_approval\":false},{\"id\":\"repair_control.execute_targeted_replay\",\"stage\":\"verification\",\"action_type\":\"targeted_replay\",\"rationale\":\"Confirm or refute the root candidate with the smallest reproducible replay while preserving all semantic and wrapper identities.\",\"consumes\":[\"verification/debug_closure/failure_localization.json\",\"verification/debug_closure/targeted_replay_plan.json\",\"verification/debug_closure/boundary_trace.json\",\"verification/debug_closure/trace_manifest.json\",\"current layer testbench and harness hashes\",\"current target-model reference manifest\",\"current tensor catalog and DUT weight-binding manifest\",\"current numeric-policy and tolerance manifest\",\"exact sample-project wrapper and source hash manifest when the failed layer is board_axi_ddr_wrapped_system\"],\"produces\":[\"verification/debug_closure/targeted_replay.json\",\"verification/debug_closure/targeted_replay_boundary_trace.json\",\"verification/debug_closure/earliest_violation_confirmation.json\",\"verification/debug_closure/failed_checker_rerun_evidence.json\"],\"tool_roles\":[\"targeted_replay\",\"boundary_trace_rerun\",\"targeted_failed_checker_rerun\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"targeted_replay_check\",\"targeted_failed_checker_rerun\",\"artifact_hash_check\"],\"on_failure\":\"Keep the layer failed and mark localization ambiguous; request narrower instrumentation or a new evidence-backed root hypothesis. Do not generate replacement expected outputs, alter tolerance, patch the sink symptom, reopen unrelated lower layers, or advance to a higher layer.\",\"requires_approval\":false},{\"id\":\"repair_control.package_and_route_causal_context\",\"stage\":\"verification\",\"action_type\":\"causal_repair_routing\",\"rationale\":\"Give exactly one downstream repair specialist a compact checker-grounded packet and reject non-causal, overbroad, or authority-violating edits.\",\"consumes\":[\"verification/debug_closure/failure_localization.json\",\"verification/debug_closure/targeted_replay.json\",\"verification/debug_closure/earliest_violation_confirmation.json\",\"verification/debug_closure/cross_layer_failure_classification_matrix.json\",\"verification/debug_closure/certificate_invalidation_policy.json\",\"verification/debug_closure/anti_spin_policy.json\",\"hashed source and parameter slices on the confirmed causal path\"],\"produces\":[\"verification/debug_closure/causal_repair_packet.json\",\"verification/debug_closure/repair_family_routing_decision.json\",\"verification/debug_closure/allowed_forbidden_edits.json\",\"verification/debug_closure/certificate_invalidation_record.json\",\"verification/debug_closure/required_rerun_set.json\"],\"tool_roles\":[\"causal_repair_context_pack\",\"repair_boundary_check\",\"human_boundary_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"causal_repair_context_check\",\"repair_boundary_check\",\"human_boundary_check\",\"artifact_hash_check\"],\"on_failure\":\"Reject the packet and return its missing provenance, ambiguity, scope, or authority fields to localization. Do not silently route it to generic RTL debugging or allow a repair agent to infer editable golden, tolerance, architecture, or wrapper fields.\",\"requires_approval\":false},{\"id\":\"repair_control.apply_bounded_template_repair\",\"stage\":\"verification_repair\",\"action_type\":\"bounded_template_repair\",\"rationale\":\"Repair only a confirmed local template binding, generated implementation, or bounded glue defect without changing architecture, pipeline structure, memory layout, numeric policy, golden evidence, or exact board wrapper.\",\"consumes\":[\"verification/debug_closure/causal_repair_packet.json with authorized repair_family=bounded_template_repair\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.generated_code_package\",\"verification/debug_closure/allowed_forbidden_edits.json\",\"verification/debug_closure/required_rerun_set.json\"],\"produces\":[\"verification/repair/template_patch.diff\",\"verification/repair/template_patch_manifest.json\",\"verification/repair/repaired_source_hashes.json\",\"verification/repair/codegen_compile_evidence.json\",\"verification/repair/targeted_failed_checker_rerun.json\",\"verification/debug_closure/certificate_invalidation_record.updated.json\"],\"tool_roles\":[\"bounded_template_repair\",\"codegen_compile_gate\",\"codegen_contract_check\",\"targeted_failed_checker_rerun\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"template_binding_static_check\",\"codegen_compile_gate_check\",\"codegen_contract_check\",\"repair_boundary_check\",\"targeted_failed_checker_rerun\",\"artifact_hash_check\"],\"on_failure\":\"Count the attempt against the anti-spin signature, retain the failed layer, invalidate affected and higher certificates, and return to localization after the bounded attempt limit. Do not broaden into free-form RTL rewriting or promote to the next verification layer.\",\"requires_approval\":false},{\"id\":\"repair_control.apply_approved_pipeline_repair\",\"stage\":\"verification_repair\",\"action_type\":\"pipeline_repair\",\"rationale\":\"Apply an evidence-backed change to flow control, stage connection, buffering, beat alignment, latency, liveness, or stream order only after explicit pipeline-change approval.\",\"consumes\":[\"approved verification/debug_closure/causal_repair_packet.json with repair_family=pipeline_repair\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.generated_code_package\",\"verification/debug_closure/allowed_forbidden_edits.json\",\"verification/debug_closure/required_rerun_set.json\"],\"produces\":[\"verification/repair/pipeline_plan_candidate.json\",\"verification/repair/pipeline_patch_manifest.json\",\"verification/repair/repaired_source_hashes.json\",\"verification/repair/pipeline_static_check_results.json\",\"verification/repair/targeted_failed_checker_rerun.json\",\"verification/debug_closure/certificate_invalidation_record.updated.json\"],\"tool_roles\":[\"pipeline_repair\",\"stream_plan_check\",\"parameter_binding_static_check\",\"codegen_compile_gate\",\"targeted_failed_checker_rerun\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"stream_plan_check\",\"parameter_binding_static_check\",\"codegen_compile_gate_check\",\"repair_boundary_check\",\"targeted_failed_checker_rerun\",\"artifact_hash_check\"],\"on_failure\":\"Freeze the pipeline family after the anti-spin limit, preserve immutable semantic evidence, keep the current and higher layers blocked, and require a new localized hypothesis or architecture review rather than repeated FIFO or latency tuning.\",\"requires_approval\":true},{\"id\":\"repair_control.apply_approved_memory_runtime_repair\",\"stage\":\"verification_repair\",\"action_type\":\"memory_runtime_repair\",\"rationale\":\"Repair a confirmed loader, tensor binding, DDR mapping, transfer-unit, AXI ordering, register-map, or runtime ABI defect without changing semantic inputs, golden outputs, tolerance, or the exact user sample-project wrapper sources.\",\"consumes\":[\"approved verification/debug_closure/causal_repair_packet.json with repair_family=memory_runtime_repair\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"current complete tensor catalog and DUT weight-binding manifest\",\"current board-interface discovery evidence when board scope applies\",\"exact sample-project wrapper and source hash manifest\",\"verification/debug_closure/required_rerun_set.json\"],\"produces\":[\"verification/repair/memory_runtime_candidate.json\",\"verification/repair/memory_runtime_patch_manifest.json\",\"verification/repair/address_and_transfer_evidence.json\",\"verification/repair/targeted_failed_checker_rerun.json\",\"verification/debug_closure/certificate_invalidation_record.updated.json\"],\"tool_roles\":[\"memory_runtime_repair\",\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"targeted_failed_checker_rerun\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"repair_boundary_check\",\"targeted_failed_checker_rerun\",\"artifact_hash_check\"],\"on_failure\":\"Retain the failed layer and exact wrapper identity, count the attempt against anti-spin, and return to localization. Never substitute a simplified AXI/DDR wrapper, sampled weights, or an unbound loader; do not proceed to backend tools.\",\"requires_approval\":true},{\"id\":\"repair_control.validate_certificate_reuse_and_promotion\",\"stage\":\"verification\",\"action_type\":\"promotion_certificate_validation\",\"rationale\":\"Ensure certificate reuse or reissue is based on current-contract real-tool and semantic evidence rather than artifact presence or historical pass status.\",\"consumes\":[\"verification/debug_closure/certificate_invalidation_policy.json\",\"verification/debug_closure/certificate_invalidation_record.json\",\"current layer tool evidence and targeted rerun evidence\",\"current immutable run identity manifest\",\"current complete tensor catalog and weight-consumption proof\",\"current target-model reference and semantic-testbench manifests\",\"current numeric-policy and tolerance manifest\",\"exact sample-project wrapper/source hashes for board scope\",\"candidate scope promotion certificate if present\"],\"produces\":[\"verification/debug_closure/current_certificate_validation.json\",\"verification/debug_closure/certificate_reuse_decision.json\",\"current-scope promotion certificate only when every required gate passes\"],\"tool_roles\":[\"required_real_tool_evidence_check\",\"real_tool_evidence_check\",\"artifact_hash_check\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"required_real_tool_evidence_check\",\"real_weight_semantic_evidence_check\",\"artifact_hash_check\",\"repair_boundary_check\",\"human_boundary_check\"],\"on_failure\":\"Record current_contract_valid=false and reuse_allowed=false, keep the current and higher layers blocked, and route the exact failed evidence gate back through localization. Do not claim functional or hardware pass from a stale, merely present, smoke-only, or incomplete certificate.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any pipeline structure, buffering, scheduling, latency-contract, flow-control, or stream-order change.\",\"Any memory layout, DDR address map, transfer-unit contract, runtime ABI, or register-map change.\",\"Any architecture redesign, unsupported operator decomposition, template-family replacement, or free-form RTL rewrite; this role cannot authorize it and must hand off to architecture_review.\",\"Any major trusted-template change beyond a localized generated implementation or binding repair.\",\"Any numeric policy or tolerance change. Such values are immutable during a repair loop; an approved change requires a new run identity rather than mutation of current evidence.\",\"Any attempt to alter checkpoint, stimulus, target-model reference, semantic-testbench contract, or exact user-supplied wrapper/source hashes; these changes require terminating the current repair identity and starting a separately approved run.\",\"Any override of the two-attempt same-signature anti-spin limit or continuation without a new evidence-backed root hypothesis.\"]}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/repair_boundary_architect_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/repair_boundary_architect_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "verification_artifacts.contract-guided debug and repair-boundary architect",
+  "stream": true,
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

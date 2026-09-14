@@ -1,0 +1,250 @@
+{
+  "agent": "flow_controller_agent",
+  "duration_sec": 192.7802901630057,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "flow_controller_agent",
+    "approval_required_for": [
+      "Any architecture or pipeline-topology change beyond the checker-backed operator_stream_pipeline, including decoder operator order, stage insertion/removal, residual skip sources, branch/join fire rules, or MLP split/join topology.",
+      "Any change to model or shape facts including GQA head counts, group size, RoPE policy, causal mask policy, seq_len_bound, hidden size, intermediate size, stream lane count, transfer order, or transfer-unit policy.",
+      "Any numeric precision, rounding, saturation, accumulator, tolerance, or golden-output change.",
+      "Any trusted-template replacement, major template-library/template-metadata change, or free-form RTL generation outside the approved template library.",
+      "Any concrete DDR base-address assignment or memory-layout/AXI/DDR address-map change, including AXI data width, address width, WSTRB width, 64-byte alignment, XDMA device index, control/status apertures, raw register/DDR runtime protocol, activation ping/pong policy, or double-buffered weight policy.",
+      "Any ambiguous backend/app-shell target selection without cited board materials and real Vivado/tool evidence.",
+      "Any attempt to treat symbolic_first_order latency or static pipeline-planning evidence as timing, throughput, RTL correctness, or hardware-pass evidence."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_memory_check",
+          "verification_action_audit_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "stage_promotion_gate",
+        "consumes": [
+          "recent_stage_summary.checker_summary",
+          "recent_stage_summary.outputs.pipeline_plan",
+          "recent_stage_summary.outputs.pipeline_static_checks",
+          "recent_stage_summary.outputs.sacg_state",
+          "recent_stage_summary.design_team.action_normalization",
+          "recent_stage_summary.llm_agent",
+          "sacg_memory",
+          "flow_policy"
+        ],
+        "id": "flow.pipeline_planning_promote_checked_sacg_state",
+        "on_failure": "Block transition to parameter_binding. Keep the candidate pipeline plan and team action queue behind a stage_artifact_trust_barrier, localize the failing SACG/action-audit field, and do not consume unpromoted artifacts downstream. If the failure invalidates the checked Stage 3 contract rather than action metadata, open a stage_backtrack_request or stop because the pipeline_planning retry budget is already at 2 attempts.",
+        "produces": [
+          "artifact.flow.pipeline_planning_promotion_decision",
+          "artifact.pipeline_planning.promoted_pipeline_contract",
+          "artifact.pipeline_planning.normalized_handoff_queue",
+          "artifact.pipeline_planning.promotion_trust_manifest",
+          "sacg_memory.stage_outcome_record.pipeline_planning"
+        ],
+        "rationale": "The current stage passed with 10/10 checks, command return code 0, and no open SACG retry, backtrack, or contamination blockers. Promote only the checker-backed pipeline contract and normalized handoff lineage before any downstream consumption.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "sacg_memory_update",
+          "verification_action_audit",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_coverage_check",
+          "numeric_policy_check",
+          "boundary_contract_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "stage_transition_and_static_binding",
+        "consumes": [
+          "artifact.pipeline_planning.promoted_pipeline_contract",
+          "artifact.pipeline_planning.normalized_handoff_queue",
+          "artifact.stage2.template_selection",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "constraint.template.library",
+          "constraint.numeric.policy",
+          "constraint.parameter.binding",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "flow.enter_parameter_binding_from_promoted_pipeline_contract",
+        "on_failure": "Block code_generation and later stages. Localize the mismatch to the affected stage, edge, template parameter, numeric field, boundary contract, or memory/stream handoff. Repair only within approved parameter-binding bounds and rerun the same checkers; any topology, numeric-policy, memory-layout, AXI, or template-library change requires approval and likely backtrack to pipeline_planning.",
+        "produces": [
+          "artifact.stage4.template_parameter_binding_contract",
+          "artifact.stage4.boundary_contracts",
+          "artifact.stage4.template_bound_numeric_contract",
+          "stage4/checker_reports/parameter_binding_static_check.json",
+          "stage4/checker_reports/template_coverage_check.json",
+          "stage4/checker_reports/numeric_policy_check.json",
+          "stage4/checker_reports/boundary_contract_check.json",
+          "stage4/checker_reports/stream_plan_check.json",
+          "stage4/checker_reports/memory_runtime_plan_check.json"
+        ],
+        "rationale": "The next bounded stage is parameter_binding. It must materialize the promoted Stage 3 operator, stream, numeric, template, and memory-runtime handoff facts without changing the checked pipeline semantics.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "template_coverage_check",
+          "numeric_policy_check",
+          "boundary_contract_generate",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "targeted_replay_check",
+          "parameter_binding_static_check",
+          "template_coverage_check",
+          "numeric_policy_check",
+          "boundary_contract_check",
+          "sacg_static_check"
+        ],
+        "action_type": "bounded_repair_contingency",
+        "consumes": [
+          "artifact.stage4.template_parameter_binding_contract",
+          "artifact.stage4.boundary_contracts",
+          "artifact.stage4.template_bound_numeric_contract",
+          "stage4/checker_reports/failed_checker_reports",
+          "artifact.pipeline_planning.promoted_pipeline_contract",
+          "artifact.input.template_metadata",
+          "artifact.input.numeric_policy",
+          "constraint.parameter.binding",
+          "constraint.template.library",
+          "constraint.numeric.policy"
+        ],
+        "id": "parameter_binding.bounded_static_mismatch_repair_if_needed",
+        "on_failure": "Keep code_generation blocked and quarantine unpromoted Stage 4 artifacts. If the repair cannot stay within template-parameter, boundary-contract, numeric-policy, and memory-runtime handoff bounds, emit a stage_backtrack_request to pipeline_planning and require explicit approval for the implicated architecture, numeric, template, or memory change.",
+        "produces": [
+          "artifact.stage4.failure_localization_context",
+          "artifact.stage4.repaired_template_parameter_binding_contract",
+          "artifact.stage4.targeted_rerun_report",
+          "sacg_memory.parameter_binding_repair_record"
+        ],
+        "rationale": "If the next stage fails, the repair loop must be bounded and checker-driven: tool output first, then contract-guided localization, then targeted parameter or manifest repair, then rerun of the failed checker set. It must not mutate golden outputs, loosen tolerance, or bypass the promoted Stage 3 contract.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "bounded_template_repair",
+          "memory_runtime_repair",
+          "targeted_replay",
+          "repair_boundary_check",
+          "parameter_binding_static_check",
+          "sacg_validate"
+        ]
+      }
+    ],
+    "observations": [
+      "The pipeline_planning command returned 0 and the latest stage result is ready with checker_summary passed=10, failed=0, errors=[], and warnings=[].",
+      "stage_passed is true on attempt 2 of the bounded 2 attempts. Because the stage passed, no same-stage retry is needed; if a new Stage 3 semantic failure is discovered, retry budget exhaustion must be handled by bounded metadata repair, backtrack, or stop rather than an unbounded retry.",
+      "SACG memory explicitly reports no active_contamination_barriers, no open_retry_requests, and no open_backtrack_requests. There is no SACG blocker preventing downstream progress.",
+      "No retry_reconciliation_contract is supplied, so there are no previous failed same-stage artifacts to distinguish from candidate retry artifacts for this decision. The promoted contract should still exclude unpromoted draft or duplicate team-action artifacts.",
+      "The accepted candidate is a 9-stage decoder operator_stream_pipeline with 13 data edges and 13 mirrored stream edges, preserving the supplied RMSNorm, self-attention, residual, gated MLP, and output order.",
+      "Per the supplied stage-gate interpretation, current-stage blockers are clear: the Stage 3 static planning checks passed. Concrete DDR address assignment, runtime ABI materialization, code generation, real simulator evidence, Vivado evidence, and board runtime evidence are later-stage obligations, not current-stage blockers.",
+      "The memory/runtime information is a Stage 3 handoff contract only: six required regions, activation ping/pong, double-buffered weights, 512-bit DDR AXI facts, 64-byte alignment policy, and XDMA runtime requirements are preserved, but exact aligned base addresses must not be guessed in Stage 3.",
+      "Static liveness, stream, and symbolic_first_order latency evidence do not constitute hardware correctness, timing closure, throughput, or board pass evidence. Later verification must follow the leaf/operator, connected single-transformer-layer, then board-accurate AXI/DDR wrapped-system repair loop.",
+      "The design-team aggregate is broad and contains overlapping later-stage handoff actions, but the latest architect result and action-normalization record provide a bounded path: promote the checked Stage 3 contract, then enter parameter_binding with a normalized handoff queue."
+    ],
+    "proposed_actions": [
+      "Proceed to parameter_binding; do not retry pipeline_planning, backtrack, or stop on the supplied evidence.",
+      "Promote only the checked pipeline_planning SACG state and record a trust manifest so unpromoted draft actions or duplicate handoff artifacts are not consumed as validated downstream inputs.",
+      "Run parameter_binding static/template/numeric/boundary/stream/memory checks from the promoted Stage 3 contract before any code_generation consumption.",
+      "If parameter_binding fails, use tool-output-driven localization and bounded repair, then rerun the failed checker set; require approval and/or backtrack for any architecture, numeric, template-library, or memory-layout change.",
+      "Keep code_generation, concrete DDR address assignment, runtime ABI, real simulator evidence, Vivado/backend, and board runtime blocked until their respective later-stage checker gates provide evidence."
+    ],
+    "risks": [
+      "Action-queue contamination risk: the team aggregate includes overlapping Stage 4/5/6 handoff actions, so downstream tools must consume one normalized promoted contract lineage rather than multiple draft artifact names.",
+      "Parameter-binding drift risk: Stage 4 could accidentally alter operator order, residual skip sources, GQA/RoPE fields, stream/data edge order, numeric widths, accumulator policy, or trusted-template boundaries.",
+      "Data-order and transfer-count risk: token/tile/lane/word ordering and full-beat transfer counts must remain identical across parameter binding, code generation manifests, weight packing, runtime commands, and verification manifests.",
+      "Memory/runtime risk: concrete DDR regions, activation ping/pong buffers, double-buffered weights, 512-bit AXI data width, 37-bit address width, WSTRB width, 64-byte alignment, XDMA device index, and raw register/DDR protocol remain later-stage obligations and require approval if changed.",
+      "Numeric/golden risk: fp16 activation/weight paths, fp32 accumulation where specified, nearest_even rounding, saturation=false, and golden-reference tolerances must be preserved; modifying golden outputs or tolerance is not a valid repair.",
+      "Verification risk: Stage 3 static planning evidence does not prove RTL, simulator, Vivado, or board behavior. Real tool failures must be localized to the earliest causal boundary before any bounded code or contract repair.",
+      "Backend/app-shell risk: any later target selection must be derived from cited board materials and real Vivado/tool evidence; ambiguous target names require bounded approval rather than guessing."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "recent_stage_summary",
+        "recent_stage_summary.outputs.pipeline_plan",
+        "recent_stage_summary.outputs.pipeline_static_checks",
+        "recent_stage_summary.outputs.sacg_state",
+        "recent_stage_summary.outputs.team_aggregate",
+        "sacg_memory",
+        "flow_policy",
+        "action_grounding_registry",
+        "llm_policy"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.parameter.binding",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.tool.protocols",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output"
+      ]
+    },
+    "schema_version": "spatialaccagent.flow_controller_decision.v0",
+    "stage": "pipeline_planning",
+    "status": "proceed",
+    "summary": "Proceed from pipeline_planning to parameter_binding. The latest Stage 3 run passed all supplied current-stage checks, command execution succeeded, and SACG memory contains no open retry requests, backtrack requests, or contamination barriers. The next stage must consume only the promoted checker-backed pipeline contract and preserve later-stage obligations for concrete memory/runtime materialization, code generation, hierarchical verification, and backend evidence without treating Stage 3 planning as hardware proof."
+  },
+  "prompt_bytes": 84716,
+  "prompt_hash": "c8264e5c1c37cde9c722857ee8a029d718261ccde73f2ce01bc70166f5a7200e",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"agent\":\"flow_controller_agent\",\"approval_required_for\":[\"Any architecture or pipeline-topology change beyond the checker-backed operator_stream_pipeline, including decoder operator order, stage insertion/removal, residual skip sources, branch/join fire rules, or MLP split/join topology.\",\"Any change to model or shape facts including GQA head counts, group size, RoPE policy, causal mask policy, seq_len_bound, hidden size, intermediate size, stream lane count, transfer order, or transfer-unit policy.\",\"Any numeric precision, rounding, saturation, accumulator, tolerance, or golden-output change.\",\"Any trusted-template replacement, major template-library/template-metadata change, or free-form RTL generation outside the approved template library.\",\"Any concrete DDR base-address assignment or memory-layout/AXI/DDR address-map change, including AXI data width, address width, WSTRB width, 64-byte alignment, XDMA device index, control/status apertures, raw register/DDR runtime protocol, activation ping/pong policy, or double-buffered weight policy.\",\"Any ambiguous backend/app-shell target selection without cited board materials and real Vivado/tool evidence.\",\"Any attempt to treat symbolic_first_order latency or static pipeline-planning evidence as timing, throughput, RTL correctness, or hardware-pass evidence.\"],\"executable_actions\":[{\"acceptance_checkers\":[\"sacg_static_check\",\"sacg_memory_check\",\"verification_action_audit_check\",\"stage_artifact_trust_barrier_check\"],\"action_type\":\"stage_promotion_gate\",\"consumes\":[\"recent_stage_summary.checker_summary\",\"recent_stage_summary.outputs.pipeline_plan\",\"recent_stage_summary.outputs.pipeline_static_checks\",\"recent_stage_summary.outputs.sacg_state\",\"recent_stage_summary.design_team.action_normalization\",\"recent_stage_summary.llm_agent\",\"sacg_memory\",\"flow_policy\"],\"id\":\"flow.pipeline_planning_promote_checked_sacg_state\",\"on_failure\":\"Block transition to parameter_binding. Keep the candidate pipeline plan and team action queue behind a stage_artifact_trust_barrier, localize the failing SACG/action-audit field, and do not consume unpromoted artifacts downstream. If the failure invalidates the checked Stage 3 contract rather than action metadata, open a stage_backtrack_request or stop because the pipeline_planning retry budget is already at 2 attempts.\",\"produces\":[\"artifact.flow.pipeline_planning_promotion_decision\",\"artifact.pipeline_planning.promoted_pipeline_contract\",\"artifact.pipeline_planning.normalized_handoff_queue\",\"artifact.pipeline_planning.promotion_trust_manifest\",\"sacg_memory.stage_outcome_record.pipeline_planning\"],\"rationale\":\"The current stage passed with 10/10 checks, command return code 0, and no open SACG retry, backtrack, or contamination blockers. Promote only the checker-backed pipeline contract and normalized handoff lineage before any downstream consumption.\",\"requires_approval\":false,\"stage\":\"pipeline_planning\",\"tool_roles\":[\"sacg_validate\",\"sacg_static_check\",\"sacg_memory_update\",\"verification_action_audit\",\"stage_artifact_trust_barrier\"]},{\"acceptance_checkers\":[\"parameter_binding_static_check\",\"template_coverage_check\",\"numeric_policy_check\",\"boundary_contract_check\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"template_binding_static_check\",\"sacg_static_check\"],\"action_type\":\"stage_transition_and_static_binding\",\"consumes\":[\"artifact.pipeline_planning.promoted_pipeline_contract\",\"artifact.pipeline_planning.normalized_handoff_queue\",\"artifact.stage2.template_selection\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"constraint.template.library\",\"constraint.numeric.policy\",\"constraint.parameter.binding\",\"constraint.cross_layer.input_consistency\"],\"id\":\"flow.enter_parameter_binding_from_promoted_pipeline_contract\",\"on_failure\":\"Block code_generation and later stages. Localize the mismatch to the affected stage, edge, template parameter, numeric field, boundary contract, or memory/stream handoff. Repair only within approved parameter-binding bounds and rerun the same checkers; any topology, numeric-policy, memory-layout, AXI, or template-library change requires approval and likely backtrack to pipeline_planning.\",\"produces\":[\"artifact.stage4.template_parameter_binding_contract\",\"artifact.stage4.boundary_contracts\",\"artifact.stage4.template_bound_numeric_contract\",\"stage4/checker_reports/parameter_binding_static_check.json\",\"stage4/checker_reports/template_coverage_check.json\",\"stage4/checker_reports/numeric_policy_check.json\",\"stage4/checker_reports/boundary_contract_check.json\",\"stage4/checker_reports/stream_plan_check.json\",\"stage4/checker_reports/memory_runtime_plan_check.json\"],\"rationale\":\"The next bounded stage is parameter_binding. It must materialize the promoted Stage 3 operator, stream, numeric, template, and memory-runtime handoff facts without changing the checked pipeline semantics.\",\"requires_approval\":false,\"stage\":\"parameter_binding\",\"tool_roles\":[\"parameter_binding_static_check\",\"template_coverage_check\",\"numeric_policy_check\",\"boundary_contract_generate\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"sacg_static_check\"]},{\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"repair_boundary_check\",\"targeted_replay_check\",\"parameter_binding_static_check\",\"template_coverage_check\",\"numeric_policy_check\",\"boundary_contract_check\",\"sacg_static_check\"],\"action_type\":\"bounded_repair_contingency\",\"consumes\":[\"artifact.stage4.template_parameter_binding_contract\",\"artifact.stage4.boundary_contracts\",\"artifact.stage4.template_bound_numeric_contract\",\"stage4/checker_reports/failed_checker_reports\",\"artifact.pipeline_planning.promoted_pipeline_contract\",\"artifact.input.template_metadata\",\"artifact.input.numeric_policy\",\"constraint.parameter.binding\",\"constraint.template.library\",\"constraint.numeric.policy\"],\"id\":\"parameter_binding.bounded_static_mismatch_repair_if_needed\",\"on_failure\":\"Keep code_generation blocked and quarantine unpromoted Stage 4 artifacts. If the repair cannot stay within template-parameter, boundary-contract, numeric-policy, and memory-runtime handoff bounds, emit a stage_backtrack_request to pipeline_planning and require explicit approval for the implicated architecture, numeric, template, or memory change.\",\"produces\":[\"artifact.stage4.failure_localization_context\",\"artifact.stage4.repaired_template_parameter_binding_contract\",\"artifact.stage4.targeted_rerun_report\",\"sacg_memory.parameter_binding_repair_record\"],\"rationale\":\"If the next stage fails, the repair loop must be bounded and checker-driven: tool output first, then contract-guided localization, then targeted parameter or manifest repair, then rerun of the failed checker set. It must not mutate golden outputs, loosen tolerance, or bypass the promoted Stage 3 contract.\",\"requires_approval\":false,\"stage\":\"parameter_binding\",\"tool_roles\":[\"failure_slice_localization\",\"causal_repair_context_pack\",\"bounded_template_repair\",\"memory_runtime_repair\",\"targeted_replay\",\"repair_boundary_check\",\"parameter_binding_static_check\",\"sacg_validate\"]}],\"observations\":[\"The pipeline_planning command returned 0 and the latest stage result is ready with checker_summary passed=10, failed=0, errors=[], and warnings=[].\",\"stage_passed is true on attempt 2 of the bounded 2 attempts. Because the stage passed, no same-stage retry is needed; if a new Stage 3 semantic failure is discovered, retry budget exhaustion must be handled by bounded metadata repair, backtrack, or stop rather than an unbounded retry.\",\"SACG memory explicitly reports no active_contamination_barriers, no open_retry_requests, and no open_backtrack_requests. There is no SACG blocker preventing downstream progress.\",\"No retry_reconciliation_contract is supplied, so there are no previous failed same-stage artifacts to distinguish from candidate retry artifacts for this decision. The promoted contract should still exclude unpromoted draft or duplicate team-action artifacts.\",\"The accepted candidate is a 9-stage decoder operator_stream_pipeline with 13 data edges and 13 mirrored stream edges, preserving the supplied RMSNorm, self-attention, residual, gated MLP, and output order.\",\"Per the supplied stage-gate interpretation, current-stage blockers are clear: the Stage 3 static planning checks passed. Concrete DDR address assignment, runtime ABI materialization, code generation, real simulator evidence, Vivado evidence, and board runtime evidence are later-stage obligations, not current-stage blockers.\",\"The memory/runtime information is a Stage 3 handoff contract only: six required regions, activation ping/pong, double-buffered weights, 512-bit DDR AXI facts, 64-byte alignment policy, and XDMA runtime requirements are preserved, but exact aligned base addresses must not be guessed in Stage 3.\",\"Static liveness, stream, and symbolic_first_order latency evidence do not constitute hardware correctness, timing closure, throughput, or board pass evidence. Later verification must follow the leaf/operator, connected single-transformer-layer, then board-accurate AXI/DDR wrapped-system repair loop.\",\"The design-team aggregate is broad and contains overlapping later-stage handoff actions, but the latest architect result and action-normalization record provide a bounded path: promote the checked Stage 3 contract, then enter parameter_binding with a normalized handoff queue.\"],\"proposed_actions\":[\"Proceed to parameter_binding; do not retry pipeline_planning, backtrack, or stop on the supplied evidence.\",\"Promote only the checked pipeline_planning SACG state and record a trust manifest so unpromoted draft actions or duplicate handoff artifacts are not consumed as validated downstream inputs.\",\"Run parameter_binding static/template/numeric/boundary/stream/memory checks from the promoted Stage 3 contract before any code_generation consumption.\",\"If parameter_binding fails, use tool-output-driven localization and bounded repair, then rerun the failed checker set; require approval and/or backtrack for any architecture, numeric, template-library, or memory-layout change.\",\"Keep code_generation, concrete DDR address assignment, runtime ABI, real simulator evidence, Vivado/backend, and board runtime blocked until their respective later-stage checker gates provide evidence.\"],\"risks\":[\"Action-queue contamination risk: the team aggregate includes overlapping Stage 4/5/6 handoff actions, so downstream tools must consume one normalized promoted contract lineage rather than multiple draft artifact names.\",\"Parameter-binding drift risk: Stage 4 could accidentally alter operator order, residual skip sources, GQA/RoPE fields, stream/data edge order, numeric widths, accumulator policy, or trusted-template boundaries.\",\"Data-order and transfer-count risk: token/tile/lane/word ordering and full-beat transfer counts must remain identical across parameter binding, code generation manifests, weight packing, runtime commands, and verification manifests.\",\"Memory/runtime risk: concrete DDR regions, activation ping/pong buffers, double-buffered weights, 512-bit AXI data width, 37-bit address width, WSTRB width, 64-byte alignment, XDMA device index, and raw register/DDR protocol remain later-stage obligations and require approval if changed.\",\"Numeric/golden risk: fp16 activation/weight paths, fp32 accumulation where specified, nearest_even rounding, saturation=false, and golden-reference tolerances must be preserved; modifying golden outputs or tolerance is not a valid repair.\",\"Verification risk: Stage 3 static planning evidence does not prove RTL, simulator, Vivado, or board behavior. Real tool failures must be localized to the earliest causal boundary before any bounded code or contract repair.\",\"Backend/app-shell risk: any later target selection must be derived from cited board materials and real Vivado/tool evidence; ambiguous target names require bounded approval rather than guessing.\"],\"sacg_focus\":{\"artifacts\":[\"recent_stage_summary\",\"recent_stage_summary.outputs.pipeline_plan\",\"recent_stage_summary.outputs.pipeline_static_checks\",\"recent_stage_summary.outputs.sacg_state\",\"recent_stage_summary.outputs.team_aggregate\",\"sacg_memory\",\"flow_policy\",\"action_grounding_registry\",\"llm_policy\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.arch.design_space\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.tool.protocols\",\"constraint.cross_layer.input_consistency\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\"]},\"schema_version\":\"spatialaccagent.flow_controller_decision.v0\",\"stage\":\"pipeline_planning\",\"status\":\"proceed\",\"summary\":\"Proceed from pipeline_planning to parameter_binding. The latest Stage 3 run passed all supplied current-stage checks, command execution succeeded, and SACG memory contains no open retry requests, backtrack requests, or contamination barriers. The next stage must consume only the promoted checker-backed pipeline contract and preserve later-stage obligations for concrete memory/runtime materialization, code generation, hierarchical verification, and backend evidence without treating Stage 3 planning as hardware proof.\"}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/012_pipeline_planning/llm/flow_controller_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/012_pipeline_planning/llm/flow_controller_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "flow_orchestration",
+  "used_fallback": false
+}

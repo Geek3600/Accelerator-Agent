@@ -1,0 +1,216 @@
+{
+  "agent": "data_memory_runtime_specialist",
+  "duration_sec": 372.80080015400017,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "data_memory_runtime_specialist",
+    "approval_required_for": [
+      "Selecting or changing FFN architecture tile parameters tile_m, tile_n, or tile_k when not already deterministically fixed by constraint.arch.design_space.",
+      "Any change to lanes=8, stream order, memory layout, DDR/runtime address map, buffer lifetime policy, or transfer unit size.",
+      "Any change to numeric policy, including elem_bits=16 activation width, acc_dtype=32 accumulation width, cast points, or comparison tolerance.",
+      "Any modification to trusted template internals or replacement of FFN.scala/GatedMLPParams rather than binding its existing parameters."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "numeric_policy_check",
+          "addr_map_check"
+        ],
+        "action_type": "binding_repair_and_consistency_audit",
+        "consumes": [
+          "candidate_stage_artifact",
+          "artifact.input.design_space",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_metadata",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "constraint.arch.design_space",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "template_selection.bind_ffn_tiles_and_memory_runtime_matrix",
+        "on_failure": "Keep template_selection blocked. If the full input artifacts do not contain a legal tile triple, emit a bounded stage_backtrack_request to architecture/design-space selection; do not use implicit constructor defaults, change numeric policy, alter memory layout, or edit trusted FFN template internals.",
+        "produces": [
+          "artifact.template_selection.repaired_ffn_tile_parameter_bindings",
+          "artifact.template_selection.tile_memory_runtime_consistency_review",
+          "tile-to-memory/runtime consistency matrix with tile_m/tile_n/tile_k, lanes, numeric widths, transfer counts, stream order, buffer lifetimes, and address-map references"
+        ],
+        "rationale": "The current candidate fails because tile_m, tile_n, and tile_k are required by the trusted FFN template but are missing for all three FFN projection operators. The repair must bind these parameters only from SACG/input design-space facts and prove memory/runtime/stream/numeric consistency before promotion.",
+        "requires_approval": true,
+        "stage": "template_selection",
+        "tool_roles": [
+          "memory_runtime_repair",
+          "architecture_review",
+          "parameter_binding_static_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "numeric_policy_check",
+          "addr_map_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "stage_gate_rerun_and_trust_barrier_update",
+        "consumes": [
+          "artifact.template_selection.repaired_ffn_tile_parameter_bindings",
+          "artifact.template_selection.tile_memory_runtime_consistency_review",
+          "candidate_stage_artifact.checker_results",
+          "constraint.template.library",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "template_selection.promote_only_after_repaired_tile_checks",
+        "on_failure": "Do not promote the candidate. Record the failed checker evidence in SACG memory and route the bounded failure to the responsible template-selection repair role.",
+        "produces": [
+          "artifact.template_selection.promoted_template_binding_contract or artifact.template_selection.stage_artifact_trust_barrier",
+          "updated checker_results for template_selection"
+        ],
+        "rationale": "The current artifact has a failed template_parameter_binding_check. Promotion must be gated on deterministic checker evidence that the repaired FFN tile bindings supersede the incomplete candidate and preserve cross-layer constraints.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "sacg_validate",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "team_aggregate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "boundary_contract_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "case_stage_leaf_static",
+          "case_single_transformer_layer",
+          "case_axi_ddr_interface"
+        ],
+        "action_type": "later_stage_verification_plan_generation",
+        "consumes": [
+          "artifact.template_selection.promoted_template_binding_contract",
+          "artifact.template_selection.tile_memory_runtime_consistency_review",
+          "artifact.codegen.manifest",
+          "artifact.stage6.verification_plan"
+        ],
+        "id": "verification.plan_ffn_transfer_liveness_after_template_promotion",
+        "on_failure": "Treat missing verifier capability as a checker/golden-reference repair issue, not hardware correctness. Do not proceed to higher verification layers until the lower failed layer has tool output, contract-guided localization, bounded repair, and rerun evidence.",
+        "produces": [
+          "artifact.verification.ffn_transfer_liveness_boundary_contract",
+          "verification plan entries for FFN leaf, single-layer, and AXI/DDR wrapped checks"
+        ],
+        "rationale": "Transfer ordering and liveness are not proven by template selection alone. After the static FFN tile contract is repaired and promoted, verification must follow the required three-layer loop: operator/leaf modules, connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapper.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "boundary_contract_generate",
+          "case_stage_leaf_static",
+          "case_single_transformer_layer",
+          "case_axi_ddr_interface"
+        ]
+      }
+    ],
+    "observations": [
+      "SACG memory in the supplied state has no active contamination barriers, no recent contamination barriers, no open backtrack requests, and no open retry requests relevant to this stage.",
+      "The candidate cross_layer_trace reports pass and shows presence of constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, constraint.deployment.board, and constraint.cross_layer.input_consistency, so this review does not classify those constraints as absent.",
+      "Template source/interface checks pass for FFN.scala/GatedMLPParams and the other selected trusted templates; there is no evidence requiring free-form RTL generation or template-internal edits.",
+      "operator_coverage_check, template_source_and_interface_check, attention_semantic_expansion_check, and cross_layer_trace_check pass, but template_parameter_binding_check fails on FFN tile parameters.",
+      "The visible FFN-related model and numeric bindings are hidden_size=896, intermediate_size=4864, lanes=8, and elem_bits=16. The visible dimensions are divisible by lanes at the coarse level: 896/8=112 and 4864/8=608.",
+      "The candidate references tile_m from constraint.arch.design_space.search_params.tiles.tile_m_tokens and tile_n/tile_k from constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates, but all three are status=missing and value=null for mlp_gate_proj, mlp_up_proj, and mlp_down_proj.",
+      "Because tile_m/tile_n/tile_k are missing, the supplied artifact does not provide enough information to compute per-tile activation bytes, weight bytes, accumulation span, DDR burst/transfer counts, scratch-buffer lifetimes, output tile placement, or stream FIFO liveness for the FFN path.",
+      "The runtime trace includes control base, DDR base, output address, output size, and register-map facts, but the candidate does not yet bind FFN tile storage/transfer regions to those runtime facts. addr_map_check and memory_runtime_plan_check must run on a repaired tile contract before promotion.",
+      "The visible numeric policy uses activation_dtype=16 and acc_dtype=32. The FFN template binding exposes elem_bits=16, while accumulator/output handling is not visible in the supplied summary; numeric_policy_check must confirm the trusted FFN template preserves the required 32-bit accumulation behavior or an approved cast policy before code generation.",
+      "Per the supplied stage_gate_policy, VCS/Verilator simulation, Vivado synthesis/implementation, bitstream generation, runtime driver generation, and board bring-up are not current-stage blockers. They remain later-stage evidence requirements and must not be claimed as passed here."
+    ],
+    "proposed_actions": [
+      "Repair the FFN tile bindings by resolving tile_m, tile_n, and tile_k from constraint.arch.design_space and checking them against constraint.shape.model, constraint.numeric.policy, constraint.memory.board, and constraint.runtime.board; do not invent defaults and do not modify FFN.scala internals.",
+      "Produce a tile-to-memory/runtime consistency matrix for mlp_gate_proj, mlp_up_proj, activation_mul, and mlp_down_proj that records tile_m/tile_n/tile_k, lanes, elem_bits, expected row/column iteration counts, transfer units, buffer lifetime, stream order, and address-map regions.",
+      "Rerun sacg_static_check, parameter_binding_static_check, template_binding_static_check, memory_runtime_plan_check, stream_plan_check, numeric_policy_check, and addr_map_check on the repaired candidate before template-selection promotion.",
+      "If no legal tile triple can be derived from the supplied design-space and board constraints, issue a bounded architecture/design-space backtrack request rather than changing numeric policy, memory layout, stream order, lane count, or template internals.",
+      "After template selection is promoted, verify transfer/liveness in the required hierarchy: FFN/operator leaf modules first, then the connected single-transformer-layer kernel, then the board-accurate AXI/DDR wrapped system."
+    ],
+    "risks": [
+      "Current-stage blocker: selected FFN templates for mlp_gate_proj, mlp_up_proj, and mlp_down_proj have unbound required parameters tile_m, tile_n, and tile_k, directly violating the stage gate rule that no selected template required parameter may be unbound.",
+      "Current-stage blocker: without concrete FFN tile parameters, the data-memory-runtime audit cannot prove board-memory fit, runtime address-map consistency, stream transfer order, lane/tile divisibility, or liveness for the FFN gate/up/activation/down path.",
+      "Current-stage blocker: accepting this candidate would rely on missing tile values or implicit defaults, which is explicitly forbidden by the candidate artifact and the stage gate policy."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_protocols",
+        "artifact.template_selection.tile_memory_runtime_consistency_review"
+      ],
+      "constraints": [
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.numeric.policy",
+        "constraint.arch.design_space",
+        "constraint.cross_layer.input_consistency",
+        "constraint.shape.model",
+        "constraint.template.library"
+      ],
+      "edges": [
+        "constraint.shape.model -> FFN hidden_size/intermediate_size bindings",
+        "constraint.numeric.policy.default_rules.activation_dtype -> FFN elem_bits=16",
+        "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy -> lanes=8",
+        "constraint.arch.design_space.search_params.tiles -> FFN tile_m/tile_n/tile_k binding edge is unresolved",
+        "constraint.memory.board + constraint.runtime.board -> tile-to-memory/runtime consistency matrix cannot be completed without tile_m/tile_n/tile_k",
+        "FFN gate/up streams -> activation_mul -> FFN down stream order requires stream_plan_check after tile repair"
+      ],
+      "nodes": [
+        "parameter_bindings.mlp_gate_proj.status=incomplete with tile_m/tile_n/tile_k missing",
+        "parameter_bindings.mlp_up_proj.status=incomplete with tile_m/tile_n/tile_k missing",
+        "parameter_bindings.mlp_down_proj.status=incomplete with tile_m/tile_n/tile_k missing",
+        "constraint.shape.model.hidden_size=896",
+        "constraint.shape.model.intermediate_size=4864",
+        "constraint.shape.model.target_max_seq_len=16",
+        "constraint.numeric.policy.default_rules.activation_dtype=16",
+        "constraint.numeric.policy.default_rules.acc_dtype=32",
+        "constraint.arch.design_space-derived lanes=8",
+        "constraint.memory.board.memory_system present in cross_layer_trace",
+        "constraint.runtime.board control_base/ddr_base/output_address/output_size/register_map present in cross_layer_trace"
+      ]
+    },
+    "schema_version": "spatialaccagent.tile_memory_runtime_consistency_review.v0",
+    "stage": "template_selection",
+    "status": "blocked",
+    "summary": "The FFN tile memory/runtime audit cannot approve the candidate template selection because the proposed FFN tile bindings are not concrete bindings: tile_m, tile_n, and tile_k are missing for mlp_gate_proj, mlp_up_proj, and mlp_down_proj. Board memory, board runtime, deployment, numeric policy, and cross-layer input-consistency constraints are present in the trace, and visible lane/shape facts are compatible at the coarse vector-lane level, but tile-dependent memory footprint, address-map coverage, stream transfer counts, and liveness cannot be proven until the FFN tile parameters are bound from SACG/input artifacts and rechecked."
+  },
+  "prompt_bytes": 58680,
+  "prompt_hash": "be6a44c7ecbb21aec719e0e9c3f16b0920c7242ab86ae6a1b1f7c04f3ef15cbb",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.tile_memory_runtime_consistency_review.v0\",\"agent\":\"data_memory_runtime_specialist\",\"stage\":\"template_selection\",\"status\":\"blocked\",\"summary\":\"The FFN tile memory/runtime audit cannot approve the candidate template selection because the proposed FFN tile bindings are not concrete bindings: tile_m, tile_n, and tile_k are missing for mlp_gate_proj, mlp_up_proj, and mlp_down_proj. Board memory, board runtime, deployment, numeric policy, and cross-layer input-consistency constraints are present in the trace, and visible lane/shape facts are compatible at the coarse vector-lane level, but tile-dependent memory footprint, address-map coverage, stream transfer counts, and liveness cannot be proven until the FFN tile parameters are bound from SACG/input artifacts and rechecked.\",\"sacg_focus\":{\"nodes\":[\"parameter_bindings.mlp_gate_proj.status=incomplete with tile_m/tile_n/tile_k missing\",\"parameter_bindings.mlp_up_proj.status=incomplete with tile_m/tile_n/tile_k missing\",\"parameter_bindings.mlp_down_proj.status=incomplete with tile_m/tile_n/tile_k missing\",\"constraint.shape.model.hidden_size=896\",\"constraint.shape.model.intermediate_size=4864\",\"constraint.shape.model.target_max_seq_len=16\",\"constraint.numeric.policy.default_rules.activation_dtype=16\",\"constraint.numeric.policy.default_rules.acc_dtype=32\",\"constraint.arch.design_space-derived lanes=8\",\"constraint.memory.board.memory_system present in cross_layer_trace\",\"constraint.runtime.board control_base/ddr_base/output_address/output_size/register_map present in cross_layer_trace\"],\"edges\":[\"constraint.shape.model -> FFN hidden_size/intermediate_size bindings\",\"constraint.numeric.policy.default_rules.activation_dtype -> FFN elem_bits=16\",\"constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy -> lanes=8\",\"constraint.arch.design_space.search_params.tiles -> FFN tile_m/tile_n/tile_k binding edge is unresolved\",\"constraint.memory.board + constraint.runtime.board -> tile-to-memory/runtime consistency matrix cannot be completed without tile_m/tile_n/tile_k\",\"FFN gate/up streams -> activation_mul -> FFN down stream order requires stream_plan_check after tile repair\"],\"constraints\":[\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.numeric.policy\",\"constraint.arch.design_space\",\"constraint.cross_layer.input_consistency\",\"constraint.shape.model\",\"constraint.template.library\"],\"artifacts\":[\"candidate_stage_artifact\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.template_selection.tile_memory_runtime_consistency_review\"]},\"observations\":[\"SACG memory in the supplied state has no active contamination barriers, no recent contamination barriers, no open backtrack requests, and no open retry requests relevant to this stage.\",\"The candidate cross_layer_trace reports pass and shows presence of constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, constraint.deployment.board, and constraint.cross_layer.input_consistency, so this review does not classify those constraints as absent.\",\"Template source/interface checks pass for FFN.scala/GatedMLPParams and the other selected trusted templates; there is no evidence requiring free-form RTL generation or template-internal edits.\",\"operator_coverage_check, template_source_and_interface_check, attention_semantic_expansion_check, and cross_layer_trace_check pass, but template_parameter_binding_check fails on FFN tile parameters.\",\"The visible FFN-related model and numeric bindings are hidden_size=896, intermediate_size=4864, lanes=8, and elem_bits=16. The visible dimensions are divisible by lanes at the coarse level: 896/8=112 and 4864/8=608.\",\"The candidate references tile_m from constraint.arch.design_space.search_params.tiles.tile_m_tokens and tile_n/tile_k from constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates, but all three are status=missing and value=null for mlp_gate_proj, mlp_up_proj, and mlp_down_proj.\",\"Because tile_m/tile_n/tile_k are missing, the supplied artifact does not provide enough information to compute per-tile activation bytes, weight bytes, accumulation span, DDR burst/transfer counts, scratch-buffer lifetimes, output tile placement, or stream FIFO liveness for the FFN path.\",\"The runtime trace includes control base, DDR base, output address, output size, and register-map facts, but the candidate does not yet bind FFN tile storage/transfer regions to those runtime facts. addr_map_check and memory_runtime_plan_check must run on a repaired tile contract before promotion.\",\"The visible numeric policy uses activation_dtype=16 and acc_dtype=32. The FFN template binding exposes elem_bits=16, while accumulator/output handling is not visible in the supplied summary; numeric_policy_check must confirm the trusted FFN template preserves the required 32-bit accumulation behavior or an approved cast policy before code generation.\",\"Per the supplied stage_gate_policy, VCS/Verilator simulation, Vivado synthesis/implementation, bitstream generation, runtime driver generation, and board bring-up are not current-stage blockers. They remain later-stage evidence requirements and must not be claimed as passed here.\"],\"risks\":[\"Current-stage blocker: selected FFN templates for mlp_gate_proj, mlp_up_proj, and mlp_down_proj have unbound required parameters tile_m, tile_n, and tile_k, directly violating the stage gate rule that no selected template required parameter may be unbound.\",\"Current-stage blocker: without concrete FFN tile parameters, the data-memory-runtime audit cannot prove board-memory fit, runtime address-map consistency, stream transfer order, lane/tile divisibility, or liveness for the FFN gate/up/activation/down path.\",\"Current-stage blocker: accepting this candidate would rely on missing tile values or implicit defaults, which is explicitly forbidden by the candidate artifact and the stage gate policy.\"],\"proposed_actions\":[\"Repair the FFN tile bindings by resolving tile_m, tile_n, and tile_k from constraint.arch.design_space and checking them against constraint.shape.model, constraint.numeric.policy, constraint.memory.board, and constraint.runtime.board; do not invent defaults and do not modify FFN.scala internals.\",\"Produce a tile-to-memory/runtime consistency matrix for mlp_gate_proj, mlp_up_proj, activation_mul, and mlp_down_proj that records tile_m/tile_n/tile_k, lanes, elem_bits, expected row/column iteration counts, transfer units, buffer lifetime, stream order, and address-map regions.\",\"Rerun sacg_static_check, parameter_binding_static_check, template_binding_static_check, memory_runtime_plan_check, stream_plan_check, numeric_policy_check, and addr_map_check on the repaired candidate before template-selection promotion.\",\"If no legal tile triple can be derived from the supplied design-space and board constraints, issue a bounded architecture/design-space backtrack request rather than changing numeric policy, memory layout, stream order, lane count, or template internals.\",\"After template selection is promoted, verify transfer/liveness in the required hierarchy: FFN/operator leaf modules first, then the connected single-transformer-layer kernel, then the board-accurate AXI/DDR wrapped system.\"],\"executable_actions\":[{\"id\":\"template_selection.bind_ffn_tiles_and_memory_runtime_matrix\",\"stage\":\"template_selection\",\"action_type\":\"binding_repair_and_consistency_audit\",\"rationale\":\"The current candidate fails because tile_m, tile_n, and tile_k are required by the trusted FFN template but are missing for all three FFN projection operators. The repair must bind these parameters only from SACG/input design-space facts and prove memory/runtime/stream/numeric consistency before promotion.\",\"consumes\":[\"candidate_stage_artifact\",\"artifact.input.design_space\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_metadata\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"constraint.arch.design_space\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.cross_layer.input_consistency\"],\"produces\":[\"artifact.template_selection.repaired_ffn_tile_parameter_bindings\",\"artifact.template_selection.tile_memory_runtime_consistency_review\",\"tile-to-memory/runtime consistency matrix with tile_m/tile_n/tile_k, lanes, numeric widths, transfer counts, stream order, buffer lifetimes, and address-map references\"],\"tool_roles\":[\"memory_runtime_repair\",\"architecture_review\",\"parameter_binding_static_check\",\"memory_runtime_plan_check\",\"stream_plan_check\",\"numeric_policy_check\",\"addr_map_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"memory_runtime_plan_check\",\"stream_plan_check\",\"numeric_policy_check\",\"addr_map_check\"],\"on_failure\":\"Keep template_selection blocked. If the full input artifacts do not contain a legal tile triple, emit a bounded stage_backtrack_request to architecture/design-space selection; do not use implicit constructor defaults, change numeric policy, alter memory layout, or edit trusted FFN template internals.\",\"requires_approval\":true},{\"id\":\"template_selection.promote_only_after_repaired_tile_checks\",\"stage\":\"template_selection\",\"action_type\":\"stage_gate_rerun_and_trust_barrier_update\",\"rationale\":\"The current artifact has a failed template_parameter_binding_check. Promotion must be gated on deterministic checker evidence that the repaired FFN tile bindings supersede the incomplete candidate and preserve cross-layer constraints.\",\"consumes\":[\"artifact.template_selection.repaired_ffn_tile_parameter_bindings\",\"artifact.template_selection.tile_memory_runtime_consistency_review\",\"candidate_stage_artifact.checker_results\",\"constraint.template.library\",\"constraint.cross_layer.input_consistency\"],\"produces\":[\"artifact.template_selection.promoted_template_binding_contract or artifact.template_selection.stage_artifact_trust_barrier\",\"updated checker_results for template_selection\"],\"tool_roles\":[\"sacg_validate\",\"template_coverage_check\",\"parameter_binding_static_check\",\"team_aggregate\"],\"acceptance_checkers\":[\"sacg_static_check\",\"template_binding_static_check\",\"parameter_binding_static_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Do not promote the candidate. Record the failed checker evidence in SACG memory and route the bounded failure to the responsible template-selection repair role.\",\"requires_approval\":false},{\"id\":\"verification.plan_ffn_transfer_liveness_after_template_promotion\",\"stage\":\"verification\",\"action_type\":\"later_stage_verification_plan_generation\",\"rationale\":\"Transfer ordering and liveness are not proven by template selection alone. After the static FFN tile contract is repaired and promoted, verification must follow the required three-layer loop: operator/leaf modules, connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapper.\",\"consumes\":[\"artifact.template_selection.promoted_template_binding_contract\",\"artifact.template_selection.tile_memory_runtime_consistency_review\",\"artifact.codegen.manifest\",\"artifact.stage6.verification_plan\"],\"produces\":[\"artifact.verification.ffn_transfer_liveness_boundary_contract\",\"verification plan entries for FFN leaf, single-layer, and AXI/DDR wrapped checks\"],\"tool_roles\":[\"verification_plan_static_check\",\"boundary_contract_generate\",\"case_stage_leaf_static\",\"case_single_transformer_layer\",\"case_axi_ddr_interface\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"boundary_contract_check\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"case_stage_leaf_static\",\"case_single_transformer_layer\",\"case_axi_ddr_interface\"],\"on_failure\":\"Treat missing verifier capability as a checker/golden-reference repair issue, not hardware correctness. Do not proceed to higher verification layers until the lower failed layer has tool output, contract-guided localization, bounded repair, and rerun evidence.\",\"requires_approval\":false}],\"approval_required_for\":[\"Selecting or changing FFN architecture tile parameters tile_m, tile_n, or tile_k when not already deterministically fixed by constraint.arch.design_space.\",\"Any change to lanes=8, stream order, memory layout, DDR/runtime address map, buffer lifetime policy, or transfer unit size.\",\"Any change to numeric policy, including elem_bits=16 activation width, acc_dtype=32 accumulation width, cast points, or comparison tolerance.\",\"Any modification to trusted template internals or replacement of FFN.scala/GatedMLPParams rather than binding its existing parameters.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/data_memory_runtime_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/data_memory_runtime_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "template_selection.memory and runtime tile consistency auditor",
+  "used_fallback": false
+}

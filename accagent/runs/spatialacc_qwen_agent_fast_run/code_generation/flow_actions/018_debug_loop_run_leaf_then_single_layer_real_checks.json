@@ -1,0 +1,63 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "real_tool.case_leaf_functional",
+      "real_tool.case_leaf_golden_compare",
+      "real_tool.case_single_transformer_layer",
+      "real_tool.case_single_layer_functional",
+      "real_tool.case_single_layer_golden_compare",
+      "real_tool.case_vcs_functional_sim",
+      "deadlock_watchdog",
+      "data_order_trace_check",
+      "transfer_count_check",
+      "numeric_compare"
+    ],
+    "action_type": "real_tool_execution",
+    "consumes": [
+      "artifact.stage6.verification_artifact_contract",
+      "generated/chisel/filelist.f",
+      "generated/chisel/GeneratedAcceleratorTop.sv",
+      "generated/chisel/runtime/runtime_config.json",
+      "generated/chisel/memory/memory_layout.json",
+      "verification/case_real_weights/input_manifest.json",
+      "verification/case_real_weights/packed_weight_manifest.json",
+      "verification/case_real_weights/golden_reference_manifest.json"
+    ],
+    "id": "debug_loop.run_leaf_then_single_layer_real_checks",
+    "on_failure": "Stop at the earliest failed layer. Localize the failing boundary/module using simulator output and boundary contracts, package causal repair context, perform only bounded repair, and rerun the targeted failed checker; do not proceed to AXI/DDR wrapper or backend_board.",
+    "produces": [
+      "verification/case_diagnostics/leaf_functional_diagnosis.json",
+      "verification/case_diagnostics/single_layer_functional_diagnosis.json",
+      "verification/case_diagnostics/layered_numeric_compare.json",
+      "verification/case_diagnostics/layered_liveness_trace.json"
+    ],
+    "rationale": "After verification_artifacts pass, execute real functional and numeric checks in the required lower-layer order: operator/leaf modules first, then the connected single-transformer-layer kernel; do not skip to the wrapper on lower-layer failure.",
+    "requires_approval": false,
+    "stage": "debug_loop",
+    "tool_roles": [
+      "case_leaf_functional",
+      "case_leaf_golden_compare",
+      "case_single_transformer_layer",
+      "case_single_layer_functional",
+      "case_single_layer_golden_compare",
+      "case_vcs_functional_sim",
+      "case_vcs_evidence_analyzer",
+      "deadlock_watchdog",
+      "data_order_trace_check",
+      "transfer_count_check",
+      "numeric_compare"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "proceed",
+  "flow_event_index": 18,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/flow_events/018_proceed.json",
+  "stage": "code_generation"
+}

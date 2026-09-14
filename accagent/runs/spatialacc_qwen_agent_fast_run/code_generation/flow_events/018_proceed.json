@@ -1,0 +1,580 @@
+{
+  "attempt_count": 2,
+  "decision": "proceed",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "code_generation_manifest_static_check",
+        "codegen_package_static_check",
+        "codegen_compile_gate_check",
+        "codegen_contract_check",
+        "required_real_tool_evidence_check",
+        "sacg_memory_check"
+      ],
+      "action_type": "stage_transition_gate",
+      "consumes": [
+        "recent_stage_summary.compile_gate",
+        "recent_stage_summary.contract_check",
+        "recent_stage_summary.package_static_check",
+        "recent_stage_summary.outputs.generated_code_package",
+        "recent_stage_summary.outputs.memory_layout",
+        "recent_stage_summary.outputs.runtime_config",
+        "state_summary.sacg_memory_truth",
+        "constraint.codegen.package",
+        "constraint.codegen.compile_gate",
+        "constraint.codegen.contract_check",
+        "constraint.verification.plan"
+      ],
+      "id": "flow.codegen_promote_candidate_to_verification_artifacts",
+      "on_failure": "Do not promote the candidate to verification_artifacts. Quarantine the candidate, preserve failing checker evidence, and open a bounded stage_retry_request or stage_artifact_trust_barrier; do not launch a third code_generation attempt without an explicit approved blocker classification.",
+      "produces": [
+        "code_generation_stage_acceptance_decision.json",
+        "checker_evidence_matrix.json",
+        "repair_or_handoff_boundary_record.json",
+        "artifact.stage5.generated_code_package.promoted_for_verification_artifacts"
+      ],
+      "rationale": "The supplied current-stage package, compile, and contract checks pass and SACG memory truth has no active blockers, so freeze the code_generation candidate as the only accepted downstream input while recording that later hardware evidence is not implied.",
+      "requires_approval": false,
+      "stage": "code_generation",
+      "tool_roles": [
+        "code_generation_manifest_static_check",
+        "codegen_package_static_check",
+        "codegen_compile_gate",
+        "codegen_contract_check",
+        "required_real_tool_evidence_check",
+        "sacg_static_check",
+        "sacg_memory_update"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "parameter_binding_static_check",
+        "memory_runtime_plan_check",
+        "stream_plan_check",
+        "addr_map_check",
+        "transfer_count_check",
+        "template_binding_static_check",
+        "template_coverage_check",
+        "codegen_contract_check",
+        "codegen_package_static_check",
+        "sacg_reference_check"
+      ],
+      "action_type": "cross_layer_consistency_review",
+      "consumes": [
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "candidate_stage_artifact.generated_top",
+        "candidate_stage_artifact.generated_files",
+        "candidate_stage_artifact.compile_gate",
+        "candidate_stage_artifact.contract_check",
+        "candidate_stage_artifact.package_static_check",
+        "generated/chisel/memory/memory_layout.json",
+        "generated/chisel/runtime/runtime_config.json",
+        "state_summary.sacg_memory_truth"
+      ],
+      "id": "codegen.materialize_cross_layer_handoff_traces",
+      "on_failure": "Block downstream consumption of the affected handoff record. If the mismatch is local to generated metadata, route to bounded_template_repair or memory_runtime_repair with repair_boundary_check; if stage3/stage4 artifacts conflict, raise a stage_backtrack_request instead of editing generated outputs or loosening checks.",
+      "produces": [
+        "model_numeric_codegen_consistency_report.json",
+        "generated_params_shape_trace.json",
+        "numeric_policy_binding_trace.json",
+        "memory_runtime_codegen_audit.json",
+        "addr_map_alignment_report.json",
+        "runtime_abi_handoff_notes.json",
+        "template_codegen_audit.json",
+        "generated_source_to_template_trace.json",
+        "compile_gate_evidence_summary.json",
+        "code_generation.cross_layer_model_numeric_handoff.json",
+        "code_generation.memory_runtime_package_handoff.json",
+        "code_generation.evidence_gate_handoff.json"
+      ],
+      "rationale": "Materialize downstream-consumption handoff artifacts from the passed codegen evidence so peer agents can trace model shape, numeric policy, template provenance, memory layout, runtime ABI, and compile/package/contract boundaries without inferring them from compact summaries.",
+      "requires_approval": false,
+      "stage": "code_generation",
+      "tool_roles": [
+        "sacg_static_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "parameter_binding_static_check",
+        "memory_runtime_plan_check",
+        "stream_plan_check",
+        "addr_map_check",
+        "transfer_count_check",
+        "template_coverage_check",
+        "codegen_contract_check",
+        "codegen_package_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "sacg_reference_check",
+        "case_stage_leaf_static",
+        "boundary_contract_check"
+      ],
+      "action_type": "handoff_static_contract",
+      "consumes": [
+        "code_generation_stage_acceptance_decision.json",
+        "checker_evidence_matrix.json",
+        "repair_or_handoff_boundary_record.json",
+        "code_generation.cross_layer_model_numeric_handoff.json",
+        "code_generation.memory_runtime_package_handoff.json",
+        "code_generation.evidence_gate_handoff.json",
+        "generated/chisel/filelist.f",
+        "generated/chisel/GeneratedAcceleratorTop.sv",
+        "generated/chisel/GeneratedAxiDdrTop.sv",
+        "generated/chisel/verification/layers-GeneratedAcceleratorTop-Verification.sv",
+        "generated/chisel/verification/layers-GeneratedAxiDdrTop-Verification.sv",
+        "generated/chisel/memory/memory_layout.json",
+        "generated/chisel/runtime/runtime_config.json",
+        "artifact.input.case_adapter",
+        "constraint.verification.plan"
+      ],
+      "id": "verification_artifacts.build_hierarchical_artifact_contract",
+      "on_failure": "Do not run functional simulation or promote to debug_loop. Return the failed contract evidence for bounded codegen/verification repair classification; if the root conflict is in parameter binding or pipeline planning, raise a backtrack request rather than patching generated RTL blindly.",
+      "produces": [
+        "artifact.stage6.verification_plan",
+        "artifact.stage6.verification_artifact_contract",
+        "verification/boundary_contracts/operator_leaf_contracts.json",
+        "verification/boundary_contracts/single_layer_contract.json",
+        "verification/boundary_contracts/axi_ddr_contract.json"
+      ],
+      "rationale": "Convert the accepted code_generation package into a checker-grounded hierarchical verification contract before any functional simulation, preserving the required leaf, single-transformer-layer, then AXI/DDR-wrapper order.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "tool_roles": [
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "sacg_reference_check",
+        "case_stage_leaf_static",
+        "boundary_contract_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "real_tool.case_real_weight_artifacts",
+        "artifact_hash_check",
+        "numeric_compare",
+        "numeric_policy_check"
+      ],
+      "action_type": "artifact_generation_and_hash_gate",
+      "consumes": [
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.case_adapter",
+        "generated/chisel/runtime/runtime_config.json",
+        "generated/chisel/memory/memory_layout.json"
+      ],
+      "id": "verification_artifacts.prepare_real_weight_and_golden_artifacts",
+      "on_failure": "Classify the issue as checker, golden-reference, or input/weight-packing repair unless real RTL tool evidence identifies a hardware failure. Do not alter tolerances, golden outputs, model tensors, or numeric policy without approval.",
+      "produces": [
+        "verification/case_real_weights/input_manifest.json",
+        "verification/case_real_weights/packed_weight_manifest.json",
+        "verification/case_real_weights/golden_reference_manifest.json",
+        "verification/case_real_weights/artifact_hashes.json"
+      ],
+      "rationale": "Generate reproducible input, packed-weight, golden-reference, and hash manifests from the accepted model, numeric, runtime, and memory contracts before real functional or numeric comparison tools run.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "tool_roles": [
+        "case_weight_manifest_generate",
+        "case_real_weight_artifacts",
+        "artifact_hash_check",
+        "numeric_compare",
+        "numeric_policy_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "real_tool.case_leaf_functional",
+        "real_tool.case_leaf_golden_compare",
+        "real_tool.case_single_transformer_layer",
+        "real_tool.case_single_layer_functional",
+        "real_tool.case_single_layer_golden_compare",
+        "real_tool.case_vcs_functional_sim",
+        "deadlock_watchdog",
+        "data_order_trace_check",
+        "transfer_count_check",
+        "numeric_compare"
+      ],
+      "action_type": "real_tool_execution",
+      "consumes": [
+        "artifact.stage6.verification_artifact_contract",
+        "generated/chisel/filelist.f",
+        "generated/chisel/GeneratedAcceleratorTop.sv",
+        "generated/chisel/runtime/runtime_config.json",
+        "generated/chisel/memory/memory_layout.json",
+        "verification/case_real_weights/input_manifest.json",
+        "verification/case_real_weights/packed_weight_manifest.json",
+        "verification/case_real_weights/golden_reference_manifest.json"
+      ],
+      "id": "debug_loop.run_leaf_then_single_layer_real_checks",
+      "on_failure": "Stop at the earliest failed layer. Localize the failing boundary/module using simulator output and boundary contracts, package causal repair context, perform only bounded repair, and rerun the targeted failed checker; do not proceed to AXI/DDR wrapper or backend_board.",
+      "produces": [
+        "verification/case_diagnostics/leaf_functional_diagnosis.json",
+        "verification/case_diagnostics/single_layer_functional_diagnosis.json",
+        "verification/case_diagnostics/layered_numeric_compare.json",
+        "verification/case_diagnostics/layered_liveness_trace.json"
+      ],
+      "rationale": "After verification_artifacts pass, execute real functional and numeric checks in the required lower-layer order: operator/leaf modules first, then the connected single-transformer-layer kernel; do not skip to the wrapper on lower-layer failure.",
+      "requires_approval": false,
+      "stage": "debug_loop",
+      "tool_roles": [
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_single_transformer_layer",
+        "case_single_layer_functional",
+        "case_single_layer_golden_compare",
+        "case_vcs_functional_sim",
+        "case_vcs_evidence_analyzer",
+        "deadlock_watchdog",
+        "data_order_trace_check",
+        "transfer_count_check",
+        "numeric_compare"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "real_tool.case_axi_ddr_interface",
+        "real_tool.case_axi_protocol_check",
+        "real_tool.case_ddr_image_roundtrip",
+        "real_tool.case_deadlock_axi_check",
+        "real_tool.case_verilator_functional_sim",
+        "addr_map_check",
+        "transfer_count_check",
+        "data_order_trace_check"
+      ],
+      "action_type": "real_tool_execution",
+      "consumes": [
+        "artifact.stage6.verification_artifact_contract",
+        "generated/chisel/GeneratedAxiDdrTop.sv",
+        "generated/chisel/filelist.f",
+        "generated/chisel/memory/memory_layout.json",
+        "generated/chisel/runtime/runtime_config.json",
+        "verification/case_real_weights/packed_weight_manifest.json",
+        "verification/case_diagnostics/single_layer_functional_diagnosis.json"
+      ],
+      "id": "debug_loop.run_board_accurate_axi_ddr_wrapper_checks",
+      "on_failure": "Localize the earliest wrapper, runtime ABI, memory-layout, protocol, or generated-RTL boundary using real tool evidence. Do not proceed to Vivado, bitstream, or board runtime until bounded repair and targeted rerun pass.",
+      "produces": [
+        "verification/case_diagnostics/axi_ddr_interface_check.json",
+        "verification/case_diagnostics/axi_protocol_trace.json",
+        "verification/case_diagnostics/ddr_image_roundtrip.json",
+        "verification/case_diagnostics/axi_deadlock_diagnosis.json"
+      ],
+      "rationale": "Only after leaf and single-transformer-layer checks pass, validate the board-accurate AXI/DDR wrapped system against memory layout, runtime ABI, transfer count, data order, protocol, and liveness constraints before backend synthesis or board execution.",
+      "requires_approval": false,
+      "stage": "debug_loop",
+      "tool_roles": [
+        "case_axi_ddr_interface",
+        "case_axi_protocol_check",
+        "case_ddr_image_roundtrip",
+        "case_deadlock_axi_check",
+        "case_verilator_functional_sim",
+        "addr_map_check",
+        "transfer_count_check",
+        "data_order_trace_check"
+      ]
+    }
+  ],
+  "flow_event_index": 18,
+  "llm_flow_controller": {
+    "agent_executable_actions": [
+      {
+        "acceptance_checkers": [
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check",
+          "codegen_compile_gate_check",
+          "codegen_contract_check",
+          "required_real_tool_evidence_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "stage_transition_gate",
+        "consumes": [
+          "recent_stage_summary.compile_gate",
+          "recent_stage_summary.contract_check",
+          "recent_stage_summary.package_static_check",
+          "recent_stage_summary.outputs.generated_code_package",
+          "recent_stage_summary.outputs.memory_layout",
+          "recent_stage_summary.outputs.runtime_config",
+          "state_summary.sacg_memory_truth",
+          "constraint.codegen.package",
+          "constraint.codegen.compile_gate",
+          "constraint.codegen.contract_check",
+          "constraint.verification.plan"
+        ],
+        "id": "flow.codegen_promote_candidate_to_verification_artifacts",
+        "on_failure": "Do not promote the candidate to verification_artifacts. Quarantine the candidate, preserve failing checker evidence, and open a bounded stage_retry_request or stage_artifact_trust_barrier; do not launch a third code_generation attempt without an explicit approved blocker classification.",
+        "produces": [
+          "code_generation_stage_acceptance_decision.json",
+          "checker_evidence_matrix.json",
+          "repair_or_handoff_boundary_record.json",
+          "artifact.stage5.generated_code_package.promoted_for_verification_artifacts"
+        ],
+        "rationale": "The supplied current-stage package, compile, and contract checks pass and SACG memory truth has no active blockers, so freeze the code_generation candidate as the only accepted downstream input while recording that later hardware evidence is not implied.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check",
+          "codegen_compile_gate",
+          "codegen_contract_check",
+          "required_real_tool_evidence_check",
+          "sacg_static_check",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "template_binding_static_check",
+          "template_coverage_check",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "cross_layer_consistency_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "candidate_stage_artifact.generated_top",
+          "candidate_stage_artifact.generated_files",
+          "candidate_stage_artifact.compile_gate",
+          "candidate_stage_artifact.contract_check",
+          "candidate_stage_artifact.package_static_check",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "codegen.materialize_cross_layer_handoff_traces",
+        "on_failure": "Block downstream consumption of the affected handoff record. If the mismatch is local to generated metadata, route to bounded_template_repair or memory_runtime_repair with repair_boundary_check; if stage3/stage4 artifacts conflict, raise a stage_backtrack_request instead of editing generated outputs or loosening checks.",
+        "produces": [
+          "model_numeric_codegen_consistency_report.json",
+          "generated_params_shape_trace.json",
+          "numeric_policy_binding_trace.json",
+          "memory_runtime_codegen_audit.json",
+          "addr_map_alignment_report.json",
+          "runtime_abi_handoff_notes.json",
+          "template_codegen_audit.json",
+          "generated_source_to_template_trace.json",
+          "compile_gate_evidence_summary.json",
+          "code_generation.cross_layer_model_numeric_handoff.json",
+          "code_generation.memory_runtime_package_handoff.json",
+          "code_generation.evidence_gate_handoff.json"
+        ],
+        "rationale": "Materialize downstream-consumption handoff artifacts from the passed codegen evidence so peer agents can trace model shape, numeric policy, template provenance, memory layout, runtime ABI, and compile/package/contract boundaries without inferring them from compact summaries.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "sacg_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "template_coverage_check",
+          "codegen_contract_check",
+          "codegen_package_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "case_stage_leaf_static",
+          "boundary_contract_check"
+        ],
+        "action_type": "handoff_static_contract",
+        "consumes": [
+          "code_generation_stage_acceptance_decision.json",
+          "checker_evidence_matrix.json",
+          "repair_or_handoff_boundary_record.json",
+          "code_generation.cross_layer_model_numeric_handoff.json",
+          "code_generation.memory_runtime_package_handoff.json",
+          "code_generation.evidence_gate_handoff.json",
+          "generated/chisel/filelist.f",
+          "generated/chisel/GeneratedAcceleratorTop.sv",
+          "generated/chisel/GeneratedAxiDdrTop.sv",
+          "generated/chisel/verification/layers-GeneratedAcceleratorTop-Verification.sv",
+          "generated/chisel/verification/layers-GeneratedAxiDdrTop-Verification.sv",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "artifact.input.case_adapter",
+          "constraint.verification.plan"
+        ],
+        "id": "verification_artifacts.build_hierarchical_artifact_contract",
+        "on_failure": "Do not run functional simulation or promote to debug_loop. Return the failed contract evidence for bounded codegen/verification repair classification; if the root conflict is in parameter binding or pipeline planning, raise a backtrack request rather than patching generated RTL blindly.",
+        "produces": [
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.verification_artifact_contract",
+          "verification/boundary_contracts/operator_leaf_contracts.json",
+          "verification/boundary_contracts/single_layer_contract.json",
+          "verification/boundary_contracts/axi_ddr_contract.json"
+        ],
+        "rationale": "Convert the accepted code_generation package into a checker-grounded hierarchical verification contract before any functional simulation, preserving the required leaf, single-transformer-layer, then AXI/DDR-wrapper order.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "case_stage_leaf_static",
+          "boundary_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_real_weight_artifacts",
+          "artifact_hash_check",
+          "numeric_compare",
+          "numeric_policy_check"
+        ],
+        "action_type": "artifact_generation_and_hash_gate",
+        "consumes": [
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.case_adapter",
+          "generated/chisel/runtime/runtime_config.json",
+          "generated/chisel/memory/memory_layout.json"
+        ],
+        "id": "verification_artifacts.prepare_real_weight_and_golden_artifacts",
+        "on_failure": "Classify the issue as checker, golden-reference, or input/weight-packing repair unless real RTL tool evidence identifies a hardware failure. Do not alter tolerances, golden outputs, model tensors, or numeric policy without approval.",
+        "produces": [
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/case_real_weights/golden_reference_manifest.json",
+          "verification/case_real_weights/artifact_hashes.json"
+        ],
+        "rationale": "Generate reproducible input, packed-weight, golden-reference, and hash manifests from the accepted model, numeric, runtime, and memory contracts before real functional or numeric comparison tools run.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "case_weight_manifest_generate",
+          "case_real_weight_artifacts",
+          "artifact_hash_check",
+          "numeric_compare",
+          "numeric_policy_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_leaf_functional",
+          "real_tool.case_leaf_golden_compare",
+          "real_tool.case_single_transformer_layer",
+          "real_tool.case_single_layer_functional",
+          "real_tool.case_single_layer_golden_compare",
+          "real_tool.case_vcs_functional_sim",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.stage6.verification_artifact_contract",
+          "generated/chisel/filelist.f",
+          "generated/chisel/GeneratedAcceleratorTop.sv",
+          "generated/chisel/runtime/runtime_config.json",
+          "generated/chisel/memory/memory_layout.json",
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/case_real_weights/golden_reference_manifest.json"
+        ],
+        "id": "debug_loop.run_leaf_then_single_layer_real_checks",
+        "on_failure": "Stop at the earliest failed layer. Localize the failing boundary/module using simulator output and boundary contracts, package causal repair context, perform only bounded repair, and rerun the targeted failed checker; do not proceed to AXI/DDR wrapper or backend_board.",
+        "produces": [
+          "verification/case_diagnostics/leaf_functional_diagnosis.json",
+          "verification/case_diagnostics/single_layer_functional_diagnosis.json",
+          "verification/case_diagnostics/layered_numeric_compare.json",
+          "verification/case_diagnostics/layered_liveness_trace.json"
+        ],
+        "rationale": "After verification_artifacts pass, execute real functional and numeric checks in the required lower-layer order: operator/leaf modules first, then the connected single-transformer-layer kernel; do not skip to the wrapper on lower-layer failure.",
+        "requires_approval": false,
+        "stage": "debug_loop",
+        "tool_roles": [
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "case_vcs_functional_sim",
+          "case_vcs_evidence_analyzer",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_axi_ddr_interface",
+          "real_tool.case_axi_protocol_check",
+          "real_tool.case_ddr_image_roundtrip",
+          "real_tool.case_deadlock_axi_check",
+          "real_tool.case_verilator_functional_sim",
+          "addr_map_check",
+          "transfer_count_check",
+          "data_order_trace_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.stage6.verification_artifact_contract",
+          "generated/chisel/GeneratedAxiDdrTop.sv",
+          "generated/chisel/filelist.f",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/case_diagnostics/single_layer_functional_diagnosis.json"
+        ],
+        "id": "debug_loop.run_board_accurate_axi_ddr_wrapper_checks",
+        "on_failure": "Localize the earliest wrapper, runtime ABI, memory-layout, protocol, or generated-RTL boundary using real tool evidence. Do not proceed to Vivado, bitstream, or board runtime until bounded repair and targeted rerun pass.",
+        "produces": [
+          "verification/case_diagnostics/axi_ddr_interface_check.json",
+          "verification/case_diagnostics/axi_protocol_trace.json",
+          "verification/case_diagnostics/ddr_image_roundtrip.json",
+          "verification/case_diagnostics/axi_deadlock_diagnosis.json"
+        ],
+        "rationale": "Only after leaf and single-transformer-layer checks pass, validate the board-accurate AXI/DDR wrapped system against memory layout, runtime ABI, transfer count, data order, protocol, and liveness constraints before backend synthesis or board execution.",
+        "requires_approval": false,
+        "stage": "debug_loop",
+        "tool_roles": [
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_deadlock_axi_check",
+          "case_verilator_functional_sim",
+          "addr_map_check",
+          "transfer_count_check",
+          "data_order_trace_check"
+        ]
+      }
+    ],
+    "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/018_code_generation/llm/flow_controller_agent_result.json",
+    "agent_status": "proceed",
+    "agent_summary": "Proceed from code_generation to verification_artifacts. The latest code_generation attempt passed the supplied current-stage gates, command returncode is 0, and sacg_memory_truth reports no active contamination barriers or open retry/backtrack requests. No same-stage retry, backtrack, bounded repair, or contamination stop is warranted. Downstream agents must preserve the evidence boundary: this is a codegen compile/elaboration and contract pass only, not a functional, timing, bitstream, or board-runtime pass."
+  },
+  "reason": "stage passed and no open backtrack request",
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_event_action_record.v0",
+  "stage": "code_generation"
+}

@@ -1,0 +1,227 @@
+{
+  "duration_sec": 39.40932327500195,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "reason": "The template_selection stage is not atomic: strict closure requires independent review of operator coverage, parameter/source binding, attention semantics, and cross-layer board/numeric trace evidence. The candidate artifact reports ready status and passing deterministic checks, but the stage objective spans multiple constraint families where specialist parallel review adds value while staying within SACG-guided, template-constrained, checker-verified boundaries.",
+    "schema_version": "spatialaccagent.team_decomposition.v0",
+    "split_required": true,
+    "stage": "template_selection",
+    "subtasks": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "evidence_and_repair_review",
+        "agent": "model_shape_specialist",
+        "artifact_focus": [
+          "operator_sequence",
+          "selected_templates",
+          "coverage",
+          "missing_ops",
+          "required_adapters",
+          "checker_results"
+        ],
+        "constraints": [
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.template.library",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "operator_template_coverage_review",
+          "coverage_gap_or_pass_decision",
+          "SACG constraint references for every covered operator"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocks": [
+            "any decoder operator has no trusted selected template or explicit required adapter",
+            "coverage is only asserted without checker evidence",
+            "operator order contradicts constraint.model.decoder or constraint.shape.model"
+          ],
+          "on_fail": "Route concrete missing or ambiguous operator coverage to bounded_template_repair; do not permit free-form RTL generation or implicit template substitution.",
+          "on_pass": "Forward operator coverage review showing required_ops equals covered_ops, missing_ops is empty, required_adapters is empty or justified, and checker_results include passing operator/template coverage evidence."
+        },
+        "handoff_to": [
+          "template_selection.cross_layer_gate_engineer"
+        ],
+        "id": "template_selection.operator_coverage_engineer",
+        "objective": "Verify that every decoder operator in the model sequence is covered by a trusted selected template or explicit required adapter, including the block wrapper, and that no missing coverage is hidden by free-form RTL assumptions.",
+        "parallel_group": 0,
+        "role": "operator coverage engineer",
+        "title": "Review operator-template coverage"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "artifact_hash_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "numeric_template_specialist",
+        "artifact_focus": [
+          "parameter_bindings",
+          "template_source_checks",
+          "selected_templates",
+          "unsupported_bindings",
+          "forbidden_edits",
+          "library_id"
+        ],
+        "constraints": [
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.human.boundary"
+        ],
+        "expected_artifacts": [
+          "template_parameter_binding_review",
+          "template_source_interface_review",
+          "forbidden_edit_boundary_decision"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocks": [
+            "unbound or illegal required parameter",
+            "implicit constructor default used where SACG input has a value",
+            "missing source file or source metadata/constructor mismatch",
+            "unsupported binding without approved adapter"
+          ],
+          "on_fail": "Localize the binding/source/interface failure to the violated SACG constraint and hand off only bounded template repair actions; require approval before changing template internals, numeric policy, memory layout, or board/runtime assumptions.",
+          "on_pass": "Forward evidence that all required params are bound, legality_errors and missing_params are empty, source/interface checks pass, and unsupported_bindings is empty or explicitly blocked."
+        },
+        "handoff_to": [
+          "template_selection.cross_layer_gate_engineer"
+        ],
+        "id": "template_selection.template_binding_engineer",
+        "objective": "Check that every selected template required parameter is explicitly bound to model, numeric, board, or design-space constraints; verify source file existence, hashes, case-class constructor/interface agreement, unsupported bindings, and forbidden-edit boundaries.",
+        "parallel_group": 0,
+        "role": "template binding engineer",
+        "title": "Review strict template parameter and source bindings"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "numeric_compare"
+        ],
+        "action_type": "evidence_and_repair_review",
+        "agent": "model_shape_attention_specialist",
+        "artifact_focus": [
+          "attention_semantics",
+          "parameter_bindings",
+          "selected_templates",
+          "checker_results"
+        ],
+        "constraints": [
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "attention_semantic_expansion_review",
+          "head_mapping_consistency_decision",
+          "attention_submodule_template_coverage_decision"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocks": [
+            "missing required attention component",
+            "Q/K/V, RoPE, GQA/MQA, softmax, output projection, or mask semantic contradiction",
+            "head mapping or seq_len parameter inconsistency",
+            "attention submodule not tied to trusted template evidence"
+          ],
+          "on_fail": "Block stage promotion and route only the failed attention semantic slice to bounded_template_repair or model/shape backtrack; do not invent Qwen-specific cores or generate free-form RTL.",
+          "on_pass": "Forward attention review confirming required components are covered, KV-cache not_required is justified by model/stage scope, GQA group size is derived from supplied head counts, and attention parameters trace to SACG constraints."
+        },
+        "handoff_to": [
+          "template_selection.cross_layer_gate_engineer"
+        ],
+        "id": "template_selection.attention_semantic_engineer",
+        "objective": "Validate attention-specific template binding for QKV projection, RoPE, GQA head mapping, softmax, output projection, causal mask, and KV-cache scope, with parameter consistency for num_q_heads, num_kv_heads, head_dim, seq_len, rope_theta, numeric width, and lanes.",
+        "parallel_group": 0,
+        "role": "attention semantic engineer",
+        "title": "Review attention semantic expansion"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "deployment_board_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "stage_gate_evidence_audit",
+        "agent": "verification_repair_gate_specialist",
+        "artifact_focus": [
+          "cross_layer_trace",
+          "checker_results",
+          "stage_gate_policy",
+          "forbidden_edits",
+          "operator_template_coverage_review",
+          "template_parameter_binding_review",
+          "attention_semantic_expansion_review"
+        ],
+        "constraints": [
+          "constraint.numeric.policy",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board",
+          "constraint.cross_layer.input_consistency",
+          "constraint.verification.plan",
+          "constraint.human.boundary"
+        ],
+        "expected_artifacts": [
+          "template_selection_stage_gate_audit",
+          "cross_layer_trace_decision",
+          "repair_or_ready_classification"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocks": [
+            "numeric, memory, runtime, deployment, or cross-layer trace absent",
+            "any specialist reports a concrete contradiction",
+            "stage_gate_policy current_stage_blocks remain",
+            "repair would require changing template internals or board/numeric assumptions without approval"
+          ],
+          "on_fail": "Return a bounded repair or backtrack request with violated constraints and failed checker names; do not proceed to code generation and do not claim implementation, timing, simulation, or board evidence that has not been produced.",
+          "on_pass": "Promote the stage as ready only if all current_stage_blocks are absent, deterministic checker evidence is passing, risks are empty, and later-stage missing VCS/Vivado/board evidence is classified as not_current_stage_blocks.",
+          "requires": [
+            "template_selection.operator_coverage_engineer:on_pass",
+            "template_selection.template_binding_engineer:on_pass",
+            "template_selection.attention_semantic_engineer:on_pass"
+          ]
+        },
+        "handoff_to": [
+          "stage_orchestrator",
+          "next_stage.code_generation"
+        ],
+        "id": "template_selection.cross_layer_gate_engineer",
+        "objective": "Audit that numeric policy, memory board, runtime board, deployment board, and input-consistency constraints are present in the template-selection trace; classify any remaining findings under the stage gate policy and prevent later-stage implementation or simulation gaps from being misreported as current-stage failures.",
+        "parallel_group": 1,
+        "role": "cross-layer gate engineer",
+        "title": "Aggregate template-selection evidence and enforce stage gate"
+      }
+    ]
+  },
+  "prompt_hash": "5376e0b5258c4b7cec3097968066755a3235602f673f953a523ba36f2b9e391f",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.team_decomposition.v0\",\"stage\":\"template_selection\",\"split_required\":true,\"reason\":\"The template_selection stage is not atomic: strict closure requires independent review of operator coverage, parameter/source binding, attention semantics, and cross-layer board/numeric trace evidence. The candidate artifact reports ready status and passing deterministic checks, but the stage objective spans multiple constraint families where specialist parallel review adds value while staying within SACG-guided, template-constrained, checker-verified boundaries.\",\"subtasks\":[{\"id\":\"template_selection.operator_coverage_engineer\",\"agent\":\"model_shape_specialist\",\"role\":\"operator coverage engineer\",\"title\":\"Review operator-template coverage\",\"objective\":\"Verify that every decoder operator in the model sequence is covered by a trusted selected template or explicit required adapter, including the block wrapper, and that no missing coverage is hidden by free-form RTL assumptions.\",\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.template.library\",\"constraint.cross_layer.input_consistency\"],\"artifact_focus\":[\"operator_sequence\",\"selected_templates\",\"coverage\",\"missing_ops\",\"required_adapters\",\"checker_results\"],\"parallel_group\":0,\"action_type\":\"evidence_and_repair_review\",\"expected_artifacts\":[\"operator_template_coverage_review\",\"coverage_gap_or_pass_decision\",\"SACG constraint references for every covered operator\"],\"acceptance_checkers\":[\"sacg_static_check\",\"template_coverage_check\",\"template_binding_static_check\"],\"handoff_required\":true,\"handoff_to\":[\"template_selection.cross_layer_gate_engineer\"],\"handoff_rule\":{\"on_pass\":\"Forward operator coverage review showing required_ops equals covered_ops, missing_ops is empty, required_adapters is empty or justified, and checker_results include passing operator/template coverage evidence.\",\"on_fail\":\"Route concrete missing or ambiguous operator coverage to bounded_template_repair; do not permit free-form RTL generation or implicit template substitution.\",\"blocks\":[\"any decoder operator has no trusted selected template or explicit required adapter\",\"coverage is only asserted without checker evidence\",\"operator order contradicts constraint.model.decoder or constraint.shape.model\"]}},{\"id\":\"template_selection.template_binding_engineer\",\"agent\":\"numeric_template_specialist\",\"role\":\"template binding engineer\",\"title\":\"Review strict template parameter and source bindings\",\"objective\":\"Check that every selected template required parameter is explicitly bound to model, numeric, board, or design-space constraints; verify source file existence, hashes, case-class constructor/interface agreement, unsupported bindings, and forbidden-edit boundaries.\",\"constraints\":[\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.human.boundary\"],\"artifact_focus\":[\"parameter_bindings\",\"template_source_checks\",\"selected_templates\",\"unsupported_bindings\",\"forbidden_edits\",\"library_id\"],\"parallel_group\":0,\"action_type\":\"sacg_constraint_review\",\"expected_artifacts\":[\"template_parameter_binding_review\",\"template_source_interface_review\",\"forbidden_edit_boundary_decision\"],\"acceptance_checkers\":[\"sacg_static_check\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"artifact_hash_check\",\"repair_boundary_check\"],\"handoff_required\":true,\"handoff_to\":[\"template_selection.cross_layer_gate_engineer\"],\"handoff_rule\":{\"on_pass\":\"Forward evidence that all required params are bound, legality_errors and missing_params are empty, source/interface checks pass, and unsupported_bindings is empty or explicitly blocked.\",\"on_fail\":\"Localize the binding/source/interface failure to the violated SACG constraint and hand off only bounded template repair actions; require approval before changing template internals, numeric policy, memory layout, or board/runtime assumptions.\",\"blocks\":[\"unbound or illegal required parameter\",\"implicit constructor default used where SACG input has a value\",\"missing source file or source metadata/constructor mismatch\",\"unsupported binding without approved adapter\"]}},{\"id\":\"template_selection.attention_semantic_engineer\",\"agent\":\"model_shape_attention_specialist\",\"role\":\"attention semantic engineer\",\"title\":\"Review attention semantic expansion\",\"objective\":\"Validate attention-specific template binding for QKV projection, RoPE, GQA head mapping, softmax, output projection, causal mask, and KV-cache scope, with parameter consistency for num_q_heads, num_kv_heads, head_dim, seq_len, rope_theta, numeric width, and lanes.\",\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.cross_layer.input_consistency\"],\"artifact_focus\":[\"attention_semantics\",\"parameter_bindings\",\"selected_templates\",\"checker_results\"],\"parallel_group\":0,\"action_type\":\"evidence_and_repair_review\",\"expected_artifacts\":[\"attention_semantic_expansion_review\",\"head_mapping_consistency_decision\",\"attention_submodule_template_coverage_decision\"],\"acceptance_checkers\":[\"sacg_static_check\",\"model_config_check\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"numeric_compare\"],\"handoff_required\":true,\"handoff_to\":[\"template_selection.cross_layer_gate_engineer\"],\"handoff_rule\":{\"on_pass\":\"Forward attention review confirming required components are covered, KV-cache not_required is justified by model/stage scope, GQA group size is derived from supplied head counts, and attention parameters trace to SACG constraints.\",\"on_fail\":\"Block stage promotion and route only the failed attention semantic slice to bounded_template_repair or model/shape backtrack; do not invent Qwen-specific cores or generate free-form RTL.\",\"blocks\":[\"missing required attention component\",\"Q/K/V, RoPE, GQA/MQA, softmax, output projection, or mask semantic contradiction\",\"head mapping or seq_len parameter inconsistency\",\"attention submodule not tied to trusted template evidence\"]}},{\"id\":\"template_selection.cross_layer_gate_engineer\",\"agent\":\"verification_repair_gate_specialist\",\"role\":\"cross-layer gate engineer\",\"title\":\"Aggregate template-selection evidence and enforce stage gate\",\"objective\":\"Audit that numeric policy, memory board, runtime board, deployment board, and input-consistency constraints are present in the template-selection trace; classify any remaining findings under the stage gate policy and prevent later-stage implementation or simulation gaps from being misreported as current-stage failures.\",\"constraints\":[\"constraint.numeric.policy\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.cross_layer.input_consistency\",\"constraint.verification.plan\",\"constraint.human.boundary\"],\"artifact_focus\":[\"cross_layer_trace\",\"checker_results\",\"stage_gate_policy\",\"forbidden_edits\",\"operator_template_coverage_review\",\"template_parameter_binding_review\",\"attention_semantic_expansion_review\"],\"parallel_group\":1,\"action_type\":\"stage_gate_evidence_audit\",\"expected_artifacts\":[\"template_selection_stage_gate_audit\",\"cross_layer_trace_decision\",\"repair_or_ready_classification\"],\"acceptance_checkers\":[\"sacg_static_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"memory_runtime_plan_check\",\"addr_map_check\",\"deployment_board_check\",\"human_boundary_check\",\"repair_boundary_check\"],\"handoff_required\":true,\"handoff_to\":[\"stage_orchestrator\",\"next_stage.code_generation\"],\"handoff_rule\":{\"requires\":[\"template_selection.operator_coverage_engineer:on_pass\",\"template_selection.template_binding_engineer:on_pass\",\"template_selection.attention_semantic_engineer:on_pass\"],\"on_pass\":\"Promote the stage as ready only if all current_stage_blocks are absent, deterministic checker evidence is passing, risks are empty, and later-stage missing VCS/Vivado/board evidence is classified as not_current_stage_blocks.\",\"on_fail\":\"Return a bounded repair or backtrack request with violated constraints and failed checker names; do not proceed to code generation and do not claim implementation, timing, simulation, or board evidence that has not been produced.\",\"blocks\":[\"numeric, memory, runtime, deployment, or cross-layer trace absent\",\"any specialist reports a concrete contradiction\",\"stage_gate_policy current_stage_blocks remain\",\"repair would require changing template internals or board/numeric assumptions without approval\"]}}]}",
+  "schema_version": "spatialaccagent.team_decomposer_record.v0",
+  "used_fallback": false
+}

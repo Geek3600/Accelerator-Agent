@@ -1,0 +1,139 @@
+{
+  "schema_version": "spatialaccagent.model_semantic_adapter.v1",
+  "model_family": "qwen2",
+  "accelerator_scope": "transformer_blocks_only",
+  "decoder_layer_tensor_patterns": [
+    "^model\\.layers\\.(?P<layer>\\d+)\\.(?P<suffix>.+)$"
+  ],
+  "excluded_model_regions": [
+    "embedding",
+    "final_model_norm",
+    "lm_head",
+    "tokenizer",
+    "sampling"
+  ],
+  "semantic_runtime_streams": {
+    "self_attention": {
+      "source_order": [
+        "position_ids",
+        "cache_position",
+        "rope_cos",
+        "rope_sin"
+      ],
+      "targets": {
+        "position_ids": {
+          "target_id": "attention.position_ids",
+          "semantic_role": "position_ids",
+          "storage_dtype": "uint32",
+          "source_axis_order": ["batch", "token"],
+          "drop_singleton_axes": [0],
+          "address_formula": "token",
+          "sharing": "one position id per input token"
+        },
+        "cache_position": {
+          "target_id": "attention.cache_position",
+          "semantic_role": "cache_position",
+          "storage_dtype": "uint32",
+          "source_axis_order": ["token"],
+          "drop_singleton_axes": [],
+          "address_formula": "token",
+          "sharing": "one cache position per input token; use_cache remains false for this verification run"
+        },
+        "rope_cos": {
+          "target_id": "attention.rope.cos_table",
+          "semantic_role": "rotary_cosine",
+          "storage_dtype": "fp16",
+          "source_axis_order": ["batch", "token", "head_dimension"],
+          "drop_singleton_axes": [0],
+          "address_formula": "token * head_dimension_count + head_dimension",
+          "sharing": "shared across all query and key heads"
+        },
+        "rope_sin": {
+          "target_id": "attention.rope.sin_table",
+          "semantic_role": "rotary_sine",
+          "storage_dtype": "fp16",
+          "source_axis_order": ["batch", "token", "head_dimension"],
+          "drop_singleton_axes": [0],
+          "address_formula": "token * head_dimension_count + head_dimension",
+          "sharing": "shared across all query and key heads"
+        }
+      }
+    }
+  },
+  "semantic_stages": {
+    "rms_norm_1": {
+      "inputs": [
+        {"source": "accelerator_input"}
+      ],
+      "expected": {"record": "input_layernorm", "value": "output"},
+      "required_weight_suffixes": ["input_layernorm.weight"]
+    },
+    "self_attention": {
+      "inputs": [
+        {"record": "input_layernorm", "value": "output"}
+      ],
+      "expected": {"record": "self_attn", "value": "output"},
+      "required_weight_suffixes": [
+        "self_attn.q_proj.weight",
+        "self_attn.q_proj.bias",
+        "self_attn.k_proj.weight",
+        "self_attn.k_proj.bias",
+        "self_attn.v_proj.weight",
+        "self_attn.v_proj.bias",
+        "self_attn.o_proj.weight"
+      ]
+    },
+    "residual_add_1": {
+      "inputs": [
+        {"source": "accelerator_input"},
+        {"record": "self_attn", "value": "output"}
+      ],
+      "expected": {"record": "post_attention_layernorm", "value": "input"},
+      "required_weight_suffixes": []
+    },
+    "rms_norm_2": {
+      "inputs": [
+        {"record": "post_attention_layernorm", "value": "input"}
+      ],
+      "expected": {"record": "post_attention_layernorm", "value": "output"},
+      "required_weight_suffixes": ["post_attention_layernorm.weight"]
+    },
+    "mlp_gate_proj": {
+      "inputs": [
+        {"record": "post_attention_layernorm", "value": "output"}
+      ],
+      "expected": {"record": "mlp.gate_proj", "value": "output"},
+      "required_weight_suffixes": ["mlp.gate_proj.weight"]
+    },
+    "mlp_up_proj": {
+      "inputs": [
+        {"record": "post_attention_layernorm", "value": "output"}
+      ],
+      "expected": {"record": "mlp.up_proj", "value": "output"},
+      "required_weight_suffixes": ["mlp.up_proj.weight"]
+    },
+    "activation_mul": {
+      "inputs": [
+        {"record": "mlp.gate_proj", "value": "output"},
+        {"record": "mlp.up_proj", "value": "output"}
+      ],
+      "expected": {"record": "mlp.down_proj", "value": "input"},
+      "required_weight_suffixes": []
+    },
+    "mlp_down_proj": {
+      "inputs": [
+        {"record": "mlp.down_proj", "value": "input"}
+      ],
+      "expected": {"record": "mlp.down_proj", "value": "output"},
+      "required_weight_suffixes": ["mlp.down_proj.weight"]
+    },
+    "residual_add_2": {
+      "inputs": [
+        {"record": "post_attention_layernorm", "value": "input"},
+        {"record": "mlp", "value": "output"}
+      ],
+      "expected": {"record": "decoder_layer_0", "value": "output"},
+      "required_weight_suffixes": []
+    }
+  }
+}

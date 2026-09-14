@@ -1,0 +1,958 @@
+{
+  "bandwidth_estimate": {
+    "board_axi": {
+      "addr_width_bits": 37,
+      "alignment_bytes": 64,
+      "core_side_interface_name": "c0_ddr4_s_axi_*",
+      "data_bytes": 64,
+      "data_width_bits": 512,
+      "ddr_channels": 1,
+      "protocol": "AXI",
+      "source": "constraint.memory.board.memory_system"
+    },
+    "estimate_kind": "symbolic_transfer_count_from_bound_params",
+    "notes": [
+      "Stage 5 assigns concrete base addresses and checks non-overlap/alignment.",
+      "Stage 6+ must provide real simulation, implementation, timing, and board evidence."
+    ],
+    "per_stage": [
+      {
+        "aligned_bytes": 87808,
+        "axi_beats": 1372,
+        "input_activation_bytes": 57344,
+        "input_bits": 32,
+        "op": "rms_norm_1",
+        "output_activation_bytes": 28672,
+        "output_bits": 16,
+        "stage_id": "stage_00_rms_norm_1",
+        "total_bytes": 87808,
+        "weight_bits": 16,
+        "weight_bytes": 1792
+      },
+      {
+        "aligned_bytes": 3756032,
+        "axi_beats": 58688,
+        "input_activation_bytes": 28672,
+        "input_bits": 16,
+        "op": "self_attention",
+        "output_activation_bytes": 57344,
+        "output_bits": 32,
+        "stage_id": "stage_01_self_attention",
+        "total_bytes": 3756032,
+        "weight_bits": 16,
+        "weight_bytes": 3670016
+      },
+      {
+        "aligned_bytes": 114688,
+        "axi_beats": 1792,
+        "input_activation_bytes": 57344,
+        "input_bits": 32,
+        "op": "residual_add_1",
+        "output_activation_bytes": 57344,
+        "output_bits": 32,
+        "stage_id": "stage_02_residual_add_1",
+        "total_bytes": 114688,
+        "weight_bits": 32,
+        "weight_bytes": 0
+      },
+      {
+        "aligned_bytes": 87808,
+        "axi_beats": 1372,
+        "input_activation_bytes": 57344,
+        "input_bits": 32,
+        "op": "rms_norm_2",
+        "output_activation_bytes": 28672,
+        "output_bits": 16,
+        "stage_id": "stage_03_rms_norm_2",
+        "total_bytes": 87808,
+        "weight_bits": 16,
+        "weight_bytes": 1792
+      },
+      {
+        "aligned_bytes": 8900608,
+        "axi_beats": 139072,
+        "input_activation_bytes": 28672,
+        "input_bits": 16,
+        "op": "mlp_gate_proj",
+        "output_activation_bytes": 155648,
+        "output_bits": 16,
+        "stage_id": "stage_04_mlp_gate_proj",
+        "total_bytes": 8900608,
+        "weight_bits": 16,
+        "weight_bytes": 8716288
+      },
+      {
+        "aligned_bytes": 8900608,
+        "axi_beats": 139072,
+        "input_activation_bytes": 28672,
+        "input_bits": 16,
+        "op": "mlp_up_proj",
+        "output_activation_bytes": 155648,
+        "output_bits": 16,
+        "stage_id": "stage_05_mlp_up_proj",
+        "total_bytes": 8900608,
+        "weight_bits": 16,
+        "weight_bytes": 8716288
+      },
+      {
+        "aligned_bytes": 311296,
+        "axi_beats": 4864,
+        "input_activation_bytes": 155648,
+        "input_bits": 16,
+        "op": "activation_mul",
+        "output_activation_bytes": 155648,
+        "output_bits": 16,
+        "stage_id": "stage_06_activation_mul",
+        "total_bytes": 311296,
+        "weight_bits": 16,
+        "weight_bytes": 0
+      },
+      {
+        "aligned_bytes": 8929280,
+        "axi_beats": 139520,
+        "input_activation_bytes": 155648,
+        "input_bits": 16,
+        "op": "mlp_down_proj",
+        "output_activation_bytes": 57344,
+        "output_bits": 32,
+        "stage_id": "stage_07_mlp_down_proj",
+        "total_bytes": 8929280,
+        "weight_bits": 16,
+        "weight_bytes": 8716288
+      },
+      {
+        "aligned_bytes": 114688,
+        "axi_beats": 1792,
+        "input_activation_bytes": 57344,
+        "input_bits": 32,
+        "op": "residual_add_2",
+        "output_activation_bytes": 57344,
+        "output_bits": 32,
+        "stage_id": "stage_08_residual_add_2",
+        "total_bytes": 114688,
+        "weight_bits": 32,
+        "weight_bytes": 0
+      }
+    ],
+    "schema_version": "spatialaccagent.parameter_bandwidth_estimate.v0",
+    "total_aligned_bytes_per_layer": 31202816,
+    "used_for": "static transfer-count and AXI packing sanity only; not board bandwidth or timing pass evidence"
+  },
+  "binding_policy": "stage2_strict_binding_plus_checked_global_defaults",
+  "bindings": [
+    {
+      "legality_errors": [],
+      "op": "rms_norm_1",
+      "params": {
+        "clock_target_mhz": 0,
+        "elem_bits": 16,
+        "eps": 1e-06,
+        "fifo_depth": 16,
+        "hidden_size": 896,
+        "input_bits": 32,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 16
+      },
+      "resource_estimate": {
+        "activation_elements": 14336,
+        "compute_ops": 14336,
+        "datapath_bits": 128,
+        "elem_bits": 16,
+        "estimate_kind": "symbolic_first_order",
+        "lanes": 8,
+        "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+        "weight_elements": 896
+      },
+      "stage_id": "stage_00_rms_norm_1",
+      "status": "ready",
+      "template_id": "norm"
+    },
+    {
+      "legality_errors": [],
+      "op": "self_attention",
+      "params": {
+        "clock_target_mhz": 0,
+        "elem_bits": 16,
+        "fifo_depth": 16,
+        "head_dim": 64,
+        "hidden_size": 896,
+        "input_bits": 16,
+        "lanes": 8,
+        "num_kv_heads": 2,
+        "num_q_heads": 14,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 32,
+        "seq_len": 16
+      },
+      "resource_estimate": {
+        "activation_elements": 14336,
+        "compute_ops": 243712,
+        "datapath_bits": 128,
+        "elem_bits": 16,
+        "estimate_kind": "symbolic_first_order",
+        "lanes": 8,
+        "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+        "weight_elements": 1835008
+      },
+      "stage_id": "stage_01_self_attention",
+      "status": "ready",
+      "template_id": "attention"
+    },
+    {
+      "legality_errors": [],
+      "op": "residual_add_1",
+      "params": {
+        "clock_target_mhz": 0,
+        "elem_bits": 32,
+        "fifo_depth": 16,
+        "hidden_size": 896,
+        "input_bits": 32,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 32
+      },
+      "resource_estimate": {
+        "activation_elements": 14336,
+        "compute_ops": 14336,
+        "datapath_bits": 256,
+        "elem_bits": 32,
+        "estimate_kind": "symbolic_first_order",
+        "lanes": 8,
+        "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+        "weight_elements": 0
+      },
+      "stage_id": "stage_02_residual_add_1",
+      "status": "ready",
+      "template_id": "residual"
+    },
+    {
+      "legality_errors": [],
+      "op": "rms_norm_2",
+      "params": {
+        "clock_target_mhz": 0,
+        "elem_bits": 16,
+        "eps": 1e-06,
+        "fifo_depth": 16,
+        "hidden_size": 896,
+        "input_bits": 32,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 16
+      },
+      "resource_estimate": {
+        "activation_elements": 14336,
+        "compute_ops": 14336,
+        "datapath_bits": 128,
+        "elem_bits": 16,
+        "estimate_kind": "symbolic_first_order",
+        "lanes": 8,
+        "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+        "weight_elements": 896
+      },
+      "stage_id": "stage_03_rms_norm_2",
+      "status": "ready",
+      "template_id": "norm"
+    },
+    {
+      "legality_errors": [],
+      "op": "mlp_gate_proj",
+      "params": {
+        "clock_target_mhz": 0,
+        "elem_bits": 16,
+        "fifo_depth": 16,
+        "hidden_size": 896,
+        "input_bits": 16,
+        "intermediate_size": 4864,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 16,
+        "tile_k": 128,
+        "tile_m": 16,
+        "tile_n": 128
+      },
+      "resource_estimate": {
+        "activation_elements": 77824,
+        "compute_ops": 69730304,
+        "datapath_bits": 128,
+        "elem_bits": 16,
+        "estimate_kind": "symbolic_first_order",
+        "lanes": 8,
+        "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+        "weight_elements": 4358144
+      },
+      "stage_id": "stage_04_mlp_gate_proj",
+      "status": "ready",
+      "template_id": "ffn"
+    },
+    {
+      "legality_errors": [],
+      "op": "mlp_up_proj",
+      "params": {
+        "clock_target_mhz": 0,
+        "elem_bits": 16,
+        "fifo_depth": 16,
+        "hidden_size": 896,
+        "input_bits": 16,
+        "intermediate_size": 4864,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 16,
+        "tile_k": 128,
+        "tile_m": 16,
+        "tile_n": 128
+      },
+      "resource_estimate": {
+        "activation_elements": 77824,
+        "compute_ops": 69730304,
+        "datapath_bits": 128,
+        "elem_bits": 16,
+        "estimate_kind": "symbolic_first_order",
+        "lanes": 8,
+        "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+        "weight_elements": 4358144
+      },
+      "stage_id": "stage_05_mlp_up_proj",
+      "status": "ready",
+      "template_id": "ffn"
+    },
+    {
+      "legality_errors": [],
+      "op": "activation_mul",
+      "params": {
+        "clock_target_mhz": 0,
+        "elem_bits": 16,
+        "fifo_depth": 16,
+        "hidden_size": 4864,
+        "input_bits": 16,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 16
+      },
+      "resource_estimate": {
+        "activation_elements": 77824,
+        "compute_ops": 77824,
+        "datapath_bits": 128,
+        "elem_bits": 16,
+        "estimate_kind": "symbolic_first_order",
+        "lanes": 8,
+        "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+        "weight_elements": 0
+      },
+      "stage_id": "stage_06_activation_mul",
+      "status": "ready",
+      "template_id": "elementwise"
+    },
+    {
+      "legality_errors": [],
+      "op": "mlp_down_proj",
+      "params": {
+        "clock_target_mhz": 0,
+        "elem_bits": 16,
+        "fifo_depth": 16,
+        "hidden_size": 896,
+        "input_bits": 16,
+        "intermediate_size": 4864,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 32,
+        "tile_k": 128,
+        "tile_m": 16,
+        "tile_n": 128
+      },
+      "resource_estimate": {
+        "activation_elements": 14336,
+        "compute_ops": 69730304,
+        "datapath_bits": 128,
+        "elem_bits": 16,
+        "estimate_kind": "symbolic_first_order",
+        "lanes": 8,
+        "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+        "weight_elements": 4358144
+      },
+      "stage_id": "stage_07_mlp_down_proj",
+      "status": "ready",
+      "template_id": "ffn"
+    },
+    {
+      "legality_errors": [],
+      "op": "residual_add_2",
+      "params": {
+        "clock_target_mhz": 0,
+        "elem_bits": 32,
+        "fifo_depth": 16,
+        "hidden_size": 896,
+        "input_bits": 32,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 32
+      },
+      "resource_estimate": {
+        "activation_elements": 14336,
+        "compute_ops": 14336,
+        "datapath_bits": 256,
+        "elem_bits": 32,
+        "estimate_kind": "symbolic_first_order",
+        "lanes": 8,
+        "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+        "weight_elements": 0
+      },
+      "stage_id": "stage_08_residual_add_2",
+      "status": "ready",
+      "template_id": "residual"
+    }
+  ],
+  "checker_results": [
+    {
+      "checker": "parameter_stage_numeric_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "bindings=9",
+      "warnings": []
+    },
+    {
+      "checker": "edge_dtype_stream_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "edges=13",
+      "warnings": []
+    },
+    {
+      "checker": "tile_override_legality_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "per-stage tile params are authoritative; global tile params are defaults only",
+      "warnings": []
+    },
+    {
+      "checker": "stream_packing_axi_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "axi_bits=512",
+      "warnings": []
+    },
+    {
+      "checker": "bandwidth_memory_estimate_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "total_aligned_bytes_per_layer=31202816",
+      "warnings": []
+    },
+    {
+      "checker": "fifo_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "edge_buffers=13; stage fifo_depth is local default, Stage3 edge buffer depths remain authoritative",
+      "warnings": []
+    }
+  ],
+  "checker_summary": {
+    "errors": [],
+    "failed": 0,
+    "passed": 6,
+    "warnings": []
+  },
+  "constraints_touched": [
+    "constraint.parameter.binding",
+    "constraint.resource.estimate",
+    "constraint.bandwidth.estimate"
+  ],
+  "global_param_scope": {
+    "clock_target_mhz": "board shell clock is unknown unless non-null; this is not timing evidence",
+    "fifo_depth": "local template default only; Stage 3 buffer_plan owns edge FIFO depths",
+    "tile_k": "default_only; per-stage tile_k takes precedence",
+    "tile_m": "default_only; per-stage tile_m takes precedence",
+    "tile_n": "default_only; per-stage tile_n takes precedence"
+  },
+  "global_params": {
+    "clock_target_mhz": 0,
+    "elem_bits": 16,
+    "fifo_depth": 16,
+    "input_bits": 32,
+    "lanes": 8,
+    "output_bits": 32,
+    "tile_k": 8,
+    "tile_m": 8,
+    "tile_n": 24
+  },
+  "legality_errors": [],
+  "numeric_binding_plan": {
+    "acc_dtype": "fp32",
+    "activation_dtype": "fp16",
+    "cast_points": [
+      {
+        "input_bits": 32,
+        "input_cast": "32_to_16",
+        "internal_elem_bits": 16,
+        "op": "rms_norm_1",
+        "output_bits": 16,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_00_rms_norm_1"
+      },
+      {
+        "input_bits": 16,
+        "input_cast": "none",
+        "internal_elem_bits": 16,
+        "op": "self_attention",
+        "output_bits": 32,
+        "output_cast": "16_to_32",
+        "residual_precision": null,
+        "stage_id": "stage_01_self_attention"
+      },
+      {
+        "input_bits": 32,
+        "input_cast": "none",
+        "internal_elem_bits": 32,
+        "op": "residual_add_1",
+        "output_bits": 32,
+        "output_cast": "none",
+        "residual_precision": 32,
+        "stage_id": "stage_02_residual_add_1"
+      },
+      {
+        "input_bits": 32,
+        "input_cast": "32_to_16",
+        "internal_elem_bits": 16,
+        "op": "rms_norm_2",
+        "output_bits": 16,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_03_rms_norm_2"
+      },
+      {
+        "input_bits": 16,
+        "input_cast": "none",
+        "internal_elem_bits": 16,
+        "op": "mlp_gate_proj",
+        "output_bits": 16,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_04_mlp_gate_proj"
+      },
+      {
+        "input_bits": 16,
+        "input_cast": "none",
+        "internal_elem_bits": 16,
+        "op": "mlp_up_proj",
+        "output_bits": 16,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_05_mlp_up_proj"
+      },
+      {
+        "input_bits": 16,
+        "input_cast": "none",
+        "internal_elem_bits": 16,
+        "op": "activation_mul",
+        "output_bits": 16,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_06_activation_mul"
+      },
+      {
+        "input_bits": 16,
+        "input_cast": "none",
+        "internal_elem_bits": 16,
+        "op": "mlp_down_proj",
+        "output_bits": 32,
+        "output_cast": "16_to_32",
+        "residual_precision": null,
+        "stage_id": "stage_07_mlp_down_proj"
+      },
+      {
+        "input_bits": 32,
+        "input_cast": "none",
+        "internal_elem_bits": 32,
+        "op": "residual_add_2",
+        "output_bits": 32,
+        "output_cast": "none",
+        "residual_precision": 32,
+        "stage_id": "stage_08_residual_add_2"
+      }
+    ],
+    "eps_source": "constraint.model.decoder.norm_type/default eps from template binding",
+    "policy_id": "current_run_numeric_policy.md",
+    "rounding": "nearest_even",
+    "saturation": false,
+    "source": "constraint.numeric.policy.default_rules",
+    "weight_dtype": "fp16"
+  },
+  "resource_estimates": [
+    {
+      "activation_elements": 14336,
+      "compute_ops": 14336,
+      "datapath_bits": 128,
+      "elem_bits": 16,
+      "estimate_kind": "symbolic_first_order",
+      "lanes": 8,
+      "op": "rms_norm_1",
+      "stage_id": "stage_00_rms_norm_1",
+      "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+      "weight_elements": 896
+    },
+    {
+      "activation_elements": 14336,
+      "compute_ops": 243712,
+      "datapath_bits": 128,
+      "elem_bits": 16,
+      "estimate_kind": "symbolic_first_order",
+      "lanes": 8,
+      "op": "self_attention",
+      "stage_id": "stage_01_self_attention",
+      "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+      "weight_elements": 1835008
+    },
+    {
+      "activation_elements": 14336,
+      "compute_ops": 14336,
+      "datapath_bits": 256,
+      "elem_bits": 32,
+      "estimate_kind": "symbolic_first_order",
+      "lanes": 8,
+      "op": "residual_add_1",
+      "stage_id": "stage_02_residual_add_1",
+      "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+      "weight_elements": 0
+    },
+    {
+      "activation_elements": 14336,
+      "compute_ops": 14336,
+      "datapath_bits": 128,
+      "elem_bits": 16,
+      "estimate_kind": "symbolic_first_order",
+      "lanes": 8,
+      "op": "rms_norm_2",
+      "stage_id": "stage_03_rms_norm_2",
+      "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+      "weight_elements": 896
+    },
+    {
+      "activation_elements": 77824,
+      "compute_ops": 69730304,
+      "datapath_bits": 128,
+      "elem_bits": 16,
+      "estimate_kind": "symbolic_first_order",
+      "lanes": 8,
+      "op": "mlp_gate_proj",
+      "stage_id": "stage_04_mlp_gate_proj",
+      "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+      "weight_elements": 4358144
+    },
+    {
+      "activation_elements": 77824,
+      "compute_ops": 69730304,
+      "datapath_bits": 128,
+      "elem_bits": 16,
+      "estimate_kind": "symbolic_first_order",
+      "lanes": 8,
+      "op": "mlp_up_proj",
+      "stage_id": "stage_05_mlp_up_proj",
+      "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+      "weight_elements": 4358144
+    },
+    {
+      "activation_elements": 77824,
+      "compute_ops": 77824,
+      "datapath_bits": 128,
+      "elem_bits": 16,
+      "estimate_kind": "symbolic_first_order",
+      "lanes": 8,
+      "op": "activation_mul",
+      "stage_id": "stage_06_activation_mul",
+      "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+      "weight_elements": 0
+    },
+    {
+      "activation_elements": 14336,
+      "compute_ops": 69730304,
+      "datapath_bits": 128,
+      "elem_bits": 16,
+      "estimate_kind": "symbolic_first_order",
+      "lanes": 8,
+      "op": "mlp_down_proj",
+      "stage_id": "stage_07_mlp_down_proj",
+      "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+      "weight_elements": 4358144
+    },
+    {
+      "activation_elements": 14336,
+      "compute_ops": 14336,
+      "datapath_bits": 256,
+      "elem_bits": 32,
+      "estimate_kind": "symbolic_first_order",
+      "lanes": 8,
+      "op": "residual_add_2",
+      "stage_id": "stage_08_residual_add_2",
+      "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+      "weight_elements": 0
+    }
+  ],
+  "schema_version": "spatialaccagent.parameter_binding.v0",
+  "stage": "parameter_binding",
+  "stage_gate_policy": {
+    "current_stage_acceptance": [
+      "per-stage params must match Stage 3 numeric_contract and edge stream_contract bit widths",
+      "per-stage tile overrides are authoritative and must divide the corresponding tensor dimensions",
+      "lanes and all bound bit widths must pack cleanly into the board AXI data width",
+      "bandwidth estimates must expose concrete static transfer counts and explicitly remain non-hardware evidence",
+      "Stage 3 edge FIFO contracts remain authoritative; Stage 4 local fifo_depth is a template parameter default"
+    ],
+    "later_stage_obligations": [
+      "Stage 5 assigns concrete memory base addresses and elaborates generated Chisel",
+      "Stage 6+ supplies real simulation, synthesis, timing, and board evidence",
+      "Numeric rounding remains recorded as unspecified unless a later approved numeric policy binds it"
+    ],
+    "risk_classification_rule": "If checker_results pass, do not report resolved current-stage consistency items as risks; later-stage tool obligations belong in proposed_actions."
+  },
+  "status": "ready",
+  "stream_contract_trace": [
+    {
+      "dst_input_bits": 32,
+      "dst_stage": "stage_00_rms_norm_1",
+      "edge_id": "edge.data.block_input.to.stage_00_rms_norm_1.input",
+      "element_bits": 32,
+      "kind": "input",
+      "src_output_bits": 32,
+      "src_stage": "block_input",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      }
+    },
+    {
+      "dst_input_bits": 32,
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+      "element_bits": 32,
+      "kind": "residual_skip",
+      "src_output_bits": 32,
+      "src_stage": "block_input",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      }
+    },
+    {
+      "dst_input_bits": 16,
+      "dst_stage": "stage_01_self_attention",
+      "edge_id": "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+      "element_bits": 16,
+      "kind": "main",
+      "src_output_bits": 16,
+      "src_stage": "stage_00_rms_norm_1",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      }
+    },
+    {
+      "dst_input_bits": 32,
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+      "element_bits": 32,
+      "kind": "main",
+      "src_output_bits": 32,
+      "src_stage": "stage_01_self_attention",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      }
+    },
+    {
+      "dst_input_bits": 32,
+      "dst_stage": "stage_03_rms_norm_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+      "element_bits": 32,
+      "kind": "main",
+      "src_output_bits": 32,
+      "src_stage": "stage_02_residual_add_1",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      }
+    },
+    {
+      "dst_input_bits": 32,
+      "dst_stage": "stage_08_residual_add_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+      "element_bits": 32,
+      "kind": "residual_skip",
+      "src_output_bits": 32,
+      "src_stage": "stage_02_residual_add_1",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      }
+    },
+    {
+      "dst_input_bits": 16,
+      "dst_stage": "stage_04_mlp_gate_proj",
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+      "element_bits": 16,
+      "kind": "mlp_gate_branch",
+      "src_output_bits": 16,
+      "src_stage": "stage_03_rms_norm_2",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      }
+    },
+    {
+      "dst_input_bits": 16,
+      "dst_stage": "stage_05_mlp_up_proj",
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+      "element_bits": 16,
+      "kind": "mlp_up_branch",
+      "src_output_bits": 16,
+      "src_stage": "stage_03_rms_norm_2",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      }
+    },
+    {
+      "dst_input_bits": 16,
+      "dst_stage": "stage_06_activation_mul",
+      "edge_id": "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+      "element_bits": 16,
+      "kind": "mlp_gate_to_mul",
+      "src_output_bits": 16,
+      "src_stage": "stage_04_mlp_gate_proj",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 4864
+      }
+    },
+    {
+      "dst_input_bits": 16,
+      "dst_stage": "stage_06_activation_mul",
+      "edge_id": "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+      "element_bits": 16,
+      "kind": "mlp_up_to_mul",
+      "src_output_bits": 16,
+      "src_stage": "stage_05_mlp_up_proj",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 4864
+      }
+    },
+    {
+      "dst_input_bits": 16,
+      "dst_stage": "stage_07_mlp_down_proj",
+      "edge_id": "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+      "element_bits": 16,
+      "kind": "main",
+      "src_output_bits": 16,
+      "src_stage": "stage_06_activation_mul",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 4864
+      }
+    },
+    {
+      "dst_input_bits": 32,
+      "dst_stage": "stage_08_residual_add_2",
+      "edge_id": "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+      "element_bits": 32,
+      "kind": "main",
+      "src_output_bits": 32,
+      "src_stage": "stage_07_mlp_down_proj",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      }
+    },
+    {
+      "dst_input_bits": 32,
+      "dst_stage": "block_output",
+      "edge_id": "edge.data.stage_08_residual_add_2.to.block_output.output",
+      "element_bits": 32,
+      "kind": "output",
+      "src_output_bits": 32,
+      "src_stage": "stage_08_residual_add_2",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      }
+    }
+  ]
+}

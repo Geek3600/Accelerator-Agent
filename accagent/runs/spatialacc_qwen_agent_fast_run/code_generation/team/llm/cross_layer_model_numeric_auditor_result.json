@@ -1,0 +1,163 @@
+{
+  "agent": "cross_layer_model_numeric_auditor",
+  "duration_sec": 168.02052554099646,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "cross_layer_model_numeric_auditor",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "codegen_contract_check"
+        ],
+        "action_type": "cross_layer_consistency_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage4.parameter_static_checks",
+          "candidate_stage_artifact.generated_top",
+          "candidate_stage_artifact.contract_check",
+          "candidate_stage_artifact.compile_gate"
+        ],
+        "id": "codegen.materialize_model_numeric_consistency_traces",
+        "on_failure": "Block code_generation evidence-gate promotion. If the mismatch is local to generated parameters or supplied top selection, route to bounded_template_repair/codegen regeneration; if artifact.stage4.parameter_binding or artifact.stage3.pipeline_plan is the conflicting source, raise a stage_backtrack_request instead of editing generated outputs or loosening checks.",
+        "produces": [
+          "model_numeric_codegen_consistency_report.json",
+          "generated_params_shape_trace.json",
+          "numeric_policy_binding_trace.json"
+        ],
+        "rationale": "Create the auditor handoff artifacts from the supplied model_config, numeric_policy, pipeline/parameter binding, generated_top parameters, and passed contract evidence so the final evidence gate can consume a checker-grounded model/shape/numeric trace.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "sacg_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "codegen_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "codegen_package_static_check",
+          "codegen_compile_gate_check",
+          "codegen_contract_check",
+          "code_generation_manifest_static_check"
+        ],
+        "action_type": "evidence_gate_handoff",
+        "consumes": [
+          "model_numeric_codegen_consistency_report.json",
+          "generated_params_shape_trace.json",
+          "numeric_policy_binding_trace.json",
+          "candidate_stage_artifact.package_static_check",
+          "candidate_stage_artifact.compile_gate",
+          "candidate_stage_artifact.contract_check",
+          "candidate_stage_artifact.generated_top"
+        ],
+        "id": "codegen.evidence_gate_consume_model_numeric_audit",
+        "on_failure": "Keep code_generation promotion blocked and rerun only the failing checker or request a bounded codegen-local repair; do not bypass the failed checker and do not modify golden outputs or tolerances.",
+        "produces": [
+          "code_generation.evidence_gate_auditor.model_numeric_handoff_record"
+        ],
+        "rationale": "Aggregate this model/numeric audit with compile, package, and contract gate evidence before downstream consumption, without treating later functional or hardware validation as already passed.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "team_aggregate",
+          "codegen_package_static_check",
+          "codegen_compile_gate",
+          "codegen_contract_check"
+        ]
+      }
+    ],
+    "observations": [
+      "State summary reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests; no SACG-memory blocker is visible for this audit.",
+      "Upstream parameter binding is reported ready with parameter static checks passed. The candidate codegen_contract_check passed with no errors or warnings and explicitly checked upstream_transition_status, model_shape_to_generated_params, numeric_policy_to_generated_bits, and parameter_binding_legality.",
+      "The generated target is explicitly model_type=qwen2 with current_artifacts_match_target=true and missing_for_target empty. The selected top_class is LlamaStyleBlock with param_class LlamaStyleBlockParams and fpga_wrapper_class GeneratedAxiDdrTop; this uses supplied template naming rather than inventing an unsupported Qwen-specific top class.",
+      "Visible shape/head trace is internally consistent: hidden_size=896, num_q_heads=14, head_dim=64, and 14*64=896. num_kv_heads=2 gives an integral GQA grouping of 14/2=7, and the generated files include AttentionGQA, QKVProjection, RoPE, RMSNorm, GatedMLP, and ResidualAdd modules, which is consistent at the template/topology level with a Qwen2 Llama-style decoder mapping.",
+      "Additional visible generated parameters are intermediate_size=4864, max_seq_len=16, and lanes=8. Their preservation against upstream shape/parameter binding is covered by the passed model_shape_to_generated_params and parameter_binding_legality contract checks in the supplied evidence.",
+      "Visible numeric policy binding is elem_bits=16, input_bits=32, and output_bits=32. The passed numeric_policy_to_generated_bits contract check is the supplied evidence that these generated bit widths preserve artifact.input.numeric_policy.",
+      "The compile/elaboration gate passed Compile/compile, GeneratedContractCheck, ElaborateGeneratedAccelerator, and ElaborateGeneratedAxiDdrTop. The package static check also passed, so there is no current-stage package/compile blocker for this model/numeric audit.",
+      "The raw upstream model_config and numeric_policy rows are not expanded in the prompt slice; because the corresponding artifacts exist and the named contract/static checks passed, this is not treated as a missing-field blocker. The audit remains bounded to the supplied checker evidence and visible generated parameters.",
+      "Functional numerical simulation, golden comparison, Vivado implementation, board execution, and nonzero board clock selection are later-stage obligations under the supplied stage_gate_policy and are not claimed as passed here."
+    ],
+    "proposed_actions": [
+      "Hand off model_numeric_codegen_consistency_report.json, generated_params_shape_trace.json, and numeric_policy_binding_trace.json to code_generation.evidence_gate_auditor with the passed codegen_contract_check and compile/package gate logs cited as evidence.",
+      "Do not request upstream backtrack for this audit. If a later evidence gate detects a generated parameter/top-class mismatch, first localize whether the source is generated code versus artifact.stage4.parameter_binding; only issue a stage_backtrack_request when the upstream binding or pipeline plan is the conflicting source.",
+      "Require explicit approval before any future change to top_class, param_class, hidden/head dimensions, GQA mapping, max_seq_len, lanes, or numeric bit-width policy.",
+      "Later verification stages must run functional/golden/numeric checks before any hardware-correctness claim; failures should enter the prescribed leaf-operator, single-transformer-layer, then AXI/DDR-wrapped repair loop without skipping layers."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage4.parameter_static_checks",
+        "candidate_stage_artifact.generated_top",
+        "candidate_stage_artifact.contract_check",
+        "candidate_stage_artifact.compile_gate",
+        "candidate_stage_artifact.package_static_check",
+        "generated.model_ir",
+        "generated.arch_plan",
+        "generated.chisel_modules",
+        "generated.top_wrapper",
+        "generated.codegen_contract_check"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.parameter.binding",
+        "constraint.cross_layer.input_consistency",
+        "constraint.codegen.contract_check",
+        "constraint.codegen.compile_gate"
+      ],
+      "edges": [
+        "artifact.input.model_config -> generated.model_ir -> candidate_stage_artifact.generated_top.params",
+        "artifact.input.numeric_policy -> candidate_stage_artifact.generated_top.params -> numeric_policy_to_generated_bits",
+        "artifact.stage3.pipeline_plan + artifact.stage4.parameter_binding -> generated.arch_plan -> generated.chisel_modules",
+        "generated.chisel_modules -> generated.top_wrapper -> generated.fpga_axi_ddr_top_wrapper",
+        "candidate_stage_artifact.generated_top + artifact.stage4.parameter_binding -> model_shape_to_generated_params",
+        "candidate_stage_artifact.contract_check -> code_generation.evidence_gate_auditor"
+      ],
+      "nodes": [
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage4.parameter_static_checks",
+        "generated.model_ir",
+        "generated.arch_plan",
+        "generated.chisel_modules",
+        "generated.top_wrapper",
+        "generated.fpga_axi_ddr_top_wrapper",
+        "generated.codegen_compile_gate",
+        "generated.codegen_contract_check",
+        "candidate_stage_artifact.generated_top",
+        "candidate_stage_artifact.contract_check"
+      ]
+    },
+    "schema_version": "spatialaccagent.cross_layer_model_numeric_auditor.v0",
+    "stage": "code_generation",
+    "status": "pass",
+    "summary": "Current-stage model/shape/numeric audit passes on the supplied evidence. The generated qwen2 target uses the supplied LlamaStyleBlock/LlamaStyleBlockParams top choice, preserves the visible head-shape identities and numeric bit-width policy through codegen_contract_check, and has no current SACG-memory blocker. This is a code-generation consistency approval only, not a functional simulation or hardware-pass claim."
+  },
+  "prompt_bytes": 66401,
+  "prompt_hash": "fa6bfe57352d232c1c4cfcfa2233be4baf366a07bce335bd6b0a4cee926bc0b3",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.cross_layer_model_numeric_auditor.v0\",\"agent\":\"cross_layer_model_numeric_auditor\",\"stage\":\"code_generation\",\"status\":\"pass\",\"summary\":\"Current-stage model/shape/numeric audit passes on the supplied evidence. The generated qwen2 target uses the supplied LlamaStyleBlock/LlamaStyleBlockParams top choice, preserves the visible head-shape identities and numeric bit-width policy through codegen_contract_check, and has no current SACG-memory blocker. This is a code-generation consistency approval only, not a functional simulation or hardware-pass claim.\",\"sacg_focus\":{\"nodes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage4.parameter_static_checks\",\"generated.model_ir\",\"generated.arch_plan\",\"generated.chisel_modules\",\"generated.top_wrapper\",\"generated.fpga_axi_ddr_top_wrapper\",\"generated.codegen_compile_gate\",\"generated.codegen_contract_check\",\"candidate_stage_artifact.generated_top\",\"candidate_stage_artifact.contract_check\"],\"edges\":[\"artifact.input.model_config -> generated.model_ir -> candidate_stage_artifact.generated_top.params\",\"artifact.input.numeric_policy -> candidate_stage_artifact.generated_top.params -> numeric_policy_to_generated_bits\",\"artifact.stage3.pipeline_plan + artifact.stage4.parameter_binding -> generated.arch_plan -> generated.chisel_modules\",\"generated.chisel_modules -> generated.top_wrapper -> generated.fpga_axi_ddr_top_wrapper\",\"candidate_stage_artifact.generated_top + artifact.stage4.parameter_binding -> model_shape_to_generated_params\",\"candidate_stage_artifact.contract_check -> code_generation.evidence_gate_auditor\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.parameter.binding\",\"constraint.cross_layer.input_consistency\",\"constraint.codegen.contract_check\",\"constraint.codegen.compile_gate\"],\"artifacts\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage4.parameter_static_checks\",\"candidate_stage_artifact.generated_top\",\"candidate_stage_artifact.contract_check\",\"candidate_stage_artifact.compile_gate\",\"candidate_stage_artifact.package_static_check\",\"generated.model_ir\",\"generated.arch_plan\",\"generated.chisel_modules\",\"generated.top_wrapper\",\"generated.codegen_contract_check\"]},\"observations\":[\"State summary reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests; no SACG-memory blocker is visible for this audit.\",\"Upstream parameter binding is reported ready with parameter static checks passed. The candidate codegen_contract_check passed with no errors or warnings and explicitly checked upstream_transition_status, model_shape_to_generated_params, numeric_policy_to_generated_bits, and parameter_binding_legality.\",\"The generated target is explicitly model_type=qwen2 with current_artifacts_match_target=true and missing_for_target empty. The selected top_class is LlamaStyleBlock with param_class LlamaStyleBlockParams and fpga_wrapper_class GeneratedAxiDdrTop; this uses supplied template naming rather than inventing an unsupported Qwen-specific top class.\",\"Visible shape/head trace is internally consistent: hidden_size=896, num_q_heads=14, head_dim=64, and 14*64=896. num_kv_heads=2 gives an integral GQA grouping of 14/2=7, and the generated files include AttentionGQA, QKVProjection, RoPE, RMSNorm, GatedMLP, and ResidualAdd modules, which is consistent at the template/topology level with a Qwen2 Llama-style decoder mapping.\",\"Additional visible generated parameters are intermediate_size=4864, max_seq_len=16, and lanes=8. Their preservation against upstream shape/parameter binding is covered by the passed model_shape_to_generated_params and parameter_binding_legality contract checks in the supplied evidence.\",\"Visible numeric policy binding is elem_bits=16, input_bits=32, and output_bits=32. The passed numeric_policy_to_generated_bits contract check is the supplied evidence that these generated bit widths preserve artifact.input.numeric_policy.\",\"The compile/elaboration gate passed Compile/compile, GeneratedContractCheck, ElaborateGeneratedAccelerator, and ElaborateGeneratedAxiDdrTop. The package static check also passed, so there is no current-stage package/compile blocker for this model/numeric audit.\",\"The raw upstream model_config and numeric_policy rows are not expanded in the prompt slice; because the corresponding artifacts exist and the named contract/static checks passed, this is not treated as a missing-field blocker. The audit remains bounded to the supplied checker evidence and visible generated parameters.\",\"Functional numerical simulation, golden comparison, Vivado implementation, board execution, and nonzero board clock selection are later-stage obligations under the supplied stage_gate_policy and are not claimed as passed here.\"],\"risks\":[],\"proposed_actions\":[\"Hand off model_numeric_codegen_consistency_report.json, generated_params_shape_trace.json, and numeric_policy_binding_trace.json to code_generation.evidence_gate_auditor with the passed codegen_contract_check and compile/package gate logs cited as evidence.\",\"Do not request upstream backtrack for this audit. If a later evidence gate detects a generated parameter/top-class mismatch, first localize whether the source is generated code versus artifact.stage4.parameter_binding; only issue a stage_backtrack_request when the upstream binding or pipeline plan is the conflicting source.\",\"Require explicit approval before any future change to top_class, param_class, hidden/head dimensions, GQA mapping, max_seq_len, lanes, or numeric bit-width policy.\",\"Later verification stages must run functional/golden/numeric checks before any hardware-correctness claim; failures should enter the prescribed leaf-operator, single-transformer-layer, then AXI/DDR-wrapped repair loop without skipping layers.\"],\"executable_actions\":[{\"id\":\"codegen.materialize_model_numeric_consistency_traces\",\"stage\":\"code_generation\",\"action_type\":\"cross_layer_consistency_review\",\"rationale\":\"Create the auditor handoff artifacts from the supplied model_config, numeric_policy, pipeline/parameter binding, generated_top parameters, and passed contract evidence so the final evidence gate can consume a checker-grounded model/shape/numeric trace.\",\"consumes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage4.parameter_static_checks\",\"candidate_stage_artifact.generated_top\",\"candidate_stage_artifact.contract_check\",\"candidate_stage_artifact.compile_gate\"],\"produces\":[\"model_numeric_codegen_consistency_report.json\",\"generated_params_shape_trace.json\",\"numeric_policy_binding_trace.json\"],\"tool_roles\":[\"sacg_static_check\",\"model_config_check\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"codegen_contract_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"model_config_check\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"codegen_contract_check\"],\"on_failure\":\"Block code_generation evidence-gate promotion. If the mismatch is local to generated parameters or supplied top selection, route to bounded_template_repair/codegen regeneration; if artifact.stage4.parameter_binding or artifact.stage3.pipeline_plan is the conflicting source, raise a stage_backtrack_request instead of editing generated outputs or loosening checks.\",\"requires_approval\":false},{\"id\":\"codegen.evidence_gate_consume_model_numeric_audit\",\"stage\":\"code_generation\",\"action_type\":\"evidence_gate_handoff\",\"rationale\":\"Aggregate this model/numeric audit with compile, package, and contract gate evidence before downstream consumption, without treating later functional or hardware validation as already passed.\",\"consumes\":[\"model_numeric_codegen_consistency_report.json\",\"generated_params_shape_trace.json\",\"numeric_policy_binding_trace.json\",\"candidate_stage_artifact.package_static_check\",\"candidate_stage_artifact.compile_gate\",\"candidate_stage_artifact.contract_check\",\"candidate_stage_artifact.generated_top\"],\"produces\":[\"code_generation.evidence_gate_auditor.model_numeric_handoff_record\"],\"tool_roles\":[\"team_aggregate\",\"codegen_package_static_check\",\"codegen_compile_gate\",\"codegen_contract_check\"],\"acceptance_checkers\":[\"codegen_package_static_check\",\"codegen_compile_gate_check\",\"codegen_contract_check\",\"code_generation_manifest_static_check\"],\"on_failure\":\"Keep code_generation promotion blocked and rerun only the failing checker or request a bounded codegen-local repair; do not bypass the failed checker and do not modify golden outputs or tolerances.\",\"requires_approval\":false}],\"approval_required_for\":[]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/team/llm/cross_layer_model_numeric_auditor_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/team/llm/cross_layer_model_numeric_auditor_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "code_generation.model-shape and numeric consistency auditor",
+  "used_fallback": false
+}

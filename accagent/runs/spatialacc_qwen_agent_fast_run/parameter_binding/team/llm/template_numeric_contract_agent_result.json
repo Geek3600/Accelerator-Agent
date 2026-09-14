@@ -1,0 +1,203 @@
+{
+  "agent": "template_numeric_contract_agent",
+  "duration_sec": 198.07219508000708,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "template_numeric_contract_agent",
+    "approval_required_for": [
+      "Any change to accumulator dtype fp32, activation/weight dtype fp16, rounding=nearest_even, saturation=false, cast points, or residual_precision=32.",
+      "Any change to model architecture, operator order, tensor dimensions, hidden_size, intermediate_size, seq_len, head_dim, num_q_heads, or num_kv_heads.",
+      "Any replacement of selected trusted template families or addition of new template parameters that changes numeric/model semantics.",
+      "Any memory layout or pipeline repair that would alter stream order, branch precision, residual precision, or transfer-unit interpretation."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "numeric_policy_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check"
+        ],
+        "action_type": "checker_grounded_audit_materialization",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection",
+          "artifact.stage3.pipeline_plan",
+          "candidate_stage_artifact.bindings",
+          "candidate_stage_artifact.numeric_binding_plan",
+          "candidate_stage_artifact.global_params",
+          "candidate_stage_artifact.global_param_scope",
+          "candidate_stage_artifact.checker_results"
+        ],
+        "id": "parameter_binding.materialize_template_numeric_audit",
+        "on_failure": "Block parameter_binding promotion and route only missing or illegal template parameters to bounded_template_repair; require approval before any repair changes model shape, operator order, template family, accumulator dtype, rounding policy, saturation, cast points, or residual precision.",
+        "produces": [
+          "template_numeric_binding_audit.json",
+          "per_stage_parameter_completeness_matrix.json",
+          "numeric_cast_contract_trace.json",
+          "binding_legality_findings.json"
+        ],
+        "rationale": "Produce the role-owned audit artifacts and bind the candidate per-stage parameters, numeric cast trace, global default scope, and checker evidence to the named SACG constraints before aggregate promotion.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "sacg_validate",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "transfer_count_check"
+        ],
+        "action_type": "handoff_contract_validation",
+        "consumes": [
+          "candidate_stage_artifact.stream_contract_trace",
+          "candidate_stage_artifact.numeric_binding_plan",
+          "candidate_stage_artifact.bandwidth_estimate",
+          "artifact.stage3.pipeline_plan"
+        ],
+        "id": "parameter_binding.handoff_numeric_stream_contracts",
+        "on_failure": "Classify failures as stream/memory contract issues and return them to parameter_binding.stream_memory_contract_engineer; do not repair by changing numeric precision, cast points, stream order, or model semantics without approval.",
+        "produces": [
+          "stream_memory_numeric_handoff.json",
+          "transfer_width_branch_precision_findings.json"
+        ],
+        "rationale": "Ensure peer stream/memory planning consumes the same bit-width and cast contract, especially 32-bit residual skip paths, 16-bit MLP branch streams into activation_mul, and AXI packing assumptions, without changing numeric semantics.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "transfer_count_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_action_audit_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "evidence_gate_handoff",
+        "consumes": [
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.bandwidth_estimate",
+          "candidate_stage_artifact.bindings",
+          "candidate_stage_artifact.global_param_scope"
+        ],
+        "id": "parameter_binding.record_static_evidence_limits",
+        "on_failure": "Keep hardware-pass, timing-pass, and board-pass claims blocked until later stages provide required real tool evidence; do not loosen numeric tolerance or modify golden outputs to obtain a pass.",
+        "produces": [
+          "parameter_binding_static_evidence_limits.json",
+          "evidence_gate_numeric_binding_decision.json"
+        ],
+        "rationale": "Prevent downstream consumers from treating symbolic resource or bandwidth estimates, clock_target_mhz=0, or static checker passes as simulation, synthesis, timing, or board evidence.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "verification_action_audit",
+          "required_real_tool_evidence_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The supplied SACG memory truth summary shows zero active contamination barriers and zero open retry or backtrack requests relevant to this stage.",
+      "All 9 pipeline stages have selected template_ids and status=ready with empty per-binding legality_errors: norm for both RMSNorm stages, attention for self_attention, residual for both residual adds, ffn for gate/up/down projections, and elementwise for activation_mul.",
+      "Visible parameter completeness is consistent with the model shape summary: hidden_size=896, seq_len=16, attention head_dim=64, num_q_heads=14, num_kv_heads=2, and intermediate_size=4864. The attention relation num_q_heads * head_dim = 896 is satisfied, and the supplied checker_results report tile_override_legality_check pass.",
+      "Numeric binding records fp16 activations and weights, fp32 accumulator dtype, rounding=nearest_even, saturation=false, and policy_id=current_run_numeric_policy.md. Cast points are explicit: RMSNorm stages cast 32_to_16 at input, attention and mlp_down_proj cast 16_to_32 at output, residual stages remain 32-bit with residual_precision=32, and MLP gate/up/mul stages remain 16-bit.",
+      "The stream_contract_trace is bit-width consistent with the numeric cast trace: residual skip edges are 32-bit, norm-to-attention and norm-to-MLP branch edges are 16-bit, activation_mul consumes two 16-bit MLP branch streams, and block output is 32-bit.",
+      "Per-stage FFN tile overrides are authoritative over global defaults and divide the visible dimensions: tile_m=16 divides seq_len=16, tile_k=128 divides hidden_size=896 or intermediate_size=4864 as applicable, and tile_n=128 divides intermediate_size=4864 or hidden_size=896 as applicable.",
+      "lanes=8 with 16-bit and 32-bit datapaths produces 128-bit or 256-bit lane groups, which pack cleanly into the 512-bit board AXI data width according to the supplied stream_packing_axi_check pass.",
+      "global_param_scope correctly prevents semantic over-claiming: clock_target_mhz=0 is an unknown/sentinel rather than timing evidence, fifo_depth is only a local template default while Stage 3 edge buffers remain authoritative, and global tile parameters are defaults overridden by per-stage values.",
+      "Supplied checker_results pass 6 static checks with no warnings, including parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, tile_override_legality_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check. These are static binding checks only and do not constitute simulation, synthesis, timing, or board evidence."
+    ],
+    "proposed_actions": [
+      "Materialize template_numeric_binding_audit.json, per_stage_parameter_completeness_matrix.json, numeric_cast_contract_trace.json, and binding_legality_findings.json from the candidate bindings and rerun the named acceptance checkers: sacg_static_check, numeric_policy_check, template_binding_static_check, and parameter_binding_static_check.",
+      "Hand off the numeric_cast_contract_trace and stream_contract_trace to parameter_binding.stream_memory_contract_engineer so residual 32-bit precision, activation_mul dual 16-bit streams, stream order, and AXI packing are preserved during memory/runtime planning.",
+      "Hand off the symbolic resource_estimate and bandwidth_estimate limitations to parameter_binding.dse_resource_risk_engineer and parameter_binding.evidence_gate_auditor so no timing, synthesis, simulation, or board pass is inferred from static parameter binding.",
+      "If any named acceptance checker fails, perform only bounded template-parameter repair within the selected trusted templates; require explicit approval for any change to model shape, operator order, selected template family, accumulator dtype, rounding, saturation, cast points, or residual precision."
+    ],
+    "risks": [
+      "Evidence packaging risk: the candidate includes passing checker_results, but the expected handoff artifacts and exact subtask acceptance checker names must be materialized before evidence-gate promotion.",
+      "Numeric implementation risk for downstream stages: code generation and verification must implement fp32 accumulation, nearest_even rounding, saturation=false, 32_to_16 and 16_to_32 cast points, and residual_precision=32 exactly; static binding evidence does not prove generated hardware behavior.",
+      "Stage-gate interpretation risk: if current_run_numeric_policy.md does not actually bind nearest_even rounding through constraint.numeric.policy.default_rules, treating nearest_even as fixed would change numeric semantics. The named numeric_policy_check must preserve the source citation.",
+      "Stream/memory handoff risk: activation_mul has two validated 16-bit input streams and residual paths remain 32-bit; downstream memory/runtime planning must not collapse branch accounting or alter stream order while assigning concrete storage and transfer schedules.",
+      "Resource and bandwidth estimates are symbolic first-order/static transfer counts only. They must not be consumed as timing closure, implementation utilization, achievable board bandwidth, or hardware pass evidence."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.stage2.template_selection",
+        "artifact.stage3.pipeline_plan",
+        "candidate_stage_artifact.bindings",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.global_params",
+        "candidate_stage_artifact.global_param_scope",
+        "template_numeric_binding_audit.json",
+        "per_stage_parameter_completeness_matrix.json",
+        "numeric_cast_contract_trace.json",
+        "binding_legality_findings.json"
+      ],
+      "constraints": [
+        "constraint.parameter.binding",
+        "constraint.template.library",
+        "constraint.numeric.policy",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.pipeline.structure",
+        "constraint.stream.order",
+        "constraint.beat.pipeline"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output"
+      ]
+    },
+    "schema_version": "spatialaccagent.template_numeric_contract_agent.v0",
+    "stage": "parameter_binding",
+    "status": "ready_for_handoff",
+    "summary": "No current-stage template/numeric legality blocker is visible in the supplied candidate artifact: 9 selected template bindings are marked ready, legality_errors are empty, and supplied static checker_results pass without warnings. The candidate still needs the expected audit artifacts packaged under the named acceptance checkers before aggregate promotion, and all downstream agents must treat resource, bandwidth, timing, simulation, and board claims as not yet evidenced."
+  },
+  "prompt_bytes": 55062,
+  "prompt_hash": "a6da44c72cc37ec31141a9a92170356c454410278f89743bc8652cfb2520b8d0",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.template_numeric_contract_agent.v0\",\"agent\":\"template_numeric_contract_agent\",\"stage\":\"parameter_binding\",\"status\":\"ready_for_handoff\",\"summary\":\"No current-stage template/numeric legality blocker is visible in the supplied candidate artifact: 9 selected template bindings are marked ready, legality_errors are empty, and supplied static checker_results pass without warnings. The candidate still needs the expected audit artifacts packaged under the named acceptance checkers before aggregate promotion, and all downstream agents must treat resource, bandwidth, timing, simulation, and board claims as not yet evidenced.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.parameter.binding\",\"constraint.template.library\",\"constraint.numeric.policy\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.pipeline.structure\",\"constraint.stream.order\",\"constraint.beat.pipeline\"],\"artifacts\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"candidate_stage_artifact.bindings\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.global_params\",\"candidate_stage_artifact.global_param_scope\",\"template_numeric_binding_audit.json\",\"per_stage_parameter_completeness_matrix.json\",\"numeric_cast_contract_trace.json\",\"binding_legality_findings.json\"]},\"observations\":[\"The supplied SACG memory truth summary shows zero active contamination barriers and zero open retry or backtrack requests relevant to this stage.\",\"All 9 pipeline stages have selected template_ids and status=ready with empty per-binding legality_errors: norm for both RMSNorm stages, attention for self_attention, residual for both residual adds, ffn for gate/up/down projections, and elementwise for activation_mul.\",\"Visible parameter completeness is consistent with the model shape summary: hidden_size=896, seq_len=16, attention head_dim=64, num_q_heads=14, num_kv_heads=2, and intermediate_size=4864. The attention relation num_q_heads * head_dim = 896 is satisfied, and the supplied checker_results report tile_override_legality_check pass.\",\"Numeric binding records fp16 activations and weights, fp32 accumulator dtype, rounding=nearest_even, saturation=false, and policy_id=current_run_numeric_policy.md. Cast points are explicit: RMSNorm stages cast 32_to_16 at input, attention and mlp_down_proj cast 16_to_32 at output, residual stages remain 32-bit with residual_precision=32, and MLP gate/up/mul stages remain 16-bit.\",\"The stream_contract_trace is bit-width consistent with the numeric cast trace: residual skip edges are 32-bit, norm-to-attention and norm-to-MLP branch edges are 16-bit, activation_mul consumes two 16-bit MLP branch streams, and block output is 32-bit.\",\"Per-stage FFN tile overrides are authoritative over global defaults and divide the visible dimensions: tile_m=16 divides seq_len=16, tile_k=128 divides hidden_size=896 or intermediate_size=4864 as applicable, and tile_n=128 divides intermediate_size=4864 or hidden_size=896 as applicable.\",\"lanes=8 with 16-bit and 32-bit datapaths produces 128-bit or 256-bit lane groups, which pack cleanly into the 512-bit board AXI data width according to the supplied stream_packing_axi_check pass.\",\"global_param_scope correctly prevents semantic over-claiming: clock_target_mhz=0 is an unknown/sentinel rather than timing evidence, fifo_depth is only a local template default while Stage 3 edge buffers remain authoritative, and global tile parameters are defaults overridden by per-stage values.\",\"Supplied checker_results pass 6 static checks with no warnings, including parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, tile_override_legality_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check. These are static binding checks only and do not constitute simulation, synthesis, timing, or board evidence.\"],\"risks\":[\"Evidence packaging risk: the candidate includes passing checker_results, but the expected handoff artifacts and exact subtask acceptance checker names must be materialized before evidence-gate promotion.\",\"Numeric implementation risk for downstream stages: code generation and verification must implement fp32 accumulation, nearest_even rounding, saturation=false, 32_to_16 and 16_to_32 cast points, and residual_precision=32 exactly; static binding evidence does not prove generated hardware behavior.\",\"Stage-gate interpretation risk: if current_run_numeric_policy.md does not actually bind nearest_even rounding through constraint.numeric.policy.default_rules, treating nearest_even as fixed would change numeric semantics. The named numeric_policy_check must preserve the source citation.\",\"Stream/memory handoff risk: activation_mul has two validated 16-bit input streams and residual paths remain 32-bit; downstream memory/runtime planning must not collapse branch accounting or alter stream order while assigning concrete storage and transfer schedules.\",\"Resource and bandwidth estimates are symbolic first-order/static transfer counts only. They must not be consumed as timing closure, implementation utilization, achievable board bandwidth, or hardware pass evidence.\"],\"proposed_actions\":[\"Materialize template_numeric_binding_audit.json, per_stage_parameter_completeness_matrix.json, numeric_cast_contract_trace.json, and binding_legality_findings.json from the candidate bindings and rerun the named acceptance checkers: sacg_static_check, numeric_policy_check, template_binding_static_check, and parameter_binding_static_check.\",\"Hand off the numeric_cast_contract_trace and stream_contract_trace to parameter_binding.stream_memory_contract_engineer so residual 32-bit precision, activation_mul dual 16-bit streams, stream order, and AXI packing are preserved during memory/runtime planning.\",\"Hand off the symbolic resource_estimate and bandwidth_estimate limitations to parameter_binding.dse_resource_risk_engineer and parameter_binding.evidence_gate_auditor so no timing, synthesis, simulation, or board pass is inferred from static parameter binding.\",\"If any named acceptance checker fails, perform only bounded template-parameter repair within the selected trusted templates; require explicit approval for any change to model shape, operator order, selected template family, accumulator dtype, rounding, saturation, cast points, or residual precision.\"],\"executable_actions\":[{\"id\":\"parameter_binding.materialize_template_numeric_audit\",\"stage\":\"parameter_binding\",\"action_type\":\"checker_grounded_audit_materialization\",\"rationale\":\"Produce the role-owned audit artifacts and bind the candidate per-stage parameters, numeric cast trace, global default scope, and checker evidence to the named SACG constraints before aggregate promotion.\",\"consumes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"candidate_stage_artifact.bindings\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.global_params\",\"candidate_stage_artifact.global_param_scope\",\"candidate_stage_artifact.checker_results\"],\"produces\":[\"template_numeric_binding_audit.json\",\"per_stage_parameter_completeness_matrix.json\",\"numeric_cast_contract_trace.json\",\"binding_legality_findings.json\"],\"tool_roles\":[\"sacg_validate\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"numeric_policy_check\",\"template_binding_static_check\",\"parameter_binding_static_check\"],\"on_failure\":\"Block parameter_binding promotion and route only missing or illegal template parameters to bounded_template_repair; require approval before any repair changes model shape, operator order, template family, accumulator dtype, rounding policy, saturation, cast points, or residual precision.\",\"requires_approval\":false},{\"id\":\"parameter_binding.handoff_numeric_stream_contracts\",\"stage\":\"parameter_binding\",\"action_type\":\"handoff_contract_validation\",\"rationale\":\"Ensure peer stream/memory planning consumes the same bit-width and cast contract, especially 32-bit residual skip paths, 16-bit MLP branch streams into activation_mul, and AXI packing assumptions, without changing numeric semantics.\",\"consumes\":[\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.bandwidth_estimate\",\"artifact.stage3.pipeline_plan\"],\"produces\":[\"stream_memory_numeric_handoff.json\",\"transfer_width_branch_precision_findings.json\"],\"tool_roles\":[\"stream_plan_check\",\"memory_runtime_plan_check\",\"transfer_count_check\"],\"acceptance_checkers\":[\"stream_plan_check\",\"memory_runtime_plan_check\",\"transfer_count_check\"],\"on_failure\":\"Classify failures as stream/memory contract issues and return them to parameter_binding.stream_memory_contract_engineer; do not repair by changing numeric precision, cast points, stream order, or model semantics without approval.\",\"requires_approval\":false},{\"id\":\"parameter_binding.record_static_evidence_limits\",\"stage\":\"parameter_binding\",\"action_type\":\"evidence_gate_handoff\",\"rationale\":\"Prevent downstream consumers from treating symbolic resource or bandwidth estimates, clock_target_mhz=0, or static checker passes as simulation, synthesis, timing, or board evidence.\",\"consumes\":[\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.bindings\",\"candidate_stage_artifact.global_param_scope\"],\"produces\":[\"parameter_binding_static_evidence_limits.json\",\"evidence_gate_numeric_binding_decision.json\"],\"tool_roles\":[\"verification_action_audit\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"verification_action_audit_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Keep hardware-pass, timing-pass, and board-pass claims blocked until later stages provide required real tool evidence; do not loosen numeric tolerance or modify golden outputs to obtain a pass.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any change to accumulator dtype fp32, activation/weight dtype fp16, rounding=nearest_even, saturation=false, cast points, or residual_precision=32.\",\"Any change to model architecture, operator order, tensor dimensions, hidden_size, intermediate_size, seq_len, head_dim, num_q_heads, or num_kv_heads.\",\"Any replacement of selected trusted template families or addition of new template parameters that changes numeric/model semantics.\",\"Any memory layout or pipeline repair that would alter stream order, branch precision, residual precision, or transfer-unit interpretation.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/template_numeric_contract_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/template_numeric_contract_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "parameter_binding.template and numeric contract engineer",
+  "used_fallback": false
+}

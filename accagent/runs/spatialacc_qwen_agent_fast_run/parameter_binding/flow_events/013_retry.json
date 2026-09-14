@@ -1,0 +1,278 @@
+{
+  "attempt_count": 1,
+  "decision": "retry",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "stage_artifact_trust_barrier_check",
+        "sacg_memory_check"
+      ],
+      "action_type": "artifact_trust_barrier",
+      "consumes": [
+        "recent_stage_summary",
+        "sacg_memory",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/31_parameter_binding.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/parameter_binding_report.json as stale/non-promoted diagnostic"
+      ],
+      "id": "parameter_binding.record_failed_artifact_trust_barrier",
+      "on_failure": "Stop downstream progress to avoid artifact contamination until the failed and stale outputs are explicitly quarantined.",
+      "produces": [
+        "sacg_memory update recording parameter_binding failed-artifact trust barrier",
+        "diagnostic-only artifact set for parameter_binding attempt 1"
+      ],
+      "rationale": "The latest parameter_binding command failed and the framework stated that stale/non-promoted outputs were ignored. A trust barrier prevents these diagnostics from being consumed as validated downstream parameter bindings while still allowing them to inform bounded retry localization.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "stage_artifact_trust_barrier",
+        "sacg_memory_update"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "failure_localization_check",
+        "targeted_failed_checker_rerun",
+        "parameter_binding_static_check"
+      ],
+      "action_type": "failure_localization",
+      "consumes": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/31_parameter_binding.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/llm/dse_parameter_agent_result.json as diagnostic only",
+        "sacg_memory update recording parameter_binding failed-artifact trust barrier"
+      ],
+      "id": "parameter_binding.localize_current_stage_unresolved_risks",
+      "on_failure": "Do not retry blindly; preserve the diagnostic failure and ask the flow controller to stop or schedule a bounded tool-capability repair for parameter_binding diagnostics.",
+      "produces": [
+        "parameter_binding/current_stage_failure_slice.json",
+        "parameter_binding/retry_requirements_from_attempt_1.json"
+      ],
+      "rationale": "The supplied summary reports 7 current-stage unresolved risks but does not expose their details. The retry needs a bounded diagnostic slice from non-promoted logs/results so the next candidate can resolve or correctly classify each blocker without relying on human memory or static guessing.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "failure_slice_localization",
+        "targeted_failed_checker_rerun",
+        "parameter_binding_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "task_card_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "sacg_static_check",
+        "llm_io_quality_check"
+      ],
+      "action_type": "bounded_same_stage_retry",
+      "consumes": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+        "parameter_binding/current_stage_failure_slice.json",
+        "parameter_binding/retry_requirements_from_attempt_1.json",
+        "sacg_memory update recording parameter_binding failed-artifact trust barrier",
+        "llm_policy",
+        "flow_policy"
+      ],
+      "id": "parameter_binding.retry_attempt_2_with_reconciliation",
+      "on_failure": "Do not promote the retry candidate. Because the bounded attempt budget would be exhausted, route to a flow-controller decision for bounded repair or backtrack: backtrack to pipeline_planning only if the localized risks require upstream design changes, otherwise stop for LLM/tool-service recovery if the failure is transport-only.",
+      "produces": [
+        "parameter_binding/parameter_binding_report.json candidate_retry_attempt_2",
+        "parameter_binding/retry_reconciliation_contract.json",
+        "parameter_binding/sacg_state.json candidate_retry_attempt_2"
+      ],
+      "rationale": "Attempt 1 failed but the configured bound allows one more attempt. The retry must use the original pipeline_planning SACG state, honor LLM-required policy, treat attempt-1 artifacts as diagnostics only, resolve the localized current-stage risks, and emit a candidate parameter_binding contract that passes all current-stage static gates before promotion.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "team_aggregate",
+        "sacg_validate",
+        "task_card_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "llm_io_quality_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "stage_retry_request_check",
+        "stage_backtrack_request_check",
+        "output_validity_check",
+        "parameter_binding_static_check"
+      ],
+      "action_type": "stage_gate_decision",
+      "consumes": [
+        "parameter_binding/parameter_binding_report.json candidate_retry_attempt_2",
+        "parameter_binding/retry_reconciliation_contract.json",
+        "parameter_binding/sacg_state.json candidate_retry_attempt_2",
+        "parameter_binding checker results from retry_attempt_2_with_reconciliation"
+      ],
+      "id": "parameter_binding.post_retry_stage_gate_decision",
+      "on_failure": "Keep code_generation blocked and preserve all candidate retry outputs as non-promoted diagnostics until a valid gate decision is produced.",
+      "produces": [
+        "flow_decision.promote_parameter_binding_or_block",
+        "updated sacg_memory with retry outcome",
+        "stage_retry_request or stage_backtrack_request if retry fails"
+      ],
+      "rationale": "After retry, the team needs an explicit gate decision that promotes only a passing candidate and blocks downstream code_generation on any remaining current-stage risk or checker failure.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "team_aggregate",
+        "sacg_validate",
+        "stage_retry_request",
+        "stage_backtrack_request",
+        "output_validity_check"
+      ]
+    }
+  ],
+  "flow_event_index": 13,
+  "llm_flow_controller": {
+    "agent_executable_actions": [
+      {
+        "acceptance_checkers": [
+          "stage_artifact_trust_barrier_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "artifact_trust_barrier",
+        "consumes": [
+          "recent_stage_summary",
+          "sacg_memory",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/31_parameter_binding.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/parameter_binding_report.json as stale/non-promoted diagnostic"
+        ],
+        "id": "parameter_binding.record_failed_artifact_trust_barrier",
+        "on_failure": "Stop downstream progress to avoid artifact contamination until the failed and stale outputs are explicitly quarantined.",
+        "produces": [
+          "sacg_memory update recording parameter_binding failed-artifact trust barrier",
+          "diagnostic-only artifact set for parameter_binding attempt 1"
+        ],
+        "rationale": "The latest parameter_binding command failed and the framework stated that stale/non-promoted outputs were ignored. A trust barrier prevents these diagnostics from being consumed as validated downstream parameter bindings while still allowing them to inform bounded retry localization.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "stage_artifact_trust_barrier",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_failed_checker_rerun",
+          "parameter_binding_static_check"
+        ],
+        "action_type": "failure_localization",
+        "consumes": [
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/31_parameter_binding.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/llm/dse_parameter_agent_result.json as diagnostic only",
+          "sacg_memory update recording parameter_binding failed-artifact trust barrier"
+        ],
+        "id": "parameter_binding.localize_current_stage_unresolved_risks",
+        "on_failure": "Do not retry blindly; preserve the diagnostic failure and ask the flow controller to stop or schedule a bounded tool-capability repair for parameter_binding diagnostics.",
+        "produces": [
+          "parameter_binding/current_stage_failure_slice.json",
+          "parameter_binding/retry_requirements_from_attempt_1.json"
+        ],
+        "rationale": "The supplied summary reports 7 current-stage unresolved risks but does not expose their details. The retry needs a bounded diagnostic slice from non-promoted logs/results so the next candidate can resolve or correctly classify each blocker without relying on human memory or static guessing.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "failure_slice_localization",
+          "targeted_failed_checker_rerun",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "sacg_static_check",
+          "llm_io_quality_check"
+        ],
+        "action_type": "bounded_same_stage_retry",
+        "consumes": [
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+          "parameter_binding/current_stage_failure_slice.json",
+          "parameter_binding/retry_requirements_from_attempt_1.json",
+          "sacg_memory update recording parameter_binding failed-artifact trust barrier",
+          "llm_policy",
+          "flow_policy"
+        ],
+        "id": "parameter_binding.retry_attempt_2_with_reconciliation",
+        "on_failure": "Do not promote the retry candidate. Because the bounded attempt budget would be exhausted, route to a flow-controller decision for bounded repair or backtrack: backtrack to pipeline_planning only if the localized risks require upstream design changes, otherwise stop for LLM/tool-service recovery if the failure is transport-only.",
+        "produces": [
+          "parameter_binding/parameter_binding_report.json candidate_retry_attempt_2",
+          "parameter_binding/retry_reconciliation_contract.json",
+          "parameter_binding/sacg_state.json candidate_retry_attempt_2"
+        ],
+        "rationale": "Attempt 1 failed but the configured bound allows one more attempt. The retry must use the original pipeline_planning SACG state, honor LLM-required policy, treat attempt-1 artifacts as diagnostics only, resolve the localized current-stage risks, and emit a candidate parameter_binding contract that passes all current-stage static gates before promotion.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_validate",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "llm_io_quality_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "stage_retry_request_check",
+          "stage_backtrack_request_check",
+          "output_validity_check",
+          "parameter_binding_static_check"
+        ],
+        "action_type": "stage_gate_decision",
+        "consumes": [
+          "parameter_binding/parameter_binding_report.json candidate_retry_attempt_2",
+          "parameter_binding/retry_reconciliation_contract.json",
+          "parameter_binding/sacg_state.json candidate_retry_attempt_2",
+          "parameter_binding checker results from retry_attempt_2_with_reconciliation"
+        ],
+        "id": "parameter_binding.post_retry_stage_gate_decision",
+        "on_failure": "Keep code_generation blocked and preserve all candidate retry outputs as non-promoted diagnostics until a valid gate decision is produced.",
+        "produces": [
+          "flow_decision.promote_parameter_binding_or_block",
+          "updated sacg_memory with retry outcome",
+          "stage_retry_request or stage_backtrack_request if retry fails"
+        ],
+        "rationale": "After retry, the team needs an explicit gate decision that promotes only a passing candidate and blocks downstream code_generation on any remaining current-stage risk or checker failure.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_validate",
+          "stage_retry_request",
+          "stage_backtrack_request",
+          "output_validity_check"
+        ]
+      }
+    ],
+    "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/013_parameter_binding/llm/flow_controller_agent_result.json",
+    "agent_status": "retry_current_stage_block_downstream",
+    "agent_summary": "The parameter_binding stage did not pass and must not feed code_generation. SACG memory has no open backtrack requests, retry requests, or active contamination barriers, but the latest command returned 1, ignored a stale/incomplete report, and did not promote the stage output. Because this is attempt 1 of the bounded 2 attempts, the autonomous team should run a bounded same-stage retry after recording a trust barrier for failed/non-promoted artifacts and localizing the 7 reported current-stage unresolved risks from diagnostics."
+  },
+  "reason": "The parameter_binding stage did not pass and must not feed code_generation. SACG memory has no open backtrack requests, retry requests, or active contamination barriers, but the latest command returned 1, ignored a stale/incomplete report, and did not promote the stage output. Because this is attempt 1 of the bounded 2 attempts, the autonomous team should run a bounded same-stage retry after recording a trust barrier for failed/non-promoted artifacts and localizing the 7 reported current-stage unresolved risks from diagnostics.",
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_event_action_record.v0",
+  "stage": "parameter_binding"
+}

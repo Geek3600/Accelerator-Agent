@@ -1,0 +1,2047 @@
+<agent>
+memory_runtime_engineer_agent
+</agent>
+
+<task>
+Localize the failing memory_runtime_contract_check and define a bounded repair plan for missing XDMA H2C/C2H device templates, write/read target lists, DDR region hooks, and later address-map obligations without claiming board evidence at pipeline-planning time.
+</task>
+
+<rules>
+1. Review only the supplied artifact summary and named constraints.
+2. Treat sacg_memory as the shared long-context design memory: preserve design goals, failure lessons, retry requests, backtrack requests, and contamination barriers.
+3. If sacg_memory contains open backtrack_requests or contamination_barriers relevant to this stage, address them explicitly in observations and executable_actions.
+4. If inputs include a retry_reconciliation_contract for the current stage, distinguish previous failed artifacts from the candidate retry artifacts: same-stage retry requests/barriers are downstream-consumption blockers until promotion, but they are not independent blockers for approving a refined current-stage contract that explicitly supersedes them after all current-stage checks pass.
+5. If inputs include stage_gate_policy, use it to classify current-stage blocking risks versus later-stage actions.
+6. If inputs include role_slice_policy or presence_summary, do not infer a field is missing merely because detailed rows were omitted from a compact/role-specific prompt slice.
+7. When presence_summary says an artifact class exists, report missing-detail concerns as handoff/action items unless the visible checker status proves a current-stage blocker.
+8. Report cross-layer consistency risks across model, shape, numeric policy, data order, memory, runtime, implementation, and board facts.
+9. Keep actions bounded and executable by later tools/checkers.
+10. Populate executable_actions with concrete next tool/repair actions; each action must name consumed artifacts, produced artifacts, tool roles, acceptance checkers, failure handling, and approval need.
+11. Ground executable_actions in action_grounding_registry. Use exact listed tool_roles and acceptance_checkers whenever possible; do not invent Qwen/OPT-specific core names unless they are supplied by the case adapter or tool protocol.
+12. For backend/app-shell target discovery, treat the LLM as the adaptive board-integration engineer: convert supplied board materials and real Vivado evidence into target_discovery_policy updates with cited artifacts; if evidence is ambiguous, require bounded approval instead of guessing names.
+13. If a missing capability is required, name it planned_tool.<short_name> or planned_checker.<short_name> and state the implementation gap in rationale.
+14. Before returning, self-check every executable action: each tool_roles entry must be listed in action_grounding_registry.tool_roles or start with planned_tool.; each acceptance_checkers entry must be listed in action_grounding_registry.acceptance_checkers or start with planned_checker.
+15. For verification/backend failures, executable_actions must drive the next stage/tool decision instead of relying on static scripts or human memory.
+16. For hardware debug, enforce the three-layer repair loop: first operator/leaf modules, then the connected single-transformer-layer kernel, then the board-accurate AXI/DDR wrapped system. A failed layer must enter tool-output -> CCTG/contract-guided localization -> bounded repair -> rerun, and must not promote or skip to a higher layer.
+17. When a verifier capability is missing, classify it as a checker/golden-reference repair, not as hardware correctness. When real RTL/tool evidence shows liveness, value, order, or protocol failure, localize the earliest causal boundary/module before proposing a code repair.
+18. Use approval_required_for for architecture, pipeline, memory layout, numeric policy, or major template changes.
+</rules>
+
+<team_context>
+{
+  "objective": "Plan and audit the spatial pipeline as a set of SACG stream, beat, memory, and liveness constraints.",
+  "paper_alignment": {
+    "method": "SACG-guided, template-constrained, checker-verified design closure",
+    "problem": "Cross-Layer Consistency Problem in Agentic LLM Spatial Accelerator Design"
+  },
+  "stage": "pipeline_planning",
+  "team_rules": [
+    "Act as an AI chip design team for FPGA spatial accelerator automatic design, not as isolated static scripts.",
+    "Stay inside the SpatialAccAgent paper story: cross-layer consistency for LLM spatial accelerators.",
+    "Treat SACG as the design team's shared memory and evidence ledger; do not rely on natural-language memory as correctness evidence.",
+    "Use trusted templates and bounded glue code; do not propose free-form RTL rewrites outside approved repair boundaries.",
+    "Map every observation to model, shape, numeric precision, data order, transfer unit, memory, runtime, implementation, or deployment constrai...<len=144>",
+    "Do not bypass checkers, modify golden outputs, loosen tolerance, or claim hardware pass without tool evidence.",
+    "For board/app-shell integration, use LLM reasoning to synthesize profile/contract policy from user-supplied materials and real tool evidence...<len=199>"
+  ]
+}
+</team_context>
+
+<subtask>
+{
+  "acceptance_checkers": [
+    "memory_runtime_plan_check",
+    "addr_map_check",
+    "tool_protocol_check",
+    "boundary_contract_check",
+    "sacg_static_check"
+  ],
+  "action_type": "bounded_repair_planning",
+  "agent": "memory_runtime_engineer_agent",
+  "artifact_focus": [
+    "memory_schedule",
+    "memory_schedule.runtime_config_requirements",
+    "memory_schedule.required_regions",
+    "checker_results.memory_runtime_contract_check",
+    "artifact.input.target_board_profile",
+    "artifact.input.tool_protocols"
+  ],
+  "constraints": [
+    "constraint.memory.board",
+    "constraint.runtime.board",
+    "constraint.tool.protocols",
+    "constraint.deployment.board",
+    "constraint.cross_layer.input_consistency"
+  ],
+  "expected_artifacts": [
+    "artifact.pipeline_planning.memory_runtime_gap_report",
+    "artifact.pipeline_planning.runtime_config_repair_requirements",
+    "artifact.pipeline_planning.proposed_memory_runtime_repair_boundary"
+  ],
+  "handoff_rule": {
+    "completion_criteria": [],
+    "evidence_rule": "Do not claim pass unless evidence is bound to SACG constraints or explicitly recorded as not_run.",
+    "produces": [
+      "sacg_focus",
+      "observations",
+      "risks",
+      "proposed_actions",
+      "approval_required_for"
+    ]
+  },
+  "handoff_to": [
+    "pipeline_planning.evidence_gate"
+  ],
+  "id": "pipeline_planning.memory_runtime_engineer",
+  "objective": "Localize the failing memory_runtime_contract_check and define a bounded repair plan for missing XDMA H2C/C2H device templates, write/read target lists, DDR region hooks, and later address-map obligations without claiming...<len=262>",
+  "role": "memory dataflow engineer",
+  "title": "Resolve memory/runtime handoff contract gap"
+}
+</subtask>
+
+<state_summary>
+{
+  "artifacts": [
+    {
+      "id": "artifact.input.material_index",
+      "type": "input.material_index"
+    },
+    {
+      "id": "artifact.input.sample_project_index",
+      "type": "input.sample_project_index"
+    },
+    {
+      "id": "artifact.input.field_evidence",
+      "type": "input.field_evidence"
+    },
+    {
+      "id": "artifact.input.task_card",
+      "type": "input.task_card"
+    },
+    {
+      "id": "artifact.input.model_config",
+      "type": "input.model_config"
+    },
+    {
+      "id": "artifact.input.numeric_policy",
+      "type": "input.numeric_policy"
+    },
+    {
+      "id": "artifact.input.template_library",
+      "type": "input.template_library"
+    },
+    {
+      "id": "artifact.input.template_metadata",
+      "type": "input.template_metadata"
+    },
+    {
+      "id": "artifact.input.design_space",
+      "type": "input.design_space"
+    },
+    {
+      "id": "artifact.input.target_board_profile",
+      "type": "input.target_board_profile"
+    },
+    {
+      "id": "artifact.input.tool_profile",
+      "type": "input.tool_profile"
+    },
+    {
+      "id": "artifact.input.tool_availability",
+      "type": "input.tool_availability"
+    },
+    {
+      "id": "artifact.input.tool_protocols",
+      "type": "input.tool_protocols"
+    },
+    {
+      "id": "artifact.input.case_adapter",
+      "type": "input.case_adapter"
+    },
+    {
+      "id": "artifact.input.human_agent_boundary",
+      "type": "input.human_agent_boundary"
+    },
+    {
+      "id": "artifact.stage2.template_selection",
+      "type": "stage.template_selection"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "constraint.source.materials",
+      "type": "source_materials"
+    },
+    {
+      "id": "constraint.source.evidence",
+      "type": "source_evidence"
+    },
+    {
+      "id": "constraint.task.goal",
+      "type": "task"
+    },
+    {
+      "id": "constraint.model.decoder",
+      "type": "model"
+    },
+    {
+      "id": "constraint.shape.model",
+      "type": "shape"
+    },
+    {
+      "id": "constraint.numeric.policy",
+      "type": "numeric"
+    },
+    {
+      "id": "constraint.template.library",
+      "type": "template"
+    },
+    {
+      "id": "constraint.arch.design_space",
+      "type": "architecture"
+    },
+    {
+      "id": "constraint.deployment.board",
+      "type": "deployment"
+    },
+    {
+      "id": "constraint.memory.board",
+      "type": "memory"
+    },
+    {
+      "id": "constraint.runtime.board",
+      "type": "runtime"
+    },
+    {
+      "id": "constraint.tool.profile",
+      "type": "tool_profile"
+    },
+    {
+      "id": "constraint.tool.protocols",
+      "type": "tool"
+    },
+    {
+      "id": "constraint.case.adapter",
+      "type": "verification_case_adapter"
+    },
+    {
+      "id": "constraint.human.boundary",
+      "type": "human_boundary"
+    },
+    {
+      "id": "constraint.cross_layer.input_consistency",
+      "type": "cross_layer_consistency"
+    }
+  ],
+  "design_id": "qwen2_spatialacc_agent_run",
+  "edges": 8,
+  "failed_invariants": [],
+  "nodes": 21,
+  "sacg_memory": {
+    "active_contamination_barriers": [],
+    "open_backtrack_requests": [],
+    "open_retry_requests": [],
+    "policy": "SACG memory is the long-context design memory for preserving goals, failures, lessons, retry needs, and cross-layer consistency across stages.",
+    "recent_contamination_barriers": [],
+    "recent_failure_lessons": [],
+    "recent_stage_outcomes": [],
+    "schema_version": "spatialaccagent.sacg_memory.v0"
+  }
+}
+</state_summary>
+
+<candidate_stage_artifact>
+{
+  "attention_contract": {
+    "attention_kind": "gqa",
+    "causal": true,
+    "gqa_group_size": 7,
+    "head_dim": 64,
+    "kv_storage_policy": "bounded by target_max_seq_len inside the generated block; external KV-cache materialization requires a later memory-layout artifact",
+    "num_kv_heads": 2,
+    "num_q_heads": 14,
+    "position_encoding": {
+      "rope_theta": 1000000.0,
+      "type": "rope"
+    },
+    "seq_len_bound": 16,
+    "stage_boundary": "logical self_attention stage covers QKV projection, RoPE, causal GQA attention, and output projection for decoder-block planning"
+  },
+  "branch_join_contracts": {
+    "join_contracts": [
+      {
+        "fire_rule": "all required inputs valid before fire",
+        "input_edges": [
+          "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+          "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main"
+        ],
+        "node": "stage_02_residual_add_1",
+        "pairing_key": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ]
+      },
+      {
+        "fire_rule": "all required inputs valid before fire",
+        "input_edges": [
+          "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+          "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul"
+        ],
+        "node": "stage_06_activation_mul",
+        "pairing_key": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ]
+      },
+      {
+        "fire_rule": "all required inputs valid before fire",
+        "input_edges": [
+          "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+          "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main"
+        ],
+        "node": "stage_08_residual_add_2",
+        "pairing_key": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ]
+      }
+    ],
+    "split_contracts": [
+      {
+        "branch_dequeue_rule": "after duplication each branch observes its own downstream ready",
+        "duplicator": "ready_valid_broadcast_with_per_output_fifo",
+        "node": "stage_03_rms_norm_2",
+        "output_edges": [
+          "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+          "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch"
+        ],
+        "source_accept_rule": "source beat is accepted only when all branch FIFOs can enqueue the same token/tile/lane/word"
+      }
+    ]
+  },
+  "buffer_plan": [
+    {
+      "buffer_id": "buffer.edge_data_block_input_to_stage_00_rms_norm_1_input",
+      "depth": 32,
+      "edge_id": "edge.data.block_input.to.stage_00_rms_norm_1.input",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_block_input_to_stage_02_residual_add_1_residual_skip",
+      "depth": 64,
+      "edge_id": "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main",
+      "depth": 32,
+      "edge_id": "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "decouple adjacent pipeline stages",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main",
+      "depth": 32,
+      "edge_id": "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "decouple adjacent pipeline stages",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main",
+      "depth": 32,
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "decouple adjacent pipeline stages",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip",
+      "depth": 64,
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch",
+      "depth": 64,
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch",
+      "depth": 64,
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul",
+      "depth": 32,
+      "edge_id": "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul",
+      "depth": 32,
+      "edge_id": "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main",
+      "depth": 32,
+      "edge_id": "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "decouple adjacent pipeline stages",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main",
+      "depth": 32,
+      "edge_id": "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "decouple adjacent pipeline stages",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_08_residual_add_2_to_block_output_output",
+      "depth": 32,
+      "edge_id": "edge.data.stage_08_residual_add_2.to.block_output.output",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    }
+  ],
+  "checker_results": [
+    {
+      "checker": "operator_order_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "operator_order=['rms_norm_1', 'self_attention', 'residual_add_1', 'rms_norm_2', 'mlp_gate_proj', 'mlp_up_proj', 'activation_mul', 'mlp_down_proj', 'residual_add_2']",
+      "warnings": []
+    },
+    {
+      "checker": "stream_data_edge_mirror_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "edges=13",
+      "warnings": []
+    },
+    {
+      "checker": "edge_stream_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "checked_edges=13",
+      "warnings": []
+    },
+    {
+      "checker": "shape_numeric_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "elem_bits=16, accumulator_bits=32",
+      "warnings": []
+    },
+    {
+      "checker": "branch_join_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "splits=1, joins=3",
+      "warnings": []
+    },
+    {
+      "checker": "buffer_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "buffers=13, allowed_depths=[32, 64]",
+      "warnings": []
+    },
+    {
+      "checker": "liveness_backpressure_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "directed graph is acyclic; bounded FIFOs provide elasticity and backpressure, not latency-equality proof",
+      "warnings": []
+    },
+    {
+      "checker": "memory_runtime_contract_check",
+      "errors": [
+        "runtime_config_requirements missing h2c_device_template",
+        "runtime_config_requirements missing c2h_device_template"
+      ],
+      "status": "fail",
+      "summary": "runtime_config_requirements missing h2c_device_template; runtime_config_requirements missing c2h_device_template",
+      "warnings": []
+    },
+    {
+      "checker": "attention_semantics_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "q=14, kv=2, head_dim=64",
+      "warnings": []
+    },
+    {
+      "checker": "template_binding_static_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "stages=9, free_form_rtl_generation=false",
+      "warnings": []
+    }
+  ],
+  "checker_summary": {
+    "errors": [
+      "memory_runtime_contract_check: runtime_config_requirements missing h2c_device_template",
+      "memory_runtime_contract_check: runtime_config_requirements missing c2h_device_template"
+    ],
+    "failed": 1,
+    "passed": 9,
+    "warnings": []
+  },
+  "constraints_touched": [
+    "constraint.model.decoder",
+    "constraint.shape.model",
+    "constraint.template.library",
+    "constraint.arch.design_space",
+    "constraint.memory.board",
+    "constraint.runtime.board",
+    "constraint.cross_layer.input_consistency"
+  ],
+  "data_edges": [
+    {
+      "axi_beats": 896,
+      "dst_port": "in",
+      "dst_stage": "stage_00_rms_norm_1",
+      "edge_id": "edge.data.block_input.to.stage_00_rms_norm_1.input",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "input",
+      "src_port": "out",
+      "src_stage": "block_input",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "skip",
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "residual_skip",
+      "src_port": "residual",
+      "src_stage": "block_input",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 448,
+      "dst_port": "in",
+      "dst_stage": "stage_01_self_attention",
+      "edge_id": "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_00_rms_norm_1",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 28672,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "main",
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_01_self_attention",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "in",
+      "dst_stage": "stage_03_rms_norm_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_02_residual_add_1",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "skip",
+      "dst_stage": "stage_08_residual_add_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "residual_skip",
+      "src_port": "residual",
+      "src_stage": "stage_02_residual_add_1",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 448,
+      "dst_port": "in",
+      "dst_stage": "stage_04_mlp_gate_proj",
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "mlp_gate_branch",
+      "src_port": "out",
+      "src_stage": "stage_03_rms_norm_2",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 28672,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 448,
+      "dst_port": "in",
+      "dst_stage": "stage_05_mlp_up_proj",
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "mlp_up_branch",
+      "src_port": "out",
+      "src_stage": "stage_03_rms_norm_2",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 28672,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 2432,
+      "dst_port": "lhs",
+      "dst_stage": "stage_06_activation_mul",
+      "edge_id": "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "mlp_gate_to_mul",
+      "src_port": "out",
+      "src_stage": "stage_04_mlp_gate_proj",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "transfer_count_bytes": 155648,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 2432,
+      "dst_port": "rhs",
+      "dst_stage": "stage_06_activation_mul",
+      "edge_id": "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "mlp_up_to_mul",
+      "src_port": "out",
+      "src_stage": "stage_05_mlp_up_proj",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "transfer_count_bytes": 155648,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 2432,
+      "dst_port": "in",
+      "dst_stage": "stage_07_mlp_down_proj",
+      "edge_id": "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_06_activation_mul",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "transfer_count_bytes": 155648,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "main",
+      "dst_stage": "stage_08_residual_add_2",
+      "edge_id": "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_07_mlp_down_proj",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "in",
+      "dst_stage": "block_output",
+      "edge_id": "edge.data.stage_08_residual_add_2.to.block_output.output",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "output",
+      "src_port": "out",
+      "src_stage": "stage_08_residual_add_2",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    }
+  ],
+  "flow_control": {
+    "deadlock_rule": "directed graph must be acyclic, or every cycle must include a bounded buffer and a checker-backed ready path proof",
+    "join_policy": "all_required_inputs_valid_before_fire",
+    "protocol": "ready_valid",
+    "split_policy": "source beat is duplicated into all branch FIFOs atomically; branch dequeue observes downstream ready independently"
+  },
+  "memory_schedule": {
+    "board_axi": {
+      "addr_width_bits": 37,
+      "alignment_bytes": 64,
+      "calibration_done_signal": "c0_init_calib_complete",
+      "core_side_interface_name": "c0_ddr4_s_axi_*",
+      "data_bytes": 64,
+      "data_width_bits": 512,
+      "ddr_channels": 1,
+      "ddr_type": "DDR4",
+      "id_width_bits": 4,
+      "protocol": "AXI",
+      "source": "constraint.memory.board.memory_system",
+      "wstrb_width_bits": 64
+    },
+    "num_layers": 24,
+    "policy": "double_buffered_weights_and_streamed_activations",
+    "required_regions": [
+      {
+        "alignment_bytes": 64,
+        "name": "input_tokens",
+        "role": "activation_input",
+        "size_bytes": 57344,
+        "size_bytes_formula": "seq_len * hidden_size * block_input_bits / 8"
+      },
+      {
+        "alignment_bytes": 64,
+        "name": "output_tokens",
+        "role": "activation_output",
+        "size_bytes": 57344,
+        "size_bytes_formula": "seq_len * hidden_size * block_output_bits / 8"
+      },
+      {
+        "alignment_bytes": 64,
+        "name": "activation_ping",
+        "role": "activation_buffer",
+        "size_bytes": 155648,
+        "size_bytes_formula": "max(seq_len * hidden_size * block_bits, seq_len * intermediate_size * elem_bits) / 8"
+      },
+      {
+        "alignment_bytes": 64,
+        "name": "activation_pong",
+        "role": "activation_buffer",
+        "size_bytes": 155648,
+        "size_bytes_formula": "same as activation_ping"
+      },
+      {
+        "alignment_bytes": 64,
+        "name": "weight_buffer_a",
+        "role": "weight_buffer",
+        "size_bytes": 29826048,
+        "size_bytes_formula": "per_layer(qkv + out_proj + gate + up + down + norms)"
+      },
+      {
+        "alignment_bytes": 64,
+        "name": "weight_buffer_b",
+        "role": "weight_buffer",
+        "size_bytes": 29826048,
+        "size_bytes_formula": "same as weight_buffer_a"
+      }
+    ],
+    "runtime_config_requirements": {
+      "c2h_device_template": null,
+      "c2h_read_targets": [],
+      "command_sequence": [
+        "write input and first-layer weights through XDMA H2C into DDR/control regions",
+        "write start/control register",
+        "prefetch next-layer weights into inactive weight buffer while active layer computes",
+        "poll status register through XDMA C2H until done/status changes",
+        "read output header/data from output DDR region"
+      ],
+      "control_protocol": "xdma_raw_register_and_ddr",
+      "h2c_device_template": null,
+      "h2c_write_targets": []
+    },
+    "sequence_semantics": {
+      "runtime_cfg_rule": "runtime sequence length must be <= target_max_seq_len; transfer counts derive from the configured sequence length",
+      "target_seq_len_role": "compile-time maximum and default fixed tile bound for generated artifacts"
+    },
+    "target_seq_len": 16
+  },
+  "model_type": "qwen2",
+  "numeric_stream_policy": {
+    "accumulator_bits": 32,
+    "activation_bits": 16,
+    "policy_id": "current_run_numeric_policy.md",
+    "rounding": "nearest_even",
+    "saturation": false,
+    "scale_bits": 16,
+    "source": "constraint.numeric.policy.default_rules",
+    "weight_bits": 16
+  },
+  "pipeline_style": "operator_stream_pipeline",
+  "schema_version": "spatialaccagent.pipeline_plan.v0",
+  "stage": "pipeline_planning",
+  "stage_gate_policy": {
+    "current_stage_acceptance": [
+      "operator order, edge graph, stream order, tensor shape, element width, branch/join, buffer, liveness, attention, template, memory/runtime handoff contracts must be checker-backed",
+      "symbolic_first_order latency is only planning metadata and must not be used as throughput, timing, or hardware pass evidence",
+      "stream_edges must mirror data_edges including block_input, residual-skip, and block_output boundary edges",
+      "buffer implementations must be concrete bounded ready/valid FIFOs; ping-pong buffers are reserved for memory layout artifacts"
+    ],
+    "later_stage_obligations": [
+      "Stage 4 binds final per-template parameters from this contract",
+      "Stage 5 assigns concrete memory base addresses and generates/elaborates template-bound Chisel",
+      "Stage 6+ supplies real VCS/Verilator/Vivado/board evidence; Stage 3 must not claim hardware pass"
+    ],
+    "risk_classification_rule": "If checker_results pass, do not list those resolved current-stage items as risks. Put later-stage obligations in proposed_actions unless a current Stage 3 checker failed."
+  },
+  "stages": [
+    {
+      "index": 0,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "latency": {
+        "cycles": 1792,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 32,
+        "internal_elem_bits": 32,
+        "output_bits": 16
+      },
+      "op": "rms_norm_1",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "source": "Norm.scala",
+      "stage_id": "stage_00_rms_norm_1",
+      "template_id": "norm"
+    },
+    {
+      "index": 1,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "latency": {
+        "cycles": 30464,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 16,
+        "internal_elem_bits": 16,
+        "output_bits": 32
+      },
+      "op": "self_attention",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "source": "Attention.scala",
+      "stage_id": "stage_01_self_attention",
+      "template_id": "attention"
+    },
+    {
+      "index": 2,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "latency": {
+        "cycles": 1792,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 32,
+        "internal_elem_bits": 32,
+        "output_bits": 32
+      },
+      "op": "residual_add_1",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "source": "Residual.scala",
+      "stage_id": "stage_02_residual_add_1",
+      "template_id": "residual"
+    },
+    {
+      "index": 3,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "latency": {
+        "cycles": 1792,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 32,
+        "internal_elem_bits": 32,
+        "output_bits": 16
+      },
+      "op": "rms_norm_2",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "source": "Norm.scala",
+      "stage_id": "stage_03_rms_norm_2",
+      "template_id": "norm"
+    },
+    {
+      "index": 4,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "latency": {
+        "cycles": 8716288,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 4864
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 16,
+        "internal_elem_bits": 16,
+        "output_bits": 16
+      },
+      "op": "mlp_gate_proj",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "source": "FFN.scala",
+      "stage_id": "stage_04_mlp_gate_proj",
+      "template_id": "ffn"
+    },
+    {
+      "index": 5,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "latency": {
+        "cycles": 8716288,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 4864
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 16,
+        "internal_elem_bits": 16,
+        "output_bits": 16
+      },
+      "op": "mlp_up_proj",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "source": "FFN.scala",
+      "stage_id": "stage_05_mlp_up_proj",
+      "template_id": "ffn"
+    },
+    {
+      "index": 6,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "latency": {
+        "cycles": 9728,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 4864
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 16,
+        "internal_elem_bits": 16,
+        "output_bits": 16
+      },
+      "op": "activation_mul",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "source": "Elementwise.scala",
+      "stage_id": "stage_06_activation_mul",
+      "template_id": "elementwise"
+    },
+    {
+      "index": 7,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "latency": {
+        "cycles": 8716288,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 16,
+        "internal_elem_bits": 16,
+        "output_bits": 32
+      },
+      "op": "mlp_down_proj",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "source": "FFN.scala",
+      "stage_id": "stage_07_mlp_down_proj",
+      "template_id": "ffn"
+    },
+    {
+      "index": 8,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "latency": {
+        "cycles": 1792,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 32,
+        "internal_elem_bits": 32,
+        "output_bits": 32
+      },
+      "op": "residual_add_2",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "source": "Residual.scala",
+      "stage_id": "stage_08_residual_add_2",
+      "template_id": "residual"
+    }
+  ],
+  "status": "incomplete",
+  "stream_edges": [
+    {
+      "axi_beats": 896,
+      "dst_port": "in",
+      "dst_stage": "stage_00_rms_norm_1",
+      "edge_id": "edge.data.block_input.to.stage_00_rms_norm_1.input",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "input",
+      "src_port": "out",
+      "src_stage": "block_input",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "skip",
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "residual_skip",
+      "src_port": "residual",
+      "src_stage": "block_input",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 448,
+      "dst_port": "in",
+      "dst_stage": "stage_01_self_attention",
+      "edge_id": "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_00_rms_norm_1",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 28672,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "main",
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_01_self_attention",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "in",
+      "dst_stage": "stage_03_rms_norm_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_02_residual_add_1",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "skip",
+      "dst_stage": "stage_08_residual_add_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "residual_skip",
+      "src_port": "residual",
+      "src_stage": "stage_02_residual_add_1",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 448,
+      "dst_port": "in",
+      "dst_stage": "stage_04_mlp_gate_proj",
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "mlp_gate_branch",
+      "src_port": "out",
+      "src_stage": "stage_03_rms_norm_2",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 28672,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 448,
+      "dst_port": "in",
+      "dst_stage": "stage_05_mlp_up_proj",
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "mlp_up_branch",
+      "src_port": "out",
+      "src_stage": "stage_03_rms_norm_2",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 28672,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 2432,
+      "dst_port": "lhs",
+      "dst_stage": "stage_06_activation_mul",
+      "edge_id": "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "mlp_gate_to_mul",
+      "src_port": "out",
+      "src_stage": "stage_04_mlp_gate_proj",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "transfer_count_bytes": 155648,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 2432,
+      "dst_port": "rhs",
+      "dst_stage": "stage_06_activation_mul",
+      "edge_id": "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "mlp_up_to_mul",
+      "src_port": "out",
+      "src_stage": "stage_05_mlp_up_proj",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "transfer_count_bytes": 155648,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 2432,
+      "dst_port": "in",
+      "dst_stage": "stage_07_mlp_down_proj",
+      "edge_id": "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+      "element_bits": 16,
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_06_activation_mul",
+      "stream_beats_per_axi_beat": 4,
+      "tensor": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "transfer_count_bytes": 155648,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "main",
+      "dst_stage": "stage_08_residual_add_2",
+      "edge_id": "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_07_mlp_down_proj",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    },
+    {
+      "axi_beats": 896,
+      "dst_port": "in",
+      "dst_stage": "block_output",
+      "edge_id": "edge.data.stage_08_residual_add_2.to.block_output.output",
+      "element_bits": 32,
+      "flow_control": "ready_valid",
+      "kind": "output",
+      "src_port": "out",
+      "src_stage": "stage_08_residual_add_2",
+      "stream_beats_per_axi_beat": 2,
+      "tensor": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "transfer_count_bytes": 57344,
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "valid_byte_policy": "full_beats_only"
+    }
+  ]
+}
+</candidate_stage_artifact>
+
+<sacg_memory>
+{}
+</sacg_memory>
+
+<action_grounding_registry>
+{
+  "acceptance_checkers": [
+    "sacg_static_check",
+    "task_card_check",
+    "model_config_check",
+    "numeric_policy_check",
+    "template_coverage_check",
+    "parameter_binding_static_check",
+    "code_generation_manifest_static_check",
+    "stream_plan_check",
+    "memory_runtime_plan_check",
+    "boundary_contract_check",
+    "failure_localization_check",
+    "targeted_replay_check",
+    "causal_repair_context_check",
+    "template_binding_static_check",
+    "repair_boundary_check",
+    "verification_plan_static_check",
+    "tool_protocol_check",
+    "human_boundary_check",
+    "hierarchical_verification_plan_check",
+    "verification_artifact_contract_check",
+    "sacg_reference_check",
+    "case_stage_leaf_static",
+    "boundary_contract_check",
+    "case_leaf_functional",
+    "case_leaf_golden_compare",
+    "case_single_transformer_layer",
+    "case_single_layer_functional",
+    "case_single_layer_golden_compare",
+    "single_transformer_layer",
+    "case_multilayer_pipeline",
+    "case_multilayer_functional",
+    "case_pipeline_deadlock_check",
+    "case_real_weight_artifacts",
+    "case_tb_scaffold",
+    "case_board_interface_discovery",
+    "case_axi_ddr_interface",
+    "case_axi_protocol_check",
+    "case_ddr_image_roundtrip",
+    "case_runtime_abi_check",
+    "case_runtime_bitstream",
+    "board_runtime",
+    "functional_sim",
+    "deadlock_watchdog",
+    "data_order_trace_check",
+    "transfer_count_check",
+    "addr_map_check",
+    "numeric_compare",
+    "artifact_hash_check",
+    "codegen_compile_gate_check",
+    "codegen_contract_check",
+    "codegen_package_static_check",
+    "verification_artifact_contract_check",
+    "required_real_tool_evidence_check",
+    "real_tool.case_real_weight_artifacts",
+    "real_tool.boundary_contract_check",
+    "real_tool.case_leaf_functional",
+    "real_tool.case_leaf_golden_compare",
+    "real_tool.case_tb_scaffold",
+    "real_tool.case_single_transformer_layer",
+    "real_tool.case_single_layer_functional",
+    "real_tool.case_single_layer_golden_compare",
+    "real_tool.case_multilayer_functional",
+    "real_tool.case_pipeline_deadlock_check",
+    "real_tool.case_vcs_functional_sim",
+    "real_tool.case_verilator_functional_sim",
+    "real_tool.case_deadlock_axi_check",
+    "real_tool.case_board_interface_discovery",
+    "real_tool.case_axi_ddr_interface",
+    "real_tool.case_axi_protocol_check",
+    "real_tool.case_ddr_image_roundtrip",
+    "real_tool.case_vivado_synthesis",
+    "real_tool.case_vivado_synthesis_report_check",
+    "real_tool.case_vivado_implementation",
+    "real_tool.case_vivado_implementation_report_check",
+    "real_tool.case_board_shell_wrapper_generate",
+    "real_tool.case_runtime_abi_check",
+    "real_tool.case_runtime_bitstream",
+    "real_tool.app_shell_target_discovery_contract",
+    "real_tool.app_shell_target_hint_synthesis",
+    "real_tool.app_shell_target_discovery_after_hint",
+    "real_tool.board_runtime",
+    "real_tool.app_shell_runtime_bitstream",
+    "implementation_package_static",
+    "timing_resource_check",
+    "deployment_board_check",
+    "output_validity_check",
+    "targeted_failed_checker_rerun",
+    "verification_action_audit_check",
+    "llm_io_quality_check",
+    "llm_semantic_extraction_check",
+    "no_static_keyword_semantic_matching_check",
+    "sacg_memory_check",
+    "stage_retry_request_check",
+    "stage_backtrack_request_check",
+    "stage_artifact_trust_barrier_check",
+    "backend_app_shell_integration_contract_static_check",
+    "backend_app_shell_target_discovery_check",
+    "backend_app_shell_target_hint_synthesis_check",
+    "backend_bounded_recovery_action_check",
+    "backend_recovery_approval_ingest_check"
+  ],
+  "policy": "Executable actions should use these tool/checker names when applicable. If a required capability is missing, name it as planned_tool.<short_name> and make the rationale say that multi-agent system capability implementation is required.",
+  "schema_version": "spatialaccagent.action_grounding_registry.v0",
+  "tool_roles": [
+    "sacg_validate",
+    "sacg_static_check",
+    "task_card_check",
+    "model_config_check",
+    "numeric_policy_check",
+    "template_coverage_check",
+    "parameter_binding_static_check",
+    "code_generation_manifest_static_check",
+    "stream_plan_check",
+    "memory_runtime_plan_check",
+    "repair_boundary_check",
+    "boundary_contract_generate",
+    "failure_slice_localization",
+    "boundary_trace_rerun",
+    "targeted_replay",
+    "causal_repair_context_pack",
+    "verification_plan_static_check",
+    "tool_protocol_check",
+    "human_boundary_check",
+    "hierarchical_verification_plan_check",
+    "verification_artifact_contract_check",
+    "sacg_reference_check",
+    "codegen_compile_gate",
+    "codegen_contract_check",
+    "codegen_package_static_check",
+    "verification_artifact_contract_check",
+    "required_real_tool_evidence_check",
+    "real_tool_evidence_check",
+    "case_real_weight_artifacts",
+    "case_stage_leaf_static",
+    "boundary_contract_check",
+    "case_leaf_functional",
+    "case_leaf_golden_compare",
+    "case_single_transformer_layer",
+    "case_single_layer_functional",
+    "case_single_layer_golden_compare",
+    "single_transformer_layer",
+    "case_multilayer_pipeline",
+    "case_multilayer_functional",
+    "case_pipeline_deadlock_check",
+    "case_tb_scaffold",
+    "case_vcs_functional_sim",
+    "functional_sim",
+    "functional_sim_contract_check",
+    "case_verilator_functional_sim",
+    "case_weight_manifest_generate",
+    "case_tb_scaffold_generate",
+    "case_vcs_evidence_analyzer",
+    "deadlock_watchdog",
+    "data_order_trace_check",
+    "transfer_count_check",
+    "addr_map_check",
+    "numeric_compare",
+    "artifact_hash_check",
+    "case_deadlock_axi_check",
+    "case_board_interface_discovery",
+    "case_axi_ddr_interface",
+    "case_axi_protocol_check",
+    "case_ddr_image_roundtrip",
+    "case_vivado_synthesis",
+    "case_vivado_synthesis_report_check",
+    "case_vivado_implementation",
+    "case_vivado_implementation_report_check",
+    "case_board_shell_wrapper_generate",
+    "case_runtime_abi_check",
+    "case_runtime_bitstream",
+    "app_shell_target_discovery_contract",
+    "app_shell_target_hint_synthesis",
+    "app_shell_target_discovery_after_hint",
+    "backend_bounded_recovery_action",
+    "backend_recovery_approval_ingest",
+    "implementation_package_static",
+    "timing_resource_check",
+    "deployment_board_check",
+    "board_runtime",
+    "output_validity_check",
+    "targeted_failed_checker_rerun",
+    "bounded_template_repair",
+    "pipeline_repair",
+    "memory_runtime_repair",
+    "architecture_review",
+    "team_aggregate",
+    "verification_action_audit",
+    "llm_io_quality_check",
+    "llm_semantic_extraction",
+    "no_static_keyword_semantic_matching",
+    "sacg_memory_update",
+    "stage_retry_request",
+    "stage_backtrack_request",
+    "stage_artifact_trust_barrier",
+    "app_shell_runtime_bitstream"
+  ]
+}
+</action_grounding_registry>
+
+<action_contract_examples>
+[
+  {
+    "acceptance_checkers": [
+      "functional_sim",
+      "data_order_trace_check",
+      "deadlock_watchdog"
+    ],
+    "action_type": "real_tool_execution",
+    "consumes": [
+      "artifact.stage6.verification_artifact_contract",
+      "generated/chisel/runtime/runtime_config.json",
+      "verification/case_real_weights/input_manifest.json",
+      "verification/case_real_weights/packed_weight_manifest.json"
+    ],
+    "id": "example.run_real_functional_sim",
+    "on_failure": "route simulator evidence to Stage8 repair with the violated SACG constraints; do not proceed to Vivado.",
+    "produces": [
+      "verification/case_diagnostics/vcs_functional_diagnosis.json"
+    ],
+    "rationale": "Run a real simulator after static hierarchy and artifact gates pass.",
+    "requires_approval": false,
+    "stage": "verification",
+    "tool_roles": [
+      "case_vcs_functional_sim",
+      "case_vcs_evidence_analyzer"
+    ]
+  },
+  {
+    "acceptance_checkers": [
+      "planned_checker.formal_axi_property_check"
+    ],
+    "action_type": "system_capability_gap",
+    "consumes": [
+      "artifact.stage6.verification_plan"
+    ],
+    "id": "example.declare_missing_capability",
+    "on_failure": "block promotion until the planned checker is implemented or an approved equivalent exists.",
+    "produces": [
+      "planned checker implementation task"
+    ],
+    "rationale": "The design team needs a checker not yet implemented by the multi-agent system.",
+    "requires_approval": true,
+    "stage": "verification",
+    "tool_roles": [
+      "planned_tool.formal_axi_property_runner"
+    ]
+  },
+  {
+    "acceptance_checkers": [
+      "backend_app_shell_target_hint_synthesis_check",
+      "backend_bounded_recovery_action_check",
+      "human_boundary_check"
+    ],
+    "action_type": "bounded_recovery",
+    "consumes": [
+      "artifact.stage9.app_shell_integration_contract",
+      "artifact.stage9.app_shell_target_selection_decision",
+      "backend_board/case_diagnostics/app_shell_target_discovery_after_hint.json"
+    ],
+    "id": "example.ambiguous_backend_target_recovery",
+    "on_failure": "keep runtime bitstream and board runtime blocked until the target contract has cited evidence or explicit approval",
+    "produces": [
+      "artifact.stage9.backend_bounded_recovery_actions"
+    ],
+    "rationale": "Real backend evidence produced multiple plausible shell integration targets, so the design team must not guess.",
+    "requires_approval": true,
+    "stage": "backend_board",
+    "tool_roles": [
+      "app_shell_target_hint_synthesis",
+      "app_shell_target_discovery_after_hint"
+    ]
+  }
+]
+</action_contract_examples>
+
+<llm_policy>
+{
+  "api_key_configured": true,
+  "configuration_error": "",
+  "endpoint_configured": true,
+  "enforce": true,
+  "locked_model": "gpt-5.5",
+  "mode": "llm",
+  "model": "gpt-5.5",
+  "model_override_approval_path": "",
+  "policy": "LLM planning/review is mandatory for agentic stages when enforce=true; fallback records are diagnostics only and must not be consumed as successful agent decisions.",
+  "requested_model_override": "",
+  "schema_version": "spatialaccagent.llm_policy.v0"
+}
+</llm_policy>
+
+<output_schema>
+{
+  "additionalProperties": true,
+  "properties": {
+    "agent": {
+      "type": "string"
+    },
+    "approval_required_for": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "executable_actions": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "acceptance_checkers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "action_type": {
+            "type": "string"
+          },
+          "consumes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "on_failure": {
+            "type": "string"
+          },
+          "produces": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "requires_approval": {
+            "type": "boolean"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "tool_roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "stage",
+          "action_type",
+          "rationale",
+          "consumes",
+          "produces",
+          "tool_roles",
+          "acceptance_checkers",
+          "on_failure",
+          "requires_approval"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "observations": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "proposed_actions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "risks": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "sacg_focus": {
+      "additionalProperties": true,
+      "properties": {
+        "artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "constraints": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodes",
+        "edges",
+        "constraints",
+        "artifacts"
+      ],
+      "type": "object"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "stage": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "agent",
+    "stage",
+    "status",
+    "summary",
+    "sacg_focus",
+    "observations",
+    "risks",
+    "proposed_actions",
+    "executable_actions",
+    "approval_required_for"
+  ],
+  "type": "object"
+}
+</output_schema>
+
+Your response will be processed by a program, not a human.
+Return exactly one valid JSON object matching <output_schema>.
+Do not wrap the object in another key such as result, output, or task_card.
+Do not include markdown, code fences, comments, or any text outside the JSON object.

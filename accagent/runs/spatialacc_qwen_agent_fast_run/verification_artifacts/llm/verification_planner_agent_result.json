@@ -1,0 +1,467 @@
+{
+  "agent": "verification_planner_agent",
+  "duration_sec": 309.57698836798954,
+  "error": null,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "agent": "verification_planner_agent",
+    "approval_required_for": [
+      "Any ambiguous selection among multiple evidence-supported sample-project wrappers, simulation source sets, clocks, AXI/DDR interfaces, Vivado targets, or app-shell targets after discovery.",
+      "Any architecture, connected-layer pipeline structure, stream ordering, residual buffering policy, memory layout, transfer layout, runtime ABI/register map, or major trusted-template change needed for closure.",
+      "Any change to numeric policy, cast points, rounding, saturation, resolved atol, rtol, or max_mismatch_fraction after the semantic run identity is frozen.",
+      "Any broad lower-layer backtrack not supported by a current-layer boundary trace that binds the contradiction to the challenged lower-layer gate or module.",
+      "Any change to the approved Transformer decoder-block architecture or operator order."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "artifact_hash_check",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check"
+        ],
+        "action_type": "cross_layer_semantic_gate_refinement",
+        "consumes": [
+          "candidate_verification_plan",
+          "candidate_verification_artifact_contract",
+          "candidate_verification_review_artifact",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.design_artifact_manifest",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "candidate_verification_artifact_contract.case_adapter"
+        ],
+        "id": "stage6.01_refine_semantic_identity_and_scope",
+        "on_failure": "Keep all Stage7 functional gates disabled. Report the missing checkpoint catalog, stimulus provenance, real target-model execution, resolved tolerance, testbench hash, loader binding, or Transformer-block scope field as a checker/golden-reference or contract capability gap. Do not generate expected output randomly, derive it from RTL, add model-tail scope, or loosen tolerance.",
+        "produces": [
+          "artifact.stage6.semantic_run_identity_contract",
+          "artifact.stage6.transformer_block_weight_scope_contract",
+          "artifact.stage6.target_model_reference_binding_contract",
+          "artifact.stage6.resolved_numeric_comparison_contract",
+          "refined dependencies among case_real_weight_artifacts, case_semantic_testbench, and case_target_model_reference",
+          "refined artifact.stage6.verification_plan",
+          "refined artifact.stage6.verification_artifact_contract"
+        ],
+        "rationale": "Materialize one canonical semantic identity before any functional gate. It must bind the immutable checkpoint and full Transformer-block-only tensor catalog, deterministic or real stimulus provenance, target-model block-boundary inference on that exact stimulus/checkpoint, Stage4 numeric policy, resolved atol/rtol/max_mismatch_fraction, semantic testbench hashes, loader/harness binding, and expected transfer/order contract. Initial absent tolerance values may use the frozen framework loose defaults, but no value may be derived from DUT output or changed during repair.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "numeric_policy_check",
+          "artifact_hash_check",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "board_functional_gate_dag_refinement",
+        "consumes": [
+          "artifact.stage6.semantic_run_identity_contract",
+          "candidate_verification_artifact_contract.verification_gate_dag",
+          "candidate_verification_artifact_contract.required_tool_protocols",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "stage6_gate_dag_refinement_policy"
+        ],
+        "id": "stage6.02_refine_exact_sample_project_board_subgraph",
+        "on_failure": "Keep multi-layer board wrapping, functional_sim, Vivado, bitstream, and board runtime blocked. If the contract cannot uniquely bind the exact sample-project wrapper, sources, clocks, AXI/DDR interfaces, or targets from evidence, emit cited alternatives for bounded approval instead of guessing or hardcoding names.",
+        "produces": [
+          "artifact.stage6.exact_board_wrapper_contract",
+          "artifact.stage6.target_discovery_policy_contract",
+          "artifact.stage6.board_simulation_source_hash_contract",
+          "configured case_board_shell_wrapper_generate evidence gate",
+          "refined case_board_interface_discovery -> exact wrapper -> case_axi_ddr_interface -> functional_sim edges",
+          "functional_sim selector rule requiring case_vcs_functional_sim and rejecting liveness/smoke acceptance",
+          "refined artifact.stage6.verification_artifact_contract"
+        ],
+        "rationale": "Insert an unavoidable exact-board integration subgraph: evidence-based interface discovery from the current user-supplied sample project, cited target_discovery_policy, exact wrapper and simulation-source hash capture, wrapper/address/order contract generation, and canonical real board-wrapped simulation. The contract must prevent a simplified wrapper or liveness-only run from satisfying functional_sim.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "real_weight_semantic_evidence_check",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "verification_gate_dag_refinement",
+        "consumes": [
+          "artifact.stage6.semantic_run_identity_contract",
+          "artifact.stage6.exact_board_wrapper_contract",
+          "candidate_verification_artifact_contract.verification_gate_dag",
+          "candidate_verification_artifact_contract.gate_protocol_coverage",
+          "candidate_verification_review_artifact.stage_gate_policy.current_certificate_validation",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.design_artifact_manifest"
+        ],
+        "id": "stage6.03_refine_hierarchical_promotion_and_consumption_edges",
+        "on_failure": "Keep the affected maturity certificate and every higher layer blocked. Identify the exact missing gate, cross-run identity, uncovered in-scope tensor, unbound loader/harness, missing dynamic classifier, or illegal out-of-scope tensor. Do not mint a partial certificate or treat file presence, sampled weights, smoke output, or a lower-layer pass as sufficient.",
+        "produces": [
+          "artifact.stage6.hierarchical_promotion_contract",
+          "per-leaf required-tensor subset and executed-consumption certificate requirements",
+          "single-layer complete Transformer-block consumption requirement",
+          "canonical board-run evidence fanout contract",
+          "same-run certificate aggregation rules",
+          "refined operator-leaf, single-layer, and board semantic evidence dependencies",
+          "refined artifact.stage6.verification_plan",
+          "refined artifact.stage6.verification_artifact_contract"
+        ],
+        "rationale": "Make each maturity certificate depend on real same-run functional evidence, numeric/order/liveness checks, and executed weight binding. Operator-leaf closure must aggregate all declared leaves and their required tensor subsets; connected single-layer closure must prove complete Transformer-block tensor consumption; board closure must derive value, order, transfer-count, protocol, DDR, liveness, and output-validity views from the canonical exact-wrapper run.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "boundary_contract_check",
+          "failure_localization_check",
+          "targeted_replay_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "stage_backtrack_request_check",
+          "verification_artifact_contract_check"
+        ],
+        "action_type": "repair_boundary_contract_review",
+        "consumes": [
+          "candidate_verification_artifact_contract.debug_closure_contract",
+          "candidate_verification_artifact_contract.backtrack_contract",
+          "stage6_gate_dag_refinement_policy.anti_spin_rule",
+          "stage6_gate_dag_refinement_policy.backtrack_rule",
+          "artifact.stage6.semantic_run_identity_contract",
+          "artifact.stage6.hierarchical_promotion_contract",
+          "sacg_memory_truth"
+        ],
+        "id": "stage6.04_materialize_contract_guided_failure_routes",
+        "on_failure": "Keep Stage7 disabled because a real failure would lack a checker-driven next decision. Repair only the missing failure edge, instrumentation requirement, or handoff field. Do not broadly reopen lower layers, patch a downstream symptom, or rely on static scripts or human memory for failure routing.",
+        "produces": [
+          "artifact.stage6.failure_route_contract",
+          "artifact.stage6.immutable_repair_envelope",
+          "functional-gate-to-localization transition matrix",
+          "targeted replay and bounded rerun matrix",
+          "lower-layer contradiction and backtrack evidence schema",
+          "repair handoff schema with root_candidate_module, violated_contract, failure_signature, causal_path, targeted_replay_plan, and minimal_repair_context"
+        ],
+        "rationale": "Attach explicit failure transitions to operator-leaf, single-layer, and board-wrapped gates. Every real liveness, value, order, or protocol failure must preserve the immutable semantic identity, localize the earliest causal boundary using the CCTG/boundary trace, create a compact repair handoff, apply only a bounded contract-preserving repair, and rerun the failed layer. Lower-layer backtrack is allowed only for a trace-bound contradiction.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "boundary_contract_generate",
+          "boundary_contract_check",
+          "failure_slice_localization",
+          "boundary_trace_rerun",
+          "targeted_replay",
+          "causal_repair_context_pack",
+          "repair_boundary_check",
+          "stage_backtrack_request",
+          "verification_artifact_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "implementation_package_static",
+          "timing_resource_check",
+          "deployment_board_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "board_and_backend_gate_dag_refinement",
+        "consumes": [
+          "artifact.stage6.exact_board_wrapper_contract",
+          "artifact.stage6.hierarchical_promotion_contract",
+          "candidate_verification_artifact_contract.verification_gate_dag",
+          "candidate_verification_artifact_contract.required_tool_protocols",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "stage6_gate_dag_refinement_policy.downstream_after_three_layer_closure"
+        ],
+        "id": "stage6.05_harden_board_backend_and_runtime_closure",
+        "on_failure": "Keep synthesis and all later backend/runtime gates disabled. Report the unbound implementation package, report checker, timing requirement, target-discovery policy, ABI dependency, wrapper hash, or board-runtime semantic checker. If target evidence is ambiguous, request bounded approval; do not guess targets or substitute a simplified project.",
+        "produces": [
+          "artifact.stage6.backend_runtime_gate_contract",
+          "implementation_package_static -> case_vivado_synthesis edge",
+          "case_vivado_implementation -> timing_resource_check edge",
+          "evidence-based app-shell target discovery and approval boundary contract",
+          "case_runtime_abi_check -> case_runtime_bitstream edge",
+          "exact wrapper/source hash lineage through synthesis, implementation, bitstream, and runtime",
+          "board_runtime semantic acceptance dependencies",
+          "refined artifact.stage6.verification_artifact_contract"
+        ],
+        "rationale": "Harden post-verification closure without running backend tools in Stage6. Require board semantic closure before backend, implementation-package validation before synthesis, real synthesis and implementation report checks, explicit timing/resource and deployment-board checks, evidence-based app-shell target discovery, runtime ABI validation before bitstream generation, immutable exact-wrapper hash continuity, and board-runtime numeric/output plus complete in-scope weight-consumption evidence.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "implementation_package_static",
+          "timing_resource_check",
+          "deployment_board_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check",
+          "stage_artifact_trust_barrier_check",
+          "verification_action_audit_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "stage7_gate_selector_contract_refinement",
+        "consumes": [
+          "artifact.stage6.semantic_run_identity_contract",
+          "artifact.stage6.exact_board_wrapper_contract",
+          "artifact.stage6.hierarchical_promotion_contract",
+          "artifact.stage6.failure_route_contract",
+          "artifact.stage6.backend_runtime_gate_contract",
+          "candidate_verification_review_artifact.stage_gate_policy.current_certificate_validation",
+          "retry_reconciliation_contract",
+          "sacg_memory_truth"
+        ],
+        "id": "stage6.06_refine_stage7_gate_selector",
+        "on_failure": "Do not enable Stage7 tools or reuse any existing certificate. Report the cyclic dependency, stale-contract acceptance path, cross-run aggregation path, smoke-only acceptance path, skipped layer, or missing failure route and refine only the selector contract.",
+        "produces": [
+          "artifact.stage6.stage7_gate_selector_contract",
+          "current-contract certificate validation rules",
+          "operator-leaf -> single-layer -> board-wrapped eligibility state machine",
+          "failed-gate localization and retry routing table",
+          "backend enablement rule requiring board semantic certificate",
+          "Stage7 consumption trust-barrier policy"
+        ],
+        "rationale": "Create a deterministic Stage7 selector that enables only the lowest unclosed maturity layer, validates certificates against the current contract rather than artifact presence, enforces same-run identity across all certificate inputs, rejects smoke/liveness-only evidence, and routes failures to localization rather than higher-layer execution.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "sacg_validate",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "real_tool_evidence_check",
+          "artifact_hash_check",
+          "stage_artifact_trust_barrier",
+          "verification_action_audit"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "verification_action_audit_check",
+          "llm_io_quality_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "stage_contract_validation",
+        "consumes": [
+          "refined artifact.stage6.verification_plan",
+          "refined artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.semantic_run_identity_contract",
+          "artifact.stage6.exact_board_wrapper_contract",
+          "artifact.stage6.hierarchical_promotion_contract",
+          "artifact.stage6.failure_route_contract",
+          "artifact.stage6.backend_runtime_gate_contract",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "retry_reconciliation_contract",
+          "sacg_memory_truth"
+        ],
+        "id": "stage6.07_validate_and_promote_refined_contract",
+        "on_failure": "Leave the candidate Stage6 transition unpromoted and keep Stage7 disabled. Return the exact failed current-stage checker and affected refinement artifact for bounded correction. Do not reinterpret pending VCS, Vivado, bitstream, or board-runtime execution as a Stage6 pass or failure.",
+        "produces": [
+          "artifact.stage6.refinement_validation_report",
+          "artifact.stage6.promoted_verification_plan",
+          "artifact.stage6.promoted_verification_artifact_contract",
+          "artifact.stage6.stage7_handoff",
+          "Stage7 enablement decision"
+        ],
+        "rationale": "Run the full current-stage promotion preconditions over the materialized refinements. Promotion is allowed only when the refined plan, hierarchy, artifact contract, grounded actions, LLM output quality, SACG references, and human boundaries all pass; downstream real-tool evidence remains pending rather than being claimed.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "sacg_validate",
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "verification_action_audit",
+          "llm_io_quality_check"
+        ]
+      }
+    ],
+    "observations": [
+      "All reported current Stage6 static checkers pass. The three pending items\u2014deadlock watchdog, implementation package evidence, and board runtime\u2014are explicitly downstream execution obligations and are not themselves current-stage failures.",
+      "SACG memory truth reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests. There is therefore no current memory blocker to refining or promoting a replacement Stage6 contract.",
+      "The retry reconciliation contract has no source blockers. A refined Stage6 transition can be promoted normally after its current checks pass; no prior same-stage artifact needs special supersession handling.",
+      "The candidate correctly declares the required bottom-up order: operator/leaf modules, connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapped system. It also correctly excludes embedding/tokenization, final model norm, LM head/logits, and sampling from accelerator scope.",
+      "The leaf aggregate is reported to cover all nine declared leaf stages. Detailed leaf rows were compacted, so no missing-leaf conclusion is inferred from their omission.",
+      "The visible DAG orders case_target_model_reference before case_semantic_testbench but does not expose a separate immutable stimulus-provenance edge. The refined contract must ensure that expected outputs are produced by executing the target model on the exact stimulus and checkpoint later consumed by the DUT, regardless of which tool creates the stimulus.",
+      "The Stage4 numeric binding identifies data types, cast points, rounding, and saturation, but the visible Stage6 gate nodes do not bind resolved atol, rtol, and max_mismatch_fraction into one immutable run identity. Initial missing values may use framework loose defaults, but those values must be resolved before functional simulation and frozen without consulting DUT output.",
+      "The contract states that complete transformer-block weight consumption is required, but artifact presence and DDR image roundtrip are not sufficient proof. Each promotion certificate must require complete-scope tensor hashes, a bound loader/harness, and executed evidence that every required in-scope tensor was consumed.",
+      "Board interface discovery and AXI/DDR interface gates exist, but the required protocol list does not expose an unavoidable exact sample-project wrapper-generation/source-hash gate between discovery and canonical simulation. The design-team actions reference such a tool, so the Stage6 DAG should materialize the corresponding dependency rather than leave it to action ordering.",
+      "The functional_sim node admits a liveness candidate alongside the real functional simulator. The selector must explicitly prohibit case_vcs_liveness, smoke output, or a simplified wrapper from satisfying functional acceptance and must select the canonical real board-wrapped simulation.",
+      "The board semantic aggregate depends on relevant high-level gates, but the visible critical node does not itself make numeric_compare, data_order_trace_check, transfer_count_check, output_validity_check, and complete weight-consumption validation mandatory views of the same canonical simulation identity.",
+      "The debug closure policy is sound, but failure localization, targeted replay, bounded repair, and rerun are described mainly as policy/tool roles rather than explicit failure transitions attached to each functional maturity gate. These transitions should be materialized before real failures occur.",
+      "Backend ordering needs hardening: implementation-package validation should precede synthesis, timing/resource closure should be explicit after implementation, runtime ABI validation should gate bitstream generation, and board runtime must include target-reference numeric/output and executed weight-consumption closure rather than log presence alone.",
+      "Current Stage7 promotion certificates are absent or stale for the current contract, as expected before execution. Stage7 must not infer reuse from artifact presence and must issue each certificate only after all gates for the same immutable run identity pass."
+    ],
+    "proposed_actions": [
+      "Execute the Stage6 refinement actions in ID order and rerun the Stage6 static, hierarchy, artifact-contract, action-audit, and LLM quality checks before enabling any Stage7 real-tool action.",
+      "After Stage6 promotion, Stage7 should execute only the lowest eligible layer selected by the refined gate selector. A failed layer must route to same-layer localization and targeted rerun; it must not promote to the next layer.",
+      "Treat actual VCS/Verilator, Vivado, bitstream, and board-runtime runs as later-stage obligations. Their current absence is not a Stage6 failure, but their protocols and acceptance dependencies must be made unavoidable now.",
+      "If board or backend discovery later returns multiple evidence-supported targets, pause at that discovery gate and request bounded approval with cited alternatives; do not guess a module, clock, interface, path, or target name.",
+      "If a failure requires architecture, pipeline structure, stream order, memory layout, runtime ABI, numeric policy/tolerance, or a major trusted-template change, request approval rather than broadening a bounded repair."
+    ],
+    "risks": [
+      "Current-stage contract risk: existing_stage6_refinements is marked missing and stage6_refinement_materialization is empty, so the stronger design-team intentions are not yet guaranteed to become executable Stage7 dependencies.",
+      "Semantic contamination risk: without a canonical identity joining checkpoint hashes, in-scope tensor catalog, stimulus provenance, target-model reference hashes, numeric policy and resolved tolerance, semantic testbench hashes, loader binding, and wrapper hashes, evidence from different runs could be aggregated.",
+      "Golden-reference risk: the current ordering could permit ambiguous stimulus/reference generation unless the contract explicitly requires real target-model execution on the DUT stimulus. Random expected outputs, RTL-derived expected outputs, identity fallbacks, or full-model logits must remain forbidden.",
+      "Weight-evidence risk: file existence, sampled tensors, manifest presence, or DDR roundtrip alone could be mistaken for complete DUT consumption of all Transformer-block tensors.",
+      "Board-fidelity risk: interface discovery without exact sample-project wrapper and simulation-source hashes could allow a simplified AXI/DDR substitute to pass functional simulation.",
+      "Dynamic-coverage risk: a liveness-only VCS candidate could be selected as functional_sim unless the selector requires value, order, transfer count, deadlock, protocol, and semantic comparison evidence from the canonical real run.",
+      "Repair-loop risk: without explicit failure edges, a later agent could skip localization, patch a downstream symptom, broadly reopen lower layers, or promote to a higher layer after a failed gate.",
+      "Backend/runtime risk: absent explicit implementation-package, timing/resource, target-discovery, ABI-before-bitstream, and board-runtime semantic edges could allow implementation artifacts or a runtime log to be treated as final closure.",
+      "Cross-layer consistency risk: model/block boundary, shapes, cast points, data order, DDR address layout, runtime ABI, generated implementation, and exact board wrapper must all be hash-bound to the same promoted contract; the visible DAG does not yet expose one cross-layer identity artifact.",
+      "Approval risk: real Vivado or sample-project evidence may identify multiple plausible wrappers, source sets, clocks, AXI/DDR interfaces, or app-shell targets. Selection must be approval-bound rather than guessed or hardcoded."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.design_artifact_manifest",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "artifact.stage6.verification_plan",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.semantic_run_identity_contract",
+        "artifact.stage6.exact_board_wrapper_contract",
+        "artifact.stage6.hierarchical_promotion_contract",
+        "artifact.stage6.failure_route_contract",
+        "artifact.stage6.backend_runtime_gate_contract",
+        "artifact.stage6.stage7_gate_selector_contract"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.verification.hierarchy",
+        "constraint.verification.artifacts",
+        "constraint.numeric.policy",
+        "constraint.parameter.binding",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.protocols",
+        "constraint.deployment.board",
+        "constraint.human.boundary",
+        "constraint.pipeline.structure",
+        "constraint.model.decoder",
+        "constraint.shape.model"
+      ],
+      "edges": [
+        "immutable checkpoint and complete in-scope tensor catalog -> deterministic or real stimulus provenance -> target-model block-boundary reference -> sealed semantic testbench identity",
+        "per-leaf executed weight binding and functional evidence -> operator-leaf promotion certificate",
+        "operator-leaf certificate -> connected single-transformer-layer functional and golden closure",
+        "single-layer certificate -> exact sample-project interface discovery -> exact wrapper/source hash contract",
+        "exact wrapper contract plus multi-layer pipeline plus immutable semantic identity -> canonical board-wrapped functional simulation",
+        "canonical simulation -> value, order, transfer-count, liveness, AXI protocol, DDR roundtrip, and complete weight-consumption classifications from the same run",
+        "failed current layer -> boundary trace/CCTG localization -> bounded repair -> targeted rerun of the failed layer",
+        "board semantic certificate -> implementation package -> Vivado synthesis/report -> implementation/report/timing -> runtime ABI -> bitstream -> board runtime semantic closure"
+      ],
+      "nodes": [
+        "case_real_weight_artifacts",
+        "case_semantic_testbench",
+        "case_target_model_reference",
+        "case_operator_leaf_semantic_evidence",
+        "case_single_layer_semantic_evidence",
+        "case_board_interface_discovery",
+        "case_multilayer_pipeline",
+        "case_axi_ddr_interface",
+        "functional_sim",
+        "case_multilayer_functional",
+        "case_pipeline_deadlock_check",
+        "case_axi_protocol_check",
+        "case_ddr_image_roundtrip",
+        "case_board_semantic_evidence",
+        "case_vivado_synthesis",
+        "case_vivado_implementation",
+        "case_runtime_abi_check",
+        "case_runtime_bitstream",
+        "board_runtime",
+        "boundary_contract_check"
+      ]
+    },
+    "schema_version": "spatialaccagent.verification_planner_review.v0",
+    "stage": "verification_artifacts",
+    "status": "refinement_required_before_stage7",
+    "summary": "The candidate Stage6 static checks pass and SACG memory has no active contamination barrier, retry request, or backtrack request. However, the visible refinement materialization is empty and the DAG does not yet make several real-world acceptance requirements structurally unavoidable: a canonical immutable semantic run identity with resolved tolerance, executed complete-scope DUT weight-consumption proof, exact sample-project wrapper/source hash binding, canonical value/order/liveness classification from the same board-wrapped simulation, explicit failure-to-localization routes, and timing/runtime semantic closure. Stage7 real-tool execution should remain disabled until the bounded Stage6 refinements below pass the Stage6 contract, action-audit, and quality checks. No hardware correctness pass is claimed."
+  },
+  "prompt_bytes": 119887,
+  "prompt_hash": "019dafb2feb2d44f29183ea47a64df12880c41ecdb93b3734c3e83e6419a6992",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.verification_planner_review.v0\",\"agent\":\"verification_planner_agent\",\"stage\":\"verification_artifacts\",\"status\":\"refinement_required_before_stage7\",\"summary\":\"The candidate Stage6 static checks pass and SACG memory has no active contamination barrier, retry request, or backtrack request. However, the visible refinement materialization is empty and the DAG does not yet make several real-world acceptance requirements structurally unavoidable: a canonical immutable semantic run identity with resolved tolerance, executed complete-scope DUT weight-consumption proof, exact sample-project wrapper/source hash binding, canonical value/order/liveness classification from the same board-wrapped simulation, explicit failure-to-localization routes, and timing/runtime semantic closure. Stage7 real-tool execution should remain disabled until the bounded Stage6 refinements below pass the Stage6 contract, action-audit, and quality checks. No hardware correctness pass is claimed.\",\"sacg_focus\":{\"nodes\":[\"case_real_weight_artifacts\",\"case_semantic_testbench\",\"case_target_model_reference\",\"case_operator_leaf_semantic_evidence\",\"case_single_layer_semantic_evidence\",\"case_board_interface_discovery\",\"case_multilayer_pipeline\",\"case_axi_ddr_interface\",\"functional_sim\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_board_semantic_evidence\",\"case_vivado_synthesis\",\"case_vivado_implementation\",\"case_runtime_abi_check\",\"case_runtime_bitstream\",\"board_runtime\",\"boundary_contract_check\"],\"edges\":[\"immutable checkpoint and complete in-scope tensor catalog -> deterministic or real stimulus provenance -> target-model block-boundary reference -> sealed semantic testbench identity\",\"per-leaf executed weight binding and functional evidence -> operator-leaf promotion certificate\",\"operator-leaf certificate -> connected single-transformer-layer functional and golden closure\",\"single-layer certificate -> exact sample-project interface discovery -> exact wrapper/source hash contract\",\"exact wrapper contract plus multi-layer pipeline plus immutable semantic identity -> canonical board-wrapped functional simulation\",\"canonical simulation -> value, order, transfer-count, liveness, AXI protocol, DDR roundtrip, and complete weight-consumption classifications from the same run\",\"failed current layer -> boundary trace/CCTG localization -> bounded repair -> targeted rerun of the failed layer\",\"board semantic certificate -> implementation package -> Vivado synthesis/report -> implementation/report/timing -> runtime ABI -> bitstream -> board runtime semantic closure\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.verification.artifacts\",\"constraint.numeric.policy\",\"constraint.parameter.binding\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.protocols\",\"constraint.deployment.board\",\"constraint.human.boundary\",\"constraint.pipeline.structure\",\"constraint.model.decoder\",\"constraint.shape.model\"],\"artifacts\":[\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage6.verification_plan\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.semantic_run_identity_contract\",\"artifact.stage6.exact_board_wrapper_contract\",\"artifact.stage6.hierarchical_promotion_contract\",\"artifact.stage6.failure_route_contract\",\"artifact.stage6.backend_runtime_gate_contract\",\"artifact.stage6.stage7_gate_selector_contract\"]},\"observations\":[\"All reported current Stage6 static checkers pass. The three pending items\u2014deadlock watchdog, implementation package evidence, and board runtime\u2014are explicitly downstream execution obligations and are not themselves current-stage failures.\",\"SACG memory truth reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests. There is therefore no current memory blocker to refining or promoting a replacement Stage6 contract.\",\"The retry reconciliation contract has no source blockers. A refined Stage6 transition can be promoted normally after its current checks pass; no prior same-stage artifact needs special supersession handling.\",\"The candidate correctly declares the required bottom-up order: operator/leaf modules, connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapped system. It also correctly excludes embedding/tokenization, final model norm, LM head/logits, and sampling from accelerator scope.\",\"The leaf aggregate is reported to cover all nine declared leaf stages. Detailed leaf rows were compacted, so no missing-leaf conclusion is inferred from their omission.\",\"The visible DAG orders case_target_model_reference before case_semantic_testbench but does not expose a separate immutable stimulus-provenance edge. The refined contract must ensure that expected outputs are produced by executing the target model on the exact stimulus and checkpoint later consumed by the DUT, regardless of which tool creates the stimulus.\",\"The Stage4 numeric binding identifies data types, cast points, rounding, and saturation, but the visible Stage6 gate nodes do not bind resolved atol, rtol, and max_mismatch_fraction into one immutable run identity. Initial missing values may use framework loose defaults, but those values must be resolved before functional simulation and frozen without consulting DUT output.\",\"The contract states that complete transformer-block weight consumption is required, but artifact presence and DDR image roundtrip are not sufficient proof. Each promotion certificate must require complete-scope tensor hashes, a bound loader/harness, and executed evidence that every required in-scope tensor was consumed.\",\"Board interface discovery and AXI/DDR interface gates exist, but the required protocol list does not expose an unavoidable exact sample-project wrapper-generation/source-hash gate between discovery and canonical simulation. The design-team actions reference such a tool, so the Stage6 DAG should materialize the corresponding dependency rather than leave it to action ordering.\",\"The functional_sim node admits a liveness candidate alongside the real functional simulator. The selector must explicitly prohibit case_vcs_liveness, smoke output, or a simplified wrapper from satisfying functional acceptance and must select the canonical real board-wrapped simulation.\",\"The board semantic aggregate depends on relevant high-level gates, but the visible critical node does not itself make numeric_compare, data_order_trace_check, transfer_count_check, output_validity_check, and complete weight-consumption validation mandatory views of the same canonical simulation identity.\",\"The debug closure policy is sound, but failure localization, targeted replay, bounded repair, and rerun are described mainly as policy/tool roles rather than explicit failure transitions attached to each functional maturity gate. These transitions should be materialized before real failures occur.\",\"Backend ordering needs hardening: implementation-package validation should precede synthesis, timing/resource closure should be explicit after implementation, runtime ABI validation should gate bitstream generation, and board runtime must include target-reference numeric/output and executed weight-consumption closure rather than log presence alone.\",\"Current Stage7 promotion certificates are absent or stale for the current contract, as expected before execution. Stage7 must not infer reuse from artifact presence and must issue each certificate only after all gates for the same immutable run identity pass.\"],\"risks\":[\"Current-stage contract risk: existing_stage6_refinements is marked missing and stage6_refinement_materialization is empty, so the stronger design-team intentions are not yet guaranteed to become executable Stage7 dependencies.\",\"Semantic contamination risk: without a canonical identity joining checkpoint hashes, in-scope tensor catalog, stimulus provenance, target-model reference hashes, numeric policy and resolved tolerance, semantic testbench hashes, loader binding, and wrapper hashes, evidence from different runs could be aggregated.\",\"Golden-reference risk: the current ordering could permit ambiguous stimulus/reference generation unless the contract explicitly requires real target-model execution on the DUT stimulus. Random expected outputs, RTL-derived expected outputs, identity fallbacks, or full-model logits must remain forbidden.\",\"Weight-evidence risk: file existence, sampled tensors, manifest presence, or DDR roundtrip alone could be mistaken for complete DUT consumption of all Transformer-block tensors.\",\"Board-fidelity risk: interface discovery without exact sample-project wrapper and simulation-source hashes could allow a simplified AXI/DDR substitute to pass functional simulation.\",\"Dynamic-coverage risk: a liveness-only VCS candidate could be selected as functional_sim unless the selector requires value, order, transfer count, deadlock, protocol, and semantic comparison evidence from the canonical real run.\",\"Repair-loop risk: without explicit failure edges, a later agent could skip localization, patch a downstream symptom, broadly reopen lower layers, or promote to a higher layer after a failed gate.\",\"Backend/runtime risk: absent explicit implementation-package, timing/resource, target-discovery, ABI-before-bitstream, and board-runtime semantic edges could allow implementation artifacts or a runtime log to be treated as final closure.\",\"Cross-layer consistency risk: model/block boundary, shapes, cast points, data order, DDR address layout, runtime ABI, generated implementation, and exact board wrapper must all be hash-bound to the same promoted contract; the visible DAG does not yet expose one cross-layer identity artifact.\",\"Approval risk: real Vivado or sample-project evidence may identify multiple plausible wrappers, source sets, clocks, AXI/DDR interfaces, or app-shell targets. Selection must be approval-bound rather than guessed or hardcoded.\"],\"proposed_actions\":[\"Execute the Stage6 refinement actions in ID order and rerun the Stage6 static, hierarchy, artifact-contract, action-audit, and LLM quality checks before enabling any Stage7 real-tool action.\",\"After Stage6 promotion, Stage7 should execute only the lowest eligible layer selected by the refined gate selector. A failed layer must route to same-layer localization and targeted rerun; it must not promote to the next layer.\",\"Treat actual VCS/Verilator, Vivado, bitstream, and board-runtime runs as later-stage obligations. Their current absence is not a Stage6 failure, but their protocols and acceptance dependencies must be made unavoidable now.\",\"If board or backend discovery later returns multiple evidence-supported targets, pause at that discovery gate and request bounded approval with cited alternatives; do not guess a module, clock, interface, path, or target name.\",\"If a failure requires architecture, pipeline structure, stream order, memory layout, runtime ABI, numeric policy/tolerance, or a major trusted-template change, request approval rather than broadening a bounded repair.\"],\"executable_actions\":[{\"id\":\"stage6.01_refine_semantic_identity_and_scope\",\"stage\":\"verification_artifacts\",\"action_type\":\"cross_layer_semantic_gate_refinement\",\"rationale\":\"Materialize one canonical semantic identity before any functional gate. It must bind the immutable checkpoint and full Transformer-block-only tensor catalog, deterministic or real stimulus provenance, target-model block-boundary inference on that exact stimulus/checkpoint, Stage4 numeric policy, resolved atol/rtol/max_mismatch_fraction, semantic testbench hashes, loader/harness binding, and expected transfer/order contract. Initial absent tolerance values may use the frozen framework loose defaults, but no value may be derived from DUT output or changed during repair.\",\"consumes\":[\"candidate_verification_plan\",\"candidate_verification_artifact_contract\",\"candidate_verification_review_artifact\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"candidate_verification_artifact_contract.case_adapter\"],\"produces\":[\"artifact.stage6.semantic_run_identity_contract\",\"artifact.stage6.transformer_block_weight_scope_contract\",\"artifact.stage6.target_model_reference_binding_contract\",\"artifact.stage6.resolved_numeric_comparison_contract\",\"refined dependencies among case_real_weight_artifacts, case_semantic_testbench, and case_target_model_reference\",\"refined artifact.stage6.verification_plan\",\"refined artifact.stage6.verification_artifact_contract\"],\"tool_roles\":[\"numeric_policy_check\",\"artifact_hash_check\",\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\"],\"acceptance_checkers\":[\"numeric_policy_check\",\"artifact_hash_check\",\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\"],\"on_failure\":\"Keep all Stage7 functional gates disabled. Report the missing checkpoint catalog, stimulus provenance, real target-model execution, resolved tolerance, testbench hash, loader binding, or Transformer-block scope field as a checker/golden-reference or contract capability gap. Do not generate expected output randomly, derive it from RTL, add model-tail scope, or loosen tolerance.\",\"requires_approval\":false},{\"id\":\"stage6.02_refine_exact_sample_project_board_subgraph\",\"stage\":\"verification_artifacts\",\"action_type\":\"board_functional_gate_dag_refinement\",\"rationale\":\"Insert an unavoidable exact-board integration subgraph: evidence-based interface discovery from the current user-supplied sample project, cited target_discovery_policy, exact wrapper and simulation-source hash capture, wrapper/address/order contract generation, and canonical real board-wrapped simulation. The contract must prevent a simplified wrapper or liveness-only run from satisfying functional_sim.\",\"consumes\":[\"artifact.stage6.semantic_run_identity_contract\",\"candidate_verification_artifact_contract.verification_gate_dag\",\"candidate_verification_artifact_contract.required_tool_protocols\",\"artifact.stage3.pipeline_plan\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"stage6_gate_dag_refinement_policy\"],\"produces\":[\"artifact.stage6.exact_board_wrapper_contract\",\"artifact.stage6.target_discovery_policy_contract\",\"artifact.stage6.board_simulation_source_hash_contract\",\"configured case_board_shell_wrapper_generate evidence gate\",\"refined case_board_interface_discovery -> exact wrapper -> case_axi_ddr_interface -> functional_sim edges\",\"functional_sim selector rule requiring case_vcs_functional_sim and rejecting liveness/smoke acceptance\",\"refined artifact.stage6.verification_artifact_contract\"],\"tool_roles\":[\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"artifact_hash_check\"],\"on_failure\":\"Keep multi-layer board wrapping, functional_sim, Vivado, bitstream, and board runtime blocked. If the contract cannot uniquely bind the exact sample-project wrapper, sources, clocks, AXI/DDR interfaces, or targets from evidence, emit cited alternatives for bounded approval instead of guessing or hardcoding names.\",\"requires_approval\":false},{\"id\":\"stage6.03_refine_hierarchical_promotion_and_consumption_edges\",\"stage\":\"verification_artifacts\",\"action_type\":\"verification_gate_dag_refinement\",\"rationale\":\"Make each maturity certificate depend on real same-run functional evidence, numeric/order/liveness checks, and executed weight binding. Operator-leaf closure must aggregate all declared leaves and their required tensor subsets; connected single-layer closure must prove complete Transformer-block tensor consumption; board closure must derive value, order, transfer-count, protocol, DDR, liveness, and output-validity views from the canonical exact-wrapper run.\",\"consumes\":[\"artifact.stage6.semantic_run_identity_contract\",\"artifact.stage6.exact_board_wrapper_contract\",\"candidate_verification_artifact_contract.verification_gate_dag\",\"candidate_verification_artifact_contract.gate_protocol_coverage\",\"candidate_verification_review_artifact.stage_gate_policy.current_certificate_validation\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.design_artifact_manifest\"],\"produces\":[\"artifact.stage6.hierarchical_promotion_contract\",\"per-leaf required-tensor subset and executed-consumption certificate requirements\",\"single-layer complete Transformer-block consumption requirement\",\"canonical board-run evidence fanout contract\",\"same-run certificate aggregation rules\",\"refined operator-leaf, single-layer, and board semantic evidence dependencies\",\"refined artifact.stage6.verification_plan\",\"refined artifact.stage6.verification_artifact_contract\"],\"tool_roles\":[\"verification_plan_static_check\",\"tool_protocol_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"artifact_hash_check\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"tool_protocol_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"real_weight_semantic_evidence_check\",\"required_real_tool_evidence_check\",\"artifact_hash_check\",\"repair_boundary_check\"],\"on_failure\":\"Keep the affected maturity certificate and every higher layer blocked. Identify the exact missing gate, cross-run identity, uncovered in-scope tensor, unbound loader/harness, missing dynamic classifier, or illegal out-of-scope tensor. Do not mint a partial certificate or treat file presence, sampled weights, smoke output, or a lower-layer pass as sufficient.\",\"requires_approval\":false},{\"id\":\"stage6.04_materialize_contract_guided_failure_routes\",\"stage\":\"verification_artifacts\",\"action_type\":\"repair_boundary_contract_review\",\"rationale\":\"Attach explicit failure transitions to operator-leaf, single-layer, and board-wrapped gates. Every real liveness, value, order, or protocol failure must preserve the immutable semantic identity, localize the earliest causal boundary using the CCTG/boundary trace, create a compact repair handoff, apply only a bounded contract-preserving repair, and rerun the failed layer. Lower-layer backtrack is allowed only for a trace-bound contradiction.\",\"consumes\":[\"candidate_verification_artifact_contract.debug_closure_contract\",\"candidate_verification_artifact_contract.backtrack_contract\",\"stage6_gate_dag_refinement_policy.anti_spin_rule\",\"stage6_gate_dag_refinement_policy.backtrack_rule\",\"artifact.stage6.semantic_run_identity_contract\",\"artifact.stage6.hierarchical_promotion_contract\",\"sacg_memory_truth\"],\"produces\":[\"artifact.stage6.failure_route_contract\",\"artifact.stage6.immutable_repair_envelope\",\"functional-gate-to-localization transition matrix\",\"targeted replay and bounded rerun matrix\",\"lower-layer contradiction and backtrack evidence schema\",\"repair handoff schema with root_candidate_module, violated_contract, failure_signature, causal_path, targeted_replay_plan, and minimal_repair_context\"],\"tool_roles\":[\"boundary_contract_generate\",\"boundary_contract_check\",\"failure_slice_localization\",\"boundary_trace_rerun\",\"targeted_replay\",\"causal_repair_context_pack\",\"repair_boundary_check\",\"stage_backtrack_request\",\"verification_artifact_contract_check\"],\"acceptance_checkers\":[\"boundary_contract_check\",\"failure_localization_check\",\"targeted_replay_check\",\"causal_repair_context_check\",\"repair_boundary_check\",\"stage_backtrack_request_check\",\"verification_artifact_contract_check\"],\"on_failure\":\"Keep Stage7 disabled because a real failure would lack a checker-driven next decision. Repair only the missing failure edge, instrumentation requirement, or handoff field. Do not broadly reopen lower layers, patch a downstream symptom, or rely on static scripts or human memory for failure routing.\",\"requires_approval\":false},{\"id\":\"stage6.05_harden_board_backend_and_runtime_closure\",\"stage\":\"verification_artifacts\",\"action_type\":\"board_and_backend_gate_dag_refinement\",\"rationale\":\"Harden post-verification closure without running backend tools in Stage6. Require board semantic closure before backend, implementation-package validation before synthesis, real synthesis and implementation report checks, explicit timing/resource and deployment-board checks, evidence-based app-shell target discovery, runtime ABI validation before bitstream generation, immutable exact-wrapper hash continuity, and board-runtime numeric/output plus complete in-scope weight-consumption evidence.\",\"consumes\":[\"artifact.stage6.exact_board_wrapper_contract\",\"artifact.stage6.hierarchical_promotion_contract\",\"candidate_verification_artifact_contract.verification_gate_dag\",\"candidate_verification_artifact_contract.required_tool_protocols\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"stage6_gate_dag_refinement_policy.downstream_after_three_layer_closure\"],\"produces\":[\"artifact.stage6.backend_runtime_gate_contract\",\"implementation_package_static -> case_vivado_synthesis edge\",\"case_vivado_implementation -> timing_resource_check edge\",\"evidence-based app-shell target discovery and approval boundary contract\",\"case_runtime_abi_check -> case_runtime_bitstream edge\",\"exact wrapper/source hash lineage through synthesis, implementation, bitstream, and runtime\",\"board_runtime semantic acceptance dependencies\",\"refined artifact.stage6.verification_artifact_contract\"],\"tool_roles\":[\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"implementation_package_static\",\"timing_resource_check\",\"deployment_board_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"implementation_package_static\",\"timing_resource_check\",\"deployment_board_check\",\"artifact_hash_check\"],\"on_failure\":\"Keep synthesis and all later backend/runtime gates disabled. Report the unbound implementation package, report checker, timing requirement, target-discovery policy, ABI dependency, wrapper hash, or board-runtime semantic checker. If target evidence is ambiguous, request bounded approval; do not guess targets or substitute a simplified project.\",\"requires_approval\":false},{\"id\":\"stage6.06_refine_stage7_gate_selector\",\"stage\":\"verification_artifacts\",\"action_type\":\"stage7_gate_selector_contract_refinement\",\"rationale\":\"Create a deterministic Stage7 selector that enables only the lowest unclosed maturity layer, validates certificates against the current contract rather than artifact presence, enforces same-run identity across all certificate inputs, rejects smoke/liveness-only evidence, and routes failures to localization rather than higher-layer execution.\",\"consumes\":[\"artifact.stage6.semantic_run_identity_contract\",\"artifact.stage6.exact_board_wrapper_contract\",\"artifact.stage6.hierarchical_promotion_contract\",\"artifact.stage6.failure_route_contract\",\"artifact.stage6.backend_runtime_gate_contract\",\"candidate_verification_review_artifact.stage_gate_policy.current_certificate_validation\",\"retry_reconciliation_contract\",\"sacg_memory_truth\"],\"produces\":[\"artifact.stage6.stage7_gate_selector_contract\",\"current-contract certificate validation rules\",\"operator-leaf -> single-layer -> board-wrapped eligibility state machine\",\"failed-gate localization and retry routing table\",\"backend enablement rule requiring board semantic certificate\",\"Stage7 consumption trust-barrier policy\"],\"tool_roles\":[\"sacg_validate\",\"verification_plan_static_check\",\"tool_protocol_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"real_tool_evidence_check\",\"artifact_hash_check\",\"stage_artifact_trust_barrier\",\"verification_action_audit\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"tool_protocol_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"artifact_hash_check\",\"stage_artifact_trust_barrier_check\",\"verification_action_audit_check\",\"sacg_memory_check\"],\"on_failure\":\"Do not enable Stage7 tools or reuse any existing certificate. Report the cyclic dependency, stale-contract acceptance path, cross-run aggregation path, smoke-only acceptance path, skipped layer, or missing failure route and refine only the selector contract.\",\"requires_approval\":false},{\"id\":\"stage6.07_validate_and_promote_refined_contract\",\"stage\":\"verification_artifacts\",\"action_type\":\"stage_contract_validation\",\"rationale\":\"Run the full current-stage promotion preconditions over the materialized refinements. Promotion is allowed only when the refined plan, hierarchy, artifact contract, grounded actions, LLM output quality, SACG references, and human boundaries all pass; downstream real-tool evidence remains pending rather than being claimed.\",\"consumes\":[\"refined artifact.stage6.verification_plan\",\"refined artifact.stage6.verification_artifact_contract\",\"artifact.stage6.semantic_run_identity_contract\",\"artifact.stage6.exact_board_wrapper_contract\",\"artifact.stage6.hierarchical_promotion_contract\",\"artifact.stage6.failure_route_contract\",\"artifact.stage6.backend_runtime_gate_contract\",\"artifact.stage6.stage7_gate_selector_contract\",\"retry_reconciliation_contract\",\"sacg_memory_truth\"],\"produces\":[\"artifact.stage6.refinement_validation_report\",\"artifact.stage6.promoted_verification_plan\",\"artifact.stage6.promoted_verification_artifact_contract\",\"artifact.stage6.stage7_handoff\",\"Stage7 enablement decision\"],\"tool_roles\":[\"sacg_validate\",\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"verification_action_audit\",\"llm_io_quality_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"verification_action_audit_check\",\"llm_io_quality_check\",\"sacg_memory_check\"],\"on_failure\":\"Leave the candidate Stage6 transition unpromoted and keep Stage7 disabled. Return the exact failed current-stage checker and affected refinement artifact for bounded correction. Do not reinterpret pending VCS, Vivado, bitstream, or board-runtime execution as a Stage6 pass or failure.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any ambiguous selection among multiple evidence-supported sample-project wrappers, simulation source sets, clocks, AXI/DDR interfaces, Vivado targets, or app-shell targets after discovery.\",\"Any architecture, connected-layer pipeline structure, stream ordering, residual buffering policy, memory layout, transfer layout, runtime ABI/register map, or major trusted-template change needed for closure.\",\"Any change to numeric policy, cast points, rounding, saturation, resolved atol, rtol, or max_mismatch_fraction after the semantic run identity is frozen.\",\"Any broad lower-layer backtrack not supported by a current-layer boundary trace that binds the contradiction to the challenged lower-layer gate or module.\",\"Any change to the approved Transformer decoder-block architecture or operator order.\"]}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/llm/verification_planner_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/llm/verification_planner_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "verification_artifacts",
+  "stream": true,
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

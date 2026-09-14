@@ -35,12 +35,18 @@ shift
 
 export PS1="${PS1-}"
 set +u
-source ~/.bashrc
-conda activate "${CONDA_ENV_NAME}"
+source ~/.bashrc >/dev/null 2>&1 || true
+if command -v conda >/dev/null 2>&1; then
+  conda activate "${CONDA_ENV_NAME}" || true
+fi
 set -u
 
-export CONDA_ENV_PREFIX="${CONDA_PREFIX}"
-export PYTHON_BIN="${CONDA_ENV_PREFIX}/bin/python3"
+if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python3" ]]; then
+  export CONDA_ENV_PREFIX="${CONDA_PREFIX}"
+  export PYTHON_BIN="${CONDA_ENV_PREFIX}/bin/python3"
+else
+  export PYTHON_BIN="$(command -v python3)"
+fi
 export VCS_HOME
 export PATH="${VCS_HOME}/bin:/usr/bin:/bin:${PATH}"
 

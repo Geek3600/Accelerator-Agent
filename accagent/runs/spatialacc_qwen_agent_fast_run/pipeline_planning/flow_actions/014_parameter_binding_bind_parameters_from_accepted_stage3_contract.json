@@ -1,0 +1,53 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "parameter_binding_static_check",
+      "template_coverage_check",
+      "boundary_contract_check",
+      "template_binding_static_check",
+      "sacg_reference_check"
+    ],
+    "action_type": "parameter_binding",
+    "consumes": [
+      "next_stage_invocation.parameter_binding",
+      "next_stage.source_sacg_state.pipeline_planning_sacg_state",
+      "artifact.stage3.accepted_pipeline_plan",
+      "pipeline_planning/canonical_handoff_manifest.json",
+      "pipeline_planning/checker_evidence_ledger.json",
+      "artifact.stage2.template_selection",
+      "artifact.input.template_library",
+      "artifact.input.template_metadata",
+      "artifact.input.model_config",
+      "artifact.input.numeric_policy"
+    ],
+    "id": "parameter_binding.bind_parameters_from_accepted_stage3_contract",
+    "on_failure": "Block code_generation. Localize the specific unbound parameter, incompatible template, boundary contract mismatch, or SACG reference mismatch; route only that slice to bounded pipeline/template repair or an explicit backtrack request. Do not infer defaults, substitute free-form RTL, edit golden outputs, or loosen tolerances.",
+    "produces": [
+      "artifact.stage4.parameter_binding_contract",
+      "artifact.stage4.bound_template_parameter_manifest",
+      "artifact.stage4.boundary_stream_contract",
+      "parameter_binding/static_check_report.json"
+    ],
+    "rationale": "Proceed with Stage 4 by freezing template parameters from the accepted Stage 3 logical pipeline contract, preserving model shape, GQA mapping, seq_len bound, numeric widths and policy, stream order, residual/MLP join semantics, and trusted template boundaries.",
+    "requires_approval": false,
+    "stage": "parameter_binding",
+    "tool_roles": [
+      "parameter_binding_static_check",
+      "template_coverage_check",
+      "boundary_contract_generate",
+      "sacg_reference_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "proceed",
+  "flow_event_index": 14,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/014_proceed.json",
+  "stage": "pipeline_planning"
+}

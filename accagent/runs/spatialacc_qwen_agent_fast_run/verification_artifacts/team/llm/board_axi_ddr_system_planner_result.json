@@ -1,0 +1,435 @@
+{
+  "agent": "board_axi_ddr_system_planner",
+  "duration_sec": 311.4432425240084,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "board_axi_ddr_system_planner",
+    "approval_required_for": [
+      "Applying any memory_runtime_repair that changes artifact.stage5.memory_layout, artifact.stage5.runtime_config, AXI register map, DDR address ranges, transfer units, packed image format, or runtime ABI.",
+      "Changing multilayer pipeline order, buffering/FIFO depth, beat alignment, liveness timeout policy, or memory_schedule beyond the declared contracts.",
+      "Changing numeric policy, cast points, compare tolerances, or golden-reference semantics; smoke or liveness-only simulations cannot be approved as functional substitutes by this role.",
+      "Selecting or renaming ambiguous board/app-shell/backend targets when case_board_interface_discovery or real tool evidence is insufficient.",
+      "Major template, architecture, or board shell integration changes required to repair the AXI/DDR wrapper or backend handoff."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "tool_protocol_check",
+          "verification_artifact_contract_check"
+        ],
+        "action_type": "system_verification_gate_planning",
+        "consumes": [
+          "candidate_stage_artifact.verification_artifact_contract.verification_gate_dag",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols",
+          "artifact.stage5.generated_code_package",
+          "generated.fpga_axi_ddr_top_wrapper",
+          "single_layer_gate_subdag",
+          "single_layer_merge_contract"
+        ],
+        "id": "verification_artifacts.emit_board_axi_ddr_gate_subdag",
+        "on_failure": "Do not promote the verification plan; return the missing dependency or unsatisfied contract to verification_artifacts.repair_boundary_evidence_auditor and open a stage retry request if the contract cannot be materialized.",
+        "produces": [
+          "board_axi_ddr_gate_subdag.json",
+          "multilayer_pipeline_order_contract.json",
+          "axi_ddr_runtime_evidence_plan.json",
+          "ddr_image_roundtrip_contract.json",
+          "functional_sim_gate_requirements.json"
+        ],
+        "rationale": "Materialize the refined third-layer board AXI/DDR gate sub-DAG and explicit contracts for multilayer ordering, AXI/DDR runtime evidence, DDR image roundtrip, and real functional simulation. This converts the supplied plan into bounded handoff artifacts without claiming execution pass.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "tool_protocol_check",
+          "verification_artifact_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_multilayer_pipeline",
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "real_tool.case_multilayer_functional",
+          "real_tool.case_pipeline_deadlock_check",
+          "data_order_trace_check",
+          "deadlock_watchdog",
+          "transfer_count_check",
+          "numeric_compare"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "board_axi_ddr_gate_subdag.json",
+          "multilayer_pipeline_order_contract.json",
+          "single_layer_gate_subdag",
+          "single_layer_merge_contract",
+          "case_single_layer_functional.evidence",
+          "case_single_layer_golden_compare.evidence",
+          "case_real_weight_artifacts.evidence",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config"
+        ],
+        "id": "verification.execute_multilayer_pipeline_functional_liveness",
+        "on_failure": "Stop at the board AXI/DDR third layer and run verification.localize_board_axi_ddr_layer_failure with the simulator/tool outputs; do not proceed to AXI/DDR interface, Vivado, bitstream, or board runtime.",
+        "produces": [
+          "verification/case_multilayer_pipeline/evidence.json",
+          "verification/case_multilayer_functional/evidence.json",
+          "verification/case_pipeline_deadlock_check/evidence.json",
+          "verification/traces/multilayer_data_order_trace.json",
+          "verification/traces/multilayer_deadlock_watchdog.json"
+        ],
+        "rationale": "Execute the first third-layer subgates after lower-layer closure: prove multilayer pipeline ordering, functional behavior, transfer alignment, numeric comparison, and liveness before any board AXI/DDR wrapper claim.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_multilayer_pipeline",
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "data_order_trace_check",
+          "deadlock_watchdog",
+          "transfer_count_check",
+          "numeric_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_board_interface_discovery",
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "real_tool.case_board_interface_discovery",
+          "real_tool.case_axi_ddr_interface",
+          "real_tool.case_axi_protocol_check",
+          "real_tool.case_deadlock_axi_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "data_order_trace_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "verification/case_pipeline_deadlock_check/evidence.json",
+          "axi_ddr_runtime_evidence_plan.json",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.stage5.generated_code_package",
+          "generated.fpga_axi_ddr_top_wrapper"
+        ],
+        "id": "verification.execute_board_discovery_axi_ddr_protocol",
+        "on_failure": "If board/app-shell target evidence is ambiguous, require bounded approval rather than guessing. If protocol, order, address, or liveness evidence fails, localize the earliest wrapper/runtime boundary before any repair; do not proceed to DDR image roundtrip or backend promotion.",
+        "produces": [
+          "verification/case_board_interface_discovery/evidence.json",
+          "verification/target_discovery_policy_update.json",
+          "verification/case_axi_ddr_interface/evidence.json",
+          "verification/case_axi_protocol_check/evidence.json",
+          "verification/traces/axi_addr_map_trace.json",
+          "verification/traces/axi_transfer_count_trace.json",
+          "verification/traces/axi_order_trace.json"
+        ],
+        "rationale": "Discover board/app-shell interface facts and prove the AXI/DDR runtime scaffold around the verified multilayer kernel, binding addresses, transfer counts, protocol order, and stream order to Stage 5 memory/runtime artifacts.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_board_interface_discovery",
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "case_deadlock_axi_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "data_order_trace_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_real_weight_artifacts",
+          "case_ddr_image_roundtrip",
+          "real_tool.case_ddr_image_roundtrip",
+          "artifact_hash_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "data_order_trace_check",
+          "numeric_compare"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "ddr_image_roundtrip_contract.json",
+          "verification/case_board_interface_discovery/evidence.json",
+          "verification/case_axi_ddr_interface/evidence.json",
+          "verification/case_axi_protocol_check/evidence.json",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "case_real_weight_artifacts.evidence",
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json"
+        ],
+        "id": "verification.execute_ddr_image_roundtrip",
+        "on_failure": "Classify the failure as DDR image, packer, runtime-layout, or wrapper evidence before repair. If real RTL/tool evidence shows protocol, liveness, value, or order failure, localize the address, transfer-count, lane/order, or numeric boundary first; do not promote to functional_sim or backend.",
+        "produces": [
+          "verification/case_ddr_image_roundtrip/evidence.json",
+          "verification/ddr/input_image_hashes.json",
+          "verification/ddr/weight_image_hashes.json",
+          "verification/ddr/output_image_roundtrip.json",
+          "verification/traces/ddr_addr_transfer_order_trace.json"
+        ],
+        "rationale": "Prove real input, weight, and output DDR image transfer paths through the AXI/DDR wrapper, including hash stability, address mapping, transfer counts, lane/order traces, and numeric output image expectations.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_real_weight_artifacts",
+          "case_ddr_image_roundtrip",
+          "artifact_hash_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "data_order_trace_check",
+          "numeric_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "functional_sim",
+          "real_tool.case_vcs_functional_sim",
+          "required_real_tool_evidence_check",
+          "data_order_trace_check",
+          "deadlock_watchdog",
+          "numeric_compare",
+          "boundary_contract_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "functional_sim_gate_requirements.json",
+          "verification/case_multilayer_functional/evidence.json",
+          "verification/case_pipeline_deadlock_check/evidence.json",
+          "verification/case_ddr_image_roundtrip/evidence.json",
+          "verification/case_axi_protocol_check/evidence.json",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/ddr/output_image_roundtrip.json"
+        ],
+        "id": "verification.run_real_board_axi_ddr_functional_sim",
+        "on_failure": "Do not count liveness-only evidence as a pass. Send real simulator outputs and boundary traces to verification.localize_board_axi_ddr_layer_failure; keep Vivado synthesis, implementation, bitstream, and board runtime blocked.",
+        "produces": [
+          "verification/functional_sim/evidence.json",
+          "verification/case_diagnostics/vcs_functional_diagnosis.json",
+          "verification/debug_closure/boundary_trace.json",
+          "verification/traces/functional_data_order_trace.json",
+          "verification/functional_sim/numeric_compare.json"
+        ],
+        "rationale": "Run the real functional simulator gate using the generated AXI/DDR top wrapper and real input/weight DDR artifacts. The case_vcs_liveness candidate is diagnostic only and cannot satisfy functional_sim acceptance.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "functional_sim",
+          "case_vcs_functional_sim",
+          "functional_sim_contract_check",
+          "case_vcs_evidence_analyzer",
+          "data_order_trace_check",
+          "deadlock_watchdog",
+          "numeric_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_replay_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun"
+        ],
+        "action_type": "contract_guided_failure_localization",
+        "consumes": [
+          "failed_gate_tool_output",
+          "verification/debug_closure/boundary_trace.json",
+          "verification/debug_closure/trace_manifest.json",
+          "verification_artifact_contract.debug_closure_contract",
+          "board_axi_ddr_gate_subdag.json",
+          "multilayer_pipeline_order_contract.json",
+          "axi_ddr_runtime_evidence_plan.json",
+          "ddr_image_roundtrip_contract.json",
+          "functional_sim_gate_requirements.json",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config"
+        ],
+        "id": "verification.localize_board_axi_ddr_layer_failure",
+        "on_failure": "Create a stage_retry_request or contamination barrier for unlocalized or untrusted evidence; do not apply ad hoc RTL edits, loosen tolerance, modify golden outputs, or promote to a higher layer.",
+        "produces": [
+          "verification/debug_closure/failure_localization.json",
+          "verification/debug_closure/targeted_replay_plan.json",
+          "verification/debug_closure/minimal_repair_context.json",
+          "verification/repair_requests/bounded_pipeline_or_memory_runtime_repair.json",
+          "verification/rerun_plan/targeted_failed_checker_rerun.json"
+        ],
+        "rationale": "Enforce the third-layer repair loop for any multilayer, AXI/DDR, DDR image, or functional_sim failure: tool output to CCTG/contract-guided localization, targeted replay, minimal repair context, bounded repair request, and targeted checker rerun. Approval is required before applying repairs that alter pipeline, memory layout, runtime ABI, numeric policy, or major templates.",
+        "requires_approval": true,
+        "stage": "verification",
+        "tool_roles": [
+          "failure_slice_localization",
+          "boundary_trace_rerun",
+          "targeted_replay",
+          "causal_repair_context_pack",
+          "repair_boundary_check",
+          "pipeline_repair",
+          "memory_runtime_repair",
+          "bounded_template_repair",
+          "targeted_failed_checker_rerun"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "required_real_tool_evidence_check",
+          "verification_action_audit_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "promotion_gate_audit",
+        "consumes": [
+          "board_axi_ddr_gate_subdag.json",
+          "verification/case_multilayer_pipeline/evidence.json",
+          "verification/case_multilayer_functional/evidence.json",
+          "verification/case_pipeline_deadlock_check/evidence.json",
+          "verification/case_board_interface_discovery/evidence.json",
+          "verification/case_axi_ddr_interface/evidence.json",
+          "verification/case_axi_protocol_check/evidence.json",
+          "verification/case_ddr_image_roundtrip/evidence.json",
+          "verification/functional_sim/evidence.json",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config"
+        ],
+        "id": "verification.audit_board_axi_ddr_closure_for_backend_handoff",
+        "on_failure": "Return the missing or failed gate list to the owning verification action; keep case_vivado_synthesis, case_vivado_implementation, case_runtime_bitstream, case_runtime_abi_check, and board_runtime blocked.",
+        "produces": [
+          "verification/board_axi_ddr_closure_manifest.json",
+          "verification/backend_promotion_preconditions.json",
+          "handoff/downstream.backend_board.stage/board_axi_ddr_evidence_index.json"
+        ],
+        "rationale": "After third-layer execution, audit that every required multilayer, AXI/DDR, DDR image, and real functional_sim gate has real-tool evidence before allowing backend/Vivado handoff. This action preserves the boundary that Vivado, bitstream, runtime ABI final check, and board_runtime are downstream after verification closure.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "required_real_tool_evidence_check",
+          "verification_action_audit",
+          "verification_artifact_contract_check",
+          "sacg_reference_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The supplied SACG memory truth exposes no active contamination barriers and no open retry or backtrack requests; no historical blocker is treated as active.",
+      "The candidate verification_artifact_contract reports status pass with no failed checkers; pending deadlock_watchdog, implementation_package_static, and board_runtime items are declared downstream obligations under the supplied stage_gate_policy, not current-stage plan blockers.",
+      "The three-layer repair loop is explicitly declared: operator leaf modules, single transformer-layer kernel, then board AXI/DDR wrapped system. The refined third layer must not run or promote unless lower-layer evidence is present and reusable.",
+      "The board AXI/DDR third layer is ordered bottom-up: multilayer pipeline order, multilayer functional behavior, liveness/deadlock, board/app-shell fact discovery, AXI/DDR interface, AXI protocol/order/address checks, DDR image roundtrip, then real functional_sim.",
+      "Stage 5 code generation is visible as ready, including compile/elaboration success for the generated AXI/DDR top wrapper; this is necessary scaffold evidence but not a functional or protocol pass.",
+      "Stage 5 memory_layout and runtime_config exist, and current static checks indicate memory/runtime and stream-order planning are available; the third-layer contracts must bind address ranges, transfer counts, packed image paths, lane/order traces, and runtime ABI fields to those artifacts.",
+      "The functional_sim candidate list correctly marks case_vcs_liveness as not acceptance; the acceptance gate must be a real functional simulator run using real input/weight artifacts and DDR images, with numeric/data-order/liveness evidence.",
+      "The role slice omits some detailed rows by policy, while presence_summary reports gate, trace, boundary, and stage-agent counts; missing-detail concerns should be handled by materializing explicit handoff artifacts rather than by inferring absent design content.",
+      "Vivado synthesis, Vivado implementation, runtime bitstream, runtime ABI final check, and board_runtime remain downstream only; this planner may block their handoff until board AXI/DDR functional gates pass."
+    ],
+    "proposed_actions": [
+      "Materialize board_axi_ddr_gate_subdag.json and companion third-layer contracts so downstream tools do not consume compact or omitted prompt slices as the gate definition.",
+      "Execute case_multilayer_pipeline, case_multilayer_functional, and case_pipeline_deadlock_check only after single-layer functional and golden evidence are available.",
+      "Run board interface discovery and AXI/DDR interface/protocol checks with addr_map_check, transfer_count_check, and data_order_trace_check bound to Stage 5 memory/runtime artifacts.",
+      "Run DDR image roundtrip using real input and packed weight artifacts, with artifact hashes, address range checks, transfer counts, and output image trace evidence.",
+      "Run the real functional_sim gate using the generated AXI/DDR wrapper and real DDR images; do not accept liveness-only simulation as functional correctness.",
+      "On any third-layer failure, invoke contract-guided localization, targeted replay, bounded repair context packing, and targeted failed-checker rerun before considering any code or contract repair.",
+      "After all third-layer gates pass, audit required real-tool evidence and emit backend promotion preconditions for downstream.backend_board.stage; keep Vivado/bitstream/board runtime blocked otherwise."
+    ],
+    "risks": [
+      "Memory/runtime cross-layer mismatch: AXI addresses, DDR ranges, transfer counts, beat packing, and runtime ABI fields can diverge from artifact.stage5.memory_layout and artifact.stage5.runtime_config unless addr_map_check and transfer_count_check are bound to the wrapper evidence.",
+      "Data-order risk: multilayer stream order, lane mapping, tile identity, and DDR image packing can drift between Stage 3 pipeline order, Stage 4 numeric/cast policy, and Stage 5 generated wrapper unless data_order_trace_check is emitted at multilayer, AXI, DDR, and functional_sim gates.",
+      "Liveness risk: FIFO depth, valid/ready backpressure, AXI transaction ordering, and multilayer pipeline scheduling can deadlock; case_pipeline_deadlock_check and deadlock_watchdog evidence must precede board/backend promotion.",
+      "Functional-evidence risk: smoke tests, default generated weights, or case_vcs_liveness alone would not satisfy real functional correctness; real input/weight manifests, artifact hashes, DDR image paths, and numeric_compare evidence are required.",
+      "Board discovery risk: target board/app-shell interface facts are not proven by names in a static plan; ambiguous discovery evidence must require bounded approval rather than guessed backend target names.",
+      "Numeric consistency risk: fp16 weights/activations, fp32 residuals/accumulators, cast points, and nearest-even rounding must remain tied to constraint.numeric.policy; tolerance or golden-reference changes are not acceptable as a repair shortcut.",
+      "Repair-loop risk: a higher-layer AXI/DDR or functional_sim failure must be localized to the earliest causal boundary before any pipeline, memory_runtime, or template repair; passed lower-layer evidence may be challenged only by a bound contradictory trace."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "artifact.stage5.generated_code_package",
+        "generated.fpga_axi_ddr_top_wrapper",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_protocols",
+        "single_layer_gate_subdag",
+        "single_layer_merge_contract",
+        "board_axi_ddr_gate_subdag.json",
+        "multilayer_pipeline_order_contract.json",
+        "axi_ddr_runtime_evidence_plan.json",
+        "ddr_image_roundtrip_contract.json",
+        "functional_sim_gate_requirements.json",
+        "verification/debug_closure/boundary_trace.json",
+        "verification/debug_closure/failure_localization.json"
+      ],
+      "constraints": [
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.memory_schedule.pipeline",
+        "constraint.liveness.pipeline",
+        "constraint.deployment.board",
+        "constraint.tool.protocols",
+        "constraint.verification.hierarchy",
+        "constraint.pipeline.structure",
+        "constraint.numeric.policy",
+        "constraint.shape.model",
+        "constraint.model.decoder"
+      ],
+      "edges": [
+        "case_single_layer_golden_compare + case_real_weight_artifacts -> case_multilayer_pipeline",
+        "case_multilayer_pipeline + case_single_layer_golden_compare + case_real_weight_artifacts -> case_multilayer_functional",
+        "case_multilayer_functional -> case_pipeline_deadlock_check",
+        "case_pipeline_deadlock_check -> case_board_interface_discovery",
+        "case_pipeline_deadlock_check + case_board_interface_discovery -> case_axi_ddr_interface",
+        "case_axi_ddr_interface + case_board_interface_discovery -> case_axi_protocol_check",
+        "case_axi_protocol_check + case_real_weight_artifacts -> case_ddr_image_roundtrip",
+        "case_real_weight_artifacts + case_single_layer_golden_compare + case_pipeline_deadlock_check + case_ddr_image_roundtrip -> functional_sim",
+        "functional_sim + case_axi_ddr_interface + case_board_interface_discovery -> backend/Vivado handoff eligibility",
+        "case_vivado_synthesis -> case_vivado_implementation -> case_runtime_bitstream -> case_runtime_abi_check -> board_runtime is downstream only after verification closure"
+      ],
+      "nodes": [
+        "case_real_weight_artifacts",
+        "case_single_layer_golden_compare",
+        "case_multilayer_pipeline",
+        "case_multilayer_functional",
+        "case_pipeline_deadlock_check",
+        "case_board_interface_discovery",
+        "case_axi_ddr_interface",
+        "case_axi_protocol_check",
+        "case_ddr_image_roundtrip",
+        "functional_sim",
+        "case_vivado_synthesis.downstream_only",
+        "case_vivado_implementation.downstream_only",
+        "case_runtime_bitstream.downstream_only",
+        "case_runtime_abi_check.downstream_only",
+        "board_runtime.downstream_only"
+      ]
+    },
+    "schema_version": "spatialaccagent.board_axi_ddr_system_planner.v0",
+    "stage": "verification_artifacts",
+    "status": "ready_for_handoff",
+    "summary": "The board AXI/DDR wrapped-system verification sub-DAG is refined as a third-layer gate sequence after leaf and single-layer closure: multilayer pipeline, multilayer functional, pipeline deadlock/liveness, board interface discovery, AXI/DDR interface, AXI protocol/order, DDR image roundtrip, and real functional simulation. This is a verification plan handoff only; no hardware pass, Vivado pass, bitstream pass, or board runtime pass is claimed. Backend and bitstream promotion remain blocked until the listed third-layer real-tool gates pass and are audited."
+  },
+  "prompt_bytes": 73230,
+  "prompt_hash": "95b2b5e322d1066b7c29944f8690a72917c38573ba4245e1ebddb2dd142931c6",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.board_axi_ddr_system_planner.v0\",\"agent\":\"board_axi_ddr_system_planner\",\"stage\":\"verification_artifacts\",\"status\":\"ready_for_handoff\",\"summary\":\"The board AXI/DDR wrapped-system verification sub-DAG is refined as a third-layer gate sequence after leaf and single-layer closure: multilayer pipeline, multilayer functional, pipeline deadlock/liveness, board interface discovery, AXI/DDR interface, AXI protocol/order, DDR image roundtrip, and real functional simulation. This is a verification plan handoff only; no hardware pass, Vivado pass, bitstream pass, or board runtime pass is claimed. Backend and bitstream promotion remain blocked until the listed third-layer real-tool gates pass and are audited.\",\"sacg_focus\":{\"nodes\":[\"case_real_weight_artifacts\",\"case_single_layer_golden_compare\",\"case_multilayer_pipeline\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_board_interface_discovery\",\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"functional_sim\",\"case_vivado_synthesis.downstream_only\",\"case_vivado_implementation.downstream_only\",\"case_runtime_bitstream.downstream_only\",\"case_runtime_abi_check.downstream_only\",\"board_runtime.downstream_only\"],\"edges\":[\"case_single_layer_golden_compare + case_real_weight_artifacts -> case_multilayer_pipeline\",\"case_multilayer_pipeline + case_single_layer_golden_compare + case_real_weight_artifacts -> case_multilayer_functional\",\"case_multilayer_functional -> case_pipeline_deadlock_check\",\"case_pipeline_deadlock_check -> case_board_interface_discovery\",\"case_pipeline_deadlock_check + case_board_interface_discovery -> case_axi_ddr_interface\",\"case_axi_ddr_interface + case_board_interface_discovery -> case_axi_protocol_check\",\"case_axi_protocol_check + case_real_weight_artifacts -> case_ddr_image_roundtrip\",\"case_real_weight_artifacts + case_single_layer_golden_compare + case_pipeline_deadlock_check + case_ddr_image_roundtrip -> functional_sim\",\"functional_sim + case_axi_ddr_interface + case_board_interface_discovery -> backend/Vivado handoff eligibility\",\"case_vivado_synthesis -> case_vivado_implementation -> case_runtime_bitstream -> case_runtime_abi_check -> board_runtime is downstream only after verification closure\"],\"constraints\":[\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.memory_schedule.pipeline\",\"constraint.liveness.pipeline\",\"constraint.deployment.board\",\"constraint.tool.protocols\",\"constraint.verification.hierarchy\",\"constraint.pipeline.structure\",\"constraint.numeric.policy\",\"constraint.shape.model\",\"constraint.model.decoder\"],\"artifacts\":[\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage5.generated_code_package\",\"generated.fpga_axi_ddr_top_wrapper\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\",\"single_layer_gate_subdag\",\"single_layer_merge_contract\",\"board_axi_ddr_gate_subdag.json\",\"multilayer_pipeline_order_contract.json\",\"axi_ddr_runtime_evidence_plan.json\",\"ddr_image_roundtrip_contract.json\",\"functional_sim_gate_requirements.json\",\"verification/debug_closure/boundary_trace.json\",\"verification/debug_closure/failure_localization.json\"]},\"observations\":[\"The supplied SACG memory truth exposes no active contamination barriers and no open retry or backtrack requests; no historical blocker is treated as active.\",\"The candidate verification_artifact_contract reports status pass with no failed checkers; pending deadlock_watchdog, implementation_package_static, and board_runtime items are declared downstream obligations under the supplied stage_gate_policy, not current-stage plan blockers.\",\"The three-layer repair loop is explicitly declared: operator leaf modules, single transformer-layer kernel, then board AXI/DDR wrapped system. The refined third layer must not run or promote unless lower-layer evidence is present and reusable.\",\"The board AXI/DDR third layer is ordered bottom-up: multilayer pipeline order, multilayer functional behavior, liveness/deadlock, board/app-shell fact discovery, AXI/DDR interface, AXI protocol/order/address checks, DDR image roundtrip, then real functional_sim.\",\"Stage 5 code generation is visible as ready, including compile/elaboration success for the generated AXI/DDR top wrapper; this is necessary scaffold evidence but not a functional or protocol pass.\",\"Stage 5 memory_layout and runtime_config exist, and current static checks indicate memory/runtime and stream-order planning are available; the third-layer contracts must bind address ranges, transfer counts, packed image paths, lane/order traces, and runtime ABI fields to those artifacts.\",\"The functional_sim candidate list correctly marks case_vcs_liveness as not acceptance; the acceptance gate must be a real functional simulator run using real input/weight artifacts and DDR images, with numeric/data-order/liveness evidence.\",\"The role slice omits some detailed rows by policy, while presence_summary reports gate, trace, boundary, and stage-agent counts; missing-detail concerns should be handled by materializing explicit handoff artifacts rather than by inferring absent design content.\",\"Vivado synthesis, Vivado implementation, runtime bitstream, runtime ABI final check, and board_runtime remain downstream only; this planner may block their handoff until board AXI/DDR functional gates pass.\"],\"risks\":[\"Memory/runtime cross-layer mismatch: AXI addresses, DDR ranges, transfer counts, beat packing, and runtime ABI fields can diverge from artifact.stage5.memory_layout and artifact.stage5.runtime_config unless addr_map_check and transfer_count_check are bound to the wrapper evidence.\",\"Data-order risk: multilayer stream order, lane mapping, tile identity, and DDR image packing can drift between Stage 3 pipeline order, Stage 4 numeric/cast policy, and Stage 5 generated wrapper unless data_order_trace_check is emitted at multilayer, AXI, DDR, and functional_sim gates.\",\"Liveness risk: FIFO depth, valid/ready backpressure, AXI transaction ordering, and multilayer pipeline scheduling can deadlock; case_pipeline_deadlock_check and deadlock_watchdog evidence must precede board/backend promotion.\",\"Functional-evidence risk: smoke tests, default generated weights, or case_vcs_liveness alone would not satisfy real functional correctness; real input/weight manifests, artifact hashes, DDR image paths, and numeric_compare evidence are required.\",\"Board discovery risk: target board/app-shell interface facts are not proven by names in a static plan; ambiguous discovery evidence must require bounded approval rather than guessed backend target names.\",\"Numeric consistency risk: fp16 weights/activations, fp32 residuals/accumulators, cast points, and nearest-even rounding must remain tied to constraint.numeric.policy; tolerance or golden-reference changes are not acceptable as a repair shortcut.\",\"Repair-loop risk: a higher-layer AXI/DDR or functional_sim failure must be localized to the earliest causal boundary before any pipeline, memory_runtime, or template repair; passed lower-layer evidence may be challenged only by a bound contradictory trace.\"],\"proposed_actions\":[\"Materialize board_axi_ddr_gate_subdag.json and companion third-layer contracts so downstream tools do not consume compact or omitted prompt slices as the gate definition.\",\"Execute case_multilayer_pipeline, case_multilayer_functional, and case_pipeline_deadlock_check only after single-layer functional and golden evidence are available.\",\"Run board interface discovery and AXI/DDR interface/protocol checks with addr_map_check, transfer_count_check, and data_order_trace_check bound to Stage 5 memory/runtime artifacts.\",\"Run DDR image roundtrip using real input and packed weight artifacts, with artifact hashes, address range checks, transfer counts, and output image trace evidence.\",\"Run the real functional_sim gate using the generated AXI/DDR wrapper and real DDR images; do not accept liveness-only simulation as functional correctness.\",\"On any third-layer failure, invoke contract-guided localization, targeted replay, bounded repair context packing, and targeted failed-checker rerun before considering any code or contract repair.\",\"After all third-layer gates pass, audit required real-tool evidence and emit backend promotion preconditions for downstream.backend_board.stage; keep Vivado/bitstream/board runtime blocked otherwise.\"],\"executable_actions\":[{\"id\":\"verification_artifacts.emit_board_axi_ddr_gate_subdag\",\"stage\":\"verification_artifacts\",\"action_type\":\"system_verification_gate_planning\",\"rationale\":\"Materialize the refined third-layer board AXI/DDR gate sub-DAG and explicit contracts for multilayer ordering, AXI/DDR runtime evidence, DDR image roundtrip, and real functional simulation. This converts the supplied plan into bounded handoff artifacts without claiming execution pass.\",\"consumes\":[\"candidate_stage_artifact.verification_artifact_contract.verification_gate_dag\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\",\"artifact.stage5.generated_code_package\",\"generated.fpga_axi_ddr_top_wrapper\",\"single_layer_gate_subdag\",\"single_layer_merge_contract\"],\"produces\":[\"board_axi_ddr_gate_subdag.json\",\"multilayer_pipeline_order_contract.json\",\"axi_ddr_runtime_evidence_plan.json\",\"ddr_image_roundtrip_contract.json\",\"functional_sim_gate_requirements.json\"],\"tool_roles\":[\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"memory_runtime_plan_check\",\"stream_plan_check\",\"tool_protocol_check\",\"verification_artifact_contract_check\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"memory_runtime_plan_check\",\"stream_plan_check\",\"tool_protocol_check\",\"verification_artifact_contract_check\"],\"on_failure\":\"Do not promote the verification plan; return the missing dependency or unsatisfied contract to verification_artifacts.repair_boundary_evidence_auditor and open a stage retry request if the contract cannot be materialized.\",\"requires_approval\":false},{\"id\":\"verification.execute_multilayer_pipeline_functional_liveness\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Execute the first third-layer subgates after lower-layer closure: prove multilayer pipeline ordering, functional behavior, transfer alignment, numeric comparison, and liveness before any board AXI/DDR wrapper claim.\",\"consumes\":[\"board_axi_ddr_gate_subdag.json\",\"multilayer_pipeline_order_contract.json\",\"single_layer_gate_subdag\",\"single_layer_merge_contract\",\"case_single_layer_functional.evidence\",\"case_single_layer_golden_compare.evidence\",\"case_real_weight_artifacts.evidence\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\"],\"produces\":[\"verification/case_multilayer_pipeline/evidence.json\",\"verification/case_multilayer_functional/evidence.json\",\"verification/case_pipeline_deadlock_check/evidence.json\",\"verification/traces/multilayer_data_order_trace.json\",\"verification/traces/multilayer_deadlock_watchdog.json\"],\"tool_roles\":[\"case_multilayer_pipeline\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"data_order_trace_check\",\"deadlock_watchdog\",\"transfer_count_check\",\"numeric_compare\"],\"acceptance_checkers\":[\"case_multilayer_pipeline\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"real_tool.case_multilayer_functional\",\"real_tool.case_pipeline_deadlock_check\",\"data_order_trace_check\",\"deadlock_watchdog\",\"transfer_count_check\",\"numeric_compare\"],\"on_failure\":\"Stop at the board AXI/DDR third layer and run verification.localize_board_axi_ddr_layer_failure with the simulator/tool outputs; do not proceed to AXI/DDR interface, Vivado, bitstream, or board runtime.\",\"requires_approval\":false},{\"id\":\"verification.execute_board_discovery_axi_ddr_protocol\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Discover board/app-shell interface facts and prove the AXI/DDR runtime scaffold around the verified multilayer kernel, binding addresses, transfer counts, protocol order, and stream order to Stage 5 memory/runtime artifacts.\",\"consumes\":[\"verification/case_pipeline_deadlock_check/evidence.json\",\"axi_ddr_runtime_evidence_plan.json\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage5.generated_code_package\",\"generated.fpga_axi_ddr_top_wrapper\"],\"produces\":[\"verification/case_board_interface_discovery/evidence.json\",\"verification/target_discovery_policy_update.json\",\"verification/case_axi_ddr_interface/evidence.json\",\"verification/case_axi_protocol_check/evidence.json\",\"verification/traces/axi_addr_map_trace.json\",\"verification/traces/axi_transfer_count_trace.json\",\"verification/traces/axi_order_trace.json\"],\"tool_roles\":[\"case_board_interface_discovery\",\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"case_deadlock_axi_check\",\"addr_map_check\",\"transfer_count_check\",\"data_order_trace_check\"],\"acceptance_checkers\":[\"case_board_interface_discovery\",\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"real_tool.case_board_interface_discovery\",\"real_tool.case_axi_ddr_interface\",\"real_tool.case_axi_protocol_check\",\"real_tool.case_deadlock_axi_check\",\"addr_map_check\",\"transfer_count_check\",\"data_order_trace_check\"],\"on_failure\":\"If board/app-shell target evidence is ambiguous, require bounded approval rather than guessing. If protocol, order, address, or liveness evidence fails, localize the earliest wrapper/runtime boundary before any repair; do not proceed to DDR image roundtrip or backend promotion.\",\"requires_approval\":false},{\"id\":\"verification.execute_ddr_image_roundtrip\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Prove real input, weight, and output DDR image transfer paths through the AXI/DDR wrapper, including hash stability, address mapping, transfer counts, lane/order traces, and numeric output image expectations.\",\"consumes\":[\"ddr_image_roundtrip_contract.json\",\"verification/case_board_interface_discovery/evidence.json\",\"verification/case_axi_ddr_interface/evidence.json\",\"verification/case_axi_protocol_check/evidence.json\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"case_real_weight_artifacts.evidence\",\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\"],\"produces\":[\"verification/case_ddr_image_roundtrip/evidence.json\",\"verification/ddr/input_image_hashes.json\",\"verification/ddr/weight_image_hashes.json\",\"verification/ddr/output_image_roundtrip.json\",\"verification/traces/ddr_addr_transfer_order_trace.json\"],\"tool_roles\":[\"case_real_weight_artifacts\",\"case_ddr_image_roundtrip\",\"artifact_hash_check\",\"addr_map_check\",\"transfer_count_check\",\"data_order_trace_check\",\"numeric_compare\"],\"acceptance_checkers\":[\"case_real_weight_artifacts\",\"case_ddr_image_roundtrip\",\"real_tool.case_ddr_image_roundtrip\",\"artifact_hash_check\",\"addr_map_check\",\"transfer_count_check\",\"data_order_trace_check\",\"numeric_compare\"],\"on_failure\":\"Classify the failure as DDR image, packer, runtime-layout, or wrapper evidence before repair. If real RTL/tool evidence shows protocol, liveness, value, or order failure, localize the address, transfer-count, lane/order, or numeric boundary first; do not promote to functional_sim or backend.\",\"requires_approval\":false},{\"id\":\"verification.run_real_board_axi_ddr_functional_sim\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Run the real functional simulator gate using the generated AXI/DDR top wrapper and real input/weight DDR artifacts. The case_vcs_liveness candidate is diagnostic only and cannot satisfy functional_sim acceptance.\",\"consumes\":[\"functional_sim_gate_requirements.json\",\"verification/case_multilayer_functional/evidence.json\",\"verification/case_pipeline_deadlock_check/evidence.json\",\"verification/case_ddr_image_roundtrip/evidence.json\",\"verification/case_axi_protocol_check/evidence.json\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/ddr/output_image_roundtrip.json\"],\"produces\":[\"verification/functional_sim/evidence.json\",\"verification/case_diagnostics/vcs_functional_diagnosis.json\",\"verification/debug_closure/boundary_trace.json\",\"verification/traces/functional_data_order_trace.json\",\"verification/functional_sim/numeric_compare.json\"],\"tool_roles\":[\"functional_sim\",\"case_vcs_functional_sim\",\"functional_sim_contract_check\",\"case_vcs_evidence_analyzer\",\"data_order_trace_check\",\"deadlock_watchdog\",\"numeric_compare\"],\"acceptance_checkers\":[\"functional_sim\",\"real_tool.case_vcs_functional_sim\",\"required_real_tool_evidence_check\",\"data_order_trace_check\",\"deadlock_watchdog\",\"numeric_compare\",\"boundary_contract_check\"],\"on_failure\":\"Do not count liveness-only evidence as a pass. Send real simulator outputs and boundary traces to verification.localize_board_axi_ddr_layer_failure; keep Vivado synthesis, implementation, bitstream, and board runtime blocked.\",\"requires_approval\":false},{\"id\":\"verification.localize_board_axi_ddr_layer_failure\",\"stage\":\"verification\",\"action_type\":\"contract_guided_failure_localization\",\"rationale\":\"Enforce the third-layer repair loop for any multilayer, AXI/DDR, DDR image, or functional_sim failure: tool output to CCTG/contract-guided localization, targeted replay, minimal repair context, bounded repair request, and targeted checker rerun. Approval is required before applying repairs that alter pipeline, memory layout, runtime ABI, numeric policy, or major templates.\",\"consumes\":[\"failed_gate_tool_output\",\"verification/debug_closure/boundary_trace.json\",\"verification/debug_closure/trace_manifest.json\",\"verification_artifact_contract.debug_closure_contract\",\"board_axi_ddr_gate_subdag.json\",\"multilayer_pipeline_order_contract.json\",\"axi_ddr_runtime_evidence_plan.json\",\"ddr_image_roundtrip_contract.json\",\"functional_sim_gate_requirements.json\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\"],\"produces\":[\"verification/debug_closure/failure_localization.json\",\"verification/debug_closure/targeted_replay_plan.json\",\"verification/debug_closure/minimal_repair_context.json\",\"verification/repair_requests/bounded_pipeline_or_memory_runtime_repair.json\",\"verification/rerun_plan/targeted_failed_checker_rerun.json\"],\"tool_roles\":[\"failure_slice_localization\",\"boundary_trace_rerun\",\"targeted_replay\",\"causal_repair_context_pack\",\"repair_boundary_check\",\"pipeline_repair\",\"memory_runtime_repair\",\"bounded_template_repair\",\"targeted_failed_checker_rerun\"],\"acceptance_checkers\":[\"failure_localization_check\",\"targeted_replay_check\",\"causal_repair_context_check\",\"repair_boundary_check\",\"targeted_failed_checker_rerun\"],\"on_failure\":\"Create a stage_retry_request or contamination barrier for unlocalized or untrusted evidence; do not apply ad hoc RTL edits, loosen tolerance, modify golden outputs, or promote to a higher layer.\",\"requires_approval\":true},{\"id\":\"verification.audit_board_axi_ddr_closure_for_backend_handoff\",\"stage\":\"verification\",\"action_type\":\"promotion_gate_audit\",\"rationale\":\"After third-layer execution, audit that every required multilayer, AXI/DDR, DDR image, and real functional_sim gate has real-tool evidence before allowing backend/Vivado handoff. This action preserves the boundary that Vivado, bitstream, runtime ABI final check, and board_runtime are downstream after verification closure.\",\"consumes\":[\"board_axi_ddr_gate_subdag.json\",\"verification/case_multilayer_pipeline/evidence.json\",\"verification/case_multilayer_functional/evidence.json\",\"verification/case_pipeline_deadlock_check/evidence.json\",\"verification/case_board_interface_discovery/evidence.json\",\"verification/case_axi_ddr_interface/evidence.json\",\"verification/case_axi_protocol_check/evidence.json\",\"verification/case_ddr_image_roundtrip/evidence.json\",\"verification/functional_sim/evidence.json\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\"],\"produces\":[\"verification/board_axi_ddr_closure_manifest.json\",\"verification/backend_promotion_preconditions.json\",\"handoff/downstream.backend_board.stage/board_axi_ddr_evidence_index.json\"],\"tool_roles\":[\"required_real_tool_evidence_check\",\"verification_action_audit\",\"verification_artifact_contract_check\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"required_real_tool_evidence_check\",\"verification_action_audit_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\"],\"on_failure\":\"Return the missing or failed gate list to the owning verification action; keep case_vivado_synthesis, case_vivado_implementation, case_runtime_bitstream, case_runtime_abi_check, and board_runtime blocked.\",\"requires_approval\":false}],\"approval_required_for\":[\"Applying any memory_runtime_repair that changes artifact.stage5.memory_layout, artifact.stage5.runtime_config, AXI register map, DDR address ranges, transfer units, packed image format, or runtime ABI.\",\"Changing multilayer pipeline order, buffering/FIFO depth, beat alignment, liveness timeout policy, or memory_schedule beyond the declared contracts.\",\"Changing numeric policy, cast points, compare tolerances, or golden-reference semantics; smoke or liveness-only simulations cannot be approved as functional substitutes by this role.\",\"Selecting or renaming ambiguous board/app-shell/backend targets when case_board_interface_discovery or real tool evidence is insufficient.\",\"Major template, architecture, or board shell integration changes required to repair the AXI/DDR wrapper or backend handoff.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/board_axi_ddr_system_planner_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/board_axi_ddr_system_planner_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "verification_artifacts.board AXI/DDR functional-system verification engineer",
+  "used_fallback": false
+}

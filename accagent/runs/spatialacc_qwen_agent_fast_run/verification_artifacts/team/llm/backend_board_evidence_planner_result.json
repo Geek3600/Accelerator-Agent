@@ -1,0 +1,376 @@
+{
+  "agent": "backend_board_evidence_planner",
+  "duration_sec": 539.5197946020053,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "backend_board_evidence_planner",
+    "approval_required_for": [
+      "Selecting a different target board, app-shell target, shell name, or deployment package target when discovery evidence is ambiguous or conflicts with supplied board materials.",
+      "Any architecture, pipeline, memory layout, register map, runtime ABI, numeric policy, clock target, or major template change proposed to close Vivado timing/resource, bitstream, ABI, or board-runtime failures.",
+      "Any bounded recovery that would replace a required real backend-board tool protocol with an approved equivalent checker; smoke, default-weight, or standalone-core evidence remains unacceptable for final closure.",
+      "Any free-form RTL or template rewrite outside the trusted-template and bounded-repair boundaries."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "verification_action_audit_check",
+          "implementation_package_static",
+          "timing_resource_check",
+          "deployment_board_check"
+        ],
+        "action_type": "evidence_contract_refinement",
+        "consumes": [
+          "candidate_stage_artifact.verification_artifact_contract",
+          "candidate_stage_artifact.verification_gate_dag",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "artifact.input.human_agent_boundary",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config"
+        ],
+        "id": "bb_gate_contract_hardening",
+        "on_failure": "Block promotion to backend execution; repair the verification artifact contract to add missing report, package, ABI, board-runtime, or evidence-scope requirements before any Vivado or board action is treated as acceptable.",
+        "produces": [
+          "backend_board_gate_order_review",
+          "vivado_evidence_acceptance_contract",
+          "runtime_bitstream_board_runtime_blocking_rules",
+          "timing_resource_report_requirements"
+        ],
+        "rationale": "Convert the visible backend-board DAG into an auditable acceptance contract that makes Vivado report checks, timing/resource checks, implementation packaging, runtime bitstream, ABI, and board runtime explicit downstream gates and rejects smoke or standalone-core substitution.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "verification_action_audit",
+          "implementation_package_static",
+          "timing_resource_check",
+          "deployment_board_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_board_interface_discovery",
+          "real_tool.case_board_interface_discovery",
+          "real_tool.app_shell_target_discovery_contract",
+          "backend_app_shell_integration_contract_static_check",
+          "backend_app_shell_target_discovery_check",
+          "human_boundary_check"
+        ],
+        "action_type": "backend_target_discovery",
+        "consumes": [
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.runtime_config",
+          "candidate_stage_artifact.verification_gate_dag",
+          "case_pipeline_deadlock_check evidence"
+        ],
+        "id": "bb_board_interface_target_discovery_gate",
+        "on_failure": "Keep case_axi_ddr_interface, Vivado synthesis, runtime bitstream, ABI, and board runtime blocked. If multiple plausible shell targets remain, use backend_bounded_recovery_action with approval rather than guessing names.",
+        "produces": [
+          "backend_board/case_diagnostics/board_interface_discovery.json",
+          "backend_board/app_shell_target_discovery_contract.json",
+          "target_discovery_policy_update"
+        ],
+        "rationale": "Before backend synthesis and bitstream packaging, bind the board/app-shell interface target to cited target_board_profile, tool_profile, tool_protocols, and generated AXI/DDR wrapper evidence; do not guess target names if discovery is ambiguous.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "case_board_interface_discovery",
+          "app_shell_target_discovery_contract"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_vivado_synthesis",
+          "real_tool.case_vivado_synthesis_report_check",
+          "timing_resource_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "functional_sim evidence",
+          "case_axi_ddr_interface evidence",
+          "case_board_interface_discovery evidence",
+          "artifact.stage5.generated_code_package",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "vivado_evidence_acceptance_contract"
+        ],
+        "id": "bb_run_vivado_synthesis_with_reports",
+        "on_failure": "Do not run implementation. Route the real Vivado logs and report failures to backend bounded recovery or contract-guided localization; if the failure implies architecture, memory layout, clock target, or template changes, require approval before repair.",
+        "produces": [
+          "backend_board/vivado_synthesis/synthesis_run_evidence.json",
+          "backend_board/vivado_synthesis/utilization_report.json",
+          "backend_board/vivado_synthesis/timing_report.json",
+          "backend_board/vivado_synthesis/drc_or_message_summary.json"
+        ],
+        "rationale": "Run real Vivado synthesis only after functional_sim, AXI/DDR interface, and board interface discovery gates pass, and require synthesis reports plus timing/resource evidence as the acceptance artifact.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "case_vivado_synthesis",
+          "case_vivado_synthesis_report_check",
+          "timing_resource_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_vivado_implementation",
+          "real_tool.case_vivado_implementation_report_check",
+          "timing_resource_check",
+          "implementation_package_static",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "backend_board/vivado_synthesis/synthesis_run_evidence.json",
+          "backend_board/vivado_synthesis/utilization_report.json",
+          "backend_board/vivado_synthesis/timing_report.json",
+          "artifact.stage5.generated_code_package",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "timing_resource_report_requirements"
+        ],
+        "id": "bb_run_vivado_implementation_with_reports",
+        "on_failure": "Do not generate or package a runtime bitstream. Preserve implementation evidence, localize the earliest backend/package/timing boundary, and request bounded repair; changes to architecture, pipeline, memory layout, numeric policy, clock target, or major templates require approval.",
+        "produces": [
+          "backend_board/vivado_implementation/implementation_run_evidence.json",
+          "backend_board/vivado_implementation/route_status.json",
+          "backend_board/vivado_implementation/implementation_timing_report.json",
+          "backend_board/vivado_implementation/implementation_utilization_report.json",
+          "backend_board/vivado_implementation/drc_report.json",
+          "backend_board/vivado_implementation/package_static_report.json"
+        ],
+        "rationale": "Run real Vivado implementation only after synthesis report checks pass, and require route, DRC, implementation timing, utilization, and package-static evidence before any bitstream/runtime packaging step.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "case_vivado_implementation",
+          "case_vivado_implementation_report_check",
+          "timing_resource_check",
+          "implementation_package_static"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_runtime_bitstream",
+          "real_tool.case_runtime_bitstream",
+          "real_tool.app_shell_runtime_bitstream",
+          "implementation_package_static",
+          "deployment_board_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "runtime_package_execution",
+        "consumes": [
+          "backend_board/vivado_implementation/implementation_run_evidence.json",
+          "backend_board/vivado_implementation/implementation_timing_report.json",
+          "backend_board/vivado_implementation/implementation_utilization_report.json",
+          "backend_board/vivado_implementation/drc_report.json",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.runtime_config",
+          "artifact.stage5.memory_layout",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols",
+          "runtime_bitstream_board_runtime_blocking_rules"
+        ],
+        "id": "bb_build_runtime_bitstream_package",
+        "on_failure": "Keep case_runtime_abi_check and board_runtime blocked. If failure is due to ambiguous app-shell target or deployment package target, require bounded recovery approval with cited evidence; do not substitute synthesis, implementation, or smoke evidence for a bitstream package.",
+        "produces": [
+          "backend_board/runtime_bitstream/runtime_bitstream_evidence.json",
+          "backend_board/runtime_bitstream/bitstream_package_manifest.json",
+          "backend_board/runtime_bitstream/bitstream_hashes.json",
+          "backend_board/runtime_bitstream/deployment_package_static_report.json"
+        ],
+        "rationale": "Generate the runtime/app-shell bitstream package only after implementation report checks pass and bind the package to the generated AXI/DDR top, target board profile, runtime_config, memory_layout, and real implementation evidence.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "case_runtime_bitstream",
+          "app_shell_runtime_bitstream",
+          "implementation_package_static",
+          "deployment_board_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_runtime_abi_check",
+          "real_tool.case_runtime_abi_check",
+          "addr_map_check",
+          "artifact_hash_check",
+          "memory_runtime_plan_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "runtime_abi_verification",
+        "consumes": [
+          "backend_board/runtime_bitstream/runtime_bitstream_evidence.json",
+          "backend_board/runtime_bitstream/bitstream_package_manifest.json",
+          "backend_board/runtime_bitstream/bitstream_hashes.json",
+          "artifact.stage5.runtime_config",
+          "artifact.stage5.memory_layout",
+          "case_ddr_image_roundtrip evidence",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "bb_run_runtime_abi_check",
+        "on_failure": "Block board_runtime. Route mismatches to memory_runtime_repair or bounded backend repair with the violated memory/runtime constraints; any memory layout or ABI change requires approval before regeneration.",
+        "produces": [
+          "backend_board/runtime_abi/runtime_abi_check_report.json",
+          "backend_board/runtime_abi/register_map_compare.json",
+          "backend_board/runtime_abi/ddr_address_range_compare.json",
+          "backend_board/runtime_abi/bitstream_runtime_hash_link.json"
+        ],
+        "rationale": "After bitstream package creation, cross-check runtime ABI, register map, DDR layout, address ranges, package hashes, and runtime_config/memory_layout consistency before allowing board execution.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "case_runtime_abi_check",
+          "addr_map_check",
+          "artifact_hash_check",
+          "memory_runtime_plan_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "board_runtime",
+          "real_tool.board_runtime",
+          "deployment_board_check",
+          "output_validity_check",
+          "human_boundary_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "board_runtime_execution",
+        "consumes": [
+          "backend_board/runtime_bitstream/bitstream_package_manifest.json",
+          "backend_board/runtime_abi/runtime_abi_check_report.json",
+          "case_real_weight_artifacts evidence",
+          "functional_sim evidence",
+          "artifact.stage5.runtime_config",
+          "artifact.stage5.memory_layout",
+          "artifact.input.target_board_profile",
+          "artifact.input.human_agent_boundary",
+          "runtime_bitstream_board_runtime_blocking_rules"
+        ],
+        "id": "bb_run_board_runtime_final_evidence",
+        "on_failure": "Do not claim final pass. Apply the three-layer repair loop at the board-accurate AXI/DDR wrapped system: preserve tool output, run contract-guided localization to the earliest causal boundary, perform bounded repair, and rerun the failed gate; do not skip to higher layers or reopen lower layers without contradictory boundary trace evidence.",
+        "produces": [
+          "backend_board/board_runtime/board_runtime_evidence.json",
+          "backend_board/board_runtime/output_validity_report.json",
+          "backend_board/board_runtime/deployment_board_report.json",
+          "backend_board/board_runtime/final_closure_blocking_status.json"
+        ],
+        "rationale": "Collect final board runtime evidence only after ABI-checked bitstream packaging passes, using real input/weight artifacts and output validity checks; this is the required final deployment gate and cannot be replaced by smoke or standalone-core evidence.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "board_runtime",
+          "output_validity_check",
+          "deployment_board_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The supplied SACG memory truth reports no active contamination barriers and no open retry or backtrack requests, so there is no current SACG-memory blocker for this planning review.",
+      "The candidate artifact explicitly states that Stage 6 does not claim final pass; implementation_package_static and board_runtime are declared as pending downstream gates, which matches the stage_gate_policy for planning-stage acceptance.",
+      "The visible verification_gate_dag enforces the required backend-board order: real functional simulation and AXI/DDR interface evidence precede case_vivado_synthesis; case_vivado_synthesis precedes case_vivado_implementation; case_vivado_implementation plus functional and wrapper evidence precede case_runtime_bitstream; case_runtime_bitstream precedes case_runtime_abi_check; board_runtime depends on bitstream, ABI, functional simulation, and real weight artifacts.",
+      "The human_boundary_check and required_real_tool_evidence_check summaries already forbid smoke-only acceptance and require real downstream functional simulation, bitstream, and board runtime before final closure.",
+      "The presence_summary reports 31 verification DAG nodes and 25 required tool protocols. Because this is a role-specific slice, the visibly truncated required_tool_protocols list must not be treated as missing backend protocols solely from omitted rows.",
+      "The visible backend nodes mention utilization, timing, route, and DRC evidence, and the registry provides real_tool.case_vivado_synthesis_report_check, real_tool.case_vivado_implementation_report_check, timing_resource_check, implementation_package_static, deployment_board_check, and board_runtime. The final auditor should require these report and package checks as explicit child evidence for backend-board gates, not just infer them from a Vivado exit code.",
+      "The backend-board contract must reject evidence whose scope is only smoke, default generated weights, a standalone RTL core, or a non-AXI/DDR-wrapped system for Vivado, bitstream, ABI, or board-runtime closure.",
+      "The visible Stage 4 global parameter clock_target_mhz is 0, while downstream timing/resource reports are required. Timing_resource_report_requirements should bind the accepted clock source from target_board_profile/tool_protocols or require bounded approval before treating timing closure as satisfied."
+    ],
+    "proposed_actions": [
+      "Harden the backend_board_gate_order_review so every Vivado, bitstream, ABI, and board-runtime gate records required predecessors, accepted evidence scope, produced reports, and non-substitution rules.",
+      "Bind Vivado synthesis acceptance to real_tool.case_vivado_synthesis plus real_tool.case_vivado_synthesis_report_check and timing_resource_check; do not accept synthesis-only logs without report artifacts.",
+      "Bind Vivado implementation acceptance to real_tool.case_vivado_implementation plus real_tool.case_vivado_implementation_report_check, timing_resource_check, DRC/route evidence, and implementation_package_static.",
+      "Require case_runtime_bitstream only after implementation report checks pass and require the produced bitstream/package manifest to be hash-linked to the generated AXI/DDR top, runtime_config, memory_layout, and target board profile.",
+      "Require case_runtime_abi_check after bitstream generation and before board_runtime; it must compare register map, DDR address ranges, runtime ABI, and bitstream/package identifiers.",
+      "Require board_runtime and output_validity_check for final closure; board evidence must consume the ABI-checked bitstream and real input/weight artifacts and must not be replaced by smoke or standalone-core evidence.",
+      "If app-shell target discovery is ambiguous, route to backend bounded recovery with cited evidence and approval instead of selecting target names heuristically."
+    ],
+    "risks": [
+      "Downstream risk: if synthesis or implementation report checks remain only implied by node descriptions, a later stage could incorrectly promote on a Vivado command return code without utilization, timing, route, or DRC evidence.",
+      "Downstream risk: if evidence manifests do not carry scope/provenance tags, smoke tests or standalone-core simulator evidence could contaminate backend-board gates that require the board-accurate AXI/DDR wrapped system.",
+      "Downstream risk: ambiguous board or app-shell target discovery could cause guessed shell names or package targets; bounded recovery approval is required instead of guessing.",
+      "Cross-layer risk: runtime_config, memory_layout, register map, DDR image layout, and bitstream package hashes may drift between Stage 5 artifacts and board runtime unless case_runtime_abi_check and artifact_hash_check are mandatory after bitstream generation.",
+      "Cross-layer risk: timing closure failures may tempt unapproved architecture, pipeline, memory-layout, numeric-policy, or template changes; such changes require approval and must be routed through bounded repair, not ad hoc RTL edits.",
+      "Debug risk: a board-runtime failure must be localized at the board-accurate AXI/DDR wrapped layer after lower-layer evidence passes; it must not skip the three-layer repair loop or reopen leaf modules without contradictory boundary trace evidence."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.verification_artifact_contract",
+        "candidate_stage_artifact.verification_gate_dag",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_protocols",
+        "artifact.input.human_agent_boundary",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "backend_board_gate_order_review",
+        "vivado_evidence_acceptance_contract",
+        "runtime_bitstream_board_runtime_blocking_rules",
+        "timing_resource_report_requirements"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.backend_board.plan",
+        "constraint.backend.package",
+        "constraint.deployment.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.human.boundary",
+        "constraint.memory.board"
+      ],
+      "edges": [
+        "functional_sim + case_axi_ddr_interface + case_board_interface_discovery -> case_vivado_synthesis",
+        "case_vivado_synthesis -> case_vivado_implementation",
+        "case_vivado_implementation + functional_sim + case_axi_ddr_interface + case_multilayer_pipeline -> case_runtime_bitstream",
+        "case_runtime_bitstream -> case_runtime_abi_check",
+        "case_runtime_bitstream + case_runtime_abi_check + functional_sim + case_real_weight_artifacts -> board_runtime"
+      ],
+      "nodes": [
+        "functional_sim",
+        "case_board_interface_discovery",
+        "case_axi_ddr_interface",
+        "case_axi_protocol_check",
+        "case_ddr_image_roundtrip",
+        "case_vivado_synthesis",
+        "case_vivado_implementation",
+        "case_runtime_bitstream",
+        "case_runtime_abi_check",
+        "board_runtime"
+      ]
+    },
+    "schema_version": "spatialaccagent.backend_board_evidence_planner.v0",
+    "stage": "verification_artifacts",
+    "status": "ready",
+    "summary": "Backend-board gate planning is satisfiable for the current verification_artifacts stage: the visible DAG orders functional simulation and AXI/DDR evidence before Vivado synthesis, Vivado synthesis before implementation, implementation before runtime bitstream, bitstream before ABI check, and bitstream plus ABI before board runtime. No final hardware pass is claimed. The handoff to verification_evidence_gate_auditor should harden the contract so synthesis and implementation report checks, timing/resource checks, implementation packaging, runtime ABI, bitstream, and board runtime are explicit non-substitutable downstream gates; smoke, default-weight, or standalone-core evidence must not satisfy backend-board closure."
+  },
+  "prompt_bytes": 70608,
+  "prompt_hash": "401016f07c7c2513ba61a0f6ce9b925906fd3560717a9b5ed04f607a8e118f79",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.backend_board_evidence_planner.v0\",\"agent\":\"backend_board_evidence_planner\",\"stage\":\"verification_artifacts\",\"status\":\"ready\",\"summary\":\"Backend-board gate planning is satisfiable for the current verification_artifacts stage: the visible DAG orders functional simulation and AXI/DDR evidence before Vivado synthesis, Vivado synthesis before implementation, implementation before runtime bitstream, bitstream before ABI check, and bitstream plus ABI before board runtime. No final hardware pass is claimed. The handoff to verification_evidence_gate_auditor should harden the contract so synthesis and implementation report checks, timing/resource checks, implementation packaging, runtime ABI, bitstream, and board runtime are explicit non-substitutable downstream gates; smoke, default-weight, or standalone-core evidence must not satisfy backend-board closure.\",\"sacg_focus\":{\"nodes\":[\"functional_sim\",\"case_board_interface_discovery\",\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_vivado_synthesis\",\"case_vivado_implementation\",\"case_runtime_bitstream\",\"case_runtime_abi_check\",\"board_runtime\"],\"edges\":[\"functional_sim + case_axi_ddr_interface + case_board_interface_discovery -> case_vivado_synthesis\",\"case_vivado_synthesis -> case_vivado_implementation\",\"case_vivado_implementation + functional_sim + case_axi_ddr_interface + case_multilayer_pipeline -> case_runtime_bitstream\",\"case_runtime_bitstream -> case_runtime_abi_check\",\"case_runtime_bitstream + case_runtime_abi_check + functional_sim + case_real_weight_artifacts -> board_runtime\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.backend_board.plan\",\"constraint.backend.package\",\"constraint.deployment.board\",\"constraint.runtime.board\",\"constraint.tool.profile\",\"constraint.tool.protocols\",\"constraint.human.boundary\",\"constraint.memory.board\"],\"artifacts\":[\"candidate_stage_artifact.verification_artifact_contract\",\"candidate_stage_artifact.verification_gate_dag\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.input.human_agent_boundary\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"backend_board_gate_order_review\",\"vivado_evidence_acceptance_contract\",\"runtime_bitstream_board_runtime_blocking_rules\",\"timing_resource_report_requirements\"]},\"observations\":[\"The supplied SACG memory truth reports no active contamination barriers and no open retry or backtrack requests, so there is no current SACG-memory blocker for this planning review.\",\"The candidate artifact explicitly states that Stage 6 does not claim final pass; implementation_package_static and board_runtime are declared as pending downstream gates, which matches the stage_gate_policy for planning-stage acceptance.\",\"The visible verification_gate_dag enforces the required backend-board order: real functional simulation and AXI/DDR interface evidence precede case_vivado_synthesis; case_vivado_synthesis precedes case_vivado_implementation; case_vivado_implementation plus functional and wrapper evidence precede case_runtime_bitstream; case_runtime_bitstream precedes case_runtime_abi_check; board_runtime depends on bitstream, ABI, functional simulation, and real weight artifacts.\",\"The human_boundary_check and required_real_tool_evidence_check summaries already forbid smoke-only acceptance and require real downstream functional simulation, bitstream, and board runtime before final closure.\",\"The presence_summary reports 31 verification DAG nodes and 25 required tool protocols. Because this is a role-specific slice, the visibly truncated required_tool_protocols list must not be treated as missing backend protocols solely from omitted rows.\",\"The visible backend nodes mention utilization, timing, route, and DRC evidence, and the registry provides real_tool.case_vivado_synthesis_report_check, real_tool.case_vivado_implementation_report_check, timing_resource_check, implementation_package_static, deployment_board_check, and board_runtime. The final auditor should require these report and package checks as explicit child evidence for backend-board gates, not just infer them from a Vivado exit code.\",\"The backend-board contract must reject evidence whose scope is only smoke, default generated weights, a standalone RTL core, or a non-AXI/DDR-wrapped system for Vivado, bitstream, ABI, or board-runtime closure.\",\"The visible Stage 4 global parameter clock_target_mhz is 0, while downstream timing/resource reports are required. Timing_resource_report_requirements should bind the accepted clock source from target_board_profile/tool_protocols or require bounded approval before treating timing closure as satisfied.\"],\"risks\":[\"Downstream risk: if synthesis or implementation report checks remain only implied by node descriptions, a later stage could incorrectly promote on a Vivado command return code without utilization, timing, route, or DRC evidence.\",\"Downstream risk: if evidence manifests do not carry scope/provenance tags, smoke tests or standalone-core simulator evidence could contaminate backend-board gates that require the board-accurate AXI/DDR wrapped system.\",\"Downstream risk: ambiguous board or app-shell target discovery could cause guessed shell names or package targets; bounded recovery approval is required instead of guessing.\",\"Cross-layer risk: runtime_config, memory_layout, register map, DDR image layout, and bitstream package hashes may drift between Stage 5 artifacts and board runtime unless case_runtime_abi_check and artifact_hash_check are mandatory after bitstream generation.\",\"Cross-layer risk: timing closure failures may tempt unapproved architecture, pipeline, memory-layout, numeric-policy, or template changes; such changes require approval and must be routed through bounded repair, not ad hoc RTL edits.\",\"Debug risk: a board-runtime failure must be localized at the board-accurate AXI/DDR wrapped layer after lower-layer evidence passes; it must not skip the three-layer repair loop or reopen leaf modules without contradictory boundary trace evidence.\"],\"proposed_actions\":[\"Harden the backend_board_gate_order_review so every Vivado, bitstream, ABI, and board-runtime gate records required predecessors, accepted evidence scope, produced reports, and non-substitution rules.\",\"Bind Vivado synthesis acceptance to real_tool.case_vivado_synthesis plus real_tool.case_vivado_synthesis_report_check and timing_resource_check; do not accept synthesis-only logs without report artifacts.\",\"Bind Vivado implementation acceptance to real_tool.case_vivado_implementation plus real_tool.case_vivado_implementation_report_check, timing_resource_check, DRC/route evidence, and implementation_package_static.\",\"Require case_runtime_bitstream only after implementation report checks pass and require the produced bitstream/package manifest to be hash-linked to the generated AXI/DDR top, runtime_config, memory_layout, and target board profile.\",\"Require case_runtime_abi_check after bitstream generation and before board_runtime; it must compare register map, DDR address ranges, runtime ABI, and bitstream/package identifiers.\",\"Require board_runtime and output_validity_check for final closure; board evidence must consume the ABI-checked bitstream and real input/weight artifacts and must not be replaced by smoke or standalone-core evidence.\",\"If app-shell target discovery is ambiguous, route to backend bounded recovery with cited evidence and approval instead of selecting target names heuristically.\"],\"executable_actions\":[{\"id\":\"bb_gate_contract_hardening\",\"stage\":\"verification_artifacts\",\"action_type\":\"evidence_contract_refinement\",\"rationale\":\"Convert the visible backend-board DAG into an auditable acceptance contract that makes Vivado report checks, timing/resource checks, implementation packaging, runtime bitstream, ABI, and board runtime explicit downstream gates and rejects smoke or standalone-core substitution.\",\"consumes\":[\"candidate_stage_artifact.verification_artifact_contract\",\"candidate_stage_artifact.verification_gate_dag\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.input.human_agent_boundary\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\"],\"produces\":[\"backend_board_gate_order_review\",\"vivado_evidence_acceptance_contract\",\"runtime_bitstream_board_runtime_blocking_rules\",\"timing_resource_report_requirements\"],\"tool_roles\":[\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"tool_protocol_check\",\"human_boundary_check\",\"verification_action_audit\",\"implementation_package_static\",\"timing_resource_check\",\"deployment_board_check\"],\"acceptance_checkers\":[\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"tool_protocol_check\",\"human_boundary_check\",\"verification_action_audit_check\",\"implementation_package_static\",\"timing_resource_check\",\"deployment_board_check\"],\"on_failure\":\"Block promotion to backend execution; repair the verification artifact contract to add missing report, package, ABI, board-runtime, or evidence-scope requirements before any Vivado or board action is treated as acceptable.\",\"requires_approval\":false},{\"id\":\"bb_board_interface_target_discovery_gate\",\"stage\":\"backend_board\",\"action_type\":\"backend_target_discovery\",\"rationale\":\"Before backend synthesis and bitstream packaging, bind the board/app-shell interface target to cited target_board_profile, tool_profile, tool_protocols, and generated AXI/DDR wrapper evidence; do not guess target names if discovery is ambiguous.\",\"consumes\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.runtime_config\",\"candidate_stage_artifact.verification_gate_dag\",\"case_pipeline_deadlock_check evidence\"],\"produces\":[\"backend_board/case_diagnostics/board_interface_discovery.json\",\"backend_board/app_shell_target_discovery_contract.json\",\"target_discovery_policy_update\"],\"tool_roles\":[\"case_board_interface_discovery\",\"app_shell_target_discovery_contract\"],\"acceptance_checkers\":[\"case_board_interface_discovery\",\"real_tool.case_board_interface_discovery\",\"real_tool.app_shell_target_discovery_contract\",\"backend_app_shell_integration_contract_static_check\",\"backend_app_shell_target_discovery_check\",\"human_boundary_check\"],\"on_failure\":\"Keep case_axi_ddr_interface, Vivado synthesis, runtime bitstream, ABI, and board runtime blocked. If multiple plausible shell targets remain, use backend_bounded_recovery_action with approval rather than guessing names.\",\"requires_approval\":false},{\"id\":\"bb_run_vivado_synthesis_with_reports\",\"stage\":\"backend_board\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Run real Vivado synthesis only after functional_sim, AXI/DDR interface, and board interface discovery gates pass, and require synthesis reports plus timing/resource evidence as the acceptance artifact.\",\"consumes\":[\"functional_sim evidence\",\"case_axi_ddr_interface evidence\",\"case_board_interface_discovery evidence\",\"artifact.stage5.generated_code_package\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"vivado_evidence_acceptance_contract\"],\"produces\":[\"backend_board/vivado_synthesis/synthesis_run_evidence.json\",\"backend_board/vivado_synthesis/utilization_report.json\",\"backend_board/vivado_synthesis/timing_report.json\",\"backend_board/vivado_synthesis/drc_or_message_summary.json\"],\"tool_roles\":[\"case_vivado_synthesis\",\"case_vivado_synthesis_report_check\",\"timing_resource_check\"],\"acceptance_checkers\":[\"real_tool.case_vivado_synthesis\",\"real_tool.case_vivado_synthesis_report_check\",\"timing_resource_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not run implementation. Route the real Vivado logs and report failures to backend bounded recovery or contract-guided localization; if the failure implies architecture, memory layout, clock target, or template changes, require approval before repair.\",\"requires_approval\":false},{\"id\":\"bb_run_vivado_implementation_with_reports\",\"stage\":\"backend_board\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Run real Vivado implementation only after synthesis report checks pass, and require route, DRC, implementation timing, utilization, and package-static evidence before any bitstream/runtime packaging step.\",\"consumes\":[\"backend_board/vivado_synthesis/synthesis_run_evidence.json\",\"backend_board/vivado_synthesis/utilization_report.json\",\"backend_board/vivado_synthesis/timing_report.json\",\"artifact.stage5.generated_code_package\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"timing_resource_report_requirements\"],\"produces\":[\"backend_board/vivado_implementation/implementation_run_evidence.json\",\"backend_board/vivado_implementation/route_status.json\",\"backend_board/vivado_implementation/implementation_timing_report.json\",\"backend_board/vivado_implementation/implementation_utilization_report.json\",\"backend_board/vivado_implementation/drc_report.json\",\"backend_board/vivado_implementation/package_static_report.json\"],\"tool_roles\":[\"case_vivado_implementation\",\"case_vivado_implementation_report_check\",\"timing_resource_check\",\"implementation_package_static\"],\"acceptance_checkers\":[\"real_tool.case_vivado_implementation\",\"real_tool.case_vivado_implementation_report_check\",\"timing_resource_check\",\"implementation_package_static\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not generate or package a runtime bitstream. Preserve implementation evidence, localize the earliest backend/package/timing boundary, and request bounded repair; changes to architecture, pipeline, memory layout, numeric policy, clock target, or major templates require approval.\",\"requires_approval\":false},{\"id\":\"bb_build_runtime_bitstream_package\",\"stage\":\"backend_board\",\"action_type\":\"runtime_package_execution\",\"rationale\":\"Generate the runtime/app-shell bitstream package only after implementation report checks pass and bind the package to the generated AXI/DDR top, target board profile, runtime_config, memory_layout, and real implementation evidence.\",\"consumes\":[\"backend_board/vivado_implementation/implementation_run_evidence.json\",\"backend_board/vivado_implementation/implementation_timing_report.json\",\"backend_board/vivado_implementation/implementation_utilization_report.json\",\"backend_board/vivado_implementation/drc_report.json\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.runtime_config\",\"artifact.stage5.memory_layout\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\",\"runtime_bitstream_board_runtime_blocking_rules\"],\"produces\":[\"backend_board/runtime_bitstream/runtime_bitstream_evidence.json\",\"backend_board/runtime_bitstream/bitstream_package_manifest.json\",\"backend_board/runtime_bitstream/bitstream_hashes.json\",\"backend_board/runtime_bitstream/deployment_package_static_report.json\"],\"tool_roles\":[\"case_runtime_bitstream\",\"app_shell_runtime_bitstream\",\"implementation_package_static\",\"deployment_board_check\"],\"acceptance_checkers\":[\"case_runtime_bitstream\",\"real_tool.case_runtime_bitstream\",\"real_tool.app_shell_runtime_bitstream\",\"implementation_package_static\",\"deployment_board_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Keep case_runtime_abi_check and board_runtime blocked. If failure is due to ambiguous app-shell target or deployment package target, require bounded recovery approval with cited evidence; do not substitute synthesis, implementation, or smoke evidence for a bitstream package.\",\"requires_approval\":false},{\"id\":\"bb_run_runtime_abi_check\",\"stage\":\"backend_board\",\"action_type\":\"runtime_abi_verification\",\"rationale\":\"After bitstream package creation, cross-check runtime ABI, register map, DDR layout, address ranges, package hashes, and runtime_config/memory_layout consistency before allowing board execution.\",\"consumes\":[\"backend_board/runtime_bitstream/runtime_bitstream_evidence.json\",\"backend_board/runtime_bitstream/bitstream_package_manifest.json\",\"backend_board/runtime_bitstream/bitstream_hashes.json\",\"artifact.stage5.runtime_config\",\"artifact.stage5.memory_layout\",\"case_ddr_image_roundtrip evidence\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\"],\"produces\":[\"backend_board/runtime_abi/runtime_abi_check_report.json\",\"backend_board/runtime_abi/register_map_compare.json\",\"backend_board/runtime_abi/ddr_address_range_compare.json\",\"backend_board/runtime_abi/bitstream_runtime_hash_link.json\"],\"tool_roles\":[\"case_runtime_abi_check\",\"addr_map_check\",\"artifact_hash_check\",\"memory_runtime_plan_check\"],\"acceptance_checkers\":[\"case_runtime_abi_check\",\"real_tool.case_runtime_abi_check\",\"addr_map_check\",\"artifact_hash_check\",\"memory_runtime_plan_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Block board_runtime. Route mismatches to memory_runtime_repair or bounded backend repair with the violated memory/runtime constraints; any memory layout or ABI change requires approval before regeneration.\",\"requires_approval\":false},{\"id\":\"bb_run_board_runtime_final_evidence\",\"stage\":\"backend_board\",\"action_type\":\"board_runtime_execution\",\"rationale\":\"Collect final board runtime evidence only after ABI-checked bitstream packaging passes, using real input/weight artifacts and output validity checks; this is the required final deployment gate and cannot be replaced by smoke or standalone-core evidence.\",\"consumes\":[\"backend_board/runtime_bitstream/bitstream_package_manifest.json\",\"backend_board/runtime_abi/runtime_abi_check_report.json\",\"case_real_weight_artifacts evidence\",\"functional_sim evidence\",\"artifact.stage5.runtime_config\",\"artifact.stage5.memory_layout\",\"artifact.input.target_board_profile\",\"artifact.input.human_agent_boundary\",\"runtime_bitstream_board_runtime_blocking_rules\"],\"produces\":[\"backend_board/board_runtime/board_runtime_evidence.json\",\"backend_board/board_runtime/output_validity_report.json\",\"backend_board/board_runtime/deployment_board_report.json\",\"backend_board/board_runtime/final_closure_blocking_status.json\"],\"tool_roles\":[\"board_runtime\",\"output_validity_check\",\"deployment_board_check\"],\"acceptance_checkers\":[\"board_runtime\",\"real_tool.board_runtime\",\"deployment_board_check\",\"output_validity_check\",\"human_boundary_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not claim final pass. Apply the three-layer repair loop at the board-accurate AXI/DDR wrapped system: preserve tool output, run contract-guided localization to the earliest causal boundary, perform bounded repair, and rerun the failed gate; do not skip to higher layers or reopen lower layers without contradictory boundary trace evidence.\",\"requires_approval\":false}],\"approval_required_for\":[\"Selecting a different target board, app-shell target, shell name, or deployment package target when discovery evidence is ambiguous or conflicts with supplied board materials.\",\"Any architecture, pipeline, memory layout, register map, runtime ABI, numeric policy, clock target, or major template change proposed to close Vivado timing/resource, bitstream, ABI, or board-runtime failures.\",\"Any bounded recovery that would replace a required real backend-board tool protocol with an approved equivalent checker; smoke, default-weight, or standalone-core evidence remains unacceptable for final closure.\",\"Any free-form RTL or template rewrite outside the trusted-template and bounded-repair boundaries.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/backend_board_evidence_planner_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/backend_board_evidence_planner_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "verification_artifacts.backend and board evidence planner",
+  "used_fallback": false
+}

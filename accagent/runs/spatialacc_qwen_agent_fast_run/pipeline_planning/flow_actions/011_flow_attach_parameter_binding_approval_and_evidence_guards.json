@@ -1,0 +1,51 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "human_boundary_check",
+      "tool_protocol_check",
+      "verification_action_audit_check",
+      "sacg_memory_check",
+      "stage_artifact_trust_barrier_check",
+      "sacg_static_check"
+    ],
+    "action_type": "handoff_guard",
+    "consumes": [
+      "artifact.flow.pipeline_planning_promotion_decision",
+      "recent_stage_summary.llm_agent.approval_required_for",
+      "recent_stage_summary.design_team.executable_actions",
+      "sacg_memory",
+      "artifact.input.human_agent_boundary",
+      "artifact.input.tool_protocols"
+    ],
+    "id": "flow.attach_parameter_binding_approval_and_evidence_guards",
+    "on_failure": "Keep parameter_binding and all later-stage consumption blocked until the guard records approval boundaries and downstream evidence obligations; do not reinterpret Stage 3 planning evidence as implementation or hardware proof.",
+    "produces": [
+      "artifact.stage4.flow_guard.approval_boundary",
+      "artifact.stage4.downstream_obligation_index",
+      "sacg_memory.downstream_obligations.pipeline_planning"
+    ],
+    "rationale": "Carry forward the Stage 3 stage_gate_policy and approval boundaries so broad team actions are treated as downstream obligations, not as evidence that codegen, memory layout, verification, Vivado, or board runtime has already passed.",
+    "requires_approval": false,
+    "stage": "parameter_binding",
+    "tool_roles": [
+      "human_boundary_check",
+      "tool_protocol_check",
+      "sacg_memory_update",
+      "verification_action_audit",
+      "stage_artifact_trust_barrier",
+      "sacg_static_check"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "proceed",
+  "flow_event_index": 11,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/011_proceed.json",
+  "stage": "pipeline_planning"
+}

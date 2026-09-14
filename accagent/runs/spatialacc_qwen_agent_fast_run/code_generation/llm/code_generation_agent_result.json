@@ -1,0 +1,374 @@
+{
+  "agent": "code_generation_agent",
+  "duration_sec": 887.0632101560041,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "code_generation_agent",
+    "approval_required_for": [
+      "Any architecture, pipeline, memory-layout, numeric-policy, or major template change beyond bounded repair boundaries.",
+      "Assigning any nonzero clock_target_mhz, board timing target, clock/reset assumption, or runtime timing target without cited board-profile, Vivado, or app-shell evidence.",
+      "Changing memory_layout.json base addresses, address regions, alignment policy, buffer sizing, RAM dimensions, or non-overlap assumptions.",
+      "Changing runtime_config.json ABI fields, transfer counts, data order, host/runtime protocol fields, or board runtime references.",
+      "Changing numeric tolerance policy, golden-reference generation policy, expected outputs, or model tensor shapes.",
+      "Changing selected template library/template set, adding new operator templates, or replacing template-derived modules with free-form RTL.",
+      "Selecting ambiguous backend/app-shell target names, shell ports, or AXI/DDR integration points without cited real tool evidence.",
+      "Proceeding with deployment or hardware-pass claims after failed or missing real-tool checker evidence."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "codegen_contract_check"
+        ],
+        "action_type": "cross_layer_consistency_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage4.parameter_static_checks",
+          "candidate_stage_artifact.generated_top",
+          "candidate_stage_artifact.contract_check",
+          "candidate_stage_artifact.compile_gate",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "codegen.materialize_model_numeric_consistency_traces",
+        "on_failure": "Block downstream code_generation evidence promotion. If the mismatch is local to generated parameter emission, route to bounded_template_repair/codegen regeneration; if stage3 or stage4 artifacts are the conflicting source, raise a stage_backtrack_request instead of editing generated outputs or loosening checks.",
+        "produces": [
+          "model_numeric_codegen_consistency_report.json",
+          "generated_params_shape_trace.json",
+          "numeric_policy_binding_trace.json"
+        ],
+        "rationale": "Create the missing model/shape/numeric trace artifacts from the supplied model, numeric policy, pipeline/parameter binding, generated_top parameters, and passing contract evidence so downstream agents consume checker-grounded parameter provenance instead of inferring it from the compact manifest.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "sacg_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "codegen_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "codegen_contract_check",
+          "codegen_package_static_check"
+        ],
+        "action_type": "memory_runtime_handoff_review",
+        "consumes": [
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "generated/chisel/GeneratedAxiDdrTop.sv",
+          "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAxiDdrTop.scala",
+          "generated/chisel/ram_1792x256.sv",
+          "generated/chisel/ram_4x129.sv",
+          "generated/chisel/logs/codegen_contract_check.json",
+          "generated/chisel/logs/codegen_package_static_check.json",
+          "generated/chisel/logs/compile_check.json"
+        ],
+        "id": "codegen.memory_runtime_static_handoff_check",
+        "on_failure": "Block memory/runtime handoff promotion, preserve failing checker evidence, and route to bounded memory_runtime_repair with repair_boundary_check; do not silently change memory layout, runtime ABI, pipeline schedule, data order, or golden outputs.",
+        "produces": [
+          "memory_runtime_codegen_audit.json",
+          "addr_map_alignment_report.json",
+          "runtime_abi_handoff_notes.json"
+        ],
+        "rationale": "Materialize the missing memory/runtime handoff artifacts by binding memory_layout.json, runtime_config.json, generated AXI/DDR wrapper evidence, and the passed codegen check logs to the named memory/runtime/board constraints without inferring hidden field details from the compact summary.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "codegen_contract_check",
+          "codegen_package_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "template_binding_static_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check",
+          "codegen_contract_check",
+          "codegen_compile_gate_check"
+        ],
+        "action_type": "template_bound_artifact_review",
+        "consumes": [
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection",
+          "artifact.stage4.parameter_binding",
+          "candidate_stage_artifact.generated_files",
+          "candidate_stage_artifact.planned_code_outputs",
+          "candidate_stage_artifact.generated_top",
+          "candidate_stage_artifact.package_static_check",
+          "candidate_stage_artifact.contract_check",
+          "candidate_stage_artifact.compile_gate"
+        ],
+        "id": "code_generation.finalize_template_bound_audit",
+        "on_failure": "Treat the failure as a current-stage codegen handoff blocker. Invoke bounded_template_repair only for mismatches repairable within the existing template library and stage4 parameter binding; otherwise request backtrack or approval before changing templates, parameters, shapes, or numeric policy.",
+        "produces": [
+          "template_codegen_audit.json",
+          "generated_source_to_template_trace.json",
+          "compile_gate_evidence_summary.json"
+        ],
+        "rationale": "The supplied package_static_check, codegen_contract_check, and compile/elaboration gate pass; materialize the missing template provenance and compile-evidence artifacts so downstream consumers can distinguish template-bound generated RTL from unverified free-form assumptions.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check",
+          "codegen_contract_check",
+          "codegen_compile_gate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_reference_check",
+          "verification_action_audit_check",
+          "required_real_tool_evidence_check",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "evidence_gate_handoff",
+        "consumes": [
+          "model_numeric_codegen_consistency_report.json",
+          "generated_params_shape_trace.json",
+          "numeric_policy_binding_trace.json",
+          "memory_runtime_codegen_audit.json",
+          "addr_map_alignment_report.json",
+          "runtime_abi_handoff_notes.json",
+          "template_codegen_audit.json",
+          "generated_source_to_template_trace.json",
+          "compile_gate_evidence_summary.json",
+          "candidate_stage_artifact.generated_top",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "candidate_stage_artifact.contract_check",
+          "candidate_stage_artifact.package_static_check",
+          "candidate_stage_artifact.compile_gate",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "code_generation.handoff_cross_layer_codegen_evidence",
+        "on_failure": "Hold downstream promotion until handoff records cite checker logs, preserve SACG constraint links, and explicitly state that no functional simulation, timing, bitstream, or board pass is being claimed; do not bypass failed checkers.",
+        "produces": [
+          "code_generation.cross_layer_model_numeric_handoff.json",
+          "code_generation.memory_runtime_package_handoff.json",
+          "code_generation.evidence_gate_handoff.json",
+          "code_generation_stage_acceptance_decision.json",
+          "checker_evidence_matrix.json",
+          "repair_or_handoff_boundary_record.json"
+        ],
+        "rationale": "Aggregate the newly materialized model/numeric, memory/runtime, template/provenance, compile, package, and contract evidence into the compact cross-layer records required by verification and backend agents, while explicitly preserving that later hardware/tool gates are unproven.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_reference_check",
+          "verification_action_audit",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "case_stage_leaf_static",
+          "boundary_contract_check"
+        ],
+        "action_type": "handoff_static_contract",
+        "consumes": [
+          "code_generation_stage_acceptance_decision.json",
+          "checker_evidence_matrix.json",
+          "generated/chisel/filelist.f",
+          "generated/chisel/GeneratedAcceleratorTop.sv",
+          "generated/chisel/GeneratedAxiDdrTop.sv",
+          "generated/chisel/verification/layers-GeneratedAcceleratorTop-Verification.sv",
+          "generated/chisel/verification/layers-GeneratedAxiDdrTop-Verification.sv",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "artifact.input.case_adapter",
+          "constraint.verification.plan"
+        ],
+        "id": "verification.build_hierarchical_artifact_contract",
+        "on_failure": "Do not run functional simulation. Return failed contract evidence for bounded codegen/verification repair classification and preserve the three-layer verification order.",
+        "produces": [
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.verification_artifact_contract",
+          "verification/boundary_contracts/operator_leaf_contracts.json",
+          "verification/boundary_contracts/single_layer_contract.json",
+          "verification/boundary_contracts/axi_ddr_contract.json"
+        ],
+        "rationale": "After code_generation handoff artifacts exist, convert the accepted package into a checker-grounded hierarchical verification plan before any real functional simulation or repair decision.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "case_stage_leaf_static",
+          "boundary_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.app_shell_target_discovery_contract",
+          "backend_app_shell_target_discovery_check",
+          "real_tool.app_shell_target_hint_synthesis",
+          "real_tool.app_shell_target_discovery_after_hint",
+          "backend_bounded_recovery_action_check",
+          "human_boundary_check"
+        ],
+        "action_type": "target_discovery",
+        "consumes": [
+          "code_generation_stage_acceptance_decision.json",
+          "generated/chisel/GeneratedAxiDdrTop.sv",
+          "generated/chisel/runtime/runtime_config.json",
+          "generated/chisel/memory/memory_layout.json",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "constraint.deployment.board",
+          "constraint.human.boundary"
+        ],
+        "id": "backend_board.discover_app_shell_target_and_clock_policy",
+        "on_failure": "If target names, shell ports, memory interfaces, or clock evidence remain ambiguous, require bounded human/architecture approval and keep runtime bitstream and board runtime blocked.",
+        "produces": [
+          "artifact.stage9.app_shell_integration_contract",
+          "artifact.stage9.app_shell_target_selection_decision",
+          "backend_board/case_diagnostics/app_shell_target_discovery_contract.json",
+          "backend_board/case_diagnostics/app_shell_target_discovery_after_hint.json",
+          "target_discovery_policy_update.json"
+        ],
+        "rationale": "The generated_top clock_target_mhz is 0, so board/app-shell integration and any nonzero clock target must be derived from cited board materials and real tool evidence rather than guessed from codegen elaboration.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "app_shell_target_discovery_contract",
+          "app_shell_target_hint_synthesis",
+          "app_shell_target_discovery_after_hint",
+          "backend_bounded_recovery_action",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "Current-stage acceptance evidence is present and passing: package_static_check status=pass, codegen_contract_check status=pass with no errors or warnings, and compile_gate status=pass with returncode 0 for Compile/compile, GeneratedContractCheck, ElaborateGeneratedAccelerator, and ElaborateGeneratedAxiDdrTop.",
+      "The candidate manifest reports target_model_artifact_status.current_artifacts_match_target=true and missing_for_target=[] for model_type=qwen2.",
+      "Generated top parameters visible in the manifest bind hidden_size=896, intermediate_size=4864, lanes=8, max_seq_len=16, q_heads=14, kv_heads=2, and bits=32/16/32; these are covered by the passing contract check, not independently revalidated here.",
+      "SACG memory truth has zero active contamination barriers and zero open retry/backtrack requests, so there is no current SACG-memory blocker for code_generation review.",
+      "The generated package contains Chisel/Scala sources, generated SystemVerilog, top wrappers, AXI/DDR wrapper, memory_layout.json, runtime_config.json, contract checker source, filelist, and verification-layer SV stubs as listed in the manifest.",
+      "The team handoff names cross-layer audit and handoff files that are not listed as generated_files in the candidate manifest: model_numeric_codegen_consistency_report.json, generated_params_shape_trace.json, numeric_policy_binding_trace.json, memory_runtime_codegen_audit.json, addr_map_alignment_report.json, runtime_abi_handoff_notes.json, template_codegen_audit.json, generated_source_to_template_trace.json, compile_gate_evidence_summary.json, checker_evidence_matrix.json, code_generation_stage_acceptance_decision.json, repair_or_handoff_boundary_record.json, and the compact code_generation.*_handoff.json records.",
+      "Those missing handoff/audit files should be treated as downstream-consumption handoff actions, not as evidence that the current package or contract gate failed, because the current-stage package, compile, and contract gates all pass under the supplied stage_gate_policy.",
+      "clock_target_mhz is 0 in generated_top/parameter_binding; the stage policy explicitly classifies a nonzero clock assignment as a later board-profile/tool-evidence or approval item, not a codegen compile-pass fact.",
+      "No functional simulation, numeric golden comparison, AXI protocol validation, Vivado timing/resource closure, bitstream, or board-runtime evidence is supplied; codegen elaboration must not be represented as hardware correctness."
+    ],
+    "proposed_actions": [
+      "Materialize the missing model/shape/numeric, memory/runtime, template/provenance, compile-evidence, and stage-acceptance handoff artifacts from the passing manifest and checker logs before promoting the candidate to downstream consumption.",
+      "Preserve the candidate-only/evidence-boundary language: codegen is ready by current-stage gates, but functional simulation, numeric validation, Vivado implementation, timing, bitstream, and board runtime remain later-stage obligations.",
+      "Hand off the accepted codegen package to verification only through a hierarchical verification artifact contract that enforces the required order: operator/leaf checks, then connected single-transformer-layer checks, then AXI/DDR wrapped-system checks.",
+      "Start backend/app-shell target discovery only from cited board materials and real tool evidence; keep clock_target_mhz at 0 until evidence or bounded approval supports a nonzero target.",
+      "Do not edit generated memory layout, runtime ABI, templates, numeric policy, or golden/tolerance settings to satisfy later checkers without bounded repair classification and the required approval when scope is exceeded."
+    ],
+    "risks": [
+      "Downstream verification/backend agents may lose model-shape-numeric, template-provenance, memory-runtime, and checker-boundary traceability if the named handoff/audit files are not materialized before consumption.",
+      "Memory layout and runtime config exist and passed static contract checks, but transfer counts, data order, address behavior, liveness, and AXI/DDR protocol behavior remain unproven until the later hierarchical verification and board-accurate checks run.",
+      "The board clock/app-shell target remains unknown because clock_target_mhz=0; guessing a clock, shell port, target name, or timing target without cited board/Vivado evidence would violate the deployment and human-boundary constraints.",
+      "Functional/numerical correctness of the Qwen2 single-layer accelerator is not established by the code_generation package; real leaf, single-transformer-layer, and wrapped-system simulations must still pass before backend or board claims.",
+      "Any later fix that changes architecture, pipeline schedule, memory map, runtime ABI, data order, numeric policy, selected templates, or golden/tolerance policy would exceed bounded codegen handoff repair and require the approvals listed below."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/code_generation_manifest.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/generated/chisel",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/generated/chisel/logs/compile_check.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/generated/chisel/logs/codegen_contract_check.json",
+        "generated/chisel/logs/codegen_package_static_check.json",
+        "generated/chisel/memory/memory_layout.json",
+        "generated/chisel/runtime/runtime_config.json",
+        "generated/chisel/GeneratedAcceleratorTop.sv",
+        "generated/chisel/GeneratedAxiDdrTop.sv",
+        "generated/chisel/filelist.f"
+      ],
+      "constraints": [
+        "constraint.codegen.package",
+        "constraint.codegen.compile_gate",
+        "constraint.codegen.contract_check",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.verification.plan",
+        "constraint.human.boundary"
+      ],
+      "edges": [
+        "model_shape_to_generated_params",
+        "numeric_policy_to_generated_bits",
+        "pipeline_plan_to_generated_arch_plan",
+        "parameter_binding_to_generated_top_params",
+        "template_sources_to_generated_chisel_modules",
+        "generated_memory_layout_to_runtime_config",
+        "runtime_config_to_axi_ddr_wrapper",
+        "codegen_checker_logs_to_stage_acceptance_decision",
+        "codegen_handoff_to_verification_artifact_contract",
+        "target_board_profile_to_clock_and_app_shell_policy"
+      ],
+      "nodes": [
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "generated.model_ir",
+        "generated.arch_plan",
+        "generated.chisel_modules",
+        "generated.top_wrapper",
+        "generated.fpga_axi_ddr_top_wrapper",
+        "generated.memory_layout",
+        "generated.runtime_config",
+        "generated.codegen_compile_gate",
+        "generated.codegen_contract_check",
+        "generated.codegen_package_static_check",
+        "artifact.stage6.verification_plan",
+        "artifact.stage9.app_shell_integration_contract"
+      ]
+    },
+    "schema_version": "spatialaccagent.code_generation_agent.review.v0",
+    "stage": "code_generation",
+    "status": "ready_with_handoff_actions",
+    "summary": "The supplied code-generation candidate satisfies the visible current-stage gates: package static check passes, all four SBT compile/elaboration commands pass, codegen_contract_check passes, target Qwen2 artifacts match with no missing target outputs, and SACG memory truth reports no active barriers or open retry/backtrack requests. The missing items are not current-stage codegen gate failures; they are materialized cross-layer handoff/audit outputs needed before downstream verification/backend agents consume the candidate."
+  },
+  "prompt_bytes": 102968,
+  "prompt_hash": "49f83539c2b574a5ee841b42515c57a1fb354123aa3e89b2826059ee4fda006f",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.code_generation_agent.review.v0\",\"agent\":\"code_generation_agent\",\"stage\":\"code_generation\",\"status\":\"ready_with_handoff_actions\",\"summary\":\"The supplied code-generation candidate satisfies the visible current-stage gates: package static check passes, all four SBT compile/elaboration commands pass, codegen_contract_check passes, target Qwen2 artifacts match with no missing target outputs, and SACG memory truth reports no active barriers or open retry/backtrack requests. The missing items are not current-stage codegen gate failures; they are materialized cross-layer handoff/audit outputs needed before downstream verification/backend agents consume the candidate.\",\"sacg_focus\":{\"nodes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"generated.model_ir\",\"generated.arch_plan\",\"generated.chisel_modules\",\"generated.top_wrapper\",\"generated.fpga_axi_ddr_top_wrapper\",\"generated.memory_layout\",\"generated.runtime_config\",\"generated.codegen_compile_gate\",\"generated.codegen_contract_check\",\"generated.codegen_package_static_check\",\"artifact.stage6.verification_plan\",\"artifact.stage9.app_shell_integration_contract\"],\"edges\":[\"model_shape_to_generated_params\",\"numeric_policy_to_generated_bits\",\"pipeline_plan_to_generated_arch_plan\",\"parameter_binding_to_generated_top_params\",\"template_sources_to_generated_chisel_modules\",\"generated_memory_layout_to_runtime_config\",\"runtime_config_to_axi_ddr_wrapper\",\"codegen_checker_logs_to_stage_acceptance_decision\",\"codegen_handoff_to_verification_artifact_contract\",\"target_board_profile_to_clock_and_app_shell_policy\"],\"constraints\":[\"constraint.codegen.package\",\"constraint.codegen.compile_gate\",\"constraint.codegen.contract_check\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.verification.plan\",\"constraint.human.boundary\"],\"artifacts\":[\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/code_generation_manifest.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/generated/chisel\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/generated/chisel/logs/compile_check.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/generated/chisel/logs/codegen_contract_check.json\",\"generated/chisel/logs/codegen_package_static_check.json\",\"generated/chisel/memory/memory_layout.json\",\"generated/chisel/runtime/runtime_config.json\",\"generated/chisel/GeneratedAcceleratorTop.sv\",\"generated/chisel/GeneratedAxiDdrTop.sv\",\"generated/chisel/filelist.f\"]},\"observations\":[\"Current-stage acceptance evidence is present and passing: package_static_check status=pass, codegen_contract_check status=pass with no errors or warnings, and compile_gate status=pass with returncode 0 for Compile/compile, GeneratedContractCheck, ElaborateGeneratedAccelerator, and ElaborateGeneratedAxiDdrTop.\",\"The candidate manifest reports target_model_artifact_status.current_artifacts_match_target=true and missing_for_target=[] for model_type=qwen2.\",\"Generated top parameters visible in the manifest bind hidden_size=896, intermediate_size=4864, lanes=8, max_seq_len=16, q_heads=14, kv_heads=2, and bits=32/16/32; these are covered by the passing contract check, not independently revalidated here.\",\"SACG memory truth has zero active contamination barriers and zero open retry/backtrack requests, so there is no current SACG-memory blocker for code_generation review.\",\"The generated package contains Chisel/Scala sources, generated SystemVerilog, top wrappers, AXI/DDR wrapper, memory_layout.json, runtime_config.json, contract checker source, filelist, and verification-layer SV stubs as listed in the manifest.\",\"The team handoff names cross-layer audit and handoff files that are not listed as generated_files in the candidate manifest: model_numeric_codegen_consistency_report.json, generated_params_shape_trace.json, numeric_policy_binding_trace.json, memory_runtime_codegen_audit.json, addr_map_alignment_report.json, runtime_abi_handoff_notes.json, template_codegen_audit.json, generated_source_to_template_trace.json, compile_gate_evidence_summary.json, checker_evidence_matrix.json, code_generation_stage_acceptance_decision.json, repair_or_handoff_boundary_record.json, and the compact code_generation.*_handoff.json records.\",\"Those missing handoff/audit files should be treated as downstream-consumption handoff actions, not as evidence that the current package or contract gate failed, because the current-stage package, compile, and contract gates all pass under the supplied stage_gate_policy.\",\"clock_target_mhz is 0 in generated_top/parameter_binding; the stage policy explicitly classifies a nonzero clock assignment as a later board-profile/tool-evidence or approval item, not a codegen compile-pass fact.\",\"No functional simulation, numeric golden comparison, AXI protocol validation, Vivado timing/resource closure, bitstream, or board-runtime evidence is supplied; codegen elaboration must not be represented as hardware correctness.\"],\"risks\":[\"Downstream verification/backend agents may lose model-shape-numeric, template-provenance, memory-runtime, and checker-boundary traceability if the named handoff/audit files are not materialized before consumption.\",\"Memory layout and runtime config exist and passed static contract checks, but transfer counts, data order, address behavior, liveness, and AXI/DDR protocol behavior remain unproven until the later hierarchical verification and board-accurate checks run.\",\"The board clock/app-shell target remains unknown because clock_target_mhz=0; guessing a clock, shell port, target name, or timing target without cited board/Vivado evidence would violate the deployment and human-boundary constraints.\",\"Functional/numerical correctness of the Qwen2 single-layer accelerator is not established by the code_generation package; real leaf, single-transformer-layer, and wrapped-system simulations must still pass before backend or board claims.\",\"Any later fix that changes architecture, pipeline schedule, memory map, runtime ABI, data order, numeric policy, selected templates, or golden/tolerance policy would exceed bounded codegen handoff repair and require the approvals listed below.\"],\"proposed_actions\":[\"Materialize the missing model/shape/numeric, memory/runtime, template/provenance, compile-evidence, and stage-acceptance handoff artifacts from the passing manifest and checker logs before promoting the candidate to downstream consumption.\",\"Preserve the candidate-only/evidence-boundary language: codegen is ready by current-stage gates, but functional simulation, numeric validation, Vivado implementation, timing, bitstream, and board runtime remain later-stage obligations.\",\"Hand off the accepted codegen package to verification only through a hierarchical verification artifact contract that enforces the required order: operator/leaf checks, then connected single-transformer-layer checks, then AXI/DDR wrapped-system checks.\",\"Start backend/app-shell target discovery only from cited board materials and real tool evidence; keep clock_target_mhz at 0 until evidence or bounded approval supports a nonzero target.\",\"Do not edit generated memory layout, runtime ABI, templates, numeric policy, or golden/tolerance settings to satisfy later checkers without bounded repair classification and the required approval when scope is exceeded.\"],\"executable_actions\":[{\"id\":\"codegen.materialize_model_numeric_consistency_traces\",\"stage\":\"code_generation\",\"action_type\":\"cross_layer_consistency_review\",\"rationale\":\"Create the missing model/shape/numeric trace artifacts from the supplied model, numeric policy, pipeline/parameter binding, generated_top parameters, and passing contract evidence so downstream agents consume checker-grounded parameter provenance instead of inferring it from the compact manifest.\",\"consumes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage4.parameter_static_checks\",\"candidate_stage_artifact.generated_top\",\"candidate_stage_artifact.contract_check\",\"candidate_stage_artifact.compile_gate\",\"state_summary.sacg_memory_truth\"],\"produces\":[\"model_numeric_codegen_consistency_report.json\",\"generated_params_shape_trace.json\",\"numeric_policy_binding_trace.json\"],\"tool_roles\":[\"sacg_static_check\",\"model_config_check\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"codegen_contract_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"model_config_check\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"codegen_contract_check\"],\"on_failure\":\"Block downstream code_generation evidence promotion. If the mismatch is local to generated parameter emission, route to bounded_template_repair/codegen regeneration; if stage3 or stage4 artifacts are the conflicting source, raise a stage_backtrack_request instead of editing generated outputs or loosening checks.\",\"requires_approval\":false},{\"id\":\"codegen.memory_runtime_static_handoff_check\",\"stage\":\"code_generation\",\"action_type\":\"memory_runtime_handoff_review\",\"rationale\":\"Materialize the missing memory/runtime handoff artifacts by binding memory_layout.json, runtime_config.json, generated AXI/DDR wrapper evidence, and the passed codegen check logs to the named memory/runtime/board constraints without inferring hidden field details from the compact summary.\",\"consumes\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"generated/chisel/memory/memory_layout.json\",\"generated/chisel/runtime/runtime_config.json\",\"generated/chisel/GeneratedAxiDdrTop.sv\",\"generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAxiDdrTop.scala\",\"generated/chisel/ram_1792x256.sv\",\"generated/chisel/ram_4x129.sv\",\"generated/chisel/logs/codegen_contract_check.json\",\"generated/chisel/logs/codegen_package_static_check.json\",\"generated/chisel/logs/compile_check.json\"],\"produces\":[\"memory_runtime_codegen_audit.json\",\"addr_map_alignment_report.json\",\"runtime_abi_handoff_notes.json\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"stream_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"codegen_contract_check\",\"codegen_package_static_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"stream_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"codegen_contract_check\",\"codegen_package_static_check\"],\"on_failure\":\"Block memory/runtime handoff promotion, preserve failing checker evidence, and route to bounded memory_runtime_repair with repair_boundary_check; do not silently change memory layout, runtime ABI, pipeline schedule, data order, or golden outputs.\",\"requires_approval\":false},{\"id\":\"code_generation.finalize_template_bound_audit\",\"stage\":\"code_generation\",\"action_type\":\"template_bound_artifact_review\",\"rationale\":\"The supplied package_static_check, codegen_contract_check, and compile/elaboration gate pass; materialize the missing template provenance and compile-evidence artifacts so downstream consumers can distinguish template-bound generated RTL from unverified free-form assumptions.\",\"consumes\":[\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"artifact.stage4.parameter_binding\",\"candidate_stage_artifact.generated_files\",\"candidate_stage_artifact.planned_code_outputs\",\"candidate_stage_artifact.generated_top\",\"candidate_stage_artifact.package_static_check\",\"candidate_stage_artifact.contract_check\",\"candidate_stage_artifact.compile_gate\"],\"produces\":[\"template_codegen_audit.json\",\"generated_source_to_template_trace.json\",\"compile_gate_evidence_summary.json\"],\"tool_roles\":[\"template_coverage_check\",\"parameter_binding_static_check\",\"code_generation_manifest_static_check\",\"codegen_package_static_check\",\"codegen_contract_check\",\"codegen_compile_gate\"],\"acceptance_checkers\":[\"template_binding_static_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"code_generation_manifest_static_check\",\"codegen_package_static_check\",\"codegen_contract_check\",\"codegen_compile_gate_check\"],\"on_failure\":\"Treat the failure as a current-stage codegen handoff blocker. Invoke bounded_template_repair only for mismatches repairable within the existing template library and stage4 parameter binding; otherwise request backtrack or approval before changing templates, parameters, shapes, or numeric policy.\",\"requires_approval\":false},{\"id\":\"code_generation.handoff_cross_layer_codegen_evidence\",\"stage\":\"code_generation\",\"action_type\":\"evidence_gate_handoff\",\"rationale\":\"Aggregate the newly materialized model/numeric, memory/runtime, template/provenance, compile, package, and contract evidence into the compact cross-layer records required by verification and backend agents, while explicitly preserving that later hardware/tool gates are unproven.\",\"consumes\":[\"model_numeric_codegen_consistency_report.json\",\"generated_params_shape_trace.json\",\"numeric_policy_binding_trace.json\",\"memory_runtime_codegen_audit.json\",\"addr_map_alignment_report.json\",\"runtime_abi_handoff_notes.json\",\"template_codegen_audit.json\",\"generated_source_to_template_trace.json\",\"compile_gate_evidence_summary.json\",\"candidate_stage_artifact.generated_top\",\"generated/chisel/memory/memory_layout.json\",\"generated/chisel/runtime/runtime_config.json\",\"candidate_stage_artifact.contract_check\",\"candidate_stage_artifact.package_static_check\",\"candidate_stage_artifact.compile_gate\",\"state_summary.sacg_memory_truth\"],\"produces\":[\"code_generation.cross_layer_model_numeric_handoff.json\",\"code_generation.memory_runtime_package_handoff.json\",\"code_generation.evidence_gate_handoff.json\",\"code_generation_stage_acceptance_decision.json\",\"checker_evidence_matrix.json\",\"repair_or_handoff_boundary_record.json\"],\"tool_roles\":[\"team_aggregate\",\"sacg_reference_check\",\"verification_action_audit\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"sacg_reference_check\",\"verification_action_audit_check\",\"required_real_tool_evidence_check\",\"codegen_contract_check\",\"codegen_package_static_check\",\"sacg_memory_check\"],\"on_failure\":\"Hold downstream promotion until handoff records cite checker logs, preserve SACG constraint links, and explicitly state that no functional simulation, timing, bitstream, or board pass is being claimed; do not bypass failed checkers.\",\"requires_approval\":false},{\"id\":\"verification.build_hierarchical_artifact_contract\",\"stage\":\"verification\",\"action_type\":\"handoff_static_contract\",\"rationale\":\"After code_generation handoff artifacts exist, convert the accepted package into a checker-grounded hierarchical verification plan before any real functional simulation or repair decision.\",\"consumes\":[\"code_generation_stage_acceptance_decision.json\",\"checker_evidence_matrix.json\",\"generated/chisel/filelist.f\",\"generated/chisel/GeneratedAcceleratorTop.sv\",\"generated/chisel/GeneratedAxiDdrTop.sv\",\"generated/chisel/verification/layers-GeneratedAcceleratorTop-Verification.sv\",\"generated/chisel/verification/layers-GeneratedAxiDdrTop-Verification.sv\",\"generated/chisel/memory/memory_layout.json\",\"generated/chisel/runtime/runtime_config.json\",\"artifact.input.case_adapter\",\"constraint.verification.plan\"],\"produces\":[\"artifact.stage6.verification_plan\",\"artifact.stage6.verification_artifact_contract\",\"verification/boundary_contracts/operator_leaf_contracts.json\",\"verification/boundary_contracts/single_layer_contract.json\",\"verification/boundary_contracts/axi_ddr_contract.json\"],\"tool_roles\":[\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"case_stage_leaf_static\",\"boundary_contract_check\"],\"acceptance_checkers\":[\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"case_stage_leaf_static\",\"boundary_contract_check\"],\"on_failure\":\"Do not run functional simulation. Return failed contract evidence for bounded codegen/verification repair classification and preserve the three-layer verification order.\",\"requires_approval\":false},{\"id\":\"backend_board.discover_app_shell_target_and_clock_policy\",\"stage\":\"backend_board\",\"action_type\":\"target_discovery\",\"rationale\":\"The generated_top clock_target_mhz is 0, so board/app-shell integration and any nonzero clock target must be derived from cited board materials and real tool evidence rather than guessed from codegen elaboration.\",\"consumes\":[\"code_generation_stage_acceptance_decision.json\",\"generated/chisel/GeneratedAxiDdrTop.sv\",\"generated/chisel/runtime/runtime_config.json\",\"generated/chisel/memory/memory_layout.json\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"constraint.deployment.board\",\"constraint.human.boundary\"],\"produces\":[\"artifact.stage9.app_shell_integration_contract\",\"artifact.stage9.app_shell_target_selection_decision\",\"backend_board/case_diagnostics/app_shell_target_discovery_contract.json\",\"backend_board/case_diagnostics/app_shell_target_discovery_after_hint.json\",\"target_discovery_policy_update.json\"],\"tool_roles\":[\"app_shell_target_discovery_contract\",\"app_shell_target_hint_synthesis\",\"app_shell_target_discovery_after_hint\",\"backend_bounded_recovery_action\",\"human_boundary_check\"],\"acceptance_checkers\":[\"real_tool.app_shell_target_discovery_contract\",\"backend_app_shell_target_discovery_check\",\"real_tool.app_shell_target_hint_synthesis\",\"real_tool.app_shell_target_discovery_after_hint\",\"backend_bounded_recovery_action_check\",\"human_boundary_check\"],\"on_failure\":\"If target names, shell ports, memory interfaces, or clock evidence remain ambiguous, require bounded human/architecture approval and keep runtime bitstream and board runtime blocked.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any architecture, pipeline, memory-layout, numeric-policy, or major template change beyond bounded repair boundaries.\",\"Assigning any nonzero clock_target_mhz, board timing target, clock/reset assumption, or runtime timing target without cited board-profile, Vivado, or app-shell evidence.\",\"Changing memory_layout.json base addresses, address regions, alignment policy, buffer sizing, RAM dimensions, or non-overlap assumptions.\",\"Changing runtime_config.json ABI fields, transfer counts, data order, host/runtime protocol fields, or board runtime references.\",\"Changing numeric tolerance policy, golden-reference generation policy, expected outputs, or model tensor shapes.\",\"Changing selected template library/template set, adding new operator templates, or replacing template-derived modules with free-form RTL.\",\"Selecting ambiguous backend/app-shell target names, shell ports, or AXI/DDR integration points without cited real tool evidence.\",\"Proceeding with deployment or hardware-pass claims after failed or missing real-tool checker evidence.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/llm/code_generation_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/llm/code_generation_agent_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n",
+    "attempt 2: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "code_generation",
+  "used_fallback": false
+}

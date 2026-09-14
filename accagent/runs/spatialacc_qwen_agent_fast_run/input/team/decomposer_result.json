@@ -1,0 +1,274 @@
+{
+  "duration_sec": 52.40321003400095,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "reason": "The input_preparation stage spans independent model/shape, numeric/template, board/runtime/tool, and human-boundary/evidence concerns before SACG extraction. These inputs can be audited in parallel by specialist chip-design roles, then gated by a cross-layer evidence auditor to prevent contaminated or incomplete inputs from entering SACG construction.",
+    "schema_version": "spatialaccagent.team_decomposition.v0",
+    "split_required": true,
+    "stage": "input_preparation",
+    "subtasks": [
+      {
+        "acceptance_checkers": [
+          "task_card_check",
+          "model_config_check",
+          "sacg_static_check",
+          "llm_semantic_extraction_check",
+          "no_static_keyword_semantic_matching_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "model_shape_specialist",
+        "artifact_focus": [
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.case_adapter"
+        ],
+        "constraints": [
+          "constraint.task.goal",
+          "constraint.model.decoder",
+          "constraint.shape.model"
+        ],
+        "expected_artifacts": [
+          "artifact.input_audit.model_shape_report",
+          "artifact.input_audit.model_shape_gap_list",
+          "artifact.input_audit.model_shape_sacg_seed_requirements"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocked_if": [
+            "task_card_check fails",
+            "model_config_check fails",
+            "sacg_static_check reports missing model/shape constraints"
+          ],
+          "on_gap": "Mark absent or ambiguous model/shape semantics as SACG extraction blockers; request user/case_adapter evidence instead of guessing.",
+          "on_pass": "Forward model_shape_report and SACG seed requirements to the cross-layer evidence gate for consistency aggregation."
+        },
+        "handoff_to": [
+          "input_preparation.cross_layer_evidence_gate"
+        ],
+        "id": "input_preparation.model_shape_intake_engineer",
+        "objective": "Audit task_card and model_config for sufficient decoder-block, tensor shape, attention/head mapping, sequence length, operator ordering, residual path, and model-goal facts needed for SACG extraction without inventing missing semantics.",
+        "parallel_group": 0,
+        "role": "model and shape intake engineer",
+        "title": "Validate model-facing SACG inputs"
+      },
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "template_binding_review",
+        "agent": "numeric_template_specialist",
+        "artifact_focus": [
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space"
+        ],
+        "constraints": [
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space"
+        ],
+        "expected_artifacts": [
+          "artifact.input_audit.numeric_template_report",
+          "artifact.input_audit.template_coverage_matrix",
+          "artifact.input_audit.parameter_binding_gap_list"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocked_if": [
+            "numeric_policy_check fails",
+            "template_coverage_check fails",
+            "template_binding_static_check fails",
+            "parameter_binding_static_check fails"
+          ],
+          "on_gap": "Declare unsupported numeric modes, unbound parameters, or missing trusted templates as repair/backtrack boundaries before SACG extraction.",
+          "on_pass": "Forward numeric/template coverage and parameter binding evidence to the cross-layer evidence gate."
+        },
+        "handoff_to": [
+          "input_preparation.cross_layer_evidence_gate"
+        ],
+        "id": "input_preparation.numeric_template_binding_engineer",
+        "objective": "Audit numeric_policy, template_library, template_metadata, and design_space for supported quantization, parameter binding, trusted template coverage, and resource-risk assumptions consistent with a template-constrained accelerator flow.",
+        "parallel_group": 0,
+        "role": "numeric and template binding engineer",
+        "title": "Validate numeric policy and template coverage"
+      },
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "case_board_interface_discovery",
+          "case_axi_ddr_interface",
+          "case_runtime_abi_check",
+          "required_real_tool_evidence_check",
+          "sacg_static_check"
+        ],
+        "action_type": "implementation_evidence_review",
+        "agent": "data_memory_runtime_specialist",
+        "artifact_focus": [
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.field_evidence",
+          "artifact.input.field_evidence_candidates",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index"
+        ],
+        "constraints": [
+          "constraint.deployment.board",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.tool.protocols"
+        ],
+        "expected_artifacts": [
+          "artifact.input_audit.board_runtime_tool_report",
+          "artifact.input_audit.tool_availability_matrix",
+          "artifact.input_audit.board_memory_runtime_gap_list",
+          "artifact.input_audit.field_evidence_trace_index"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocked_if": [
+            "tool_protocol_check fails",
+            "memory_runtime_plan_check fails",
+            "required_real_tool_evidence_check fails for required deployment claims"
+          ],
+          "on_gap": "If real tool or board-interface evidence is unavailable, mark the specific missing capability or user evidence requirement; do not allow inferred board/runtime facts to seed SACG.",
+          "on_pass": "Forward board/runtime/tool evidence and unresolved evidence gaps to the cross-layer evidence gate."
+        },
+        "handoff_to": [
+          "input_preparation.cross_layer_evidence_gate"
+        ],
+        "id": "input_preparation.board_runtime_tool_engineer",
+        "objective": "Audit target_board_profile, tool_profile, tool_availability, tool_protocols, field_evidence, and sample/material indices for concrete DDR/AXI, address-map, runtime ABI, deployment, and executable tool evidence while blocking unsupported implementation claims.",
+        "parallel_group": 0,
+        "role": "board runtime and tool evidence engineer",
+        "title": "Validate board, memory, runtime, and tool inputs"
+      },
+      {
+        "acceptance_checkers": [
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check",
+          "verification_artifact_contract_check",
+          "boundary_contract_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "verification_boundary_review",
+        "agent": "verification_repair_specialist",
+        "artifact_focus": [
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary",
+          "artifact.input.tool_protocols",
+          "artifact.input.prepared_inputs"
+        ],
+        "constraints": [
+          "constraint.human.boundary",
+          "constraint.tool.protocols"
+        ],
+        "expected_artifacts": [
+          "artifact.input_audit.boundary_repair_report",
+          "artifact.input_audit.checker_coverage_matrix",
+          "artifact.input_audit.approval_and_forbidden_action_list",
+          "artifact.input_audit.repair_boundary_gap_list"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocked_if": [
+            "human_boundary_check fails",
+            "repair_boundary_check fails",
+            "verification_plan_static_check fails"
+          ],
+          "on_gap": "Block SACG extraction if approval requirements, forbidden actions, or checker contracts are ambiguous; require explicit boundary clarification or planned checker implementation.",
+          "on_pass": "Forward checker coverage, approval boundaries, and repair constraints to the cross-layer evidence gate."
+        },
+        "handoff_to": [
+          "input_preparation.cross_layer_evidence_gate"
+        ],
+        "id": "input_preparation.human_boundary_repair_engineer",
+        "objective": "Audit case_adapter acceptance/evidence_gates, human_agent_boundary, tool_protocols, and prepared_inputs errors for checker coverage, approval requirements, forbidden actions, and bounded repair/backtrack rules before any SACG extraction or downstream implementation decision.",
+        "parallel_group": 0,
+        "role": "verification boundary and repair engineer",
+        "title": "Validate checker plan and human-agent boundaries"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "boundary_contract_check",
+          "failure_localization_check",
+          "stage_retry_request_check",
+          "stage_backtrack_request_check",
+          "stage_artifact_trust_barrier_check",
+          "output_validity_check"
+        ],
+        "action_type": "team_aggregate",
+        "agent": "evidence_gate_auditor",
+        "artifact_focus": [
+          "artifact.input_audit.model_shape_report",
+          "artifact.input_audit.numeric_template_report",
+          "artifact.input_audit.board_runtime_tool_report",
+          "artifact.input_audit.boundary_repair_report",
+          "artifact.input.prepared_inputs"
+        ],
+        "constraints": [
+          "constraint.task.goal",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.deployment.board",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.tool.protocols",
+          "constraint.human.boundary"
+        ],
+        "expected_artifacts": [
+          "artifact.input_audit.cross_layer_readiness_decision",
+          "artifact.input_audit.sacg_extraction_input_contract",
+          "artifact.input_audit.blocker_to_constraint_map",
+          "artifact.input_audit.stage_retry_or_backtrack_requests"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocked_if": [
+            "any parallel_group 0 specialist reports unresolved blocker",
+            "stage_artifact_trust_barrier_check flags contaminated evidence",
+            "output_validity_check fails"
+          ],
+          "on_gap": "Emit targeted retry/backtrack requests mapped to violated constraints and prevent downstream SACG extraction from consuming unverified or contaminated artifacts.",
+          "on_pass": "Promote only checker-supported input facts into the SACG extraction input contract and hand off to sacg_extraction.",
+          "requires_inputs_from": [
+            "input_preparation.model_shape_intake_engineer",
+            "input_preparation.numeric_template_binding_engineer",
+            "input_preparation.board_runtime_tool_engineer",
+            "input_preparation.human_boundary_repair_engineer"
+          ]
+        },
+        "handoff_to": [
+          "sacg_extraction"
+        ],
+        "id": "input_preparation.cross_layer_evidence_gate",
+        "objective": "Merge all specialist reports, check cross-layer consistency among model, numeric, template, board/runtime, tool, and human-boundary inputs, classify any blockers, and produce the final SACG-extraction readiness decision with exact repair or backtrack boundaries.",
+        "parallel_group": 1,
+        "role": "cross-layer evidence gate auditor",
+        "title": "Aggregate input audits and gate SACG extraction readiness"
+      }
+    ]
+  },
+  "prompt_hash": "6932d94199eb2a790f6debfe94f32dbdf0f936925cff1845620e1a0c829c89ae",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.team_decomposition.v0\",\"stage\":\"input_preparation\",\"split_required\":true,\"reason\":\"The input_preparation stage spans independent model/shape, numeric/template, board/runtime/tool, and human-boundary/evidence concerns before SACG extraction. These inputs can be audited in parallel by specialist chip-design roles, then gated by a cross-layer evidence auditor to prevent contaminated or incomplete inputs from entering SACG construction.\",\"subtasks\":[{\"id\":\"input_preparation.model_shape_intake_engineer\",\"agent\":\"model_shape_specialist\",\"role\":\"model and shape intake engineer\",\"title\":\"Validate model-facing SACG inputs\",\"objective\":\"Audit task_card and model_config for sufficient decoder-block, tensor shape, attention/head mapping, sequence length, operator ordering, residual path, and model-goal facts needed for SACG extraction without inventing missing semantics.\",\"constraints\":[\"constraint.task.goal\",\"constraint.model.decoder\",\"constraint.shape.model\"],\"artifact_focus\":[\"artifact.input.task_card\",\"artifact.input.model_config\",\"artifact.input.case_adapter\"],\"parallel_group\":0,\"action_type\":\"sacg_constraint_review\",\"expected_artifacts\":[\"artifact.input_audit.model_shape_report\",\"artifact.input_audit.model_shape_gap_list\",\"artifact.input_audit.model_shape_sacg_seed_requirements\"],\"acceptance_checkers\":[\"task_card_check\",\"model_config_check\",\"sacg_static_check\",\"llm_semantic_extraction_check\",\"no_static_keyword_semantic_matching_check\"],\"handoff_required\":true,\"handoff_to\":[\"input_preparation.cross_layer_evidence_gate\"],\"handoff_rule\":{\"on_pass\":\"Forward model_shape_report and SACG seed requirements to the cross-layer evidence gate for consistency aggregation.\",\"on_gap\":\"Mark absent or ambiguous model/shape semantics as SACG extraction blockers; request user/case_adapter evidence instead of guessing.\",\"blocked_if\":[\"task_card_check fails\",\"model_config_check fails\",\"sacg_static_check reports missing model/shape constraints\"]}},{\"id\":\"input_preparation.numeric_template_binding_engineer\",\"agent\":\"numeric_template_specialist\",\"role\":\"numeric and template binding engineer\",\"title\":\"Validate numeric policy and template coverage\",\"objective\":\"Audit numeric_policy, template_library, template_metadata, and design_space for supported quantization, parameter binding, trusted template coverage, and resource-risk assumptions consistent with a template-constrained accelerator flow.\",\"constraints\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\"],\"artifact_focus\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\"],\"parallel_group\":0,\"action_type\":\"template_binding_review\",\"expected_artifacts\":[\"artifact.input_audit.numeric_template_report\",\"artifact.input_audit.template_coverage_matrix\",\"artifact.input_audit.parameter_binding_gap_list\"],\"acceptance_checkers\":[\"numeric_policy_check\",\"template_coverage_check\",\"template_binding_static_check\",\"parameter_binding_static_check\",\"sacg_static_check\"],\"handoff_required\":true,\"handoff_to\":[\"input_preparation.cross_layer_evidence_gate\"],\"handoff_rule\":{\"on_pass\":\"Forward numeric/template coverage and parameter binding evidence to the cross-layer evidence gate.\",\"on_gap\":\"Declare unsupported numeric modes, unbound parameters, or missing trusted templates as repair/backtrack boundaries before SACG extraction.\",\"blocked_if\":[\"numeric_policy_check fails\",\"template_coverage_check fails\",\"template_binding_static_check fails\",\"parameter_binding_static_check fails\"]}},{\"id\":\"input_preparation.board_runtime_tool_engineer\",\"agent\":\"data_memory_runtime_specialist\",\"role\":\"board runtime and tool evidence engineer\",\"title\":\"Validate board, memory, runtime, and tool inputs\",\"objective\":\"Audit target_board_profile, tool_profile, tool_availability, tool_protocols, field_evidence, and sample/material indices for concrete DDR/AXI, address-map, runtime ABI, deployment, and executable tool evidence while blocking unsupported implementation claims.\",\"constraints\":[\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.protocols\"],\"artifact_focus\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.field_evidence\",\"artifact.input.field_evidence_candidates\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\"],\"parallel_group\":0,\"action_type\":\"implementation_evidence_review\",\"expected_artifacts\":[\"artifact.input_audit.board_runtime_tool_report\",\"artifact.input_audit.tool_availability_matrix\",\"artifact.input_audit.board_memory_runtime_gap_list\",\"artifact.input_audit.field_evidence_trace_index\"],\"acceptance_checkers\":[\"tool_protocol_check\",\"memory_runtime_plan_check\",\"addr_map_check\",\"case_board_interface_discovery\",\"case_axi_ddr_interface\",\"case_runtime_abi_check\",\"required_real_tool_evidence_check\",\"sacg_static_check\"],\"handoff_required\":true,\"handoff_to\":[\"input_preparation.cross_layer_evidence_gate\"],\"handoff_rule\":{\"on_pass\":\"Forward board/runtime/tool evidence and unresolved evidence gaps to the cross-layer evidence gate.\",\"on_gap\":\"If real tool or board-interface evidence is unavailable, mark the specific missing capability or user evidence requirement; do not allow inferred board/runtime facts to seed SACG.\",\"blocked_if\":[\"tool_protocol_check fails\",\"memory_runtime_plan_check fails\",\"required_real_tool_evidence_check fails for required deployment claims\"]}},{\"id\":\"input_preparation.human_boundary_repair_engineer\",\"agent\":\"verification_repair_specialist\",\"role\":\"verification boundary and repair engineer\",\"title\":\"Validate checker plan and human-agent boundaries\",\"objective\":\"Audit case_adapter acceptance/evidence_gates, human_agent_boundary, tool_protocols, and prepared_inputs errors for checker coverage, approval requirements, forbidden actions, and bounded repair/backtrack rules before any SACG extraction or downstream implementation decision.\",\"constraints\":[\"constraint.human.boundary\",\"constraint.tool.protocols\"],\"artifact_focus\":[\"artifact.input.case_adapter\",\"artifact.input.human_agent_boundary\",\"artifact.input.tool_protocols\",\"artifact.input.prepared_inputs\"],\"parallel_group\":0,\"action_type\":\"verification_boundary_review\",\"expected_artifacts\":[\"artifact.input_audit.boundary_repair_report\",\"artifact.input_audit.checker_coverage_matrix\",\"artifact.input_audit.approval_and_forbidden_action_list\",\"artifact.input_audit.repair_boundary_gap_list\"],\"acceptance_checkers\":[\"human_boundary_check\",\"repair_boundary_check\",\"verification_plan_static_check\",\"verification_artifact_contract_check\",\"boundary_contract_check\",\"sacg_memory_check\"],\"handoff_required\":true,\"handoff_to\":[\"input_preparation.cross_layer_evidence_gate\"],\"handoff_rule\":{\"on_pass\":\"Forward checker coverage, approval boundaries, and repair constraints to the cross-layer evidence gate.\",\"on_gap\":\"Block SACG extraction if approval requirements, forbidden actions, or checker contracts are ambiguous; require explicit boundary clarification or planned checker implementation.\",\"blocked_if\":[\"human_boundary_check fails\",\"repair_boundary_check fails\",\"verification_plan_static_check fails\"]}},{\"id\":\"input_preparation.cross_layer_evidence_gate\",\"agent\":\"evidence_gate_auditor\",\"role\":\"cross-layer evidence gate auditor\",\"title\":\"Aggregate input audits and gate SACG extraction readiness\",\"objective\":\"Merge all specialist reports, check cross-layer consistency among model, numeric, template, board/runtime, tool, and human-boundary inputs, classify any blockers, and produce the final SACG-extraction readiness decision with exact repair or backtrack boundaries.\",\"constraints\":[\"constraint.task.goal\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.protocols\",\"constraint.human.boundary\"],\"artifact_focus\":[\"artifact.input_audit.model_shape_report\",\"artifact.input_audit.numeric_template_report\",\"artifact.input_audit.board_runtime_tool_report\",\"artifact.input_audit.boundary_repair_report\",\"artifact.input.prepared_inputs\"],\"parallel_group\":1,\"action_type\":\"team_aggregate\",\"expected_artifacts\":[\"artifact.input_audit.cross_layer_readiness_decision\",\"artifact.input_audit.sacg_extraction_input_contract\",\"artifact.input_audit.blocker_to_constraint_map\",\"artifact.input_audit.stage_retry_or_backtrack_requests\"],\"acceptance_checkers\":[\"sacg_static_check\",\"boundary_contract_check\",\"failure_localization_check\",\"stage_retry_request_check\",\"stage_backtrack_request_check\",\"stage_artifact_trust_barrier_check\",\"output_validity_check\"],\"handoff_required\":true,\"handoff_to\":[\"sacg_extraction\"],\"handoff_rule\":{\"on_pass\":\"Promote only checker-supported input facts into the SACG extraction input contract and hand off to sacg_extraction.\",\"on_gap\":\"Emit targeted retry/backtrack requests mapped to violated constraints and prevent downstream SACG extraction from consuming unverified or contaminated artifacts.\",\"requires_inputs_from\":[\"input_preparation.model_shape_intake_engineer\",\"input_preparation.numeric_template_binding_engineer\",\"input_preparation.board_runtime_tool_engineer\",\"input_preparation.human_boundary_repair_engineer\"],\"blocked_if\":[\"any parallel_group 0 specialist reports unresolved blocker\",\"stage_artifact_trust_barrier_check flags contaminated evidence\",\"output_validity_check fails\"]}}]}",
+  "retry_errors": [
+    "attempt 1: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032)>"
+  ],
+  "schema_version": "spatialaccagent.team_decomposer_record.v0",
+  "used_fallback": false
+}

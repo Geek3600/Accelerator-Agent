@@ -1,0 +1,229 @@
+{
+  "agent": "verification_gate_agent",
+  "duration_sec": 523.9482168329996,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "verification_gate_agent",
+    "approval_required_for": [
+      "Introducing or selecting H2C/C2H device templates when not uniquely supported by supplied board/tool evidence.",
+      "Defining or changing runtime write/read targets, control/status target map, or memory base-address policy for board DDR/control regions.",
+      "Any architecture, pipeline, numeric policy, or memory-layout change beyond the bounded runtime_config_requirements repair."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "stage_retry_request_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "sacg_memory_update_and_retry_request",
+        "consumes": [
+          "artifact.pipeline_planning.candidate_pipeline_plan",
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.checker_summary",
+          "state_summary.sacg_memory",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "pipeline_planning.record_memory_runtime_retry_barrier",
+        "on_failure": "Keep the candidate pipeline plan blocked and do not hand it to Stage 4 until the retry request and trust barrier are recorded in SACG memory.",
+        "produces": [
+          "artifact.pipeline_planning.sacg_memory_update",
+          "artifact.pipeline_planning.stage_closure_or_retry_request"
+        ],
+        "rationale": "The current candidate has one checker-proven failure in the memory/runtime contract. SACG memory must preserve the failure lesson, open a current-stage retry request, and install a trust barrier so downstream agents do not consume the incomplete artifact as closed.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "sacg_memory_update",
+          "stage_retry_request",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "bounded_memory_runtime_repair",
+        "consumes": [
+          "artifact.pipeline_planning.candidate_pipeline_plan",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols",
+          "artifact.input.tool_availability",
+          "artifact.input.human_agent_boundary",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.human.boundary"
+        ],
+        "id": "pipeline_planning.repair_runtime_config_requirements",
+        "on_failure": "Localize whether the missing evidence is board device template, transfer target map, or human-boundary approval; keep the retry barrier open and create a bounded backtrack request to board/runtime evidence discovery if needed.",
+        "produces": [
+          "artifact.pipeline_planning.runtime_config_retry_patch",
+          "artifact.pipeline_planning.refined_pipeline_plan_candidate"
+        ],
+        "rationale": "Repair is limited to the failed runtime_config_requirements fields: H2C/C2H device templates and concrete H2C write/C2H read targets. The repair must use supplied board/tool/runtime evidence and must not disturb checker-passed pipeline contracts. If the evidence does not uniquely justify the runtime ABI, the action must emit an approval request rather than guessing.",
+        "requires_approval": true,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "memory_runtime_repair",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "targeted_failed_checker_rerun",
+          "memory_runtime_plan_check",
+          "verification_artifact_contract_check",
+          "verification_action_audit_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "targeted_checker_rerun_then_full_gate",
+        "consumes": [
+          "artifact.pipeline_planning.refined_pipeline_plan_candidate",
+          "artifact.pipeline_planning.runtime_config_retry_patch",
+          "artifact.pipeline_planning.sacg_memory_update",
+          "artifact.pipeline_planning.stage_closure_or_retry_request"
+        ],
+        "id": "pipeline_planning.rerun_failed_and_full_contract_gate",
+        "on_failure": "Do not promote the refined artifact; route the checker evidence to failure localization and keep the SACG retry request open with the earliest failed memory/runtime boundary.",
+        "produces": [
+          "artifact.pipeline_planning.checker_results_retry",
+          "artifact.pipeline_planning.evidence_gate_decision_retry",
+          "artifact.pipeline_planning.stage_closure_decision"
+        ],
+        "rationale": "After the bounded repair, rerun the failed memory/runtime checker and then audit the full current-stage contract so the refined candidate explicitly supersedes the blocked artifact only when all current-stage checks pass.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "targeted_failed_checker_rerun",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "verification_artifact_contract_check",
+          "verification_action_audit"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "sacg_static_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "conditional_stage_handoff",
+        "consumes": [
+          "artifact.pipeline_planning.stage_closure_decision",
+          "artifact.pipeline_planning.checker_results_retry",
+          "artifact.pipeline_planning.sacg_memory_update"
+        ],
+        "id": "pipeline_planning.promote_after_all_checks_pass",
+        "on_failure": "Keep Stage 4 blocked and reopen the appropriate retry or backtrack request with the failing checker evidence.",
+        "produces": [
+          "artifact.stage4.parameter_binding_input_contract",
+          "artifact.pipeline_planning.closed_retry_record"
+        ],
+        "rationale": "Promotion is allowed only after the retry artifact passes all current-stage checks and the SACG trust barrier is closed. Stage 4 may then bind final template parameters from the checker-backed contract, while real hardware evidence remains a later-stage obligation.",
+        "requires_approval": false,
+        "stage": "pipeline_planning_to_parameter_binding",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "sacg_validate",
+          "team_aggregate"
+        ]
+      }
+    ],
+    "observations": [
+      "No open retry requests, backtrack requests, or active contamination barriers are visible in the supplied SACG memory; this gate must create a current-stage retry/trust barrier for the failed runtime contract before downstream consumption.",
+      "Resolved checker-backed constraints: operator_order_check passed for the Qwen2 decoder block operator order; stream_data_edge_mirror_check and edge_stream_contract_check passed for 13 mirrored ready/valid data edges; shape_numeric_contract_check passed with activation/weight element bits and 32-bit accumulators; branch_join_contract_check passed for one split and three joins; buffer_contract_check passed for 13 bounded FIFO buffers with allowed depths 32 and 64; liveness_backpressure_check passed for an acyclic directed graph with bounded FIFO elasticity; attention_semantics_check passed for GQA q=14, kv=2, head_dim=64; template_binding_static_check passed with free_form_rtl_generation=false.",
+      "Current-stage blocker: memory_runtime_contract_check failed because memory_schedule.runtime_config_requirements.h2c_device_template and c2h_device_template are null; h2c_write_targets and c2h_read_targets are also empty, so the memory/runtime handoff is not checker-backed even though the board AXI facts and region sizes are present.",
+      "By the supplied stage_gate_policy, passed current-stage items are not risks and symbolic_first_order latency must remain planning metadata only, not timing, throughput, or hardware-pass evidence.",
+      "The candidate artifact status is incomplete and must not be promoted to Stage 4 or consumed by code generation until the memory/runtime retry artifact explicitly supersedes this failed candidate and all current-stage checkers pass.",
+      "Cross-layer consistency is preserved for model, shape, numeric precision, data order, branch/join, and template facts by existing checker evidence; cross-layer consistency is unresolved between runtime board facts, XDMA device templates, DDR/control-region access targets, and the memory schedule."
+    ],
+    "proposed_actions": [
+      "Record a SACG memory update that marks the current candidate pipeline plan as blocked for downstream consumption only on constraint.memory.board and constraint.runtime.board until the memory/runtime contract retry passes.",
+      "Repair only memory_schedule.runtime_config_requirements: bind h2c_device_template, c2h_device_template, h2c_write_targets, and c2h_read_targets from supplied target_board_profile, tool_protocols, board/runtime evidence, and human boundary constraints; do not alter passed stream, shape, numeric, attention, buffer, branch/join, liveness, or template contracts unless a checker localizes a dependency.",
+      "Rerun memory_runtime_contract_check first, then rerun the full pipeline-planning contract gate to confirm the refined artifact explicitly supersedes the blocked candidate and preserves all previously passed constraints.",
+      "If device templates or runtime targets cannot be derived from supplied evidence, create a bounded approval request for the ambiguous runtime ABI or backtrack to board/runtime evidence discovery; do not invent device paths or target names.",
+      "After all current-stage checks pass, promote the refined pipeline plan to Stage 4 parameter binding; Stage 6+ remains responsible for real VCS/Verilator/Vivado/board evidence and no hardware pass is claimed here."
+    ],
+    "risks": [
+      "Blocking runtime/memory risk: missing H2C/C2H device templates prevents a concrete board runtime ABI for XDMA raw register and DDR access.",
+      "Blocking handoff risk: empty h2c_write_targets and c2h_read_targets leave required regions and control/status accesses unbound to runtime transfers, even though transfer counts and alignment are specified.",
+      "Contamination risk: downstream Stage 4+ agents could accidentally consume the incomplete pipeline plan unless SACG memory records a retry request and artifact trust barrier tied to memory_runtime_contract_check.",
+      "Approval risk: if the repair must introduce board device names, memory base-address policy, or runtime ABI choices not present in supplied board/tool evidence, bounded human approval is required rather than guessing."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.pipeline_planning.candidate_pipeline_plan",
+        "artifact.pipeline_planning.evidence_gate_decision",
+        "artifact.pipeline_planning.stage_closure_or_retry_request",
+        "artifact.pipeline_planning.sacg_memory_update",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_protocols",
+        "artifact.input.human_agent_boundary"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.human.boundary",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output"
+      ]
+    },
+    "schema_version": "spatialaccagent.evidence_gate_decision.v0",
+    "stage": "pipeline_planning",
+    "status": "blocked_retry_required",
+    "summary": "Stage gate cannot close because memory_runtime_contract_check failed on missing XDMA H2C/C2H device templates. The checker-backed pipeline, stream, shape, numeric, branch/join, buffer, liveness, attention, and template-binding constraints are resolved for this candidate and should not be reopened without new evidence; the unresolved current-stage blocker is the runtime/memory handoff contract."
+  },
+  "prompt_bytes": 63981,
+  "prompt_hash": "02959bfcad5fe5bbcaa9dc3df2b2b72b488c908766fae75d1d2e774c9d4d6a35",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.evidence_gate_decision.v0\",\"agent\":\"verification_gate_agent\",\"stage\":\"pipeline_planning\",\"status\":\"blocked_retry_required\",\"summary\":\"Stage gate cannot close because memory_runtime_contract_check failed on missing XDMA H2C/C2H device templates. The checker-backed pipeline, stream, shape, numeric, branch/join, buffer, liveness, attention, and template-binding constraints are resolved for this candidate and should not be reopened without new evidence; the unresolved current-stage blocker is the runtime/memory handoff contract.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.human.boundary\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"artifact.pipeline_planning.candidate_pipeline_plan\",\"artifact.pipeline_planning.evidence_gate_decision\",\"artifact.pipeline_planning.stage_closure_or_retry_request\",\"artifact.pipeline_planning.sacg_memory_update\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\",\"artifact.input.human_agent_boundary\"]},\"observations\":[\"No open retry requests, backtrack requests, or active contamination barriers are visible in the supplied SACG memory; this gate must create a current-stage retry/trust barrier for the failed runtime contract before downstream consumption.\",\"Resolved checker-backed constraints: operator_order_check passed for the Qwen2 decoder block operator order; stream_data_edge_mirror_check and edge_stream_contract_check passed for 13 mirrored ready/valid data edges; shape_numeric_contract_check passed with activation/weight element bits and 32-bit accumulators; branch_join_contract_check passed for one split and three joins; buffer_contract_check passed for 13 bounded FIFO buffers with allowed depths 32 and 64; liveness_backpressure_check passed for an acyclic directed graph with bounded FIFO elasticity; attention_semantics_check passed for GQA q=14, kv=2, head_dim=64; template_binding_static_check passed with free_form_rtl_generation=false.\",\"Current-stage blocker: memory_runtime_contract_check failed because memory_schedule.runtime_config_requirements.h2c_device_template and c2h_device_template are null; h2c_write_targets and c2h_read_targets are also empty, so the memory/runtime handoff is not checker-backed even though the board AXI facts and region sizes are present.\",\"By the supplied stage_gate_policy, passed current-stage items are not risks and symbolic_first_order latency must remain planning metadata only, not timing, throughput, or hardware-pass evidence.\",\"The candidate artifact status is incomplete and must not be promoted to Stage 4 or consumed by code generation until the memory/runtime retry artifact explicitly supersedes this failed candidate and all current-stage checkers pass.\",\"Cross-layer consistency is preserved for model, shape, numeric precision, data order, branch/join, and template facts by existing checker evidence; cross-layer consistency is unresolved between runtime board facts, XDMA device templates, DDR/control-region access targets, and the memory schedule.\"],\"risks\":[\"Blocking runtime/memory risk: missing H2C/C2H device templates prevents a concrete board runtime ABI for XDMA raw register and DDR access.\",\"Blocking handoff risk: empty h2c_write_targets and c2h_read_targets leave required regions and control/status accesses unbound to runtime transfers, even though transfer counts and alignment are specified.\",\"Contamination risk: downstream Stage 4+ agents could accidentally consume the incomplete pipeline plan unless SACG memory records a retry request and artifact trust barrier tied to memory_runtime_contract_check.\",\"Approval risk: if the repair must introduce board device names, memory base-address policy, or runtime ABI choices not present in supplied board/tool evidence, bounded human approval is required rather than guessing.\"],\"proposed_actions\":[\"Record a SACG memory update that marks the current candidate pipeline plan as blocked for downstream consumption only on constraint.memory.board and constraint.runtime.board until the memory/runtime contract retry passes.\",\"Repair only memory_schedule.runtime_config_requirements: bind h2c_device_template, c2h_device_template, h2c_write_targets, and c2h_read_targets from supplied target_board_profile, tool_protocols, board/runtime evidence, and human boundary constraints; do not alter passed stream, shape, numeric, attention, buffer, branch/join, liveness, or template contracts unless a checker localizes a dependency.\",\"Rerun memory_runtime_contract_check first, then rerun the full pipeline-planning contract gate to confirm the refined artifact explicitly supersedes the blocked candidate and preserves all previously passed constraints.\",\"If device templates or runtime targets cannot be derived from supplied evidence, create a bounded approval request for the ambiguous runtime ABI or backtrack to board/runtime evidence discovery; do not invent device paths or target names.\",\"After all current-stage checks pass, promote the refined pipeline plan to Stage 4 parameter binding; Stage 6+ remains responsible for real VCS/Verilator/Vivado/board evidence and no hardware pass is claimed here.\"],\"executable_actions\":[{\"id\":\"pipeline_planning.record_memory_runtime_retry_barrier\",\"stage\":\"pipeline_planning\",\"action_type\":\"sacg_memory_update_and_retry_request\",\"rationale\":\"The current candidate has one checker-proven failure in the memory/runtime contract. SACG memory must preserve the failure lesson, open a current-stage retry request, and install a trust barrier so downstream agents do not consume the incomplete artifact as closed.\",\"consumes\":[\"artifact.pipeline_planning.candidate_pipeline_plan\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.checker_summary\",\"state_summary.sacg_memory\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.cross_layer.input_consistency\"],\"produces\":[\"artifact.pipeline_planning.sacg_memory_update\",\"artifact.pipeline_planning.stage_closure_or_retry_request\"],\"tool_roles\":[\"sacg_memory_update\",\"stage_retry_request\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"sacg_memory_check\",\"stage_retry_request_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Keep the candidate pipeline plan blocked and do not hand it to Stage 4 until the retry request and trust barrier are recorded in SACG memory.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.repair_runtime_config_requirements\",\"stage\":\"pipeline_planning\",\"action_type\":\"bounded_memory_runtime_repair\",\"rationale\":\"Repair is limited to the failed runtime_config_requirements fields: H2C/C2H device templates and concrete H2C write/C2H read targets. The repair must use supplied board/tool/runtime evidence and must not disturb checker-passed pipeline contracts. If the evidence does not uniquely justify the runtime ABI, the action must emit an approval request rather than guessing.\",\"consumes\":[\"artifact.pipeline_planning.candidate_pipeline_plan\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\",\"artifact.input.tool_availability\",\"artifact.input.human_agent_boundary\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.human.boundary\"],\"produces\":[\"artifact.pipeline_planning.runtime_config_retry_patch\",\"artifact.pipeline_planning.refined_pipeline_plan_candidate\"],\"tool_roles\":[\"memory_runtime_repair\",\"tool_protocol_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"tool_protocol_check\",\"human_boundary_check\",\"repair_boundary_check\"],\"on_failure\":\"Localize whether the missing evidence is board device template, transfer target map, or human-boundary approval; keep the retry barrier open and create a bounded backtrack request to board/runtime evidence discovery if needed.\",\"requires_approval\":true},{\"id\":\"pipeline_planning.rerun_failed_and_full_contract_gate\",\"stage\":\"pipeline_planning\",\"action_type\":\"targeted_checker_rerun_then_full_gate\",\"rationale\":\"After the bounded repair, rerun the failed memory/runtime checker and then audit the full current-stage contract so the refined candidate explicitly supersedes the blocked artifact only when all current-stage checks pass.\",\"consumes\":[\"artifact.pipeline_planning.refined_pipeline_plan_candidate\",\"artifact.pipeline_planning.runtime_config_retry_patch\",\"artifact.pipeline_planning.sacg_memory_update\",\"artifact.pipeline_planning.stage_closure_or_retry_request\"],\"produces\":[\"artifact.pipeline_planning.checker_results_retry\",\"artifact.pipeline_planning.evidence_gate_decision_retry\",\"artifact.pipeline_planning.stage_closure_decision\"],\"tool_roles\":[\"targeted_failed_checker_rerun\",\"memory_runtime_plan_check\",\"stream_plan_check\",\"verification_artifact_contract_check\",\"verification_action_audit\"],\"acceptance_checkers\":[\"targeted_failed_checker_rerun\",\"memory_runtime_plan_check\",\"verification_artifact_contract_check\",\"verification_action_audit_check\",\"sacg_memory_check\"],\"on_failure\":\"Do not promote the refined artifact; route the checker evidence to failure localization and keep the SACG retry request open with the earliest failed memory/runtime boundary.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.promote_after_all_checks_pass\",\"stage\":\"pipeline_planning_to_parameter_binding\",\"action_type\":\"conditional_stage_handoff\",\"rationale\":\"Promotion is allowed only after the retry artifact passes all current-stage checks and the SACG trust barrier is closed. Stage 4 may then bind final template parameters from the checker-backed contract, while real hardware evidence remains a later-stage obligation.\",\"consumes\":[\"artifact.pipeline_planning.stage_closure_decision\",\"artifact.pipeline_planning.checker_results_retry\",\"artifact.pipeline_planning.sacg_memory_update\"],\"produces\":[\"artifact.stage4.parameter_binding_input_contract\",\"artifact.pipeline_planning.closed_retry_record\"],\"tool_roles\":[\"parameter_binding_static_check\",\"sacg_validate\",\"team_aggregate\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"sacg_static_check\",\"sacg_memory_check\"],\"on_failure\":\"Keep Stage 4 blocked and reopen the appropriate retry or backtrack request with the failing checker evidence.\",\"requires_approval\":false}],\"approval_required_for\":[\"Introducing or selecting H2C/C2H device templates when not uniquely supported by supplied board/tool evidence.\",\"Defining or changing runtime write/read targets, control/status target map, or memory base-address policy for board DDR/control regions.\",\"Any architecture, pipeline, numeric policy, or memory-layout change beyond the bounded runtime_config_requirements repair.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/verification_gate_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/verification_gate_agent_result.json",
+  "retry_errors": [
+    "attempt 1: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)",
+    "attempt 2: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "pipeline_planning.verification and repair auditor",
+  "used_fallback": false
+}

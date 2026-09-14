@@ -1,0 +1,450 @@
+{
+  "agent": "single_layer_merge_planner",
+  "duration_sec": 226.68746950700006,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "single_layer_merge_planner",
+    "approval_required_for": [
+      "Any change to Qwen2 decoder semantics, including GQA head mapping, KV grouping, RoPE theta, causal masking, or sequence bound.",
+      "Any change to numeric policy, fp16/fp32 cast points, residual precision, rounding mode, saturation policy, or numeric tolerance thresholds.",
+      "Any change to decoder-block operator order, residual_add_1/residual_add_2 placement, RMSNorm placement, MLP gate/up/activation/down ordering, or stream/lane ordering.",
+      "Any memory layout, DDR image, manifest packing, runtime ABI, or transfer-unit change that affects the testbench-to-runtime contract.",
+      "Any major template or RTL architecture modification beyond bounded repair localized by boundary trace and targeted replay.",
+      "Any decision to reopen a previously passed lower-layer gate without contradictory boundary-trace evidence."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "stream_plan_check",
+          "numeric_policy_check",
+          "data_order_trace_check"
+        ],
+        "action_type": "cross_layer_merge_gate_planning",
+        "consumes": [
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.generated_code_package",
+          "candidate_stage_artifact.hierarchical_verification",
+          "candidate_stage_artifact.verification_artifact_contract"
+        ],
+        "id": "single_layer.plan_refine_gate_subdag",
+        "on_failure": "Hold the single-layer merge plan in verification_artifacts; repair only the contract/DAG inconsistency and do not launch leaf or layer simulation gates.",
+        "produces": [
+          "verification/single_layer/single_layer_gate_subdag.json",
+          "verification/single_layer/single_layer_merge_contract.json",
+          "verification/single_layer/single_layer_numeric_tolerance_plan.json",
+          "verification/single_layer/single_layer_failure_slice_boundaries.json"
+        ],
+        "rationale": "Produce the role-owned single-layer gate DAG and contracts from the supplied Stage 3 attention semantics, Stage 4 numeric binding, Stage 5 generated package, and verification artifact contract without claiming execution pass.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "stream_plan_check",
+          "numeric_policy_check",
+          "data_order_trace_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_real_weight_artifacts",
+          "artifact_hash_check",
+          "model_config_check",
+          "numeric_policy_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.input.case_adapter",
+          "verification/single_layer/single_layer_numeric_tolerance_plan.json"
+        ],
+        "id": "single_layer.materialize_real_weight_artifacts",
+        "on_failure": "Block case_leaf_functional and case_tb_scaffold; classify missing or non-real artifacts as test/golden artifact repair, not hardware failure.",
+        "produces": [
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/case_real_weights/ddr_image_manifest.json",
+          "verification/case_real_weights/artifact_hashes.json"
+        ],
+        "rationale": "Functional verification requires run-specific real input and weight artifacts; deterministic default/generated weights are explicitly not acceptance evidence.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_weight_manifest_generate",
+          "case_real_weight_artifacts",
+          "artifact_hash_check",
+          "model_config_check",
+          "numeric_policy_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "numeric_compare",
+          "data_order_trace_check"
+        ],
+        "action_type": "leaf_gate_execution",
+        "consumes": [
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.generated_code_package",
+          "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract",
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/single_layer/single_layer_failure_slice_boundaries.json"
+        ],
+        "id": "single_layer.close_operator_leaf_prerequisites",
+        "on_failure": "Do not promote merge.self_attention, merge.mlp, or merge.single_decoder_block; route failed leaf evidence to bounded failure slicing at the earliest violated boundary.",
+        "produces": [
+          "verification/leaf/operator_leaf_gate_matrix.json",
+          "verification/leaf/leaf_boundary_contract_map.json",
+          "verification/leaf/leaf_functional_evidence_manifest.json",
+          "verification/leaf/leaf_golden_compare_manifest.json"
+        ],
+        "rationale": "The single layer cannot be merged until all nine operator leaves have static evidence, boundary contracts, independent functional simulation, and golden comparison evidence.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "numeric_compare",
+          "data_order_trace_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_tb_scaffold",
+          "tool_protocol_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "testbench_scaffold_generation",
+        "consumes": [
+          "verification/leaf/operator_leaf_gate_matrix.json",
+          "verification/leaf/leaf_golden_compare_manifest.json",
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/case_real_weights/artifact_hashes.json",
+          "verification/single_layer/single_layer_merge_contract.json",
+          "artifact.stage5.generated_code_package"
+        ],
+        "id": "single_layer.generate_hashable_tb_scaffold",
+        "on_failure": "Treat the failure as scaffold or tool-protocol repair; do not reinterpret leaf or layer RTL correctness without contradictory boundary evidence.",
+        "produces": [
+          "verification/single_layer/tb_scaffold_manifest.json",
+          "verification/single_layer/tb_scaffold_hashes.json",
+          "verification/single_layer/tb_scaffold_contract_check.json"
+        ],
+        "rationale": "The layer functional simulator must use a reproducible scaffold that loads the declared real manifests and verified leaf interfaces by deterministic hash.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_tb_scaffold_generate",
+          "case_tb_scaffold",
+          "tool_protocol_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "single_transformer_layer",
+          "case_single_transformer_layer",
+          "stream_plan_check",
+          "numeric_policy_check",
+          "data_order_trace_check"
+        ],
+        "action_type": "single_layer_kernel_merge",
+        "consumes": [
+          "verification/leaf/operator_leaf_gate_matrix.json",
+          "verification/leaf/leaf_boundary_contract_map.json",
+          "verification/single_layer/tb_scaffold_manifest.json",
+          "verification/case_real_weights/artifact_hashes.json",
+          "verification/single_layer/single_layer_merge_contract.json",
+          "verification/single_layer/single_layer_numeric_tolerance_plan.json"
+        ],
+        "id": "single_layer.merge_verified_leaves_into_kernel",
+        "on_failure": "Block layer functional simulation and localize whether the mismatch is at self-attention, MLP, residual, norm, stream, or cast boundary before repair handoff.",
+        "produces": [
+          "verification/single_layer/single_transformer_layer_kernel_manifest.json",
+          "verification/single_layer/single_transformer_layer_trace_map.json",
+          "verification/single_layer/single_transformer_layer_static_check.json"
+        ],
+        "rationale": "Connect verified leaves into the single decoder block while preserving Qwen2 GQA semantics, residual_add_1/residual_add_2 placement, RMSNorm ordering, MLP gate/up/activation/down order, stream order, and numeric cast points.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "single_transformer_layer",
+          "case_single_transformer_layer",
+          "stream_plan_check",
+          "numeric_policy_check",
+          "data_order_trace_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_single_layer_functional",
+          "real_tool.case_single_layer_functional",
+          "required_real_tool_evidence_check",
+          "deadlock_watchdog",
+          "data_order_trace_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "verification/single_layer/single_transformer_layer_kernel_manifest.json",
+          "verification/single_layer/single_transformer_layer_trace_map.json",
+          "verification/single_layer/tb_scaffold_manifest.json",
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/case_real_weights/artifact_hashes.json",
+          "verification/single_layer/single_layer_numeric_tolerance_plan.json"
+        ],
+        "id": "single_layer.run_real_layer_functional_sim",
+        "on_failure": "Do not proceed to case_single_layer_golden_compare or board/multilayer gates; run boundary-trace failure localization and targeted replay using the debug closure contract.",
+        "produces": [
+          "verification/single_layer/case_single_layer_functional_evidence.json",
+          "verification/single_layer/functional_sim_outputs.json",
+          "verification/single_layer/boundary_trace.json",
+          "verification/single_layer/deadlock_watchdog_report.json"
+        ],
+        "rationale": "The connected single transformer-layer kernel must pass real functional simulation with real manifests, watchdog evidence, and trace capture before any multilayer or board wrapper handoff.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_single_layer_functional",
+          "case_vcs_functional_sim",
+          "functional_sim_contract_check",
+          "deadlock_watchdog",
+          "data_order_trace_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_single_layer_golden_compare",
+          "real_tool.case_single_layer_golden_compare",
+          "numeric_compare",
+          "data_order_trace_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "golden_comparison",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/case_real_weights/artifact_hashes.json",
+          "verification/single_layer/functional_sim_outputs.json",
+          "verification/single_layer/boundary_trace.json",
+          "verification/single_layer/single_layer_numeric_tolerance_plan.json"
+        ],
+        "id": "single_layer.compare_layer_against_golden",
+        "on_failure": "Freeze the failed outputs and reference hashes; invoke bounded failure slicing without modifying golden outputs or loosening tolerance.",
+        "produces": [
+          "verification/single_layer/golden_reference_hashes.json",
+          "verification/single_layer/case_single_layer_golden_compare_report.json",
+          "verification/single_layer/numeric_compare_report.json",
+          "verification/single_layer/data_order_compare_report.json"
+        ],
+        "rationale": "A functional simulation run is not sufficient; the single-layer outputs must be compared against the golden/reference behavior under the frozen numeric tolerance and stream order contracts.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_single_layer_golden_compare",
+          "numeric_compare",
+          "data_order_trace_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_replay_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "data_order_trace_check"
+        ],
+        "action_type": "bounded_failure_slicing",
+        "consumes": [
+          "verification/debug_closure/trace_manifest.json",
+          "verification/single_layer/single_layer_failure_slice_boundaries.json",
+          "verification/leaf/leaf_boundary_contract_map.json",
+          "verification/single_layer/boundary_trace.json",
+          "verification/single_layer/case_single_layer_functional_evidence.json",
+          "verification/single_layer/case_single_layer_golden_compare_report.json"
+        ],
+        "id": "single_layer.slice_failed_leaf_or_layer_gate",
+        "on_failure": "Keep the layer gate blocked and request checker or trace-schema repair; do not apply RTL, pipeline, numeric, or template changes without localized evidence and required approval.",
+        "produces": [
+          "verification/debug_closure/failure_localization.json",
+          "verification/debug_closure/targeted_replay_plan.json",
+          "verification/debug_closure/targeted_replay_report.json",
+          "verification/debug_closure/causal_repair_context.json"
+        ],
+        "rationale": "Any failed leaf or single-layer gate must enter the tool-output to contract-guided localization to bounded repair handoff loop, identifying the earliest violated boundary before proposing code repair.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "failure_slice_localization",
+          "boundary_trace_rerun",
+          "targeted_replay",
+          "causal_repair_context_pack",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_action_audit_check",
+          "required_real_tool_evidence_check",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "case_tb_scaffold"
+        ],
+        "action_type": "handoff_contract_packaging",
+        "consumes": [
+          "verification/single_layer/single_layer_gate_subdag.json",
+          "verification/single_layer/single_layer_merge_contract.json",
+          "verification/single_layer/single_layer_numeric_tolerance_plan.json",
+          "verification/single_layer/single_layer_failure_slice_boundaries.json",
+          "verification/single_layer/case_single_layer_functional_evidence.json",
+          "verification/single_layer/case_single_layer_golden_compare_report.json",
+          "verification/single_layer/numeric_compare_report.json",
+          "verification/single_layer/data_order_compare_report.json"
+        ],
+        "id": "single_layer.emit_readiness_handoff",
+        "on_failure": "Do not let board AXI/DDR or backend planners consume the single-layer package; report the missing checker evidence or failed gate as the handoff blocker.",
+        "produces": [
+          "verification/single_layer/single_layer_readiness_handoff.json",
+          "handoff/verification_artifacts.board_axi_ddr_system_planner.single_layer_ready.json",
+          "handoff/verification_artifacts.repair_boundary_evidence_auditor.single_layer_evidence.json"
+        ],
+        "rationale": "Only after single-layer functional and golden gates pass should downstream board AXI/DDR planning and repair-boundary audit consume a compact, checker-grounded readiness contract.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "team_aggregate",
+          "verification_action_audit",
+          "required_real_tool_evidence_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The supplied state summary reports zero active contamination barriers and zero open retry or backtrack requests; no historical blocker should be inferred for this stage.",
+      "The verification artifact contract is marked pass and declares the three-layer repair hierarchy: operator leaf modules, single transformer-layer kernel, and board AXI/DDR wrapped system.",
+      "The current role scope is the second repair-loop layer only: merge verified leaves into one Qwen2 decoder-block kernel and hand off a readiness contract, without claiming multilayer, AXI/DDR, Vivado, or board readiness.",
+      "All relevant real-tool gates for this role are still required_pending_execution: case_real_weight_artifacts, case_stage_leaf_static, boundary_contract_check, case_leaf_functional, case_leaf_golden_compare, case_tb_scaffold, single_transformer_layer, case_single_layer_functional, and case_single_layer_golden_compare.",
+      "Stage 3 attention semantics establish GQA with 14 query heads, 2 KV heads, group size 7, head_dim 64, seq_len_bound 16, RoPE theta 1000000.0, and causal ordering; these semantics must be preserved through merge.self_attention and the single decoder block.",
+      "Stage 4 numeric binding establishes fp16 weights and activations, fp32 accumulation/residual precision, nearest_even rounding, no saturation, and explicit cast points around RMSNorm, attention output, MLP down projection, and residual additions.",
+      "The role_slice_policy prevents treating compactly omitted rows as missing: presence_summary confirms nine stage agents, nine parameter bindings, thirteen debug boundary contracts, and a debug trace schema.",
+      "Stage 5 compile/elaboration and contract checks passed for generated code, but those are structural/tool-evidence prerequisites only and are not functional correctness evidence.",
+      "The debug closure contract already defines boundary trace fields, targeted replay outputs, and earliest-violation localization; single-layer failures should use this contract before any RTL repair proposal.",
+      "The functional_sim_candidates explicitly mark liveness-only VCS labels as non-acceptance; the single-layer gate must require real functional simulation plus golden/numeric comparison."
+    ],
+    "proposed_actions": [
+      "Emit the single-layer sub-DAG and merge contract that explicitly orders real-weight artifacts, leaf closure, scaffold generation, single-layer merge, functional simulation, golden comparison, and failure slicing.",
+      "Materialize and hash real input, weight, and DDR-image manifests before any functional simulation or testbench acceptance.",
+      "Close all nine operator leaf gates with static checks, boundary contracts, independent functional simulation, and leaf golden comparison before promoting merge.self_attention or merge.mlp.",
+      "Generate a reproducible testbench scaffold only after real artifacts and leaf golden evidence exist; audit that it loads declared manifests by hash.",
+      "Build the single_transformer_layer merge using the verified leaf matrix while checking Qwen2 GQA semantics, residual ordering, stream/lane order, and numeric cast points.",
+      "Run real single-layer functional simulation with watchdog and trace collection; do not accept smoke or liveness-only output.",
+      "Run single-layer golden comparison with numeric_compare and data_order_trace_check using the frozen numeric tolerance plan.",
+      "On any failed leaf or single-layer gate, run boundary-trace localization and targeted replay to produce a compact causal repair context before any bounded repair handoff.",
+      "After case_single_layer_golden_compare passes, emit a readiness handoff for verification_artifacts.board_axi_ddr_system_planner and verification_artifacts.repair_boundary_evidence_auditor."
+    ],
+    "risks": [
+      "Execution risk, not a current static-stage blocker: real input and real weight artifacts have not yet been materialized, so default generated weights must not be accepted as functional evidence.",
+      "GQA head-to-KV grouping, RoPE position ordering, causal mask behavior, and stream/lane ordering can drift at the self-attention merge boundary even when individual leaves pass.",
+      "Numeric drift can occur if fp16/fp32 cast points or residual precision are not reflected identically in the testbench, golden reference, and RTL trace; tolerance changes require explicit approval.",
+      "A liveness-only simulator result could be mislabeled as a functional pass unless case_single_layer_functional is tied to real manifests, trace evidence, and downstream numeric comparison.",
+      "A single-layer mismatch may originate from a previously passed leaf, but lower-layer evidence must only be reopened with a contradictory boundary trace or targeted replay result.",
+      "The generated AxiDdrTop elaboration evidence could be mistaken for board wrapper readiness; board AXI/DDR planning must consume only the final single-layer readiness handoff, not skip ahead.",
+      "If detailed boundary rows are needed by downstream auditors, they must be requested as handoff artifacts rather than inferred absent from this compact role slice."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "candidate_stage_artifact.hierarchical_verification",
+        "candidate_stage_artifact.verification_artifact_contract",
+        "verification/single_layer/single_layer_gate_subdag.json",
+        "verification/single_layer/single_layer_merge_contract.json",
+        "verification/single_layer/single_layer_numeric_tolerance_plan.json",
+        "verification/single_layer/single_layer_failure_slice_boundaries.json"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.pipeline.structure",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.verification.hierarchy",
+        "constraint.tool.protocols"
+      ],
+      "edges": [
+        "case_real_weight_artifacts -> case_leaf_functional",
+        "case_stage_leaf_static + boundary_contract_check + case_real_weight_artifacts -> case_leaf_functional",
+        "case_leaf_functional + boundary_contract_check -> case_leaf_golden_compare",
+        "case_leaf_golden_compare + case_real_weight_artifacts -> case_tb_scaffold",
+        "case_leaf_golden_compare + case_tb_scaffold + case_real_weight_artifacts -> single_transformer_layer",
+        "single_transformer_layer + case_leaf_golden_compare + case_tb_scaffold + case_real_weight_artifacts -> case_single_layer_functional",
+        "case_single_layer_functional -> case_single_layer_golden_compare",
+        "failed leaf or layer gate -> failure_slice_localization -> targeted_replay -> causal_repair_context_pack"
+      ],
+      "nodes": [
+        "merge.self_attention",
+        "merge.mlp",
+        "merge.single_decoder_block",
+        "leaf_stage.stage_00_rms_norm_1",
+        "leaf_stage.stage_01_self_attention",
+        "leaf_stage.stage_02_residual_add_1",
+        "leaf_stage.stage_03_rms_norm_2",
+        "leaf_stage.stage_04_mlp_gate_proj",
+        "leaf_stage.stage_05_mlp_up_proj",
+        "leaf_stage.stage_06_activation_mul",
+        "leaf_stage.stage_07_mlp_down_proj",
+        "leaf_stage.stage_08_residual_add_2",
+        "case_real_weight_artifacts",
+        "boundary_contract_check",
+        "case_stage_leaf_static",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_tb_scaffold",
+        "single_transformer_layer",
+        "case_single_layer_functional",
+        "case_single_layer_golden_compare"
+      ]
+    },
+    "schema_version": "spatialaccagent.single_layer_merge_planner.v0",
+    "stage": "verification_artifacts",
+    "status": "ready_for_downstream_execution",
+    "summary": "The single-transformer-layer merge gate sequence is statically refinable from the supplied Stage 3/4/5 evidence and verification artifact contract, but all leaf, real-weight, scaffold, single-layer simulation, and golden-compare gates remain required pending real-tool execution. No hardware, Vivado, board-runtime, or liveness-only functional pass is claimed."
+  },
+  "prompt_bytes": 76699,
+  "prompt_hash": "4969d0cef4edabce8eccb17d6cdf7ba756241d8b2046841aa4ac76c183efad75",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.single_layer_merge_planner.v0\",\"agent\":\"single_layer_merge_planner\",\"stage\":\"verification_artifacts\",\"status\":\"ready_for_downstream_execution\",\"summary\":\"The single-transformer-layer merge gate sequence is statically refinable from the supplied Stage 3/4/5 evidence and verification artifact contract, but all leaf, real-weight, scaffold, single-layer simulation, and golden-compare gates remain required pending real-tool execution. No hardware, Vivado, board-runtime, or liveness-only functional pass is claimed.\",\"sacg_focus\":{\"nodes\":[\"merge.self_attention\",\"merge.mlp\",\"merge.single_decoder_block\",\"leaf_stage.stage_00_rms_norm_1\",\"leaf_stage.stage_01_self_attention\",\"leaf_stage.stage_02_residual_add_1\",\"leaf_stage.stage_03_rms_norm_2\",\"leaf_stage.stage_04_mlp_gate_proj\",\"leaf_stage.stage_05_mlp_up_proj\",\"leaf_stage.stage_06_activation_mul\",\"leaf_stage.stage_07_mlp_down_proj\",\"leaf_stage.stage_08_residual_add_2\",\"case_real_weight_artifacts\",\"boundary_contract_check\",\"case_stage_leaf_static\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"case_tb_scaffold\",\"single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\"],\"edges\":[\"case_real_weight_artifacts -> case_leaf_functional\",\"case_stage_leaf_static + boundary_contract_check + case_real_weight_artifacts -> case_leaf_functional\",\"case_leaf_functional + boundary_contract_check -> case_leaf_golden_compare\",\"case_leaf_golden_compare + case_real_weight_artifacts -> case_tb_scaffold\",\"case_leaf_golden_compare + case_tb_scaffold + case_real_weight_artifacts -> single_transformer_layer\",\"single_transformer_layer + case_leaf_golden_compare + case_tb_scaffold + case_real_weight_artifacts -> case_single_layer_functional\",\"case_single_layer_functional -> case_single_layer_golden_compare\",\"failed leaf or layer gate -> failure_slice_localization -> targeted_replay -> causal_repair_context_pack\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.pipeline.structure\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.verification.hierarchy\",\"constraint.tool.protocols\"],\"artifacts\":[\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"candidate_stage_artifact.hierarchical_verification\",\"candidate_stage_artifact.verification_artifact_contract\",\"verification/single_layer/single_layer_gate_subdag.json\",\"verification/single_layer/single_layer_merge_contract.json\",\"verification/single_layer/single_layer_numeric_tolerance_plan.json\",\"verification/single_layer/single_layer_failure_slice_boundaries.json\"]},\"observations\":[\"The supplied state summary reports zero active contamination barriers and zero open retry or backtrack requests; no historical blocker should be inferred for this stage.\",\"The verification artifact contract is marked pass and declares the three-layer repair hierarchy: operator leaf modules, single transformer-layer kernel, and board AXI/DDR wrapped system.\",\"The current role scope is the second repair-loop layer only: merge verified leaves into one Qwen2 decoder-block kernel and hand off a readiness contract, without claiming multilayer, AXI/DDR, Vivado, or board readiness.\",\"All relevant real-tool gates for this role are still required_pending_execution: case_real_weight_artifacts, case_stage_leaf_static, boundary_contract_check, case_leaf_functional, case_leaf_golden_compare, case_tb_scaffold, single_transformer_layer, case_single_layer_functional, and case_single_layer_golden_compare.\",\"Stage 3 attention semantics establish GQA with 14 query heads, 2 KV heads, group size 7, head_dim 64, seq_len_bound 16, RoPE theta 1000000.0, and causal ordering; these semantics must be preserved through merge.self_attention and the single decoder block.\",\"Stage 4 numeric binding establishes fp16 weights and activations, fp32 accumulation/residual precision, nearest_even rounding, no saturation, and explicit cast points around RMSNorm, attention output, MLP down projection, and residual additions.\",\"The role_slice_policy prevents treating compactly omitted rows as missing: presence_summary confirms nine stage agents, nine parameter bindings, thirteen debug boundary contracts, and a debug trace schema.\",\"Stage 5 compile/elaboration and contract checks passed for generated code, but those are structural/tool-evidence prerequisites only and are not functional correctness evidence.\",\"The debug closure contract already defines boundary trace fields, targeted replay outputs, and earliest-violation localization; single-layer failures should use this contract before any RTL repair proposal.\",\"The functional_sim_candidates explicitly mark liveness-only VCS labels as non-acceptance; the single-layer gate must require real functional simulation plus golden/numeric comparison.\"],\"risks\":[\"Execution risk, not a current static-stage blocker: real input and real weight artifacts have not yet been materialized, so default generated weights must not be accepted as functional evidence.\",\"GQA head-to-KV grouping, RoPE position ordering, causal mask behavior, and stream/lane ordering can drift at the self-attention merge boundary even when individual leaves pass.\",\"Numeric drift can occur if fp16/fp32 cast points or residual precision are not reflected identically in the testbench, golden reference, and RTL trace; tolerance changes require explicit approval.\",\"A liveness-only simulator result could be mislabeled as a functional pass unless case_single_layer_functional is tied to real manifests, trace evidence, and downstream numeric comparison.\",\"A single-layer mismatch may originate from a previously passed leaf, but lower-layer evidence must only be reopened with a contradictory boundary trace or targeted replay result.\",\"The generated AxiDdrTop elaboration evidence could be mistaken for board wrapper readiness; board AXI/DDR planning must consume only the final single-layer readiness handoff, not skip ahead.\",\"If detailed boundary rows are needed by downstream auditors, they must be requested as handoff artifacts rather than inferred absent from this compact role slice.\"],\"proposed_actions\":[\"Emit the single-layer sub-DAG and merge contract that explicitly orders real-weight artifacts, leaf closure, scaffold generation, single-layer merge, functional simulation, golden comparison, and failure slicing.\",\"Materialize and hash real input, weight, and DDR-image manifests before any functional simulation or testbench acceptance.\",\"Close all nine operator leaf gates with static checks, boundary contracts, independent functional simulation, and leaf golden comparison before promoting merge.self_attention or merge.mlp.\",\"Generate a reproducible testbench scaffold only after real artifacts and leaf golden evidence exist; audit that it loads declared manifests by hash.\",\"Build the single_transformer_layer merge using the verified leaf matrix while checking Qwen2 GQA semantics, residual ordering, stream/lane order, and numeric cast points.\",\"Run real single-layer functional simulation with watchdog and trace collection; do not accept smoke or liveness-only output.\",\"Run single-layer golden comparison with numeric_compare and data_order_trace_check using the frozen numeric tolerance plan.\",\"On any failed leaf or single-layer gate, run boundary-trace localization and targeted replay to produce a compact causal repair context before any bounded repair handoff.\",\"After case_single_layer_golden_compare passes, emit a readiness handoff for verification_artifacts.board_axi_ddr_system_planner and verification_artifacts.repair_boundary_evidence_auditor.\"],\"executable_actions\":[{\"id\":\"single_layer.plan_refine_gate_subdag\",\"stage\":\"verification_artifacts\",\"action_type\":\"cross_layer_merge_gate_planning\",\"rationale\":\"Produce the role-owned single-layer gate DAG and contracts from the supplied Stage 3 attention semantics, Stage 4 numeric binding, Stage 5 generated package, and verification artifact contract without claiming execution pass.\",\"consumes\":[\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.generated_code_package\",\"candidate_stage_artifact.hierarchical_verification\",\"candidate_stage_artifact.verification_artifact_contract\"],\"produces\":[\"verification/single_layer/single_layer_gate_subdag.json\",\"verification/single_layer/single_layer_merge_contract.json\",\"verification/single_layer/single_layer_numeric_tolerance_plan.json\",\"verification/single_layer/single_layer_failure_slice_boundaries.json\"],\"tool_roles\":[\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"stream_plan_check\",\"numeric_policy_check\",\"data_order_trace_check\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"stream_plan_check\",\"numeric_policy_check\",\"data_order_trace_check\"],\"on_failure\":\"Hold the single-layer merge plan in verification_artifacts; repair only the contract/DAG inconsistency and do not launch leaf or layer simulation gates.\",\"requires_approval\":false},{\"id\":\"single_layer.materialize_real_weight_artifacts\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Functional verification requires run-specific real input and weight artifacts; deterministic default/generated weights are explicitly not acceptance evidence.\",\"consumes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.input.case_adapter\",\"verification/single_layer/single_layer_numeric_tolerance_plan.json\"],\"produces\":[\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/case_real_weights/ddr_image_manifest.json\",\"verification/case_real_weights/artifact_hashes.json\"],\"tool_roles\":[\"case_weight_manifest_generate\",\"case_real_weight_artifacts\",\"artifact_hash_check\",\"model_config_check\",\"numeric_policy_check\"],\"acceptance_checkers\":[\"case_real_weight_artifacts\",\"artifact_hash_check\",\"model_config_check\",\"numeric_policy_check\"],\"on_failure\":\"Block case_leaf_functional and case_tb_scaffold; classify missing or non-real artifacts as test/golden artifact repair, not hardware failure.\",\"requires_approval\":false},{\"id\":\"single_layer.close_operator_leaf_prerequisites\",\"stage\":\"verification\",\"action_type\":\"leaf_gate_execution\",\"rationale\":\"The single layer cannot be merged until all nine operator leaves have static evidence, boundary contracts, independent functional simulation, and golden comparison evidence.\",\"consumes\":[\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.generated_code_package\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\",\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/single_layer/single_layer_failure_slice_boundaries.json\"],\"produces\":[\"verification/leaf/operator_leaf_gate_matrix.json\",\"verification/leaf/leaf_boundary_contract_map.json\",\"verification/leaf/leaf_functional_evidence_manifest.json\",\"verification/leaf/leaf_golden_compare_manifest.json\"],\"tool_roles\":[\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"numeric_compare\",\"data_order_trace_check\"],\"acceptance_checkers\":[\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"numeric_compare\",\"data_order_trace_check\"],\"on_failure\":\"Do not promote merge.self_attention, merge.mlp, or merge.single_decoder_block; route failed leaf evidence to bounded failure slicing at the earliest violated boundary.\",\"requires_approval\":false},{\"id\":\"single_layer.generate_hashable_tb_scaffold\",\"stage\":\"verification\",\"action_type\":\"testbench_scaffold_generation\",\"rationale\":\"The layer functional simulator must use a reproducible scaffold that loads the declared real manifests and verified leaf interfaces by deterministic hash.\",\"consumes\":[\"verification/leaf/operator_leaf_gate_matrix.json\",\"verification/leaf/leaf_golden_compare_manifest.json\",\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/case_real_weights/artifact_hashes.json\",\"verification/single_layer/single_layer_merge_contract.json\",\"artifact.stage5.generated_code_package\"],\"produces\":[\"verification/single_layer/tb_scaffold_manifest.json\",\"verification/single_layer/tb_scaffold_hashes.json\",\"verification/single_layer/tb_scaffold_contract_check.json\"],\"tool_roles\":[\"case_tb_scaffold_generate\",\"case_tb_scaffold\",\"tool_protocol_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"case_tb_scaffold\",\"tool_protocol_check\",\"artifact_hash_check\"],\"on_failure\":\"Treat the failure as scaffold or tool-protocol repair; do not reinterpret leaf or layer RTL correctness without contradictory boundary evidence.\",\"requires_approval\":false},{\"id\":\"single_layer.merge_verified_leaves_into_kernel\",\"stage\":\"verification\",\"action_type\":\"single_layer_kernel_merge\",\"rationale\":\"Connect verified leaves into the single decoder block while preserving Qwen2 GQA semantics, residual_add_1/residual_add_2 placement, RMSNorm ordering, MLP gate/up/activation/down order, stream order, and numeric cast points.\",\"consumes\":[\"verification/leaf/operator_leaf_gate_matrix.json\",\"verification/leaf/leaf_boundary_contract_map.json\",\"verification/single_layer/tb_scaffold_manifest.json\",\"verification/case_real_weights/artifact_hashes.json\",\"verification/single_layer/single_layer_merge_contract.json\",\"verification/single_layer/single_layer_numeric_tolerance_plan.json\"],\"produces\":[\"verification/single_layer/single_transformer_layer_kernel_manifest.json\",\"verification/single_layer/single_transformer_layer_trace_map.json\",\"verification/single_layer/single_transformer_layer_static_check.json\"],\"tool_roles\":[\"single_transformer_layer\",\"case_single_transformer_layer\",\"stream_plan_check\",\"numeric_policy_check\",\"data_order_trace_check\"],\"acceptance_checkers\":[\"single_transformer_layer\",\"case_single_transformer_layer\",\"stream_plan_check\",\"numeric_policy_check\",\"data_order_trace_check\"],\"on_failure\":\"Block layer functional simulation and localize whether the mismatch is at self-attention, MLP, residual, norm, stream, or cast boundary before repair handoff.\",\"requires_approval\":false},{\"id\":\"single_layer.run_real_layer_functional_sim\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"The connected single transformer-layer kernel must pass real functional simulation with real manifests, watchdog evidence, and trace capture before any multilayer or board wrapper handoff.\",\"consumes\":[\"verification/single_layer/single_transformer_layer_kernel_manifest.json\",\"verification/single_layer/single_transformer_layer_trace_map.json\",\"verification/single_layer/tb_scaffold_manifest.json\",\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/case_real_weights/artifact_hashes.json\",\"verification/single_layer/single_layer_numeric_tolerance_plan.json\"],\"produces\":[\"verification/single_layer/case_single_layer_functional_evidence.json\",\"verification/single_layer/functional_sim_outputs.json\",\"verification/single_layer/boundary_trace.json\",\"verification/single_layer/deadlock_watchdog_report.json\"],\"tool_roles\":[\"case_single_layer_functional\",\"case_vcs_functional_sim\",\"functional_sim_contract_check\",\"deadlock_watchdog\",\"data_order_trace_check\"],\"acceptance_checkers\":[\"case_single_layer_functional\",\"real_tool.case_single_layer_functional\",\"required_real_tool_evidence_check\",\"deadlock_watchdog\",\"data_order_trace_check\"],\"on_failure\":\"Do not proceed to case_single_layer_golden_compare or board/multilayer gates; run boundary-trace failure localization and targeted replay using the debug closure contract.\",\"requires_approval\":false},{\"id\":\"single_layer.compare_layer_against_golden\",\"stage\":\"verification\",\"action_type\":\"golden_comparison\",\"rationale\":\"A functional simulation run is not sufficient; the single-layer outputs must be compared against the golden/reference behavior under the frozen numeric tolerance and stream order contracts.\",\"consumes\":[\"artifact.input.model_config\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/case_real_weights/artifact_hashes.json\",\"verification/single_layer/functional_sim_outputs.json\",\"verification/single_layer/boundary_trace.json\",\"verification/single_layer/single_layer_numeric_tolerance_plan.json\"],\"produces\":[\"verification/single_layer/golden_reference_hashes.json\",\"verification/single_layer/case_single_layer_golden_compare_report.json\",\"verification/single_layer/numeric_compare_report.json\",\"verification/single_layer/data_order_compare_report.json\"],\"tool_roles\":[\"case_single_layer_golden_compare\",\"numeric_compare\",\"data_order_trace_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"case_single_layer_golden_compare\",\"real_tool.case_single_layer_golden_compare\",\"numeric_compare\",\"data_order_trace_check\",\"artifact_hash_check\"],\"on_failure\":\"Freeze the failed outputs and reference hashes; invoke bounded failure slicing without modifying golden outputs or loosening tolerance.\",\"requires_approval\":false},{\"id\":\"single_layer.slice_failed_leaf_or_layer_gate\",\"stage\":\"verification\",\"action_type\":\"bounded_failure_slicing\",\"rationale\":\"Any failed leaf or single-layer gate must enter the tool-output to contract-guided localization to bounded repair handoff loop, identifying the earliest violated boundary before proposing code repair.\",\"consumes\":[\"verification/debug_closure/trace_manifest.json\",\"verification/single_layer/single_layer_failure_slice_boundaries.json\",\"verification/leaf/leaf_boundary_contract_map.json\",\"verification/single_layer/boundary_trace.json\",\"verification/single_layer/case_single_layer_functional_evidence.json\",\"verification/single_layer/case_single_layer_golden_compare_report.json\"],\"produces\":[\"verification/debug_closure/failure_localization.json\",\"verification/debug_closure/targeted_replay_plan.json\",\"verification/debug_closure/targeted_replay_report.json\",\"verification/debug_closure/causal_repair_context.json\"],\"tool_roles\":[\"failure_slice_localization\",\"boundary_trace_rerun\",\"targeted_replay\",\"causal_repair_context_pack\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"failure_localization_check\",\"targeted_replay_check\",\"causal_repair_context_check\",\"repair_boundary_check\",\"data_order_trace_check\"],\"on_failure\":\"Keep the layer gate blocked and request checker or trace-schema repair; do not apply RTL, pipeline, numeric, or template changes without localized evidence and required approval.\",\"requires_approval\":false},{\"id\":\"single_layer.emit_readiness_handoff\",\"stage\":\"verification_artifacts\",\"action_type\":\"handoff_contract_packaging\",\"rationale\":\"Only after single-layer functional and golden gates pass should downstream board AXI/DDR planning and repair-boundary audit consume a compact, checker-grounded readiness contract.\",\"consumes\":[\"verification/single_layer/single_layer_gate_subdag.json\",\"verification/single_layer/single_layer_merge_contract.json\",\"verification/single_layer/single_layer_numeric_tolerance_plan.json\",\"verification/single_layer/single_layer_failure_slice_boundaries.json\",\"verification/single_layer/case_single_layer_functional_evidence.json\",\"verification/single_layer/case_single_layer_golden_compare_report.json\",\"verification/single_layer/numeric_compare_report.json\",\"verification/single_layer/data_order_compare_report.json\"],\"produces\":[\"verification/single_layer/single_layer_readiness_handoff.json\",\"handoff/verification_artifacts.board_axi_ddr_system_planner.single_layer_ready.json\",\"handoff/verification_artifacts.repair_boundary_evidence_auditor.single_layer_evidence.json\"],\"tool_roles\":[\"team_aggregate\",\"verification_action_audit\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"verification_action_audit_check\",\"required_real_tool_evidence_check\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"case_tb_scaffold\"],\"on_failure\":\"Do not let board AXI/DDR or backend planners consume the single-layer package; report the missing checker evidence or failed gate as the handoff blocker.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any change to Qwen2 decoder semantics, including GQA head mapping, KV grouping, RoPE theta, causal masking, or sequence bound.\",\"Any change to numeric policy, fp16/fp32 cast points, residual precision, rounding mode, saturation policy, or numeric tolerance thresholds.\",\"Any change to decoder-block operator order, residual_add_1/residual_add_2 placement, RMSNorm placement, MLP gate/up/activation/down ordering, or stream/lane ordering.\",\"Any memory layout, DDR image, manifest packing, runtime ABI, or transfer-unit change that affects the testbench-to-runtime contract.\",\"Any major template or RTL architecture modification beyond bounded repair localized by boundary trace and targeted replay.\",\"Any decision to reopen a previously passed lower-layer gate without contradictory boundary-trace evidence.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/single_layer_merge_planner_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/single_layer_merge_planner_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "verification_artifacts.single transformer-layer integration verification engineer",
+  "used_fallback": false
+}

@@ -1,0 +1,50 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "sacg_static_check",
+      "parameter_binding_static_check",
+      "sacg_memory_check",
+      "stage_artifact_trust_barrier_check",
+      "verification_action_audit_check"
+    ],
+    "action_type": "stage_gate_promotion",
+    "consumes": [
+      "recent_stage_summary",
+      "artifact.stage4.parameter_binding",
+      "artifact.stage4.parameter_static_checks",
+      "artifact.stage4.team_aggregate",
+      "sacg_memory_truth",
+      "flow_policy"
+    ],
+    "id": "flow.parameter_binding.promote_checked_stage4_contract",
+    "on_failure": "Block promotion; create an explicit bounded retry, backtrack, or trust-barrier record naming the failed checker, violated SACG constraint, and contaminated artifact boundary. Do not let downstream stages consume the unpromoted artifact.",
+    "produces": [
+      "artifact.stage4.parameter_binding_promoted",
+      "parameter_binding_stage_gate_decision.json",
+      "stage4_static_evidence_limit_record.json",
+      "sacg_memory_update_recommendation.json"
+    ],
+    "rationale": "The stage passed and SACG memory truth has no active blockers, so the flow controller should promote only the checker-backed Stage 4 static parameter-binding contract while recording that symbolic estimates are not hardware evidence.",
+    "requires_approval": false,
+    "stage": "parameter_binding",
+    "tool_roles": [
+      "sacg_validate",
+      "parameter_binding_static_check",
+      "team_aggregate",
+      "verification_action_audit",
+      "sacg_memory_update"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "proceed",
+  "flow_event_index": 15,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/flow_events/015_proceed.json",
+  "stage": "parameter_binding"
+}

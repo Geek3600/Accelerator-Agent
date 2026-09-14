@@ -1,0 +1,163 @@
+{
+  "agent": "initial_design_graph_agent",
+  "compact_retry_after_error": "[SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)",
+  "compact_retry_prompt_bytes": 15470,
+  "compact_retry_request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/llm/initial_design_graph_agent_compact_retry_prompt.md",
+  "duration_sec": 947.3112773530011,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "initial_design_graph_agent_compact_retry",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "task_card_check"
+        ],
+        "action_type": "static_validation",
+        "consumes": [
+          "compact_inputs",
+          "artifact.initial_design_graph_candidate"
+        ],
+        "id": "constraint_extraction.run_sacg_intake_static_checks",
+        "on_failure": "Keep constraint_extraction blocked and return the failed SACG/task-card diagnostics to the initial design graph agent for bounded correction; do not promote to architecture or code generation.",
+        "produces": [
+          "artifact.constraint_extraction.sacg_static_check_summary",
+          "artifact.constraint_extraction.task_card_check_summary"
+        ],
+        "rationale": "The compact input only exposes aggregate readiness, so the current stage needs auditable static checks over the initial design graph before downstream agents rely on it.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "task_card_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "memory_runtime_plan_check",
+          "human_boundary_check"
+        ],
+        "action_type": "static_validation",
+        "consumes": [
+          "artifact.initial_design_graph_candidate",
+          "artifact.constraint_extraction.sacg_static_check_summary"
+        ],
+        "id": "constraint_extraction.validate_design_fact_coverage",
+        "on_failure": "Localize the missing or ambiguous design facts and require a repaired graph with explicit constraints before downstream handoff.",
+        "produces": [
+          "artifact.constraint_extraction.design_fact_coverage_report"
+        ],
+        "rationale": "Later agents need explicit representation of model, shape, numeric policy, template coverage, parameter bindings, memory/runtime, and human-boundary constraints; these facts are not visible in the compact retry and must be checked in the underlying artifact.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "memory_runtime_plan_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "boundary_contract_check",
+          "human_boundary_check"
+        ],
+        "action_type": "static_validation",
+        "consumes": [
+          "artifact.initial_design_graph_candidate",
+          "action_grounding_registry"
+        ],
+        "id": "constraint_extraction.validate_tool_and_boundary_protocols",
+        "on_failure": "Block promotion and require a boundary-contract repair that identifies which claims need real tool evidence or human approval.",
+        "produces": [
+          "artifact.constraint_extraction.tool_boundary_protocol_report"
+        ],
+        "rationale": "The design graph must preserve tool-evidence boundaries and human-approval boundaries so later verification and backend agents do not claim unearned evidence or bypass approvals.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "tool_protocol_check",
+          "boundary_contract_check",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The visible compact input contains agent=initial_design_graph_agent and stage=constraint_extraction.",
+      "design_team.status is visible as ready and design_team.errors has size 0, so the compact evidence indicates no visible design-team errors at the aggregate level.",
+      "The compact input reports additional hidden keys, but their values are not visible; this review cannot inspect hidden model, shape, numeric, template, board, tool, or boundary facts.",
+      "checker_results is absent from the compact input; static acceptance checks for SACG, task card, model configuration, numeric policy, template coverage, parameter bindings, memory/runtime planning, and human boundary are therefore not_run based on visible evidence.",
+      "parameter_bindings, template_source_checks, attention_semantics, and cross_layer_trace are absent from the compact input; their respective semantic details are not visible to this stage review.",
+      "No Stage6 candidate verification artifact contract or verification plan fields are visible in this compact input, so later verification evidence is not evaluated here."
+    ],
+    "proposed_actions": [
+      "Run SACG and task-card static validation over the available initial design graph artifact and retain checker summaries in the next stage artifact.",
+      "Validate model configuration, shapes, numeric policy, template coverage, parameter bindings, memory/runtime plan, and human-boundary facts before architecture or code-generation agents consume the graph.",
+      "If static checks pass, hand off a validated SACG with explicit node and edge references to architecture, code generation, verification planning, and backend board agents.",
+      "Later-stage agents must rerun their own verification, simulator, synthesis, implementation, and board-runtime gates; the current ready status must not be treated as hardware evidence."
+    ],
+    "risks": [
+      "Current-stage blocker: the visible compact evidence is insufficient to confirm that the initial design graph explicitly represents model, shape, numeric policy, template, board DDR/AXI/runtime, tool-evidence, and human-boundary facts.",
+      "Current-stage blocker: without visible checker_results or equivalent static check summaries, promotion from constraint_extraction would rely on unverified aggregate readiness metadata rather than auditable SACG constraints."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "compact_inputs",
+        "action_grounding_registry",
+        "artifact.initial_design_graph_candidate",
+        "artifact.constraint_extraction_review"
+      ],
+      "constraints": [
+        "Do not infer omitted nested graph content from compact retry metadata.",
+        "Do not claim hardware, simulator, synthesis, implementation, or board pass without tool evidence.",
+        "Current stage must establish clear constraint representation before architecture, code generation, verification, and backend agents consume it.",
+        "Absent checker_results, parameter_bindings, template_source_checks, attention_semantics, and cross_layer_trace are treated as not_run in this compact evidence set."
+      ],
+      "edges": [
+        "design_team.status -> initial_design_graph availability",
+        "model_config -> shape_contract",
+        "numeric_policy -> verification_numeric_compare",
+        "template_binding -> code_generation_manifest",
+        "board_ddr_axi_runtime_contract -> memory_runtime_plan",
+        "human_boundary_contract -> approval_required_for"
+      ],
+      "nodes": [
+        "compact_inputs.design_team",
+        "initial_design_graph",
+        "model_config",
+        "shape_contract",
+        "numeric_policy",
+        "template_binding",
+        "board_ddr_axi_runtime_contract",
+        "tool_evidence_contract",
+        "human_boundary_contract"
+      ]
+    },
+    "schema_version": "spatialaccagent.initial_design_graph_review.v0",
+    "stage": "constraint_extraction",
+    "status": "needs_static_validation",
+    "summary": "Compact retry input shows design_team.status=ready with zero visible errors, but the visible compact evidence does not expose the actual initial design graph facts or checker outcomes needed to confirm that model, shape, numeric policy, template, DDR/AXI/runtime, tool, evidence, and human-boundary constraints are represented clearly enough. Treat the ready status as supplied evidence of an available design-team artifact, not as proof that all constraint-extraction checks passed."
+  },
+  "prompt_bytes": 107213,
+  "prompt_hash": "28a1b07811220c85da1178d971c6ff74d5e554182388797dd6862f5b5fd0b9ea",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.initial_design_graph_review.v0\",\"agent\":\"initial_design_graph_agent_compact_retry\",\"stage\":\"constraint_extraction\",\"status\":\"needs_static_validation\",\"summary\":\"Compact retry input shows design_team.status=ready with zero visible errors, but the visible compact evidence does not expose the actual initial design graph facts or checker outcomes needed to confirm that model, shape, numeric policy, template, DDR/AXI/runtime, tool, evidence, and human-boundary constraints are represented clearly enough. Treat the ready status as supplied evidence of an available design-team artifact, not as proof that all constraint-extraction checks passed.\",\"sacg_focus\":{\"nodes\":[\"compact_inputs.design_team\",\"initial_design_graph\",\"model_config\",\"shape_contract\",\"numeric_policy\",\"template_binding\",\"board_ddr_axi_runtime_contract\",\"tool_evidence_contract\",\"human_boundary_contract\"],\"edges\":[\"design_team.status -> initial_design_graph availability\",\"model_config -> shape_contract\",\"numeric_policy -> verification_numeric_compare\",\"template_binding -> code_generation_manifest\",\"board_ddr_axi_runtime_contract -> memory_runtime_plan\",\"human_boundary_contract -> approval_required_for\"],\"constraints\":[\"Do not infer omitted nested graph content from compact retry metadata.\",\"Do not claim hardware, simulator, synthesis, implementation, or board pass without tool evidence.\",\"Current stage must establish clear constraint representation before architecture, code generation, verification, and backend agents consume it.\",\"Absent checker_results, parameter_bindings, template_source_checks, attention_semantics, and cross_layer_trace are treated as not_run in this compact evidence set.\"],\"artifacts\":[\"compact_inputs\",\"action_grounding_registry\",\"artifact.initial_design_graph_candidate\",\"artifact.constraint_extraction_review\"]},\"observations\":[\"The visible compact input contains agent=initial_design_graph_agent and stage=constraint_extraction.\",\"design_team.status is visible as ready and design_team.errors has size 0, so the compact evidence indicates no visible design-team errors at the aggregate level.\",\"The compact input reports additional hidden keys, but their values are not visible; this review cannot inspect hidden model, shape, numeric, template, board, tool, or boundary facts.\",\"checker_results is absent from the compact input; static acceptance checks for SACG, task card, model configuration, numeric policy, template coverage, parameter bindings, memory/runtime planning, and human boundary are therefore not_run based on visible evidence.\",\"parameter_bindings, template_source_checks, attention_semantics, and cross_layer_trace are absent from the compact input; their respective semantic details are not visible to this stage review.\",\"No Stage6 candidate verification artifact contract or verification plan fields are visible in this compact input, so later verification evidence is not evaluated here.\"],\"risks\":[\"Current-stage blocker: the visible compact evidence is insufficient to confirm that the initial design graph explicitly represents model, shape, numeric policy, template, board DDR/AXI/runtime, tool-evidence, and human-boundary facts.\",\"Current-stage blocker: without visible checker_results or equivalent static check summaries, promotion from constraint_extraction would rely on unverified aggregate readiness metadata rather than auditable SACG constraints.\"],\"proposed_actions\":[\"Run SACG and task-card static validation over the available initial design graph artifact and retain checker summaries in the next stage artifact.\",\"Validate model configuration, shapes, numeric policy, template coverage, parameter bindings, memory/runtime plan, and human-boundary facts before architecture or code-generation agents consume the graph.\",\"If static checks pass, hand off a validated SACG with explicit node and edge references to architecture, code generation, verification planning, and backend board agents.\",\"Later-stage agents must rerun their own verification, simulator, synthesis, implementation, and board-runtime gates; the current ready status must not be treated as hardware evidence.\"],\"executable_actions\":[{\"id\":\"constraint_extraction.run_sacg_intake_static_checks\",\"stage\":\"constraint_extraction\",\"action_type\":\"static_validation\",\"rationale\":\"The compact input only exposes aggregate readiness, so the current stage needs auditable static checks over the initial design graph before downstream agents rely on it.\",\"consumes\":[\"compact_inputs\",\"artifact.initial_design_graph_candidate\"],\"produces\":[\"artifact.constraint_extraction.sacg_static_check_summary\",\"artifact.constraint_extraction.task_card_check_summary\"],\"tool_roles\":[\"sacg_validate\",\"sacg_static_check\",\"task_card_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"task_card_check\"],\"on_failure\":\"Keep constraint_extraction blocked and return the failed SACG/task-card diagnostics to the initial design graph agent for bounded correction; do not promote to architecture or code generation.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.validate_design_fact_coverage\",\"stage\":\"constraint_extraction\",\"action_type\":\"static_validation\",\"rationale\":\"Later agents need explicit representation of model, shape, numeric policy, template coverage, parameter bindings, memory/runtime, and human-boundary constraints; these facts are not visible in the compact retry and must be checked in the underlying artifact.\",\"consumes\":[\"artifact.initial_design_graph_candidate\",\"artifact.constraint_extraction.sacg_static_check_summary\"],\"produces\":[\"artifact.constraint_extraction.design_fact_coverage_report\"],\"tool_roles\":[\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"memory_runtime_plan_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"memory_runtime_plan_check\",\"human_boundary_check\"],\"on_failure\":\"Localize the missing or ambiguous design facts and require a repaired graph with explicit constraints before downstream handoff.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.validate_tool_and_boundary_protocols\",\"stage\":\"constraint_extraction\",\"action_type\":\"static_validation\",\"rationale\":\"The design graph must preserve tool-evidence boundaries and human-approval boundaries so later verification and backend agents do not claim unearned evidence or bypass approvals.\",\"consumes\":[\"artifact.initial_design_graph_candidate\",\"action_grounding_registry\"],\"produces\":[\"artifact.constraint_extraction.tool_boundary_protocol_report\"],\"tool_roles\":[\"tool_protocol_check\",\"boundary_contract_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"tool_protocol_check\",\"boundary_contract_check\",\"human_boundary_check\"],\"on_failure\":\"Block promotion and require a boundary-contract repair that identifies which claims need real tool evidence or human approval.\",\"requires_approval\":false}],\"approval_required_for\":[]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/llm/initial_design_graph_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/llm/initial_design_graph_agent_result.json",
+  "retry_errors": [
+    "full prompt failed: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction",
+  "used_fallback": false
+}

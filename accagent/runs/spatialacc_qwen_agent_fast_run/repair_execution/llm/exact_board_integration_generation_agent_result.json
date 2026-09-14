@@ -1,0 +1,1168 @@
+{
+  "agent": "exact_board_integration_generation_agent",
+  "duration_sec": 452.29887829499785,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "83f7fcb4ec7d46bfbb562bdc11f17765",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair_execution/llm/exact_board_integration_generation_agent_live_transaction.json",
+  "max_output_tokens": 65536,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "adaptive_observation_decision": {
+      "boundary_coverage_plan": {
+        "boundary_ids": [
+          "boundary.edge_data_block_input_to_stage_00_rms_norm_1_input",
+          "boundary.edge_data_block_input_to_stage_02_residual_add_1_residual_skip",
+          "boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main",
+          "boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main",
+          "boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main",
+          "boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip",
+          "boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch",
+          "boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch",
+          "boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul",
+          "boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul",
+          "boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main",
+          "boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main",
+          "boundary.edge_data_stage_08_residual_add_2_to_block_output_output"
+        ],
+        "required_fields": [
+          "valid",
+          "ready",
+          "transfer_or_fire",
+          "received_count",
+          "accepted_count",
+          "start",
+          "last",
+          "current_payload_unknown",
+          "current_payload_digest",
+          "first_accepted_payload_digest",
+          "last_accepted_payload_digest",
+          "first_waiting_after_upstream_progress",
+          "terminal_summary"
+        ]
+      },
+      "evidence_refs": [
+        "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation",
+        "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/progress_event_summary/latest_stall_snapshot/connected_kernel_internal_pipeline_observation",
+        "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/simulator_terminal_log/failure_lines"
+      ],
+      "field_observations": [
+        {
+          "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/output_accept_count",
+          "interpretation": "Twenty-one output beats were received before termination, so the output path started but did not complete a token.",
+          "observed_value": 21,
+          "semantic_role": "counter"
+        },
+        {
+          "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/output_ready",
+          "interpretation": "The output receiver was ready at the final record, so a low ready signal was not blocking the current output beat.",
+          "observed_value": 1,
+          "semantic_role": "handshake"
+        },
+        {
+          "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/input_accepted",
+          "interpretation": "Input data was still being received at the final record. The last observed internal boundary still transferring was stage_00_rms_norm_1 to stage_01_self_attention at token 8, followed by block input token 9; the first stopped internal boundary cannot yet be identified because all current DAG boundary records were not complete.",
+          "observed_value": 1,
+          "semantic_role": "handshake"
+        },
+        {
+          "evidence_pointer": "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/simulator_terminal_log/failure_lines",
+          "interpretation": "The generated AXI monitor ended the simulation before the output completion contract could be observed.",
+          "observed_value": [
+            "Fatal: \"../sources/spatialacc_axi_protocol_monitor.sv\", 211: spatialacc_exact_board_multilayer_tb.tb_c0_ddr4_s_axi_monitor: at time 82823850000"
+          ],
+          "semantic_role": "error"
+        }
+      ],
+      "frontier_id": "kernel_output_stream_completion",
+      "mode": "deepen_simulation_observation",
+      "probe_plan": {
+        "add_or_update_probe_ids": [
+          "probe.current_dag_complete_boundary_terminal_path.6",
+          "probe.complete_core_scalar_status_trace.2",
+          "probe.complete_core_control_trace.1"
+        ],
+        "bounded_window": "One read-only record at each named transfer or waiting transition, plus one terminal summary. Each transition emits all exposed control scalars and the existing 1664 per-bit known-status scalars.",
+        "event_match": {
+          "frontier_id": "kernel_output_stream_completion",
+          "layer": 0
+        },
+        "required_event_fields": [
+          "stage",
+          "cycle",
+          "token",
+          "beat",
+          "event",
+          "signal",
+          "scalar_value",
+          "valid",
+          "ready",
+          "transfer_or_fire",
+          "received_count",
+          "accepted_count",
+          "start",
+          "last",
+          "current_payload_unknown",
+          "current_payload_digest",
+          "first_accepted_payload_digest",
+          "last_accepted_payload_digest"
+        ],
+        "retire_probe_ids": [],
+        "target_boundary": "kernel_output_stream_completion",
+        "trigger_condition": "At each stage input or output first transfer, last transfer, first waiting state after upstream progress, and terminal summary; never on every cycle."
+      },
+      "rationale": "The present internal records show accepted input data, a stage-00 to attention transfer, and 21 accepted output beats, but not a completed output token. The testbench already records all thirteen data boundaries; this edit adds named state, queue, waiting, memory, scheduler, and data-known scalar records at the same first record, last record, first waiting, and terminal transition points. The existing per-bit data-known loops emit 1664 distinct real core scalar records, and the added control task records the exposed operator and queue controls without sampling every cycle.",
+      "schema_version": "spatialaccagent.adaptive_observation_decision.v1",
+      "signal_binding_plan": [
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[0]",
+          "boundary_id": "boundary.edge_data_block_input_to_stage_00_rms_norm_1_input",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_data[0:255]",
+              "name": "payload_known_bits_0_through_255",
+              "role": "data_status"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.rms1.io_in_valid) && (dut.spatialacc_single_kernel.core.rms1.io_in_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.rms1.io_in_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.rms1.io_in_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[1]",
+          "boundary_id": "boundary.edge_data_block_input_to_stage_02_residual_add_1_residual_skip",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.io_residual_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.io_residual_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.residualQ.maybe_full",
+              "name": "residual_queue_full",
+              "role": "queue"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.add1.io_residual_valid) && (dut.spatialacc_single_kernel.core.add1.io_residual_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.add1.io_residual_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.add1.io_residual_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.add1.io_residual_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[2]",
+          "boundary_id": "boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_out_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_out_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.qkv.state",
+              "name": "qkv_state",
+              "role": "state"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.qkv.io_in_bits_data[0:127]",
+              "name": "payload_known_bits_0_through_127",
+              "role": "data_status"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.qkv.io_in_valid) && (dut.spatialacc_single_kernel.core.qkv.io_in_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.qkv.io_in_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.qkv.io_in_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.qkv.io_in_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[3]",
+          "boundary_id": "boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.io_computed_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.io_computed_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.io_computed_bits_data[0:255]",
+              "name": "payload_known_bits_0_through_255",
+              "role": "data_status"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.add1.io_computed_valid) && (dut.spatialacc_single_kernel.core.add1.io_computed_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.add1.io_computed_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.add1.io_computed_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.add1.io_computed_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[4]",
+          "boundary_id": "boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_bits_data[0:255]",
+              "name": "payload_known_bits_0_through_255",
+              "role": "data_status"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.rms2.io_in_valid) && (dut.spatialacc_single_kernel.core.rms2.io_in_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.rms2.io_in_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.rms2.io_in_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.rms2.io_in_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[5]",
+          "boundary_id": "boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.io_residual_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.io_residual_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.res2Q.maybe_full",
+              "name": "residual_queue_full",
+              "role": "queue"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.add2.io_residual_valid) && (dut.spatialacc_single_kernel.core.add2.io_residual_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.add2.io_residual_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.add2.io_residual_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.add2.io_residual_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[6]",
+          "boundary_id": "boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_data[0:127]",
+              "name": "payload_known_bits_0_through_127",
+              "role": "data_status"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid) && (dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[7]",
+          "boundary_id": "boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_data[0:127]",
+              "name": "payload_known_bits_0_through_127",
+              "role": "data_status"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.mlp.up.io_in_valid) && (dut.spatialacc_single_kernel.core.mlp.up.io_in_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.mlp.up.io_in_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.mlp.up.io_in_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[8]",
+          "boundary_id": "boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.actQ.maybe_full",
+              "name": "activation_queue_full",
+              "role": "queue"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid) && (dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[9]",
+          "boundary_id": "boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_out_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_out_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.upQ.maybe_full",
+              "name": "up_queue_full",
+              "role": "queue"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.mlp.up.io_out_valid) && (dut.spatialacc_single_kernel.core.mlp.up.io_out_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.mlp.up.io_out_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.mlp.up.io_out_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.mlp.up.io_out_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[10]",
+          "boundary_id": "boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.mul_io_out_bits_st__bore",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.mul_io_out_bits_last__bore",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp._mul_io_out_valid",
+              "name": "multiply_output_valid",
+              "role": "state"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_in_bits_data[0:127]",
+              "name": "payload_known_bits_0_through_127",
+              "role": "data_status"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.mlp.down.io_in_valid) && (dut.spatialacc_single_kernel.core.mlp.down.io_in_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.mlp.down.io_in_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.mlp.down.io_in_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.mlp.down.io_in_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[11]",
+          "boundary_id": "boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.io_computed_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.io_computed_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.io_computed_bits_data[0:255]",
+              "name": "payload_known_bits_0_through_255",
+              "role": "data_status"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.add2.io_computed_valid) && (dut.spatialacc_single_kernel.core.add2.io_computed_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.add2.io_computed_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.add2.io_computed_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.add2.io_computed_valid"
+        },
+        {
+          "accepted_count_source": "current_dag_boundary_accepted_count[12]",
+          "boundary_id": "boundary.edge_data_stage_08_residual_add_2_to_block_output_output",
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.io_out_bits_st",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.io_out_bits_last",
+              "name": "last",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.outputQ.maybe_full",
+              "name": "output_queue_full",
+              "role": "queue"
+            }
+          ],
+          "fire_source": "(dut.spatialacc_single_kernel.core.io_out_valid) && (dut.spatialacc_single_kernel.core.io_out_ready)",
+          "payload_source": "dut.spatialacc_single_kernel.core.io_out_bits_data",
+          "ready_source": "dut.spatialacc_single_kernel.core.io_out_ready",
+          "valid_source": "dut.spatialacc_single_kernel.core.io_out_valid"
+        }
+      ],
+      "stage_internal_signal_plan": [
+        {
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_weight_valid",
+              "name": "weight_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_weight_ready",
+              "name": "weight_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_valid",
+              "name": "input_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_ready",
+              "name": "input_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_out_valid",
+              "name": "output_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_out_ready",
+              "name": "output_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_addr[0:10]",
+              "name": "input_address_bits_0_through_10",
+              "role": "counter"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms1.io_in_bits_data[0:255]",
+              "name": "input_payload_known_bits_0_through_255",
+              "role": "data_status"
+            }
+          ],
+          "input_boundary_ids": [
+            "boundary.edge_data_block_input_to_stage_00_rms_norm_1_input"
+          ],
+          "output_boundary_ids": [
+            "boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main"
+          ],
+          "stage_id": "stage_00_rms_norm_1",
+          "unavailable_roles": [
+            {
+              "role": "error",
+              "unavailable_reason": "The exposed RMSNorm instance has no stage-local error flag in the current hierarchy."
+            }
+          ]
+        },
+        {
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.qkv.state",
+              "name": "qkv_state",
+              "role": "state"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.qkv.collectBeat[0:7]",
+              "name": "qkv_collect_beat_bits_0_through_7",
+              "role": "counter"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.qkv.emitHead[0:3]",
+              "name": "qkv_emit_head_bits_0_through_3",
+              "role": "counter"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.qkv.emitBeat[0:2]",
+              "name": "qkv_emit_beat_bits_0_through_2",
+              "role": "counter"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.qkv.io_weight_valid",
+              "name": "qkv_weight_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.qkv.io_weight_ready",
+              "name": "qkv_weight_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.qkv.io_bias_valid",
+              "name": "qkv_bias_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.qkv.io_bias_ready",
+              "name": "qkv_bias_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rope.io_runtimeLoaded",
+              "name": "rope_runtime_loaded",
+              "role": "state"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.attn.io_out_valid",
+              "name": "attention_output_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.attn.io_out_ready",
+              "name": "attention_output_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.qkv.io_in_bits_data[0:127]",
+              "name": "qkv_input_payload_known_bits_0_through_127",
+              "role": "data_status"
+            }
+          ],
+          "input_boundary_ids": [
+            "boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main"
+          ],
+          "output_boundary_ids": [
+            "boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main"
+          ],
+          "stage_id": "stage_01_self_attention",
+          "unavailable_roles": [
+            {
+              "role": "error",
+              "unavailable_reason": "No stage-local attention error flag is declared in the exposed current hierarchy."
+            }
+          ]
+        },
+        {
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.pairValid",
+              "name": "pair_valid",
+              "role": "state"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.heldValid",
+              "name": "held_valid",
+              "role": "buffer"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.beatInToken[0:6]",
+              "name": "beat_in_token_bits_0_through_6",
+              "role": "counter"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.tokenInSequence[0:4]",
+              "name": "token_in_sequence_bits_0_through_4",
+              "role": "counter"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.res1Q.enq_ptr_value[0:10]",
+              "name": "residual_queue_write_pointer_bits_0_through_10",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.res1Q.deq_ptr_value[0:10]",
+              "name": "residual_queue_read_pointer_bits_0_through_10",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.res1Q.maybe_full",
+              "name": "residual_queue_full",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.computedQ.enq_ptr_value[0:6]",
+              "name": "computed_queue_write_pointer_bits_0_through_6",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.outputQ.maybe_full",
+              "name": "output_queue_full",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add1.io_computed_bits_data[0:255]",
+              "name": "computed_payload_known_bits_0_through_255",
+              "role": "data_status"
+            }
+          ],
+          "input_boundary_ids": [
+            "boundary.edge_data_block_input_to_stage_02_residual_add_1_residual_skip",
+            "boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main"
+          ],
+          "output_boundary_ids": [
+            "boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main",
+            "boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip"
+          ],
+          "stage_id": "stage_02_residual_add_1",
+          "unavailable_roles": [
+            {
+              "role": "error",
+              "unavailable_reason": "The exposed residual-add instance has no stage-local error flag."
+            }
+          ]
+        },
+        {
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms2.io_weight_valid",
+              "name": "weight_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms2.io_weight_ready",
+              "name": "weight_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_valid",
+              "name": "input_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_ready",
+              "name": "input_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms2.io_out_valid",
+              "name": "output_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms2.io_out_ready",
+              "name": "output_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.rms2.io_in_bits_data[0:255]",
+              "name": "input_payload_known_bits_0_through_255",
+              "role": "data_status"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.res2Q.maybe_full",
+              "name": "residual_skip_queue_full",
+              "role": "queue"
+            }
+          ],
+          "input_boundary_ids": [
+            "boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main"
+          ],
+          "output_boundary_ids": [
+            "boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch",
+            "boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch"
+          ],
+          "stage_id": "stage_03_rms_norm_2",
+          "unavailable_roles": [
+            {
+              "role": "error",
+              "unavailable_reason": "The exposed RMSNorm instance has no stage-local error flag in the current hierarchy."
+            }
+          ]
+        },
+        {
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_start",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_weight_valid",
+              "name": "weight_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_weight_ready",
+              "name": "weight_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid",
+              "name": "input_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready",
+              "name": "input_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid",
+              "name": "output_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready",
+              "name": "output_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_data[0:127]",
+              "name": "input_payload_known_bits_0_through_127",
+              "role": "data_status"
+            }
+          ],
+          "input_boundary_ids": [
+            "boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch"
+          ],
+          "output_boundary_ids": [
+            "boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul"
+          ],
+          "stage_id": "stage_04_mlp_gate_proj",
+          "unavailable_roles": [
+            {
+              "role": "error",
+              "unavailable_reason": "No gate-projection error flag is exposed by the current hierarchy."
+            }
+          ]
+        },
+        {
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_start",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_weight_valid",
+              "name": "weight_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_weight_ready",
+              "name": "weight_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_valid",
+              "name": "input_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_ready",
+              "name": "input_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_out_valid",
+              "name": "output_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_out_ready",
+              "name": "output_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_data[0:127]",
+              "name": "input_payload_known_bits_0_through_127",
+              "role": "data_status"
+            }
+          ],
+          "input_boundary_ids": [
+            "boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch"
+          ],
+          "output_boundary_ids": [
+            "boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul"
+          ],
+          "stage_id": "stage_05_mlp_up_proj",
+          "unavailable_roles": [
+            {
+              "role": "error",
+              "unavailable_reason": "No up-projection error flag is exposed by the current hierarchy."
+            }
+          ]
+        },
+        {
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp._act_io_in_ready",
+              "name": "activation_input_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp._act_io_out_valid",
+              "name": "activation_output_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.actQ.enq_ptr_value[0:1]",
+              "name": "activation_queue_write_pointer_bits_0_through_1",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.actQ.deq_ptr_value[0:1]",
+              "name": "activation_queue_read_pointer_bits_0_through_1",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.actQ.maybe_full",
+              "name": "activation_queue_full",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.upQ.enq_ptr_value[0:1]",
+              "name": "up_queue_write_pointer_bits_0_through_1",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.upQ.deq_ptr_value[0:1]",
+              "name": "up_queue_read_pointer_bits_0_through_1",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.upQ.maybe_full",
+              "name": "up_queue_full",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp._mul_io_lhs_ready",
+              "name": "multiply_left_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp._mul_io_rhs_ready",
+              "name": "multiply_right_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp._mul_io_out_valid",
+              "name": "multiply_output_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.mul_io_out_ready__bore",
+              "name": "multiply_output_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.mul.io_lhs_bits_data[0:127]",
+              "name": "multiply_input_payload_known_bits_0_through_127",
+              "role": "data_status"
+            }
+          ],
+          "input_boundary_ids": [
+            "boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul",
+            "boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul"
+          ],
+          "output_boundary_ids": [
+            "boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main"
+          ],
+          "stage_id": "stage_06_activation_mul",
+          "unavailable_roles": [
+            {
+              "role": "error",
+              "unavailable_reason": "No activation or multiply error flag is exposed by the current hierarchy."
+            }
+          ]
+        },
+        {
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_start",
+              "name": "start",
+              "role": "start_end"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_weight_valid",
+              "name": "weight_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_weight_ready",
+              "name": "weight_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_in_valid",
+              "name": "input_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_in_ready",
+              "name": "input_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_out_valid",
+              "name": "output_valid",
+              "role": "control"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_out_ready",
+              "name": "output_ready",
+              "role": "backpressure"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_out_bits_addr[0:10]",
+              "name": "output_address_bits_0_through_10",
+              "role": "counter"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.mlp.down.io_in_bits_data[0:127]",
+              "name": "input_payload_known_bits_0_through_127",
+              "role": "data_status"
+            }
+          ],
+          "input_boundary_ids": [
+            "boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main"
+          ],
+          "output_boundary_ids": [
+            "boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main"
+          ],
+          "stage_id": "stage_07_mlp_down_proj",
+          "unavailable_roles": [
+            {
+              "role": "error",
+              "unavailable_reason": "No down-projection error flag is exposed by the current hierarchy."
+            }
+          ]
+        },
+        {
+          "diagnostic_sources": [
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.pairValid",
+              "name": "pair_valid",
+              "role": "state"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.heldValid",
+              "name": "held_valid",
+              "role": "buffer"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.beatInToken[0:6]",
+              "name": "beat_in_token_bits_0_through_6",
+              "role": "counter"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.tokenInSequence[0:4]",
+              "name": "token_in_sequence_bits_0_through_4",
+              "role": "counter"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.res2Q.enq_ptr_value[0:10]",
+              "name": "residual_queue_write_pointer_bits_0_through_10",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.res2Q.deq_ptr_value[0:10]",
+              "name": "residual_queue_read_pointer_bits_0_through_10",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.res2Q.maybe_full",
+              "name": "residual_queue_full",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.computedQ.enq_ptr_value[0:6]",
+              "name": "computed_queue_write_pointer_bits_0_through_6",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.outputQ.enq_ptr_value",
+              "name": "output_queue_write_pointer",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.outputQ.deq_ptr_value",
+              "name": "output_queue_read_pointer",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.outputQ.maybe_full",
+              "name": "output_queue_full",
+              "role": "queue"
+            },
+            {
+              "expression": "dut.spatialacc_single_kernel.core.add2.io_computed_bits_data[0:255]",
+              "name": "computed_payload_known_bits_0_through_255",
+              "role": "data_status"
+            }
+          ],
+          "input_boundary_ids": [
+            "boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip",
+            "boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main"
+          ],
+          "output_boundary_ids": [
+            "boundary.edge_data_stage_08_residual_add_2_to_block_output_output"
+          ],
+          "stage_id": "stage_08_residual_add_2",
+          "unavailable_roles": [
+            {
+              "role": "error",
+              "unavailable_reason": "The exposed residual-add instance has no stage-local error flag."
+            }
+          ]
+        }
+      ]
+    },
+    "agent": "exact_board_integration_generation_agent",
+    "approval_required_for": [],
+    "blocked_reasons": [],
+    "causal_prediction": {
+      "evidence_refs": [
+        "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/simulator_terminal_log/failure_lines",
+        "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/output_accept_count",
+        "/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/progress_event_summary/causal_event_tail"
+      ],
+      "expected_progress_changes": [
+        {
+          "metric": "AXI monitor terminal violations",
+          "relation": "reach_at_most",
+          "value": 0
+        },
+        {
+          "metric": "accepted kernel output beats before any terminal report",
+          "relation": "increase_from_baseline",
+          "value": 21
+        },
+        {
+          "metric": "complete output-token records",
+          "relation": "increase_from_baseline",
+          "value": 0
+        },
+        {
+          "metric": "named real scalar transition records inside the Transformer-block core",
+          "relation": "reach_at_least",
+          "value": 1664
+        }
+      ],
+      "falsified_if": "The corrected monitor still reports a violation on a same-cycle one-beat AW and W transfer, or the rerun reaches the same output frontier with no additional output acceptance while all newly emitted internal boundary and stage records show that the monitor did not terminate simulation.",
+      "intervention_family": "correct same-cycle AXI write-address and write-data accounting while widening read-only core transition records",
+      "target_frontier_id": "kernel_output_stream_completion"
+    },
+    "file_edits": [
+      {
+        "content": "",
+        "expected_sha256": "3190c9b02a98280becd7a935c072a8631c3d6b2383dc6ee2b156367ae988d4df",
+        "operation": "replace_text",
+        "path": "accagent/runs/spatialacc_qwen_agent_fast_run/generated/board_integration/spatialacc_axi_protocol_monitor.sv",
+        "rationale": "Keep every AXI check active, but evaluate WLAST against the just-accepted AWLEN when AXI legally accepts AW and W in the same cycle. This prevents a stale nonblocking value from reporting a false protocol failure.",
+        "text_replacements": [
+          {
+            "new_text": "      if (wvalid && wready) begin\n        w_hold <= 1'b0;\n        // AXI permits the first W transfer in the same cycle as AW. In that\n        // case expected_w_beats is still its old registered value, so use the\n        // accepted AWLEN directly. This retains, rather than removes, the\n        // one WLAST check for every accepted write beat.\n        if (awvalid && awready) begin\n          if (wlast != (awlen == 8'd0)) begin\n            violation <= 1'b1;\n          end\n        end else if (wlast != (seen_w_beats == (expected_w_beats - 1))) begin\n          violation <= 1'b1;\n        end\n        seen_w_beats <= seen_w_beats + 1;\n      end",
+            "old_text": "      if (wvalid && wready) begin\n        w_hold <= 1'b0;\n        if (wlast != (seen_w_beats == (expected_w_beats - 1))) begin\n          violation <= 1'b1;\n        end\n        seen_w_beats <= seen_w_beats + 1;\n      end"
+          }
+        ]
+      },
+      {
+        "content": "",
+        "expected_sha256": "e48c4920473686102f5f148972149b92356f6bad271ad710033bf6c1a50b2bca",
+        "operation": "replace_text",
+        "path": "accagent/runs/spatialacc_qwen_agent_fast_run/generated/board_integration/spatialacc_exact_board_multilayer_tb.sv",
+        "rationale": "Add read-only named state, queue, waiting, scheduler, memory, and data-status records for every compute stage at existing bounded boundary transitions. The task emits no raw payload vector, drives no DUT signal, adds no DUT port, and preserves the exact AXI/DDR behavior.",
+        "text_replacements": [
+          {
+            "new_text": "  // probe_id=probe.complete_core_control_trace.1\n  // Read-only named control and queue trace. This task runs only at the\n  // existing boundary transition points and terminal summary. The existing\n  // scalar-status task below emits the 1664 per-bit data-known records.\n  task automatic emit_complete_core_control_trace(\n    input integer boundary_index,\n    input string event_name\n  );\n    integer scalar_index;\n    longint unsigned trace_count;\n    integer trace_token;\n    integer trace_beat;\n    begin\n      trace_count = current_dag_boundary_accepted_count[boundary_index];\n      if (trace_count == 0) begin\n        trace_token = -1;\n        trace_beat = -1;\n      end else begin\n        trace_token = trace_count / current_dag_boundary_beats_per_token(boundary_index);\n        trace_beat = trace_count % current_dag_boundary_beats_per_token(boundary_index);\n      end\n\n      emit_stage_trace_scalar(\"stage_00_rms_norm_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms1.io_weight_valid\", dut.spatialacc_single_kernel.core.rms1.io_weight_valid);\n      emit_stage_trace_scalar(\"stage_00_rms_norm_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms1.io_weight_ready\", dut.spatialacc_single_kernel.core.rms1.io_weight_ready);\n      emit_stage_trace_scalar(\"stage_00_rms_norm_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms1.io_in_valid\", dut.spatialacc_single_kernel.core.rms1.io_in_valid);\n      emit_stage_trace_scalar(\"stage_00_rms_norm_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms1.io_in_ready\", dut.spatialacc_single_kernel.core.rms1.io_in_ready);\n      emit_stage_trace_scalar(\"stage_00_rms_norm_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms1.io_in_bits_st\", dut.spatialacc_single_kernel.core.rms1.io_in_bits_st);\n      emit_stage_trace_scalar(\"stage_00_rms_norm_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms1.io_in_bits_last\", dut.spatialacc_single_kernel.core.rms1.io_in_bits_last);\n      emit_stage_trace_scalar(\"stage_00_rms_norm_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms1.io_out_valid\", dut.spatialacc_single_kernel.core.rms1.io_out_valid);\n      emit_stage_trace_scalar(\"stage_00_rms_norm_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms1.io_out_ready\", dut.spatialacc_single_kernel.core.rms1.io_out_ready);\n      for (scalar_index = 0; scalar_index < 11; scalar_index = scalar_index + 1) begin\n        emit_stage_trace_scalar(\"stage_00_rms_norm_1\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.rms1.io_in_bits_addr[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.rms1.io_in_bits_addr[scalar_index]);\n        emit_stage_trace_scalar(\"stage_00_rms_norm_1\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.rms1.io_out_bits_addr[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.rms1.io_out_bits_addr[scalar_index]);\n      end\n\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.qkv.state\", dut.spatialacc_single_kernel.core.qkv.state);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.qkv.io_start\", dut.spatialacc_single_kernel.core.qkv.io_start);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.qkv.io_weight_valid\", dut.spatialacc_single_kernel.core.qkv.io_weight_valid);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.qkv.io_weight_ready\", dut.spatialacc_single_kernel.core.qkv.io_weight_ready);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.qkv.io_bias_valid\", dut.spatialacc_single_kernel.core.qkv.io_bias_valid);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.qkv.io_bias_ready\", dut.spatialacc_single_kernel.core.qkv.io_bias_ready);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.qkv._projection_io_out_valid\", dut.spatialacc_single_kernel.core.qkv._projection_io_out_valid);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.qkv._projection_io_out_bits_last\", dut.spatialacc_single_kernel.core.qkv._projection_io_out_bits_last);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rope.io_cfgValid\", dut.spatialacc_single_kernel.core.rope.io_cfgValid);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rope.io_runtime_valid\", dut.spatialacc_single_kernel.core.rope.io_runtime_valid);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rope.io_runtime_ready\", dut.spatialacc_single_kernel.core.rope.io_runtime_ready);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rope.io_runtimeLoaded\", dut.spatialacc_single_kernel.core.rope.io_runtimeLoaded);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.attn.io_in_valid\", dut.spatialacc_single_kernel.core.attn.io_in_valid);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.attn.io_in_ready\", dut.spatialacc_single_kernel.core.attn.io_in_ready);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.attn.io_out_valid\", dut.spatialacc_single_kernel.core.attn.io_out_valid);\n      emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.attn.io_out_ready\", dut.spatialacc_single_kernel.core.attn.io_out_ready);\n      for (scalar_index = 0; scalar_index < 8; scalar_index = scalar_index + 1)\n        emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.qkv.collectBeat[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.qkv.collectBeat[scalar_index]);\n      for (scalar_index = 0; scalar_index < 4; scalar_index = scalar_index + 1)\n        emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.qkv.emitHead[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.qkv.emitHead[scalar_index]);\n      for (scalar_index = 0; scalar_index < 3; scalar_index = scalar_index + 1)\n        emit_stage_trace_scalar(\"stage_01_self_attention\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.qkv.emitBeat[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.qkv.emitBeat[scalar_index]);\n\n      emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add1.pairValid\", dut.spatialacc_single_kernel.core.add1.pairValid);\n      emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add1.heldValid\", dut.spatialacc_single_kernel.core.add1.heldValid);\n      emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add1.residualQ_io_deq_ready\", dut.spatialacc_single_kernel.core.add1.residualQ_io_deq_ready);\n      emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add1.computedQ_io_deq_ready\", dut.spatialacc_single_kernel.core.add1.computedQ_io_deq_ready);\n      emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add1._outputQ_io_enq_ready\", dut.spatialacc_single_kernel.core.add1._outputQ_io_enq_ready);\n      emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.res1Q.maybe_full\", dut.spatialacc_single_kernel.core.res1Q.maybe_full);\n      emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add1.outputQ.maybe_full\", dut.spatialacc_single_kernel.core.add1.outputQ.maybe_full);\n      for (scalar_index = 0; scalar_index < 11; scalar_index = scalar_index + 1) begin\n        emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.res1Q.enq_ptr_value[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.res1Q.enq_ptr_value[scalar_index]);\n        emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.res1Q.deq_ptr_value[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.res1Q.deq_ptr_value[scalar_index]);\n      end\n      for (scalar_index = 0; scalar_index < 7; scalar_index = scalar_index + 1) begin\n        emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.add1.beatInToken[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.add1.beatInToken[scalar_index]);\n        emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.add1.computedQ.enq_ptr_value[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.add1.computedQ.enq_ptr_value[scalar_index]);\n      end\n      for (scalar_index = 0; scalar_index < 5; scalar_index = scalar_index + 1)\n        emit_stage_trace_scalar(\"stage_02_residual_add_1\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.add1.tokenInSequence[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.add1.tokenInSequence[scalar_index]);\n\n      emit_stage_trace_scalar(\"stage_03_rms_norm_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms2.io_weight_valid\", dut.spatialacc_single_kernel.core.rms2.io_weight_valid);\n      emit_stage_trace_scalar(\"stage_03_rms_norm_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms2.io_weight_ready\", dut.spatialacc_single_kernel.core.rms2.io_weight_ready);\n      emit_stage_trace_scalar(\"stage_03_rms_norm_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms2.io_in_valid\", dut.spatialacc_single_kernel.core.rms2.io_in_valid);\n      emit_stage_trace_scalar(\"stage_03_rms_norm_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms2.io_in_ready\", dut.spatialacc_single_kernel.core.rms2.io_in_ready);\n      emit_stage_trace_scalar(\"stage_03_rms_norm_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms2.io_out_valid\", dut.spatialacc_single_kernel.core.rms2.io_out_valid);\n      emit_stage_trace_scalar(\"stage_03_rms_norm_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.rms2.io_out_ready\", dut.spatialacc_single_kernel.core.rms2.io_out_ready);\n      emit_stage_trace_scalar(\"stage_03_rms_norm_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.res2Q.maybe_full\", dut.spatialacc_single_kernel.core.res2Q.maybe_full);\n\n      emit_stage_trace_scalar(\"stage_04_mlp_gate_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.gate.io_start\", dut.spatialacc_single_kernel.core.mlp.gate.io_start);\n      emit_stage_trace_scalar(\"stage_04_mlp_gate_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.gate.io_weight_valid\", dut.spatialacc_single_kernel.core.mlp.gate.io_weight_valid);\n      emit_stage_trace_scalar(\"stage_04_mlp_gate_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.gate.io_weight_ready\", dut.spatialacc_single_kernel.core.mlp.gate.io_weight_ready);\n      emit_stage_trace_scalar(\"stage_04_mlp_gate_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid\", dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid);\n      emit_stage_trace_scalar(\"stage_04_mlp_gate_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready\", dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready);\n      emit_stage_trace_scalar(\"stage_04_mlp_gate_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid\", dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid);\n      emit_stage_trace_scalar(\"stage_04_mlp_gate_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready\", dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready);\n\n      emit_stage_trace_scalar(\"stage_05_mlp_up_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.up.io_start\", dut.spatialacc_single_kernel.core.mlp.up.io_start);\n      emit_stage_trace_scalar(\"stage_05_mlp_up_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.up.io_weight_valid\", dut.spatialacc_single_kernel.core.mlp.up.io_weight_valid);\n      emit_stage_trace_scalar(\"stage_05_mlp_up_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.up.io_weight_ready\", dut.spatialacc_single_kernel.core.mlp.up.io_weight_ready);\n      emit_stage_trace_scalar(\"stage_05_mlp_up_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.up.io_in_valid\", dut.spatialacc_single_kernel.core.mlp.up.io_in_valid);\n      emit_stage_trace_scalar(\"stage_05_mlp_up_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.up.io_in_ready\", dut.spatialacc_single_kernel.core.mlp.up.io_in_ready);\n      emit_stage_trace_scalar(\"stage_05_mlp_up_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.up.io_out_valid\", dut.spatialacc_single_kernel.core.mlp.up.io_out_valid);\n      emit_stage_trace_scalar(\"stage_05_mlp_up_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.up.io_out_ready\", dut.spatialacc_single_kernel.core.mlp.up.io_out_ready);\n\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp._act_io_in_ready\", dut.spatialacc_single_kernel.core.mlp._act_io_in_ready);\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp._act_io_out_valid\", dut.spatialacc_single_kernel.core.mlp._act_io_out_valid);\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp._actQ_io_enq_ready\", dut.spatialacc_single_kernel.core.mlp._actQ_io_enq_ready);\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp._actQ_io_deq_valid\", dut.spatialacc_single_kernel.core.mlp._actQ_io_deq_valid);\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.actQ.maybe_full\", dut.spatialacc_single_kernel.core.mlp.actQ.maybe_full);\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp._upQ_io_enq_ready\", dut.spatialacc_single_kernel.core.mlp._upQ_io_enq_ready);\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp._upQ_io_deq_valid\", dut.spatialacc_single_kernel.core.mlp._upQ_io_deq_valid);\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.upQ.maybe_full\", dut.spatialacc_single_kernel.core.mlp.upQ.maybe_full);\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp._mul_io_lhs_ready\", dut.spatialacc_single_kernel.core.mlp._mul_io_lhs_ready);\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp._mul_io_rhs_ready\", dut.spatialacc_single_kernel.core.mlp._mul_io_rhs_ready);\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp._mul_io_out_valid\", dut.spatialacc_single_kernel.core.mlp._mul_io_out_valid);\n      emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.mul_io_out_ready__bore\", dut.spatialacc_single_kernel.core.mlp.mul_io_out_ready__bore);\n      for (scalar_index = 0; scalar_index < 2; scalar_index = scalar_index + 1) begin\n        emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.mlp.actQ.enq_ptr_value[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.mlp.actQ.enq_ptr_value[scalar_index]);\n        emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.mlp.actQ.deq_ptr_value[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.mlp.actQ.deq_ptr_value[scalar_index]);\n        emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.mlp.upQ.enq_ptr_value[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.mlp.upQ.enq_ptr_value[scalar_index]);\n        emit_stage_trace_scalar(\"stage_06_activation_mul\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.mlp.upQ.deq_ptr_value[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.mlp.upQ.deq_ptr_value[scalar_index]);\n      end\n\n      emit_stage_trace_scalar(\"stage_07_mlp_down_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.down.io_start\", dut.spatialacc_single_kernel.core.mlp.down.io_start);\n      emit_stage_trace_scalar(\"stage_07_mlp_down_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.down.io_weight_valid\", dut.spatialacc_single_kernel.core.mlp.down.io_weight_valid);\n      emit_stage_trace_scalar(\"stage_07_mlp_down_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.down.io_weight_ready\", dut.spatialacc_single_kernel.core.mlp.down.io_weight_ready);\n      emit_stage_trace_scalar(\"stage_07_mlp_down_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.down.io_in_valid\", dut.spatialacc_single_kernel.core.mlp.down.io_in_valid);\n      emit_stage_trace_scalar(\"stage_07_mlp_down_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.down.io_in_ready\", dut.spatialacc_single_kernel.core.mlp.down.io_in_ready);\n      emit_stage_trace_scalar(\"stage_07_mlp_down_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.down.io_out_valid\", dut.spatialacc_single_kernel.core.mlp.down.io_out_valid);\n      emit_stage_trace_scalar(\"stage_07_mlp_down_proj\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.mlp.down.io_out_ready\", dut.spatialacc_single_kernel.core.mlp.down.io_out_ready);\n      for (scalar_index = 0; scalar_index < 11; scalar_index = scalar_index + 1)\n        emit_stage_trace_scalar(\"stage_07_mlp_down_proj\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.mlp.down.io_out_bits_addr[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.mlp.down.io_out_bits_addr[scalar_index]);\n\n      emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add2.pairValid\", dut.spatialacc_single_kernel.core.add2.pairValid);\n      emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add2.heldValid\", dut.spatialacc_single_kernel.core.add2.heldValid);\n      emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add2.residualQ_io_deq_ready\", dut.spatialacc_single_kernel.core.add2.residualQ_io_deq_ready);\n      emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add2.computedQ_io_deq_ready\", dut.spatialacc_single_kernel.core.add2.computedQ_io_deq_ready);\n      emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add2._outputQ_io_enq_ready\", dut.spatialacc_single_kernel.core.add2._outputQ_io_enq_ready);\n      emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.res2Q.maybe_full\", dut.spatialacc_single_kernel.core.res2Q.maybe_full);\n      emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add2.outputQ.maybe_full\", dut.spatialacc_single_kernel.core.add2.outputQ.maybe_full);\n      emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.io_out_valid\", dut.spatialacc_single_kernel.core.io_out_valid);\n      emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.io_out_ready\", dut.spatialacc_single_kernel.core.io_out_ready);\n      emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add2.outputQ.enq_ptr_value\", dut.spatialacc_single_kernel.core.add2.outputQ.enq_ptr_value);\n      emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, \"dut.spatialacc_single_kernel.core.add2.outputQ.deq_ptr_value\", dut.spatialacc_single_kernel.core.add2.outputQ.deq_ptr_value);\n      for (scalar_index = 0; scalar_index < 11; scalar_index = scalar_index + 1) begin\n        emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.res2Q.enq_ptr_value[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.res2Q.enq_ptr_value[scalar_index]);\n        emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.res2Q.deq_ptr_value[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.res2Q.deq_ptr_value[scalar_index]);\n      end\n      for (scalar_index = 0; scalar_index < 7; scalar_index = scalar_index + 1) begin\n        emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.add2.beatInToken[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.add2.beatInToken[scalar_index]);\n        emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.add2.computedQ.enq_ptr_value[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.add2.computedQ.enq_ptr_value[scalar_index]);\n      end\n      for (scalar_index = 0; scalar_index < 5; scalar_index = scalar_index + 1)\n        emit_stage_trace_scalar(\"stage_08_residual_add_2\", event_name, trace_token, trace_beat, $sformatf(\"dut.spatialacc_single_kernel.core.add2.tokenInSequence[%0d]\", scalar_index), dut.spatialacc_single_kernel.core.add2.tokenInSequence[scalar_index]);\n    end\n  endtask\n\n  task automatic emit_complete_core_scalar_trace(\n    input integer boundary_index,\n    input string event_name\n  );",
+            "old_text": "  task automatic emit_complete_core_scalar_trace(\n    input integer boundary_index,\n    input string event_name\n  );"
+          },
+          {
+            "new_text": "        $fflush(boundary_fd);\n        emit_complete_core_control_trace(boundary_index, event_name);\n        emit_complete_core_scalar_trace(boundary_index, event_name);",
+            "old_text": "        $fflush(boundary_fd);\n        emit_complete_core_scalar_trace(boundary_index, event_name);"
+          }
+        ]
+      }
+    ],
+    "requested_validation": [
+      {
+        "argv": [
+          "python3",
+          "scripts/verification/case_board_vcs_functional.py",
+          "--run-dir",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run"
+        ],
+        "cwd": "/home/remote/workspace/Qwen2-Accelerator",
+        "purpose": "Run the cold exact-board VCS compile, elaboration, and AXI/DDR simulation with unchanged immutable input, weight, runtime, expected-output, numeric-policy, and sample-wrapper bindings; verify that the AXI monitor accepts legal simultaneous AW/W and that the expanded read-only boundary and stage records are written."
+      }
+    ],
+    "root_cause": "The generated spatialacc_axi4_protocol_monitor.sv write-last check uses the previous expected_w_beats value when AW and W transfer in the same clock cycle. The generated adapter legally presents a one-beat AW and W transfer together. The monitor therefore compares WLAST=1 with the stale zero-beat expectation and raises its terminal failure. This is a monitor accounting error, not a reason to change the Transformer-block datapath or relax any check.",
+    "stage": "repair_execution",
+    "status": "ready_to_apply",
+    "summary": "Repair the exact AXI monitor so a legal same-cycle address and first write-data transfer is checked against the just-accepted address length, then widen the read-only testbench record at every data-boundary transition. The current run accepted input data and began output data, but the output stream did not complete before the monitor ended the run. The next run will retain the exact wrapper, AXI/DDR model, real images, and target-model reference artifacts."
+  },
+  "proactive_prompt_compaction": true,
+  "prompt_bytes": 1054383,
+  "prompt_compaction_protocol": "spatialaccagent.evidence_preserving_prompt_compaction.v10",
+  "prompt_hash": "f756ddfee0ff8d1c716dd7279a478e7d7d9ff12929b3d3d6800465a590d1b059",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"agent\":\"exact_board_integration_generation_agent\",\"stage\":\"repair_execution\",\"status\":\"ready_to_apply\",\"summary\":\"Repair the exact AXI monitor so a legal same-cycle address and first write-data transfer is checked against the just-accepted address length, then widen the read-only testbench record at every data-boundary transition. The current run accepted input data and began output data, but the output stream did not complete before the monitor ended the run. The next run will retain the exact wrapper, AXI/DDR model, real images, and target-model reference artifacts.\",\"root_cause\":\"The generated spatialacc_axi4_protocol_monitor.sv write-last check uses the previous expected_w_beats value when AW and W transfer in the same clock cycle. The generated adapter legally presents a one-beat AW and W transfer together. The monitor therefore compares WLAST=1 with the stale zero-beat expectation and raises its terminal failure. This is a monitor accounting error, not a reason to change the Transformer-block datapath or relax any check.\",\"causal_prediction\":{\"intervention_family\":\"correct same-cycle AXI write-address and write-data accounting while widening read-only core transition records\",\"target_frontier_id\":\"kernel_output_stream_completion\",\"expected_progress_changes\":[{\"metric\":\"AXI monitor terminal violations\",\"relation\":\"reach_at_most\",\"value\":0},{\"metric\":\"accepted kernel output beats before any terminal report\",\"relation\":\"increase_from_baseline\",\"value\":21},{\"metric\":\"complete output-token records\",\"relation\":\"increase_from_baseline\",\"value\":0},{\"metric\":\"named real scalar transition records inside the Transformer-block core\",\"relation\":\"reach_at_least\",\"value\":1664}],\"falsified_if\":\"The corrected monitor still reports a violation on a same-cycle one-beat AW and W transfer, or the rerun reaches the same output frontier with no additional output acceptance while all newly emitted internal boundary and stage records show that the monitor did not terminate simulation.\",\"evidence_refs\":[\"/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/simulator_terminal_log/failure_lines\",\"/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/output_accept_count\",\"/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/progress_event_summary/causal_event_tail\"]},\"adaptive_observation_decision\":{\"schema_version\":\"spatialaccagent.adaptive_observation_decision.v1\",\"mode\":\"deepen_simulation_observation\",\"frontier_id\":\"kernel_output_stream_completion\",\"evidence_refs\":[\"/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation\",\"/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/progress_event_summary/latest_stall_snapshot/connected_kernel_internal_pipeline_observation\",\"/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/simulator_terminal_log/failure_lines\"],\"field_observations\":[{\"evidence_pointer\":\"/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/output_accept_count\",\"observed_value\":21,\"semantic_role\":\"counter\",\"interpretation\":\"Twenty-one output beats were received before termination, so the output path started but did not complete a token.\"},{\"evidence_pointer\":\"/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/output_ready\",\"observed_value\":1,\"semantic_role\":\"handshake\",\"interpretation\":\"The output receiver was ready at the final record, so a low ready signal was not blocking the current output beat.\"},{\"evidence_pointer\":\"/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/final_committed_progress_event/active_boundary_observation/input_accepted\",\"observed_value\":1,\"semantic_role\":\"handshake\",\"interpretation\":\"Input data was still being received at the final record. The last observed internal boundary still transferring was stage_00_rms_norm_1 to stage_01_self_attention at token 8, followed by block input token 9; the first stopped internal boundary cannot yet be identified because all current DAG boundary records were not complete.\"},{\"evidence_pointer\":\"/verification_capability_repair_package/current_board_vcs_feedback/diagnosis/value/failure_evidence/termination_provenance/simulator_terminal_log/failure_lines\",\"observed_value\":[\"Fatal: \\\"../sources/spatialacc_axi_protocol_monitor.sv\\\", 211: spatialacc_exact_board_multilayer_tb.tb_c0_ddr4_s_axi_monitor: at time 82823850000\"],\"semantic_role\":\"error\",\"interpretation\":\"The generated AXI monitor ended the simulation before the output completion contract could be observed.\"}],\"rationale\":\"The present internal records show accepted input data, a stage-00 to attention transfer, and 21 accepted output beats, but not a completed output token. The testbench already records all thirteen data boundaries; this edit adds named state, queue, waiting, memory, scheduler, and data-known scalar records at the same first record, last record, first waiting, and terminal transition points. The existing per-bit data-known loops emit 1664 distinct real core scalar records, and the added control task records the exposed operator and queue controls without sampling every cycle.\",\"boundary_coverage_plan\":{\"boundary_ids\":[\"boundary.edge_data_block_input_to_stage_00_rms_norm_1_input\",\"boundary.edge_data_block_input_to_stage_02_residual_add_1_residual_skip\",\"boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main\",\"boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main\",\"boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main\",\"boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip\",\"boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch\",\"boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch\",\"boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul\",\"boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul\",\"boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main\",\"boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main\",\"boundary.edge_data_stage_08_residual_add_2_to_block_output_output\"],\"required_fields\":[\"valid\",\"ready\",\"transfer_or_fire\",\"received_count\",\"accepted_count\",\"start\",\"last\",\"current_payload_unknown\",\"current_payload_digest\",\"first_accepted_payload_digest\",\"last_accepted_payload_digest\",\"first_waiting_after_upstream_progress\",\"terminal_summary\"]},\"probe_plan\":{\"target_boundary\":\"kernel_output_stream_completion\",\"add_or_update_probe_ids\":[\"probe.current_dag_complete_boundary_terminal_path.6\",\"probe.complete_core_scalar_status_trace.2\",\"probe.complete_core_control_trace.1\"],\"retire_probe_ids\":[],\"required_event_fields\":[\"stage\",\"cycle\",\"token\",\"beat\",\"event\",\"signal\",\"scalar_value\",\"valid\",\"ready\",\"transfer_or_fire\",\"received_count\",\"accepted_count\",\"start\",\"last\",\"current_payload_unknown\",\"current_payload_digest\",\"first_accepted_payload_digest\",\"last_accepted_payload_digest\"],\"event_match\":{\"layer\":0,\"frontier_id\":\"kernel_output_stream_completion\"},\"trigger_condition\":\"At each stage input or output first transfer, last transfer, first waiting state after upstream progress, and terminal summary; never on every cycle.\",\"bounded_window\":\"One read-only record at each named transfer or waiting transition, plus one terminal summary. Each transition emits all exposed control scalars and the existing 1664 per-bit known-status scalars.\"},\"signal_binding_plan\":[{\"boundary_id\":\"boundary.edge_data_block_input_to_stage_00_rms_norm_1_input\",\"valid_source\":\"dut.spatialacc_single_kernel.core.rms1.io_in_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.rms1.io_in_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.rms1.io_in_valid) && (dut.spatialacc_single_kernel.core.rms1.io_in_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[0]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.rms1.io_in_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_in_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_in_bits_last\",\"role\":\"start_end\"},{\"name\":\"payload_known_bits_0_through_255\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_in_bits_data[0:255]\",\"role\":\"data_status\"}]},{\"boundary_id\":\"boundary.edge_data_block_input_to_stage_02_residual_add_1_residual_skip\",\"valid_source\":\"dut.spatialacc_single_kernel.core.add1.io_residual_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.add1.io_residual_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.add1.io_residual_valid) && (dut.spatialacc_single_kernel.core.add1.io_residual_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[1]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.add1.io_residual_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.io_residual_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.io_residual_bits_last\",\"role\":\"start_end\"},{\"name\":\"residual_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.residualQ.maybe_full\",\"role\":\"queue\"}]},{\"boundary_id\":\"boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main\",\"valid_source\":\"dut.spatialacc_single_kernel.core.qkv.io_in_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.qkv.io_in_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.qkv.io_in_valid) && (dut.spatialacc_single_kernel.core.qkv.io_in_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[2]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.qkv.io_in_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_out_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_out_bits_last\",\"role\":\"start_end\"},{\"name\":\"qkv_state\",\"expression\":\"dut.spatialacc_single_kernel.core.qkv.state\",\"role\":\"state\"},{\"name\":\"payload_known_bits_0_through_127\",\"expression\":\"dut.spatialacc_single_kernel.core.qkv.io_in_bits_data[0:127]\",\"role\":\"data_status\"}]},{\"boundary_id\":\"boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main\",\"valid_source\":\"dut.spatialacc_single_kernel.core.add1.io_computed_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.add1.io_computed_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.add1.io_computed_valid) && (dut.spatialacc_single_kernel.core.add1.io_computed_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[3]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.add1.io_computed_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.io_computed_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.io_computed_bits_last\",\"role\":\"start_end\"},{\"name\":\"payload_known_bits_0_through_255\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.io_computed_bits_data[0:255]\",\"role\":\"data_status\"}]},{\"boundary_id\":\"boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main\",\"valid_source\":\"dut.spatialacc_single_kernel.core.rms2.io_in_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.rms2.io_in_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.rms2.io_in_valid) && (dut.spatialacc_single_kernel.core.rms2.io_in_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[4]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.rms2.io_in_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.rms2.io_in_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.rms2.io_in_bits_last\",\"role\":\"start_end\"},{\"name\":\"payload_known_bits_0_through_255\",\"expression\":\"dut.spatialacc_single_kernel.core.rms2.io_in_bits_data[0:255]\",\"role\":\"data_status\"}]},{\"boundary_id\":\"boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip\",\"valid_source\":\"dut.spatialacc_single_kernel.core.add2.io_residual_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.add2.io_residual_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.add2.io_residual_valid) && (dut.spatialacc_single_kernel.core.add2.io_residual_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[5]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.add2.io_residual_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.io_residual_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.io_residual_bits_last\",\"role\":\"start_end\"},{\"name\":\"residual_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.res2Q.maybe_full\",\"role\":\"queue\"}]},{\"boundary_id\":\"boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch\",\"valid_source\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid) && (dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[6]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_last\",\"role\":\"start_end\"},{\"name\":\"payload_known_bits_0_through_127\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_data[0:127]\",\"role\":\"data_status\"}]},{\"boundary_id\":\"boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch\",\"valid_source\":\"dut.spatialacc_single_kernel.core.mlp.up.io_in_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.mlp.up.io_in_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.mlp.up.io_in_valid) && (dut.spatialacc_single_kernel.core.mlp.up.io_in_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[7]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_last\",\"role\":\"start_end\"},{\"name\":\"payload_known_bits_0_through_127\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_data[0:127]\",\"role\":\"data_status\"}]},{\"boundary_id\":\"boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul\",\"valid_source\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid) && (dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[8]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_out_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_out_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_out_bits_last\",\"role\":\"start_end\"},{\"name\":\"activation_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.actQ.maybe_full\",\"role\":\"queue\"}]},{\"boundary_id\":\"boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul\",\"valid_source\":\"dut.spatialacc_single_kernel.core.mlp.up.io_out_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.mlp.up.io_out_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.mlp.up.io_out_valid) && (dut.spatialacc_single_kernel.core.mlp.up.io_out_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[9]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.mlp.up.io_out_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_out_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_out_bits_last\",\"role\":\"start_end\"},{\"name\":\"up_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.upQ.maybe_full\",\"role\":\"queue\"}]},{\"boundary_id\":\"boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main\",\"valid_source\":\"dut.spatialacc_single_kernel.core.mlp.down.io_in_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.mlp.down.io_in_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.mlp.down.io_in_valid) && (dut.spatialacc_single_kernel.core.mlp.down.io_in_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[10]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.mlp.down.io_in_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.mul_io_out_bits_st__bore\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.mul_io_out_bits_last__bore\",\"role\":\"start_end\"},{\"name\":\"multiply_output_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp._mul_io_out_valid\",\"role\":\"state\"},{\"name\":\"payload_known_bits_0_through_127\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.down.io_in_bits_data[0:127]\",\"role\":\"data_status\"}]},{\"boundary_id\":\"boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main\",\"valid_source\":\"dut.spatialacc_single_kernel.core.add2.io_computed_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.add2.io_computed_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.add2.io_computed_valid) && (dut.spatialacc_single_kernel.core.add2.io_computed_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[11]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.add2.io_computed_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.io_computed_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.io_computed_bits_last\",\"role\":\"start_end\"},{\"name\":\"payload_known_bits_0_through_255\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.io_computed_bits_data[0:255]\",\"role\":\"data_status\"}]},{\"boundary_id\":\"boundary.edge_data_stage_08_residual_add_2_to_block_output_output\",\"valid_source\":\"dut.spatialacc_single_kernel.core.io_out_valid\",\"ready_source\":\"dut.spatialacc_single_kernel.core.io_out_ready\",\"fire_source\":\"(dut.spatialacc_single_kernel.core.io_out_valid) && (dut.spatialacc_single_kernel.core.io_out_ready)\",\"accepted_count_source\":\"current_dag_boundary_accepted_count[12]\",\"payload_source\":\"dut.spatialacc_single_kernel.core.io_out_bits_data\",\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.io_out_bits_st\",\"role\":\"start_end\"},{\"name\":\"last\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.io_out_bits_last\",\"role\":\"start_end\"},{\"name\":\"output_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.outputQ.maybe_full\",\"role\":\"queue\"}]}],\"stage_internal_signal_plan\":[{\"stage_id\":\"stage_00_rms_norm_1\",\"input_boundary_ids\":[\"boundary.edge_data_block_input_to_stage_00_rms_norm_1_input\"],\"output_boundary_ids\":[\"boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main\"],\"diagnostic_sources\":[{\"name\":\"weight_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_weight_valid\",\"role\":\"control\"},{\"name\":\"weight_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_weight_ready\",\"role\":\"backpressure\"},{\"name\":\"input_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_in_valid\",\"role\":\"control\"},{\"name\":\"input_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_in_ready\",\"role\":\"backpressure\"},{\"name\":\"output_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_out_valid\",\"role\":\"control\"},{\"name\":\"output_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_out_ready\",\"role\":\"backpressure\"},{\"name\":\"input_address_bits_0_through_10\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_in_bits_addr[0:10]\",\"role\":\"counter\"},{\"name\":\"input_payload_known_bits_0_through_255\",\"expression\":\"dut.spatialacc_single_kernel.core.rms1.io_in_bits_data[0:255]\",\"role\":\"data_status\"}],\"unavailable_roles\":[{\"role\":\"error\",\"unavailable_reason\":\"The exposed RMSNorm instance has no stage-local error flag in the current hierarchy.\"}]},{\"stage_id\":\"stage_01_self_attention\",\"input_boundary_ids\":[\"boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main\"],\"output_boundary_ids\":[\"boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main\"],\"diagnostic_sources\":[{\"name\":\"qkv_state\",\"expression\":\"dut.spatialacc_single_kernel.core.qkv.state\",\"role\":\"state\"},{\"name\":\"qkv_collect_beat_bits_0_through_7\",\"expression\":\"dut.spatialacc_single_kernel.core.qkv.collectBeat[0:7]\",\"role\":\"counter\"},{\"name\":\"qkv_emit_head_bits_0_through_3\",\"expression\":\"dut.spatialacc_single_kernel.core.qkv.emitHead[0:3]\",\"role\":\"counter\"},{\"name\":\"qkv_emit_beat_bits_0_through_2\",\"expression\":\"dut.spatialacc_single_kernel.core.qkv.emitBeat[0:2]\",\"role\":\"counter\"},{\"name\":\"qkv_weight_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.qkv.io_weight_valid\",\"role\":\"control\"},{\"name\":\"qkv_weight_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.qkv.io_weight_ready\",\"role\":\"backpressure\"},{\"name\":\"qkv_bias_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.qkv.io_bias_valid\",\"role\":\"control\"},{\"name\":\"qkv_bias_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.qkv.io_bias_ready\",\"role\":\"backpressure\"},{\"name\":\"rope_runtime_loaded\",\"expression\":\"dut.spatialacc_single_kernel.core.rope.io_runtimeLoaded\",\"role\":\"state\"},{\"name\":\"attention_output_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.attn.io_out_valid\",\"role\":\"control\"},{\"name\":\"attention_output_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.attn.io_out_ready\",\"role\":\"backpressure\"},{\"name\":\"qkv_input_payload_known_bits_0_through_127\",\"expression\":\"dut.spatialacc_single_kernel.core.qkv.io_in_bits_data[0:127]\",\"role\":\"data_status\"}],\"unavailable_roles\":[{\"role\":\"error\",\"unavailable_reason\":\"No stage-local attention error flag is declared in the exposed current hierarchy.\"}]},{\"stage_id\":\"stage_02_residual_add_1\",\"input_boundary_ids\":[\"boundary.edge_data_block_input_to_stage_02_residual_add_1_residual_skip\",\"boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main\"],\"output_boundary_ids\":[\"boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main\",\"boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip\"],\"diagnostic_sources\":[{\"name\":\"pair_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.pairValid\",\"role\":\"state\"},{\"name\":\"held_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.heldValid\",\"role\":\"buffer\"},{\"name\":\"beat_in_token_bits_0_through_6\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.beatInToken[0:6]\",\"role\":\"counter\"},{\"name\":\"token_in_sequence_bits_0_through_4\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.tokenInSequence[0:4]\",\"role\":\"counter\"},{\"name\":\"residual_queue_write_pointer_bits_0_through_10\",\"expression\":\"dut.spatialacc_single_kernel.core.res1Q.enq_ptr_value[0:10]\",\"role\":\"queue\"},{\"name\":\"residual_queue_read_pointer_bits_0_through_10\",\"expression\":\"dut.spatialacc_single_kernel.core.res1Q.deq_ptr_value[0:10]\",\"role\":\"queue\"},{\"name\":\"residual_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.res1Q.maybe_full\",\"role\":\"queue\"},{\"name\":\"computed_queue_write_pointer_bits_0_through_6\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.computedQ.enq_ptr_value[0:6]\",\"role\":\"queue\"},{\"name\":\"output_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.outputQ.maybe_full\",\"role\":\"queue\"},{\"name\":\"computed_payload_known_bits_0_through_255\",\"expression\":\"dut.spatialacc_single_kernel.core.add1.io_computed_bits_data[0:255]\",\"role\":\"data_status\"}],\"unavailable_roles\":[{\"role\":\"error\",\"unavailable_reason\":\"The exposed residual-add instance has no stage-local error flag.\"}]},{\"stage_id\":\"stage_03_rms_norm_2\",\"input_boundary_ids\":[\"boundary.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main\"],\"output_boundary_ids\":[\"boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch\",\"boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch\"],\"diagnostic_sources\":[{\"name\":\"weight_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.rms2.io_weight_valid\",\"role\":\"control\"},{\"name\":\"weight_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.rms2.io_weight_ready\",\"role\":\"backpressure\"},{\"name\":\"input_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.rms2.io_in_valid\",\"role\":\"control\"},{\"name\":\"input_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.rms2.io_in_ready\",\"role\":\"backpressure\"},{\"name\":\"output_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.rms2.io_out_valid\",\"role\":\"control\"},{\"name\":\"output_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.rms2.io_out_ready\",\"role\":\"backpressure\"},{\"name\":\"input_payload_known_bits_0_through_255\",\"expression\":\"dut.spatialacc_single_kernel.core.rms2.io_in_bits_data[0:255]\",\"role\":\"data_status\"},{\"name\":\"residual_skip_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.res2Q.maybe_full\",\"role\":\"queue\"}],\"unavailable_roles\":[{\"role\":\"error\",\"unavailable_reason\":\"The exposed RMSNorm instance has no stage-local error flag in the current hierarchy.\"}]},{\"stage_id\":\"stage_04_mlp_gate_proj\",\"input_boundary_ids\":[\"boundary.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch\"],\"output_boundary_ids\":[\"boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul\"],\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_start\",\"role\":\"start_end\"},{\"name\":\"weight_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_weight_valid\",\"role\":\"control\"},{\"name\":\"weight_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_weight_ready\",\"role\":\"backpressure\"},{\"name\":\"input_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid\",\"role\":\"control\"},{\"name\":\"input_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready\",\"role\":\"backpressure\"},{\"name\":\"output_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid\",\"role\":\"control\"},{\"name\":\"output_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready\",\"role\":\"backpressure\"},{\"name\":\"input_payload_known_bits_0_through_127\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.gate.io_in_bits_data[0:127]\",\"role\":\"data_status\"}],\"unavailable_roles\":[{\"role\":\"error\",\"unavailable_reason\":\"No gate-projection error flag is exposed by the current hierarchy.\"}]},{\"stage_id\":\"stage_05_mlp_up_proj\",\"input_boundary_ids\":[\"boundary.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch\"],\"output_boundary_ids\":[\"boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul\"],\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_start\",\"role\":\"start_end\"},{\"name\":\"weight_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_weight_valid\",\"role\":\"control\"},{\"name\":\"weight_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_weight_ready\",\"role\":\"backpressure\"},{\"name\":\"input_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_in_valid\",\"role\":\"control\"},{\"name\":\"input_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_in_ready\",\"role\":\"backpressure\"},{\"name\":\"output_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_out_valid\",\"role\":\"control\"},{\"name\":\"output_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_out_ready\",\"role\":\"backpressure\"},{\"name\":\"input_payload_known_bits_0_through_127\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.up.io_in_bits_data[0:127]\",\"role\":\"data_status\"}],\"unavailable_roles\":[{\"role\":\"error\",\"unavailable_reason\":\"No up-projection error flag is exposed by the current hierarchy.\"}]},{\"stage_id\":\"stage_06_activation_mul\",\"input_boundary_ids\":[\"boundary.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul\",\"boundary.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul\"],\"output_boundary_ids\":[\"boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main\"],\"diagnostic_sources\":[{\"name\":\"activation_input_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp._act_io_in_ready\",\"role\":\"backpressure\"},{\"name\":\"activation_output_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp._act_io_out_valid\",\"role\":\"control\"},{\"name\":\"activation_queue_write_pointer_bits_0_through_1\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.actQ.enq_ptr_value[0:1]\",\"role\":\"queue\"},{\"name\":\"activation_queue_read_pointer_bits_0_through_1\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.actQ.deq_ptr_value[0:1]\",\"role\":\"queue\"},{\"name\":\"activation_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.actQ.maybe_full\",\"role\":\"queue\"},{\"name\":\"up_queue_write_pointer_bits_0_through_1\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.upQ.enq_ptr_value[0:1]\",\"role\":\"queue\"},{\"name\":\"up_queue_read_pointer_bits_0_through_1\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.upQ.deq_ptr_value[0:1]\",\"role\":\"queue\"},{\"name\":\"up_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.upQ.maybe_full\",\"role\":\"queue\"},{\"name\":\"multiply_left_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp._mul_io_lhs_ready\",\"role\":\"backpressure\"},{\"name\":\"multiply_right_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp._mul_io_rhs_ready\",\"role\":\"backpressure\"},{\"name\":\"multiply_output_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp._mul_io_out_valid\",\"role\":\"control\"},{\"name\":\"multiply_output_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.mul_io_out_ready__bore\",\"role\":\"backpressure\"},{\"name\":\"multiply_input_payload_known_bits_0_through_127\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.mul.io_lhs_bits_data[0:127]\",\"role\":\"data_status\"}],\"unavailable_roles\":[{\"role\":\"error\",\"unavailable_reason\":\"No activation or multiply error flag is exposed by the current hierarchy.\"}]},{\"stage_id\":\"stage_07_mlp_down_proj\",\"input_boundary_ids\":[\"boundary.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main\"],\"output_boundary_ids\":[\"boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main\"],\"diagnostic_sources\":[{\"name\":\"start\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.down.io_start\",\"role\":\"start_end\"},{\"name\":\"weight_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.down.io_weight_valid\",\"role\":\"control\"},{\"name\":\"weight_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.down.io_weight_ready\",\"role\":\"backpressure\"},{\"name\":\"input_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.down.io_in_valid\",\"role\":\"control\"},{\"name\":\"input_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.down.io_in_ready\",\"role\":\"backpressure\"},{\"name\":\"output_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.down.io_out_valid\",\"role\":\"control\"},{\"name\":\"output_ready\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.down.io_out_ready\",\"role\":\"backpressure\"},{\"name\":\"output_address_bits_0_through_10\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.down.io_out_bits_addr[0:10]\",\"role\":\"counter\"},{\"name\":\"input_payload_known_bits_0_through_127\",\"expression\":\"dut.spatialacc_single_kernel.core.mlp.down.io_in_bits_data[0:127]\",\"role\":\"data_status\"}],\"unavailable_roles\":[{\"role\":\"error\",\"unavailable_reason\":\"No down-projection error flag is exposed by the current hierarchy.\"}]},{\"stage_id\":\"stage_08_residual_add_2\",\"input_boundary_ids\":[\"boundary.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip\",\"boundary.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main\"],\"output_boundary_ids\":[\"boundary.edge_data_stage_08_residual_add_2_to_block_output_output\"],\"diagnostic_sources\":[{\"name\":\"pair_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.pairValid\",\"role\":\"state\"},{\"name\":\"held_valid\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.heldValid\",\"role\":\"buffer\"},{\"name\":\"beat_in_token_bits_0_through_6\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.beatInToken[0:6]\",\"role\":\"counter\"},{\"name\":\"token_in_sequence_bits_0_through_4\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.tokenInSequence[0:4]\",\"role\":\"counter\"},{\"name\":\"residual_queue_write_pointer_bits_0_through_10\",\"expression\":\"dut.spatialacc_single_kernel.core.res2Q.enq_ptr_value[0:10]\",\"role\":\"queue\"},{\"name\":\"residual_queue_read_pointer_bits_0_through_10\",\"expression\":\"dut.spatialacc_single_kernel.core.res2Q.deq_ptr_value[0:10]\",\"role\":\"queue\"},{\"name\":\"residual_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.res2Q.maybe_full\",\"role\":\"queue\"},{\"name\":\"computed_queue_write_pointer_bits_0_through_6\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.computedQ.enq_ptr_value[0:6]\",\"role\":\"queue\"},{\"name\":\"output_queue_write_pointer\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.outputQ.enq_ptr_value\",\"role\":\"queue\"},{\"name\":\"output_queue_read_pointer\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.outputQ.deq_ptr_value\",\"role\":\"queue\"},{\"name\":\"output_queue_full\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.outputQ.maybe_full\",\"role\":\"queue\"},{\"name\":\"computed_payload_known_bits_0_through_255\",\"expression\":\"dut.spatialacc_single_kernel.core.add2.io_computed_bits_data[0:255]\",\"role\":\"data_status\"}],\"unavailable_roles\":[{\"role\":\"error\",\"unavailable_reason\":\"The exposed residual-add instance has no stage-local error flag.\"}]}]},\"file_edits\":[{\"path\":\"accagent/runs/spatialacc_qwen_agent_fast_run/generated/board_integration/spatialacc_axi_protocol_monitor.sv\",\"operation\":\"replace_text\",\"content\":\"\",\"expected_sha256\":\"3190c9b02a98280becd7a935c072a8631c3d6b2383dc6ee2b156367ae988d4df\",\"rationale\":\"Keep every AXI check active, but evaluate WLAST against the just-accepted AWLEN when AXI legally accepts AW and W in the same cycle. This prevents a stale nonblocking value from reporting a false protocol failure.\",\"text_replacements\":[{\"old_text\":\"      if (wvalid && wready) begin\\n        w_hold <= 1'b0;\\n        if (wlast != (seen_w_beats == (expected_w_beats - 1))) begin\\n          violation <= 1'b1;\\n        end\\n        seen_w_beats <= seen_w_beats + 1;\\n      end\",\"new_text\":\"      if (wvalid && wready) begin\\n        w_hold <= 1'b0;\\n        // AXI permits the first W transfer in the same cycle as AW. In that\\n        // case expected_w_beats is still its old registered value, so use the\\n        // accepted AWLEN directly. This retains, rather than removes, the\\n        // one WLAST check for every accepted write beat.\\n        if (awvalid && awready) begin\\n          if (wlast != (awlen == 8'd0)) begin\\n            violation <= 1'b1;\\n          end\\n        end else if (wlast != (seen_w_beats == (expected_w_beats - 1))) begin\\n          violation <= 1'b1;\\n        end\\n        seen_w_beats <= seen_w_beats + 1;\\n      end\"}]},{\"path\":\"accagent/runs/spatialacc_qwen_agent_fast_run/generated/board_integration/spatialacc_exact_board_multilayer_tb.sv\",\"operation\":\"replace_text\",\"content\":\"\",\"expected_sha256\":\"e48c4920473686102f5f148972149b92356f6bad271ad710033bf6c1a50b2bca\",\"rationale\":\"Add read-only named state, queue, waiting, scheduler, memory, and data-status records for every compute stage at existing bounded boundary transitions. The task emits no raw payload vector, drives no DUT signal, adds no DUT port, and preserves the exact AXI/DDR behavior.\",\"text_replacements\":[{\"old_text\":\"  task automatic emit_complete_core_scalar_trace(\\n    input integer boundary_index,\\n    input string event_name\\n  );\",\"new_text\":\"  // probe_id=probe.complete_core_control_trace.1\\n  // Read-only named control and queue trace. This task runs only at the\\n  // existing boundary transition points and terminal summary. The existing\\n  // scalar-status task below emits the 1664 per-bit data-known records.\\n  task automatic emit_complete_core_control_trace(\\n    input integer boundary_index,\\n    input string event_name\\n  );\\n    integer scalar_index;\\n    longint unsigned trace_count;\\n    integer trace_token;\\n    integer trace_beat;\\n    begin\\n      trace_count = current_dag_boundary_accepted_count[boundary_index];\\n      if (trace_count == 0) begin\\n        trace_token = -1;\\n        trace_beat = -1;\\n      end else begin\\n        trace_token = trace_count / current_dag_boundary_beats_per_token(boundary_index);\\n        trace_beat = trace_count % current_dag_boundary_beats_per_token(boundary_index);\\n      end\\n\\n      emit_stage_trace_scalar(\\\"stage_00_rms_norm_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms1.io_weight_valid\\\", dut.spatialacc_single_kernel.core.rms1.io_weight_valid);\\n      emit_stage_trace_scalar(\\\"stage_00_rms_norm_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms1.io_weight_ready\\\", dut.spatialacc_single_kernel.core.rms1.io_weight_ready);\\n      emit_stage_trace_scalar(\\\"stage_00_rms_norm_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms1.io_in_valid\\\", dut.spatialacc_single_kernel.core.rms1.io_in_valid);\\n      emit_stage_trace_scalar(\\\"stage_00_rms_norm_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms1.io_in_ready\\\", dut.spatialacc_single_kernel.core.rms1.io_in_ready);\\n      emit_stage_trace_scalar(\\\"stage_00_rms_norm_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms1.io_in_bits_st\\\", dut.spatialacc_single_kernel.core.rms1.io_in_bits_st);\\n      emit_stage_trace_scalar(\\\"stage_00_rms_norm_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms1.io_in_bits_last\\\", dut.spatialacc_single_kernel.core.rms1.io_in_bits_last);\\n      emit_stage_trace_scalar(\\\"stage_00_rms_norm_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms1.io_out_valid\\\", dut.spatialacc_single_kernel.core.rms1.io_out_valid);\\n      emit_stage_trace_scalar(\\\"stage_00_rms_norm_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms1.io_out_ready\\\", dut.spatialacc_single_kernel.core.rms1.io_out_ready);\\n      for (scalar_index = 0; scalar_index < 11; scalar_index = scalar_index + 1) begin\\n        emit_stage_trace_scalar(\\\"stage_00_rms_norm_1\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.rms1.io_in_bits_addr[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.rms1.io_in_bits_addr[scalar_index]);\\n        emit_stage_trace_scalar(\\\"stage_00_rms_norm_1\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.rms1.io_out_bits_addr[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.rms1.io_out_bits_addr[scalar_index]);\\n      end\\n\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.qkv.state\\\", dut.spatialacc_single_kernel.core.qkv.state);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.qkv.io_start\\\", dut.spatialacc_single_kernel.core.qkv.io_start);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.qkv.io_weight_valid\\\", dut.spatialacc_single_kernel.core.qkv.io_weight_valid);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.qkv.io_weight_ready\\\", dut.spatialacc_single_kernel.core.qkv.io_weight_ready);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.qkv.io_bias_valid\\\", dut.spatialacc_single_kernel.core.qkv.io_bias_valid);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.qkv.io_bias_ready\\\", dut.spatialacc_single_kernel.core.qkv.io_bias_ready);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.qkv._projection_io_out_valid\\\", dut.spatialacc_single_kernel.core.qkv._projection_io_out_valid);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.qkv._projection_io_out_bits_last\\\", dut.spatialacc_single_kernel.core.qkv._projection_io_out_bits_last);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rope.io_cfgValid\\\", dut.spatialacc_single_kernel.core.rope.io_cfgValid);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rope.io_runtime_valid\\\", dut.spatialacc_single_kernel.core.rope.io_runtime_valid);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rope.io_runtime_ready\\\", dut.spatialacc_single_kernel.core.rope.io_runtime_ready);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rope.io_runtimeLoaded\\\", dut.spatialacc_single_kernel.core.rope.io_runtimeLoaded);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.attn.io_in_valid\\\", dut.spatialacc_single_kernel.core.attn.io_in_valid);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.attn.io_in_ready\\\", dut.spatialacc_single_kernel.core.attn.io_in_ready);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.attn.io_out_valid\\\", dut.spatialacc_single_kernel.core.attn.io_out_valid);\\n      emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.attn.io_out_ready\\\", dut.spatialacc_single_kernel.core.attn.io_out_ready);\\n      for (scalar_index = 0; scalar_index < 8; scalar_index = scalar_index + 1)\\n        emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.qkv.collectBeat[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.qkv.collectBeat[scalar_index]);\\n      for (scalar_index = 0; scalar_index < 4; scalar_index = scalar_index + 1)\\n        emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.qkv.emitHead[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.qkv.emitHead[scalar_index]);\\n      for (scalar_index = 0; scalar_index < 3; scalar_index = scalar_index + 1)\\n        emit_stage_trace_scalar(\\\"stage_01_self_attention\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.qkv.emitBeat[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.qkv.emitBeat[scalar_index]);\\n\\n      emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add1.pairValid\\\", dut.spatialacc_single_kernel.core.add1.pairValid);\\n      emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add1.heldValid\\\", dut.spatialacc_single_kernel.core.add1.heldValid);\\n      emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add1.residualQ_io_deq_ready\\\", dut.spatialacc_single_kernel.core.add1.residualQ_io_deq_ready);\\n      emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add1.computedQ_io_deq_ready\\\", dut.spatialacc_single_kernel.core.add1.computedQ_io_deq_ready);\\n      emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add1._outputQ_io_enq_ready\\\", dut.spatialacc_single_kernel.core.add1._outputQ_io_enq_ready);\\n      emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.res1Q.maybe_full\\\", dut.spatialacc_single_kernel.core.res1Q.maybe_full);\\n      emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add1.outputQ.maybe_full\\\", dut.spatialacc_single_kernel.core.add1.outputQ.maybe_full);\\n      for (scalar_index = 0; scalar_index < 11; scalar_index = scalar_index + 1) begin\\n        emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.res1Q.enq_ptr_value[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.res1Q.enq_ptr_value[scalar_index]);\\n        emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.res1Q.deq_ptr_value[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.res1Q.deq_ptr_value[scalar_index]);\\n      end\\n      for (scalar_index = 0; scalar_index < 7; scalar_index = scalar_index + 1) begin\\n        emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.add1.beatInToken[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.add1.beatInToken[scalar_index]);\\n        emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.add1.computedQ.enq_ptr_value[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.add1.computedQ.enq_ptr_value[scalar_index]);\\n      end\\n      for (scalar_index = 0; scalar_index < 5; scalar_index = scalar_index + 1)\\n        emit_stage_trace_scalar(\\\"stage_02_residual_add_1\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.add1.tokenInSequence[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.add1.tokenInSequence[scalar_index]);\\n\\n      emit_stage_trace_scalar(\\\"stage_03_rms_norm_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms2.io_weight_valid\\\", dut.spatialacc_single_kernel.core.rms2.io_weight_valid);\\n      emit_stage_trace_scalar(\\\"stage_03_rms_norm_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms2.io_weight_ready\\\", dut.spatialacc_single_kernel.core.rms2.io_weight_ready);\\n      emit_stage_trace_scalar(\\\"stage_03_rms_norm_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms2.io_in_valid\\\", dut.spatialacc_single_kernel.core.rms2.io_in_valid);\\n      emit_stage_trace_scalar(\\\"stage_03_rms_norm_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms2.io_in_ready\\\", dut.spatialacc_single_kernel.core.rms2.io_in_ready);\\n      emit_stage_trace_scalar(\\\"stage_03_rms_norm_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms2.io_out_valid\\\", dut.spatialacc_single_kernel.core.rms2.io_out_valid);\\n      emit_stage_trace_scalar(\\\"stage_03_rms_norm_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.rms2.io_out_ready\\\", dut.spatialacc_single_kernel.core.rms2.io_out_ready);\\n      emit_stage_trace_scalar(\\\"stage_03_rms_norm_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.res2Q.maybe_full\\\", dut.spatialacc_single_kernel.core.res2Q.maybe_full);\\n\\n      emit_stage_trace_scalar(\\\"stage_04_mlp_gate_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.gate.io_start\\\", dut.spatialacc_single_kernel.core.mlp.gate.io_start);\\n      emit_stage_trace_scalar(\\\"stage_04_mlp_gate_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.gate.io_weight_valid\\\", dut.spatialacc_single_kernel.core.mlp.gate.io_weight_valid);\\n      emit_stage_trace_scalar(\\\"stage_04_mlp_gate_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.gate.io_weight_ready\\\", dut.spatialacc_single_kernel.core.mlp.gate.io_weight_ready);\\n      emit_stage_trace_scalar(\\\"stage_04_mlp_gate_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid\\\", dut.spatialacc_single_kernel.core.mlp.gate.io_in_valid);\\n      emit_stage_trace_scalar(\\\"stage_04_mlp_gate_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready\\\", dut.spatialacc_single_kernel.core.mlp.gate.io_in_ready);\\n      emit_stage_trace_scalar(\\\"stage_04_mlp_gate_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid\\\", dut.spatialacc_single_kernel.core.mlp.gate.io_out_valid);\\n      emit_stage_trace_scalar(\\\"stage_04_mlp_gate_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready\\\", dut.spatialacc_single_kernel.core.mlp.gate.io_out_ready);\\n\\n      emit_stage_trace_scalar(\\\"stage_05_mlp_up_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.up.io_start\\\", dut.spatialacc_single_kernel.core.mlp.up.io_start);\\n      emit_stage_trace_scalar(\\\"stage_05_mlp_up_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.up.io_weight_valid\\\", dut.spatialacc_single_kernel.core.mlp.up.io_weight_valid);\\n      emit_stage_trace_scalar(\\\"stage_05_mlp_up_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.up.io_weight_ready\\\", dut.spatialacc_single_kernel.core.mlp.up.io_weight_ready);\\n      emit_stage_trace_scalar(\\\"stage_05_mlp_up_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.up.io_in_valid\\\", dut.spatialacc_single_kernel.core.mlp.up.io_in_valid);\\n      emit_stage_trace_scalar(\\\"stage_05_mlp_up_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.up.io_in_ready\\\", dut.spatialacc_single_kernel.core.mlp.up.io_in_ready);\\n      emit_stage_trace_scalar(\\\"stage_05_mlp_up_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.up.io_out_valid\\\", dut.spatialacc_single_kernel.core.mlp.up.io_out_valid);\\n      emit_stage_trace_scalar(\\\"stage_05_mlp_up_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.up.io_out_ready\\\", dut.spatialacc_single_kernel.core.mlp.up.io_out_ready);\\n\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp._act_io_in_ready\\\", dut.spatialacc_single_kernel.core.mlp._act_io_in_ready);\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp._act_io_out_valid\\\", dut.spatialacc_single_kernel.core.mlp._act_io_out_valid);\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp._actQ_io_enq_ready\\\", dut.spatialacc_single_kernel.core.mlp._actQ_io_enq_ready);\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp._actQ_io_deq_valid\\\", dut.spatialacc_single_kernel.core.mlp._actQ_io_deq_valid);\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.actQ.maybe_full\\\", dut.spatialacc_single_kernel.core.mlp.actQ.maybe_full);\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp._upQ_io_enq_ready\\\", dut.spatialacc_single_kernel.core.mlp._upQ_io_enq_ready);\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp._upQ_io_deq_valid\\\", dut.spatialacc_single_kernel.core.mlp._upQ_io_deq_valid);\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.upQ.maybe_full\\\", dut.spatialacc_single_kernel.core.mlp.upQ.maybe_full);\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp._mul_io_lhs_ready\\\", dut.spatialacc_single_kernel.core.mlp._mul_io_lhs_ready);\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp._mul_io_rhs_ready\\\", dut.spatialacc_single_kernel.core.mlp._mul_io_rhs_ready);\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp._mul_io_out_valid\\\", dut.spatialacc_single_kernel.core.mlp._mul_io_out_valid);\\n      emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.mul_io_out_ready__bore\\\", dut.spatialacc_single_kernel.core.mlp.mul_io_out_ready__bore);\\n      for (scalar_index = 0; scalar_index < 2; scalar_index = scalar_index + 1) begin\\n        emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.mlp.actQ.enq_ptr_value[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.mlp.actQ.enq_ptr_value[scalar_index]);\\n        emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.mlp.actQ.deq_ptr_value[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.mlp.actQ.deq_ptr_value[scalar_index]);\\n        emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.mlp.upQ.enq_ptr_value[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.mlp.upQ.enq_ptr_value[scalar_index]);\\n        emit_stage_trace_scalar(\\\"stage_06_activation_mul\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.mlp.upQ.deq_ptr_value[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.mlp.upQ.deq_ptr_value[scalar_index]);\\n      end\\n\\n      emit_stage_trace_scalar(\\\"stage_07_mlp_down_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.down.io_start\\\", dut.spatialacc_single_kernel.core.mlp.down.io_start);\\n      emit_stage_trace_scalar(\\\"stage_07_mlp_down_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.down.io_weight_valid\\\", dut.spatialacc_single_kernel.core.mlp.down.io_weight_valid);\\n      emit_stage_trace_scalar(\\\"stage_07_mlp_down_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.down.io_weight_ready\\\", dut.spatialacc_single_kernel.core.mlp.down.io_weight_ready);\\n      emit_stage_trace_scalar(\\\"stage_07_mlp_down_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.down.io_in_valid\\\", dut.spatialacc_single_kernel.core.mlp.down.io_in_valid);\\n      emit_stage_trace_scalar(\\\"stage_07_mlp_down_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.down.io_in_ready\\\", dut.spatialacc_single_kernel.core.mlp.down.io_in_ready);\\n      emit_stage_trace_scalar(\\\"stage_07_mlp_down_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.down.io_out_valid\\\", dut.spatialacc_single_kernel.core.mlp.down.io_out_valid);\\n      emit_stage_trace_scalar(\\\"stage_07_mlp_down_proj\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.mlp.down.io_out_ready\\\", dut.spatialacc_single_kernel.core.mlp.down.io_out_ready);\\n      for (scalar_index = 0; scalar_index < 11; scalar_index = scalar_index + 1)\\n        emit_stage_trace_scalar(\\\"stage_07_mlp_down_proj\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.mlp.down.io_out_bits_addr[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.mlp.down.io_out_bits_addr[scalar_index]);\\n\\n      emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add2.pairValid\\\", dut.spatialacc_single_kernel.core.add2.pairValid);\\n      emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add2.heldValid\\\", dut.spatialacc_single_kernel.core.add2.heldValid);\\n      emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add2.residualQ_io_deq_ready\\\", dut.spatialacc_single_kernel.core.add2.residualQ_io_deq_ready);\\n      emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add2.computedQ_io_deq_ready\\\", dut.spatialacc_single_kernel.core.add2.computedQ_io_deq_ready);\\n      emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add2._outputQ_io_enq_ready\\\", dut.spatialacc_single_kernel.core.add2._outputQ_io_enq_ready);\\n      emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.res2Q.maybe_full\\\", dut.spatialacc_single_kernel.core.res2Q.maybe_full);\\n      emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add2.outputQ.maybe_full\\\", dut.spatialacc_single_kernel.core.add2.outputQ.maybe_full);\\n      emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.io_out_valid\\\", dut.spatialacc_single_kernel.core.io_out_valid);\\n      emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.io_out_ready\\\", dut.spatialacc_single_kernel.core.io_out_ready);\\n      emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add2.outputQ.enq_ptr_value\\\", dut.spatialacc_single_kernel.core.add2.outputQ.enq_ptr_value);\\n      emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, \\\"dut.spatialacc_single_kernel.core.add2.outputQ.deq_ptr_value\\\", dut.spatialacc_single_kernel.core.add2.outputQ.deq_ptr_value);\\n      for (scalar_index = 0; scalar_index < 11; scalar_index = scalar_index + 1) begin\\n        emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.res2Q.enq_ptr_value[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.res2Q.enq_ptr_value[scalar_index]);\\n        emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.res2Q.deq_ptr_value[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.res2Q.deq_ptr_value[scalar_index]);\\n      end\\n      for (scalar_index = 0; scalar_index < 7; scalar_index = scalar_index + 1) begin\\n        emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.add2.beatInToken[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.add2.beatInToken[scalar_index]);\\n        emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.add2.computedQ.enq_ptr_value[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.add2.computedQ.enq_ptr_value[scalar_index]);\\n      end\\n      for (scalar_index = 0; scalar_index < 5; scalar_index = scalar_index + 1)\\n        emit_stage_trace_scalar(\\\"stage_08_residual_add_2\\\", event_name, trace_token, trace_beat, $sformatf(\\\"dut.spatialacc_single_kernel.core.add2.tokenInSequence[%0d]\\\", scalar_index), dut.spatialacc_single_kernel.core.add2.tokenInSequence[scalar_index]);\\n    end\\n  endtask\\n\\n  task automatic emit_complete_core_scalar_trace(\\n    input integer boundary_index,\\n    input string event_name\\n  );\"},{\"old_text\":\"        $fflush(boundary_fd);\\n        emit_complete_core_scalar_trace(boundary_index, event_name);\",\"new_text\":\"        $fflush(boundary_fd);\\n        emit_complete_core_control_trace(boundary_index, event_name);\\n        emit_complete_core_scalar_trace(boundary_index, event_name);\"}]}],\"requested_validation\":[{\"purpose\":\"Run the cold exact-board VCS compile, elaboration, and AXI/DDR simulation with unchanged immutable input, weight, runtime, expected-output, numeric-policy, and sample-wrapper bindings; verify that the AXI monitor accepts legal simultaneous AW/W and that the expanded read-only boundary and stage records are written.\",\"argv\":[\"python3\",\"scripts/verification/case_board_vcs_functional.py\",\"--run-dir\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run\"],\"cwd\":\"/home/remote/workspace/Qwen2-Accelerator\"}],\"blocked_reasons\":[],\"approval_required_for\":[]}",
+  "reasoning_effort": "xhigh",
+  "repair_execution_context": {
+    "debug_layer": "board_axi_ddr_wrapped_system",
+    "repair_scope": "verification_capability_repair",
+    "repair_step_id": "repair_step.00",
+    "schema_version": "spatialaccagent.repair_execution_agent_context.v1",
+    "verification_scope": "board_axi_ddr_closure"
+  },
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair_execution/llm/exact_board_integration_generation_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair_execution/llm/exact_board_integration_generation_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair_execution",
+  "stream": true,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair_execution/llm/history/exact_board_integration_generation_agent_result.9e06079db2e2ffc0.8660ab16653841f2.f756ddfee0ff8d1c.snapshot.json",
+    "replaced_prompt_hash": "9724e403c3eebb65f34a025ac0fdd325f0b6f596595e7dcb6f7fab8ae9b2950f",
+    "replaced_result_sha256": "9e06079db2e2ffc04055edf4097a09c6da0259319894fa71720ab0edda0e63f0",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "9e06079db2e2ffc0.8660ab16653841f2.f756ddfee0ff8d1c"
+  },
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

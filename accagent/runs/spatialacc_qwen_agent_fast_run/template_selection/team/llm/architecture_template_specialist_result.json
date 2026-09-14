@@ -1,0 +1,237 @@
+{
+  "agent": "architecture_template_specialist",
+  "duration_sec": 874.8937217909988,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "architecture_template_specialist",
+    "approval_required_for": [
+      "Selecting among multiple legal FFN tile candidates when constraint.arch.design_space does not define a unique winner.",
+      "Adding or changing tile candidates in constraint.arch.design_space if no existing candidate is legal.",
+      "Changing lanes, numeric dtype policy, board memory assumptions, memory layout, FFN template internals, or projection data order to make a tile assignment legal."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "bounded_parameter_binding",
+        "consumes": [
+          "artifact.input.numeric_policy",
+          "constraint.numeric.policy",
+          "candidate_stage_artifact.parameter_bindings",
+          "candidate_stage_artifact.selected_templates",
+          "constraint.template.library"
+        ],
+        "id": "template_selection.bind_ffn_elem_bits_from_numeric_policy",
+        "on_failure": "Keep FFN tile binding blocked; do not infer elem_bits from constructor defaults or prior runs. Route the ambiguity to architecture/numeric-policy approval if the policy value is absent or non-unique.",
+        "produces": [
+          "ffn_numeric_binding_patch_for_elem_bits",
+          "numeric_policy_ambiguity_report_for_ffn_tiles"
+        ],
+        "rationale": "FFN tile memory/resource legality depends on element width. The candidate references constraint.numeric.policy.default_rules.activation_dtype but leaves elem_bits unbound, so a deterministic numeric binding or ambiguity report is required before tile approval.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check",
+          "memory_runtime_plan_check",
+          "numeric_policy_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.numeric_policy",
+          "constraint.arch.design_space",
+          "constraint.shape.model",
+          "constraint.memory.board",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "candidate_stage_artifact.parameter_bindings",
+          "candidate_stage_artifact.selected_templates",
+          "ffn_numeric_binding_patch_for_elem_bits"
+        ],
+        "id": "template_selection.generate_ffn_tile_legality_matrix",
+        "on_failure": "Leave tile_m/tile_n/tile_k unsupported; emit a no-legal-candidate or ambiguous-candidate report with cited SACG fields. Do not select fallback tiles.",
+        "produces": [
+          "tile_legality_matrix_for_mlp_gate_up_down",
+          "resource_risk_notes_for_selected_tiles",
+          "design_space_ambiguity_report_for_ffn_tiles"
+        ],
+        "rationale": "The supplied summary shows the design-space artifact exists but does not expose concrete tile values. A bounded checker must enumerate only the tiles present in constraint.arch.design_space and validate them against model dimensions, lanes, numeric element width, FFN projection direction, and board memory assumptions.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "architecture_review",
+          "parameter_binding_static_check",
+          "memory_runtime_plan_check",
+          "numeric_policy_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check",
+          "memory_runtime_plan_check",
+          "numeric_policy_check"
+        ],
+        "action_type": "bounded_template_parameter_binding",
+        "consumes": [
+          "tile_legality_matrix_for_mlp_gate_up_down",
+          "resource_risk_notes_for_selected_tiles",
+          "candidate_stage_artifact.parameter_bindings",
+          "candidate_stage_artifact.unsupported_bindings",
+          "candidate_stage_artifact.selected_templates",
+          "constraint.parameter.binding",
+          "constraint.arch.design_space"
+        ],
+        "id": "template_selection.apply_deterministic_ffn_tile_binding_patch",
+        "on_failure": "Reject the patch, keep the existing unsupported_bindings entries, and route the failing legality or trace evidence to bounded architecture review. Do not edit template internals or loosen checks.",
+        "produces": [
+          "ffn_tile_binding_patch",
+          "candidate_stage_artifact.parameter_bindings.refined",
+          "unsupported_bindings_delta_for_tile_params"
+        ],
+        "rationale": "When the legality matrix identifies a single checker-legal assignment from the design space, update only the FFN tile parameters for mlp_gate_proj, mlp_up_proj, and mlp_down_proj and preserve the trusted FFN template.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "bounded_template_repair",
+          "parameter_binding_static_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "human_boundary_check",
+          "sacg_static_check",
+          "stage_backtrack_request_check"
+        ],
+        "action_type": "bounded_architecture_approval",
+        "consumes": [
+          "tile_legality_matrix_for_mlp_gate_up_down",
+          "resource_risk_notes_for_selected_tiles",
+          "design_space_ambiguity_report_for_ffn_tiles",
+          "constraint.arch.design_space",
+          "constraint.memory.board",
+          "constraint.numeric.policy"
+        ],
+        "id": "template_selection.resolve_ffn_tile_ambiguity_if_reported",
+        "on_failure": "Keep template_selection blocked for FFN tiles and record the unresolved ambiguity in SACG memory; do not promote downstream artifacts.",
+        "produces": [
+          "approved_ffn_tile_binding_decision",
+          "stage_backtrack_request_for_ffn_tile_design_space_if_needed",
+          "sacg_memory_update_for_ffn_tile_decision"
+        ],
+        "rationale": "If multiple legal tile assignments or no legal assignment are found, selecting among architecture candidates or changing the design space is an architecture decision and must not be guessed by the binding agent.",
+        "requires_approval": true,
+        "stage": "template_selection",
+        "tool_roles": [
+          "architecture_review",
+          "team_aggregate",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "No open SACG backtrack requests or active contamination barriers are visible in the supplied state summary; no retry contract is present for this stage.",
+      "Template coverage and template source/interface checks have passed for the FFN operators: mlp_gate_proj, mlp_up_proj, and mlp_down_proj all use template_id=ffn from FFN.scala with GatedMLPParams, so this task must remain a template-parameter binding repair, not a free-form RTL or template-internal rewrite.",
+      "The visible model dimensions are hidden_size=896, intermediate_size=4864, target_max_seq_len=16, and lanes=8. Gate/up projections map hidden_size to intermediate_size; down projection maps intermediate_size back to hidden_size. Tile legality must be checked against these dimensions and lane alignment before any binding is promoted.",
+      "The current candidate explicitly marks tile_m, tile_n, and tile_k as missing for mlp_gate_proj, mlp_up_proj, and mlp_down_proj, with sources pointing to constraint.arch.design_space.search_params.tiles.tile_m_tokens and safe_common_ffn_tile_candidates. The concrete candidate values are not visible in the supplied summary, so selecting a value here would be guessing.",
+      "The candidate also marks FFN elem_bits as missing from constraint.numeric.policy.default_rules.activation_dtype. Because tile resource and board-memory sizing depend on element width, the tile patch cannot be accepted unless elem_bits is bound or the numeric ambiguity is explicitly reported.",
+      "constraint.memory.board is present in the cross-layer trace, but the supplied summary exposes only memory_system-level presence, not a tile-buffer capacity/bandwidth calculation. This is not evidence of board fit; memory_runtime_plan_check must validate any selected tile.",
+      "Per stage_gate_policy, unbound required template parameters are current-stage blocks. Later VCS/Vivado/board evidence is not required for this stage and is not treated as a current blocker."
+    ],
+    "proposed_actions": [
+      "Materialize a tile_legality_matrix_for_mlp_gate_up_down from artifact.input.design_space, checking tile_m, tile_n, and tile_k candidates against hidden_size=896, intermediate_size=4864, target_max_seq_len=16, lanes=8, FFN projection direction, numeric elem_bits, and board memory assumptions.",
+      "Bind FFN elem_bits from constraint.numeric.policy.default_rules.activation_dtype before or alongside tile validation; if activation_dtype is not concrete, report numeric-policy ambiguity instead of choosing a bit width.",
+      "Generate ffn_tile_binding_patch only when the design space provides a single checker-legal tile assignment for each FFN projection or an approved decision resolves multiple legal candidates.",
+      "Emit unsupported_bindings_delta_for_tile_params that removes only the tile_m/tile_n/tile_k unsupported entries proven fixed by checker evidence; do not remove unrelated numeric unsupported bindings unless their own numeric binding checks pass.",
+      "Rerun parameter_binding_static_check, template_binding_static_check, sacg_static_check, memory_runtime_plan_check, and numeric_policy_check before any downstream template-selection handoff."
+    ],
+    "risks": [
+      "Current-stage blocker: template_parameter_binding_check failed because tile_m, tile_n, and tile_k are unbound for mlp_gate_proj, mlp_up_proj, and mlp_down_proj.",
+      "Current-stage blocker: FFN elem_bits is unbound, so numeric policy has not yet been concretely applied to the FFN tile/resource calculation.",
+      "Current-stage ambiguity risk: the design-space fields referenced by the candidate may contain zero, one, or multiple legal tile candidates; without the concrete artifact values and legality matrix, choosing smallest, largest, or default tiles would violate the template-constrained binding rule.",
+      "Current-stage promotion risk: even after FFN tile repair, other selected templates still have unbound numeric parameters in the visible checker output, so template_selection must not be promoted until the stage-wide parameter binding gate passes."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "candidate_stage_artifact.parameter_bindings",
+        "candidate_stage_artifact.unsupported_bindings",
+        "candidate_stage_artifact.selected_templates",
+        "ffn_tile_binding_patch",
+        "tile_legality_matrix_for_mlp_gate_up_down",
+        "resource_risk_notes_for_selected_tiles",
+        "unsupported_bindings_delta_for_tile_params"
+      ],
+      "constraints": [
+        "constraint.arch.design_space",
+        "constraint.shape.model",
+        "constraint.memory.board",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.parameter.binding"
+      ],
+      "edges": [
+        "constraint.arch.design_space.search_params.tiles.tile_m_tokens -> tile_m for mlp_gate_proj/mlp_up_proj/mlp_down_proj",
+        "constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates.tile_n -> tile_n for FFN projections",
+        "constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates.tile_k -> tile_k for FFN projections",
+        "constraint.shape.model hidden_size/intermediate_size/target_max_seq_len -> FFN tile legality matrix",
+        "constraint.numeric.policy activation dtype -> FFN elem_bits and tile byte sizing",
+        "constraint.memory.board memory_system -> resource risk notes for selected tiles",
+        "candidate_stage_artifact.unsupported_bindings -> unsupported_bindings_delta_for_tile_params"
+      ],
+      "nodes": [
+        "candidate_stage_artifact.parameter_bindings[mlp_gate_proj]",
+        "candidate_stage_artifact.parameter_bindings[mlp_up_proj]",
+        "candidate_stage_artifact.parameter_bindings[mlp_down_proj]",
+        "candidate_stage_artifact.selected_templates[template_id=ffn]",
+        "constraint.arch.design_space.search_params.tiles.tile_m_tokens",
+        "constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates",
+        "constraint.shape.model.hidden_size=896",
+        "constraint.shape.model.intermediate_size=4864",
+        "constraint.shape.model.target_max_seq_len=16",
+        "constraint.numeric.policy.default_rules.activation_dtype",
+        "constraint.memory.board.memory_system",
+        "constraint.parameter.binding"
+      ]
+    },
+    "schema_version": "spatialaccagent.architecture_template_specialist.v0",
+    "stage": "template_selection",
+    "status": "blocked",
+    "summary": "FFN tile parameters cannot be safely bound from the visible candidate artifact because mlp_gate_proj, mlp_up_proj, and mlp_down_proj still have unbound tile_m, tile_n, tile_k, and elem_bits. The selected FFN template is trusted and source-checked, but the concrete design-space tile values are not present in the supplied summary. The next step is a bounded SACG/tool repair that binds only values explicitly present in constraint.arch.design_space, validates them against model dimensions, lanes, numeric policy, and board memory, and emits an ambiguity report instead of guessing when multiple legal candidates exist."
+  },
+  "prompt_bytes": 63405,
+  "prompt_hash": "7ac66bc2e9d64a1cc7db6021f869ddcb4cb83724b39f88d3f39c5c4c2e9a7677",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.architecture_template_specialist.v0\",\"agent\":\"architecture_template_specialist\",\"stage\":\"template_selection\",\"status\":\"blocked\",\"summary\":\"FFN tile parameters cannot be safely bound from the visible candidate artifact because mlp_gate_proj, mlp_up_proj, and mlp_down_proj still have unbound tile_m, tile_n, tile_k, and elem_bits. The selected FFN template is trusted and source-checked, but the concrete design-space tile values are not present in the supplied summary. The next step is a bounded SACG/tool repair that binds only values explicitly present in constraint.arch.design_space, validates them against model dimensions, lanes, numeric policy, and board memory, and emits an ambiguity report instead of guessing when multiple legal candidates exist.\",\"sacg_focus\":{\"nodes\":[\"candidate_stage_artifact.parameter_bindings[mlp_gate_proj]\",\"candidate_stage_artifact.parameter_bindings[mlp_up_proj]\",\"candidate_stage_artifact.parameter_bindings[mlp_down_proj]\",\"candidate_stage_artifact.selected_templates[template_id=ffn]\",\"constraint.arch.design_space.search_params.tiles.tile_m_tokens\",\"constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates\",\"constraint.shape.model.hidden_size=896\",\"constraint.shape.model.intermediate_size=4864\",\"constraint.shape.model.target_max_seq_len=16\",\"constraint.numeric.policy.default_rules.activation_dtype\",\"constraint.memory.board.memory_system\",\"constraint.parameter.binding\"],\"edges\":[\"constraint.arch.design_space.search_params.tiles.tile_m_tokens -> tile_m for mlp_gate_proj/mlp_up_proj/mlp_down_proj\",\"constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates.tile_n -> tile_n for FFN projections\",\"constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates.tile_k -> tile_k for FFN projections\",\"constraint.shape.model hidden_size/intermediate_size/target_max_seq_len -> FFN tile legality matrix\",\"constraint.numeric.policy activation dtype -> FFN elem_bits and tile byte sizing\",\"constraint.memory.board memory_system -> resource risk notes for selected tiles\",\"candidate_stage_artifact.unsupported_bindings -> unsupported_bindings_delta_for_tile_params\"],\"constraints\":[\"constraint.arch.design_space\",\"constraint.shape.model\",\"constraint.memory.board\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\"],\"artifacts\":[\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"candidate_stage_artifact.parameter_bindings\",\"candidate_stage_artifact.unsupported_bindings\",\"candidate_stage_artifact.selected_templates\",\"ffn_tile_binding_patch\",\"tile_legality_matrix_for_mlp_gate_up_down\",\"resource_risk_notes_for_selected_tiles\",\"unsupported_bindings_delta_for_tile_params\"]},\"observations\":[\"No open SACG backtrack requests or active contamination barriers are visible in the supplied state summary; no retry contract is present for this stage.\",\"Template coverage and template source/interface checks have passed for the FFN operators: mlp_gate_proj, mlp_up_proj, and mlp_down_proj all use template_id=ffn from FFN.scala with GatedMLPParams, so this task must remain a template-parameter binding repair, not a free-form RTL or template-internal rewrite.\",\"The visible model dimensions are hidden_size=896, intermediate_size=4864, target_max_seq_len=16, and lanes=8. Gate/up projections map hidden_size to intermediate_size; down projection maps intermediate_size back to hidden_size. Tile legality must be checked against these dimensions and lane alignment before any binding is promoted.\",\"The current candidate explicitly marks tile_m, tile_n, and tile_k as missing for mlp_gate_proj, mlp_up_proj, and mlp_down_proj, with sources pointing to constraint.arch.design_space.search_params.tiles.tile_m_tokens and safe_common_ffn_tile_candidates. The concrete candidate values are not visible in the supplied summary, so selecting a value here would be guessing.\",\"The candidate also marks FFN elem_bits as missing from constraint.numeric.policy.default_rules.activation_dtype. Because tile resource and board-memory sizing depend on element width, the tile patch cannot be accepted unless elem_bits is bound or the numeric ambiguity is explicitly reported.\",\"constraint.memory.board is present in the cross-layer trace, but the supplied summary exposes only memory_system-level presence, not a tile-buffer capacity/bandwidth calculation. This is not evidence of board fit; memory_runtime_plan_check must validate any selected tile.\",\"Per stage_gate_policy, unbound required template parameters are current-stage blocks. Later VCS/Vivado/board evidence is not required for this stage and is not treated as a current blocker.\"],\"risks\":[\"Current-stage blocker: template_parameter_binding_check failed because tile_m, tile_n, and tile_k are unbound for mlp_gate_proj, mlp_up_proj, and mlp_down_proj.\",\"Current-stage blocker: FFN elem_bits is unbound, so numeric policy has not yet been concretely applied to the FFN tile/resource calculation.\",\"Current-stage ambiguity risk: the design-space fields referenced by the candidate may contain zero, one, or multiple legal tile candidates; without the concrete artifact values and legality matrix, choosing smallest, largest, or default tiles would violate the template-constrained binding rule.\",\"Current-stage promotion risk: even after FFN tile repair, other selected templates still have unbound numeric parameters in the visible checker output, so template_selection must not be promoted until the stage-wide parameter binding gate passes.\"],\"proposed_actions\":[\"Materialize a tile_legality_matrix_for_mlp_gate_up_down from artifact.input.design_space, checking tile_m, tile_n, and tile_k candidates against hidden_size=896, intermediate_size=4864, target_max_seq_len=16, lanes=8, FFN projection direction, numeric elem_bits, and board memory assumptions.\",\"Bind FFN elem_bits from constraint.numeric.policy.default_rules.activation_dtype before or alongside tile validation; if activation_dtype is not concrete, report numeric-policy ambiguity instead of choosing a bit width.\",\"Generate ffn_tile_binding_patch only when the design space provides a single checker-legal tile assignment for each FFN projection or an approved decision resolves multiple legal candidates.\",\"Emit unsupported_bindings_delta_for_tile_params that removes only the tile_m/tile_n/tile_k unsupported entries proven fixed by checker evidence; do not remove unrelated numeric unsupported bindings unless their own numeric binding checks pass.\",\"Rerun parameter_binding_static_check, template_binding_static_check, sacg_static_check, memory_runtime_plan_check, and numeric_policy_check before any downstream template-selection handoff.\"],\"executable_actions\":[{\"id\":\"template_selection.bind_ffn_elem_bits_from_numeric_policy\",\"stage\":\"template_selection\",\"action_type\":\"bounded_parameter_binding\",\"rationale\":\"FFN tile memory/resource legality depends on element width. The candidate references constraint.numeric.policy.default_rules.activation_dtype but leaves elem_bits unbound, so a deterministic numeric binding or ambiguity report is required before tile approval.\",\"consumes\":[\"artifact.input.numeric_policy\",\"constraint.numeric.policy\",\"candidate_stage_artifact.parameter_bindings\",\"candidate_stage_artifact.selected_templates\",\"constraint.template.library\"],\"produces\":[\"ffn_numeric_binding_patch_for_elem_bits\",\"numeric_policy_ambiguity_report_for_ffn_tiles\"],\"tool_roles\":[\"numeric_policy_check\",\"parameter_binding_static_check\",\"sacg_static_check\"],\"acceptance_checkers\":[\"numeric_policy_check\",\"parameter_binding_static_check\",\"sacg_static_check\"],\"on_failure\":\"Keep FFN tile binding blocked; do not infer elem_bits from constructor defaults or prior runs. Route the ambiguity to architecture/numeric-policy approval if the policy value is absent or non-unique.\",\"requires_approval\":false},{\"id\":\"template_selection.generate_ffn_tile_legality_matrix\",\"stage\":\"template_selection\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"The supplied summary shows the design-space artifact exists but does not expose concrete tile values. A bounded checker must enumerate only the tiles present in constraint.arch.design_space and validate them against model dimensions, lanes, numeric element width, FFN projection direction, and board memory assumptions.\",\"consumes\":[\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.numeric_policy\",\"constraint.arch.design_space\",\"constraint.shape.model\",\"constraint.memory.board\",\"constraint.numeric.policy\",\"constraint.template.library\",\"candidate_stage_artifact.parameter_bindings\",\"candidate_stage_artifact.selected_templates\",\"ffn_numeric_binding_patch_for_elem_bits\"],\"produces\":[\"tile_legality_matrix_for_mlp_gate_up_down\",\"resource_risk_notes_for_selected_tiles\",\"design_space_ambiguity_report_for_ffn_tiles\"],\"tool_roles\":[\"architecture_review\",\"parameter_binding_static_check\",\"memory_runtime_plan_check\",\"numeric_policy_check\",\"sacg_static_check\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"template_binding_static_check\",\"sacg_static_check\",\"memory_runtime_plan_check\",\"numeric_policy_check\"],\"on_failure\":\"Leave tile_m/tile_n/tile_k unsupported; emit a no-legal-candidate or ambiguous-candidate report with cited SACG fields. Do not select fallback tiles.\",\"requires_approval\":false},{\"id\":\"template_selection.apply_deterministic_ffn_tile_binding_patch\",\"stage\":\"template_selection\",\"action_type\":\"bounded_template_parameter_binding\",\"rationale\":\"When the legality matrix identifies a single checker-legal assignment from the design space, update only the FFN tile parameters for mlp_gate_proj, mlp_up_proj, and mlp_down_proj and preserve the trusted FFN template.\",\"consumes\":[\"tile_legality_matrix_for_mlp_gate_up_down\",\"resource_risk_notes_for_selected_tiles\",\"candidate_stage_artifact.parameter_bindings\",\"candidate_stage_artifact.unsupported_bindings\",\"candidate_stage_artifact.selected_templates\",\"constraint.parameter.binding\",\"constraint.arch.design_space\"],\"produces\":[\"ffn_tile_binding_patch\",\"candidate_stage_artifact.parameter_bindings.refined\",\"unsupported_bindings_delta_for_tile_params\"],\"tool_roles\":[\"bounded_template_repair\",\"parameter_binding_static_check\",\"sacg_static_check\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"template_binding_static_check\",\"sacg_static_check\",\"memory_runtime_plan_check\",\"numeric_policy_check\"],\"on_failure\":\"Reject the patch, keep the existing unsupported_bindings entries, and route the failing legality or trace evidence to bounded architecture review. Do not edit template internals or loosen checks.\",\"requires_approval\":false},{\"id\":\"template_selection.resolve_ffn_tile_ambiguity_if_reported\",\"stage\":\"template_selection\",\"action_type\":\"bounded_architecture_approval\",\"rationale\":\"If multiple legal tile assignments or no legal assignment are found, selecting among architecture candidates or changing the design space is an architecture decision and must not be guessed by the binding agent.\",\"consumes\":[\"tile_legality_matrix_for_mlp_gate_up_down\",\"resource_risk_notes_for_selected_tiles\",\"design_space_ambiguity_report_for_ffn_tiles\",\"constraint.arch.design_space\",\"constraint.memory.board\",\"constraint.numeric.policy\"],\"produces\":[\"approved_ffn_tile_binding_decision\",\"stage_backtrack_request_for_ffn_tile_design_space_if_needed\",\"sacg_memory_update_for_ffn_tile_decision\"],\"tool_roles\":[\"architecture_review\",\"team_aggregate\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"human_boundary_check\",\"sacg_static_check\",\"stage_backtrack_request_check\"],\"on_failure\":\"Keep template_selection blocked for FFN tiles and record the unresolved ambiguity in SACG memory; do not promote downstream artifacts.\",\"requires_approval\":true}],\"approval_required_for\":[\"Selecting among multiple legal FFN tile candidates when constraint.arch.design_space does not define a unique winner.\",\"Adding or changing tile candidates in constraint.arch.design_space if no existing candidate is legal.\",\"Changing lanes, numeric dtype policy, board memory assumptions, memory layout, FFN template internals, or projection data order to make a tile assignment legal.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/architecture_template_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/architecture_template_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)",
+    "attempt 2: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)",
+    "attempt 3: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "template_selection.FFN tile and resource-risk binding engineer",
+  "used_fallback": false
+}

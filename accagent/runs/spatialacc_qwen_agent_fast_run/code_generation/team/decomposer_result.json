@@ -1,0 +1,481 @@
+{
+  "duration_sec": 71.3333454609965,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "reason": "The code_generation stage is not atomic: it must bind selected templates to SACG/parameter artifacts, verify model-shape and numeric cross-layer consistency, package memory/runtime/DDR handoff artifacts, and gate the result with compile, contract, and package evidence. SACG memory truth shows no active retry, backtrack, or contamination blockers, and the candidate artifact already reports pass evidence, so independent specialists can audit bounded slices in parallel before a verification evidence gate accepts the stage.",
+    "schema_version": "spatialaccagent.team_decomposition.v0",
+    "split_required": true,
+    "stage": "code_generation",
+    "subtasks": [
+      {
+        "acceptance_checkers": [
+          "template_binding_static_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check",
+          "codegen_compile_gate_check"
+        ],
+        "action_type": "template_bound_artifact_review",
+        "agent": "template_codegen_engineer",
+        "artifact_focus": [
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection",
+          "artifact.stage4.parameter_binding",
+          "generated.chisel_modules",
+          "generated.top_wrapper",
+          "generated.fpga_axi_ddr_top_wrapper",
+          "generated.scala_contract_check",
+          "generated.codegen_compile_gate"
+        ],
+        "constraints": [
+          "constraint.template.library",
+          "constraint.parameter.binding",
+          "constraint.numeric.policy",
+          "constraint.codegen.package",
+          "constraint.codegen.compile_gate"
+        ],
+        "expected_artifacts": [
+          "template_codegen_audit.json",
+          "generated_source_to_template_trace.json",
+          "compile_gate_evidence_summary.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocks_on_failure": true,
+          "failure_route": "Route failures to bounded_template_repair or stage_retry_request with violated constraints; do not promote to verification or backend claims.",
+          "provides": [
+            "template provenance map",
+            "parameter-to-generated-code binding summary",
+            "compile/elaboration gate evidence"
+          ],
+          "when": "After every generated Scala/Chisel/top-wrapper artifact has a cited source template or generated-contract rationale, compile gate status is pass, and required generated files are present in the manifest."
+        },
+        "handoff_to": [
+          "code_generation.cross_layer_model_numeric_auditor",
+          "code_generation.memory_runtime_package_engineer",
+          "code_generation.evidence_gate_auditor"
+        ],
+        "id": "code_generation.template_codegen_engineer",
+        "objective": "Check that generated Chisel modules, top wrappers, and copied template sources are derived from the selected template library and stage4 parameter binding rather than free-form RTL, and that the generated package is structurally complete.",
+        "parallel_group": 0,
+        "role": "template codegen engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "template_binding_static_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "codegen_package_static_check",
+              "codegen_compile_gate_check"
+            ],
+            "consumes": [
+              "artifact.input.template_library",
+              "artifact.input.template_metadata",
+              "artifact.stage2.template_selection",
+              "artifact.stage4.parameter_binding",
+              "candidate_stage_artifact.generated_files",
+              "candidate_stage_artifact.compile_gate"
+            ],
+            "downstream_consumers": [
+              "code_generation.cross_layer_model_numeric_auditor",
+              "code_generation.memory_runtime_package_engineer",
+              "code_generation.evidence_gate_auditor"
+            ],
+            "produces": [
+              "template_codegen_audit.json",
+              "generated_source_to_template_trace.json",
+              "compile_gate_evidence_summary.json"
+            ]
+          },
+          "decision_authority": [
+            "Accept or reject template provenance for generated source files.",
+            "Flag missing template coverage or illegal generated parameter use as current-stage blockers.",
+            "Recommend bounded_template_repair only within existing template and parameter constraints."
+          ],
+          "mission": "Enforce the method boundary that code generation is SACG-guided and template-constrained, not free-form RTL generation.",
+          "out_of_scope": [
+            "Inventing new operator templates or model-specific core names not supplied by the case adapter or template library.",
+            "Claiming functional simulation, Vivado timing closure, bitstream generation, or board execution.",
+            "Changing model semantics, tensor shapes, or numeric policy without a backtrack request."
+          ],
+          "primary_responsibilities": [
+            "Consume template library/metadata, selected templates, parameter binding, and generated package manifest.",
+            "Verify generated modules and wrappers are traceable to approved template sources and legal parameter bindings.",
+            "Check that selected_operator_template_sources and template_sources cover copied Scala template files.",
+            "Confirm compile/elaboration evidence is available and warning/error status is represented through the declared compile gate.",
+            "Produce a bounded audit report for downstream consistency and evidence gate agents."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "bind trusted templates",
+            "audit numeric policy",
+            "check resource-risk assumptions"
+          ],
+          "constraint_focus": [
+            "constraint.numeric.policy",
+            "constraint.template.library",
+            "constraint.parameter.binding"
+          ],
+          "family": "numeric_template"
+        },
+        "title": "Audit template-bound Chisel and wrapper package"
+      },
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "sacg_static_check",
+          "codegen_contract_check"
+        ],
+        "action_type": "cross_layer_consistency_review",
+        "agent": "cross_layer_model_numeric_auditor",
+        "artifact_focus": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "generated.model_ir",
+          "generated.arch_plan",
+          "generated.chisel_modules",
+          "generated.top_wrapper",
+          "generated.codegen_contract_check"
+        ],
+        "constraints": [
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.parameter.binding",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "model_numeric_codegen_consistency_report.json",
+          "generated_params_shape_trace.json",
+          "numeric_policy_binding_trace.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocks_on_failure": true,
+          "failure_route": "If mismatch is localized to code binding, route to bounded_template_repair; if upstream artifacts are inconsistent, emit stage_backtrack_request rather than patching code.",
+          "provides": [
+            "model/shape-to-code trace",
+            "numeric policy-to-generated-bits trace",
+            "list of any violated SACG constraints"
+          ],
+          "when": "After generated parameters, top_class, param_class, q/kv head counts, hidden/intermediate sizes, sequence limits, lanes, and bit widths are reconciled with model_config, numeric_policy, pipeline_plan, and parameter_binding."
+        },
+        "handoff_to": [
+          "code_generation.evidence_gate_auditor"
+        ],
+        "id": "code_generation.cross_layer_model_numeric_auditor",
+        "objective": "Verify that generated design parameters and top-class choices preserve the SACG model configuration, Qwen2 decoder semantics, shape/head mapping, and numeric bit-width policy established by upstream artifacts.",
+        "parallel_group": 0,
+        "role": "model-shape and numeric consistency auditor",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "model_config_check",
+              "numeric_policy_check",
+              "parameter_binding_static_check",
+              "sacg_static_check",
+              "codegen_contract_check"
+            ],
+            "consumes": [
+              "artifact.input.model_config",
+              "artifact.input.numeric_policy",
+              "artifact.stage3.pipeline_plan",
+              "artifact.stage4.parameter_binding",
+              "candidate_stage_artifact.generated_top",
+              "candidate_stage_artifact.contract_check"
+            ],
+            "downstream_consumers": [
+              "code_generation.evidence_gate_auditor"
+            ],
+            "produces": [
+              "model_numeric_codegen_consistency_report.json",
+              "generated_params_shape_trace.json",
+              "numeric_policy_binding_trace.json"
+            ]
+          },
+          "decision_authority": [
+            "Accept or reject generated model/numeric parameter mapping.",
+            "Declare current-stage blocker for any unverified model-shape or numeric-policy drift.",
+            "Escalate upstream inconsistency through stage_backtrack_request only when parameter binding or pipeline plan is the source."
+          ],
+          "mission": "Protect cross-layer consistency from model semantics and numeric policy into generated Chisel parameters and contract checks.",
+          "out_of_scope": [
+            "Re-selecting architecture templates or design-space points.",
+            "Running functional numerical simulation or golden comparison; those are later verification gates.",
+            "Approving unsupported model-specific implementation names outside the supplied template/case-adapter evidence."
+          ],
+          "primary_responsibilities": [
+            "Consume model_config, numeric_policy, pipeline_plan, parameter_binding, and generated metadata/params.",
+            "Audit decoder block choice, residual/operator ordering assumptions, hidden size, intermediate size, q-head/kv-head mapping, head dimension, max sequence length, lanes, and bit widths.",
+            "Confirm generated.codegen_contract_check covers model_shape_to_generated_params and numeric_policy_to_generated_bits.",
+            "Classify mismatches as codegen-local repair versus upstream backtrack.",
+            "Produce a consistency report consumed by the final evidence gate."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "extract model semantics",
+            "audit shape and head mapping",
+            "track residual/operator order"
+          ],
+          "constraint_focus": [
+            "constraint.model.decoder",
+            "constraint.shape.model"
+          ],
+          "family": "model_shape"
+        },
+        "title": "Audit model, shape, head mapping, and numeric policy in generated parameters"
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "codegen_contract_check",
+          "codegen_package_static_check"
+        ],
+        "action_type": "memory_runtime_handoff_review",
+        "agent": "memory_runtime_package_engineer",
+        "artifact_focus": [
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "artifact.stage3.pipeline_plan",
+          "generated.memory_layout",
+          "generated.runtime_config",
+          "generated.fpga_axi_ddr_top_wrapper",
+          "generated.codegen_contract_check"
+        ],
+        "constraints": [
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board",
+          "constraint.stream.order",
+          "constraint.beat.pipeline",
+          "constraint.memory_schedule.pipeline",
+          "constraint.liveness.pipeline"
+        ],
+        "expected_artifacts": [
+          "memory_runtime_codegen_audit.json",
+          "addr_map_alignment_report.json",
+          "runtime_abi_handoff_notes.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocks_on_failure": true,
+          "failure_route": "Route code-local layout/runtime defects to memory_runtime_repair; if board profile lacks evidence, mark as later-stage obligation or approval boundary, not a pass claim.",
+          "provides": [
+            "memory/runtime handoff audit",
+            "address-map and alignment evidence",
+            "later-stage validation obligations for simulation/backend/board"
+          ],
+          "when": "After memory layout alignment/non-overlap, runtime config consistency, stream beat assumptions, and AXI DDR wrapper presence are checked against stage3/stage4 and board/runtime constraints."
+        },
+        "handoff_to": [
+          "code_generation.evidence_gate_auditor"
+        ],
+        "id": "code_generation.memory_runtime_package_engineer",
+        "objective": "Verify that generated memory_layout.json, runtime_config.json, RAM artifacts, and GeneratedAxiDdrTop wrapper are consistent with board memory/runtime constraints and pipeline transfer assumptions, while preserving later-stage validation boundaries.",
+        "parallel_group": 0,
+        "role": "memory and runtime integration engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "memory_runtime_plan_check",
+              "stream_plan_check",
+              "addr_map_check",
+              "transfer_count_check",
+              "codegen_contract_check"
+            ],
+            "consumes": [
+              "artifact.input.target_board_profile",
+              "artifact.input.tool_profile",
+              "artifact.input.tool_protocols",
+              "artifact.stage3.pipeline_plan",
+              "candidate_stage_artifact.generated_memory_layout",
+              "candidate_stage_artifact.generated_runtime_config",
+              "candidate_stage_artifact.generated_files"
+            ],
+            "downstream_consumers": [
+              "code_generation.evidence_gate_auditor",
+              "later_stage.verification",
+              "later_stage.backend_board"
+            ],
+            "produces": [
+              "memory_runtime_codegen_audit.json",
+              "addr_map_alignment_report.json",
+              "runtime_abi_handoff_notes.json"
+            ]
+          },
+          "decision_authority": [
+            "Accept or reject memory/runtime artifact consistency for the codegen stage.",
+            "Flag transfer-count, address-map, or runtime-ABI mismatches as blockers.",
+            "Prevent claims that generated memory/runtime artifacts are board-validated before real tool evidence exists."
+          ],
+          "mission": "Ensure generated package handoff artifacts for memory, runtime, and DDR integration are internally consistent and checker-verifiable without overstating deployment readiness.",
+          "out_of_scope": [
+            "Running DDR image roundtrip, AXI protocol simulation, Vivado implementation, or board runtime execution in this stage.",
+            "Choosing a nonzero clock_target_mhz without board-profile evidence or approval.",
+            "Changing pipeline schedule or memory architecture outside bounded repair rules."
+          ],
+          "primary_responsibilities": [
+            "Consume target board profile, tool protocols, pipeline plan, generated memory layout, runtime config, and AXI DDR wrapper files.",
+            "Check address alignment, non-overlap, RAM dimensions, stream beat widths, transfer-count assumptions, and runtime configuration references.",
+            "Confirm generated.codegen_contract_check includes memory_layout_alignment_nonoverlap and runtime_config_consistency.",
+            "Separate current-stage codegen acceptance from later VCS/Verilator, Vivado, and board runtime obligations.",
+            "Produce a handoff report for verification and backend stages."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "audit data order",
+            "check transfer-count/liveness risks",
+            "bind DDR/runtime layout"
+          ],
+          "constraint_focus": [
+            "constraint.stream.order",
+            "constraint.beat.pipeline",
+            "constraint.memory.board",
+            "constraint.runtime.board"
+          ],
+          "family": "data_memory_runtime"
+        },
+        "title": "Audit generated memory layout, runtime config, and AXI DDR wrapper handoff"
+      },
+      {
+        "acceptance_checkers": [
+          "codegen_compile_gate_check",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "code_generation_manifest_static_check",
+          "required_real_tool_evidence_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "checker_evidence_gate",
+        "agent": "evidence_gate_auditor",
+        "artifact_focus": [
+          "candidate_stage_artifact",
+          "template_codegen_audit.json",
+          "model_numeric_codegen_consistency_report.json",
+          "memory_runtime_codegen_audit.json",
+          "generated.codegen_compile_gate",
+          "generated.codegen_contract_check",
+          "generated.codegen_package_static_check"
+        ],
+        "constraints": [
+          "constraint.verification.plan",
+          "constraint.human.boundary",
+          "constraint.codegen.package",
+          "constraint.codegen.contract_check",
+          "constraint.codegen.compile_gate",
+          "constraint.deployment.board"
+        ],
+        "expected_artifacts": [
+          "code_generation_stage_acceptance_decision.json",
+          "checker_evidence_matrix.json",
+          "repair_or_handoff_boundary_record.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "blocks_on_failure": true,
+          "failure_route": "If current-stage checkers fail, issue stage_retry_request with failure localization; if evidence is only missing for later real tools, accept codegen with explicit later-stage obligations and no hardware pass claim.",
+          "provides": [
+            "stage acceptance decision",
+            "checker evidence matrix",
+            "repair/backtrack boundaries",
+            "later-stage obligations list"
+          ],
+          "when": "After all parallel_group=0 specialist reports are available and compile_gate, codegen_contract_check, package static check, target artifact status, and SACG memory truth are reconciled."
+        },
+        "handoff_to": [
+          "stage_orchestrator",
+          "later_stage.verification",
+          "later_stage.backend_board"
+        ],
+        "id": "code_generation.evidence_gate_auditor",
+        "objective": "Aggregate specialist audits and candidate manifest evidence to decide whether the code_generation artifact can be accepted as ready, while preserving later-stage obligations and preventing unsupported pass claims.",
+        "parallel_group": 1,
+        "role": "verification and repair boundary auditor",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "codegen_compile_gate_check",
+              "codegen_contract_check",
+              "codegen_package_static_check",
+              "required_real_tool_evidence_check",
+              "repair_boundary_check",
+              "human_boundary_check",
+              "sacg_memory_check"
+            ],
+            "consumes": [
+              "template_codegen_audit.json",
+              "model_numeric_codegen_consistency_report.json",
+              "memory_runtime_codegen_audit.json",
+              "candidate_stage_artifact.compile_gate",
+              "candidate_stage_artifact.contract_check",
+              "candidate_stage_artifact.package_static_check",
+              "state_summary.sacg_memory_truth"
+            ],
+            "downstream_consumers": [
+              "stage_orchestrator",
+              "later_stage.verification",
+              "later_stage.backend_board"
+            ],
+            "produces": [
+              "code_generation_stage_acceptance_decision.json",
+              "checker_evidence_matrix.json",
+              "repair_or_handoff_boundary_record.json"
+            ]
+          },
+          "decision_authority": [
+            "Accept code_generation stage only when current-stage checkers pass and specialist blockers are closed.",
+            "Reject or quarantine artifacts if contamination barriers, active retries, or evidence inconsistencies appear.",
+            "Open bounded retry/backtrack records but not perform unapproved repairs."
+          ],
+          "mission": "Serve as the final evidence gate for SACG-guided, template-constrained, checker-verified code generation closure.",
+          "out_of_scope": [
+            "Generating new RTL or modifying source artifacts.",
+            "Running later-stage real functional simulation, synthesis, implementation, or board deployment.",
+            "Approving model, board, or clock assumptions that lack cited evidence or human-boundary approval."
+          ],
+          "primary_responsibilities": [
+            "Consume all specialist reports, candidate stage manifest, compile logs, contract-check logs, and package-static-check logs.",
+            "Verify that acceptance uses current SACG memory truth and does not treat historical closed failures as active blockers.",
+            "Map any failed or missing evidence to violated constraints and bounded repair routes.",
+            "Confirm later-stage obligations for functional simulation, numerical validation, Vivado, and board execution are not represented as completed current-stage evidence.",
+            "Produce a stage acceptance or retry/backtrack decision for the orchestrator."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "classify evidence",
+            "map failures to violated constraints",
+            "enforce repair boundaries"
+          ],
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.human.boundary"
+          ],
+          "family": "verification_repair"
+        },
+        "title": "Gate code generation acceptance with checker evidence and repair boundaries"
+      }
+    ]
+  },
+  "prompt_hash": "df2c8fb05778a30a97ed64ebe9d706d6c5f72df0bbe130a0ad8aff321582c030",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.team_decomposition.v0\",\"stage\":\"code_generation\",\"split_required\":true,\"reason\":\"The code_generation stage is not atomic: it must bind selected templates to SACG/parameter artifacts, verify model-shape and numeric cross-layer consistency, package memory/runtime/DDR handoff artifacts, and gate the result with compile, contract, and package evidence. SACG memory truth shows no active retry, backtrack, or contamination blockers, and the candidate artifact already reports pass evidence, so independent specialists can audit bounded slices in parallel before a verification evidence gate accepts the stage.\",\"subtasks\":[{\"id\":\"code_generation.template_codegen_engineer\",\"agent\":\"template_codegen_engineer\",\"role\":\"template codegen engineer\",\"title\":\"Audit template-bound Chisel and wrapper package\",\"objective\":\"Check that generated Chisel modules, top wrappers, and copied template sources are derived from the selected template library and stage4 parameter binding rather than free-form RTL, and that the generated package is structurally complete.\",\"constraints\":[\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.numeric.policy\",\"constraint.codegen.package\",\"constraint.codegen.compile_gate\"],\"artifact_focus\":[\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"artifact.stage4.parameter_binding\",\"generated.chisel_modules\",\"generated.top_wrapper\",\"generated.fpga_axi_ddr_top_wrapper\",\"generated.scala_contract_check\",\"generated.codegen_compile_gate\"],\"parallel_group\":0,\"handoff_required\":true,\"action_type\":\"template_bound_artifact_review\",\"expected_artifacts\":[\"template_codegen_audit.json\",\"generated_source_to_template_trace.json\",\"compile_gate_evidence_summary.json\"],\"acceptance_checkers\":[\"template_binding_static_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"code_generation_manifest_static_check\",\"codegen_package_static_check\",\"codegen_compile_gate_check\"],\"handoff_to\":[\"code_generation.cross_layer_model_numeric_auditor\",\"code_generation.memory_runtime_package_engineer\",\"code_generation.evidence_gate_auditor\"],\"handoff_rule\":{\"when\":\"After every generated Scala/Chisel/top-wrapper artifact has a cited source template or generated-contract rationale, compile gate status is pass, and required generated files are present in the manifest.\",\"provides\":[\"template provenance map\",\"parameter-to-generated-code binding summary\",\"compile/elaboration gate evidence\"],\"blocks_on_failure\":true,\"failure_route\":\"Route failures to bounded_template_repair or stage_retry_request with violated constraints; do not promote to verification or backend claims.\"},\"role_profile\":{\"family\":\"numeric_template\",\"capabilities\":[\"bind trusted templates\",\"audit numeric policy\",\"check resource-risk assumptions\"],\"constraint_focus\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\"]},\"role_assignment\":{\"mission\":\"Enforce the method boundary that code generation is SACG-guided and template-constrained, not free-form RTL generation.\",\"primary_responsibilities\":[\"Consume template library/metadata, selected templates, parameter binding, and generated package manifest.\",\"Verify generated modules and wrappers are traceable to approved template sources and legal parameter bindings.\",\"Check that selected_operator_template_sources and template_sources cover copied Scala template files.\",\"Confirm compile/elaboration evidence is available and warning/error status is represented through the declared compile gate.\",\"Produce a bounded audit report for downstream consistency and evidence gate agents.\"],\"decision_authority\":[\"Accept or reject template provenance for generated source files.\",\"Flag missing template coverage or illegal generated parameter use as current-stage blockers.\",\"Recommend bounded_template_repair only within existing template and parameter constraints.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"artifact.stage4.parameter_binding\",\"candidate_stage_artifact.generated_files\",\"candidate_stage_artifact.compile_gate\"],\"produces\":[\"template_codegen_audit.json\",\"generated_source_to_template_trace.json\",\"compile_gate_evidence_summary.json\"],\"downstream_consumers\":[\"code_generation.cross_layer_model_numeric_auditor\",\"code_generation.memory_runtime_package_engineer\",\"code_generation.evidence_gate_auditor\"],\"accepted_by\":[\"template_binding_static_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"codegen_package_static_check\",\"codegen_compile_gate_check\"]},\"out_of_scope\":[\"Inventing new operator templates or model-specific core names not supplied by the case adapter or template library.\",\"Claiming functional simulation, Vivado timing closure, bitstream generation, or board execution.\",\"Changing model semantics, tensor shapes, or numeric policy without a backtrack request.\"]}},{\"id\":\"code_generation.cross_layer_model_numeric_auditor\",\"agent\":\"cross_layer_model_numeric_auditor\",\"role\":\"model-shape and numeric consistency auditor\",\"title\":\"Audit model, shape, head mapping, and numeric policy in generated parameters\",\"objective\":\"Verify that generated design parameters and top-class choices preserve the SACG model configuration, Qwen2 decoder semantics, shape/head mapping, and numeric bit-width policy established by upstream artifacts.\",\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.parameter.binding\",\"constraint.cross_layer.input_consistency\"],\"artifact_focus\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"generated.model_ir\",\"generated.arch_plan\",\"generated.chisel_modules\",\"generated.top_wrapper\",\"generated.codegen_contract_check\"],\"parallel_group\":0,\"handoff_required\":true,\"action_type\":\"cross_layer_consistency_review\",\"expected_artifacts\":[\"model_numeric_codegen_consistency_report.json\",\"generated_params_shape_trace.json\",\"numeric_policy_binding_trace.json\"],\"acceptance_checkers\":[\"model_config_check\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"sacg_static_check\",\"codegen_contract_check\"],\"handoff_to\":[\"code_generation.evidence_gate_auditor\"],\"handoff_rule\":{\"when\":\"After generated parameters, top_class, param_class, q/kv head counts, hidden/intermediate sizes, sequence limits, lanes, and bit widths are reconciled with model_config, numeric_policy, pipeline_plan, and parameter_binding.\",\"provides\":[\"model/shape-to-code trace\",\"numeric policy-to-generated-bits trace\",\"list of any violated SACG constraints\"],\"blocks_on_failure\":true,\"failure_route\":\"If mismatch is localized to code binding, route to bounded_template_repair; if upstream artifacts are inconsistent, emit stage_backtrack_request rather than patching code.\"},\"role_profile\":{\"family\":\"model_shape\",\"capabilities\":[\"extract model semantics\",\"audit shape and head mapping\",\"track residual/operator order\"],\"constraint_focus\":[\"constraint.model.decoder\",\"constraint.shape.model\"]},\"role_assignment\":{\"mission\":\"Protect cross-layer consistency from model semantics and numeric policy into generated Chisel parameters and contract checks.\",\"primary_responsibilities\":[\"Consume model_config, numeric_policy, pipeline_plan, parameter_binding, and generated metadata/params.\",\"Audit decoder block choice, residual/operator ordering assumptions, hidden size, intermediate size, q-head/kv-head mapping, head dimension, max sequence length, lanes, and bit widths.\",\"Confirm generated.codegen_contract_check covers model_shape_to_generated_params and numeric_policy_to_generated_bits.\",\"Classify mismatches as codegen-local repair versus upstream backtrack.\",\"Produce a consistency report consumed by the final evidence gate.\"],\"decision_authority\":[\"Accept or reject generated model/numeric parameter mapping.\",\"Declare current-stage blocker for any unverified model-shape or numeric-policy drift.\",\"Escalate upstream inconsistency through stage_backtrack_request only when parameter binding or pipeline plan is the source.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"candidate_stage_artifact.generated_top\",\"candidate_stage_artifact.contract_check\"],\"produces\":[\"model_numeric_codegen_consistency_report.json\",\"generated_params_shape_trace.json\",\"numeric_policy_binding_trace.json\"],\"downstream_consumers\":[\"code_generation.evidence_gate_auditor\"],\"accepted_by\":[\"model_config_check\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"sacg_static_check\",\"codegen_contract_check\"]},\"out_of_scope\":[\"Re-selecting architecture templates or design-space points.\",\"Running functional numerical simulation or golden comparison; those are later verification gates.\",\"Approving unsupported model-specific implementation names outside the supplied template/case-adapter evidence.\"]}},{\"id\":\"code_generation.memory_runtime_package_engineer\",\"agent\":\"memory_runtime_package_engineer\",\"role\":\"memory and runtime integration engineer\",\"title\":\"Audit generated memory layout, runtime config, and AXI DDR wrapper handoff\",\"objective\":\"Verify that generated memory_layout.json, runtime_config.json, RAM artifacts, and GeneratedAxiDdrTop wrapper are consistent with board memory/runtime constraints and pipeline transfer assumptions, while preserving later-stage validation boundaries.\",\"constraints\":[\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.memory_schedule.pipeline\",\"constraint.liveness.pipeline\"],\"artifact_focus\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.stage3.pipeline_plan\",\"generated.memory_layout\",\"generated.runtime_config\",\"generated.fpga_axi_ddr_top_wrapper\",\"generated.codegen_contract_check\"],\"parallel_group\":0,\"handoff_required\":true,\"action_type\":\"memory_runtime_handoff_review\",\"expected_artifacts\":[\"memory_runtime_codegen_audit.json\",\"addr_map_alignment_report.json\",\"runtime_abi_handoff_notes.json\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"stream_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"codegen_contract_check\",\"codegen_package_static_check\"],\"handoff_to\":[\"code_generation.evidence_gate_auditor\"],\"handoff_rule\":{\"when\":\"After memory layout alignment/non-overlap, runtime config consistency, stream beat assumptions, and AXI DDR wrapper presence are checked against stage3/stage4 and board/runtime constraints.\",\"provides\":[\"memory/runtime handoff audit\",\"address-map and alignment evidence\",\"later-stage validation obligations for simulation/backend/board\"],\"blocks_on_failure\":true,\"failure_route\":\"Route code-local layout/runtime defects to memory_runtime_repair; if board profile lacks evidence, mark as later-stage obligation or approval boundary, not a pass claim.\"},\"role_profile\":{\"family\":\"data_memory_runtime\",\"capabilities\":[\"audit data order\",\"check transfer-count/liveness risks\",\"bind DDR/runtime layout\"],\"constraint_focus\":[\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.memory.board\",\"constraint.runtime.board\"]},\"role_assignment\":{\"mission\":\"Ensure generated package handoff artifacts for memory, runtime, and DDR integration are internally consistent and checker-verifiable without overstating deployment readiness.\",\"primary_responsibilities\":[\"Consume target board profile, tool protocols, pipeline plan, generated memory layout, runtime config, and AXI DDR wrapper files.\",\"Check address alignment, non-overlap, RAM dimensions, stream beat widths, transfer-count assumptions, and runtime configuration references.\",\"Confirm generated.codegen_contract_check includes memory_layout_alignment_nonoverlap and runtime_config_consistency.\",\"Separate current-stage codegen acceptance from later VCS/Verilator, Vivado, and board runtime obligations.\",\"Produce a handoff report for verification and backend stages.\"],\"decision_authority\":[\"Accept or reject memory/runtime artifact consistency for the codegen stage.\",\"Flag transfer-count, address-map, or runtime-ABI mismatches as blockers.\",\"Prevent claims that generated memory/runtime artifacts are board-validated before real tool evidence exists.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.stage3.pipeline_plan\",\"candidate_stage_artifact.generated_memory_layout\",\"candidate_stage_artifact.generated_runtime_config\",\"candidate_stage_artifact.generated_files\"],\"produces\":[\"memory_runtime_codegen_audit.json\",\"addr_map_alignment_report.json\",\"runtime_abi_handoff_notes.json\"],\"downstream_consumers\":[\"code_generation.evidence_gate_auditor\",\"later_stage.verification\",\"later_stage.backend_board\"],\"accepted_by\":[\"memory_runtime_plan_check\",\"stream_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"codegen_contract_check\"]},\"out_of_scope\":[\"Running DDR image roundtrip, AXI protocol simulation, Vivado implementation, or board runtime execution in this stage.\",\"Choosing a nonzero clock_target_mhz without board-profile evidence or approval.\",\"Changing pipeline schedule or memory architecture outside bounded repair rules.\"]}},{\"id\":\"code_generation.evidence_gate_auditor\",\"agent\":\"evidence_gate_auditor\",\"role\":\"verification and repair boundary auditor\",\"title\":\"Gate code generation acceptance with checker evidence and repair boundaries\",\"objective\":\"Aggregate specialist audits and candidate manifest evidence to decide whether the code_generation artifact can be accepted as ready, while preserving later-stage obligations and preventing unsupported pass claims.\",\"constraints\":[\"constraint.verification.plan\",\"constraint.human.boundary\",\"constraint.codegen.package\",\"constraint.codegen.contract_check\",\"constraint.codegen.compile_gate\",\"constraint.deployment.board\"],\"artifact_focus\":[\"candidate_stage_artifact\",\"template_codegen_audit.json\",\"model_numeric_codegen_consistency_report.json\",\"memory_runtime_codegen_audit.json\",\"generated.codegen_compile_gate\",\"generated.codegen_contract_check\",\"generated.codegen_package_static_check\"],\"parallel_group\":1,\"handoff_required\":true,\"action_type\":\"checker_evidence_gate\",\"expected_artifacts\":[\"code_generation_stage_acceptance_decision.json\",\"checker_evidence_matrix.json\",\"repair_or_handoff_boundary_record.json\"],\"acceptance_checkers\":[\"codegen_compile_gate_check\",\"codegen_contract_check\",\"codegen_package_static_check\",\"code_generation_manifest_static_check\",\"required_real_tool_evidence_check\",\"repair_boundary_check\",\"human_boundary_check\",\"sacg_memory_check\"],\"handoff_to\":[\"stage_orchestrator\",\"later_stage.verification\",\"later_stage.backend_board\"],\"handoff_rule\":{\"when\":\"After all parallel_group=0 specialist reports are available and compile_gate, codegen_contract_check, package static check, target artifact status, and SACG memory truth are reconciled.\",\"provides\":[\"stage acceptance decision\",\"checker evidence matrix\",\"repair/backtrack boundaries\",\"later-stage obligations list\"],\"blocks_on_failure\":true,\"failure_route\":\"If current-stage checkers fail, issue stage_retry_request with failure localization; if evidence is only missing for later real tools, accept codegen with explicit later-stage obligations and no hardware pass claim.\"},\"role_profile\":{\"family\":\"verification_repair\",\"capabilities\":[\"classify evidence\",\"map failures to violated constraints\",\"enforce repair boundaries\"],\"constraint_focus\":[\"constraint.verification.plan\",\"constraint.human.boundary\"]},\"role_assignment\":{\"mission\":\"Serve as the final evidence gate for SACG-guided, template-constrained, checker-verified code generation closure.\",\"primary_responsibilities\":[\"Consume all specialist reports, candidate stage manifest, compile logs, contract-check logs, and package-static-check logs.\",\"Verify that acceptance uses current SACG memory truth and does not treat historical closed failures as active blockers.\",\"Map any failed or missing evidence to violated constraints and bounded repair routes.\",\"Confirm later-stage obligations for functional simulation, numerical validation, Vivado, and board execution are not represented as completed current-stage evidence.\",\"Produce a stage acceptance or retry/backtrack decision for the orchestrator.\"],\"decision_authority\":[\"Accept code_generation stage only when current-stage checkers pass and specialist blockers are closed.\",\"Reject or quarantine artifacts if contamination barriers, active retries, or evidence inconsistencies appear.\",\"Open bounded retry/backtrack records but not perform unapproved repairs.\"],\"collaboration_interfaces\":{\"consumes\":[\"template_codegen_audit.json\",\"model_numeric_codegen_consistency_report.json\",\"memory_runtime_codegen_audit.json\",\"candidate_stage_artifact.compile_gate\",\"candidate_stage_artifact.contract_check\",\"candidate_stage_artifact.package_static_check\",\"state_summary.sacg_memory_truth\"],\"produces\":[\"code_generation_stage_acceptance_decision.json\",\"checker_evidence_matrix.json\",\"repair_or_handoff_boundary_record.json\"],\"downstream_consumers\":[\"stage_orchestrator\",\"later_stage.verification\",\"later_stage.backend_board\"],\"accepted_by\":[\"codegen_compile_gate_check\",\"codegen_contract_check\",\"codegen_package_static_check\",\"required_real_tool_evidence_check\",\"repair_boundary_check\",\"human_boundary_check\",\"sacg_memory_check\"]},\"out_of_scope\":[\"Generating new RTL or modifying source artifacts.\",\"Running later-stage real functional simulation, synthesis, implementation, or board deployment.\",\"Approving model, board, or clock assumptions that lack cited evidence or human-boundary approval.\"]}}]}",
+  "schema_version": "spatialaccagent.team_decomposer_record.v0",
+  "used_fallback": false
+}

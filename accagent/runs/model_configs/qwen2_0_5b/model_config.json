@@ -1,0 +1,52 @@
+{
+  "model_type": "qwen2",
+  "num_layers": 24,
+  "hidden_size": 896,
+  "target_max_seq_len": 16,
+  "block": {
+    "type": "decoder",
+    "operator_sequence": [
+      "rms_norm_1",
+      "self_attention",
+      "residual_add_1",
+      "rms_norm_2",
+      "mlp_gate_proj",
+      "mlp_up_proj",
+      "activation_mul",
+      "mlp_down_proj",
+      "residual_add_2"
+    ]
+  },
+  "attention": {
+    "kind": "gqa",
+    "num_q_heads": 14,
+    "num_kv_heads": 2,
+    "head_dim": 64,
+    "causal": true,
+    "position_encoding": {
+      "type": "rope",
+      "rope_theta": 1000000.0
+    },
+    "qkv_bias": true,
+    "out_bias": false
+  },
+  "norm": {
+    "type": "rms_norm",
+    "position": "pre",
+    "eps": 1e-06,
+    "has_bias": false
+  },
+  "mlp": {
+    "type": "gated",
+    "intermediate_size": 4864,
+    "activation": "silu",
+    "up_bias": false,
+    "down_bias": false
+  },
+  "weight_layout": {
+    "qkv": "separate_q_k_v",
+    "out_proj": "dense",
+    "mlp": "gate_up_down",
+    "norm": "weight_only"
+  }
+}

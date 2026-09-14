@@ -1,0 +1,197 @@
+{
+  "agent": "template_codegen_engineer",
+  "duration_sec": 240.11109196899633,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "template_codegen_engineer",
+    "approval_required_for": [
+      "Changing the selected template library/template set, adding new operator templates, or replacing template-derived modules with free-form RTL.",
+      "Changing stage4 parameter binding, model tensor shapes, stream/data order, memory layout, or numeric policy.",
+      "Assigning a nonzero clock_target_mhz or board timing target without cited board-profile/tool evidence."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "template_binding_static_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check",
+          "codegen_contract_check",
+          "codegen_compile_gate_check"
+        ],
+        "action_type": "template_bound_artifact_review",
+        "consumes": [
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection",
+          "artifact.stage4.parameter_binding",
+          "candidate_stage_artifact.generated_files",
+          "candidate_stage_artifact.planned_code_outputs",
+          "candidate_stage_artifact.generated_top",
+          "candidate_stage_artifact.package_static_check",
+          "candidate_stage_artifact.contract_check",
+          "candidate_stage_artifact.compile_gate"
+        ],
+        "id": "code_generation.finalize_template_bound_audit",
+        "on_failure": "Treat the failure as a current-stage blocker; do not promote generated code. Invoke bounded_template_repair only for mismatches repairable within the existing template library and stage4 parameter binding; otherwise request backtrack or approval before changing templates, parameters, shapes, or numeric policy.",
+        "produces": [
+          "template_codegen_audit.json",
+          "generated_source_to_template_trace.json",
+          "compile_gate_evidence_summary.json"
+        ],
+        "rationale": "The supplied package_static_check, codegen_contract_check, and compile/elaboration gate all pass; materialize the expected audit and trace artifacts so downstream agents consume checker-grounded provenance rather than free-form RTL assumptions.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check",
+          "codegen_contract_check",
+          "codegen_compile_gate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_reference_check",
+          "verification_action_audit_check",
+          "required_real_tool_evidence_check",
+          "codegen_contract_check",
+          "codegen_package_static_check"
+        ],
+        "action_type": "evidence_handoff",
+        "consumes": [
+          "template_codegen_audit.json",
+          "generated_source_to_template_trace.json",
+          "compile_gate_evidence_summary.json",
+          "candidate_stage_artifact.generated_top",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "candidate_stage_artifact.contract_check",
+          "candidate_stage_artifact.package_static_check"
+        ],
+        "id": "code_generation.handoff_template_codegen_evidence",
+        "on_failure": "Hold downstream promotion until the handoff records cite the checker logs, preserve SACG constraint links, and explicitly state that no functional simulation, timing, bitstream, or board pass is being claimed.",
+        "produces": [
+          "code_generation.cross_layer_model_numeric_handoff.json",
+          "code_generation.memory_runtime_package_handoff.json",
+          "code_generation.evidence_gate_handoff.json"
+        ],
+        "rationale": "Downstream cross-layer model/numeric, memory/runtime, and evidence-gate agents need a compact handoff that preserves the template-provenance pass, structural package pass, and compile-only evidence boundary.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_reference_check",
+          "verification_action_audit",
+          "required_real_tool_evidence_check"
+        ]
+      }
+    ],
+    "observations": [
+      "State summary reports zero active contamination barriers and zero open retry/backtrack requests; no current SACG-memory blocker is listed for this code_generation audit.",
+      "The previous stage outcome states that stage4.parameter_binding and parameter_static_checks are ready, with parameter static checks passed.",
+      "candidate_stage_artifact.status is ready; target_model_artifact_status.current_artifacts_match_target is true and missing_for_target is empty, so the supplied manifest represents the planned qwen2 target artifact set.",
+      "The generated package manifest includes generated.chisel_modules, generated.top_wrapper, generated.fpga_axi_ddr_top_wrapper, generated.memory_layout, generated.runtime_config, generated.scala_contract_check, generated.codegen_compile_gate, and generated.codegen_contract_check as generated or pass-status planned outputs.",
+      "Visible copied Scala template files under src/main/scala/spatialaccagent/templates are covered by the manifest template_sources list: Activation.scala, Attention.scala, Common.scala, DecoderBlock.scala, Elementwise.scala, FFN.scala, KVCache.scala, Linear.scala, Mask.scala, Norm.scala, QKVProjection.scala, Residual.scala, RoPE.scala, and Softmax.scala.",
+      "selected_operator_template_sources records the selected operator-level template sources as Attention.scala, DecoderBlock.scala, Elementwise.scala, FFN.scala, Mask.scala, Norm.scala, Residual.scala, and Softmax.scala; additional support templates are represented in the full template_sources list.",
+      "codegen_package_static_check reports pass with no errors or warnings and checked generated_package_required_files, target_artifact_match_explicit, planned_output_status, template_source_coverage, and compile_and_contract_gate_status; its summary states the generated package manifest is structurally complete.",
+      "codegen_contract_check reports pass with no errors or warnings and checked upstream_transition_status, model_shape_to_generated_params, numeric_policy_to_generated_bits, template_provenance_hashes, compile_and_elaboration_warning_free, memory_layout_alignment_nonoverlap, runtime_config_consistency, and parameter_binding_legality.",
+      "The compile gate reports returncode 0 and pass for all four declared SBT commands: Compile/compile, GeneratedContractCheck, ElaborateGeneratedAccelerator, and ElaborateGeneratedAxiDdrTop. This is sufficient current-stage compile/elaboration evidence for the generated accelerator and AXI/DDR top wrappers.",
+      "generated_top records model_type qwen2, top_class LlamaStyleBlock, param_class LlamaStyleBlockParams, fpga_wrapper_class GeneratedAxiDdrTop, and bound parameters including hidden_size 896, num_q_heads 14, num_kv_heads 2, head_dim 64, max_seq_len 16, elem_bits 16, input_bits 32, output_bits 32, lanes 8, and intermediate_size 4864. Acceptance is based on the passed parameter/provenance contract checks, not on unaudited free-form RTL inspection.",
+      "No separately-authored non-template source RTL is identified in the supplied summary. The listed .sv files appear as generated/elaborated outputs under generated/chisel, while source Scala templates and generated wrapper/parameter glue are represented in the package source tree and covered by static contract evidence.",
+      "The generation_policy value from_scratch_target_accelerator_package is not used as a correctness claim by itself; provenance acceptance is grounded in template_provenance_hashes, template_source_coverage, parameter_binding_legality, and compile/elaboration pass evidence."
+    ],
+    "proposed_actions": [
+      "Finalize template_codegen_audit.json, generated_source_to_template_trace.json, and compile_gate_evidence_summary.json from the supplied package_static_check, contract_check, compile_gate, template library metadata, stage2 template selection, and stage4 parameter binding evidence.",
+      "Hand off the audit pack to code_generation.cross_layer_model_numeric_auditor to independently consume the model/shape/numeric parameter evidence without changing model semantics or numeric policy.",
+      "Hand off generated memory_layout.json, runtime_config.json, and wrapper evidence to code_generation.memory_runtime_package_engineer for later board/runtime validation; preserve that clock_target_mhz=0 is an unknown shell-clock placeholder until board evidence or approval exists.",
+      "Hand off compile/contract/package pass logs to code_generation.evidence_gate_auditor with an explicit compile-only evidence boundary so later verification/deployment gates require real functional, protocol, Vivado, bitstream, and board evidence.",
+      "No bounded_template_repair is currently proposed. If a rerun finds a template hash, template coverage, or parameter legality mismatch, repair must stay within the selected template library and stage4 parameter constraints or request approval/backtrack."
+    ],
+    "risks": [
+      "No current-stage template provenance, parameter-binding, compile-gate, or package-structure blocker is indicated by the supplied pass evidence.",
+      "Later-stage evidence boundary: compile/elaboration/static contract pass does not establish functional numerical correctness, data-order correctness, AXI/DDR protocol correctness, Vivado timing/resource closure, bitstream validity, or board execution.",
+      "Later-stage board-timing risk: generated_top.clock_target_mhz is 0, so downstream backend stages must not infer or commit a nonzero timing target without board-profile/tool evidence or explicit approval.",
+      "Handoff hygiene risk: generated_files includes SBT target/classes/cache artifacts as well as source artifacts; downstream provenance and hashing should rely on the generated manifest/source-to-template trace, not compiled cache products."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.stage2.template_selection",
+        "artifact.stage4.parameter_binding",
+        "candidate_stage_artifact.generated_files",
+        "candidate_stage_artifact.planned_code_outputs",
+        "candidate_stage_artifact.generated_top",
+        "candidate_stage_artifact.package_static_check",
+        "candidate_stage_artifact.contract_check",
+        "candidate_stage_artifact.compile_gate",
+        "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAcceleratorTop.scala",
+        "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAxiDdrTop.scala",
+        "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedDesignParams.scala",
+        "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedContractCheck.scala",
+        "generated/chisel/src/main/scala/spatialaccagent/templates/*.scala",
+        "generated/chisel/memory/memory_layout.json",
+        "generated/chisel/runtime/runtime_config.json"
+      ],
+      "constraints": [
+        "constraint.template.library",
+        "constraint.parameter.binding",
+        "constraint.numeric.policy",
+        "constraint.codegen.package",
+        "constraint.codegen.compile_gate",
+        "constraint.codegen.contract_check",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "artifact.input.template_library -> generated.chisel_modules",
+        "artifact.input.template_metadata -> generated.chisel_modules",
+        "artifact.stage2.template_selection -> generated.chisel_modules",
+        "artifact.stage4.parameter_binding -> generated.chisel_modules",
+        "artifact.stage4.parameter_binding -> generated.scala_contract_check",
+        "artifact.stage4.parameter_binding -> generated.memory_layout",
+        "generated.chisel_modules -> generated.top_wrapper",
+        "generated.top_wrapper -> generated.fpga_axi_ddr_top_wrapper",
+        "generated.chisel_modules -> generated.codegen_compile_gate",
+        "generated.top_wrapper -> generated.codegen_compile_gate",
+        "generated.fpga_axi_ddr_top_wrapper -> generated.codegen_compile_gate",
+        "generated.codegen_compile_gate -> generated.codegen_contract_check",
+        "generated.memory_layout -> generated.codegen_contract_check",
+        "generated.runtime_config -> generated.codegen_contract_check"
+      ],
+      "nodes": [
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.stage2.template_selection",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage4.parameter_static_checks",
+        "generated.chisel_modules",
+        "generated.top_wrapper",
+        "generated.fpga_axi_ddr_top_wrapper",
+        "generated.scala_contract_check",
+        "generated.codegen_compile_gate",
+        "generated.codegen_contract_check",
+        "generated.memory_layout",
+        "generated.runtime_config"
+      ]
+    },
+    "schema_version": "spatialaccagent.template_codegen_engineer.audit.v0",
+    "stage": "code_generation",
+    "status": "ready",
+    "summary": "Supplied code_generation evidence supports a template-bound and structurally complete generated package: codegen_package_static_check, codegen_contract_check, and the compile/elaboration gate all report pass with no errors or warnings. This audit accepts current-stage template provenance and package structure only; it does not claim functional simulation, timing closure, bitstream generation, or board execution."
+  },
+  "prompt_bytes": 66775,
+  "prompt_hash": "5c27566d865ed4ef9d9a58ff80f70f26baab0827b9b3772e876acc0ac8a4b11d",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.template_codegen_engineer.audit.v0\",\"agent\":\"template_codegen_engineer\",\"stage\":\"code_generation\",\"status\":\"ready\",\"summary\":\"Supplied code_generation evidence supports a template-bound and structurally complete generated package: codegen_package_static_check, codegen_contract_check, and the compile/elaboration gate all report pass with no errors or warnings. This audit accepts current-stage template provenance and package structure only; it does not claim functional simulation, timing closure, bitstream generation, or board execution.\",\"sacg_focus\":{\"nodes\":[\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"artifact.stage4.parameter_binding\",\"artifact.stage4.parameter_static_checks\",\"generated.chisel_modules\",\"generated.top_wrapper\",\"generated.fpga_axi_ddr_top_wrapper\",\"generated.scala_contract_check\",\"generated.codegen_compile_gate\",\"generated.codegen_contract_check\",\"generated.memory_layout\",\"generated.runtime_config\"],\"edges\":[\"artifact.input.template_library -> generated.chisel_modules\",\"artifact.input.template_metadata -> generated.chisel_modules\",\"artifact.stage2.template_selection -> generated.chisel_modules\",\"artifact.stage4.parameter_binding -> generated.chisel_modules\",\"artifact.stage4.parameter_binding -> generated.scala_contract_check\",\"artifact.stage4.parameter_binding -> generated.memory_layout\",\"generated.chisel_modules -> generated.top_wrapper\",\"generated.top_wrapper -> generated.fpga_axi_ddr_top_wrapper\",\"generated.chisel_modules -> generated.codegen_compile_gate\",\"generated.top_wrapper -> generated.codegen_compile_gate\",\"generated.fpga_axi_ddr_top_wrapper -> generated.codegen_compile_gate\",\"generated.codegen_compile_gate -> generated.codegen_contract_check\",\"generated.memory_layout -> generated.codegen_contract_check\",\"generated.runtime_config -> generated.codegen_contract_check\"],\"constraints\":[\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.numeric.policy\",\"constraint.codegen.package\",\"constraint.codegen.compile_gate\",\"constraint.codegen.contract_check\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\"],\"artifacts\":[\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"artifact.stage4.parameter_binding\",\"candidate_stage_artifact.generated_files\",\"candidate_stage_artifact.planned_code_outputs\",\"candidate_stage_artifact.generated_top\",\"candidate_stage_artifact.package_static_check\",\"candidate_stage_artifact.contract_check\",\"candidate_stage_artifact.compile_gate\",\"generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAcceleratorTop.scala\",\"generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAxiDdrTop.scala\",\"generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedDesignParams.scala\",\"generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedContractCheck.scala\",\"generated/chisel/src/main/scala/spatialaccagent/templates/*.scala\",\"generated/chisel/memory/memory_layout.json\",\"generated/chisel/runtime/runtime_config.json\"]},\"observations\":[\"State summary reports zero active contamination barriers and zero open retry/backtrack requests; no current SACG-memory blocker is listed for this code_generation audit.\",\"The previous stage outcome states that stage4.parameter_binding and parameter_static_checks are ready, with parameter static checks passed.\",\"candidate_stage_artifact.status is ready; target_model_artifact_status.current_artifacts_match_target is true and missing_for_target is empty, so the supplied manifest represents the planned qwen2 target artifact set.\",\"The generated package manifest includes generated.chisel_modules, generated.top_wrapper, generated.fpga_axi_ddr_top_wrapper, generated.memory_layout, generated.runtime_config, generated.scala_contract_check, generated.codegen_compile_gate, and generated.codegen_contract_check as generated or pass-status planned outputs.\",\"Visible copied Scala template files under src/main/scala/spatialaccagent/templates are covered by the manifest template_sources list: Activation.scala, Attention.scala, Common.scala, DecoderBlock.scala, Elementwise.scala, FFN.scala, KVCache.scala, Linear.scala, Mask.scala, Norm.scala, QKVProjection.scala, Residual.scala, RoPE.scala, and Softmax.scala.\",\"selected_operator_template_sources records the selected operator-level template sources as Attention.scala, DecoderBlock.scala, Elementwise.scala, FFN.scala, Mask.scala, Norm.scala, Residual.scala, and Softmax.scala; additional support templates are represented in the full template_sources list.\",\"codegen_package_static_check reports pass with no errors or warnings and checked generated_package_required_files, target_artifact_match_explicit, planned_output_status, template_source_coverage, and compile_and_contract_gate_status; its summary states the generated package manifest is structurally complete.\",\"codegen_contract_check reports pass with no errors or warnings and checked upstream_transition_status, model_shape_to_generated_params, numeric_policy_to_generated_bits, template_provenance_hashes, compile_and_elaboration_warning_free, memory_layout_alignment_nonoverlap, runtime_config_consistency, and parameter_binding_legality.\",\"The compile gate reports returncode 0 and pass for all four declared SBT commands: Compile/compile, GeneratedContractCheck, ElaborateGeneratedAccelerator, and ElaborateGeneratedAxiDdrTop. This is sufficient current-stage compile/elaboration evidence for the generated accelerator and AXI/DDR top wrappers.\",\"generated_top records model_type qwen2, top_class LlamaStyleBlock, param_class LlamaStyleBlockParams, fpga_wrapper_class GeneratedAxiDdrTop, and bound parameters including hidden_size 896, num_q_heads 14, num_kv_heads 2, head_dim 64, max_seq_len 16, elem_bits 16, input_bits 32, output_bits 32, lanes 8, and intermediate_size 4864. Acceptance is based on the passed parameter/provenance contract checks, not on unaudited free-form RTL inspection.\",\"No separately-authored non-template source RTL is identified in the supplied summary. The listed .sv files appear as generated/elaborated outputs under generated/chisel, while source Scala templates and generated wrapper/parameter glue are represented in the package source tree and covered by static contract evidence.\",\"The generation_policy value from_scratch_target_accelerator_package is not used as a correctness claim by itself; provenance acceptance is grounded in template_provenance_hashes, template_source_coverage, parameter_binding_legality, and compile/elaboration pass evidence.\"],\"risks\":[\"No current-stage template provenance, parameter-binding, compile-gate, or package-structure blocker is indicated by the supplied pass evidence.\",\"Later-stage evidence boundary: compile/elaboration/static contract pass does not establish functional numerical correctness, data-order correctness, AXI/DDR protocol correctness, Vivado timing/resource closure, bitstream validity, or board execution.\",\"Later-stage board-timing risk: generated_top.clock_target_mhz is 0, so downstream backend stages must not infer or commit a nonzero timing target without board-profile/tool evidence or explicit approval.\",\"Handoff hygiene risk: generated_files includes SBT target/classes/cache artifacts as well as source artifacts; downstream provenance and hashing should rely on the generated manifest/source-to-template trace, not compiled cache products.\"],\"proposed_actions\":[\"Finalize template_codegen_audit.json, generated_source_to_template_trace.json, and compile_gate_evidence_summary.json from the supplied package_static_check, contract_check, compile_gate, template library metadata, stage2 template selection, and stage4 parameter binding evidence.\",\"Hand off the audit pack to code_generation.cross_layer_model_numeric_auditor to independently consume the model/shape/numeric parameter evidence without changing model semantics or numeric policy.\",\"Hand off generated memory_layout.json, runtime_config.json, and wrapper evidence to code_generation.memory_runtime_package_engineer for later board/runtime validation; preserve that clock_target_mhz=0 is an unknown shell-clock placeholder until board evidence or approval exists.\",\"Hand off compile/contract/package pass logs to code_generation.evidence_gate_auditor with an explicit compile-only evidence boundary so later verification/deployment gates require real functional, protocol, Vivado, bitstream, and board evidence.\",\"No bounded_template_repair is currently proposed. If a rerun finds a template hash, template coverage, or parameter legality mismatch, repair must stay within the selected template library and stage4 parameter constraints or request approval/backtrack.\"],\"executable_actions\":[{\"id\":\"code_generation.finalize_template_bound_audit\",\"stage\":\"code_generation\",\"action_type\":\"template_bound_artifact_review\",\"rationale\":\"The supplied package_static_check, codegen_contract_check, and compile/elaboration gate all pass; materialize the expected audit and trace artifacts so downstream agents consume checker-grounded provenance rather than free-form RTL assumptions.\",\"consumes\":[\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"artifact.stage4.parameter_binding\",\"candidate_stage_artifact.generated_files\",\"candidate_stage_artifact.planned_code_outputs\",\"candidate_stage_artifact.generated_top\",\"candidate_stage_artifact.package_static_check\",\"candidate_stage_artifact.contract_check\",\"candidate_stage_artifact.compile_gate\"],\"produces\":[\"template_codegen_audit.json\",\"generated_source_to_template_trace.json\",\"compile_gate_evidence_summary.json\"],\"tool_roles\":[\"template_coverage_check\",\"parameter_binding_static_check\",\"code_generation_manifest_static_check\",\"codegen_package_static_check\",\"codegen_contract_check\",\"codegen_compile_gate\"],\"acceptance_checkers\":[\"template_binding_static_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"code_generation_manifest_static_check\",\"codegen_package_static_check\",\"codegen_contract_check\",\"codegen_compile_gate_check\"],\"on_failure\":\"Treat the failure as a current-stage blocker; do not promote generated code. Invoke bounded_template_repair only for mismatches repairable within the existing template library and stage4 parameter binding; otherwise request backtrack or approval before changing templates, parameters, shapes, or numeric policy.\",\"requires_approval\":false},{\"id\":\"code_generation.handoff_template_codegen_evidence\",\"stage\":\"code_generation\",\"action_type\":\"evidence_handoff\",\"rationale\":\"Downstream cross-layer model/numeric, memory/runtime, and evidence-gate agents need a compact handoff that preserves the template-provenance pass, structural package pass, and compile-only evidence boundary.\",\"consumes\":[\"template_codegen_audit.json\",\"generated_source_to_template_trace.json\",\"compile_gate_evidence_summary.json\",\"candidate_stage_artifact.generated_top\",\"generated/chisel/memory/memory_layout.json\",\"generated/chisel/runtime/runtime_config.json\",\"candidate_stage_artifact.contract_check\",\"candidate_stage_artifact.package_static_check\"],\"produces\":[\"code_generation.cross_layer_model_numeric_handoff.json\",\"code_generation.memory_runtime_package_handoff.json\",\"code_generation.evidence_gate_handoff.json\"],\"tool_roles\":[\"team_aggregate\",\"sacg_reference_check\",\"verification_action_audit\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"sacg_reference_check\",\"verification_action_audit_check\",\"required_real_tool_evidence_check\",\"codegen_contract_check\",\"codegen_package_static_check\"],\"on_failure\":\"Hold downstream promotion until the handoff records cite the checker logs, preserve SACG constraint links, and explicitly state that no functional simulation, timing, bitstream, or board pass is being claimed.\",\"requires_approval\":false}],\"approval_required_for\":[\"Changing the selected template library/template set, adding new operator templates, or replacing template-derived modules with free-form RTL.\",\"Changing stage4 parameter binding, model tensor shapes, stream/data order, memory layout, or numeric policy.\",\"Assigning a nonzero clock_target_mhz or board timing target without cited board-profile/tool evidence.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/team/llm/template_codegen_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/team/llm/template_codegen_engineer_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "code_generation.template codegen engineer",
+  "used_fallback": false
+}

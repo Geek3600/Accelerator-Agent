@@ -1,0 +1,55 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "codegen_contract_check",
+      "codegen_package_static_check",
+      "codegen_compile_gate_check",
+      "numeric_policy_check",
+      "stream_plan_check",
+      "data_order_trace_check"
+    ],
+    "action_type": "static_contract_enforcement",
+    "consumes": [
+      "artifact.stage4.parameter_binding_promoted",
+      "peer_agent_parameter_binding_handoff_packet.json",
+      "artifact.stage2.template_selection",
+      "artifact.stage3.pipeline_plan",
+      "candidate_stage_artifact.bindings",
+      "candidate_stage_artifact.numeric_binding_plan",
+      "candidate_stage_artifact.stream_contract_trace",
+      "candidate_stage_artifact.global_param_scope",
+      "artifact.input.numeric_policy"
+    ],
+    "id": "flow.next_stage.codegen.preserve_stage4_contract",
+    "on_failure": "Do not modify golden outputs, loosen tolerance, or change model dimensions, numeric policy, lanes, tiles, stream order, FIFO semantics, or template semantics without approval. Localize to codegen/template binding and route to bounded repair.",
+    "produces": [
+      "artifact.stage5.codegen_parameter_scope_contract",
+      "artifact.stage5.generated_chisel_parameter_manifest",
+      "artifact.stage5.numeric_data_order_obligation_trace",
+      "artifact.stage5.codegen_compile_gate_report"
+    ],
+    "rationale": "Start the next available stage by generating code only under the promoted Stage 4 contract: per-stage parameter precedence, lanes=8, dtype/cast plan, residual_precision=32, FIFO authority, stream_order token/tile/lane/word, and numeric policy must be preserved.",
+    "requires_approval": false,
+    "stage": "code_generation",
+    "tool_roles": [
+      "codegen_contract_check",
+      "codegen_package_static_check",
+      "codegen_compile_gate",
+      "numeric_policy_check",
+      "stream_plan_check",
+      "data_order_trace_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "proceed",
+  "flow_event_index": 15,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/flow_events/015_proceed.json",
+  "stage": "parameter_binding"
+}

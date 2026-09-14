@@ -1,0 +1,362 @@
+{
+  "attempt_count": 1,
+  "decision": "retry",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "stage_artifact_trust_barrier_check",
+        "sacg_memory_check"
+      ],
+      "action_type": "artifact_trust_barrier",
+      "consumes": [
+        "recent_stage_summary",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/24_pipeline_planning.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json",
+        "sacg_memory"
+      ],
+      "id": "pipeline_planning.quarantine_failed_attempt_1",
+      "on_failure": "Stop before retry or downstream consumption to avoid artifact contamination.",
+      "produces": [
+        "sacg_memory.stage_artifact_trust_barrier.pipeline_planning_attempt_1",
+        "retry_input_manifest.pipeline_planning_attempt_2"
+      ],
+      "rationale": "The command failed with returncode 1 and the existing pipeline_planning_report is stale, incomplete, and explicitly not promoted. A trust barrier prevents downstream contamination while allowing same-stage diagnostic use of logs.",
+      "requires_approval": false,
+      "stage": "pipeline_planning",
+      "tool_roles": [
+        "stage_artifact_trust_barrier",
+        "sacg_memory_update"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "boundary_contract_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "tool_protocol_check",
+        "sacg_static_check",
+        "sacg_reference_check"
+      ],
+      "action_type": "same_stage_bounded_repair_retry",
+      "consumes": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+        "retry_input_manifest.pipeline_planning_attempt_2",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/llm/pipeline_architect_agent_result.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/data_memory_runtime_specialist__memory_dataflow_engineer_result.json",
+        "sacg_memory"
+      ],
+      "id": "pipeline_planning.bounded_retry_resolve_unresolved_risks",
+      "on_failure": "Do not promote; retain the failed-attempt barrier and route the new evidence to localized failure escalation/backtrack handling.",
+      "produces": [
+        "candidate_stage_artifact.pipeline_planning_report.attempt_2",
+        "candidate_stage_artifact.pipeline_architecture_contract",
+        "candidate_stage_artifact.stream_plan",
+        "candidate_stage_artifact.memory_runtime_plan",
+        "retry_reconciliation_contract.pipeline_planning_attempt_2"
+      ],
+      "rationale": "Attempt 1 of 2 failed at the current-stage architecture gate. With no open SACG backtrack or contamination barrier blocking retry, regenerate/refine the pipeline planning contract from the source SACG state; use failed-attempt outputs only as diagnostics to resolve the 4 unresolved risks.",
+      "requires_approval": false,
+      "stage": "pipeline_planning",
+      "tool_roles": [
+        "pipeline_repair",
+        "architecture_review",
+        "memory_runtime_repair",
+        "team_aggregate"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "human_boundary_check",
+        "numeric_policy_check",
+        "memory_runtime_plan_check",
+        "template_coverage_check",
+        "deployment_board_check"
+      ],
+      "action_type": "approval_gate_if_protected_deltas_detected",
+      "consumes": [
+        "candidate_stage_artifact.pipeline_architecture_contract",
+        "candidate_stage_artifact.stream_plan",
+        "candidate_stage_artifact.memory_runtime_plan",
+        "retry_reconciliation_contract.pipeline_planning_attempt_2",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json"
+      ],
+      "id": "pipeline_planning.protected_change_approval_gate",
+      "on_failure": "Reject or revise the retry candidate without promotion; do not hide protected deltas inside a same-stage retry.",
+      "produces": [
+        "protected_delta_report.pipeline_planning_attempt_2",
+        "approval_record_or_no_protected_delta_record.pipeline_planning_attempt_2"
+      ],
+      "rationale": "The retry is allowed to repair the current-stage contract, but any change to protected architecture, attention, numeric, memory/runtime, board/runtime protocol, or template policy requires approval before promotion.",
+      "requires_approval": true,
+      "stage": "pipeline_planning",
+      "tool_roles": [
+        "human_boundary_check",
+        "architecture_review",
+        "numeric_policy_check",
+        "memory_runtime_plan_check",
+        "template_coverage_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "boundary_contract_check",
+        "addr_map_check",
+        "transfer_count_check",
+        "deployment_board_check",
+        "tool_protocol_check",
+        "numeric_policy_check",
+        "model_config_check",
+        "template_coverage_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "checker_gate_and_promotion",
+      "consumes": [
+        "candidate_stage_artifact.pipeline_planning_report.attempt_2",
+        "candidate_stage_artifact.pipeline_architecture_contract",
+        "candidate_stage_artifact.stream_plan",
+        "candidate_stage_artifact.memory_runtime_plan",
+        "retry_reconciliation_contract.pipeline_planning_attempt_2",
+        "approval_record_or_no_protected_delta_record.pipeline_planning_attempt_2",
+        "sacg_memory.stage_artifact_trust_barrier.pipeline_planning_attempt_1"
+      ],
+      "id": "pipeline_planning.current_stage_gate_attempt_2",
+      "on_failure": "Do not proceed to parameter_binding; because this would consume the second bounded attempt, create localized failure evidence and request backtrack or stop.",
+      "produces": [
+        "promoted_artifact.pipeline_planning_report",
+        "promoted_sacg_state.after_pipeline_planning",
+        "stage_outcome.pipeline_planning.pass"
+      ],
+      "rationale": "Candidate retry artifacts may supersede failed same-stage artifacts only after all current-stage checks pass and the retry reconciliation contract proves the stale report is not being promoted.",
+      "requires_approval": false,
+      "stage": "pipeline_planning",
+      "tool_roles": [
+        "sacg_validate",
+        "sacg_static_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "tool_protocol_check",
+        "deployment_board_check",
+        "team_aggregate"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "failure_localization_check",
+        "stage_backtrack_request_check",
+        "sacg_memory_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "bounded_failure_escalation",
+      "consumes": [
+        "stage_outcome.pipeline_planning.fail_attempt_2",
+        "command_log.pipeline_planning_attempt_2",
+        "sacg_memory",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json"
+      ],
+      "id": "pipeline_planning.failure_escalation_after_attempt_2",
+      "on_failure": "Stop autonomous progression and preserve all failed artifacts as diagnostics only.",
+      "produces": [
+        "failure_localization_report.pipeline_planning",
+        "sacg_memory.open_backtrack_request.pipeline_planning",
+        "blocked_downstream_progress_record"
+      ],
+      "rationale": "If the permitted retry also fails, the bounded attempts for pipeline_planning are exhausted. The team must localize the unresolved current-stage blockers and request backtrack rather than loop or contaminate downstream stages.",
+      "requires_approval": false,
+      "stage": "pipeline_planning",
+      "tool_roles": [
+        "failure_slice_localization",
+        "stage_backtrack_request",
+        "sacg_memory_update"
+      ]
+    }
+  ],
+  "flow_event_index": 6,
+  "llm_flow_controller": {
+    "agent_executable_actions": [
+      {
+        "acceptance_checkers": [
+          "stage_artifact_trust_barrier_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "artifact_trust_barrier",
+        "consumes": [
+          "recent_stage_summary",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/24_pipeline_planning.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json",
+          "sacg_memory"
+        ],
+        "id": "pipeline_planning.quarantine_failed_attempt_1",
+        "on_failure": "Stop before retry or downstream consumption to avoid artifact contamination.",
+        "produces": [
+          "sacg_memory.stage_artifact_trust_barrier.pipeline_planning_attempt_1",
+          "retry_input_manifest.pipeline_planning_attempt_2"
+        ],
+        "rationale": "The command failed with returncode 1 and the existing pipeline_planning_report is stale, incomplete, and explicitly not promoted. A trust barrier prevents downstream contamination while allowing same-stage diagnostic use of logs.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "stage_artifact_trust_barrier",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "tool_protocol_check",
+          "sacg_static_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "same_stage_bounded_repair_retry",
+        "consumes": [
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+          "retry_input_manifest.pipeline_planning_attempt_2",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/llm/pipeline_architect_agent_result.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/data_memory_runtime_specialist__memory_dataflow_engineer_result.json",
+          "sacg_memory"
+        ],
+        "id": "pipeline_planning.bounded_retry_resolve_unresolved_risks",
+        "on_failure": "Do not promote; retain the failed-attempt barrier and route the new evidence to localized failure escalation/backtrack handling.",
+        "produces": [
+          "candidate_stage_artifact.pipeline_planning_report.attempt_2",
+          "candidate_stage_artifact.pipeline_architecture_contract",
+          "candidate_stage_artifact.stream_plan",
+          "candidate_stage_artifact.memory_runtime_plan",
+          "retry_reconciliation_contract.pipeline_planning_attempt_2"
+        ],
+        "rationale": "Attempt 1 of 2 failed at the current-stage architecture gate. With no open SACG backtrack or contamination barrier blocking retry, regenerate/refine the pipeline planning contract from the source SACG state; use failed-attempt outputs only as diagnostics to resolve the 4 unresolved risks.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "pipeline_repair",
+          "architecture_review",
+          "memory_runtime_repair",
+          "team_aggregate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "human_boundary_check",
+          "numeric_policy_check",
+          "memory_runtime_plan_check",
+          "template_coverage_check",
+          "deployment_board_check"
+        ],
+        "action_type": "approval_gate_if_protected_deltas_detected",
+        "consumes": [
+          "candidate_stage_artifact.pipeline_architecture_contract",
+          "candidate_stage_artifact.stream_plan",
+          "candidate_stage_artifact.memory_runtime_plan",
+          "retry_reconciliation_contract.pipeline_planning_attempt_2",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json"
+        ],
+        "id": "pipeline_planning.protected_change_approval_gate",
+        "on_failure": "Reject or revise the retry candidate without promotion; do not hide protected deltas inside a same-stage retry.",
+        "produces": [
+          "protected_delta_report.pipeline_planning_attempt_2",
+          "approval_record_or_no_protected_delta_record.pipeline_planning_attempt_2"
+        ],
+        "rationale": "The retry is allowed to repair the current-stage contract, but any change to protected architecture, attention, numeric, memory/runtime, board/runtime protocol, or template policy requires approval before promotion.",
+        "requires_approval": true,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "human_boundary_check",
+          "architecture_review",
+          "numeric_policy_check",
+          "memory_runtime_plan_check",
+          "template_coverage_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "deployment_board_check",
+          "tool_protocol_check",
+          "numeric_policy_check",
+          "model_config_check",
+          "template_coverage_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "checker_gate_and_promotion",
+        "consumes": [
+          "candidate_stage_artifact.pipeline_planning_report.attempt_2",
+          "candidate_stage_artifact.pipeline_architecture_contract",
+          "candidate_stage_artifact.stream_plan",
+          "candidate_stage_artifact.memory_runtime_plan",
+          "retry_reconciliation_contract.pipeline_planning_attempt_2",
+          "approval_record_or_no_protected_delta_record.pipeline_planning_attempt_2",
+          "sacg_memory.stage_artifact_trust_barrier.pipeline_planning_attempt_1"
+        ],
+        "id": "pipeline_planning.current_stage_gate_attempt_2",
+        "on_failure": "Do not proceed to parameter_binding; because this would consume the second bounded attempt, create localized failure evidence and request backtrack or stop.",
+        "produces": [
+          "promoted_artifact.pipeline_planning_report",
+          "promoted_sacg_state.after_pipeline_planning",
+          "stage_outcome.pipeline_planning.pass"
+        ],
+        "rationale": "Candidate retry artifacts may supersede failed same-stage artifacts only after all current-stage checks pass and the retry reconciliation contract proves the stale report is not being promoted.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "tool_protocol_check",
+          "deployment_board_check",
+          "team_aggregate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "stage_backtrack_request_check",
+          "sacg_memory_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "bounded_failure_escalation",
+        "consumes": [
+          "stage_outcome.pipeline_planning.fail_attempt_2",
+          "command_log.pipeline_planning_attempt_2",
+          "sacg_memory",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json"
+        ],
+        "id": "pipeline_planning.failure_escalation_after_attempt_2",
+        "on_failure": "Stop autonomous progression and preserve all failed artifacts as diagnostics only.",
+        "produces": [
+          "failure_localization_report.pipeline_planning",
+          "sacg_memory.open_backtrack_request.pipeline_planning",
+          "blocked_downstream_progress_record"
+        ],
+        "rationale": "If the permitted retry also fails, the bounded attempts for pipeline_planning are exhausted. The team must localize the unresolved current-stage blockers and request backtrack rather than loop or contaminate downstream stages.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "failure_slice_localization",
+          "stage_backtrack_request",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/006_pipeline_planning/llm/flow_controller_agent_result.json",
+    "agent_status": "retry_current_stage",
+    "agent_summary": "Do not proceed to parameter_binding. The pipeline_planning command failed with returncode 1 because pipeline_architect_agent returned conditional_approval with 4 current-stage unresolved risks, and the existing pipeline_planning_report was explicitly not promoted. Since this is attempt 1 of the bounded 2 attempts and SACG memory has no open backtrack requests, retry requests, or active contamination barriers, the next bounded action is a same-stage retry/repair with failed artifacts quarantined as diagnostics only."
+  },
+  "reason": "Do not proceed to parameter_binding. The pipeline_planning command failed with returncode 1 because pipeline_architect_agent returned conditional_approval with 4 current-stage unresolved risks, and the existing pipeline_planning_report was explicitly not promoted. Since this is attempt 1 of the bounded 2 attempts and SACG memory has no open backtrack requests, retry requests, or active contamination barriers, the next bounded action is a same-stage retry/repair with failed artifacts quarantined as diagnostics only.",
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_event_action_record.v0",
+  "stage": "pipeline_planning"
+}

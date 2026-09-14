@@ -1,0 +1,297 @@
+{
+  "agent": "dse_resource_risk_agent",
+  "duration_sec": 301.07978386900504,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "dse_resource_risk_agent",
+    "approval_required_for": [
+      "Any change to model dimensions, head structure, tensor shapes, or operation semantics to make a DSE choice fit.",
+      "Any rebinding of lanes, tile sizes, datapath widths, FIFO semantics, or global-versus-per-stage parameter precedence outside the checked design space.",
+      "Any numeric-policy change, including precision, cast points, rounding, saturation, residual precision, or RMSNorm epsilon.",
+      "Concrete Stage 5 memory layout decisions such as base addresses, DDR channel mapping, or changes to transfer externalization policy.",
+      "Any architecture, pipeline, major template, or board-integration change, and any attempt to treat symbolic estimates as synthesis, timing, resource, or board-pass evidence."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "parameter_binding_static_check",
+          "implementation_package_static",
+          "timing_resource_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "candidate_stage_artifact.bindings",
+          "candidate_stage_artifact.bindings.resource_estimate",
+          "candidate_stage_artifact.bandwidth_estimate",
+          "candidate_stage_artifact.global_params",
+          "candidate_stage_artifact.global_param_scope",
+          "candidate_stage_artifact.numeric_binding_plan",
+          "candidate_stage_artifact.stage_gate_policy",
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.stream_contract_trace"
+        ],
+        "id": "parameter_binding.dse.emit_legality_resource_audits",
+        "on_failure": "Block parameter_binding evidence-gate promotion; issue a bounded parameter-binding retry for any illegal lane/tile/bit-width/FIFO scope or for any unscoped claim of implementation, timing, or board evidence.",
+        "produces": [
+          "dse_parameter_legality_audit.json",
+          "symbolic_resource_risk_register.json",
+          "tile_lane_divisibility_report.json",
+          "later_stage_evidence_obligation_list.json"
+        ],
+        "rationale": "Materialize the DSE handoff artifacts from the candidate binding and bind each lane, tile, datapath, FIFO, resource, and bandwidth statement to the supplied design-space, numeric, board AXI, resource, and stage-gate constraints. The action must record implementation, timing, and real-tool evidence as not_run/later-stage when no real tool artifacts are supplied.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "sacg_validate",
+          "parameter_binding_static_check",
+          "implementation_package_static",
+          "timing_resource_check",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "parameter_binding_static_check",
+          "sacg_memory_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "evidence_gate_handoff",
+        "consumes": [
+          "candidate_stage_artifact",
+          "dse_parameter_legality_audit.json",
+          "symbolic_resource_risk_register.json",
+          "tile_lane_divisibility_report.json",
+          "later_stage_evidence_obligation_list.json",
+          "sacg_memory_truth"
+        ],
+        "id": "parameter_binding.evidence_gate.consume_dse_audits",
+        "on_failure": "Do not promote the candidate artifact; create an explicit retry or trust-barrier record naming the failed SACG constraint and the contaminated artifact boundary.",
+        "produces": [
+          "artifact.stage4.parameter_binding_evidence_gate_audit",
+          "artifact.stage4.parameter_binding_promotion_decision"
+        ],
+        "rationale": "Let the evidence-gate auditor consume the DSE audit outputs without rewriting them, verify SACG linkage and trust barriers, and decide whether the current parameter_binding artifact can be promoted with later-stage obligations preserved.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_validate",
+          "parameter_binding_static_check",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "stream_plan_check",
+          "transfer_count_check"
+        ],
+        "action_type": "static_contract_enforcement",
+        "consumes": [
+          "artifact.stage2.template_selection",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage3.pipeline_static_checks",
+          "candidate_stage_artifact.bindings",
+          "candidate_stage_artifact.numeric_binding_plan",
+          "candidate_stage_artifact.stream_contract_trace",
+          "candidate_stage_artifact.global_param_scope",
+          "dse_parameter_legality_audit.json",
+          "tile_lane_divisibility_report.json"
+        ],
+        "id": "later_stage.codegen.preserve_parameter_scope",
+        "on_failure": "Localize the mismatch to template binding or codegen contract; request bounded template/codegen repair and do not change model dimensions, numeric policy, lanes, or tiles without approval.",
+        "produces": [
+          "artifact.stage5.codegen_parameter_scope_contract",
+          "artifact.stage5.codegen_manifest_with_bound_params"
+        ],
+        "rationale": "Prevent later generated code from silently changing DSE or numeric semantics by enforcing per-stage parameter precedence, checked tile overrides, local FIFO-default scope, stream bit widths, and numeric cast points.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "stream_plan_check",
+          "transfer_count_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "deployment_board_check"
+        ],
+        "action_type": "memory_runtime_plan",
+        "consumes": [
+          "candidate_stage_artifact.bandwidth_estimate",
+          "candidate_stage_artifact.stream_contract_trace",
+          "artifact.input.target_board_profile",
+          "artifact.stage3.pipeline_plan",
+          "symbolic_resource_risk_register.json",
+          "later_stage_evidence_obligation_list.json"
+        ],
+        "id": "later_stage.memory_runtime.assign_addresses_and_reconcile_transfers",
+        "on_failure": "Keep runtime and backend promotion blocked; repair the memory/runtime plan within the existing parameter contract or request approved re-binding if the memory layout cannot satisfy constraints.",
+        "produces": [
+          "artifact.stage5.memory_runtime_plan",
+          "artifact.stage5.address_map",
+          "artifact.stage5.transfer_count_audit"
+        ],
+        "rationale": "Convert the symbolic bandwidth estimate into a concrete memory/runtime plan with base addresses, 64-byte alignment, non-overlap, AXI beat counts, and explicit treatment of multi-input residual and activation streams.",
+        "requires_approval": true,
+        "stage": "memory_runtime_planning",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "deployment_board_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_vivado_synthesis",
+          "real_tool.case_vivado_synthesis_report_check",
+          "real_tool.case_vivado_implementation",
+          "real_tool.case_vivado_implementation_report_check",
+          "timing_resource_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.stage5.codegen_manifest_with_bound_params",
+          "artifact.stage5.memory_runtime_plan",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "symbolic_resource_risk_register.json",
+          "later_stage_evidence_obligation_list.json"
+        ],
+        "id": "later_stage.backend.collect_real_resource_timing_evidence",
+        "on_failure": "Use real tool output for contract-guided localization and bounded repair; do not claim timing/resource pass, do not loosen numeric tolerance, and do not skip verification layers before promotion.",
+        "produces": [
+          "backend_board/case_diagnostics/vivado_synthesis_report.json",
+          "backend_board/case_diagnostics/vivado_implementation_report.json",
+          "backend_board/case_diagnostics/timing_resource_evidence.json"
+        ],
+        "rationale": "After code generation and memory/runtime static gates pass, collect real Vivado synthesis, implementation, timing, and resource evidence so symbolic estimates are not mistaken for hardware feasibility.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "case_vivado_synthesis",
+          "case_vivado_synthesis_report_check",
+          "case_vivado_implementation",
+          "case_vivado_implementation_report_check",
+          "timing_resource_check",
+          "required_real_tool_evidence_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The supplied state_summary reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests; no SACG-memory blocker is active for this review.",
+      "The candidate checker_summary reports six passed static checks with no errors or warnings: parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, tile_override_legality_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check. This audit treats those as current-stage static evidence only.",
+      "lanes=8 is consistently bound across all stages. For the visible tensor dimensions, 8 divides hidden_size=896, intermediate_size=4864, head_dim=64, and seq_len=16, so no supplied lane-divisibility conflict is visible.",
+      "Per-stage FFN tile overrides are authoritative and divide the corresponding dimensions: tile_m=16 divides seq_len=16; tile_k=128 divides hidden_size=896 for gate/up projections and intermediate_size=4864 for down projection; tile_n=128 divides intermediate_size=4864 for gate/up projections and hidden_size=896 for down projection. tile_override_legality_check reports pass.",
+      "Global tile_m=8, tile_n=24, and tile_k=8 are explicitly scoped as default_only in global_param_scope, with per-stage tile overrides taking precedence. This prevents the global defaults from silently changing the checked FFN tiling, provided later consumers preserve global_param_scope.",
+      "fifo_depth=16 is scoped as a local template default only. The candidate explicitly preserves Stage 3 edge buffer depths as authoritative, and fifo_contract_check reports pass.",
+      "Datapath widths are internally consistent with lanes and element width in the visible resource estimates: fp16 stages use datapath_bits=8*16=128 and fp32 residual stages use datapath_bits=8*32=256. Both widths pack cleanly into the 512-bit AXI data path according to stream_packing_axi_check.",
+      "The numeric binding plan preserves the visible fp16/fp32 policy: norm stages cast fp32 inputs to fp16 outputs, attention and down projection return fp32 for residual paths, residual adds remain fp32, and stream_contract_trace bit widths match per-stage input/output bits. No DSE parameter in the supplied summary requires changing model dimensions or numeric semantics.",
+      "Symbolic resource estimates are scoped as symbolic_first_order and used only for parameter-binding sanity. Visible counts match the bound shapes at first order: RMS/residual hidden tensors use 16*896=14336 elements, MLP intermediate tensors use 16*4864=77824 elements, FFN weights use 896*4864=4358144 elements, and attention weights use grouped-query dimensions for 1835008 elements.",
+      "The bandwidth estimate is scoped as symbolic_transfer_count_from_bound_params and not as board bandwidth or timing evidence. The board-side AXI facts are data_width_bits=512, data_bytes=64, alignment_bytes=64, and ddr_channels=1; per-stage aligned_bytes equal axi_beats*64 and total_aligned_bytes_per_layer is 31202816.",
+      "clock_target_mhz=0 is correctly scoped as unknown board shell clock and is not timing evidence. No synthesis, implementation, timing, or board feasibility claim is supported by the supplied current-stage evidence."
+    ],
+    "proposed_actions": [
+      "Handoff to parameter_binding.evidence_gate_auditor with a DSE legality audit, symbolic resource-risk register, tile/lane divisibility report, and later-stage evidence-obligation list.",
+      "Record implementation_package_static, timing_resource_check, and required_real_tool_evidence_check as not_run/later-stage obligations unless real implementation artifacts are actually present; do not convert symbolic estimates into hardware pass evidence.",
+      "Require code generation to consume per-stage params, numeric_binding_plan, stream_contract_trace, and global_param_scope so that global defaults cannot override checked stage-local tile, FIFO, or bit-width bindings.",
+      "Require Stage 5 memory/runtime planning to assign concrete base addresses, check 64-byte alignment and non-overlap, and reconcile transfer counts with multi-input stream semantics.",
+      "Require Stage 6+ real simulation, synthesis, implementation, timing/resource, and board evidence before any hardware feasibility or performance claim."
+    ],
+    "risks": [
+      "Later-stage resource risk: the large symbolic weight counts, especially 4358144 elements per FFN projection and 1835008 attention elements, may stress BRAM/URAM/DSP routing or external-memory bandwidth, but current evidence is only symbolic and cannot establish feasibility.",
+      "Later-stage timing risk: clock_target_mhz=0 leaves the board shell clock unknown; timing closure must remain blocked until real synthesis/implementation timing evidence is produced.",
+      "Later-stage scope-preservation risk: if code generation ignores global_param_scope and uses global tile or bit-width defaults as authoritative instead of per-stage params and stream contracts, it could silently alter legal tiling or numeric semantics.",
+      "Later-stage memory-planning risk: the static total of 31202816 aligned bytes per layer and single DDR channel require concrete base addresses, non-overlap, alignment, and transfer scheduling before any runtime or board claim.",
+      "Later-stage accounting risk: residual and activation_mul stages have multiple incoming streams in stream_contract_trace; memory/runtime planning must explicitly state which streams are external DDR transfers versus on-chip pipeline streams before interpreting per-stage transfer counts as runtime traffic."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "candidate_stage_artifact.bindings.resource_estimate",
+        "candidate_stage_artifact.bandwidth_estimate",
+        "candidate_stage_artifact.global_params",
+        "candidate_stage_artifact.global_param_scope",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.stage_gate_policy",
+        "candidate_stage_artifact.checker_results",
+        "dse_parameter_legality_audit.json",
+        "symbolic_resource_risk_register.json",
+        "tile_lane_divisibility_report.json",
+        "later_stage_evidence_obligation_list.json"
+      ],
+      "constraints": [
+        "constraint.arch.design_space",
+        "constraint.parameter.binding",
+        "constraint.resource.estimate",
+        "constraint.bandwidth.estimate",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.numeric.policy",
+        "constraint.stream.order",
+        "constraint.buffering.pipeline",
+        "constraint.tool.profile"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "parameter_binding",
+        "global_params",
+        "global_param_scope",
+        "board_axi_512_ddr4",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2"
+      ]
+    },
+    "schema_version": "spatialaccagent.dse_resource_risk_agent.v0",
+    "stage": "parameter_binding",
+    "status": "ready_for_parameter_binding_evidence_gate_with_later_stage_obligations",
+    "summary": "No current-stage DSE legality blocker is visible in the supplied artifact summary. The candidate binds lanes, per-stage tiles, datapath widths, FIFO defaults, resource estimates, and bandwidth estimates with static checker evidence and with explicit non-hardware scope. This is not synthesis, timing, implementation, or board-pass evidence; later stages must preserve the per-stage scope and collect real tool evidence."
+  },
+  "prompt_bytes": 54901,
+  "prompt_hash": "8b9bc048119c29a673a53c114f31cff59838841b04773839342bfb90725ded12",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.dse_resource_risk_agent.v0\",\"agent\":\"dse_resource_risk_agent\",\"stage\":\"parameter_binding\",\"status\":\"ready_for_parameter_binding_evidence_gate_with_later_stage_obligations\",\"summary\":\"No current-stage DSE legality blocker is visible in the supplied artifact summary. The candidate binds lanes, per-stage tiles, datapath widths, FIFO defaults, resource estimates, and bandwidth estimates with static checker evidence and with explicit non-hardware scope. This is not synthesis, timing, implementation, or board-pass evidence; later stages must preserve the per-stage scope and collect real tool evidence.\",\"sacg_focus\":{\"nodes\":[\"parameter_binding\",\"global_params\",\"global_param_scope\",\"board_axi_512_ddr4\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.arch.design_space\",\"constraint.parameter.binding\",\"constraint.resource.estimate\",\"constraint.bandwidth.estimate\",\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.numeric.policy\",\"constraint.stream.order\",\"constraint.buffering.pipeline\",\"constraint.tool.profile\"],\"artifacts\":[\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"candidate_stage_artifact.bindings.resource_estimate\",\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.global_params\",\"candidate_stage_artifact.global_param_scope\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.checker_results\",\"dse_parameter_legality_audit.json\",\"symbolic_resource_risk_register.json\",\"tile_lane_divisibility_report.json\",\"later_stage_evidence_obligation_list.json\"]},\"observations\":[\"The supplied state_summary reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests; no SACG-memory blocker is active for this review.\",\"The candidate checker_summary reports six passed static checks with no errors or warnings: parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, tile_override_legality_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check. This audit treats those as current-stage static evidence only.\",\"lanes=8 is consistently bound across all stages. For the visible tensor dimensions, 8 divides hidden_size=896, intermediate_size=4864, head_dim=64, and seq_len=16, so no supplied lane-divisibility conflict is visible.\",\"Per-stage FFN tile overrides are authoritative and divide the corresponding dimensions: tile_m=16 divides seq_len=16; tile_k=128 divides hidden_size=896 for gate/up projections and intermediate_size=4864 for down projection; tile_n=128 divides intermediate_size=4864 for gate/up projections and hidden_size=896 for down projection. tile_override_legality_check reports pass.\",\"Global tile_m=8, tile_n=24, and tile_k=8 are explicitly scoped as default_only in global_param_scope, with per-stage tile overrides taking precedence. This prevents the global defaults from silently changing the checked FFN tiling, provided later consumers preserve global_param_scope.\",\"fifo_depth=16 is scoped as a local template default only. The candidate explicitly preserves Stage 3 edge buffer depths as authoritative, and fifo_contract_check reports pass.\",\"Datapath widths are internally consistent with lanes and element width in the visible resource estimates: fp16 stages use datapath_bits=8*16=128 and fp32 residual stages use datapath_bits=8*32=256. Both widths pack cleanly into the 512-bit AXI data path according to stream_packing_axi_check.\",\"The numeric binding plan preserves the visible fp16/fp32 policy: norm stages cast fp32 inputs to fp16 outputs, attention and down projection return fp32 for residual paths, residual adds remain fp32, and stream_contract_trace bit widths match per-stage input/output bits. No DSE parameter in the supplied summary requires changing model dimensions or numeric semantics.\",\"Symbolic resource estimates are scoped as symbolic_first_order and used only for parameter-binding sanity. Visible counts match the bound shapes at first order: RMS/residual hidden tensors use 16*896=14336 elements, MLP intermediate tensors use 16*4864=77824 elements, FFN weights use 896*4864=4358144 elements, and attention weights use grouped-query dimensions for 1835008 elements.\",\"The bandwidth estimate is scoped as symbolic_transfer_count_from_bound_params and not as board bandwidth or timing evidence. The board-side AXI facts are data_width_bits=512, data_bytes=64, alignment_bytes=64, and ddr_channels=1; per-stage aligned_bytes equal axi_beats*64 and total_aligned_bytes_per_layer is 31202816.\",\"clock_target_mhz=0 is correctly scoped as unknown board shell clock and is not timing evidence. No synthesis, implementation, timing, or board feasibility claim is supported by the supplied current-stage evidence.\"],\"risks\":[\"Later-stage resource risk: the large symbolic weight counts, especially 4358144 elements per FFN projection and 1835008 attention elements, may stress BRAM/URAM/DSP routing or external-memory bandwidth, but current evidence is only symbolic and cannot establish feasibility.\",\"Later-stage timing risk: clock_target_mhz=0 leaves the board shell clock unknown; timing closure must remain blocked until real synthesis/implementation timing evidence is produced.\",\"Later-stage scope-preservation risk: if code generation ignores global_param_scope and uses global tile or bit-width defaults as authoritative instead of per-stage params and stream contracts, it could silently alter legal tiling or numeric semantics.\",\"Later-stage memory-planning risk: the static total of 31202816 aligned bytes per layer and single DDR channel require concrete base addresses, non-overlap, alignment, and transfer scheduling before any runtime or board claim.\",\"Later-stage accounting risk: residual and activation_mul stages have multiple incoming streams in stream_contract_trace; memory/runtime planning must explicitly state which streams are external DDR transfers versus on-chip pipeline streams before interpreting per-stage transfer counts as runtime traffic.\"],\"proposed_actions\":[\"Handoff to parameter_binding.evidence_gate_auditor with a DSE legality audit, symbolic resource-risk register, tile/lane divisibility report, and later-stage evidence-obligation list.\",\"Record implementation_package_static, timing_resource_check, and required_real_tool_evidence_check as not_run/later-stage obligations unless real implementation artifacts are actually present; do not convert symbolic estimates into hardware pass evidence.\",\"Require code generation to consume per-stage params, numeric_binding_plan, stream_contract_trace, and global_param_scope so that global defaults cannot override checked stage-local tile, FIFO, or bit-width bindings.\",\"Require Stage 5 memory/runtime planning to assign concrete base addresses, check 64-byte alignment and non-overlap, and reconcile transfer counts with multi-input stream semantics.\",\"Require Stage 6+ real simulation, synthesis, implementation, timing/resource, and board evidence before any hardware feasibility or performance claim.\"],\"executable_actions\":[{\"id\":\"parameter_binding.dse.emit_legality_resource_audits\",\"stage\":\"parameter_binding\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"Materialize the DSE handoff artifacts from the candidate binding and bind each lane, tile, datapath, FIFO, resource, and bandwidth statement to the supplied design-space, numeric, board AXI, resource, and stage-gate constraints. The action must record implementation, timing, and real-tool evidence as not_run/later-stage when no real tool artifacts are supplied.\",\"consumes\":[\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"candidate_stage_artifact.bindings\",\"candidate_stage_artifact.bindings.resource_estimate\",\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.global_params\",\"candidate_stage_artifact.global_param_scope\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.stream_contract_trace\"],\"produces\":[\"dse_parameter_legality_audit.json\",\"symbolic_resource_risk_register.json\",\"tile_lane_divisibility_report.json\",\"later_stage_evidence_obligation_list.json\"],\"tool_roles\":[\"sacg_validate\",\"parameter_binding_static_check\",\"implementation_package_static\",\"timing_resource_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"parameter_binding_static_check\",\"implementation_package_static\",\"timing_resource_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Block parameter_binding evidence-gate promotion; issue a bounded parameter-binding retry for any illegal lane/tile/bit-width/FIFO scope or for any unscoped claim of implementation, timing, or board evidence.\",\"requires_approval\":false},{\"id\":\"parameter_binding.evidence_gate.consume_dse_audits\",\"stage\":\"parameter_binding\",\"action_type\":\"evidence_gate_handoff\",\"rationale\":\"Let the evidence-gate auditor consume the DSE audit outputs without rewriting them, verify SACG linkage and trust barriers, and decide whether the current parameter_binding artifact can be promoted with later-stage obligations preserved.\",\"consumes\":[\"candidate_stage_artifact\",\"dse_parameter_legality_audit.json\",\"symbolic_resource_risk_register.json\",\"tile_lane_divisibility_report.json\",\"later_stage_evidence_obligation_list.json\",\"sacg_memory_truth\"],\"produces\":[\"artifact.stage4.parameter_binding_evidence_gate_audit\",\"artifact.stage4.parameter_binding_promotion_decision\"],\"tool_roles\":[\"team_aggregate\",\"sacg_validate\",\"parameter_binding_static_check\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"sacg_static_check\",\"parameter_binding_static_check\",\"sacg_memory_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Do not promote the candidate artifact; create an explicit retry or trust-barrier record naming the failed SACG constraint and the contaminated artifact boundary.\",\"requires_approval\":false},{\"id\":\"later_stage.codegen.preserve_parameter_scope\",\"stage\":\"code_generation\",\"action_type\":\"static_contract_enforcement\",\"rationale\":\"Prevent later generated code from silently changing DSE or numeric semantics by enforcing per-stage parameter precedence, checked tile overrides, local FIFO-default scope, stream bit widths, and numeric cast points.\",\"consumes\":[\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"artifact.stage3.pipeline_static_checks\",\"candidate_stage_artifact.bindings\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.global_param_scope\",\"dse_parameter_legality_audit.json\",\"tile_lane_divisibility_report.json\"],\"produces\":[\"artifact.stage5.codegen_parameter_scope_contract\",\"artifact.stage5.codegen_manifest_with_bound_params\"],\"tool_roles\":[\"codegen_contract_check\",\"codegen_package_static_check\",\"stream_plan_check\",\"transfer_count_check\"],\"acceptance_checkers\":[\"codegen_contract_check\",\"codegen_package_static_check\",\"stream_plan_check\",\"transfer_count_check\"],\"on_failure\":\"Localize the mismatch to template binding or codegen contract; request bounded template/codegen repair and do not change model dimensions, numeric policy, lanes, or tiles without approval.\",\"requires_approval\":false},{\"id\":\"later_stage.memory_runtime.assign_addresses_and_reconcile_transfers\",\"stage\":\"memory_runtime_planning\",\"action_type\":\"memory_runtime_plan\",\"rationale\":\"Convert the symbolic bandwidth estimate into a concrete memory/runtime plan with base addresses, 64-byte alignment, non-overlap, AXI beat counts, and explicit treatment of multi-input residual and activation streams.\",\"consumes\":[\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.stream_contract_trace\",\"artifact.input.target_board_profile\",\"artifact.stage3.pipeline_plan\",\"symbolic_resource_risk_register.json\",\"later_stage_evidence_obligation_list.json\"],\"produces\":[\"artifact.stage5.memory_runtime_plan\",\"artifact.stage5.address_map\",\"artifact.stage5.transfer_count_audit\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"deployment_board_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"deployment_board_check\"],\"on_failure\":\"Keep runtime and backend promotion blocked; repair the memory/runtime plan within the existing parameter contract or request approved re-binding if the memory layout cannot satisfy constraints.\",\"requires_approval\":true},{\"id\":\"later_stage.backend.collect_real_resource_timing_evidence\",\"stage\":\"backend_board\",\"action_type\":\"real_tool_execution\",\"rationale\":\"After code generation and memory/runtime static gates pass, collect real Vivado synthesis, implementation, timing, and resource evidence so symbolic estimates are not mistaken for hardware feasibility.\",\"consumes\":[\"artifact.stage5.codegen_manifest_with_bound_params\",\"artifact.stage5.memory_runtime_plan\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"symbolic_resource_risk_register.json\",\"later_stage_evidence_obligation_list.json\"],\"produces\":[\"backend_board/case_diagnostics/vivado_synthesis_report.json\",\"backend_board/case_diagnostics/vivado_implementation_report.json\",\"backend_board/case_diagnostics/timing_resource_evidence.json\"],\"tool_roles\":[\"case_vivado_synthesis\",\"case_vivado_synthesis_report_check\",\"case_vivado_implementation\",\"case_vivado_implementation_report_check\",\"timing_resource_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"real_tool.case_vivado_synthesis\",\"real_tool.case_vivado_synthesis_report_check\",\"real_tool.case_vivado_implementation\",\"real_tool.case_vivado_implementation_report_check\",\"timing_resource_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Use real tool output for contract-guided localization and bounded repair; do not claim timing/resource pass, do not loosen numeric tolerance, and do not skip verification layers before promotion.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any change to model dimensions, head structure, tensor shapes, or operation semantics to make a DSE choice fit.\",\"Any rebinding of lanes, tile sizes, datapath widths, FIFO semantics, or global-versus-per-stage parameter precedence outside the checked design space.\",\"Any numeric-policy change, including precision, cast points, rounding, saturation, residual precision, or RMSNorm epsilon.\",\"Concrete Stage 5 memory layout decisions such as base addresses, DDR channel mapping, or changes to transfer externalization policy.\",\"Any architecture, pipeline, major template, or board-integration change, and any attempt to treat symbolic estimates as synthesis, timing, resource, or board-pass evidence.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/dse_resource_risk_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/dse_resource_risk_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "parameter_binding.DSE and resource-risk engineer",
+  "used_fallback": false
+}

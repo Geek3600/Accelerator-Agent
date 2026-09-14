@@ -1,0 +1,2633 @@
+{
+  "attention_contract": {
+    "attention_kind": "gqa",
+    "causal": true,
+    "gqa_group_size": 7,
+    "head_dim": 64,
+    "kv_storage_policy": "bounded by target_max_seq_len inside the generated block; external KV-cache materialization requires a later memory-layout artifact",
+    "num_kv_heads": 2,
+    "num_q_heads": 14,
+    "position_encoding": {
+      "rope_theta": 1000000.0,
+      "type": "rope"
+    },
+    "seq_len_bound": 16,
+    "stage_boundary": "logical self_attention stage covers QKV projection, RoPE, causal GQA attention, and output projection for decoder-block planning"
+  },
+  "branch_join_contracts": {
+    "join_contracts": [
+      {
+        "fire_rule": "all required inputs valid before fire",
+        "input_edges": [
+          "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+          "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main"
+        ],
+        "node": "stage_02_residual_add_1",
+        "pairing_key": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ]
+      },
+      {
+        "fire_rule": "all required inputs valid before fire",
+        "input_edges": [
+          "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+          "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul"
+        ],
+        "node": "stage_06_activation_mul",
+        "pairing_key": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ]
+      },
+      {
+        "fire_rule": "all required inputs valid before fire",
+        "input_edges": [
+          "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+          "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main"
+        ],
+        "node": "stage_08_residual_add_2",
+        "pairing_key": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ]
+      }
+    ],
+    "split_contracts": [
+      {
+        "branch_dequeue_rule": "after duplication each branch observes its own downstream ready",
+        "duplicator": "ready_valid_broadcast_with_per_output_fifo",
+        "node": "stage_03_rms_norm_2",
+        "output_edges": [
+          "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+          "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch"
+        ],
+        "source_accept_rule": "source beat is accepted only when all branch FIFOs can enqueue the same token/tile/lane/word"
+      }
+    ]
+  },
+  "buffer_plan": [
+    {
+      "buffer_id": "buffer.edge_data_block_input_to_stage_00_rms_norm_1_input",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 32,
+      "edge_id": "edge.data.block_input.to.stage_00_rms_norm_1.input",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_block_input_to_stage_02_residual_add_1_residual_skip",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 64,
+      "edge_id": "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 32,
+      "edge_id": "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "decouple adjacent pipeline stages",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 32,
+      "edge_id": "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "decouple adjacent pipeline stages",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_02_residual_add_1_to_stage_03_rms_norm_2_main",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 32,
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "decouple adjacent pipeline stages",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_02_residual_add_1_to_stage_08_residual_add_2_residual_skip",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 64,
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_03_rms_norm_2_to_stage_04_mlp_gate_proj_mlp_gate_branch",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 64,
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_03_rms_norm_2_to_stage_05_mlp_up_proj_mlp_up_branch",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 64,
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_04_mlp_gate_proj_to_stage_06_activation_mul_mlp_gate_to_mul",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 32,
+      "edge_id": "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_05_mlp_up_proj_to_stage_06_activation_mul_mlp_up_to_mul",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 32,
+      "edge_id": "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_06_activation_mul_to_stage_07_mlp_down_proj_main",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 32,
+      "edge_id": "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "decouple adjacent pipeline stages",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_07_mlp_down_proj_to_stage_08_residual_add_2_main",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 32,
+      "edge_id": "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "decouple adjacent pipeline stages",
+      "resource_class": "on_chip_fifo"
+    },
+    {
+      "buffer_id": "buffer.edge_data_stage_08_residual_add_2_to_block_output_output",
+      "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
+      "depth": 32,
+      "edge_id": "edge.data.stage_08_residual_add_2.to.block_output.output",
+      "implementation": "trusted_queue_template",
+      "kind": "bounded_ready_valid_fifo",
+      "purpose": "preserve branch token order under backpressure",
+      "resource_class": "on_chip_fifo"
+    }
+  ],
+  "checker_results": [
+    {
+      "checker": "operator_order_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "operator_order=['rms_norm_1', 'self_attention', 'residual_add_1', 'rms_norm_2', 'mlp_gate_proj', 'mlp_up_proj', 'activation_mul', 'mlp_down_proj', 'residual_add_2']",
+      "warnings": []
+    },
+    {
+      "checker": "stream_data_edge_mirror_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "edges=13",
+      "warnings": []
+    },
+    {
+      "checker": "edge_stream_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "checked_edges=13",
+      "warnings": []
+    },
+    {
+      "checker": "shape_numeric_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "elem_bits=16, accumulator_bits=32",
+      "warnings": []
+    },
+    {
+      "checker": "branch_join_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "splits=1, joins=3",
+      "warnings": []
+    },
+    {
+      "checker": "buffer_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "buffers=13, allowed_depths=[32, 64]",
+      "warnings": []
+    },
+    {
+      "checker": "liveness_backpressure_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "directed graph is acyclic; bounded FIFOs provide elasticity and backpressure, not latency-equality proof",
+      "warnings": []
+    },
+    {
+      "checker": "memory_runtime_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "regions=6, axi_bits=512",
+      "warnings": []
+    },
+    {
+      "checker": "attention_semantics_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "q=14, kv=2, head_dim=64",
+      "warnings": []
+    },
+    {
+      "checker": "template_binding_static_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "stages=9, free_form_rtl_generation=false",
+      "warnings": []
+    }
+  ],
+  "checker_summary": {
+    "errors": [],
+    "failed": 0,
+    "passed": 10,
+    "warnings": []
+  },
+  "constraints_touched": [
+    "constraint.model.decoder",
+    "constraint.shape.model",
+    "constraint.template.library",
+    "constraint.arch.design_space",
+    "constraint.memory.board",
+    "constraint.runtime.board",
+    "constraint.cross_layer.input_consistency"
+  ],
+  "data_edges": [
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_00_rms_norm_1",
+      "edge_id": "edge.data.block_input.to.stage_00_rms_norm_1.input",
+      "flow_control": "ready_valid",
+      "kind": "input",
+      "src_port": "out",
+      "src_stage": "block_input",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "skip",
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+      "flow_control": "ready_valid",
+      "kind": "residual_skip",
+      "src_port": "residual",
+      "src_stage": "block_input",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_01_self_attention",
+      "edge_id": "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_00_rms_norm_1",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 448,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 28672,
+        "transfer_count_bytes": 28672,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "main",
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_01_self_attention",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_03_rms_norm_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_02_residual_add_1",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "skip",
+      "dst_stage": "stage_08_residual_add_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+      "flow_control": "ready_valid",
+      "kind": "residual_skip",
+      "src_port": "residual",
+      "src_stage": "stage_02_residual_add_1",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_04_mlp_gate_proj",
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+      "flow_control": "ready_valid",
+      "kind": "mlp_gate_branch",
+      "src_port": "out",
+      "src_stage": "stage_03_rms_norm_2",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 448,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 28672,
+        "transfer_count_bytes": 28672,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_05_mlp_up_proj",
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+      "flow_control": "ready_valid",
+      "kind": "mlp_up_branch",
+      "src_port": "out",
+      "src_stage": "stage_03_rms_norm_2",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 448,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 28672,
+        "transfer_count_bytes": 28672,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "lhs",
+      "dst_stage": "stage_06_activation_mul",
+      "edge_id": "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+      "flow_control": "ready_valid",
+      "kind": "mlp_gate_to_mul",
+      "src_port": "out",
+      "src_stage": "stage_04_mlp_gate_proj",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 2432,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 4864
+        },
+        "transfer_count_aligned_bytes": 155648,
+        "transfer_count_bytes": 155648,
+        "transfer_count_elements": 77824,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "rhs",
+      "dst_stage": "stage_06_activation_mul",
+      "edge_id": "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+      "flow_control": "ready_valid",
+      "kind": "mlp_up_to_mul",
+      "src_port": "out",
+      "src_stage": "stage_05_mlp_up_proj",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 2432,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 4864
+        },
+        "transfer_count_aligned_bytes": 155648,
+        "transfer_count_bytes": 155648,
+        "transfer_count_elements": 77824,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_07_mlp_down_proj",
+      "edge_id": "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_06_activation_mul",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 2432,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 4864
+        },
+        "transfer_count_aligned_bytes": 155648,
+        "transfer_count_bytes": 155648,
+        "transfer_count_elements": 77824,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "main",
+      "dst_stage": "stage_08_residual_add_2",
+      "edge_id": "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_07_mlp_down_proj",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "block_output",
+      "edge_id": "edge.data.stage_08_residual_add_2.to.block_output.output",
+      "flow_control": "ready_valid",
+      "kind": "output",
+      "src_port": "out",
+      "src_stage": "stage_08_residual_add_2",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    }
+  ],
+  "design_space_refs": [
+    "axi_ddr",
+    "bank_counts",
+    "clocking",
+    "fifo_depths",
+    "fixed_model_binding",
+    "implementation_sweep",
+    "lanes",
+    "numeric_widths",
+    "tile_sizes"
+  ],
+  "flow_control": {
+    "deadlock_rule": "directed graph must be acyclic, or every cycle must include a bounded buffer and a checker-backed ready path proof",
+    "join_policy": "all_required_inputs_valid_before_fire",
+    "protocol": "ready_valid",
+    "split_policy": "source beat is duplicated into all branch FIFOs atomically; branch dequeue observes downstream ready independently"
+  },
+  "memory_policy": {
+    "activation_policy": "stream_between_stages",
+    "board_memory_constraints": [
+      "constraint.memory.board",
+      "constraint.runtime.board"
+    ],
+    "weight_policy": "template_bound"
+  },
+  "memory_schedule": {
+    "activation_buffers": [
+      "activation_ping",
+      "activation_pong"
+    ],
+    "activation_flow": "input DDR read -> block pipeline -> output DDR write",
+    "axi_ddr_requirements": [
+      "preserve board-provided data width and alignment",
+      "all read/write transfer counts must be derived from tensor shape and element width",
+      "host/runtime commands must use the board profile from Stage 0",
+      "exact base addresses are assigned by Stage 5 memory_layout and must remain aligned to board_axi.alignment_bytes"
+    ],
+    "board_axi": {
+      "addr_width_bits": 37,
+      "alignment_bytes": 64,
+      "calibration_done_signal": "c0_init_calib_complete",
+      "core_side_interface_name": "c0_ddr4_s_axi_*",
+      "data_bytes": 64,
+      "data_width_bits": 512,
+      "ddr_channels": 1,
+      "ddr_type": "DDR4",
+      "id_width_bits": 4,
+      "protocol": "AXI",
+      "source": "constraint.memory.board.memory_system",
+      "wstrb_width_bits": 64
+    },
+    "board_memory_refs": {
+      "memory_system": {
+        "address_map": {
+          "control_registers": "0x3000000000",
+          "ddr_base": "0x2800000000",
+          "output_abs": "0x28092f1000"
+        },
+        "alignment_requirement_bytes": null,
+        "axi_addr_width_bits": 37,
+        "axi_clock": "c0_ddr4_s_axi_clk",
+        "axi_clock_frequency_hz": null,
+        "axi_data_bytes": 64,
+        "axi_data_width_bits": 512,
+        "axi_id_width_bits": 4,
+        "axi_protocol": "AXI",
+        "axi_protocol_version": null,
+        "axi_reset": "c0_ddr4_s_axi_rst_n",
+        "axi_reset_polarity": null,
+        "axi_wstrb_width_bits": 64,
+        "board_axi_prefix": "c0_ddr4_s_axi",
+        "burst_length_policy": null,
+        "calibration_done_signal": "c0_init_calib_complete",
+        "core_side_interface_name": "c0_ddr4_s_axi_*",
+        "ddr_capacity_bytes": null,
+        "ddr_channels": 1,
+        "ddr_type": "DDR4",
+        "ddr_word_width_bits": 512,
+        "endianness": null,
+        "evidence": [
+          {
+            "chunk_id": "board:000003",
+            "excerpt": "\u5f53\u524d\u6838\u5fc3\u4f7f\u7528\u4e00\u4e2a DDR AXI channel\uff1a`c0_ddr4_s_axi_*`\u3002... `ddr_channels`: 1",
+            "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board/runtime_axi_ddr.md"
+          },
+          {
+            "chunk_id": "board:000003",
+            "excerpt": "\u6570\u636e\u4f4d\u5bbd\uff1a`C_DATA_WIDTH = 512`\u3002* AXI \u6570\u636e\u5bbd\u5ea6\uff1a512 bit\u3002... `ddr_word_width_bits`: 512",
+            "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board/runtime_axi_ddr.md"
+          },
+          {
+            "chunk_id": "board:000003",
+            "excerpt": "AXI beat \u5b57\u8282\u6570\uff1a64 bytes\u3002",
+            "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board/runtime_axi_ddr.md"
+          },
+          {
+            "chunk_id": "board:000003",
+            "excerpt": "AXI \u5730\u5740\u5bbd\u5ea6\uff1a37 bit\uff0c\u5178\u578b\u4fe1\u53f7\u4e3a `c0_ddr4_s_axi_awaddr[36:0]` \u548c `c0_ddr4_s_axi_araddr[36:0]`\u3002",
+            "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board/runtime_axi_ddr.md"
+          },
+          {
+            "chunk_id": "board:000003",
+            "excerpt": "AXI ID \u5bbd\u5ea6\uff1a4 bit\uff0c\u5178\u578b\u4fe1\u53f7\u4e3a `c0_ddr4_s_axi_awid[3:0]` \u548c `c0_ddr4_s_axi_arid[3:0]`\u3002",
+            "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board/runtime_axi_ddr.md"
+          },
+          {
+            "chunk_id": "board:000003",
+            "excerpt": "DDR UI / AXI clock\uff1a`c0_ddr4_s_axi_clk`\u3002DDR reset\uff1a`c0_ddr4_s_axi_rst_n`\u3002DDR calibration done\uff1a`c0_init_calib_complete`\u3002",
+            "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board/runtime_axi_ddr.md"
+          }
+        ],
+        "real_board_reference_rtl": "verification/rtl/cnn_core.sv"
+      },
+      "runtime_fields": [
+        "board_run_command",
+        "control_base_address",
+        "control_protocol",
+        "ctrl_base",
+        "ddr_base",
+        "ddr_base_address",
+        "ddr_image_default",
+        "ddr_image_path_default",
+        "device_id_default",
+        "evidence",
+        "mimic_dir",
+        "output_abs",
+        "output_address_abs",
+        "output_size_bytes",
+        "register_map",
+        "remote_host",
+        "remote_port",
+        "runtime_dir",
+        "xdma_id_default"
+      ]
+    },
+    "num_layers": 24,
+    "per_layer_weight_bytes": 29826048,
+    "policy": "double_buffered_weights_and_streamed_activations",
+    "required_regions": [
+      {
+        "alignment_bytes": 64,
+        "name": "input_tokens",
+        "role": "activation_input",
+        "size_bytes": 57344,
+        "size_bytes_formula": "seq_len * hidden_size * block_input_bits / 8"
+      },
+      {
+        "alignment_bytes": 64,
+        "name": "output_tokens",
+        "role": "activation_output",
+        "size_bytes": 57344,
+        "size_bytes_formula": "seq_len * hidden_size * block_output_bits / 8"
+      },
+      {
+        "alignment_bytes": 64,
+        "name": "activation_ping",
+        "role": "activation_buffer",
+        "size_bytes": 155648,
+        "size_bytes_formula": "max(seq_len * hidden_size * block_bits, seq_len * intermediate_size * elem_bits) / 8"
+      },
+      {
+        "alignment_bytes": 64,
+        "name": "activation_pong",
+        "role": "activation_buffer",
+        "size_bytes": 155648,
+        "size_bytes_formula": "same as activation_ping"
+      },
+      {
+        "alignment_bytes": 64,
+        "name": "weight_buffer_a",
+        "role": "weight_buffer",
+        "size_bytes": 29826048,
+        "size_bytes_formula": "per_layer(qkv + out_proj + gate + up + down + norms)"
+      },
+      {
+        "alignment_bytes": 64,
+        "name": "weight_buffer_b",
+        "role": "weight_buffer",
+        "size_bytes": 29826048,
+        "size_bytes_formula": "same as weight_buffer_a"
+      }
+    ],
+    "runtime_config_requirements": {
+      "c2h_device_template": "/dev/xdma1_c2h_0",
+      "c2h_read_targets": [
+        {
+          "base": "0x3000000000",
+          "name": "status_registers",
+          "role": "status polling"
+        },
+        {
+          "base": "0x28092f1000",
+          "name": "output_tokens",
+          "role": "output data reads"
+        }
+      ],
+      "command_sequence": [
+        "write input and first-layer weights through XDMA H2C into DDR/control regions",
+        "write start/control register",
+        "prefetch next-layer weights into inactive weight buffer while active layer computes",
+        "poll status register through XDMA C2H until done/status changes",
+        "read output header/data from output DDR region"
+      ],
+      "control_protocol": "xdma_raw_register_and_ddr",
+      "device_template_source": "constraint.runtime.board.control_protocol + constraint.runtime.board.xdma_id_default",
+      "h2c_device_template": "/dev/xdma1_h2c_0",
+      "h2c_write_targets": [
+        {
+          "base": "0x3000000000",
+          "name": "control_registers",
+          "role": "start/config writes"
+        },
+        {
+          "base": "0x2800000000",
+          "name": "ddr_input_and_weights",
+          "role": "input activations and weight image writes"
+        }
+      ],
+      "xdma_id_default": 1
+    },
+    "sequence_semantics": {
+      "runtime_cfg_rule": "runtime sequence length must be <= target_max_seq_len; transfer counts derive from the configured sequence length",
+      "target_seq_len_role": "compile-time maximum and default fixed tile bound for generated artifacts"
+    },
+    "target_seq_len": 16,
+    "weight_buffers": [
+      "weight_buffer_a",
+      "weight_buffer_b"
+    ],
+    "weight_flow": "while layer N computes, prefetch layer N+1 weights into the inactive weight buffer"
+  },
+  "model_type": "qwen2",
+  "multi_layer_execution": {
+    "layer_order": "sequential_layers_with_inter_layer_streaming",
+    "num_layers": 24,
+    "pipeline_overlap": "next token may enter stage_0 when backpressure allows; do not serialize whole-token full-block execution unless forced by dependencies",
+    "weight_prefetch": "double_buffer_next_layer_weights"
+  },
+  "numeric_stream_policy": {
+    "accumulator_bits": 32,
+    "activation_bits": 16,
+    "policy_id": "current_run_numeric_policy.md",
+    "rounding": "nearest_even",
+    "saturation": false,
+    "scale_bits": 16,
+    "source": "constraint.numeric.policy.default_rules",
+    "weight_bits": 16
+  },
+  "pipeline_style": "operator_stream_pipeline",
+  "schema_version": "spatialaccagent.pipeline_plan.v0",
+  "stage": "pipeline_planning",
+  "stage_gate_policy": {
+    "current_stage_acceptance": [
+      "operator order, edge graph, stream order, tensor shape, element width, branch/join, buffer, liveness, attention, template, memory/runtime handoff contracts must be checker-backed",
+      "symbolic_first_order latency is only planning metadata and must not be used as throughput, timing, or hardware pass evidence",
+      "stream_edges must mirror data_edges including block_input, residual-skip, and block_output boundary edges",
+      "buffer implementations must be concrete bounded ready/valid FIFOs; ping-pong buffers are reserved for memory layout artifacts"
+    ],
+    "later_stage_obligations": [
+      "Stage 4 binds final per-template parameters from this contract",
+      "Stage 5 assigns concrete memory base addresses and generates/elaborates template-bound Chisel",
+      "Stage 6+ supplies real VCS/Verilator/Vivado/board evidence; Stage 3 must not claim hardware pass"
+    ],
+    "risk_classification_rule": "If checker_results pass, do not list those resolved current-stage items as risks. Put later-stage obligations in proposed_actions unless a current Stage 3 checker failed."
+  },
+  "stages": [
+    {
+      "bound_params": {
+        "eps": {
+          "source": "artifact.input.model_config.norm.eps",
+          "status": "bound",
+          "value": 1e-06
+        },
+        "hidden_size": {
+          "source": "constraint.shape.model.hidden_size",
+          "status": "bound",
+          "value": 896
+        },
+        "input_bits": {
+          "dtype": "fp32",
+          "source": "constraint.numeric.policy.default_rules.acc_dtype",
+          "status": "bound",
+          "value": 32
+        },
+        "lanes": {
+          "candidate_values": [
+            8,
+            16,
+            32
+          ],
+          "legal_values": [
+            8,
+            16,
+            32
+          ],
+          "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
+          "status": "bound",
+          "value": 8
+        },
+        "output_bits": {
+          "dtype": "fp16",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 16
+        }
+      },
+      "constraints_emitted": [
+        "shape",
+        "numeric",
+        "stream",
+        "beat"
+      ],
+      "index": 0,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "kind": "norm",
+      "latency": {
+        "cycles": 1792,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 32,
+        "internal_elem_bits": 32,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 16,
+        "source": "constraint.numeric.policy.default_rules",
+        "weight_bits": 16
+      },
+      "op": "rms_norm_1",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "required_params": [
+        "hidden_size",
+        "lanes",
+        "input_bits",
+        "output_bits",
+        "eps"
+      ],
+      "source": "Norm.scala",
+      "stage_id": "stage_00_rms_norm_1",
+      "template_id": "norm"
+    },
+    {
+      "bound_params": {
+        "elem_bits": {
+          "dtype": "fp16",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 16
+        },
+        "head_dim": {
+          "source": "constraint.shape.model.head_dim",
+          "status": "bound",
+          "value": 64
+        },
+        "hidden_size": {
+          "source": "constraint.shape.model.hidden_size",
+          "status": "bound",
+          "value": 896
+        },
+        "lanes": {
+          "candidate_values": [
+            8,
+            16,
+            32
+          ],
+          "legal_values": [
+            8,
+            16,
+            32
+          ],
+          "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
+          "status": "bound",
+          "value": 8
+        },
+        "num_kv_heads": {
+          "source": "constraint.shape.model.num_kv_heads",
+          "status": "bound",
+          "value": 2
+        },
+        "num_q_heads": {
+          "source": "constraint.shape.model.num_q_heads",
+          "status": "bound",
+          "value": 14
+        },
+        "seq_len": {
+          "source": "constraint.shape.model.target_max_seq_len",
+          "status": "bound",
+          "value": 16
+        }
+      },
+      "constraints_emitted": [
+        "shape",
+        "numeric",
+        "stream",
+        "beat",
+        "memory",
+        "liveness"
+      ],
+      "index": 1,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "kind": "attention",
+      "latency": {
+        "cycles": 30464,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 16,
+        "internal_elem_bits": 16,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 32,
+        "source": "constraint.numeric.policy.default_rules",
+        "weight_bits": 16
+      },
+      "op": "self_attention",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "required_params": [
+        "hidden_size",
+        "num_q_heads",
+        "num_kv_heads",
+        "head_dim",
+        "seq_len",
+        "lanes",
+        "elem_bits"
+      ],
+      "source": "Attention.scala",
+      "stage_id": "stage_01_self_attention",
+      "template_id": "attention"
+    },
+    {
+      "bound_params": {
+        "elem_bits": {
+          "dtype": "fp16",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 16
+        },
+        "hidden_size": {
+          "source": "constraint.shape.model.hidden_size",
+          "status": "bound",
+          "value": 896
+        },
+        "lanes": {
+          "candidate_values": [
+            8,
+            16,
+            32
+          ],
+          "legal_values": [
+            8,
+            16,
+            32
+          ],
+          "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
+          "status": "bound",
+          "value": 8
+        }
+      },
+      "constraints_emitted": [
+        "shape",
+        "numeric",
+        "stream",
+        "beat"
+      ],
+      "index": 2,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "kind": "residual",
+      "latency": {
+        "cycles": 1792,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 32,
+        "internal_elem_bits": 32,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 32,
+        "source": "constraint.numeric.policy.default_rules",
+        "weight_bits": 16
+      },
+      "op": "residual_add_1",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "required_params": [
+        "hidden_size",
+        "lanes",
+        "elem_bits"
+      ],
+      "source": "Residual.scala",
+      "stage_id": "stage_02_residual_add_1",
+      "template_id": "residual"
+    },
+    {
+      "bound_params": {
+        "eps": {
+          "source": "artifact.input.model_config.norm.eps",
+          "status": "bound",
+          "value": 1e-06
+        },
+        "hidden_size": {
+          "source": "constraint.shape.model.hidden_size",
+          "status": "bound",
+          "value": 896
+        },
+        "input_bits": {
+          "dtype": "fp32",
+          "source": "constraint.numeric.policy.default_rules.acc_dtype",
+          "status": "bound",
+          "value": 32
+        },
+        "lanes": {
+          "candidate_values": [
+            8,
+            16,
+            32
+          ],
+          "legal_values": [
+            8,
+            16,
+            32
+          ],
+          "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
+          "status": "bound",
+          "value": 8
+        },
+        "output_bits": {
+          "dtype": "fp16",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 16
+        }
+      },
+      "constraints_emitted": [
+        "shape",
+        "numeric",
+        "stream",
+        "beat"
+      ],
+      "index": 3,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "kind": "norm",
+      "latency": {
+        "cycles": 1792,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 32,
+        "internal_elem_bits": 32,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 16,
+        "source": "constraint.numeric.policy.default_rules",
+        "weight_bits": 16
+      },
+      "op": "rms_norm_2",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "required_params": [
+        "hidden_size",
+        "lanes",
+        "input_bits",
+        "output_bits",
+        "eps"
+      ],
+      "source": "Norm.scala",
+      "stage_id": "stage_03_rms_norm_2",
+      "template_id": "norm"
+    },
+    {
+      "bound_params": {
+        "elem_bits": {
+          "dtype": "fp16",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 16
+        },
+        "hidden_size": {
+          "source": "constraint.shape.model.hidden_size",
+          "status": "bound",
+          "value": 896
+        },
+        "intermediate_size": {
+          "source": "constraint.shape.model.intermediate_size",
+          "status": "bound",
+          "value": 4864
+        },
+        "lanes": {
+          "candidate_values": [
+            8,
+            16,
+            32
+          ],
+          "legal_values": [
+            8,
+            16,
+            32
+          ],
+          "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
+          "status": "bound",
+          "value": 8
+        },
+        "tile_k": {
+          "candidate_values": [
+            128,
+            64
+          ],
+          "divides": 896,
+          "legal_values": [
+            128,
+            64
+          ],
+          "source": "constraint.arch.design_space.search_params.tile_sizes.ffn_gate_up.tile_k_candidates",
+          "status": "bound",
+          "value": 128
+        },
+        "tile_m": {
+          "candidate_values": [
+            16,
+            1,
+            2,
+            4,
+            8
+          ],
+          "divides": 16,
+          "legal_values": [
+            16,
+            1,
+            2,
+            4,
+            8
+          ],
+          "source": "constraint.arch.design_space.search_params.tile_sizes.ffn_gate_up.tile_m_candidates",
+          "status": "bound",
+          "value": 16
+        },
+        "tile_n": {
+          "candidate_values": [
+            128,
+            64,
+            256
+          ],
+          "divides": 4864,
+          "legal_values": [
+            128,
+            64,
+            256
+          ],
+          "source": "constraint.arch.design_space.search_params.tile_sizes.ffn_gate_up.tile_n_candidates",
+          "status": "bound",
+          "value": 128
+        }
+      },
+      "constraints_emitted": [
+        "shape",
+        "numeric",
+        "stream",
+        "beat",
+        "memory"
+      ],
+      "index": 4,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "kind": "mlp",
+      "latency": {
+        "cycles": 8716288,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 4864
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 16,
+        "internal_elem_bits": 16,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 16,
+        "source": "constraint.numeric.policy.default_rules",
+        "weight_bits": 16
+      },
+      "op": "mlp_gate_proj",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "required_params": [
+        "hidden_size",
+        "intermediate_size",
+        "lanes",
+        "tile_m",
+        "tile_n",
+        "tile_k",
+        "elem_bits"
+      ],
+      "source": "FFN.scala",
+      "stage_id": "stage_04_mlp_gate_proj",
+      "template_id": "ffn"
+    },
+    {
+      "bound_params": {
+        "elem_bits": {
+          "dtype": "fp16",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 16
+        },
+        "hidden_size": {
+          "source": "constraint.shape.model.hidden_size",
+          "status": "bound",
+          "value": 896
+        },
+        "intermediate_size": {
+          "source": "constraint.shape.model.intermediate_size",
+          "status": "bound",
+          "value": 4864
+        },
+        "lanes": {
+          "candidate_values": [
+            8,
+            16,
+            32
+          ],
+          "legal_values": [
+            8,
+            16,
+            32
+          ],
+          "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
+          "status": "bound",
+          "value": 8
+        },
+        "tile_k": {
+          "candidate_values": [
+            128,
+            64
+          ],
+          "divides": 896,
+          "legal_values": [
+            128,
+            64
+          ],
+          "source": "constraint.arch.design_space.search_params.tile_sizes.ffn_gate_up.tile_k_candidates",
+          "status": "bound",
+          "value": 128
+        },
+        "tile_m": {
+          "candidate_values": [
+            16,
+            1,
+            2,
+            4,
+            8
+          ],
+          "divides": 16,
+          "legal_values": [
+            16,
+            1,
+            2,
+            4,
+            8
+          ],
+          "source": "constraint.arch.design_space.search_params.tile_sizes.ffn_gate_up.tile_m_candidates",
+          "status": "bound",
+          "value": 16
+        },
+        "tile_n": {
+          "candidate_values": [
+            128,
+            64,
+            256
+          ],
+          "divides": 4864,
+          "legal_values": [
+            128,
+            64,
+            256
+          ],
+          "source": "constraint.arch.design_space.search_params.tile_sizes.ffn_gate_up.tile_n_candidates",
+          "status": "bound",
+          "value": 128
+        }
+      },
+      "constraints_emitted": [
+        "shape",
+        "numeric",
+        "stream",
+        "beat",
+        "memory"
+      ],
+      "index": 5,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "kind": "mlp",
+      "latency": {
+        "cycles": 8716288,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 4864
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 16,
+        "internal_elem_bits": 16,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 16,
+        "source": "constraint.numeric.policy.default_rules",
+        "weight_bits": 16
+      },
+      "op": "mlp_up_proj",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "required_params": [
+        "hidden_size",
+        "intermediate_size",
+        "lanes",
+        "tile_m",
+        "tile_n",
+        "tile_k",
+        "elem_bits"
+      ],
+      "source": "FFN.scala",
+      "stage_id": "stage_05_mlp_up_proj",
+      "template_id": "ffn"
+    },
+    {
+      "bound_params": {
+        "elem_bits": {
+          "dtype": "fp16",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 16
+        },
+        "hidden_size": {
+          "source": "constraint.shape.model.intermediate_size",
+          "status": "bound",
+          "value": 4864
+        },
+        "lanes": {
+          "candidate_values": [
+            8,
+            16,
+            32
+          ],
+          "legal_values": [
+            8,
+            16,
+            32
+          ],
+          "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
+          "status": "bound",
+          "value": 8
+        }
+      },
+      "constraints_emitted": [
+        "shape",
+        "numeric",
+        "stream",
+        "beat"
+      ],
+      "index": 6,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "kind": "activation",
+      "latency": {
+        "cycles": 9728,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 4864
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 16,
+        "internal_elem_bits": 16,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 16,
+        "source": "constraint.numeric.policy.default_rules",
+        "weight_bits": 16
+      },
+      "op": "activation_mul",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "required_params": [
+        "hidden_size",
+        "lanes",
+        "elem_bits"
+      ],
+      "source": "Elementwise.scala",
+      "stage_id": "stage_06_activation_mul",
+      "template_id": "elementwise"
+    },
+    {
+      "bound_params": {
+        "elem_bits": {
+          "dtype": "fp16",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 16
+        },
+        "hidden_size": {
+          "source": "constraint.shape.model.hidden_size",
+          "status": "bound",
+          "value": 896
+        },
+        "intermediate_size": {
+          "source": "constraint.shape.model.intermediate_size",
+          "status": "bound",
+          "value": 4864
+        },
+        "lanes": {
+          "candidate_values": [
+            8,
+            16,
+            32
+          ],
+          "legal_values": [
+            8,
+            16,
+            32
+          ],
+          "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
+          "status": "bound",
+          "value": 8
+        },
+        "tile_k": {
+          "candidate_values": [
+            128,
+            64
+          ],
+          "divides": 4864,
+          "legal_values": [
+            128,
+            64
+          ],
+          "source": "constraint.arch.design_space.search_params.tile_sizes.ffn_down.tile_k_candidates",
+          "status": "bound",
+          "value": 128
+        },
+        "tile_m": {
+          "candidate_values": [
+            16,
+            1,
+            2,
+            4,
+            8
+          ],
+          "divides": 16,
+          "legal_values": [
+            16,
+            1,
+            2,
+            4,
+            8
+          ],
+          "source": "constraint.arch.design_space.search_params.tile_sizes.ffn_down.tile_m_candidates",
+          "status": "bound",
+          "value": 16
+        },
+        "tile_n": {
+          "candidate_values": [
+            128,
+            64
+          ],
+          "divides": 896,
+          "legal_values": [
+            128,
+            64
+          ],
+          "source": "constraint.arch.design_space.search_params.tile_sizes.ffn_down.tile_n_candidates",
+          "status": "bound",
+          "value": 128
+        }
+      },
+      "constraints_emitted": [
+        "shape",
+        "numeric",
+        "stream",
+        "beat",
+        "memory"
+      ],
+      "index": 7,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 4864
+      },
+      "kind": "mlp",
+      "latency": {
+        "cycles": 8716288,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 16,
+        "internal_elem_bits": 16,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 32,
+        "source": "constraint.numeric.policy.default_rules",
+        "weight_bits": 16
+      },
+      "op": "mlp_down_proj",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "required_params": [
+        "hidden_size",
+        "intermediate_size",
+        "lanes",
+        "tile_m",
+        "tile_n",
+        "tile_k",
+        "elem_bits"
+      ],
+      "source": "FFN.scala",
+      "stage_id": "stage_07_mlp_down_proj",
+      "template_id": "ffn"
+    },
+    {
+      "bound_params": {
+        "elem_bits": {
+          "dtype": "fp16",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 16
+        },
+        "hidden_size": {
+          "source": "constraint.shape.model.hidden_size",
+          "status": "bound",
+          "value": 896
+        },
+        "lanes": {
+          "candidate_values": [
+            8,
+            16,
+            32
+          ],
+          "legal_values": [
+            8,
+            16,
+            32
+          ],
+          "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
+          "status": "bound",
+          "value": 8
+        }
+      },
+      "constraints_emitted": [
+        "shape",
+        "numeric",
+        "stream",
+        "beat"
+      ],
+      "index": 8,
+      "input_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "kind": "residual",
+      "latency": {
+        "cycles": 1792,
+        "estimate_kind": "symbolic_first_order",
+        "formula_inputs": {
+          "hidden_size": 896,
+          "intermediate_size": 4864,
+          "lanes": 8,
+          "seq_len": 16,
+          "stream_width": 896
+        },
+        "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence"
+      },
+      "numeric_contract": {
+        "accumulator_bits": 32,
+        "input_bits": 32,
+        "internal_elem_bits": 32,
+        "lanes": 8,
+        "numeric_policy_id": "current_run_numeric_policy.md",
+        "output_bits": 32,
+        "source": "constraint.numeric.policy.default_rules",
+        "weight_bits": 16
+      },
+      "op": "residual_add_2",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 896
+      },
+      "required_params": [
+        "hidden_size",
+        "lanes",
+        "elem_bits"
+      ],
+      "source": "Residual.scala",
+      "stage_id": "stage_08_residual_add_2",
+      "template_id": "residual"
+    }
+  ],
+  "status": "ready",
+  "stream_edges": [
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_00_rms_norm_1",
+      "edge_id": "edge.data.block_input.to.stage_00_rms_norm_1.input",
+      "flow_control": "ready_valid",
+      "kind": "input",
+      "src_port": "out",
+      "src_stage": "block_input",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "skip",
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+      "flow_control": "ready_valid",
+      "kind": "residual_skip",
+      "src_port": "residual",
+      "src_stage": "block_input",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_01_self_attention",
+      "edge_id": "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_00_rms_norm_1",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 448,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 28672,
+        "transfer_count_bytes": 28672,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "main",
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_01_self_attention",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_03_rms_norm_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_02_residual_add_1",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "skip",
+      "dst_stage": "stage_08_residual_add_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+      "flow_control": "ready_valid",
+      "kind": "residual_skip",
+      "src_port": "residual",
+      "src_stage": "stage_02_residual_add_1",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_04_mlp_gate_proj",
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+      "flow_control": "ready_valid",
+      "kind": "mlp_gate_branch",
+      "src_port": "out",
+      "src_stage": "stage_03_rms_norm_2",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 448,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 28672,
+        "transfer_count_bytes": 28672,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_05_mlp_up_proj",
+      "edge_id": "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+      "flow_control": "ready_valid",
+      "kind": "mlp_up_branch",
+      "src_port": "out",
+      "src_stage": "stage_03_rms_norm_2",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 448,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 28672,
+        "transfer_count_bytes": 28672,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "lhs",
+      "dst_stage": "stage_06_activation_mul",
+      "edge_id": "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+      "flow_control": "ready_valid",
+      "kind": "mlp_gate_to_mul",
+      "src_port": "out",
+      "src_stage": "stage_04_mlp_gate_proj",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 2432,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 4864
+        },
+        "transfer_count_aligned_bytes": 155648,
+        "transfer_count_bytes": 155648,
+        "transfer_count_elements": 77824,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "rhs",
+      "dst_stage": "stage_06_activation_mul",
+      "edge_id": "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+      "flow_control": "ready_valid",
+      "kind": "mlp_up_to_mul",
+      "src_port": "out",
+      "src_stage": "stage_05_mlp_up_proj",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 2432,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 4864
+        },
+        "transfer_count_aligned_bytes": 155648,
+        "transfer_count_bytes": 155648,
+        "transfer_count_elements": 77824,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "stage_07_mlp_down_proj",
+      "edge_id": "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_06_activation_mul",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 2432,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 16,
+        "element_bits": 16,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 16,
+        "stream_beat_bits": 128,
+        "stream_beats_per_axi_beat": 4,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 4864
+        },
+        "transfer_count_aligned_bytes": 155648,
+        "transfer_count_bytes": 155648,
+        "transfer_count_elements": 77824,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "main",
+      "dst_stage": "stage_08_residual_add_2",
+      "edge_id": "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+      "flow_control": "ready_valid",
+      "kind": "main",
+      "src_port": "out",
+      "src_stage": "stage_07_mlp_down_proj",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    },
+    {
+      "backpressure": "dst_ready_propagates_to_src",
+      "dst_port": "in",
+      "dst_stage": "block_output",
+      "edge_id": "edge.data.stage_08_residual_add_2.to.block_output.output",
+      "flow_control": "ready_valid",
+      "kind": "output",
+      "src_port": "out",
+      "src_stage": "stage_08_residual_add_2",
+      "stream_contract": {
+        "axi_alignment_bytes": 64,
+        "axi_beats": 896,
+        "axi_data_width_bits": 512,
+        "dst_input_bits": 32,
+        "element_bits": 32,
+        "producer_consumer_pairing": "same token/tile/lane/word order; consumers must not reinterpret layout",
+        "src_output_bits": 32,
+        "stream_beat_bits": 256,
+        "stream_beats_per_axi_beat": 2,
+        "stream_order": [
+          "token",
+          "tile",
+          "lane",
+          "word"
+        ],
+        "tensor": {
+          "seq_len": 16,
+          "width": 896
+        },
+        "transfer_count_aligned_bytes": 57344,
+        "transfer_count_bytes": 57344,
+        "transfer_count_elements": 14336,
+        "valid_byte_policy": "full_beats_only"
+      },
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "transfer_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ]
+    }
+  ]
+}

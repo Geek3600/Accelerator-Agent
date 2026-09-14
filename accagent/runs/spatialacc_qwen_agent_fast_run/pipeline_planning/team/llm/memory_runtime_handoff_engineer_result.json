@@ -1,0 +1,324 @@
+{
+  "agent": "memory_runtime_handoff_engineer",
+  "duration_sec": 631.1046200010023,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "memory_runtime_handoff_engineer",
+    "approval_required_for": [
+      "Accepting or changing final DDR/MMIO physical base addresses, region offsets, or non-overlap memory layout.",
+      "Changing AXI data width, address width, alignment, wstrb width, DDR channel/interface assumptions, or calibration-gating assumptions.",
+      "Changing target_seq_len, legal runtime sequence-length policy, valid-byte policy, or host transfer-count semantics.",
+      "Changing boundary element widths or host packing rules for input_tokens, output_tokens, or intermediate activation transfers.",
+      "Changing activation ping/pong policy, weight buffer count/size policy, or adding external KV-cache DDR regions.",
+      "Overriding XDMA device templates, xdma_id_default, or board target selection when discovery evidence is ambiguous.",
+      "Any architecture, pipeline, numeric policy, or major template change proposed as a memory/runtime repair."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "transfer_count_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "memory_runtime_plan_review",
+        "consumes": [
+          "candidate_stage_artifact.memory_schedule",
+          "candidate_stage_artifact.data_edges",
+          "candidate_stage_artifact.stream_edges",
+          "candidate_stage_artifact.checker_results",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "pipeline_planning.emit_memory_runtime_handoff_audit",
+        "on_failure": "Route the failed region, sequence, or tool-protocol finding to pipeline_planning.memory_runtime_repair; do not allow evidence_gate_auditor to promote the plan as memory/runtime complete.",
+        "produces": [
+          "memory_runtime_handoff_audit_report.json",
+          "ddr_region_size_alignment_matrix.json",
+          "runtime_sequence_contract_findings.json",
+          "later_stage_evidence_obligations.json"
+        ],
+        "rationale": "Create the expected handoff artifacts and bind the visible planning contract to registered memory/runtime, transfer-count, tool-protocol, and real-evidence-boundary checks without claiming implementation or deployment pass.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "transfer_count_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "memory_runtime_contract_annotation",
+        "consumes": [
+          "candidate_stage_artifact.memory_schedule.runtime_config_requirements",
+          "candidate_stage_artifact.memory_schedule.required_regions",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "pipeline_planning.clarify_stage3_address_semantics",
+        "on_failure": "Hold the current stage at the evidence gate; if final addresses are intended, require memory-layout approval and an accepted addr_map_check result before code generation consumes them.",
+        "produces": [
+          "candidate_stage_artifact.memory_schedule.address_semantics_annotation",
+          "memory_runtime_handoff_audit_report.json.address_semantics_findings"
+        ],
+        "rationale": "The artifact contains concrete-looking hex bases while the stage policy says final base assignment belongs to Stage 5. Annotate or repair the contract so these bases are treated as board/runtime target hints unless an accepted memory-layout artifact is cited.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "memory_runtime_repair",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "boundary_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "addr_map_check",
+          "boundary_contract_check",
+          "tool_protocol_check",
+          "codegen_contract_check"
+        ],
+        "action_type": "addr_map_generation_and_check",
+        "consumes": [
+          "memory_runtime_handoff_audit_report.json",
+          "ddr_region_size_alignment_matrix.json",
+          "candidate_stage_artifact.memory_schedule",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "stage5.generate_checked_memory_layout_from_handoff",
+        "on_failure": "Return a bounded memory_runtime_repair finding or memory-layout approval request; do not generate code with unresolved, overlapping, or unapproved physical regions.",
+        "produces": [
+          "artifact.stage5.accepted_memory_layout",
+          "addr_map_check_report.json",
+          "runtime_region_manifest.json",
+          "generated/chisel/runtime/runtime_config.json"
+        ],
+        "rationale": "Translate the logical required_regions into concrete aligned, non-overlapping DDR/MMIO region assignments for code generation and runtime, using the Stage 3 handoff only as a contract source, not as final placement evidence.",
+        "requires_approval": true,
+        "stage": "memory_layout_codegen",
+        "tool_roles": [
+          "addr_map_check",
+          "boundary_contract_generate",
+          "tool_protocol_check",
+          "codegen_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "transfer_count_check",
+          "boundary_contract_check",
+          "tool_protocol_check",
+          "codegen_contract_check"
+        ],
+        "action_type": "runtime_sequence_contract_generation",
+        "consumes": [
+          "runtime_sequence_contract_findings.json",
+          "candidate_stage_artifact.data_edges",
+          "candidate_stage_artifact.memory_schedule.sequence_semantics",
+          "generated/chisel/runtime/runtime_config.json"
+        ],
+        "id": "stage5.bind_runtime_sequence_contract",
+        "on_failure": "Block runtime packaging and codegen consumption; route the violated sequence or packing rule to memory_runtime_repair instead of inferring transfer counts manually in host code.",
+        "produces": [
+          "runtime_sequence_contract.json",
+          "host_transfer_manifest.json",
+          "boundary_contract.runtime_abi.json"
+        ],
+        "rationale": "Make target_seq_len, legal runtime sequence lengths, per-edge transfer counts, full-beat policy, and boundary element widths explicit for host XDMA and generated-kernel interaction.",
+        "requires_approval": false,
+        "stage": "memory_layout_codegen",
+        "tool_roles": [
+          "transfer_count_check",
+          "boundary_contract_generate",
+          "tool_protocol_check",
+          "codegen_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_real_weight_artifacts",
+          "artifact_hash_check",
+          "transfer_count_check",
+          "addr_map_check"
+        ],
+        "action_type": "weight_buffer_manifest_generation",
+        "consumes": [
+          "candidate_stage_artifact.memory_schedule.required_regions",
+          "candidate_stage_artifact.memory_schedule.num_layers",
+          "candidate_stage_artifact.stages",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.stage5.accepted_memory_layout"
+        ],
+        "id": "stage5.generate_weight_buffer_manifest_for_double_buffering",
+        "on_failure": "Keep codegen/runtime packaging blocked and return a bounded manifest or layout repair; do not resize weight buffers or alter numeric policy without approval.",
+        "produces": [
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "runtime_weight_prefetch_schedule.json",
+          "weight_buffer_offset_alignment_report.json"
+        ],
+        "rationale": "The planning artifact provides per-layer weight buffer sizes but not per-tensor offsets, hashes, padding, or prefetch order. Generate a checked manifest so the double-buffered 24-layer runtime policy is executable.",
+        "requires_approval": false,
+        "stage": "memory_layout_codegen",
+        "tool_roles": [
+          "case_weight_manifest_generate",
+          "artifact_hash_check",
+          "transfer_count_check",
+          "addr_map_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_axi_ddr_interface",
+          "real_tool.case_axi_protocol_check",
+          "real_tool.case_ddr_image_roundtrip",
+          "real_tool.case_runtime_abi_check",
+          "real_tool.board_runtime",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_evidence_sequence",
+        "consumes": [
+          "artifact.stage5.accepted_memory_layout",
+          "generated/chisel/runtime/runtime_config.json",
+          "runtime_sequence_contract.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage9.bitstream_or_app_shell_integration_contract"
+        ],
+        "id": "verification_board.collect_memory_runtime_real_tool_evidence",
+        "on_failure": "Localize the earliest liveness, value, order, or protocol boundary and follow the three-layer repair loop: operator/leaf modules first, then connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapper. Do not promote or skip to a higher layer after a failed lower layer.",
+        "produces": [
+          "verification/case_diagnostics/axi_ddr_interface.json",
+          "verification/case_diagnostics/axi_protocol.json",
+          "verification/case_diagnostics/ddr_image_roundtrip.json",
+          "backend_board/case_diagnostics/runtime_abi_check.json",
+          "backend_board/case_diagnostics/board_runtime.json"
+        ],
+        "rationale": "Planning artifacts deliberately do not prove hardware correctness. After codegen and static gates pass, collect real evidence for AXI/DDR, runtime ABI, and board execution before any deployment claim.",
+        "requires_approval": false,
+        "stage": "verification_backend_board",
+        "tool_roles": [
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_runtime_abi_check",
+          "board_runtime",
+          "real_tool_evidence_check"
+        ]
+      }
+    ],
+    "observations": [
+      "No active SACG-memory contamination barriers, open retry requests, or open backtrack requests are listed in the supplied state summary; no historical blocker is treated as current.",
+      "This review is planning-only. The supplied artifact does not include real VCS, Verilator, Vivado, bitstream, or board_runtime evidence, and the stage_gate_policy explicitly defers such evidence to Stage 6+.",
+      "The candidate records checker_summary failed=0 and includes a planning checker result named memory_runtime_contract_check with regions=6 and axi_bits=512. The handoff contract names memory_runtime_plan_check, addr_map_check, tool_protocol_check, boundary_contract_check, and required_real_tool_evidence_check, so the evidence gate should bind or rerun the registered checkers before aggregate promotion.",
+      "The board AXI contract is internally consistent in the visible artifact: 512-bit data width equals 64 data bytes, wstrb_width_bits=64, and alignment_bytes=64.",
+      "By inspection of the supplied fields, every listed data edge transfer_count_bytes equals axi_beats * 64 bytes, and every required DDR region size is a multiple of 64 bytes: input_tokens=57344, output_tokens=57344, activation_ping=155648, activation_pong=155648, weight_buffer_a=29826048, and weight_buffer_b=29826048.",
+      "The logical six-region footprint is 60078080 bytes before any board address-window padding. This is not a final non-overlap or DDR-capacity proof because final physical address mapping is deferred to Stage 5.",
+      "target_seq_len=16 matches the attention seq_len_bound=16 and all visible data_edges use tensor.seq_len=16. The runtime rule allows configured sequence length <= target_max_seq_len, but downstream runtime artifacts must state whether shorter sequences use recomputed transfer counts or fixed padded transfers.",
+      "Boundary input and output token regions are sized from 32-bit block boundary elements, while several internal streams use 16-bit elements. Host packing and runtime manifests must use per-edge or per-region element_bits, not only the global activation_bits=16 policy.",
+      "The required_regions are logical external memory regions, not one DDR region per internal data edge. Residual skip paths, branch paths, and pipeline decoupling buffers are represented by on-chip FIFO contracts in buffer_plan.",
+      "The activation_ping and activation_pong sizes cover the largest visible intermediate activation transfer, 155648 bytes for seq_len=16 and width=4864 at 16 bits.",
+      "The policy double_buffered_weights_and_streamed_activations uses two per-layer weight buffers for 24 layers. The planning artifact does not claim all 24 layers of weights are resident simultaneously, and it does not provide a per-tensor weight offset/hash manifest.",
+      "Runtime_config_requirements include XDMA device templates /dev/xdma1_h2c_0 and /dev/xdma1_c2h_0 plus control/status and DDR hex bases. In this stage those must be treated as board/runtime protocol targets or hints, not as accepted final physical addresses for generated code.",
+      "The board calibration signal c0_init_calib_complete is present in the memory contract; later runtime/verification must ensure AXI traffic is gated on calibration done.",
+      "The visible prompt confirms target_board_profile, tool_profile, tool_availability, and tool_protocols artifacts exist, but detailed board capacity/window rows are not shown. This is a handoff item for addr_map_check, not by itself a current-stage missing-field blocker."
+    ],
+    "proposed_actions": [
+      "Promote this handoff only with a planning-stage restriction that no final physical address map, code generation success, Vivado result, bitstream, or board pass is claimed.",
+      "Emit memory_runtime_handoff_audit_report.json, ddr_region_size_alignment_matrix.json, runtime_sequence_contract_findings.json, and later_stage_evidence_obligations.json using registered handoff checkers.",
+      "Before code generation, run Stage 5 address mapping to convert logical required_regions into concrete aligned, non-overlapping bases and to reconcile any supplied board BAR/control targets.",
+      "Bind a runtime sequence contract that states fixed seq_len=16 behavior and any legal variable-seq_len transfer-count rule, including host packing element_bits for each boundary region.",
+      "Generate a checked per-layer weight manifest for the double-buffered weight policy before relying on weight_buffer_a/b sizes in runtime code.",
+      "Collect real simulator, AXI/DDR, Vivado, runtime ABI, and board evidence only in later stages after static contracts pass; failures must drive bounded localization and repair rather than static-script assumptions.",
+      "If any downstream stage intends to use the Stage 3 hex bases as final addresses, require explicit memory-layout approval and addr_map_check evidence first."
+    ],
+    "risks": [
+      "Current-stage evidence binding risk: the candidate uses memory_runtime_contract_check while the declared handoff checker is memory_runtime_plan_check. Without registered checker binding, later agents may consume an ungrounded memory/runtime pass claim.",
+      "Address-semantics risk: the hex bases in runtime_config_requirements, especially output_tokens at 0x28092f1000, could be mistaken for a final address map even though Stage 5 owns concrete non-overlapping base assignment.",
+      "Runtime ABI risk: if shorter runtime sequence lengths are allowed without an explicit transfer-count or padding rule, host XDMA transfers and kernel stream counts can disagree despite the seq_len=16 planning case being aligned.",
+      "Packing risk: host/runtime code could incorrectly use global activation_bits=16 for input_tokens or output_tokens, which are 32-bit boundary regions in the supplied data_edges and memory_schedule.",
+      "Weight-buffer risk: weight_buffer_a/b sizes are formula-level planning values. Per-layer tensor offsets, padding, hashes, and inactive-buffer prefetch ordering still need a generated manifest and checker evidence.",
+      "Board-device risk: /dev/xdma1_* and xdma_id_default=1 are protocol templates from the planning contract, not proof that the target board exposes those device nodes or that the selected shell uses those BAR windows.",
+      "Evidence-contamination risk: symbolic latency estimates, memory_runtime planning checks, and runtime command text must not be promoted as timing closure, bitstream validity, or board execution evidence.",
+      "Memory-layout expansion risk: external KV-cache materialization is explicitly deferred by the attention contract; adding KV-cache DDR regions later would be a memory-layout and possibly architecture change requiring approval."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.memory_schedule",
+        "candidate_stage_artifact.data_edges",
+        "candidate_stage_artifact.stream_edges",
+        "candidate_stage_artifact.checker_results",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols"
+      ],
+      "constraints": [
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.tool.protocols",
+        "constraint.cross_layer.input_consistency",
+        "constraint.shape.model",
+        "constraint.numeric.policy"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output",
+        "memory_schedule.board_axi",
+        "memory_schedule.required_regions",
+        "memory_schedule.runtime_config_requirements"
+      ]
+    },
+    "schema_version": "spatialaccagent.memory_runtime_handoff_engineer.v0",
+    "stage": "pipeline_planning",
+    "status": "review_complete_with_conditions",
+    "summary": "The supplied plan is coherent as a planning-stage memory/runtime handoff if it is promoted only with explicit boundaries: AXI transfer sizes and logical DDR region sizes are 64-byte aligned and consistent with target_seq_len=16, but the hex runtime bases are not accepted as a final memory layout, and no implementation, timing, bitstream, or board execution evidence is claimed."
+  },
+  "prompt_bytes": 69688,
+  "prompt_hash": "c76b893d588b36aad8a15d16dc7c3efd16043149b55ff636550c340edbb792ee",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.memory_runtime_handoff_engineer.v0\",\"agent\":\"memory_runtime_handoff_engineer\",\"stage\":\"pipeline_planning\",\"status\":\"review_complete_with_conditions\",\"summary\":\"The supplied plan is coherent as a planning-stage memory/runtime handoff if it is promoted only with explicit boundaries: AXI transfer sizes and logical DDR region sizes are 64-byte aligned and consistent with target_seq_len=16, but the hex runtime bases are not accepted as a final memory layout, and no implementation, timing, bitstream, or board execution evidence is claimed.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\",\"memory_schedule.board_axi\",\"memory_schedule.required_regions\",\"memory_schedule.runtime_config_requirements\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.tool.protocols\",\"constraint.cross_layer.input_consistency\",\"constraint.shape.model\",\"constraint.numeric.policy\"],\"artifacts\":[\"candidate_stage_artifact.memory_schedule\",\"candidate_stage_artifact.data_edges\",\"candidate_stage_artifact.stream_edges\",\"candidate_stage_artifact.checker_results\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\"]},\"observations\":[\"No active SACG-memory contamination barriers, open retry requests, or open backtrack requests are listed in the supplied state summary; no historical blocker is treated as current.\",\"This review is planning-only. The supplied artifact does not include real VCS, Verilator, Vivado, bitstream, or board_runtime evidence, and the stage_gate_policy explicitly defers such evidence to Stage 6+.\",\"The candidate records checker_summary failed=0 and includes a planning checker result named memory_runtime_contract_check with regions=6 and axi_bits=512. The handoff contract names memory_runtime_plan_check, addr_map_check, tool_protocol_check, boundary_contract_check, and required_real_tool_evidence_check, so the evidence gate should bind or rerun the registered checkers before aggregate promotion.\",\"The board AXI contract is internally consistent in the visible artifact: 512-bit data width equals 64 data bytes, wstrb_width_bits=64, and alignment_bytes=64.\",\"By inspection of the supplied fields, every listed data edge transfer_count_bytes equals axi_beats * 64 bytes, and every required DDR region size is a multiple of 64 bytes: input_tokens=57344, output_tokens=57344, activation_ping=155648, activation_pong=155648, weight_buffer_a=29826048, and weight_buffer_b=29826048.\",\"The logical six-region footprint is 60078080 bytes before any board address-window padding. This is not a final non-overlap or DDR-capacity proof because final physical address mapping is deferred to Stage 5.\",\"target_seq_len=16 matches the attention seq_len_bound=16 and all visible data_edges use tensor.seq_len=16. The runtime rule allows configured sequence length <= target_max_seq_len, but downstream runtime artifacts must state whether shorter sequences use recomputed transfer counts or fixed padded transfers.\",\"Boundary input and output token regions are sized from 32-bit block boundary elements, while several internal streams use 16-bit elements. Host packing and runtime manifests must use per-edge or per-region element_bits, not only the global activation_bits=16 policy.\",\"The required_regions are logical external memory regions, not one DDR region per internal data edge. Residual skip paths, branch paths, and pipeline decoupling buffers are represented by on-chip FIFO contracts in buffer_plan.\",\"The activation_ping and activation_pong sizes cover the largest visible intermediate activation transfer, 155648 bytes for seq_len=16 and width=4864 at 16 bits.\",\"The policy double_buffered_weights_and_streamed_activations uses two per-layer weight buffers for 24 layers. The planning artifact does not claim all 24 layers of weights are resident simultaneously, and it does not provide a per-tensor weight offset/hash manifest.\",\"Runtime_config_requirements include XDMA device templates /dev/xdma1_h2c_0 and /dev/xdma1_c2h_0 plus control/status and DDR hex bases. In this stage those must be treated as board/runtime protocol targets or hints, not as accepted final physical addresses for generated code.\",\"The board calibration signal c0_init_calib_complete is present in the memory contract; later runtime/verification must ensure AXI traffic is gated on calibration done.\",\"The visible prompt confirms target_board_profile, tool_profile, tool_availability, and tool_protocols artifacts exist, but detailed board capacity/window rows are not shown. This is a handoff item for addr_map_check, not by itself a current-stage missing-field blocker.\"],\"risks\":[\"Current-stage evidence binding risk: the candidate uses memory_runtime_contract_check while the declared handoff checker is memory_runtime_plan_check. Without registered checker binding, later agents may consume an ungrounded memory/runtime pass claim.\",\"Address-semantics risk: the hex bases in runtime_config_requirements, especially output_tokens at 0x28092f1000, could be mistaken for a final address map even though Stage 5 owns concrete non-overlapping base assignment.\",\"Runtime ABI risk: if shorter runtime sequence lengths are allowed without an explicit transfer-count or padding rule, host XDMA transfers and kernel stream counts can disagree despite the seq_len=16 planning case being aligned.\",\"Packing risk: host/runtime code could incorrectly use global activation_bits=16 for input_tokens or output_tokens, which are 32-bit boundary regions in the supplied data_edges and memory_schedule.\",\"Weight-buffer risk: weight_buffer_a/b sizes are formula-level planning values. Per-layer tensor offsets, padding, hashes, and inactive-buffer prefetch ordering still need a generated manifest and checker evidence.\",\"Board-device risk: /dev/xdma1_* and xdma_id_default=1 are protocol templates from the planning contract, not proof that the target board exposes those device nodes or that the selected shell uses those BAR windows.\",\"Evidence-contamination risk: symbolic latency estimates, memory_runtime planning checks, and runtime command text must not be promoted as timing closure, bitstream validity, or board execution evidence.\",\"Memory-layout expansion risk: external KV-cache materialization is explicitly deferred by the attention contract; adding KV-cache DDR regions later would be a memory-layout and possibly architecture change requiring approval.\"],\"proposed_actions\":[\"Promote this handoff only with a planning-stage restriction that no final physical address map, code generation success, Vivado result, bitstream, or board pass is claimed.\",\"Emit memory_runtime_handoff_audit_report.json, ddr_region_size_alignment_matrix.json, runtime_sequence_contract_findings.json, and later_stage_evidence_obligations.json using registered handoff checkers.\",\"Before code generation, run Stage 5 address mapping to convert logical required_regions into concrete aligned, non-overlapping bases and to reconcile any supplied board BAR/control targets.\",\"Bind a runtime sequence contract that states fixed seq_len=16 behavior and any legal variable-seq_len transfer-count rule, including host packing element_bits for each boundary region.\",\"Generate a checked per-layer weight manifest for the double-buffered weight policy before relying on weight_buffer_a/b sizes in runtime code.\",\"Collect real simulator, AXI/DDR, Vivado, runtime ABI, and board evidence only in later stages after static contracts pass; failures must drive bounded localization and repair rather than static-script assumptions.\",\"If any downstream stage intends to use the Stage 3 hex bases as final addresses, require explicit memory-layout approval and addr_map_check evidence first.\"],\"executable_actions\":[{\"id\":\"pipeline_planning.emit_memory_runtime_handoff_audit\",\"stage\":\"pipeline_planning\",\"action_type\":\"memory_runtime_plan_review\",\"rationale\":\"Create the expected handoff artifacts and bind the visible planning contract to registered memory/runtime, transfer-count, tool-protocol, and real-evidence-boundary checks without claiming implementation or deployment pass.\",\"consumes\":[\"candidate_stage_artifact.memory_schedule\",\"candidate_stage_artifact.data_edges\",\"candidate_stage_artifact.stream_edges\",\"candidate_stage_artifact.checker_results\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\"],\"produces\":[\"memory_runtime_handoff_audit_report.json\",\"ddr_region_size_alignment_matrix.json\",\"runtime_sequence_contract_findings.json\",\"later_stage_evidence_obligations.json\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"transfer_count_check\",\"tool_protocol_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"transfer_count_check\",\"tool_protocol_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Route the failed region, sequence, or tool-protocol finding to pipeline_planning.memory_runtime_repair; do not allow evidence_gate_auditor to promote the plan as memory/runtime complete.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.clarify_stage3_address_semantics\",\"stage\":\"pipeline_planning\",\"action_type\":\"memory_runtime_contract_annotation\",\"rationale\":\"The artifact contains concrete-looking hex bases while the stage policy says final base assignment belongs to Stage 5. Annotate or repair the contract so these bases are treated as board/runtime target hints unless an accepted memory-layout artifact is cited.\",\"consumes\":[\"candidate_stage_artifact.memory_schedule.runtime_config_requirements\",\"candidate_stage_artifact.memory_schedule.required_regions\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\"],\"produces\":[\"candidate_stage_artifact.memory_schedule.address_semantics_annotation\",\"memory_runtime_handoff_audit_report.json.address_semantics_findings\"],\"tool_roles\":[\"memory_runtime_repair\",\"memory_runtime_plan_check\",\"addr_map_check\",\"boundary_contract_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"boundary_contract_check\"],\"on_failure\":\"Hold the current stage at the evidence gate; if final addresses are intended, require memory-layout approval and an accepted addr_map_check result before code generation consumes them.\",\"requires_approval\":false},{\"id\":\"stage5.generate_checked_memory_layout_from_handoff\",\"stage\":\"memory_layout_codegen\",\"action_type\":\"addr_map_generation_and_check\",\"rationale\":\"Translate the logical required_regions into concrete aligned, non-overlapping DDR/MMIO region assignments for code generation and runtime, using the Stage 3 handoff only as a contract source, not as final placement evidence.\",\"consumes\":[\"memory_runtime_handoff_audit_report.json\",\"ddr_region_size_alignment_matrix.json\",\"candidate_stage_artifact.memory_schedule\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\"],\"produces\":[\"artifact.stage5.accepted_memory_layout\",\"addr_map_check_report.json\",\"runtime_region_manifest.json\",\"generated/chisel/runtime/runtime_config.json\"],\"tool_roles\":[\"addr_map_check\",\"boundary_contract_generate\",\"tool_protocol_check\",\"codegen_contract_check\"],\"acceptance_checkers\":[\"addr_map_check\",\"boundary_contract_check\",\"tool_protocol_check\",\"codegen_contract_check\"],\"on_failure\":\"Return a bounded memory_runtime_repair finding or memory-layout approval request; do not generate code with unresolved, overlapping, or unapproved physical regions.\",\"requires_approval\":true},{\"id\":\"stage5.bind_runtime_sequence_contract\",\"stage\":\"memory_layout_codegen\",\"action_type\":\"runtime_sequence_contract_generation\",\"rationale\":\"Make target_seq_len, legal runtime sequence lengths, per-edge transfer counts, full-beat policy, and boundary element widths explicit for host XDMA and generated-kernel interaction.\",\"consumes\":[\"runtime_sequence_contract_findings.json\",\"candidate_stage_artifact.data_edges\",\"candidate_stage_artifact.memory_schedule.sequence_semantics\",\"generated/chisel/runtime/runtime_config.json\"],\"produces\":[\"runtime_sequence_contract.json\",\"host_transfer_manifest.json\",\"boundary_contract.runtime_abi.json\"],\"tool_roles\":[\"transfer_count_check\",\"boundary_contract_generate\",\"tool_protocol_check\",\"codegen_contract_check\"],\"acceptance_checkers\":[\"transfer_count_check\",\"boundary_contract_check\",\"tool_protocol_check\",\"codegen_contract_check\"],\"on_failure\":\"Block runtime packaging and codegen consumption; route the violated sequence or packing rule to memory_runtime_repair instead of inferring transfer counts manually in host code.\",\"requires_approval\":false},{\"id\":\"stage5.generate_weight_buffer_manifest_for_double_buffering\",\"stage\":\"memory_layout_codegen\",\"action_type\":\"weight_buffer_manifest_generation\",\"rationale\":\"The planning artifact provides per-layer weight buffer sizes but not per-tensor offsets, hashes, padding, or prefetch order. Generate a checked manifest so the double-buffered 24-layer runtime policy is executable.\",\"consumes\":[\"candidate_stage_artifact.memory_schedule.required_regions\",\"candidate_stage_artifact.memory_schedule.num_layers\",\"candidate_stage_artifact.stages\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage5.accepted_memory_layout\"],\"produces\":[\"verification/case_real_weights/packed_weight_manifest.json\",\"runtime_weight_prefetch_schedule.json\",\"weight_buffer_offset_alignment_report.json\"],\"tool_roles\":[\"case_weight_manifest_generate\",\"artifact_hash_check\",\"transfer_count_check\",\"addr_map_check\"],\"acceptance_checkers\":[\"case_real_weight_artifacts\",\"artifact_hash_check\",\"transfer_count_check\",\"addr_map_check\"],\"on_failure\":\"Keep codegen/runtime packaging blocked and return a bounded manifest or layout repair; do not resize weight buffers or alter numeric policy without approval.\",\"requires_approval\":false},{\"id\":\"verification_board.collect_memory_runtime_real_tool_evidence\",\"stage\":\"verification_backend_board\",\"action_type\":\"real_tool_evidence_sequence\",\"rationale\":\"Planning artifacts deliberately do not prove hardware correctness. After codegen and static gates pass, collect real evidence for AXI/DDR, runtime ABI, and board execution before any deployment claim.\",\"consumes\":[\"artifact.stage5.accepted_memory_layout\",\"generated/chisel/runtime/runtime_config.json\",\"runtime_sequence_contract.json\",\"verification/case_real_weights/packed_weight_manifest.json\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage9.bitstream_or_app_shell_integration_contract\"],\"produces\":[\"verification/case_diagnostics/axi_ddr_interface.json\",\"verification/case_diagnostics/axi_protocol.json\",\"verification/case_diagnostics/ddr_image_roundtrip.json\",\"backend_board/case_diagnostics/runtime_abi_check.json\",\"backend_board/case_diagnostics/board_runtime.json\"],\"tool_roles\":[\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_runtime_abi_check\",\"board_runtime\",\"real_tool_evidence_check\"],\"acceptance_checkers\":[\"real_tool.case_axi_ddr_interface\",\"real_tool.case_axi_protocol_check\",\"real_tool.case_ddr_image_roundtrip\",\"real_tool.case_runtime_abi_check\",\"real_tool.board_runtime\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Localize the earliest liveness, value, order, or protocol boundary and follow the three-layer repair loop: operator/leaf modules first, then connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapper. Do not promote or skip to a higher layer after a failed lower layer.\",\"requires_approval\":false}],\"approval_required_for\":[\"Accepting or changing final DDR/MMIO physical base addresses, region offsets, or non-overlap memory layout.\",\"Changing AXI data width, address width, alignment, wstrb width, DDR channel/interface assumptions, or calibration-gating assumptions.\",\"Changing target_seq_len, legal runtime sequence-length policy, valid-byte policy, or host transfer-count semantics.\",\"Changing boundary element widths or host packing rules for input_tokens, output_tokens, or intermediate activation transfers.\",\"Changing activation ping/pong policy, weight buffer count/size policy, or adding external KV-cache DDR regions.\",\"Overriding XDMA device templates, xdma_id_default, or board target selection when discovery evidence is ambiguous.\",\"Any architecture, pipeline, numeric policy, or major template change proposed as a memory/runtime repair.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/memory_runtime_handoff_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/memory_runtime_handoff_engineer_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "pipeline_planning.memory and runtime handoff engineer",
+  "used_fallback": false
+}

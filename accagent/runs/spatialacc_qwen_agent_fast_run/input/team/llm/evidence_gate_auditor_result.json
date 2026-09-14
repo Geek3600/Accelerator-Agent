@@ -1,0 +1,320 @@
+{
+  "agent": "evidence_gate_auditor",
+  "duration_sec": 159.59118117400067,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "evidence_gate_auditor",
+    "approval_required_for": [
+      "architecture or pipeline topology changes discovered during input audits",
+      "memory layout, address map, DDR image layout, or runtime ABI policy changes",
+      "numeric precision, quantization, accumulation, rounding, saturation, or tolerance policy changes",
+      "major template-library or operator-coverage changes beyond bounded metadata repair",
+      "backend/app-shell target-selection decisions without unambiguous cited board or Vivado evidence",
+      "human-boundary exceptions, forbidden-action overrides, or LLM/tool-policy overrides"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "memory_runtime_plan_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "boundary_contract_check",
+          "output_validity_check"
+        ],
+        "action_type": "input_audit_materialization",
+        "consumes": [
+          "artifact.input.prepared_inputs",
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.human_agent_boundary",
+          "artifact.input.case_adapter",
+          "artifact.input.field_evidence"
+        ],
+        "id": "input_preparation.materialize_specialist_audits",
+        "on_failure": "Keep SACG extraction blocked. Emit artifact.input_audit.stage_retry_or_backtrack_requests with the failed constraints. Repair only input/audit bindings unless a checker proves that an architecture, numeric, memory-layout, template, or board-target change is required.",
+        "produces": [
+          "artifact.input_audit.model_shape_report",
+          "artifact.input_audit.numeric_template_report",
+          "artifact.input_audit.board_runtime_tool_report",
+          "artifact.input_audit.boundary_repair_report",
+          "artifact.input_audit.blocker_to_constraint_map"
+        ],
+        "rationale": "The candidate prepared_inputs bundle exists and has no top-level errors, but the specialist reports required for cross-layer merging are not visible. This action materializes model/shape, numeric/template, board/runtime/tool, and human-boundary audit evidence without changing design policy.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "memory_runtime_plan_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "team_aggregate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "stage_retry_request_check",
+          "stage_backtrack_request_check",
+          "stage_artifact_trust_barrier_check",
+          "output_validity_check"
+        ],
+        "action_type": "memory_barrier_audit",
+        "consumes": [
+          "sacg_memory",
+          "artifact.input.prepared_inputs"
+        ],
+        "id": "input_preparation.reconcile_sacg_memory_barriers",
+        "on_failure": "Treat any open or inconsistent memory barrier as a downstream-consumption blocker and require explicit retry reconciliation before SACG extraction consumes current-stage artifacts.",
+        "produces": [
+          "artifact.input_audit.sacg_memory_reconciliation",
+          "artifact.input_audit.stage_retry_or_backtrack_requests"
+        ],
+        "rationale": "The supplied memory state indicates no open retry requests, backtrack requests, or contamination barriers, but this must be recorded as checker-consumable stage evidence so downstream agents do not rely on natural-language memory.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_memory_update",
+          "stage_retry_request",
+          "stage_backtrack_request",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "boundary_contract_check",
+          "failure_localization_check",
+          "stage_retry_request_check",
+          "stage_backtrack_request_check",
+          "stage_artifact_trust_barrier_check",
+          "output_validity_check"
+        ],
+        "action_type": "contract_generation",
+        "consumes": [
+          "artifact.input.prepared_inputs",
+          "artifact.input_audit.model_shape_report",
+          "artifact.input_audit.numeric_template_report",
+          "artifact.input_audit.board_runtime_tool_report",
+          "artifact.input_audit.boundary_repair_report",
+          "artifact.input_audit.sacg_memory_reconciliation"
+        ],
+        "id": "input_preparation.generate_sacg_extraction_contract",
+        "on_failure": "Do not promote to SACG extraction. Localize the earliest failing boundary and produce a retry request for input-audit repair or a backtrack request only if the failure requires policy or design-space change.",
+        "produces": [
+          "artifact.input_audit.cross_layer_readiness_decision",
+          "artifact.input_audit.sacg_extraction_input_contract",
+          "artifact.input_audit.blocker_to_constraint_map"
+        ],
+        "rationale": "After specialist audits pass, generate the formal input contract for SACG extraction with explicit constraint bindings, blocker classifications, and not_run markers for later-stage evidence. This is the promotion boundary from input_preparation to SACG extraction.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "boundary_contract_generate",
+          "sacg_validate",
+          "sacg_static_check",
+          "boundary_contract_check",
+          "failure_slice_localization",
+          "output_validity_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "human_boundary_check",
+          "boundary_contract_check",
+          "backend_bounded_recovery_action_check",
+          "targeted_failed_checker_rerun",
+          "output_validity_check"
+        ],
+        "action_type": "bounded_repair_or_backtrack",
+        "consumes": [
+          "artifact.input_audit.blocker_to_constraint_map",
+          "artifact.input_audit.model_shape_report",
+          "artifact.input_audit.numeric_template_report",
+          "artifact.input_audit.board_runtime_tool_report",
+          "artifact.input_audit.boundary_repair_report",
+          "artifact.input.design_space",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.target_board_profile",
+          "artifact.input.human_agent_boundary"
+        ],
+        "id": "input_preparation.resolve_policy_changing_or_ambiguous_inputs",
+        "on_failure": "Keep SACG extraction blocked and preserve the original prepared_inputs as unpromoted. Do not guess board target names or silently change numeric/template/memory policy.",
+        "produces": [
+          "artifact.input_audit.stage_retry_or_backtrack_requests",
+          "artifact.input.updated_prepared_inputs",
+          "artifact.input.target_discovery_policy_updates"
+        ],
+        "rationale": "If the regenerated audits reveal ambiguity or inconsistency that would alter architecture, pipeline, memory layout, numeric policy, major templates, or board/app-shell target selection, the change is outside automatic audit repair and must be bounded by the human-agent boundary.",
+        "requires_approval": true,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "repair_boundary_check",
+          "architecture_review",
+          "memory_runtime_repair",
+          "bounded_template_repair",
+          "backend_bounded_recovery_action",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "llm_io_quality_check",
+          "llm_semantic_extraction_check",
+          "no_static_keyword_semantic_matching_check",
+          "sacg_reference_check",
+          "output_validity_check"
+        ],
+        "action_type": "stage_handoff",
+        "consumes": [
+          "artifact.input_audit.sacg_extraction_input_contract",
+          "artifact.input_audit.cross_layer_readiness_decision",
+          "artifact.input_audit.blocker_to_constraint_map"
+        ],
+        "id": "sacg_extraction.promote_after_input_gate_pass",
+        "on_failure": "Route back to input_preparation only if the failure is caused by missing or contradictory input contract evidence; otherwise repair the SACG extraction/checker path. Do not modify golden outputs or loosen tolerances.",
+        "produces": [
+          "artifact.sacg.initial_graph",
+          "artifact.sacg.extraction_report"
+        ],
+        "rationale": "Only after the input_preparation gate produces a passing sacg_extraction_input_contract should SACG extraction run semantic graph construction from the approved contract rather than from informal memory or compact summaries.",
+        "requires_approval": false,
+        "stage": "sacg_extraction",
+        "tool_roles": [
+          "sacg_validate",
+          "llm_semantic_extraction",
+          "no_static_keyword_semantic_matching",
+          "output_validity_check"
+        ]
+      }
+    ],
+    "observations": [
+      "Visible prepared_inputs has schema_version spatialaccagent.prepared_inputs.v0, mode independent_from_scratch_design, run_dir /home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run, and an empty errors list.",
+      "The state summary lists the core input artifacts for task card, model config, numeric policy, board profile, tool profile/availability, case adapter, template library/metadata, design space, tool protocols, and human-agent boundary.",
+      "The candidate artifact summary is compact and does not expose detailed rows for model dimensions, numeric formats, template parameters, board memory/runtime ABI, or human approval rules; therefore those facts cannot be treated as cross-layer pass evidence.",
+      "The required specialist reports named by the subtask, artifact.input_audit.model_shape_report, artifact.input_audit.numeric_template_report, artifact.input_audit.board_runtime_tool_report, and artifact.input_audit.boundary_repair_report, are not visible in the supplied state artifact list or candidate outputs.",
+      "No real tool log, simulator evidence, Vivado evidence, board-runtime result, or app-shell target-discovery evidence is supplied; no hardware, runtime, or backend pass is claimed.",
+      "The state_summary sacg_memory reports no active contamination barriers, no open retry requests, and no open backtrack requests; the separate supplied sacg_memory object is empty. There is no retry_reconciliation_contract for this stage.",
+      "No stage_gate_policy was supplied, so blocker classification is based on the subtask acceptance checkers and named constraints.",
+      "The current blocker is evidence incompleteness for the current input_preparation gate, not a proven model, architecture, template, numeric, or board defect.",
+      "Backtrack boundary: do not change architecture, pipeline, memory layout, numeric policy, template library, or board target names unless the repaired audit reports localize a specific failed constraint and the human boundary grants approval.",
+      "Promotion boundary: SACG extraction may consume only a checker-passing artifact.input_audit.sacg_extraction_input_contract with an explicit blocker_to_constraint_map and not_run markings for later-stage evidence that has not been executed."
+    ],
+    "proposed_actions": [
+      "Materialize or rerun the four specialist audit reports from the prepared input bundle and bind every finding to the named SACG constraints.",
+      "Generate artifact.input_audit.blocker_to_constraint_map that marks the current missing-report condition as a current-stage evidence blocker and distinguishes it from later-stage hardware/tool evidence that is simply not_run.",
+      "Reconcile sacg_memory explicitly as clean for this stage, preserving the absence of open retry, backtrack, and contamination barriers in a checker-consumable artifact.",
+      "After audits pass, generate artifact.input_audit.sacg_extraction_input_contract and run sacg_static_check, boundary_contract_check, failure_localization_check, stage retry/backtrack/barrier checks, and output_validity_check before promotion.",
+      "If any audit reveals a real cross-layer mismatch, localize the earliest causal boundary and issue a bounded retry or backtrack request; require approval for architecture, pipeline, memory layout, numeric policy, major template, or ambiguous board-target changes.",
+      "Do not modify golden outputs, loosen numeric tolerance, infer backend target names, or claim hardware/runtime pass during input_preparation."
+    ],
+    "risks": [
+      "Model/shape risk: decoder configuration and shape contract are present only as artifact names; hidden-size, layer count, head grouping, sequence length, tensor layout, and batch assumptions are not validated in visible evidence.",
+      "Numeric risk: numeric policy exists, but precision, quantization scale/zero-point, accumulation width, rounding/saturation, and compare tolerance are not cross-checked against templates in visible evidence.",
+      "Template risk: template_library and template_metadata exist, but coverage for the model operators and parameter bindings is not proven by visible template_coverage_check evidence.",
+      "Data-order and transfer-unit risk: no visible stream plan or data-order trace establishes token/channel/row-major order, packed weight layout, DMA beat counts, or tensor boundary consistency.",
+      "Memory/runtime risk: board memory and runtime artifacts are named, but address map, DDR image layout, runtime ABI, and transfer counts are not validated in visible evidence.",
+      "Board/deployment risk: target board profile and tool availability exist, but there is no real backend/app-shell target discovery or Vivado evidence; backend target names must not be guessed.",
+      "Tool-protocol risk: tool_protocols exists, but required checker execution and artifact trust boundaries are not yet materialized for this gate.",
+      "Human-boundary risk: human_agent_boundary has approval_required, auto_allowed, and forbidden sections, but detailed approval conditions are not visible; policy-changing repairs must be gated.",
+      "SACG-quality risk: extracting the graph before audit reports pass could encode unverified assumptions as constraints and contaminate downstream design stages."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.prepared_inputs",
+        "artifact.input.task_card",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.case_adapter",
+        "artifact.input.tool_protocols",
+        "artifact.input.human_agent_boundary",
+        "artifact.input.field_evidence",
+        "artifact.input_audit.model_shape_report",
+        "artifact.input_audit.numeric_template_report",
+        "artifact.input_audit.board_runtime_tool_report",
+        "artifact.input_audit.boundary_repair_report",
+        "artifact.input_audit.cross_layer_readiness_decision",
+        "artifact.input_audit.sacg_extraction_input_contract",
+        "artifact.input_audit.blocker_to_constraint_map",
+        "artifact.input_audit.stage_retry_or_backtrack_requests"
+      ],
+      "constraints": [
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.protocols",
+        "constraint.human.boundary"
+      ],
+      "edges": [
+        "constraint.task.goal -> constraint.model.decoder",
+        "constraint.model.decoder -> constraint.shape.model",
+        "constraint.shape.model -> constraint.numeric.policy",
+        "constraint.numeric.policy -> constraint.template.library",
+        "constraint.template.library -> constraint.arch.design_space",
+        "constraint.arch.design_space -> constraint.memory.board",
+        "constraint.memory.board -> constraint.runtime.board",
+        "constraint.runtime.board -> constraint.deployment.board",
+        "constraint.tool.protocols -> all_tool_consumed_artifacts",
+        "constraint.human.boundary -> approval_required_changes",
+        "artifact.input.prepared_inputs -> artifact.input_audit.sacg_extraction_input_contract"
+      ],
+      "nodes": [
+        "task_goal",
+        "decoder_model",
+        "model_shape_contract",
+        "numeric_policy",
+        "template_library_contract",
+        "architecture_design_space",
+        "board_deployment_profile",
+        "board_memory_runtime_contract",
+        "tool_protocol_contract",
+        "human_agent_boundary",
+        "prepared_input_bundle",
+        "sacg_extraction_input_contract"
+      ]
+    },
+    "schema_version": "spatialaccagent.evidence_gate_auditor.v0",
+    "stage": "input_preparation",
+    "status": "blocked_not_ready_for_sacg_extraction",
+    "summary": "SACG extraction is not approved yet. The candidate prepared_inputs artifact exists, reports independent_from_scratch_design mode, and has an empty prepared_inputs.errors list, but the visible state does not include the required specialist audit reports or checker evidence needed to merge model/shape, numeric/template, board/runtime/tool, and human-boundary consistency. Repair is bounded to input-audit materialization and checker rerun unless those checks expose an approved architecture, numeric, memory-layout, template, or board-target change requirement."
+  },
+  "prompt_bytes": 25377,
+  "prompt_hash": "703b1ffa353754f70eca187a94b5eafd528380b7958119c4d393ac371ff137ce",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.evidence_gate_auditor.v0\",\"agent\":\"evidence_gate_auditor\",\"stage\":\"input_preparation\",\"status\":\"blocked_not_ready_for_sacg_extraction\",\"summary\":\"SACG extraction is not approved yet. The candidate prepared_inputs artifact exists, reports independent_from_scratch_design mode, and has an empty prepared_inputs.errors list, but the visible state does not include the required specialist audit reports or checker evidence needed to merge model/shape, numeric/template, board/runtime/tool, and human-boundary consistency. Repair is bounded to input-audit materialization and checker rerun unless those checks expose an approved architecture, numeric, memory-layout, template, or board-target change requirement.\",\"sacg_focus\":{\"nodes\":[\"task_goal\",\"decoder_model\",\"model_shape_contract\",\"numeric_policy\",\"template_library_contract\",\"architecture_design_space\",\"board_deployment_profile\",\"board_memory_runtime_contract\",\"tool_protocol_contract\",\"human_agent_boundary\",\"prepared_input_bundle\",\"sacg_extraction_input_contract\"],\"edges\":[\"constraint.task.goal -> constraint.model.decoder\",\"constraint.model.decoder -> constraint.shape.model\",\"constraint.shape.model -> constraint.numeric.policy\",\"constraint.numeric.policy -> constraint.template.library\",\"constraint.template.library -> constraint.arch.design_space\",\"constraint.arch.design_space -> constraint.memory.board\",\"constraint.memory.board -> constraint.runtime.board\",\"constraint.runtime.board -> constraint.deployment.board\",\"constraint.tool.protocols -> all_tool_consumed_artifacts\",\"constraint.human.boundary -> approval_required_changes\",\"artifact.input.prepared_inputs -> artifact.input_audit.sacg_extraction_input_contract\"],\"constraints\":[\"constraint.task.goal\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.protocols\",\"constraint.human.boundary\"],\"artifacts\":[\"artifact.input.prepared_inputs\",\"artifact.input.task_card\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.case_adapter\",\"artifact.input.tool_protocols\",\"artifact.input.human_agent_boundary\",\"artifact.input.field_evidence\",\"artifact.input_audit.model_shape_report\",\"artifact.input_audit.numeric_template_report\",\"artifact.input_audit.board_runtime_tool_report\",\"artifact.input_audit.boundary_repair_report\",\"artifact.input_audit.cross_layer_readiness_decision\",\"artifact.input_audit.sacg_extraction_input_contract\",\"artifact.input_audit.blocker_to_constraint_map\",\"artifact.input_audit.stage_retry_or_backtrack_requests\"]},\"observations\":[\"Visible prepared_inputs has schema_version spatialaccagent.prepared_inputs.v0, mode independent_from_scratch_design, run_dir /home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run, and an empty errors list.\",\"The state summary lists the core input artifacts for task card, model config, numeric policy, board profile, tool profile/availability, case adapter, template library/metadata, design space, tool protocols, and human-agent boundary.\",\"The candidate artifact summary is compact and does not expose detailed rows for model dimensions, numeric formats, template parameters, board memory/runtime ABI, or human approval rules; therefore those facts cannot be treated as cross-layer pass evidence.\",\"The required specialist reports named by the subtask, artifact.input_audit.model_shape_report, artifact.input_audit.numeric_template_report, artifact.input_audit.board_runtime_tool_report, and artifact.input_audit.boundary_repair_report, are not visible in the supplied state artifact list or candidate outputs.\",\"No real tool log, simulator evidence, Vivado evidence, board-runtime result, or app-shell target-discovery evidence is supplied; no hardware, runtime, or backend pass is claimed.\",\"The state_summary sacg_memory reports no active contamination barriers, no open retry requests, and no open backtrack requests; the separate supplied sacg_memory object is empty. There is no retry_reconciliation_contract for this stage.\",\"No stage_gate_policy was supplied, so blocker classification is based on the subtask acceptance checkers and named constraints.\",\"The current blocker is evidence incompleteness for the current input_preparation gate, not a proven model, architecture, template, numeric, or board defect.\",\"Backtrack boundary: do not change architecture, pipeline, memory layout, numeric policy, template library, or board target names unless the repaired audit reports localize a specific failed constraint and the human boundary grants approval.\",\"Promotion boundary: SACG extraction may consume only a checker-passing artifact.input_audit.sacg_extraction_input_contract with an explicit blocker_to_constraint_map and not_run markings for later-stage evidence that has not been executed.\"],\"risks\":[\"Model/shape risk: decoder configuration and shape contract are present only as artifact names; hidden-size, layer count, head grouping, sequence length, tensor layout, and batch assumptions are not validated in visible evidence.\",\"Numeric risk: numeric policy exists, but precision, quantization scale/zero-point, accumulation width, rounding/saturation, and compare tolerance are not cross-checked against templates in visible evidence.\",\"Template risk: template_library and template_metadata exist, but coverage for the model operators and parameter bindings is not proven by visible template_coverage_check evidence.\",\"Data-order and transfer-unit risk: no visible stream plan or data-order trace establishes token/channel/row-major order, packed weight layout, DMA beat counts, or tensor boundary consistency.\",\"Memory/runtime risk: board memory and runtime artifacts are named, but address map, DDR image layout, runtime ABI, and transfer counts are not validated in visible evidence.\",\"Board/deployment risk: target board profile and tool availability exist, but there is no real backend/app-shell target discovery or Vivado evidence; backend target names must not be guessed.\",\"Tool-protocol risk: tool_protocols exists, but required checker execution and artifact trust boundaries are not yet materialized for this gate.\",\"Human-boundary risk: human_agent_boundary has approval_required, auto_allowed, and forbidden sections, but detailed approval conditions are not visible; policy-changing repairs must be gated.\",\"SACG-quality risk: extracting the graph before audit reports pass could encode unverified assumptions as constraints and contaminate downstream design stages.\"],\"proposed_actions\":[\"Materialize or rerun the four specialist audit reports from the prepared input bundle and bind every finding to the named SACG constraints.\",\"Generate artifact.input_audit.blocker_to_constraint_map that marks the current missing-report condition as a current-stage evidence blocker and distinguishes it from later-stage hardware/tool evidence that is simply not_run.\",\"Reconcile sacg_memory explicitly as clean for this stage, preserving the absence of open retry, backtrack, and contamination barriers in a checker-consumable artifact.\",\"After audits pass, generate artifact.input_audit.sacg_extraction_input_contract and run sacg_static_check, boundary_contract_check, failure_localization_check, stage retry/backtrack/barrier checks, and output_validity_check before promotion.\",\"If any audit reveals a real cross-layer mismatch, localize the earliest causal boundary and issue a bounded retry or backtrack request; require approval for architecture, pipeline, memory layout, numeric policy, major template, or ambiguous board-target changes.\",\"Do not modify golden outputs, loosen numeric tolerance, infer backend target names, or claim hardware/runtime pass during input_preparation.\"],\"executable_actions\":[{\"id\":\"input_preparation.materialize_specialist_audits\",\"stage\":\"input_preparation\",\"action_type\":\"input_audit_materialization\",\"rationale\":\"The candidate prepared_inputs bundle exists and has no top-level errors, but the specialist reports required for cross-layer merging are not visible. This action materializes model/shape, numeric/template, board/runtime/tool, and human-boundary audit evidence without changing design policy.\",\"consumes\":[\"artifact.input.prepared_inputs\",\"artifact.input.task_card\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.human_agent_boundary\",\"artifact.input.case_adapter\",\"artifact.input.field_evidence\"],\"produces\":[\"artifact.input_audit.model_shape_report\",\"artifact.input_audit.numeric_template_report\",\"artifact.input_audit.board_runtime_tool_report\",\"artifact.input_audit.boundary_repair_report\",\"artifact.input_audit.blocker_to_constraint_map\"],\"tool_roles\":[\"task_card_check\",\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"memory_runtime_plan_check\",\"tool_protocol_check\",\"human_boundary_check\",\"team_aggregate\"],\"acceptance_checkers\":[\"task_card_check\",\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"memory_runtime_plan_check\",\"tool_protocol_check\",\"human_boundary_check\",\"boundary_contract_check\",\"output_validity_check\"],\"on_failure\":\"Keep SACG extraction blocked. Emit artifact.input_audit.stage_retry_or_backtrack_requests with the failed constraints. Repair only input/audit bindings unless a checker proves that an architecture, numeric, memory-layout, template, or board-target change is required.\",\"requires_approval\":false},{\"id\":\"input_preparation.reconcile_sacg_memory_barriers\",\"stage\":\"input_preparation\",\"action_type\":\"memory_barrier_audit\",\"rationale\":\"The supplied memory state indicates no open retry requests, backtrack requests, or contamination barriers, but this must be recorded as checker-consumable stage evidence so downstream agents do not rely on natural-language memory.\",\"consumes\":[\"sacg_memory\",\"artifact.input.prepared_inputs\"],\"produces\":[\"artifact.input_audit.sacg_memory_reconciliation\",\"artifact.input_audit.stage_retry_or_backtrack_requests\"],\"tool_roles\":[\"sacg_memory_update\",\"stage_retry_request\",\"stage_backtrack_request\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"sacg_memory_check\",\"stage_retry_request_check\",\"stage_backtrack_request_check\",\"stage_artifact_trust_barrier_check\",\"output_validity_check\"],\"on_failure\":\"Treat any open or inconsistent memory barrier as a downstream-consumption blocker and require explicit retry reconciliation before SACG extraction consumes current-stage artifacts.\",\"requires_approval\":false},{\"id\":\"input_preparation.generate_sacg_extraction_contract\",\"stage\":\"input_preparation\",\"action_type\":\"contract_generation\",\"rationale\":\"After specialist audits pass, generate the formal input contract for SACG extraction with explicit constraint bindings, blocker classifications, and not_run markers for later-stage evidence. This is the promotion boundary from input_preparation to SACG extraction.\",\"consumes\":[\"artifact.input.prepared_inputs\",\"artifact.input_audit.model_shape_report\",\"artifact.input_audit.numeric_template_report\",\"artifact.input_audit.board_runtime_tool_report\",\"artifact.input_audit.boundary_repair_report\",\"artifact.input_audit.sacg_memory_reconciliation\"],\"produces\":[\"artifact.input_audit.cross_layer_readiness_decision\",\"artifact.input_audit.sacg_extraction_input_contract\",\"artifact.input_audit.blocker_to_constraint_map\"],\"tool_roles\":[\"boundary_contract_generate\",\"sacg_validate\",\"sacg_static_check\",\"boundary_contract_check\",\"failure_slice_localization\",\"output_validity_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"boundary_contract_check\",\"failure_localization_check\",\"stage_retry_request_check\",\"stage_backtrack_request_check\",\"stage_artifact_trust_barrier_check\",\"output_validity_check\"],\"on_failure\":\"Do not promote to SACG extraction. Localize the earliest failing boundary and produce a retry request for input-audit repair or a backtrack request only if the failure requires policy or design-space change.\",\"requires_approval\":false},{\"id\":\"input_preparation.resolve_policy_changing_or_ambiguous_inputs\",\"stage\":\"input_preparation\",\"action_type\":\"bounded_repair_or_backtrack\",\"rationale\":\"If the regenerated audits reveal ambiguity or inconsistency that would alter architecture, pipeline, memory layout, numeric policy, major templates, or board/app-shell target selection, the change is outside automatic audit repair and must be bounded by the human-agent boundary.\",\"consumes\":[\"artifact.input_audit.blocker_to_constraint_map\",\"artifact.input_audit.model_shape_report\",\"artifact.input_audit.numeric_template_report\",\"artifact.input_audit.board_runtime_tool_report\",\"artifact.input_audit.boundary_repair_report\",\"artifact.input.design_space\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.target_board_profile\",\"artifact.input.human_agent_boundary\"],\"produces\":[\"artifact.input_audit.stage_retry_or_backtrack_requests\",\"artifact.input.updated_prepared_inputs\",\"artifact.input.target_discovery_policy_updates\"],\"tool_roles\":[\"repair_boundary_check\",\"architecture_review\",\"memory_runtime_repair\",\"bounded_template_repair\",\"backend_bounded_recovery_action\",\"human_boundary_check\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"human_boundary_check\",\"boundary_contract_check\",\"backend_bounded_recovery_action_check\",\"targeted_failed_checker_rerun\",\"output_validity_check\"],\"on_failure\":\"Keep SACG extraction blocked and preserve the original prepared_inputs as unpromoted. Do not guess board target names or silently change numeric/template/memory policy.\",\"requires_approval\":true},{\"id\":\"sacg_extraction.promote_after_input_gate_pass\",\"stage\":\"sacg_extraction\",\"action_type\":\"stage_handoff\",\"rationale\":\"Only after the input_preparation gate produces a passing sacg_extraction_input_contract should SACG extraction run semantic graph construction from the approved contract rather than from informal memory or compact summaries.\",\"consumes\":[\"artifact.input_audit.sacg_extraction_input_contract\",\"artifact.input_audit.cross_layer_readiness_decision\",\"artifact.input_audit.blocker_to_constraint_map\"],\"produces\":[\"artifact.sacg.initial_graph\",\"artifact.sacg.extraction_report\"],\"tool_roles\":[\"sacg_validate\",\"llm_semantic_extraction\",\"no_static_keyword_semantic_matching\",\"output_validity_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"llm_io_quality_check\",\"llm_semantic_extraction_check\",\"no_static_keyword_semantic_matching_check\",\"sacg_reference_check\",\"output_validity_check\"],\"on_failure\":\"Route back to input_preparation only if the failure is caused by missing or contradictory input contract evidence; otherwise repair the SACG extraction/checker path. Do not modify golden outputs or loosen tolerances.\",\"requires_approval\":false}],\"approval_required_for\":[\"architecture or pipeline topology changes discovered during input audits\",\"memory layout, address map, DDR image layout, or runtime ABI policy changes\",\"numeric precision, quantization, accumulation, rounding, saturation, or tolerance policy changes\",\"major template-library or operator-coverage changes beyond bounded metadata repair\",\"backend/app-shell target-selection decisions without unambiguous cited board or Vivado evidence\",\"human-boundary exceptions, forbidden-action overrides, or LLM/tool-policy overrides\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/team/llm/evidence_gate_auditor_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/team/llm/evidence_gate_auditor_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.cross-layer evidence gate auditor",
+  "used_fallback": false
+}

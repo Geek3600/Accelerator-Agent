@@ -1,0 +1,39 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "stage_artifact_trust_barrier_check",
+      "sacg_memory_check"
+    ],
+    "action_type": "artifact_trust_barrier",
+    "consumes": [
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/26_pipeline_planning.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json",
+      "recent_stage_summary.failed_output_policy"
+    ],
+    "id": "pipeline_planning.quarantine_failed_attempt_1",
+    "on_failure": "Stop before retry promotion and downstream progress; without a recorded barrier, failed attempt-1 artifacts could contaminate parameter_binding inputs.",
+    "produces": [
+      "sacg_memory.contamination_barrier.pipeline_planning_attempt_1_failed_report",
+      "artifact_trust_record.block_parameter_binding_consumption_of_failed_pipeline_planning_report"
+    ],
+    "rationale": "The current command failed and the framework marked the existing pipeline_planning_report.json as stale/incomplete and ignored. A trust barrier prevents accidental downstream use while allowing bounded same-stage retry inputs to be inspected as failure evidence.",
+    "requires_approval": false,
+    "stage": "pipeline_planning",
+    "tool_roles": [
+      "stage_artifact_trust_barrier",
+      "sacg_memory_update"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 8,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/008_retry.json",
+  "stage": "pipeline_planning"
+}

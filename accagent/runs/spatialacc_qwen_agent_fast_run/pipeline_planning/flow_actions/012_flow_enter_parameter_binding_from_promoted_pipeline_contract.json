@@ -1,0 +1,65 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "parameter_binding_static_check",
+      "template_coverage_check",
+      "numeric_policy_check",
+      "boundary_contract_check",
+      "stream_plan_check",
+      "memory_runtime_plan_check",
+      "template_binding_static_check",
+      "sacg_static_check"
+    ],
+    "action_type": "stage_transition_and_static_binding",
+    "consumes": [
+      "artifact.pipeline_planning.promoted_pipeline_contract",
+      "artifact.pipeline_planning.normalized_handoff_queue",
+      "artifact.stage2.template_selection",
+      "artifact.input.model_config",
+      "artifact.input.numeric_policy",
+      "artifact.input.template_library",
+      "artifact.input.template_metadata",
+      "constraint.template.library",
+      "constraint.numeric.policy",
+      "constraint.parameter.binding",
+      "constraint.cross_layer.input_consistency"
+    ],
+    "id": "flow.enter_parameter_binding_from_promoted_pipeline_contract",
+    "on_failure": "Block code_generation and later stages. Localize the mismatch to the affected stage, edge, template parameter, numeric field, boundary contract, or memory/stream handoff. Repair only within approved parameter-binding bounds and rerun the same checkers; any topology, numeric-policy, memory-layout, AXI, or template-library change requires approval and likely backtrack to pipeline_planning.",
+    "produces": [
+      "artifact.stage4.template_parameter_binding_contract",
+      "artifact.stage4.boundary_contracts",
+      "artifact.stage4.template_bound_numeric_contract",
+      "stage4/checker_reports/parameter_binding_static_check.json",
+      "stage4/checker_reports/template_coverage_check.json",
+      "stage4/checker_reports/numeric_policy_check.json",
+      "stage4/checker_reports/boundary_contract_check.json",
+      "stage4/checker_reports/stream_plan_check.json",
+      "stage4/checker_reports/memory_runtime_plan_check.json"
+    ],
+    "rationale": "The next bounded stage is parameter_binding. It must materialize the promoted Stage 3 operator, stream, numeric, template, and memory-runtime handoff facts without changing the checked pipeline semantics.",
+    "requires_approval": false,
+    "stage": "parameter_binding",
+    "tool_roles": [
+      "parameter_binding_static_check",
+      "template_coverage_check",
+      "numeric_policy_check",
+      "boundary_contract_generate",
+      "stream_plan_check",
+      "memory_runtime_plan_check",
+      "sacg_static_check"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "proceed",
+  "flow_event_index": 12,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/012_proceed.json",
+  "stage": "pipeline_planning"
+}

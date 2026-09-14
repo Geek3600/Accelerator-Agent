@@ -1,0 +1,577 @@
+{
+  "duration_sec": 85.87513664700964,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "reason": "The pipeline_planning stage is not atomic: it spans decoder operator semantics, stream/beat ordering, ready/valid liveness, buffer and branch/join contracts, template binding, numeric contracts, and memory/runtime handoff. SACG memory truth shows no active retry, backtrack, or contamination blockers, and the candidate artifact already contains checker evidence, so independent specialists can audit distinct cross-layer constraint surfaces in parallel before an evidence gate aggregates acceptance and repair boundaries.",
+    "schema_version": "spatialaccagent.team_decomposition.v0",
+    "split_required": true,
+    "stage": "pipeline_planning",
+    "subtasks": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "stream_plan_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "model_pipeline_architect",
+        "artifact_focus": [
+          "candidate_stage_artifact.stages",
+          "candidate_stage_artifact.attention_contract",
+          "candidate_stage_artifact.branch_join_contracts",
+          "artifact.input.model_config",
+          "artifact.stage2.template_selection"
+        ],
+        "constraints": [
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.cross_layer.input_consistency",
+          "constraint.template.library"
+        ],
+        "expected_artifacts": [
+          "model_pipeline_audit_report.json",
+          "operator_shape_attention_findings.json",
+          "sacg_constraint_coverage_delta.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "block_on_failure": true,
+          "failure_route": "Route failed operator, shape, or attention findings to pipeline_repair; do not allow evidence gate acceptance until targeted repair and checker rerun are planned.",
+          "handoff_when": "All assigned checker names have pass evidence or each failure is mapped to a violated constraint and repair boundary.",
+          "produces_for_downstream": [
+            "accepted operator order and shape/attention contract findings",
+            "violated SACG constraints if any",
+            "explicit note that symbolic latency is planning metadata only"
+          ]
+        },
+        "handoff_to": [
+          "pipeline_planning.evidence_gate_auditor"
+        ],
+        "id": "pipeline_planning.model_pipeline_architect",
+        "objective": "Verify that the planned operator-stream pipeline preserves Qwen2 decoder order, residual paths, GQA attention semantics, tensor shapes, and stage boundaries without introducing free-form RTL obligations.",
+        "parallel_group": 0,
+        "role": "model-shape pipeline architect",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "sacg_static_check",
+              "model_config_check",
+              "stream_plan_check",
+              "template_binding_static_check"
+            ],
+            "consumes": [
+              "artifact.input.model_config",
+              "artifact.stage2.template_selection",
+              "candidate_stage_artifact.stages",
+              "candidate_stage_artifact.attention_contract",
+              "candidate_stage_artifact.branch_join_contracts"
+            ],
+            "downstream_consumers": [
+              "pipeline_planning.evidence_gate_auditor",
+              "later Stage 4 parameter binding specialist"
+            ],
+            "produces": [
+              "model_pipeline_audit_report.json",
+              "operator_shape_attention_findings.json",
+              "SACG coverage notes for constraint.model.decoder and constraint.shape.model"
+            ]
+          },
+          "decision_authority": [
+            "May accept or reject model-shape and operator-order portions of the plan.",
+            "May require pipeline_repair for semantic, shape, attention, or residual-path violations.",
+            "May not waive checker-backed acceptance requirements."
+          ],
+          "mission": "Audit the semantic correctness of the pipeline as a decoder-block implementation contract rather than as generated RTL.",
+          "out_of_scope": [
+            "Do not change numeric policy or memory address layout.",
+            "Do not generate or edit RTL/Chisel.",
+            "Do not claim simulator, synthesis, timing, or board evidence."
+          ],
+          "primary_responsibilities": [
+            "Check that stages follow rms_norm_1, self_attention, residual_add_1, rms_norm_2, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, residual_add_2 order.",
+            "Check residual skip edges and branch/join pairing keys against token/tile/lane/word semantics.",
+            "Check GQA attention contract values, including q heads, kv heads, group size, head_dim, causal flag, RoPE, and seq_len bound, against model configuration constraints.",
+            "Confirm tensor widths and seq_len are consistent across stages and stream edges.",
+            "Classify any mismatch as a SACG constraint violation with bounded repair scope."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "extract model semantics",
+            "audit shape and head mapping",
+            "track residual/operator order"
+          ],
+          "constraint_focus": [
+            "constraint.model.decoder",
+            "constraint.shape.model"
+          ],
+          "family": "model_shape",
+          "professional_analogy": "front-end microarchitecture/model semantics lead"
+        },
+        "title": "Audit decoder operator order and stage-shape contracts"
+      },
+      {
+        "acceptance_checkers": [
+          "stream_plan_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "boundary_contract_check"
+        ],
+        "action_type": "cross_layer_rule_review",
+        "agent": "stream_liveness_engineer",
+        "artifact_focus": [
+          "candidate_stage_artifact.stream_edges",
+          "candidate_stage_artifact.data_edges",
+          "candidate_stage_artifact.flow_control",
+          "candidate_stage_artifact.buffer_plan",
+          "candidate_stage_artifact.branch_join_contracts"
+        ],
+        "constraints": [
+          "constraint.stream.order",
+          "constraint.beat.pipeline",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "stream_liveness_audit_report.json",
+          "edge_transfer_count_matrix.json",
+          "branch_join_buffer_liveness_findings.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "block_on_failure": true,
+          "failure_route": "Route stream, beat, branch/join, or liveness failures to pipeline_repair with the failing edge_id, buffer_id, or join node.",
+          "handoff_when": "Stream order, transfer counts, ready/valid flow control, and bounded FIFO contracts are either checker-accepted or precisely localized to a repair boundary.",
+          "produces_for_downstream": [
+            "stream/data edge mirror verdict",
+            "transfer count and AXI beat audit",
+            "branch/join and FIFO liveness findings",
+            "repair boundary if deadlock or ordering risk is found"
+          ]
+        },
+        "handoff_to": [
+          "pipeline_planning.evidence_gate_auditor"
+        ],
+        "id": "pipeline_planning.stream_liveness_engineer",
+        "objective": "Verify stream_edges and data_edges mirror each other, transfer order and beat counts are coherent, branch/join contracts are liveness-safe under ready/valid backpressure, and all buffers are bounded template-backed FIFOs.",
+        "parallel_group": 0,
+        "role": "stream and liveness engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "stream_plan_check",
+              "data_order_trace_check",
+              "transfer_count_check",
+              "deadlock_watchdog",
+              "boundary_contract_check"
+            ],
+            "consumes": [
+              "candidate_stage_artifact.stream_edges",
+              "candidate_stage_artifact.data_edges",
+              "candidate_stage_artifact.flow_control",
+              "candidate_stage_artifact.buffer_plan",
+              "candidate_stage_artifact.branch_join_contracts"
+            ],
+            "downstream_consumers": [
+              "pipeline_planning.evidence_gate_auditor",
+              "later verification planning",
+              "later implementation/codegen stages"
+            ],
+            "produces": [
+              "stream_liveness_audit_report.json",
+              "edge_transfer_count_matrix.json",
+              "branch_join_buffer_liveness_findings.json"
+            ]
+          },
+          "decision_authority": [
+            "May accept or reject stream/beat/liveness portions of the pipeline plan.",
+            "May require a bounded pipeline_repair for specific edges, buffers, splitters, or joins.",
+            "May not alter model operator order or memory base address assignment."
+          ],
+          "mission": "Audit the pipeline transport contract so later implementation can bind templates without hidden ordering or deadlock assumptions.",
+          "out_of_scope": [
+            "Do not assign final DDR base addresses beyond checking handoff readiness.",
+            "Do not run real simulation or Vivado tools at this stage.",
+            "Do not redesign templates or invent unsupported flow-control primitives."
+          ],
+          "primary_responsibilities": [
+            "Check that stream_edges mirror data_edges, including block_input, residual-skip, branch, join, and block_output boundary edges.",
+            "Check token/tile/lane/word transfer_order and full-beat policy on every edge.",
+            "Check transfer_count_bytes, element_bits, stream_beats_per_axi_beat, and axi_beats for consistency with tensor shape and 512-bit AXI assumptions.",
+            "Check ready_valid split policy, join policy, and FIFO depths for bounded backpressure behavior.",
+            "Classify symbolic latency as non-acceptance evidence and prevent it from being used as throughput or hardware proof."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "audit data order",
+            "check transfer-count/liveness risks",
+            "bind DDR/runtime layout"
+          ],
+          "constraint_focus": [
+            "constraint.stream.order",
+            "constraint.beat.pipeline",
+            "constraint.memory.board",
+            "constraint.runtime.board"
+          ],
+          "family": "data_memory_runtime",
+          "professional_analogy": "NoC/streaming dataflow verification engineer"
+        },
+        "title": "Audit ready/valid stream, beat, branch/join, buffer, and deadlock contracts"
+      },
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "template_binding_review",
+        "agent": "numeric_template_binding_engineer",
+        "artifact_focus": [
+          "candidate_stage_artifact.stages",
+          "candidate_stage_artifact.numeric_stream_policy",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space"
+        ],
+        "constraints": [
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.parameter.binding",
+          "constraint.arch.design_space",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "numeric_template_audit_report.json",
+          "stage_template_numeric_matrix.json",
+          "parameter_binding_readiness_notes.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "block_on_failure": true,
+          "failure_route": "Route template coverage, numeric mismatch, or parameter-binding gaps to bounded_template_repair or Stage 4 parameter binding; do not let codegen consume unsupported bindings.",
+          "handoff_when": "All stage template_ids and numeric contracts are covered by input policy/library evidence, or gaps are declared as bounded planned repair items.",
+          "produces_for_downstream": [
+            "per-stage template and numeric compatibility matrix",
+            "parameter-binding gaps for Stage 4 if any",
+            "explicit confirmation that free_form_rtl_generation remains false"
+          ]
+        },
+        "handoff_to": [
+          "pipeline_planning.evidence_gate_auditor"
+        ],
+        "id": "pipeline_planning.numeric_template_binding_engineer",
+        "objective": "Verify that every pipeline stage is bound to a trusted template with compatible numeric input/output/internal bit widths, accumulator policy, and parameter-binding readiness for later template-constrained code generation.",
+        "parallel_group": 0,
+        "role": "numeric and template binding engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "numeric_policy_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check"
+            ],
+            "consumes": [
+              "artifact.input.numeric_policy",
+              "artifact.input.template_library",
+              "artifact.input.template_metadata",
+              "artifact.input.design_space",
+              "artifact.stage2.template_selection",
+              "candidate_stage_artifact.stages",
+              "candidate_stage_artifact.numeric_stream_policy"
+            ],
+            "downstream_consumers": [
+              "pipeline_planning.evidence_gate_auditor",
+              "Stage 4 parameter binding",
+              "Stage 5 code generation"
+            ],
+            "produces": [
+              "numeric_template_audit_report.json",
+              "stage_template_numeric_matrix.json",
+              "parameter_binding_readiness_notes.json"
+            ]
+          },
+          "decision_authority": [
+            "May accept or reject numeric/template portions of the plan.",
+            "May require bounded_template_repair when a stage lacks trusted template coverage or numeric policy compatibility.",
+            "May not claim timing/resource closure from symbolic latency or template existence alone."
+          ],
+          "mission": "Protect the method boundary by ensuring the pipeline plan is template-constrained and numerically consistent before implementation handoff.",
+          "out_of_scope": [
+            "Do not select a different model architecture.",
+            "Do not generate Chisel/RTL or run compile tools.",
+            "Do not promote resource estimates to synthesis evidence."
+          ],
+          "primary_responsibilities": [
+            "Check every stage source/template_id against the trusted template library and Stage 2 template selection.",
+            "Check numeric_stream_policy against per-stage numeric_contract fields for activation, weight, scale, accumulator, rounding, and saturation expectations.",
+            "Check that 16-bit and 32-bit edge widths are intentional cross-layer contracts, not unbound implementation guesses.",
+            "Identify Stage 4 parameter bindings still required without treating them as current-stage failures when checker evidence passes.",
+            "Block unsupported free-form RTL generation claims."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "bind trusted templates",
+            "audit numeric policy",
+            "check resource-risk assumptions"
+          ],
+          "constraint_focus": [
+            "constraint.numeric.policy",
+            "constraint.template.library",
+            "constraint.parameter.binding"
+          ],
+          "family": "numeric_template",
+          "professional_analogy": "datapath template and quantization lead"
+        },
+        "title": "Audit numeric policy and trusted-template binding"
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "tool_protocol_check",
+          "boundary_contract_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "memory_runtime_plan_review",
+        "agent": "memory_runtime_handoff_engineer",
+        "artifact_focus": [
+          "candidate_stage_artifact.memory_schedule",
+          "candidate_stage_artifact.data_edges",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols"
+        ],
+        "constraints": [
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board",
+          "constraint.tool.protocols",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "memory_runtime_handoff_audit_report.json",
+          "ddr_region_size_alignment_matrix.json",
+          "runtime_sequence_contract_findings.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "block_on_failure": true,
+          "failure_route": "Route current-stage memory/runtime contract failures to memory_runtime_repair; route missing later-stage evidence to verification plan obligations, not to current-stage risk if static planning checks pass.",
+          "handoff_when": "Memory/runtime handoff is checker-accepted as a plan, and any missing real tool evidence is explicitly deferred to later stages rather than claimed here.",
+          "produces_for_downstream": [
+            "memory region size/alignment verdict",
+            "runtime command sequence and XDMA device contract verdict",
+            "later-stage implementation evidence obligations",
+            "tool capability gaps if any"
+          ]
+        },
+        "handoff_to": [
+          "pipeline_planning.evidence_gate_auditor"
+        ],
+        "id": "pipeline_planning.memory_runtime_handoff_engineer",
+        "objective": "Verify that the pipeline plan leaves coherent memory/runtime contracts for later address mapping, code generation, and board execution without claiming implementation or deployment evidence in the planning stage.",
+        "parallel_group": 0,
+        "role": "memory and runtime handoff engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "memory_runtime_plan_check",
+              "addr_map_check",
+              "tool_protocol_check",
+              "boundary_contract_check",
+              "required_real_tool_evidence_check"
+            ],
+            "consumes": [
+              "candidate_stage_artifact.memory_schedule",
+              "candidate_stage_artifact.data_edges",
+              "artifact.input.target_board_profile",
+              "artifact.input.tool_profile",
+              "artifact.input.tool_availability",
+              "artifact.input.tool_protocols"
+            ],
+            "downstream_consumers": [
+              "pipeline_planning.evidence_gate_auditor",
+              "Stage 5 memory layout/codegen",
+              "Stage 6+ verification and backend board stages"
+            ],
+            "produces": [
+              "memory_runtime_handoff_audit_report.json",
+              "ddr_region_size_alignment_matrix.json",
+              "runtime_sequence_contract_findings.json",
+              "later_stage_evidence_obligations.json"
+            ]
+          },
+          "decision_authority": [
+            "May accept or reject memory/runtime planning contracts.",
+            "May require memory_runtime_repair for inconsistent region sizes, alignment, AXI assumptions, or runtime sequence contracts.",
+            "May not finalize physical addresses or claim deployment evidence."
+          ],
+          "mission": "Ensure memory and runtime contracts are coherent enough for downstream implementation while preserving the boundary between planning evidence and real board/tool evidence.",
+          "out_of_scope": [
+            "Do not run board_runtime, Vivado, VCS, or Verilator tools in this stage.",
+            "Do not assign final physical addresses unless already supplied by an accepted memory-layout artifact.",
+            "Do not repair model, numeric, or stream contracts except by filing bounded findings."
+          ],
+          "primary_responsibilities": [
+            "Check DDR4/AXI width, alignment, region sizes, and ping/pong/weight-buffer policy against board memory constraints.",
+            "Check runtime sequence length rule and target_seq_len consistency with transfer counts.",
+            "Check XDMA H2C/C2H device templates, control protocol, and command sequence against runtime board constraints.",
+            "Identify which obligations are deferred to Stage 5+ address assignment, code generation, real simulation, Vivado, and board runtime.",
+            "Prevent unsupported claims of bitstream, board pass, or timing closure from planning artifacts."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "audit data order",
+            "check transfer-count/liveness risks",
+            "bind DDR/runtime layout"
+          ],
+          "constraint_focus": [
+            "constraint.stream.order",
+            "constraint.beat.pipeline",
+            "constraint.memory.board",
+            "constraint.runtime.board"
+          ],
+          "family": "data_memory_runtime",
+          "professional_analogy": "memory subsystem and board-runtime integration engineer"
+        },
+        "title": "Audit DDR, XDMA runtime, activation, and weight-buffer handoff contracts"
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "evidence_gate_review",
+        "agent": "evidence_gate_auditor",
+        "artifact_focus": [
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.checker_summary",
+          "candidate_stage_artifact.stage_gate_policy",
+          "specialist_audit_reports"
+        ],
+        "constraints": [
+          "constraint.verification.plan",
+          "constraint.human.boundary",
+          "constraint.cross_layer.input_consistency",
+          "constraint.tool.protocols"
+        ],
+        "expected_artifacts": [
+          "pipeline_planning_stage_gate_decision.json",
+          "checker_evidence_ledger.json",
+          "bounded_repair_or_promotion_decision.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "block_on_failure": true,
+          "depends_on": [
+            "pipeline_planning.model_pipeline_architect",
+            "pipeline_planning.stream_liveness_engineer",
+            "pipeline_planning.numeric_template_binding_engineer",
+            "pipeline_planning.memory_runtime_handoff_engineer"
+          ],
+          "failure_route": "If any required checker fails, emit bounded_repair_or_promotion_decision.json with target repair agent and violated SACG constraints; if evidence is missing, block promotion and require the named checker/tool evidence.",
+          "handoff_when": "All parallel_group=0 reports are present and either accepted by canonical checkers or mapped to bounded repair actions with no unsupported pass claims.",
+          "produces_for_downstream": [
+            "final stage-gate decision",
+            "checker evidence ledger",
+            "promotion package for Stage 4 if accepted",
+            "bounded repair request if rejected"
+          ]
+        },
+        "handoff_to": [
+          "stage_orchestrator",
+          "Stage 4 parameter binding",
+          "pipeline_repair",
+          "memory_runtime_repair",
+          "bounded_template_repair"
+        ],
+        "id": "pipeline_planning.evidence_gate_auditor",
+        "objective": "Aggregate specialist reports, verify checker-backed acceptance for pipeline planning, block unsupported hardware-pass claims, and map any residual failure to bounded SACG repair actions.",
+        "parallel_group": 1,
+        "role": "verification and repair-boundary auditor",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "accepted_by": [
+              "verification_plan_static_check",
+              "verification_artifact_contract_check",
+              "sacg_reference_check",
+              "repair_boundary_check",
+              "human_boundary_check",
+              "required_real_tool_evidence_check"
+            ],
+            "consumes": [
+              "model_pipeline_audit_report.json",
+              "stream_liveness_audit_report.json",
+              "numeric_template_audit_report.json",
+              "memory_runtime_handoff_audit_report.json",
+              "candidate_stage_artifact.checker_results",
+              "candidate_stage_artifact.stage_gate_policy"
+            ],
+            "downstream_consumers": [
+              "stage_orchestrator",
+              "Stage 4 parameter binding",
+              "repair agents"
+            ],
+            "produces": [
+              "pipeline_planning_stage_gate_decision.json",
+              "checker_evidence_ledger.json",
+              "bounded_repair_or_promotion_decision.json"
+            ]
+          },
+          "decision_authority": [
+            "May promote the pipeline plan to Stage 4 only if all required planning evidence is accepted.",
+            "May block promotion on checker failure, missing evidence, unsupported hardware claims, or human-boundary violations.",
+            "May not rewrite specialist findings or perform unbounded redesign."
+          ],
+          "mission": "Act as the planning-stage evidence gate that closes cross-layer consistency only from checker-backed artifacts and bounded specialist findings.",
+          "out_of_scope": [
+            "Do not perform generic brainstorming or paper-writing.",
+            "Do not run synthesis, implementation, board runtime, or functional simulation tools in this stage.",
+            "Do not waive SACG checker evidence or approve contamination-barrier bypasses."
+          ],
+          "primary_responsibilities": [
+            "Aggregate all specialist outputs and the candidate checker_results into a single evidence ledger.",
+            "Confirm that pass evidence uses canonical checker names and that missing capabilities are marked as planned_tool.* or planned_checker.* rather than silently accepted.",
+            "Enforce stage_gate_policy: symbolic_first_order latency is planning metadata only, and Stage 3 must not claim hardware, timing, bitstream, or board pass evidence.",
+            "Map any failed or missing evidence to the smallest valid repair boundary: pipeline_repair, memory_runtime_repair, bounded_template_repair, or Stage 4 parameter binding obligation.",
+            "Produce the final promotion or block decision for downstream orchestration."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "classify evidence",
+            "map failures to violated constraints",
+            "enforce repair boundaries"
+          ],
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.human.boundary"
+          ],
+          "family": "verification_repair",
+          "professional_analogy": "design verification lead and tape-in gatekeeper"
+        },
+        "title": "Aggregate checker evidence and enforce planning-stage acceptance boundary"
+      }
+    ]
+  },
+  "prompt_hash": "e434ee435362100a73777915ecab9686fce1aafd9b0fec03ce7993a5b28c2826",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.team_decomposition.v0\",\"stage\":\"pipeline_planning\",\"split_required\":true,\"reason\":\"The pipeline_planning stage is not atomic: it spans decoder operator semantics, stream/beat ordering, ready/valid liveness, buffer and branch/join contracts, template binding, numeric contracts, and memory/runtime handoff. SACG memory truth shows no active retry, backtrack, or contamination blockers, and the candidate artifact already contains checker evidence, so independent specialists can audit distinct cross-layer constraint surfaces in parallel before an evidence gate aggregates acceptance and repair boundaries.\",\"subtasks\":[{\"id\":\"pipeline_planning.model_pipeline_architect\",\"agent\":\"model_pipeline_architect\",\"role\":\"model-shape pipeline architect\",\"title\":\"Audit decoder operator order and stage-shape contracts\",\"objective\":\"Verify that the planned operator-stream pipeline preserves Qwen2 decoder order, residual paths, GQA attention semantics, tensor shapes, and stage boundaries without introducing free-form RTL obligations.\",\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.cross_layer.input_consistency\",\"constraint.template.library\"],\"artifact_focus\":[\"candidate_stage_artifact.stages\",\"candidate_stage_artifact.attention_contract\",\"candidate_stage_artifact.branch_join_contracts\",\"artifact.input.model_config\",\"artifact.stage2.template_selection\"],\"parallel_group\":0,\"handoff_required\":true,\"action_type\":\"sacg_constraint_review\",\"expected_artifacts\":[\"model_pipeline_audit_report.json\",\"operator_shape_attention_findings.json\",\"sacg_constraint_coverage_delta.json\"],\"acceptance_checkers\":[\"sacg_static_check\",\"model_config_check\",\"stream_plan_check\",\"template_binding_static_check\"],\"handoff_to\":[\"pipeline_planning.evidence_gate_auditor\"],\"handoff_rule\":{\"produces_for_downstream\":[\"accepted operator order and shape/attention contract findings\",\"violated SACG constraints if any\",\"explicit note that symbolic latency is planning metadata only\"],\"handoff_when\":\"All assigned checker names have pass evidence or each failure is mapped to a violated constraint and repair boundary.\",\"block_on_failure\":true,\"failure_route\":\"Route failed operator, shape, or attention findings to pipeline_repair; do not allow evidence gate acceptance until targeted repair and checker rerun are planned.\"},\"role_profile\":{\"family\":\"model_shape\",\"capabilities\":[\"extract model semantics\",\"audit shape and head mapping\",\"track residual/operator order\"],\"constraint_focus\":[\"constraint.model.decoder\",\"constraint.shape.model\"],\"professional_analogy\":\"front-end microarchitecture/model semantics lead\"},\"role_assignment\":{\"mission\":\"Audit the semantic correctness of the pipeline as a decoder-block implementation contract rather than as generated RTL.\",\"primary_responsibilities\":[\"Check that stages follow rms_norm_1, self_attention, residual_add_1, rms_norm_2, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, residual_add_2 order.\",\"Check residual skip edges and branch/join pairing keys against token/tile/lane/word semantics.\",\"Check GQA attention contract values, including q heads, kv heads, group size, head_dim, causal flag, RoPE, and seq_len bound, against model configuration constraints.\",\"Confirm tensor widths and seq_len are consistent across stages and stream edges.\",\"Classify any mismatch as a SACG constraint violation with bounded repair scope.\"],\"decision_authority\":[\"May accept or reject model-shape and operator-order portions of the plan.\",\"May require pipeline_repair for semantic, shape, attention, or residual-path violations.\",\"May not waive checker-backed acceptance requirements.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.input.model_config\",\"artifact.stage2.template_selection\",\"candidate_stage_artifact.stages\",\"candidate_stage_artifact.attention_contract\",\"candidate_stage_artifact.branch_join_contracts\"],\"produces\":[\"model_pipeline_audit_report.json\",\"operator_shape_attention_findings.json\",\"SACG coverage notes for constraint.model.decoder and constraint.shape.model\"],\"downstream_consumers\":[\"pipeline_planning.evidence_gate_auditor\",\"later Stage 4 parameter binding specialist\"],\"accepted_by\":[\"sacg_static_check\",\"model_config_check\",\"stream_plan_check\",\"template_binding_static_check\"]},\"out_of_scope\":[\"Do not change numeric policy or memory address layout.\",\"Do not generate or edit RTL/Chisel.\",\"Do not claim simulator, synthesis, timing, or board evidence.\"]}},{\"id\":\"pipeline_planning.stream_liveness_engineer\",\"agent\":\"stream_liveness_engineer\",\"role\":\"stream and liveness engineer\",\"title\":\"Audit ready/valid stream, beat, branch/join, buffer, and deadlock contracts\",\"objective\":\"Verify stream_edges and data_edges mirror each other, transfer order and beat counts are coherent, branch/join contracts are liveness-safe under ready/valid backpressure, and all buffers are bounded template-backed FIFOs.\",\"constraints\":[\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.cross_layer.input_consistency\"],\"artifact_focus\":[\"candidate_stage_artifact.stream_edges\",\"candidate_stage_artifact.data_edges\",\"candidate_stage_artifact.flow_control\",\"candidate_stage_artifact.buffer_plan\",\"candidate_stage_artifact.branch_join_contracts\"],\"parallel_group\":0,\"handoff_required\":true,\"action_type\":\"cross_layer_rule_review\",\"expected_artifacts\":[\"stream_liveness_audit_report.json\",\"edge_transfer_count_matrix.json\",\"branch_join_buffer_liveness_findings.json\"],\"acceptance_checkers\":[\"stream_plan_check\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"boundary_contract_check\"],\"handoff_to\":[\"pipeline_planning.evidence_gate_auditor\"],\"handoff_rule\":{\"produces_for_downstream\":[\"stream/data edge mirror verdict\",\"transfer count and AXI beat audit\",\"branch/join and FIFO liveness findings\",\"repair boundary if deadlock or ordering risk is found\"],\"handoff_when\":\"Stream order, transfer counts, ready/valid flow control, and bounded FIFO contracts are either checker-accepted or precisely localized to a repair boundary.\",\"block_on_failure\":true,\"failure_route\":\"Route stream, beat, branch/join, or liveness failures to pipeline_repair with the failing edge_id, buffer_id, or join node.\"},\"role_profile\":{\"family\":\"data_memory_runtime\",\"capabilities\":[\"audit data order\",\"check transfer-count/liveness risks\",\"bind DDR/runtime layout\"],\"constraint_focus\":[\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"professional_analogy\":\"NoC/streaming dataflow verification engineer\"},\"role_assignment\":{\"mission\":\"Audit the pipeline transport contract so later implementation can bind templates without hidden ordering or deadlock assumptions.\",\"primary_responsibilities\":[\"Check that stream_edges mirror data_edges, including block_input, residual-skip, branch, join, and block_output boundary edges.\",\"Check token/tile/lane/word transfer_order and full-beat policy on every edge.\",\"Check transfer_count_bytes, element_bits, stream_beats_per_axi_beat, and axi_beats for consistency with tensor shape and 512-bit AXI assumptions.\",\"Check ready_valid split policy, join policy, and FIFO depths for bounded backpressure behavior.\",\"Classify symbolic latency as non-acceptance evidence and prevent it from being used as throughput or hardware proof.\"],\"decision_authority\":[\"May accept or reject stream/beat/liveness portions of the pipeline plan.\",\"May require a bounded pipeline_repair for specific edges, buffers, splitters, or joins.\",\"May not alter model operator order or memory base address assignment.\"],\"collaboration_interfaces\":{\"consumes\":[\"candidate_stage_artifact.stream_edges\",\"candidate_stage_artifact.data_edges\",\"candidate_stage_artifact.flow_control\",\"candidate_stage_artifact.buffer_plan\",\"candidate_stage_artifact.branch_join_contracts\"],\"produces\":[\"stream_liveness_audit_report.json\",\"edge_transfer_count_matrix.json\",\"branch_join_buffer_liveness_findings.json\"],\"downstream_consumers\":[\"pipeline_planning.evidence_gate_auditor\",\"later verification planning\",\"later implementation/codegen stages\"],\"accepted_by\":[\"stream_plan_check\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"boundary_contract_check\"]},\"out_of_scope\":[\"Do not assign final DDR base addresses beyond checking handoff readiness.\",\"Do not run real simulation or Vivado tools at this stage.\",\"Do not redesign templates or invent unsupported flow-control primitives.\"]}},{\"id\":\"pipeline_planning.numeric_template_binding_engineer\",\"agent\":\"numeric_template_binding_engineer\",\"role\":\"numeric and template binding engineer\",\"title\":\"Audit numeric policy and trusted-template binding\",\"objective\":\"Verify that every pipeline stage is bound to a trusted template with compatible numeric input/output/internal bit widths, accumulator policy, and parameter-binding readiness for later template-constrained code generation.\",\"constraints\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.arch.design_space\",\"constraint.cross_layer.input_consistency\"],\"artifact_focus\":[\"candidate_stage_artifact.stages\",\"candidate_stage_artifact.numeric_stream_policy\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\"],\"parallel_group\":0,\"handoff_required\":true,\"action_type\":\"template_binding_review\",\"expected_artifacts\":[\"numeric_template_audit_report.json\",\"stage_template_numeric_matrix.json\",\"parameter_binding_readiness_notes.json\"],\"acceptance_checkers\":[\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\"],\"handoff_to\":[\"pipeline_planning.evidence_gate_auditor\"],\"handoff_rule\":{\"produces_for_downstream\":[\"per-stage template and numeric compatibility matrix\",\"parameter-binding gaps for Stage 4 if any\",\"explicit confirmation that free_form_rtl_generation remains false\"],\"handoff_when\":\"All stage template_ids and numeric contracts are covered by input policy/library evidence, or gaps are declared as bounded planned repair items.\",\"block_on_failure\":true,\"failure_route\":\"Route template coverage, numeric mismatch, or parameter-binding gaps to bounded_template_repair or Stage 4 parameter binding; do not let codegen consume unsupported bindings.\"},\"role_profile\":{\"family\":\"numeric_template\",\"capabilities\":[\"bind trusted templates\",\"audit numeric policy\",\"check resource-risk assumptions\"],\"constraint_focus\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\"],\"professional_analogy\":\"datapath template and quantization lead\"},\"role_assignment\":{\"mission\":\"Protect the method boundary by ensuring the pipeline plan is template-constrained and numerically consistent before implementation handoff.\",\"primary_responsibilities\":[\"Check every stage source/template_id against the trusted template library and Stage 2 template selection.\",\"Check numeric_stream_policy against per-stage numeric_contract fields for activation, weight, scale, accumulator, rounding, and saturation expectations.\",\"Check that 16-bit and 32-bit edge widths are intentional cross-layer contracts, not unbound implementation guesses.\",\"Identify Stage 4 parameter bindings still required without treating them as current-stage failures when checker evidence passes.\",\"Block unsupported free-form RTL generation claims.\"],\"decision_authority\":[\"May accept or reject numeric/template portions of the plan.\",\"May require bounded_template_repair when a stage lacks trusted template coverage or numeric policy compatibility.\",\"May not claim timing/resource closure from symbolic latency or template existence alone.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.stage2.template_selection\",\"candidate_stage_artifact.stages\",\"candidate_stage_artifact.numeric_stream_policy\"],\"produces\":[\"numeric_template_audit_report.json\",\"stage_template_numeric_matrix.json\",\"parameter_binding_readiness_notes.json\"],\"downstream_consumers\":[\"pipeline_planning.evidence_gate_auditor\",\"Stage 4 parameter binding\",\"Stage 5 code generation\"],\"accepted_by\":[\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\"]},\"out_of_scope\":[\"Do not select a different model architecture.\",\"Do not generate Chisel/RTL or run compile tools.\",\"Do not promote resource estimates to synthesis evidence.\"]}},{\"id\":\"pipeline_planning.memory_runtime_handoff_engineer\",\"agent\":\"memory_runtime_handoff_engineer\",\"role\":\"memory and runtime handoff engineer\",\"title\":\"Audit DDR, XDMA runtime, activation, and weight-buffer handoff contracts\",\"objective\":\"Verify that the pipeline plan leaves coherent memory/runtime contracts for later address mapping, code generation, and board execution without claiming implementation or deployment evidence in the planning stage.\",\"constraints\":[\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.tool.protocols\",\"constraint.cross_layer.input_consistency\"],\"artifact_focus\":[\"candidate_stage_artifact.memory_schedule\",\"candidate_stage_artifact.data_edges\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\"],\"parallel_group\":0,\"handoff_required\":true,\"action_type\":\"memory_runtime_plan_review\",\"expected_artifacts\":[\"memory_runtime_handoff_audit_report.json\",\"ddr_region_size_alignment_matrix.json\",\"runtime_sequence_contract_findings.json\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"tool_protocol_check\",\"boundary_contract_check\",\"required_real_tool_evidence_check\"],\"handoff_to\":[\"pipeline_planning.evidence_gate_auditor\"],\"handoff_rule\":{\"produces_for_downstream\":[\"memory region size/alignment verdict\",\"runtime command sequence and XDMA device contract verdict\",\"later-stage implementation evidence obligations\",\"tool capability gaps if any\"],\"handoff_when\":\"Memory/runtime handoff is checker-accepted as a plan, and any missing real tool evidence is explicitly deferred to later stages rather than claimed here.\",\"block_on_failure\":true,\"failure_route\":\"Route current-stage memory/runtime contract failures to memory_runtime_repair; route missing later-stage evidence to verification plan obligations, not to current-stage risk if static planning checks pass.\"},\"role_profile\":{\"family\":\"data_memory_runtime\",\"capabilities\":[\"audit data order\",\"check transfer-count/liveness risks\",\"bind DDR/runtime layout\"],\"constraint_focus\":[\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"professional_analogy\":\"memory subsystem and board-runtime integration engineer\"},\"role_assignment\":{\"mission\":\"Ensure memory and runtime contracts are coherent enough for downstream implementation while preserving the boundary between planning evidence and real board/tool evidence.\",\"primary_responsibilities\":[\"Check DDR4/AXI width, alignment, region sizes, and ping/pong/weight-buffer policy against board memory constraints.\",\"Check runtime sequence length rule and target_seq_len consistency with transfer counts.\",\"Check XDMA H2C/C2H device templates, control protocol, and command sequence against runtime board constraints.\",\"Identify which obligations are deferred to Stage 5+ address assignment, code generation, real simulation, Vivado, and board runtime.\",\"Prevent unsupported claims of bitstream, board pass, or timing closure from planning artifacts.\"],\"decision_authority\":[\"May accept or reject memory/runtime planning contracts.\",\"May require memory_runtime_repair for inconsistent region sizes, alignment, AXI assumptions, or runtime sequence contracts.\",\"May not finalize physical addresses or claim deployment evidence.\"],\"collaboration_interfaces\":{\"consumes\":[\"candidate_stage_artifact.memory_schedule\",\"candidate_stage_artifact.data_edges\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\"],\"produces\":[\"memory_runtime_handoff_audit_report.json\",\"ddr_region_size_alignment_matrix.json\",\"runtime_sequence_contract_findings.json\",\"later_stage_evidence_obligations.json\"],\"downstream_consumers\":[\"pipeline_planning.evidence_gate_auditor\",\"Stage 5 memory layout/codegen\",\"Stage 6+ verification and backend board stages\"],\"accepted_by\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"tool_protocol_check\",\"boundary_contract_check\",\"required_real_tool_evidence_check\"]},\"out_of_scope\":[\"Do not run board_runtime, Vivado, VCS, or Verilator tools in this stage.\",\"Do not assign final physical addresses unless already supplied by an accepted memory-layout artifact.\",\"Do not repair model, numeric, or stream contracts except by filing bounded findings.\"]}},{\"id\":\"pipeline_planning.evidence_gate_auditor\",\"agent\":\"evidence_gate_auditor\",\"role\":\"verification and repair-boundary auditor\",\"title\":\"Aggregate checker evidence and enforce planning-stage acceptance boundary\",\"objective\":\"Aggregate specialist reports, verify checker-backed acceptance for pipeline planning, block unsupported hardware-pass claims, and map any residual failure to bounded SACG repair actions.\",\"constraints\":[\"constraint.verification.plan\",\"constraint.human.boundary\",\"constraint.cross_layer.input_consistency\",\"constraint.tool.protocols\"],\"artifact_focus\":[\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.checker_summary\",\"candidate_stage_artifact.stage_gate_policy\",\"specialist_audit_reports\"],\"parallel_group\":1,\"handoff_required\":true,\"action_type\":\"evidence_gate_review\",\"expected_artifacts\":[\"pipeline_planning_stage_gate_decision.json\",\"checker_evidence_ledger.json\",\"bounded_repair_or_promotion_decision.json\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"repair_boundary_check\",\"human_boundary_check\",\"required_real_tool_evidence_check\"],\"handoff_to\":[\"stage_orchestrator\",\"Stage 4 parameter binding\",\"pipeline_repair\",\"memory_runtime_repair\",\"bounded_template_repair\"],\"handoff_rule\":{\"depends_on\":[\"pipeline_planning.model_pipeline_architect\",\"pipeline_planning.stream_liveness_engineer\",\"pipeline_planning.numeric_template_binding_engineer\",\"pipeline_planning.memory_runtime_handoff_engineer\"],\"produces_for_downstream\":[\"final stage-gate decision\",\"checker evidence ledger\",\"promotion package for Stage 4 if accepted\",\"bounded repair request if rejected\"],\"handoff_when\":\"All parallel_group=0 reports are present and either accepted by canonical checkers or mapped to bounded repair actions with no unsupported pass claims.\",\"block_on_failure\":true,\"failure_route\":\"If any required checker fails, emit bounded_repair_or_promotion_decision.json with target repair agent and violated SACG constraints; if evidence is missing, block promotion and require the named checker/tool evidence.\"},\"role_profile\":{\"family\":\"verification_repair\",\"capabilities\":[\"classify evidence\",\"map failures to violated constraints\",\"enforce repair boundaries\"],\"constraint_focus\":[\"constraint.verification.plan\",\"constraint.human.boundary\"],\"professional_analogy\":\"design verification lead and tape-in gatekeeper\"},\"role_assignment\":{\"mission\":\"Act as the planning-stage evidence gate that closes cross-layer consistency only from checker-backed artifacts and bounded specialist findings.\",\"primary_responsibilities\":[\"Aggregate all specialist outputs and the candidate checker_results into a single evidence ledger.\",\"Confirm that pass evidence uses canonical checker names and that missing capabilities are marked as planned_tool.* or planned_checker.* rather than silently accepted.\",\"Enforce stage_gate_policy: symbolic_first_order latency is planning metadata only, and Stage 3 must not claim hardware, timing, bitstream, or board pass evidence.\",\"Map any failed or missing evidence to the smallest valid repair boundary: pipeline_repair, memory_runtime_repair, bounded_template_repair, or Stage 4 parameter binding obligation.\",\"Produce the final promotion or block decision for downstream orchestration.\"],\"decision_authority\":[\"May promote the pipeline plan to Stage 4 only if all required planning evidence is accepted.\",\"May block promotion on checker failure, missing evidence, unsupported hardware claims, or human-boundary violations.\",\"May not rewrite specialist findings or perform unbounded redesign.\"],\"collaboration_interfaces\":{\"consumes\":[\"model_pipeline_audit_report.json\",\"stream_liveness_audit_report.json\",\"numeric_template_audit_report.json\",\"memory_runtime_handoff_audit_report.json\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.stage_gate_policy\"],\"produces\":[\"pipeline_planning_stage_gate_decision.json\",\"checker_evidence_ledger.json\",\"bounded_repair_or_promotion_decision.json\"],\"downstream_consumers\":[\"stage_orchestrator\",\"Stage 4 parameter binding\",\"repair agents\"],\"accepted_by\":[\"verification_plan_static_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"repair_boundary_check\",\"human_boundary_check\",\"required_real_tool_evidence_check\"]},\"out_of_scope\":[\"Do not perform generic brainstorming or paper-writing.\",\"Do not run synthesis, implementation, board runtime, or functional simulation tools in this stage.\",\"Do not waive SACG checker evidence or approve contamination-barrier bypasses.\"]}}]}",
+  "schema_version": "spatialaccagent.team_decomposer_record.v0",
+  "used_fallback": false
+}

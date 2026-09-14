@@ -1,0 +1,370 @@
+{
+  "agent": "debug_closure_agent",
+  "duration_sec": 517.0881766480161,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "debug_closure_agent",
+    "approval_required_for": [
+      "Any architecture, pipeline, memory-layout, runtime-layout, numeric-policy, or major template change proposed from Stage7 replay results.",
+      "Any attempt to change golden outputs, tolerances, selected checkers, or verification hierarchy instead of rerunning the clean contract; this role does not authorize waivers.",
+      "Any board/runtime/Vivado/AXI/DDR wrapped-system execution before clean operator-leaf and clean single-transformer-layer promotion certificates exist.",
+      "Any modification to the promoted Stage6 gate selector, failure-localization schema, or debug-trace schema outside the Stage6 ownership boundary.",
+      "Any backend/app-shell target-discovery or target-name selection if later board evidence is ambiguous; it must be handled by the backend board-integration authority, not this replay planner."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "verification_plan_static_check",
+          "verification_artifact_contract_check",
+          "hierarchical_verification_plan_check",
+          "tool_protocol_check",
+          "sacg_reference_check",
+          "stage_artifact_trust_barrier_check",
+          "stage_retry_request_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "targeted_replay_preflight",
+        "consumes": [
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.llm_action_audit",
+          "artifact.stage6.refinement_manifest",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage6.functional_sim_real_tool_nodes",
+          "artifact.stage6.debug_trace_manifest_schema",
+          "artifact.stage6.failure_localization_schema",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "sacg_memory_truth"
+        ],
+        "id": "stage7.preflight_clean_stage6_trust_gate",
+        "on_failure": "Do not run Stage7 replay. Keep current Stage7 artifacts debug-only and hand back to Stage6 verification-artifact repair or SACG trust-barrier reconciliation with the failed checker list.",
+        "produces": [
+          "stage7_clean_rerun_plan",
+          "real_tool_evidence_requirements",
+          "stage7_clean_stage6_trust_gate_report"
+        ],
+        "rationale": "Before any Stage7 rerun, the replay planner must prove that the consumed Stage6 verification artifacts are promoted, complete, and bound to the case adapter/tool protocols. This prevents reuse of rejected Stage6 contracts and makes the rerun scope checker-grounded.",
+        "requires_approval": false,
+        "stage": "stage7.verification",
+        "tool_roles": [
+          "sacg_validate",
+          "verification_plan_static_check",
+          "verification_artifact_contract_check",
+          "hierarchical_verification_plan_check",
+          "tool_protocol_check",
+          "sacg_reference_check",
+          "stage_artifact_trust_barrier",
+          "stage_retry_request"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_artifact_trust_barrier_check",
+          "boundary_contract_check",
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "targeted_replay_check"
+        ],
+        "action_type": "debug_evidence_quarantine_and_scope_binding",
+        "consumes": [
+          "artifact.stage7.debug_closure",
+          "artifact.stage7.operator_leaf_promotion_certificate",
+          "artifact.stage7.real_tool_results",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage6.debug_trace_manifest_schema",
+          "artifact.stage6.failure_localization_schema",
+          "stage7_clean_stage6_trust_gate_report"
+        ],
+        "id": "stage7.quarantine_and_rebind_prior_operator_leaf_evidence",
+        "on_failure": "Do not consume prior Stage7 operator-leaf evidence in the clean rerun. Require Stage7 verification to start from the promoted Stage6 contract without debug-seed promotion, or return to Stage6 if the replay scope cannot be derived.",
+        "produces": [
+          "operator_leaf_debug_evidence_quarantine_manifest",
+          "failure_localization_replay_scope",
+          "operator_leaf_then_single_layer_gate_sequence"
+        ],
+        "rationale": "Prior operator-leaf results and promotion certificates were produced under rejected transitions. They may guide localization but must be explicitly quarantined and rebound to a clean replay scope before any checker can consume them.",
+        "requires_approval": false,
+        "stage": "stage7.verification",
+        "tool_roles": [
+          "stage_artifact_trust_barrier",
+          "boundary_contract_generate",
+          "failure_slice_localization",
+          "causal_repair_context_pack"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "targeted_replay_check",
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "numeric_compare",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "operator_leaf_real_tool_replay",
+        "consumes": [
+          "stage7_clean_rerun_plan",
+          "failure_localization_replay_scope",
+          "operator_leaf_then_single_layer_gate_sequence",
+          "real_tool_evidence_requirements",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.design_artifact_manifest",
+          "artifact.input.case_adapter",
+          "artifact.input.numeric_policy"
+        ],
+        "id": "stage7.rerun_operator_leaf_under_clean_contract",
+        "on_failure": "Stop at operator-leaf layer. Send the failed real-tool logs and debug traces to failure localization; do not issue an operator-leaf promotion certificate and do not start single-layer or backend work.",
+        "produces": [
+          "artifact.stage7.operator_leaf_clean_real_tool_results",
+          "artifact.stage7.operator_leaf_clean_debug_trace_manifest",
+          "artifact.stage7.operator_leaf_clean_promotion_certificate"
+        ],
+        "rationale": "The first hardware-debug layer must be rerun under the clean Stage6 contract. Fresh operator-leaf evidence must cover boundary contract, static case checks, functional execution, golden/numeric compare, data order, transfer count, artifact hashes, and liveness/deadlock behavior for the selected scope.",
+        "requires_approval": false,
+        "stage": "stage7.verification",
+        "tool_roles": [
+          "targeted_replay",
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "numeric_compare",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "targeted_replay_check",
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "single_transformer_layer",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "numeric_compare",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "single_transformer_layer_real_tool_replay",
+        "consumes": [
+          "artifact.stage7.operator_leaf_clean_promotion_certificate",
+          "artifact.stage7.operator_leaf_clean_real_tool_results",
+          "artifact.stage7.operator_leaf_clean_debug_trace_manifest",
+          "stage7_clean_rerun_plan",
+          "operator_leaf_then_single_layer_gate_sequence",
+          "real_tool_evidence_requirements",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.input.case_adapter",
+          "artifact.input.numeric_policy"
+        ],
+        "id": "stage7.rerun_single_transformer_layer_after_leaf_pass",
+        "on_failure": "Stop at the connected single-transformer-layer layer. Preserve operator-leaf pass evidence, localize the single-layer failing boundary/transaction, and route only the causal slice to Stage8 bounded repair. Do not start AXI/DDR, Vivado, runtime, or board checks.",
+        "produces": [
+          "artifact.stage7.single_layer_clean_real_tool_results",
+          "artifact.stage7.single_layer_clean_debug_trace_manifest",
+          "artifact.stage7.single_layer_clean_promotion_certificate"
+        ],
+        "rationale": "Only after a fresh operator-leaf pass may the connected single-transformer-layer kernel be checked. This gate verifies cross-operator integration, stream order, beat/transfer alignment, numeric policy, and liveness before any board-accurate wrapping is considered.",
+        "requires_approval": false,
+        "stage": "stage7.verification",
+        "tool_roles": [
+          "targeted_replay",
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "single_transformer_layer",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "numeric_compare",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_replay_check",
+          "targeted_failed_checker_rerun",
+          "causal_repair_context_check",
+          "boundary_contract_check",
+          "repair_boundary_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "failure_localization_and_causal_context_pack",
+        "consumes": [
+          "artifact.stage7.operator_leaf_clean_real_tool_results",
+          "artifact.stage7.single_layer_clean_real_tool_results",
+          "artifact.stage7.operator_leaf_clean_debug_trace_manifest",
+          "artifact.stage7.single_layer_clean_debug_trace_manifest",
+          "artifact.stage6.failure_localization_schema",
+          "artifact.stage6.debug_trace_manifest_schema",
+          "artifact.stage6.verification_artifact_contract",
+          "operator_leaf_debug_evidence_quarantine_manifest"
+        ],
+        "id": "stage7.localize_failed_layer_and_pack_repair_context",
+        "on_failure": "Do not propose RTL/template/code repair from unlocalized failure evidence. Backtrack to Stage6 if schemas or gate contracts are incomplete; otherwise rerun the failed checker with additional trace capture under the same clean contract.",
+        "produces": [
+          "artifact.stage7.failure_localization_report",
+          "artifact.stage7.causal_repair_context",
+          "artifact.stage8.bounded_repair_handoff_request"
+        ],
+        "rationale": "A failed replay layer must enter the contract-guided debug loop before repair: tool output, boundary/transaction localization, causal context packing, and bounded Stage8 handoff. This prevents broad or premature code changes.",
+        "requires_approval": false,
+        "stage": "stage7.verification",
+        "tool_roles": [
+          "failure_slice_localization",
+          "boundary_trace_rerun",
+          "targeted_failed_checker_rerun",
+          "causal_repair_context_pack",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "required_real_tool_evidence_check",
+          "stage_artifact_trust_barrier_check",
+          "stage_retry_request_check",
+          "verification_action_audit_check",
+          "human_boundary_check"
+        ],
+        "action_type": "hierarchy_gate_record_and_downstream_block",
+        "consumes": [
+          "artifact.stage7.operator_leaf_clean_promotion_certificate",
+          "artifact.stage7.single_layer_clean_promotion_certificate",
+          "artifact.stage7.operator_leaf_clean_real_tool_results",
+          "artifact.stage7.single_layer_clean_real_tool_results",
+          "real_tool_evidence_requirements",
+          "sacg_memory_truth"
+        ],
+        "id": "stage7.record_hierarchy_gate_and_block_backend_until_pass",
+        "on_failure": "Keep downstream backend/board artifacts blocked, open or maintain the Stage7 retry request, and route failure evidence through localization before any repair or higher-layer verification.",
+        "produces": [
+          "artifact.stage7.hierarchy_gate_status",
+          "artifact.stage7.downstream_blocklist_or_release_request",
+          "artifact.stage7.verification_result"
+        ],
+        "rationale": "The replay result must drive the next tool decision. Backend, board, AXI/DDR, Vivado, runtime ABI, bitstream, and board-runtime stages remain blocked unless both clean operator-leaf and clean single-layer gates pass with required real-tool evidence.",
+        "requires_approval": false,
+        "stage": "stage7.verification",
+        "tool_roles": [
+          "hierarchical_verification_plan_check",
+          "required_real_tool_evidence_check",
+          "stage_artifact_trust_barrier",
+          "stage_retry_request",
+          "verification_action_audit"
+        ]
+      }
+    ],
+    "observations": [
+      "The supplied state summary records active contamination barriers on Stage6 verification artifacts, Stage7 verification outputs, Stage7 debug closure, Stage7 operator-leaf promotion certificates, and Stage8 repair artifacts, plus open retry requests targeting Stage6 and Stage7. This plan is therefore conditional: Stage7 rerun is executable only after clean Stage6 artifacts are promoted and the relevant trust barriers/retry state are reconciled by the owning gates.",
+      "No open backtrack request is listed in the supplied SACG truth summary; the current bounded path is retry after clean Stage6 promotion, not architecture backtrack, unless the Stage7 preflight finds the repaired Stage6 contract still incomplete.",
+      "Existing Stage7 operator-leaf evidence may have passed within a rejected scope, but it is not validated promotion evidence. It can only be consumed as debug-only localization context until operator-leaf gates are rerun under the clean Stage6 verification contract.",
+      "The candidate artifact shows contract-guided debug-closure and hierarchical repair-loop diagnostics are present, while case_vcs_functional is null. A null or not_run real-tool field is an evidence gap, not hardware correctness.",
+      "The required hierarchy is operator/leaf first, then connected single-transformer-layer kernel. Board-accurate AXI/DDR wrapping, Vivado, runtime ABI, and board execution remain blocked and out of this role\u2019s execution scope until the lower hierarchy gates pass with real-tool evidence.",
+      "Data order, transfer count/beat alignment, numeric comparison, and liveness/deadlock checks must be attached to the selected operator-leaf and single-layer replay scopes rather than inferred from prior rejected artifacts."
+    ],
+    "proposed_actions": [
+      "After clean Stage6 promotion, run a Stage7 preflight trust gate over the promoted verification plan, artifact contract, LLM audit, gate selector, debug trace schema, failure localization schema, tool protocols, and SACG references.",
+      "Record all previous Stage7 operator-leaf debug closure and promotion-certificate artifacts as debug-only replay seeds; do not promote or use them as pass evidence.",
+      "Generate a clean failure_localization_replay_scope and operator_leaf_then_single_layer_gate_sequence from the promoted Stage6 gate selector.",
+      "Rerun operator-leaf static, functional, golden/numeric compare, data-order, transfer-count, and liveness/deadlock checks under the clean contract; only a fresh pass can produce a clean operator-leaf promotion certificate.",
+      "If operator-leaf passes, rerun the connected single-transformer-layer functional, golden/numeric compare, data-order, transfer-count, and liveness/deadlock checks; do not skip directly to board or backend execution.",
+      "On any failed Stage7 layer, localize the earliest failing boundary/transaction using debug traces and the failure-localization schema, pack causal repair context, and hand off to Stage8 bounded repair without promoting the failed layer.",
+      "Keep backend/board/Vivado/runtime artifacts blocked until the hierarchy gate status proves clean operator-leaf and clean single-layer passes with required real-tool evidence."
+    ],
+    "risks": [
+      "Contamination risk: promoting artifact.stage7.operator_leaf_promotion_certificate or artifact.stage7.debug_closure from a rejected transition would bypass SACG trust barriers and create a false Stage7 pass.",
+      "Contract risk: if the promoted Stage6 artifacts do not include a complete stage7_gate_selector_contract, failure_localization_schema, and debug_trace_manifest_schema, Stage7 cannot produce bounded replay evidence and must return to Stage6 contract repair.",
+      "Real-tool evidence risk: case_vcs_functional is null in the candidate artifact, so functional, liveness, and numeric correctness cannot be claimed until the selected real tools produce fresh results under the clean contract.",
+      "Cross-layer consistency risk: stream order, beat/transfer count, memory/runtime address assumptions, and numeric policy may diverge between operator-leaf and connected single-layer scopes if the rerun does not bind the same clean Stage6 contract and case adapter.",
+      "Premature backend risk: starting AXI/DDR, Vivado, runtime ABI, bitstream, or board-runtime work before operator-leaf and single-layer hierarchy gates pass would violate the verification hierarchy and could hide the earliest causal failure boundary.",
+      "Localization risk: if a replay fails, repairing code before boundary-localized tool evidence is packed would violate the required tool-output to CCTG/contract-guided localization to bounded repair loop."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage6.verification_plan",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.llm_action_audit",
+        "artifact.stage6.refinement_manifest",
+        "artifact.stage6.stage7_gate_selector_contract",
+        "artifact.stage6.functional_sim_real_tool_nodes",
+        "artifact.stage6.debug_trace_manifest_schema",
+        "artifact.stage6.failure_localization_schema",
+        "artifact.stage7.verification_result",
+        "artifact.stage7.real_tool_results",
+        "artifact.stage7.debug_closure",
+        "artifact.stage7.operator_leaf_promotion_certificate",
+        "stage7_clean_rerun_plan",
+        "failure_localization_replay_scope",
+        "operator_leaf_then_single_layer_gate_sequence",
+        "real_tool_evidence_requirements"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.verification.hierarchy",
+        "constraint.verification.artifacts",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.liveness.pipeline",
+        "constraint.tool.protocols",
+        "constraint.human.boundary",
+        "constraint.case.adapter",
+        "constraint.memory.board",
+        "constraint.runtime.board"
+      ],
+      "edges": [
+        "artifact.stage6.verification_artifact_contract -> artifact.stage7.stage7_clean_rerun_plan",
+        "artifact.stage6.stage7_gate_selector_contract -> artifact.stage7.operator_leaf_then_single_layer_gate_sequence",
+        "artifact.stage7.debug_closure -> artifact.stage7.operator_leaf_debug_evidence_quarantine_manifest",
+        "artifact.stage7.operator_leaf_clean_real_tool_results -> artifact.stage7.single_layer_clean_real_tool_results",
+        "artifact.stage7.failed_real_tool_results -> artifact.stage7.failure_localization_report -> artifact.stage8.repair_plan",
+        "artifact.stage7.hierarchy_gate_status -> backend_board.block_or_release_decision"
+      ],
+      "nodes": [
+        "stage6.verification_artifacts.clean_promotion_gate",
+        "stage7.operator_leaf_closure.clean_rerun",
+        "stage7.single_transformer_layer_closure.clean_rerun",
+        "stage7.failure_localization_replay_scope",
+        "stage8.bounded_repair_handoff",
+        "backend_board.blocked_until_hierarchy_pass"
+      ]
+    },
+    "schema_version": "spatialaccagent.debug_closure_agent.v0",
+    "stage": "repair.targeted_replay_planning",
+    "status": "bounded_plan_ready_conditional_on_clean_stage6_promotion",
+    "summary": "Stage7 must be rerun from the operator/leaf boundary after clean Stage6 verification artifacts are promoted and SACG trust barriers are reconciled. Existing Stage7 operator-leaf evidence and promotion certificates from rejected transitions remain debug-only seeds; they cannot be promoted until rerun under the clean Stage6 contract. The bounded sequence is: clean Stage6 trust gate, quarantine/rebind old leaf evidence, rerun operator-leaf real-tool gates, then rerun connected single-transformer-layer gates, with failure localization and Stage8 handoff on any failed layer and no backend/board/Vivado/runtime progression before hierarchy gates pass."
+  },
+  "prompt_bytes": 81467,
+  "prompt_hash": "68665fdced9556ab8b56182d1aabbbfcfed03ada8c2a8ce3d4919609fd0da82d",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.debug_closure_agent.v0\",\"agent\":\"debug_closure_agent\",\"stage\":\"repair.targeted_replay_planning\",\"status\":\"bounded_plan_ready_conditional_on_clean_stage6_promotion\",\"summary\":\"Stage7 must be rerun from the operator/leaf boundary after clean Stage6 verification artifacts are promoted and SACG trust barriers are reconciled. Existing Stage7 operator-leaf evidence and promotion certificates from rejected transitions remain debug-only seeds; they cannot be promoted until rerun under the clean Stage6 contract. The bounded sequence is: clean Stage6 trust gate, quarantine/rebind old leaf evidence, rerun operator-leaf real-tool gates, then rerun connected single-transformer-layer gates, with failure localization and Stage8 handoff on any failed layer and no backend/board/Vivado/runtime progression before hierarchy gates pass.\",\"sacg_focus\":{\"nodes\":[\"stage6.verification_artifacts.clean_promotion_gate\",\"stage7.operator_leaf_closure.clean_rerun\",\"stage7.single_transformer_layer_closure.clean_rerun\",\"stage7.failure_localization_replay_scope\",\"stage8.bounded_repair_handoff\",\"backend_board.blocked_until_hierarchy_pass\"],\"edges\":[\"artifact.stage6.verification_artifact_contract -> artifact.stage7.stage7_clean_rerun_plan\",\"artifact.stage6.stage7_gate_selector_contract -> artifact.stage7.operator_leaf_then_single_layer_gate_sequence\",\"artifact.stage7.debug_closure -> artifact.stage7.operator_leaf_debug_evidence_quarantine_manifest\",\"artifact.stage7.operator_leaf_clean_real_tool_results -> artifact.stage7.single_layer_clean_real_tool_results\",\"artifact.stage7.failed_real_tool_results -> artifact.stage7.failure_localization_report -> artifact.stage8.repair_plan\",\"artifact.stage7.hierarchy_gate_status -> backend_board.block_or_release_decision\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.verification.artifacts\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.liveness.pipeline\",\"constraint.tool.protocols\",\"constraint.human.boundary\",\"constraint.case.adapter\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"artifacts\":[\"artifact.stage6.verification_plan\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"artifact.stage6.refinement_manifest\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.functional_sim_real_tool_nodes\",\"artifact.stage6.debug_trace_manifest_schema\",\"artifact.stage6.failure_localization_schema\",\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\",\"artifact.stage7.operator_leaf_promotion_certificate\",\"stage7_clean_rerun_plan\",\"failure_localization_replay_scope\",\"operator_leaf_then_single_layer_gate_sequence\",\"real_tool_evidence_requirements\"]},\"observations\":[\"The supplied state summary records active contamination barriers on Stage6 verification artifacts, Stage7 verification outputs, Stage7 debug closure, Stage7 operator-leaf promotion certificates, and Stage8 repair artifacts, plus open retry requests targeting Stage6 and Stage7. This plan is therefore conditional: Stage7 rerun is executable only after clean Stage6 artifacts are promoted and the relevant trust barriers/retry state are reconciled by the owning gates.\",\"No open backtrack request is listed in the supplied SACG truth summary; the current bounded path is retry after clean Stage6 promotion, not architecture backtrack, unless the Stage7 preflight finds the repaired Stage6 contract still incomplete.\",\"Existing Stage7 operator-leaf evidence may have passed within a rejected scope, but it is not validated promotion evidence. It can only be consumed as debug-only localization context until operator-leaf gates are rerun under the clean Stage6 verification contract.\",\"The candidate artifact shows contract-guided debug-closure and hierarchical repair-loop diagnostics are present, while case_vcs_functional is null. A null or not_run real-tool field is an evidence gap, not hardware correctness.\",\"The required hierarchy is operator/leaf first, then connected single-transformer-layer kernel. Board-accurate AXI/DDR wrapping, Vivado, runtime ABI, and board execution remain blocked and out of this role\u2019s execution scope until the lower hierarchy gates pass with real-tool evidence.\",\"Data order, transfer count/beat alignment, numeric comparison, and liveness/deadlock checks must be attached to the selected operator-leaf and single-layer replay scopes rather than inferred from prior rejected artifacts.\"],\"risks\":[\"Contamination risk: promoting artifact.stage7.operator_leaf_promotion_certificate or artifact.stage7.debug_closure from a rejected transition would bypass SACG trust barriers and create a false Stage7 pass.\",\"Contract risk: if the promoted Stage6 artifacts do not include a complete stage7_gate_selector_contract, failure_localization_schema, and debug_trace_manifest_schema, Stage7 cannot produce bounded replay evidence and must return to Stage6 contract repair.\",\"Real-tool evidence risk: case_vcs_functional is null in the candidate artifact, so functional, liveness, and numeric correctness cannot be claimed until the selected real tools produce fresh results under the clean contract.\",\"Cross-layer consistency risk: stream order, beat/transfer count, memory/runtime address assumptions, and numeric policy may diverge between operator-leaf and connected single-layer scopes if the rerun does not bind the same clean Stage6 contract and case adapter.\",\"Premature backend risk: starting AXI/DDR, Vivado, runtime ABI, bitstream, or board-runtime work before operator-leaf and single-layer hierarchy gates pass would violate the verification hierarchy and could hide the earliest causal failure boundary.\",\"Localization risk: if a replay fails, repairing code before boundary-localized tool evidence is packed would violate the required tool-output to CCTG/contract-guided localization to bounded repair loop.\"],\"proposed_actions\":[\"After clean Stage6 promotion, run a Stage7 preflight trust gate over the promoted verification plan, artifact contract, LLM audit, gate selector, debug trace schema, failure localization schema, tool protocols, and SACG references.\",\"Record all previous Stage7 operator-leaf debug closure and promotion-certificate artifacts as debug-only replay seeds; do not promote or use them as pass evidence.\",\"Generate a clean failure_localization_replay_scope and operator_leaf_then_single_layer_gate_sequence from the promoted Stage6 gate selector.\",\"Rerun operator-leaf static, functional, golden/numeric compare, data-order, transfer-count, and liveness/deadlock checks under the clean contract; only a fresh pass can produce a clean operator-leaf promotion certificate.\",\"If operator-leaf passes, rerun the connected single-transformer-layer functional, golden/numeric compare, data-order, transfer-count, and liveness/deadlock checks; do not skip directly to board or backend execution.\",\"On any failed Stage7 layer, localize the earliest failing boundary/transaction using debug traces and the failure-localization schema, pack causal repair context, and hand off to Stage8 bounded repair without promoting the failed layer.\",\"Keep backend/board/Vivado/runtime artifacts blocked until the hierarchy gate status proves clean operator-leaf and clean single-layer passes with required real-tool evidence.\"],\"executable_actions\":[{\"id\":\"stage7.preflight_clean_stage6_trust_gate\",\"stage\":\"stage7.verification\",\"action_type\":\"targeted_replay_preflight\",\"rationale\":\"Before any Stage7 rerun, the replay planner must prove that the consumed Stage6 verification artifacts are promoted, complete, and bound to the case adapter/tool protocols. This prevents reuse of rejected Stage6 contracts and makes the rerun scope checker-grounded.\",\"consumes\":[\"artifact.stage6.verification_plan\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"artifact.stage6.refinement_manifest\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.functional_sim_real_tool_nodes\",\"artifact.stage6.debug_trace_manifest_schema\",\"artifact.stage6.failure_localization_schema\",\"artifact.input.tool_protocols\",\"artifact.input.case_adapter\",\"sacg_memory_truth\"],\"produces\":[\"stage7_clean_rerun_plan\",\"real_tool_evidence_requirements\",\"stage7_clean_stage6_trust_gate_report\"],\"tool_roles\":[\"sacg_validate\",\"verification_plan_static_check\",\"verification_artifact_contract_check\",\"hierarchical_verification_plan_check\",\"tool_protocol_check\",\"sacg_reference_check\",\"stage_artifact_trust_barrier\",\"stage_retry_request\"],\"acceptance_checkers\":[\"sacg_static_check\",\"verification_plan_static_check\",\"verification_artifact_contract_check\",\"hierarchical_verification_plan_check\",\"tool_protocol_check\",\"sacg_reference_check\",\"stage_artifact_trust_barrier_check\",\"stage_retry_request_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not run Stage7 replay. Keep current Stage7 artifacts debug-only and hand back to Stage6 verification-artifact repair or SACG trust-barrier reconciliation with the failed checker list.\",\"requires_approval\":false},{\"id\":\"stage7.quarantine_and_rebind_prior_operator_leaf_evidence\",\"stage\":\"stage7.verification\",\"action_type\":\"debug_evidence_quarantine_and_scope_binding\",\"rationale\":\"Prior operator-leaf results and promotion certificates were produced under rejected transitions. They may guide localization but must be explicitly quarantined and rebound to a clean replay scope before any checker can consume them.\",\"consumes\":[\"artifact.stage7.debug_closure\",\"artifact.stage7.operator_leaf_promotion_certificate\",\"artifact.stage7.real_tool_results\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.debug_trace_manifest_schema\",\"artifact.stage6.failure_localization_schema\",\"stage7_clean_stage6_trust_gate_report\"],\"produces\":[\"operator_leaf_debug_evidence_quarantine_manifest\",\"failure_localization_replay_scope\",\"operator_leaf_then_single_layer_gate_sequence\"],\"tool_roles\":[\"stage_artifact_trust_barrier\",\"boundary_contract_generate\",\"failure_slice_localization\",\"causal_repair_context_pack\"],\"acceptance_checkers\":[\"stage_artifact_trust_barrier_check\",\"boundary_contract_check\",\"failure_localization_check\",\"causal_repair_context_check\",\"targeted_replay_check\"],\"on_failure\":\"Do not consume prior Stage7 operator-leaf evidence in the clean rerun. Require Stage7 verification to start from the promoted Stage6 contract without debug-seed promotion, or return to Stage6 if the replay scope cannot be derived.\",\"requires_approval\":false},{\"id\":\"stage7.rerun_operator_leaf_under_clean_contract\",\"stage\":\"stage7.verification\",\"action_type\":\"operator_leaf_real_tool_replay\",\"rationale\":\"The first hardware-debug layer must be rerun under the clean Stage6 contract. Fresh operator-leaf evidence must cover boundary contract, static case checks, functional execution, golden/numeric compare, data order, transfer count, artifact hashes, and liveness/deadlock behavior for the selected scope.\",\"consumes\":[\"stage7_clean_rerun_plan\",\"failure_localization_replay_scope\",\"operator_leaf_then_single_layer_gate_sequence\",\"real_tool_evidence_requirements\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.design_artifact_manifest\",\"artifact.input.case_adapter\",\"artifact.input.numeric_policy\"],\"produces\":[\"artifact.stage7.operator_leaf_clean_real_tool_results\",\"artifact.stage7.operator_leaf_clean_debug_trace_manifest\",\"artifact.stage7.operator_leaf_clean_promotion_certificate\"],\"tool_roles\":[\"targeted_replay\",\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"numeric_compare\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"targeted_replay_check\",\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"numeric_compare\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Stop at operator-leaf layer. Send the failed real-tool logs and debug traces to failure localization; do not issue an operator-leaf promotion certificate and do not start single-layer or backend work.\",\"requires_approval\":false},{\"id\":\"stage7.rerun_single_transformer_layer_after_leaf_pass\",\"stage\":\"stage7.verification\",\"action_type\":\"single_transformer_layer_real_tool_replay\",\"rationale\":\"Only after a fresh operator-leaf pass may the connected single-transformer-layer kernel be checked. This gate verifies cross-operator integration, stream order, beat/transfer alignment, numeric policy, and liveness before any board-accurate wrapping is considered.\",\"consumes\":[\"artifact.stage7.operator_leaf_clean_promotion_certificate\",\"artifact.stage7.operator_leaf_clean_real_tool_results\",\"artifact.stage7.operator_leaf_clean_debug_trace_manifest\",\"stage7_clean_rerun_plan\",\"operator_leaf_then_single_layer_gate_sequence\",\"real_tool_evidence_requirements\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.input.case_adapter\",\"artifact.input.numeric_policy\"],\"produces\":[\"artifact.stage7.single_layer_clean_real_tool_results\",\"artifact.stage7.single_layer_clean_debug_trace_manifest\",\"artifact.stage7.single_layer_clean_promotion_certificate\"],\"tool_roles\":[\"targeted_replay\",\"case_single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"single_transformer_layer\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"numeric_compare\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"targeted_replay_check\",\"case_single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"single_transformer_layer\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"numeric_compare\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Stop at the connected single-transformer-layer layer. Preserve operator-leaf pass evidence, localize the single-layer failing boundary/transaction, and route only the causal slice to Stage8 bounded repair. Do not start AXI/DDR, Vivado, runtime, or board checks.\",\"requires_approval\":false},{\"id\":\"stage7.localize_failed_layer_and_pack_repair_context\",\"stage\":\"stage7.verification\",\"action_type\":\"failure_localization_and_causal_context_pack\",\"rationale\":\"A failed replay layer must enter the contract-guided debug loop before repair: tool output, boundary/transaction localization, causal context packing, and bounded Stage8 handoff. This prevents broad or premature code changes.\",\"consumes\":[\"artifact.stage7.operator_leaf_clean_real_tool_results\",\"artifact.stage7.single_layer_clean_real_tool_results\",\"artifact.stage7.operator_leaf_clean_debug_trace_manifest\",\"artifact.stage7.single_layer_clean_debug_trace_manifest\",\"artifact.stage6.failure_localization_schema\",\"artifact.stage6.debug_trace_manifest_schema\",\"artifact.stage6.verification_artifact_contract\",\"operator_leaf_debug_evidence_quarantine_manifest\"],\"produces\":[\"artifact.stage7.failure_localization_report\",\"artifact.stage7.causal_repair_context\",\"artifact.stage8.bounded_repair_handoff_request\"],\"tool_roles\":[\"failure_slice_localization\",\"boundary_trace_rerun\",\"targeted_failed_checker_rerun\",\"causal_repair_context_pack\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"failure_localization_check\",\"targeted_replay_check\",\"targeted_failed_checker_rerun\",\"causal_repair_context_check\",\"boundary_contract_check\",\"repair_boundary_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not propose RTL/template/code repair from unlocalized failure evidence. Backtrack to Stage6 if schemas or gate contracts are incomplete; otherwise rerun the failed checker with additional trace capture under the same clean contract.\",\"requires_approval\":false},{\"id\":\"stage7.record_hierarchy_gate_and_block_backend_until_pass\",\"stage\":\"stage7.verification\",\"action_type\":\"hierarchy_gate_record_and_downstream_block\",\"rationale\":\"The replay result must drive the next tool decision. Backend, board, AXI/DDR, Vivado, runtime ABI, bitstream, and board-runtime stages remain blocked unless both clean operator-leaf and clean single-layer gates pass with required real-tool evidence.\",\"consumes\":[\"artifact.stage7.operator_leaf_clean_promotion_certificate\",\"artifact.stage7.single_layer_clean_promotion_certificate\",\"artifact.stage7.operator_leaf_clean_real_tool_results\",\"artifact.stage7.single_layer_clean_real_tool_results\",\"real_tool_evidence_requirements\",\"sacg_memory_truth\"],\"produces\":[\"artifact.stage7.hierarchy_gate_status\",\"artifact.stage7.downstream_blocklist_or_release_request\",\"artifact.stage7.verification_result\"],\"tool_roles\":[\"hierarchical_verification_plan_check\",\"required_real_tool_evidence_check\",\"stage_artifact_trust_barrier\",\"stage_retry_request\",\"verification_action_audit\"],\"acceptance_checkers\":[\"hierarchical_verification_plan_check\",\"required_real_tool_evidence_check\",\"stage_artifact_trust_barrier_check\",\"stage_retry_request_check\",\"verification_action_audit_check\",\"human_boundary_check\"],\"on_failure\":\"Keep downstream backend/board artifacts blocked, open or maintain the Stage7 retry request, and route failure evidence through localization before any repair or higher-layer verification.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any architecture, pipeline, memory-layout, runtime-layout, numeric-policy, or major template change proposed from Stage7 replay results.\",\"Any attempt to change golden outputs, tolerances, selected checkers, or verification hierarchy instead of rerunning the clean contract; this role does not authorize waivers.\",\"Any board/runtime/Vivado/AXI/DDR wrapped-system execution before clean operator-leaf and clean single-transformer-layer promotion certificates exist.\",\"Any modification to the promoted Stage6 gate selector, failure-localization schema, or debug-trace schema outside the Stage6 ownership boundary.\",\"Any backend/app-shell target-discovery or target-name selection if later board evidence is ambiguous; it must be handled by the backend board-integration authority, not this replay planner.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/team/llm/debug_closure_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/team/llm/debug_closure_agent_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair.targeted verification replay planner",
+  "used_fallback": false
+}

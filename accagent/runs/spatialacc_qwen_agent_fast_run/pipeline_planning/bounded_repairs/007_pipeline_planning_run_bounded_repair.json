@@ -1,0 +1,52 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "human_boundary_check",
+      "sacg_static_check",
+      "task_card_check",
+      "model_config_check",
+      "numeric_policy_check",
+      "template_coverage_check",
+      "stream_plan_check",
+      "memory_runtime_plan_check",
+      "boundary_contract_check",
+      "llm_io_quality_check"
+    ],
+    "action_type": "bounded_repair",
+    "consumes": [
+      "source_sacg_state:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+      "pipeline_planning/repair/causal_repair_context.json",
+      "pipeline_planning/repair/retry_reconciliation_contract.json",
+      "active_contamination_barrier.pipeline_planning_failed_attempt_2"
+    ],
+    "id": "pipeline_planning.run_bounded_repair",
+    "on_failure": "Do not promote the candidate; retain the contamination barrier and emit an explicit stage_backtrack_request or stop decision with the localized unresolved risks.",
+    "produces": [
+      "pipeline_planning/candidate/pipeline_planning_report.repaired.json",
+      "pipeline_planning/candidate/sacg_state.repaired.json",
+      "pipeline_planning/candidate/risk_resolution_matrix.json"
+    ],
+    "rationale": "Normal retry budget is exhausted, and current-stage risks block promotion. Run a bounded repair of the pipeline plan using only localized risks and SACG constraints, preserving cross-layer consistency and avoiding any golden-output or tolerance modification.",
+    "requires_approval": true,
+    "stage": "pipeline_planning",
+    "tool_roles": [
+      "pipeline_repair",
+      "architecture_review",
+      "memory_runtime_repair",
+      "team_aggregate",
+      "human_boundary_check"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "stop",
+  "flow_event_index": 7,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/007_stop.json",
+  "stage": "pipeline_planning"
+}

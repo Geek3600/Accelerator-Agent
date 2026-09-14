@@ -1,0 +1,227 @@
+{
+  "agent": "flow_controller_agent",
+  "duration_sec": 203.4458313669893,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "flow_controller_agent",
+    "approval_required_for": [
+      "Any architecture, pipeline, memory layout, runtime ABI, DDR map, numeric policy, model semantics, data-order, stream/lane-order, or major template change discovered during Stage6 repair.",
+      "Any backtrack from verification_artifacts into code_generation, parameter_binding, or pipeline_planning.",
+      "Any modification to golden outputs, golden-reference generation, numeric tolerance, real-weight/input acceptance criteria, Qwen2 decoder semantics, GQA/KV/RoPE/causal-mask behavior, or decoder-block operator order.",
+      "Any attempt to promote or consume the stale/failed verification_artifacts_report.json as a validated downstream artifact.",
+      "Any unbounded same-stage retry that is not tied to the bounded Stage6 repair candidate and listed acceptance checks.",
+      "Any backend/app-shell target selection or board profile update, if encountered during Stage6 contract repair, that is not grounded in cited board materials and real Vivado/board discovery evidence."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "stage_artifact_trust_barrier_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "artifact_trust_barrier",
+        "consumes": [
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/39_verification_artifacts.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/verification_artifacts_report.json",
+          "sacg_memory_truth"
+        ],
+        "id": "stage6.quarantine_failed_verification_outputs",
+        "on_failure": "Stop Stage6 promotion and downstream progress until the stale/failed artifact paths are explicitly blocked from validated-input selection.",
+        "produces": [
+          "artifact.stage6.failed_attempt_trust_barrier_record",
+          "artifact.stage6.diagnostic_only_failed_attempt_index"
+        ],
+        "rationale": "The latest Stage6 command failed and the framework marked the prior verification_artifacts_report.json stale/incomplete and unpromoted. A scoped trust barrier prevents downstream tools from consuming failed/stale Stage6 outputs while still allowing command logs to be used as diagnostics.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "stage_artifact_trust_barrier",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "verification_action_audit_check"
+        ],
+        "action_type": "bounded_repair",
+        "consumes": [
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/39_verification_artifacts.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/llm/verification_planner_agent_result.json",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage4.parameter_static_checks",
+          "artifact.stage5.design_artifact_manifest",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config"
+        ],
+        "id": "stage6.extract_risks_and_repair_contract",
+        "on_failure": "Do not retry blindly or promote Stage6. If unresolved risks require upstream design changes, hand off to stage6.open_explicit_backtrack_request; if the failure is only missing checker capability, declare a planned_checker gap rather than claiming hardware correctness.",
+        "produces": [
+          "artifact.stage6.unresolved_risk_extraction_report",
+          "artifact.stage6.verification_plan_candidate",
+          "artifact.stage6.verification_artifact_contract_candidate",
+          "artifact.stage6.hierarchical_repair_loop_contract",
+          "artifact.stage6.current_stage_risk_resolution_report"
+        ],
+        "rationale": "The planner explicitly requested bounded Stage6 contract updates and reported 2 current-stage unresolved risks. Repair must be confined to Stage6 verification plan/contract artifacts and must use validated upstream Stage4/Stage5 artifacts plus failed-attempt logs only as diagnostics.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "bounded_template_repair",
+          "boundary_contract_generate",
+          "verification_action_audit",
+          "sacg_validate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "targeted_failed_checker_rerun",
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "verification_action_audit_check",
+          "output_validity_check"
+        ],
+        "action_type": "stage_gate_rerun_after_bounded_repair",
+        "consumes": [
+          "artifact.stage6.verification_plan_candidate",
+          "artifact.stage6.verification_artifact_contract_candidate",
+          "artifact.stage6.hierarchical_repair_loop_contract",
+          "artifact.stage6.current_stage_risk_resolution_report",
+          "artifact.stage6.failed_attempt_trust_barrier_record",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json"
+        ],
+        "id": "stage6.rerun_repaired_stage6_gates",
+        "on_failure": "Keep Stage6 blocked, retain the failed-output trust barrier, and route the failed checker evidence to causal repair context. Do not proceed to debug_loop or backend_board.",
+        "produces": [
+          "artifact.stage6.verification_artifacts_report_promoted",
+          "artifact.stage6.verification_artifact_contract_promoted",
+          "artifact.stage6.stage_gate_evidence",
+          "updated_sacg_state_after_stage6"
+        ],
+        "rationale": "A new Stage6 candidate may be promoted only after the repaired verification plan and artifact contract pass the current-stage gates. This is not a blind third retry; it is a bounded repair-mode rerun with explicit candidate inputs and acceptance checks.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "targeted_failed_checker_rerun",
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "real_tool_evidence_check",
+          "verification_action_audit",
+          "sacg_validate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "stage_backtrack_request_check",
+          "sacg_memory_check",
+          "human_boundary_check"
+        ],
+        "action_type": "conditional_backtrack_request",
+        "consumes": [
+          "artifact.stage6.unresolved_risk_extraction_report",
+          "artifact.stage6.current_stage_risk_resolution_report",
+          "artifact.stage6.stage_gate_evidence"
+        ],
+        "id": "stage6.open_explicit_backtrack_request_if_cross_stage_change_needed",
+        "on_failure": "Stop the autonomous run to avoid artifact contamination; do not modify upstream artifacts, golden outputs, tolerances, or generated code without an accepted backtrack/approval record.",
+        "produces": [
+          "artifact.stage6.causal_repair_context_pack",
+          "sacg_memory.open_backtrack_request.stage6_to_required_upstream_stage",
+          "artifact.stage6.cross_stage_change_approval_packet"
+        ],
+        "rationale": "If Stage6 repair discovers that the verification failure can only be resolved by changing code generation, parameter binding, pipeline planning, memory/runtime ABI, numeric policy, golden reference, or implementation templates, that is outside bounded Stage6 authority and must become an explicit approved backtrack request.",
+        "requires_approval": true,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "stage_backtrack_request",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "stage_passed is false and command_returncode is 1 for verification_artifacts.",
+      "The framework explicitly did not promote the existing verification_artifacts_report.json; stale output was ignored and must not be treated as a validated Stage6 artifact.",
+      "The visible failure is semantic/current-stage after LLM completion: verification_planner_agent status is needs_bounded_stage6_contract_updates and it reported 2 current-stage unresolved risks. The earlier 504 retries are diagnostic reliability evidence, not a successful plan.",
+      "attempt_count equals the bounded_attempts_per_stage limit of 2, so a blind same-stage retry would violate the bounded-flow intent.",
+      "sacg_memory_truth is authoritative and shows no active contamination barriers and no open retry or backtrack requests; no historical blocker should be inferred.",
+      "Upstream Stage4 parameter binding and Stage5 code generation are recorded ready, so there is no supplied evidence requiring immediate backtrack before bounded Stage6 repair.",
+      "The prompt slice does not expose the details of the 2 unresolved risks; those details must be extracted from the named planner/result logs as diagnostic inputs before repair, not guessed."
+    ],
+    "proposed_actions": [
+      "Block downstream progress from verification_artifacts until a repaired Stage6 contract passes all Stage6 static and artifact contract gates.",
+      "Quarantine the failed/stale Stage6 outputs as diagnostic-only and preserve the fact that no Stage6 artifact was promoted.",
+      "Run a bounded Stage6 verification-artifact contract repair that extracts the two planner-reported unresolved current-stage risks from the named logs and updates only Stage6 verification-plan/contract artifacts.",
+      "Re-run Stage6 verification artifact static, hierarchy, SACG reference, tool-protocol, required-real-tool-evidence, and action-audit checks on the repaired candidate before promotion.",
+      "If bounded Stage6 repair requires any Stage5 or earlier contract change, stop current-stage promotion and open an explicit approved backtrack request instead of editing upstream artifacts implicitly."
+    ],
+    "risks": [
+      "Artifact contamination if the stale or failed verification_artifacts_report.json is consumed by debug_loop or backend_board as if it passed.",
+      "Unbounded retry risk because the stage already consumed 2 attempts and showed repeated LLM 504 retries before producing a failing planner decision.",
+      "Cross-layer consistency risk if Stage6 repair silently changes model semantics, tensor shapes, numeric policy, data order, stream/lane ordering, memory layout, runtime ABI, implementation templates, or board facts instead of issuing an approved backtrack.",
+      "Verification hierarchy risk if the repaired Stage6 contract does not preserve the required operator/leaf, single-transformer-layer, then board-accurate AXI/DDR wrapped-system verification progression.",
+      "Checker/golden-reference contamination risk if unresolved verification risks are addressed by loosening numeric tolerance, modifying golden outputs, or accepting missing real-tool evidence."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/39_verification_artifacts.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/llm/verification_planner_agent_result.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/verification_artifacts_report.json (stale/incomplete, not promoted)",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+        "artifact.stage5.design_artifact_manifest",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config"
+      ],
+      "constraints": [
+        "flow_policy.do_not_use_failed_artifacts_as_validated_downstream_inputs",
+        "flow_policy.bounded_attempts_per_stage=2",
+        "llm_policy.enforce=true",
+        "sacg_memory_truth has zero active contamination barriers and zero open retry/backtrack requests",
+        "current-stage unresolved risks block Stage6 promotion",
+        "architecture, pipeline, memory layout, runtime ABI, numeric policy, golden reference, or major template changes require approval/backtrack"
+      ],
+      "edges": [
+        "artifact.stage4.parameter_binding -> artifact.stage5.generated_code_package",
+        "artifact.stage5.generated_code_package/memory_layout/runtime_config -> artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.verification_artifact_contract -> debug_loop/backend_board only after Stage6 checks pass",
+        "failed_or_stale_stage6_outputs -> diagnostic-only inputs, not validated downstream inputs"
+      ],
+      "nodes": [
+        "stage4.parameter_binding",
+        "stage5.code_generation",
+        "stage6.verification_artifacts",
+        "verification_planner_agent",
+        "sacg_memory_truth"
+      ]
+    },
+    "schema_version": "spatialaccagent.flow_controller_agent.v0",
+    "stage": "verification_artifacts",
+    "status": "run_bounded_repair",
+    "summary": "Do not proceed to downstream verification/debug/backend and do not run a blind third retry. The latest verification_artifacts command failed with returncode 1 after the planner reported needs_bounded_stage6_contract_updates and 2 current-stage unresolved risks. SACG memory truth shows no active contamination barriers and no open retry/backtrack requests, and upstream Stage4/Stage5 artifacts remain ready. The next safe action is a bounded Stage6 verification-artifact contract repair using only diagnostic failed-attempt logs plus validated upstream artifacts, followed by Stage6 static/contract gates before any promotion."
+  },
+  "prompt_bytes": 26515,
+  "prompt_hash": "8ca19031a2e22670a72c6d62a24fb743634a5f4e13267538b3a5a1f7f6b9875a",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.flow_controller_agent.v0\",\"agent\":\"flow_controller_agent\",\"stage\":\"verification_artifacts\",\"status\":\"run_bounded_repair\",\"summary\":\"Do not proceed to downstream verification/debug/backend and do not run a blind third retry. The latest verification_artifacts command failed with returncode 1 after the planner reported needs_bounded_stage6_contract_updates and 2 current-stage unresolved risks. SACG memory truth shows no active contamination barriers and no open retry/backtrack requests, and upstream Stage4/Stage5 artifacts remain ready. The next safe action is a bounded Stage6 verification-artifact contract repair using only diagnostic failed-attempt logs plus validated upstream artifacts, followed by Stage6 static/contract gates before any promotion.\",\"sacg_focus\":{\"nodes\":[\"stage4.parameter_binding\",\"stage5.code_generation\",\"stage6.verification_artifacts\",\"verification_planner_agent\",\"sacg_memory_truth\"],\"edges\":[\"artifact.stage4.parameter_binding -> artifact.stage5.generated_code_package\",\"artifact.stage5.generated_code_package/memory_layout/runtime_config -> artifact.stage6.verification_artifact_contract\",\"artifact.stage6.verification_artifact_contract -> debug_loop/backend_board only after Stage6 checks pass\",\"failed_or_stale_stage6_outputs -> diagnostic-only inputs, not validated downstream inputs\"],\"constraints\":[\"flow_policy.do_not_use_failed_artifacts_as_validated_downstream_inputs\",\"flow_policy.bounded_attempts_per_stage=2\",\"llm_policy.enforce=true\",\"sacg_memory_truth has zero active contamination barriers and zero open retry/backtrack requests\",\"current-stage unresolved risks block Stage6 promotion\",\"architecture, pipeline, memory layout, runtime ABI, numeric policy, golden reference, or major template changes require approval/backtrack\"],\"artifacts\":[\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/39_verification_artifacts.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/llm/verification_planner_agent_result.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/verification_artifacts_report.json (stale/incomplete, not promoted)\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\"]},\"observations\":[\"stage_passed is false and command_returncode is 1 for verification_artifacts.\",\"The framework explicitly did not promote the existing verification_artifacts_report.json; stale output was ignored and must not be treated as a validated Stage6 artifact.\",\"The visible failure is semantic/current-stage after LLM completion: verification_planner_agent status is needs_bounded_stage6_contract_updates and it reported 2 current-stage unresolved risks. The earlier 504 retries are diagnostic reliability evidence, not a successful plan.\",\"attempt_count equals the bounded_attempts_per_stage limit of 2, so a blind same-stage retry would violate the bounded-flow intent.\",\"sacg_memory_truth is authoritative and shows no active contamination barriers and no open retry or backtrack requests; no historical blocker should be inferred.\",\"Upstream Stage4 parameter binding and Stage5 code generation are recorded ready, so there is no supplied evidence requiring immediate backtrack before bounded Stage6 repair.\",\"The prompt slice does not expose the details of the 2 unresolved risks; those details must be extracted from the named planner/result logs as diagnostic inputs before repair, not guessed.\"],\"risks\":[\"Artifact contamination if the stale or failed verification_artifacts_report.json is consumed by debug_loop or backend_board as if it passed.\",\"Unbounded retry risk because the stage already consumed 2 attempts and showed repeated LLM 504 retries before producing a failing planner decision.\",\"Cross-layer consistency risk if Stage6 repair silently changes model semantics, tensor shapes, numeric policy, data order, stream/lane ordering, memory layout, runtime ABI, implementation templates, or board facts instead of issuing an approved backtrack.\",\"Verification hierarchy risk if the repaired Stage6 contract does not preserve the required operator/leaf, single-transformer-layer, then board-accurate AXI/DDR wrapped-system verification progression.\",\"Checker/golden-reference contamination risk if unresolved verification risks are addressed by loosening numeric tolerance, modifying golden outputs, or accepting missing real-tool evidence.\"],\"proposed_actions\":[\"Block downstream progress from verification_artifacts until a repaired Stage6 contract passes all Stage6 static and artifact contract gates.\",\"Quarantine the failed/stale Stage6 outputs as diagnostic-only and preserve the fact that no Stage6 artifact was promoted.\",\"Run a bounded Stage6 verification-artifact contract repair that extracts the two planner-reported unresolved current-stage risks from the named logs and updates only Stage6 verification-plan/contract artifacts.\",\"Re-run Stage6 verification artifact static, hierarchy, SACG reference, tool-protocol, required-real-tool-evidence, and action-audit checks on the repaired candidate before promotion.\",\"If bounded Stage6 repair requires any Stage5 or earlier contract change, stop current-stage promotion and open an explicit approved backtrack request instead of editing upstream artifacts implicitly.\"],\"executable_actions\":[{\"id\":\"stage6.quarantine_failed_verification_outputs\",\"stage\":\"verification_artifacts\",\"action_type\":\"artifact_trust_barrier\",\"rationale\":\"The latest Stage6 command failed and the framework marked the prior verification_artifacts_report.json stale/incomplete and unpromoted. A scoped trust barrier prevents downstream tools from consuming failed/stale Stage6 outputs while still allowing command logs to be used as diagnostics.\",\"consumes\":[\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/39_verification_artifacts.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/verification_artifacts_report.json\",\"sacg_memory_truth\"],\"produces\":[\"artifact.stage6.failed_attempt_trust_barrier_record\",\"artifact.stage6.diagnostic_only_failed_attempt_index\"],\"tool_roles\":[\"stage_artifact_trust_barrier\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"stage_artifact_trust_barrier_check\",\"sacg_memory_check\"],\"on_failure\":\"Stop Stage6 promotion and downstream progress until the stale/failed artifact paths are explicitly blocked from validated-input selection.\",\"requires_approval\":false},{\"id\":\"stage6.extract_risks_and_repair_contract\",\"stage\":\"verification_artifacts\",\"action_type\":\"bounded_repair\",\"rationale\":\"The planner explicitly requested bounded Stage6 contract updates and reported 2 current-stage unresolved risks. Repair must be confined to Stage6 verification plan/contract artifacts and must use validated upstream Stage4/Stage5 artifacts plus failed-attempt logs only as diagnostics.\",\"consumes\":[\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/39_verification_artifacts.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/llm/verification_planner_agent_result.json\",\"artifact.stage4.parameter_binding\",\"artifact.stage4.parameter_static_checks\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\"],\"produces\":[\"artifact.stage6.unresolved_risk_extraction_report\",\"artifact.stage6.verification_plan_candidate\",\"artifact.stage6.verification_artifact_contract_candidate\",\"artifact.stage6.hierarchical_repair_loop_contract\",\"artifact.stage6.current_stage_risk_resolution_report\"],\"tool_roles\":[\"bounded_template_repair\",\"boundary_contract_generate\",\"verification_action_audit\",\"sacg_validate\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"verification_action_audit_check\"],\"on_failure\":\"Do not retry blindly or promote Stage6. If unresolved risks require upstream design changes, hand off to stage6.open_explicit_backtrack_request; if the failure is only missing checker capability, declare a planned_checker gap rather than claiming hardware correctness.\",\"requires_approval\":false},{\"id\":\"stage6.rerun_repaired_stage6_gates\",\"stage\":\"verification_artifacts\",\"action_type\":\"stage_gate_rerun_after_bounded_repair\",\"rationale\":\"A new Stage6 candidate may be promoted only after the repaired verification plan and artifact contract pass the current-stage gates. This is not a blind third retry; it is a bounded repair-mode rerun with explicit candidate inputs and acceptance checks.\",\"consumes\":[\"artifact.stage6.verification_plan_candidate\",\"artifact.stage6.verification_artifact_contract_candidate\",\"artifact.stage6.hierarchical_repair_loop_contract\",\"artifact.stage6.current_stage_risk_resolution_report\",\"artifact.stage6.failed_attempt_trust_barrier_record\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json\"],\"produces\":[\"artifact.stage6.verification_artifacts_report_promoted\",\"artifact.stage6.verification_artifact_contract_promoted\",\"artifact.stage6.stage_gate_evidence\",\"updated_sacg_state_after_stage6\"],\"tool_roles\":[\"targeted_failed_checker_rerun\",\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"real_tool_evidence_check\",\"verification_action_audit\",\"sacg_validate\"],\"acceptance_checkers\":[\"targeted_failed_checker_rerun\",\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"sacg_reference_check\",\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"verification_action_audit_check\",\"output_validity_check\"],\"on_failure\":\"Keep Stage6 blocked, retain the failed-output trust barrier, and route the failed checker evidence to causal repair context. Do not proceed to debug_loop or backend_board.\",\"requires_approval\":false},{\"id\":\"stage6.open_explicit_backtrack_request_if_cross_stage_change_needed\",\"stage\":\"verification_artifacts\",\"action_type\":\"conditional_backtrack_request\",\"rationale\":\"If Stage6 repair discovers that the verification failure can only be resolved by changing code generation, parameter binding, pipeline planning, memory/runtime ABI, numeric policy, golden reference, or implementation templates, that is outside bounded Stage6 authority and must become an explicit approved backtrack request.\",\"consumes\":[\"artifact.stage6.unresolved_risk_extraction_report\",\"artifact.stage6.current_stage_risk_resolution_report\",\"artifact.stage6.stage_gate_evidence\"],\"produces\":[\"artifact.stage6.causal_repair_context_pack\",\"sacg_memory.open_backtrack_request.stage6_to_required_upstream_stage\",\"artifact.stage6.cross_stage_change_approval_packet\"],\"tool_roles\":[\"failure_slice_localization\",\"causal_repair_context_pack\",\"stage_backtrack_request\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"stage_backtrack_request_check\",\"sacg_memory_check\",\"human_boundary_check\"],\"on_failure\":\"Stop the autonomous run to avoid artifact contamination; do not modify upstream artifacts, golden outputs, tolerances, or generated code without an accepted backtrack/approval record.\",\"requires_approval\":true}],\"approval_required_for\":[\"Any architecture, pipeline, memory layout, runtime ABI, DDR map, numeric policy, model semantics, data-order, stream/lane-order, or major template change discovered during Stage6 repair.\",\"Any backtrack from verification_artifacts into code_generation, parameter_binding, or pipeline_planning.\",\"Any modification to golden outputs, golden-reference generation, numeric tolerance, real-weight/input acceptance criteria, Qwen2 decoder semantics, GQA/KV/RoPE/causal-mask behavior, or decoder-block operator order.\",\"Any attempt to promote or consume the stale/failed verification_artifacts_report.json as a validated downstream artifact.\",\"Any unbounded same-stage retry that is not tied to the bounded Stage6 repair candidate and listed acceptance checks.\",\"Any backend/app-shell target selection or board profile update, if encountered during Stage6 contract repair, that is not grounded in cited board materials and real Vivado/board discovery evidence.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/022_verification_artifacts/llm/flow_controller_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/022_verification_artifacts/llm/flow_controller_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "flow_orchestration",
+  "used_fallback": false
+}

@@ -1,0 +1,244 @@
+{
+  "agent": "pipeline_architect_agent",
+  "duration_sec": 395.6777479880002,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "pipeline_architect_agent",
+    "approval_required_for": [
+      "Any change to the Qwen2 decoder operator order, residual skip endpoints, branch/join pairing key, or causal GQA attention parameters.",
+      "Any memory layout, DMA device template, h2c/c2h target mapping, or board/runtime target selection not directly derivable from supplied target_board_profile, tool_profile, and tool_protocols.",
+      "Any numeric precision, rounding, saturation, tolerance, template substitution, or free-form RTL generation change.",
+      "Any attempt to treat symbolic_first_order latency or current Stage 3 static checks as simulator, timing, Vivado, board, or hardware-pass evidence."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "tool_protocol_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "memory_runtime_repair",
+        "consumes": [
+          "candidate_stage_artifact.memory_schedule",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.tool.protocols"
+        ],
+        "id": "pipeline_planning.repair_memory_runtime_handoff",
+        "on_failure": "Keep the pipeline plan incomplete; issue a bounded recovery or stage_backtrack_request if supplied board/tool evidence cannot identify h2c/c2h templates and DMA targets. Do not promote to parameter binding or code generation.",
+        "produces": [
+          "artifact.pipeline_planning.memory_runtime_handoff_patch",
+          "artifact.pipeline_planning.runtime_config_requirements.refined"
+        ],
+        "rationale": "The only visible failed current-stage checker is memory_runtime_contract_check, caused by missing h2c_device_template and c2h_device_template. Repair must be bounded to supplied board/tool/runtime constraints and must not alter the already checker-backed operator order, attention semantics, stream order, tensor shapes, numeric policy, or templates.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "memory_runtime_repair",
+          "memory_runtime_plan_check",
+          "tool_protocol_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "stream_plan_check",
+          "template_binding_static_check",
+          "memory_runtime_plan_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_stage_artifact.pipeline_plan",
+          "artifact.pipeline_planning.memory_runtime_handoff_patch",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.template.library",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "pipeline_planning.rerun_acceptance_evidence_gate",
+        "on_failure": "Route the failed constraint slice to pipeline_repair or memory_runtime_repair as appropriate; preserve SACG contamination barriers and do not generate RTL or modify golden outputs.",
+        "produces": [
+          "artifact.pipeline_planning.pipeline_architect_review",
+          "artifact.pipeline_planning.stage_graph_constraint_notes",
+          "artifact.pipeline_planning.evidence_gate_result"
+        ],
+        "rationale": "The detailed supplied checks support decoder order, attention, stream, shape, branch/join, liveness, and template constraints, but promotion requires the named subtask acceptance checks and repaired memory/runtime handoff to be bound to SACG evidence.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "sacg_static_check",
+          "model_config_check",
+          "stream_plan_check",
+          "template_coverage_check",
+          "memory_runtime_plan_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "boundary_contract_check",
+          "sacg_reference_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "contract_handoff",
+        "consumes": [
+          "artifact.pipeline_planning.evidence_gate_result",
+          "artifact.pipeline_planning.stage_graph_constraint_notes",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection"
+        ],
+        "id": "parameter_binding.consume_promoted_pipeline_contract",
+        "on_failure": "Return the failed parameter or boundary slice to pipeline_planning with a bounded repair request; do not proceed to code generation.",
+        "produces": [
+          "artifact.parameter_binding.template_parameter_contract",
+          "artifact.parameter_binding.boundary_contracts"
+        ],
+        "rationale": "After the pipeline evidence gate passes, the next stage must bind template parameters from the promoted contract without changing decoder ordering, residual endpoints, GQA semantics, stream data order, numeric widths, or the free_form_rtl_generation=false boundary.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "boundary_contract_generate",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check"
+        ],
+        "action_type": "memory_runtime_plan",
+        "consumes": [
+          "artifact.pipeline_planning.stage_graph_constraint_notes",
+          "artifact.pipeline_planning.runtime_config_requirements.refined",
+          "candidate_stage_artifact.attention_contract",
+          "candidate_stage_artifact.memory_schedule",
+          "constraint.memory.board",
+          "constraint.runtime.board"
+        ],
+        "id": "memory_layout.carry_attention_and_dma_obligations",
+        "on_failure": "Block code generation and runtime ABI generation until memory regions, transfer counts, and DMA targets are checker-backed; require approval for any memory layout change outside supplied constraints.",
+        "produces": [
+          "artifact.memory_layout.activation_weight_kv_region_plan",
+          "artifact.memory_layout.runtime_dma_target_plan"
+        ],
+        "rationale": "The current attention contract bounds in-block KV storage at seq_len 16 and defers external KV-cache materialization and concrete base addresses to later memory layout. This action prevents later stages from silently inventing runtime or memory assumptions.",
+        "requires_approval": false,
+        "stage": "memory_layout",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check"
+        ]
+      }
+    ],
+    "observations": [
+      "SACG memory in the supplied state reports no open backtrack_requests, no open retry_requests, and no active contamination_barriers relevant to this stage; the separate sacg_memory slice is empty, so there is no stage-memory blocker to reconcile here.",
+      "The candidate stage graph preserves the supplied Qwen2 decoder block order: rms_norm_1, self_attention, residual_add_1, rms_norm_2, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, residual_add_2. The supplied operator_order_check reports pass with that exact order.",
+      "Residual boundaries are explicit and checker-backed: block_input feeds both rms_norm_1 and residual_add_1.skip; residual_add_1 output feeds rms_norm_2 and residual_add_2.skip; residual_add_2 produces block_output. Join contracts require all required inputs valid before fire and pair on token, tile, lane, word. The supplied branch_join_contract_check reports pass.",
+      "The MLP gate/up split is represented as a ready/valid broadcast with per-output FIFOs after rms_norm_2, and activation_mul joins the gate and up branches by the same token/tile/lane/word pairing key. This preserves stream ordering under backpressure without assuming latency equality.",
+      "The attention contract is consistent with the supplied Qwen2 shape: attention_kind gqa, causal true, num_q_heads 14, num_kv_heads 2, gqa_group_size 7, head_dim 64, hidden width 896, seq_len_bound 16, and RoPE theta 1000000.0. The supplied attention_semantics_check reports pass for q=14, kv=2, head_dim=64.",
+      "Shape, numeric width, and transfer-count evidence are internally consistent in the visible data_edges and stream_edges: hidden tensors use seq_len 16 and width 896, intermediate tensors use width 4864, 32-bit hidden transfers are 57344 bytes, 16-bit hidden transfers are 28672 bytes, and 16-bit intermediate transfers are 155648 bytes. The supplied stream_data_edge_mirror_check, edge_stream_contract_check, and shape_numeric_contract_check report pass.",
+      "All visible stream edges use transfer_order token, tile, lane, word and full_beats_only byte validity. This aligns the residual and branch join pairing keys with the data-order contract.",
+      "The flow-control plan uses ready_valid streams, bounded FIFO buffers with depths 32 or 64, and an acyclic directed graph. The supplied buffer_contract_check and liveness_backpressure_check report pass, with the explicit caveat that this is elasticity/backpressure planning evidence, not latency-equality, timing, throughput, or hardware-pass evidence.",
+      "Template use is bounded: visible stages bind to supplied template IDs norm, attention, residual, ffn, and elementwise, buffers use trusted_queue_template, and template_binding_static_check reports free_form_rtl_generation=false. No free-form RTL assumption is needed for the reviewed pipeline contract.",
+      "The candidate memory_schedule carries board AXI/DDR facts, including 512-bit AXI data width, 64-byte alignment, one DDR4 channel, and calibration signal c0_init_calib_complete, but runtime_config_requirements has null h2c_device_template and c2h_device_template plus empty h2c_write_targets and c2h_read_targets.",
+      "The supplied memory_runtime_contract_check fails on missing h2c_device_template and c2h_device_template. Under the supplied stage_gate_policy, memory/runtime handoff contracts must be checker-backed at the current stage, so this is a promotion blocker even though the operator-stream, attention, shape, branch/join, liveness, and template items have passing evidence.",
+      "The subtask acceptance checkers named sacg_static_check, model_config_check, stream_plan_check, and template_binding_static_check should be bound by the pipeline_planning evidence gate. In the visible checker_results, template_binding_static_check is explicitly present and passed; the detailed stream/model evidence should still be aggregated into the named acceptance checks before promotion."
+    ],
+    "proposed_actions": [
+      "Repair memory_schedule.runtime_config_requirements by deriving h2c_device_template, c2h_device_template, h2c_write_targets, and c2h_read_targets only from supplied target_board_profile, tool_profile, tool_protocols, and memory/runtime constraints; if evidence is ambiguous, request bounded approval instead of guessing.",
+      "Rerun the pipeline_planning evidence gate after the memory/runtime repair so that sacg_static_check, model_config_check, stream_plan_check, template_binding_static_check, and memory_runtime_plan_check all pass before the pipeline contract is promoted.",
+      "Emit stage_graph_constraint_notes preserving the canonical decoder order, residual skip endpoints, GQA causal attention parameters, stream transfer_order, pairing_key, tensor widths, element widths, buffer depths, and the no-free-form-RTL restriction.",
+      "Carry the attention_contract KV-storage note into later memory-layout work: internal bounded storage is acceptable for the generated block at seq_len_bound 16, while any external KV-cache materialization requires a later checker-backed memory-layout artifact.",
+      "Preserve the stage_gate_policy barrier that Stage 3 does not claim hardware, timing, throughput, Vivado, simulator, or board pass evidence; later stages must provide real tool evidence through their own checkers."
+    ],
+    "risks": [
+      "Current-stage blocker: memory_runtime_contract_check failed because runtime_config_requirements lacks h2c_device_template and c2h_device_template. If promoted, later memory layout, runtime ABI, XDMA transfer routing, and board execution could diverge from the SACG memory/runtime constraints.",
+      "Current-stage blocker: the candidate artifact status is incomplete, and not all subtask acceptance gates are visible by their exact required names. Promotion should wait for evidence_gate results binding the detailed operator, stream, model, attention, branch, buffer, liveness, and template evidence to sacg_static_check, model_config_check, stream_plan_check, and template_binding_static_check.",
+      "Contamination risk if downstream stages consume symbolic_first_order latency as real throughput, timing, or hardware-pass evidence. The artifact correctly labels latency as planning metadata only, and this barrier must be preserved in handoff notes.",
+      "Cross-layer runtime risk remains until h2c/c2h device templates and concrete DMA read/write targets are derived from supplied board/tool protocol artifacts or explicitly approved; the pipeline architect should not guess board target names."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.pipeline_plan",
+        "artifact.stage2.template_selection",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_protocols",
+        "artifact.pipeline_planning.pipeline_architect_review",
+        "artifact.pipeline_planning.stage_graph_constraint_notes"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.protocols",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output"
+      ]
+    },
+    "schema_version": "spatialaccagent.pipeline_architect_review.v0",
+    "stage": "pipeline_planning",
+    "status": "blocked",
+    "summary": "The supplied candidate pipeline is checker-backed for Qwen2 decoder operator order, residual skip boundaries, causal GQA attention parameters, stream shape/order consistency, bounded ready/valid buffering, and template-only implementation. Promotion remains blocked because the candidate artifact is marked incomplete and memory_runtime_contract_check failed due to missing h2c_device_template and c2h_device_template in runtime_config_requirements. No hardware pass is claimed."
+  },
+  "prompt_bytes": 63785,
+  "prompt_hash": "c370ab2758c97e8004222ecba0c4dfb52d64509417968c01ace07d80cc065a91",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.pipeline_architect_review.v0\",\"agent\":\"pipeline_architect_agent\",\"stage\":\"pipeline_planning\",\"status\":\"blocked\",\"summary\":\"The supplied candidate pipeline is checker-backed for Qwen2 decoder operator order, residual skip boundaries, causal GQA attention parameters, stream shape/order consistency, bounded ready/valid buffering, and template-only implementation. Promotion remains blocked because the candidate artifact is marked incomplete and memory_runtime_contract_check failed due to missing h2c_device_template and c2h_device_template in runtime_config_requirements. No hardware pass is claimed.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.protocols\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"candidate_stage_artifact.pipeline_plan\",\"artifact.stage2.template_selection\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.pipeline_planning.pipeline_architect_review\",\"artifact.pipeline_planning.stage_graph_constraint_notes\"]},\"observations\":[\"SACG memory in the supplied state reports no open backtrack_requests, no open retry_requests, and no active contamination_barriers relevant to this stage; the separate sacg_memory slice is empty, so there is no stage-memory blocker to reconcile here.\",\"The candidate stage graph preserves the supplied Qwen2 decoder block order: rms_norm_1, self_attention, residual_add_1, rms_norm_2, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, residual_add_2. The supplied operator_order_check reports pass with that exact order.\",\"Residual boundaries are explicit and checker-backed: block_input feeds both rms_norm_1 and residual_add_1.skip; residual_add_1 output feeds rms_norm_2 and residual_add_2.skip; residual_add_2 produces block_output. Join contracts require all required inputs valid before fire and pair on token, tile, lane, word. The supplied branch_join_contract_check reports pass.\",\"The MLP gate/up split is represented as a ready/valid broadcast with per-output FIFOs after rms_norm_2, and activation_mul joins the gate and up branches by the same token/tile/lane/word pairing key. This preserves stream ordering under backpressure without assuming latency equality.\",\"The attention contract is consistent with the supplied Qwen2 shape: attention_kind gqa, causal true, num_q_heads 14, num_kv_heads 2, gqa_group_size 7, head_dim 64, hidden width 896, seq_len_bound 16, and RoPE theta 1000000.0. The supplied attention_semantics_check reports pass for q=14, kv=2, head_dim=64.\",\"Shape, numeric width, and transfer-count evidence are internally consistent in the visible data_edges and stream_edges: hidden tensors use seq_len 16 and width 896, intermediate tensors use width 4864, 32-bit hidden transfers are 57344 bytes, 16-bit hidden transfers are 28672 bytes, and 16-bit intermediate transfers are 155648 bytes. The supplied stream_data_edge_mirror_check, edge_stream_contract_check, and shape_numeric_contract_check report pass.\",\"All visible stream edges use transfer_order token, tile, lane, word and full_beats_only byte validity. This aligns the residual and branch join pairing keys with the data-order contract.\",\"The flow-control plan uses ready_valid streams, bounded FIFO buffers with depths 32 or 64, and an acyclic directed graph. The supplied buffer_contract_check and liveness_backpressure_check report pass, with the explicit caveat that this is elasticity/backpressure planning evidence, not latency-equality, timing, throughput, or hardware-pass evidence.\",\"Template use is bounded: visible stages bind to supplied template IDs norm, attention, residual, ffn, and elementwise, buffers use trusted_queue_template, and template_binding_static_check reports free_form_rtl_generation=false. No free-form RTL assumption is needed for the reviewed pipeline contract.\",\"The candidate memory_schedule carries board AXI/DDR facts, including 512-bit AXI data width, 64-byte alignment, one DDR4 channel, and calibration signal c0_init_calib_complete, but runtime_config_requirements has null h2c_device_template and c2h_device_template plus empty h2c_write_targets and c2h_read_targets.\",\"The supplied memory_runtime_contract_check fails on missing h2c_device_template and c2h_device_template. Under the supplied stage_gate_policy, memory/runtime handoff contracts must be checker-backed at the current stage, so this is a promotion blocker even though the operator-stream, attention, shape, branch/join, liveness, and template items have passing evidence.\",\"The subtask acceptance checkers named sacg_static_check, model_config_check, stream_plan_check, and template_binding_static_check should be bound by the pipeline_planning evidence gate. In the visible checker_results, template_binding_static_check is explicitly present and passed; the detailed stream/model evidence should still be aggregated into the named acceptance checks before promotion.\"],\"risks\":[\"Current-stage blocker: memory_runtime_contract_check failed because runtime_config_requirements lacks h2c_device_template and c2h_device_template. If promoted, later memory layout, runtime ABI, XDMA transfer routing, and board execution could diverge from the SACG memory/runtime constraints.\",\"Current-stage blocker: the candidate artifact status is incomplete, and not all subtask acceptance gates are visible by their exact required names. Promotion should wait for evidence_gate results binding the detailed operator, stream, model, attention, branch, buffer, liveness, and template evidence to sacg_static_check, model_config_check, stream_plan_check, and template_binding_static_check.\",\"Contamination risk if downstream stages consume symbolic_first_order latency as real throughput, timing, or hardware-pass evidence. The artifact correctly labels latency as planning metadata only, and this barrier must be preserved in handoff notes.\",\"Cross-layer runtime risk remains until h2c/c2h device templates and concrete DMA read/write targets are derived from supplied board/tool protocol artifacts or explicitly approved; the pipeline architect should not guess board target names.\"],\"proposed_actions\":[\"Repair memory_schedule.runtime_config_requirements by deriving h2c_device_template, c2h_device_template, h2c_write_targets, and c2h_read_targets only from supplied target_board_profile, tool_profile, tool_protocols, and memory/runtime constraints; if evidence is ambiguous, request bounded approval instead of guessing.\",\"Rerun the pipeline_planning evidence gate after the memory/runtime repair so that sacg_static_check, model_config_check, stream_plan_check, template_binding_static_check, and memory_runtime_plan_check all pass before the pipeline contract is promoted.\",\"Emit stage_graph_constraint_notes preserving the canonical decoder order, residual skip endpoints, GQA causal attention parameters, stream transfer_order, pairing_key, tensor widths, element widths, buffer depths, and the no-free-form-RTL restriction.\",\"Carry the attention_contract KV-storage note into later memory-layout work: internal bounded storage is acceptable for the generated block at seq_len_bound 16, while any external KV-cache materialization requires a later checker-backed memory-layout artifact.\",\"Preserve the stage_gate_policy barrier that Stage 3 does not claim hardware, timing, throughput, Vivado, simulator, or board pass evidence; later stages must provide real tool evidence through their own checkers.\"],\"executable_actions\":[{\"id\":\"pipeline_planning.repair_memory_runtime_handoff\",\"stage\":\"pipeline_planning\",\"action_type\":\"memory_runtime_repair\",\"rationale\":\"The only visible failed current-stage checker is memory_runtime_contract_check, caused by missing h2c_device_template and c2h_device_template. Repair must be bounded to supplied board/tool/runtime constraints and must not alter the already checker-backed operator order, attention semantics, stream order, tensor shapes, numeric policy, or templates.\",\"consumes\":[\"candidate_stage_artifact.memory_schedule\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.protocols\"],\"produces\":[\"artifact.pipeline_planning.memory_runtime_handoff_patch\",\"artifact.pipeline_planning.runtime_config_requirements.refined\"],\"tool_roles\":[\"memory_runtime_repair\",\"memory_runtime_plan_check\",\"tool_protocol_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"tool_protocol_check\",\"boundary_contract_check\"],\"on_failure\":\"Keep the pipeline plan incomplete; issue a bounded recovery or stage_backtrack_request if supplied board/tool evidence cannot identify h2c/c2h templates and DMA targets. Do not promote to parameter binding or code generation.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.rerun_acceptance_evidence_gate\",\"stage\":\"pipeline_planning\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"The detailed supplied checks support decoder order, attention, stream, shape, branch/join, liveness, and template constraints, but promotion requires the named subtask acceptance checks and repaired memory/runtime handoff to be bound to SACG evidence.\",\"consumes\":[\"candidate_stage_artifact.pipeline_plan\",\"artifact.pipeline_planning.memory_runtime_handoff_patch\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.template.library\",\"constraint.cross_layer.input_consistency\"],\"produces\":[\"artifact.pipeline_planning.pipeline_architect_review\",\"artifact.pipeline_planning.stage_graph_constraint_notes\",\"artifact.pipeline_planning.evidence_gate_result\"],\"tool_roles\":[\"sacg_static_check\",\"model_config_check\",\"stream_plan_check\",\"template_coverage_check\",\"memory_runtime_plan_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"model_config_check\",\"stream_plan_check\",\"template_binding_static_check\",\"memory_runtime_plan_check\"],\"on_failure\":\"Route the failed constraint slice to pipeline_repair or memory_runtime_repair as appropriate; preserve SACG contamination barriers and do not generate RTL or modify golden outputs.\",\"requires_approval\":false},{\"id\":\"parameter_binding.consume_promoted_pipeline_contract\",\"stage\":\"parameter_binding\",\"action_type\":\"contract_handoff\",\"rationale\":\"After the pipeline evidence gate passes, the next stage must bind template parameters from the promoted contract without changing decoder ordering, residual endpoints, GQA semantics, stream data order, numeric widths, or the free_form_rtl_generation=false boundary.\",\"consumes\":[\"artifact.pipeline_planning.evidence_gate_result\",\"artifact.pipeline_planning.stage_graph_constraint_notes\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\"],\"produces\":[\"artifact.parameter_binding.template_parameter_contract\",\"artifact.parameter_binding.boundary_contracts\"],\"tool_roles\":[\"parameter_binding_static_check\",\"boundary_contract_generate\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"boundary_contract_check\",\"sacg_reference_check\",\"template_binding_static_check\"],\"on_failure\":\"Return the failed parameter or boundary slice to pipeline_planning with a bounded repair request; do not proceed to code generation.\",\"requires_approval\":false},{\"id\":\"memory_layout.carry_attention_and_dma_obligations\",\"stage\":\"memory_layout\",\"action_type\":\"memory_runtime_plan\",\"rationale\":\"The current attention contract bounds in-block KV storage at seq_len 16 and defers external KV-cache materialization and concrete base addresses to later memory layout. This action prevents later stages from silently inventing runtime or memory assumptions.\",\"consumes\":[\"artifact.pipeline_planning.stage_graph_constraint_notes\",\"artifact.pipeline_planning.runtime_config_requirements.refined\",\"candidate_stage_artifact.attention_contract\",\"candidate_stage_artifact.memory_schedule\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"produces\":[\"artifact.memory_layout.activation_weight_kv_region_plan\",\"artifact.memory_layout.runtime_dma_target_plan\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\"],\"on_failure\":\"Block code generation and runtime ABI generation until memory regions, transfer counts, and DMA targets are checker-backed; require approval for any memory layout change outside supplied constraints.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any change to the Qwen2 decoder operator order, residual skip endpoints, branch/join pairing key, or causal GQA attention parameters.\",\"Any memory layout, DMA device template, h2c/c2h target mapping, or board/runtime target selection not directly derivable from supplied target_board_profile, tool_profile, and tool_protocols.\",\"Any numeric precision, rounding, saturation, tolerance, template substitution, or free-form RTL generation change.\",\"Any attempt to treat symbolic_first_order latency or current Stage 3 static checks as simulator, timing, Vivado, board, or hardware-pass evidence.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/pipeline_architect_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/pipeline_architect_agent_result.json",
+  "retry_errors": [
+    "attempt 1: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "pipeline_planning.pipeline architect",
+  "used_fallback": false
+}

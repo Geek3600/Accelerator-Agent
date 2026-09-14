@@ -1,0 +1,64 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "parameter_binding_static_check",
+      "model_config_check",
+      "numeric_policy_check",
+      "template_coverage_check",
+      "stream_plan_check",
+      "memory_runtime_plan_check",
+      "verification_plan_static_check",
+      "tool_protocol_check",
+      "verification_artifact_contract_check",
+      "repair_boundary_check",
+      "human_boundary_check",
+      "stage_artifact_trust_barrier_check",
+      "sacg_static_check"
+    ],
+    "action_type": "conditional_stage_retry",
+    "consumes": [
+      "promoted.artifact.stage3.pipeline_plan.clean",
+      "promoted.artifact.stage3.pipeline_static_checks.clean",
+      "updated_sacg_memory.with_stage3_barriers_retired_or_marked_irrelevant",
+      "constraint.parameter.binding",
+      "constraint.verification.plan",
+      "constraint.cross_layer.input_consistency",
+      "constraint.tool.protocols"
+    ],
+    "id": "parameter_binding.retry_only_after_clean_stage3_promotion",
+    "on_failure": "If Stage 3 barriers are still active, abort the retry and return to pipeline_planning repair. If parameter_binding checks fail after clean Stage 3 promotion, create a same-stage bounded repair/retry request and do not promote the candidate report.",
+    "produces": [
+      "candidate.artifact.stage4.parameter_binding_report",
+      "candidate.artifact.stage4.parameter_binding_static_checks",
+      "candidate.artifact.stage4.stage_gate_decision"
+    ],
+    "rationale": "The current stage has one failed attempt, so a retry is still within the bounded attempt policy, but it is only valid after pipeline_planning produces clean promoted artifacts and retires the relevant Stage 3 contamination barriers. The retry must bind parameters against validated model, numeric, template, stream, memory/runtime, and verification-plan constraints.",
+    "requires_approval": false,
+    "stage": "parameter_binding",
+    "tool_roles": [
+      "team_aggregate",
+      "model_config_check",
+      "numeric_policy_check",
+      "template_coverage_check",
+      "parameter_binding_static_check",
+      "stream_plan_check",
+      "memory_runtime_plan_check",
+      "verification_plan_static_check",
+      "tool_protocol_check",
+      "human_boundary_check",
+      "sacg_validate"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "stop",
+  "flow_event_index": 12,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/flow_events/012_stop.json",
+  "stage": "parameter_binding"
+}

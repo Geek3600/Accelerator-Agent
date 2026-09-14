@@ -1,0 +1,251 @@
+{
+  "agent": "numeric_template_specialist",
+  "duration_sec": 259.58980260598764,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "numeric_template_specialist",
+    "approval_required_for": [
+      "Any change to the current numeric policy: activation_bits=16, weight_bits=16, scale_bits=16, accumulator_bits=32, rounding=nearest_even, saturation=false.",
+      "Any replacement of selected trusted templates or major change to the template library/template metadata.",
+      "Any architecture, pipeline, memory-layout, or board/runtime contract change needed to resolve a numeric/template binding failure.",
+      "Any attempt to reinterpret symbolic_first_order latency as timing, throughput, or hardware-pass evidence."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "template_binding_review",
+        "consumes": [
+          "candidate_stage_artifact",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.stage2.template_selection",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.parameter.binding",
+          "constraint.arch.design_space",
+          "candidate_stage_artifact.checker_results"
+        ],
+        "id": "pipeline_planning.run_numeric_template_acceptance_gate",
+        "on_failure": "Do not promote the pipeline plan. Localize the failed numeric/template field and route to bounded_template_repair; do not modify golden outputs, loosen tolerance, or bypass the failed checker.",
+        "produces": [
+          "artifact.pipeline_planning.numeric_template_review",
+          "per-stage numeric/template binding matrix",
+          "checker_results.numeric_policy_check",
+          "checker_results.template_coverage_check",
+          "checker_results.parameter_binding_static_check",
+          "checker_results.sacg_static_check"
+        ],
+        "rationale": "Complete the current-stage acceptance evidence by checking the candidate pipeline plan against the numeric policy, selected template library, template metadata, Stage 2 template selection, and SACG constraints. The candidate has a passing template_binding_static_check, but the required numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check evidence is not visible.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "bounded_repair",
+        "consumes": [
+          "artifact.pipeline_planning.numeric_template_review",
+          "checker_results.numeric_policy_check",
+          "checker_results.template_coverage_check",
+          "checker_results.parameter_binding_static_check",
+          "checker_results.template_binding_static_check",
+          "checker_results.sacg_static_check",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection",
+          "candidate_stage_artifact"
+        ],
+        "id": "pipeline_planning.repair_numeric_template_binding_if_gate_fails",
+        "on_failure": "Keep promotion blocked. If repair requires changing numeric policy, replacing trusted templates, changing architecture/pipeline structure, or changing memory layout, emit a stage_backtrack_request and require explicit approval.",
+        "produces": [
+          "candidate_stage_artifact.refined_pipeline_plan",
+          "bounded repair notes for missing or inconsistent template parameters",
+          "updated per-stage numeric/template binding matrix"
+        ],
+        "rationale": "If the acceptance gate identifies missing or inconsistent numeric/template bindings, repair only bounded contract fields such as per-stage rounding/saturation inheritance, FFN role parameters, elementwise activation/multiply selector, GQA bindings, tensor dimensions, lane/tile bindings, stream widths, or accumulator declarations while staying inside the trusted template library.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "bounded_template_repair",
+          "pipeline_repair",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "code_generation_manifest_static_check",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "template_binding_static_check",
+          "numeric_policy_check"
+        ],
+        "action_type": "handoff_contract_generation",
+        "consumes": [
+          "artifact.pipeline_planning.numeric_template_review",
+          "candidate_stage_artifact",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.parameter.binding",
+          "constraint.arch.design_space"
+        ],
+        "id": "pipeline_planning.prepare_stage4_parameter_binding_handoff",
+        "on_failure": "Keep Stage 4 code generation blocked and route the failed manifest fields back to bounded template/parameter repair; do not emit or consume RTL generated from an unverified manifest.",
+        "produces": [
+          "artifact.stage4.parameter_binding_manifest",
+          "artifact.stage4.code_generation_manifest",
+          "artifact.stage4.template_bound_numeric_contract"
+        ],
+        "rationale": "After all current-stage numeric/template gates pass, materialize the final per-template parameter and code-generation manifest so Stage 4 cannot drift from the checked numeric policy, stage bit widths, accumulator policy, attention parameters, stream order, buffer depths, and AXI transfer contracts.",
+        "requires_approval": false,
+        "stage": "stage4_parameter_binding",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "code_generation_manifest_static_check",
+          "codegen_contract_check",
+          "codegen_package_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_memory_update",
+        "consumes": [
+          "artifact.pipeline_planning.numeric_template_review",
+          "sacg_memory"
+        ],
+        "id": "pipeline_planning.record_numeric_template_review_in_sacg_memory",
+        "on_failure": "Do not promote the review artifact until SACG memory is updated and validated without dropping any retry, backtrack, contamination, or failure-lesson state.",
+        "produces": [
+          "sacg_memory.updated",
+          "handoff note for pipeline_planning.evidence_gate_auditor"
+        ],
+        "rationale": "Persist the numeric/template review result, the per-stage binding matrix, and the explicit absence of open retry, backtrack, or contamination barriers into SACG memory for the pipeline_planning.evidence_gate_auditor handoff.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "sacg_memory_update",
+          "sacg_validate"
+        ]
+      }
+    ],
+    "observations": [
+      "SACG memory has no open backtrack_requests, retry_requests, or active contamination_barriers relevant to this stage, so no same-stage retry or contamination blocker must be reconciled before running the numeric/template gates.",
+      "The visible stage list covers 9 operators in decoder-block order: norm, attention, residual, norm, FFN gate projection, FFN up projection, elementwise activation/multiply, FFN down projection, residual. Each stage has a template_id and source file, and the supplied template_binding_static_check reports pass with stages=9 and free_form_rtl_generation=false.",
+      "The global numeric_stream_policy is activation_bits=16, weight_bits=16, scale_bits=16, accumulator_bits=32, rounding=nearest_even, saturation=false. Every visible stage numeric_contract uses accumulator_bits=32, which is aligned with the current accumulator policy.",
+      "Visible per-stage numeric matrix: stage_00_rms_norm_1 template=norm input_bits=32 internal_elem_bits=32 output_bits=16 acc=32; stage_01_self_attention template=attention input_bits=16 internal_elem_bits=16 output_bits=32 acc=32; stage_02_residual_add_1 template=residual input_bits=32 internal_elem_bits=32 output_bits=32 acc=32; stage_03_rms_norm_2 template=norm input_bits=32 internal_elem_bits=32 output_bits=16 acc=32; stage_04_mlp_gate_proj template=ffn input_bits=16 internal_elem_bits=16 output_bits=16 acc=32; stage_05_mlp_up_proj template=ffn input_bits=16 internal_elem_bits=16 output_bits=16 acc=32; stage_06_activation_mul template=elementwise input_bits=16 internal_elem_bits=16 output_bits=16 acc=32; stage_07_mlp_down_proj template=ffn input_bits=16 internal_elem_bits=16 output_bits=32 acc=32; stage_08_residual_add_2 template=residual input_bits=32 internal_elem_bits=32 output_bits=32 acc=32.",
+      "The stream/data edge widths are consistent with the visible tensor dimensions and AXI width: 32-bit hidden-size streams have 57344 bytes and 896 AXI beats; 16-bit hidden-size streams have 28672 bytes and 448 AXI beats; 16-bit intermediate-size streams have 155648 bytes and 2432 AXI beats. The supplied stream_data_edge_mirror_check, edge_stream_contract_check, shape_numeric_contract_check, and memory_runtime_contract_check all report pass.",
+      "The attention contract explicitly binds Qwen2 GQA semantics visible in this artifact: num_q_heads=14, num_kv_heads=2, gqa_group_size=7, head_dim=64, seq_len_bound=16, causal=true, RoPE theta=1000000.0. The supplied attention_semantics_check reports pass for q=14, kv=2, head_dim=64.",
+      "The candidate uses 32-bit block input, residual, and block output streams while normalized/projection/intermediate streams are 16-bit. This appears to be an explicit residual/accumulator boundary policy, but downstream code generation must propagate it exactly rather than assuming activation_bits=16 for all activation edges.",
+      "The supplied checker_results do not include numeric_policy_check, template_coverage_check, parameter_binding_static_check, or sacg_static_check. Because these are named acceptance checkers for this subtask, the current evidence is insufficient to claim full numeric/template approval.",
+      "The supplied artifact IDs show artifact.input.template_library, artifact.input.template_metadata, and artifact.stage2.template_selection exist, but the visible prompt slice does not expose their detailed rows. Consistency with the selected template library therefore must be established by template_coverage_check and parameter_binding_static_check, not inferred from template_id/source strings alone.",
+      "The stage_gate_policy correctly prevents using symbolic_first_order latency as throughput, timing, or hardware-pass evidence. This review makes no hardware correctness, timing, or board-pass claim."
+    ],
+    "proposed_actions": [
+      "Run or attach the missing numeric/template acceptance checker evidence before promotion: numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check, while preserving the existing template_binding_static_check pass evidence.",
+      "Produce artifact.pipeline_planning.numeric_template_review with a per-stage numeric/template binding matrix that explicitly records template_id, source template, input/internal/output bits, accumulator_bits, inherited rounding, saturation policy, tensor dimensions, and critical template parameters.",
+      "If any checker fails, perform only bounded template/pipeline contract repair using trusted templates; do not change golden outputs, loosen tolerance, or emit free-form RTL.",
+      "After all current-stage gates pass, hand off to Stage 4 to materialize the final parameter binding/code-generation manifest, including exact numeric policy inheritance, attention GQA parameters, FFN roles, elementwise activation/multiply behavior, stream widths, buffer depths, and AXI beat/count contracts.",
+      "Record the review outcome and absence of open SACG retry/backtrack/contamination blockers in SACG memory for the pipeline_planning.evidence_gate_auditor handoff."
+    ],
+    "risks": [
+      "Current-stage blocking evidence gap: numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check results are absent from the supplied checker_results, so the numeric/template contract cannot yet be promoted by this specialist.",
+      "Current-stage parameter-binding risk: the visible stages expose bit widths and template IDs, but not the complete per-template parameter map required by template_metadata, such as inherited rounding/saturation flags, FFN role bindings, elementwise activation/multiply selector, GQA projection parameters, lane/tile bindings, and stream-width bindings. This must be closed by parameter_binding_static_check.",
+      "Cross-layer consistency risk if not explicitly bound for Stage 4: runtime packing, stream widths, residual 32-bit boundaries, and template numeric parameters could drift from the current numeric policy even though the Stage 3 stream and shape checks pass.",
+      "No resolved checker-backed items from the supplied Stage 3 checker_results are listed as risks; later-stage obligations remain handoff actions unless a required current-stage checker fails."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.stage2.template_selection",
+        "candidate_stage_artifact.checker_results",
+        "artifact.pipeline_planning.numeric_template_review"
+      ],
+      "constraints": [
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.parameter.binding",
+        "constraint.arch.design_space",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "numeric_stream_policy",
+        "template_library",
+        "template_metadata",
+        "stage2.template_selection"
+      ]
+    },
+    "schema_version": "spatialaccagent.numeric_template_review.v0",
+    "stage": "pipeline_planning",
+    "status": "blocked_pending_acceptance_checker_evidence",
+    "summary": "The candidate pipeline plan visibly binds all 9 decoder-block stages to named trusted template IDs and explicit per-stage bit-width/accumulator contracts, and it includes passing evidence for template_binding_static_check plus related shape/stream/attention checks. However, the current subtask acceptance set also requires numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check evidence, which is not present in the supplied checker_results. The numeric/template contract should not be promoted until those gates are run or attached and the resulting per-stage binding matrix is recorded."
+  },
+  "prompt_bytes": 64216,
+  "prompt_hash": "3fbc09a1b65648a1b4088eae537bab8a5ca092cc6e959885a40fd64ddd1d79d8",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.numeric_template_review.v0\",\"agent\":\"numeric_template_specialist\",\"stage\":\"pipeline_planning\",\"status\":\"blocked_pending_acceptance_checker_evidence\",\"summary\":\"The candidate pipeline plan visibly binds all 9 decoder-block stages to named trusted template IDs and explicit per-stage bit-width/accumulator contracts, and it includes passing evidence for template_binding_static_check plus related shape/stream/attention checks. However, the current subtask acceptance set also requires numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check evidence, which is not present in the supplied checker_results. The numeric/template contract should not be promoted until those gates are run or attached and the resulting per-stage binding matrix is recorded.\",\"sacg_focus\":{\"nodes\":[\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"numeric_stream_policy\",\"template_library\",\"template_metadata\",\"stage2.template_selection\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.arch.design_space\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"candidate_stage_artifact\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.stage2.template_selection\",\"candidate_stage_artifact.checker_results\",\"artifact.pipeline_planning.numeric_template_review\"]},\"observations\":[\"SACG memory has no open backtrack_requests, retry_requests, or active contamination_barriers relevant to this stage, so no same-stage retry or contamination blocker must be reconciled before running the numeric/template gates.\",\"The visible stage list covers 9 operators in decoder-block order: norm, attention, residual, norm, FFN gate projection, FFN up projection, elementwise activation/multiply, FFN down projection, residual. Each stage has a template_id and source file, and the supplied template_binding_static_check reports pass with stages=9 and free_form_rtl_generation=false.\",\"The global numeric_stream_policy is activation_bits=16, weight_bits=16, scale_bits=16, accumulator_bits=32, rounding=nearest_even, saturation=false. Every visible stage numeric_contract uses accumulator_bits=32, which is aligned with the current accumulator policy.\",\"Visible per-stage numeric matrix: stage_00_rms_norm_1 template=norm input_bits=32 internal_elem_bits=32 output_bits=16 acc=32; stage_01_self_attention template=attention input_bits=16 internal_elem_bits=16 output_bits=32 acc=32; stage_02_residual_add_1 template=residual input_bits=32 internal_elem_bits=32 output_bits=32 acc=32; stage_03_rms_norm_2 template=norm input_bits=32 internal_elem_bits=32 output_bits=16 acc=32; stage_04_mlp_gate_proj template=ffn input_bits=16 internal_elem_bits=16 output_bits=16 acc=32; stage_05_mlp_up_proj template=ffn input_bits=16 internal_elem_bits=16 output_bits=16 acc=32; stage_06_activation_mul template=elementwise input_bits=16 internal_elem_bits=16 output_bits=16 acc=32; stage_07_mlp_down_proj template=ffn input_bits=16 internal_elem_bits=16 output_bits=32 acc=32; stage_08_residual_add_2 template=residual input_bits=32 internal_elem_bits=32 output_bits=32 acc=32.\",\"The stream/data edge widths are consistent with the visible tensor dimensions and AXI width: 32-bit hidden-size streams have 57344 bytes and 896 AXI beats; 16-bit hidden-size streams have 28672 bytes and 448 AXI beats; 16-bit intermediate-size streams have 155648 bytes and 2432 AXI beats. The supplied stream_data_edge_mirror_check, edge_stream_contract_check, shape_numeric_contract_check, and memory_runtime_contract_check all report pass.\",\"The attention contract explicitly binds Qwen2 GQA semantics visible in this artifact: num_q_heads=14, num_kv_heads=2, gqa_group_size=7, head_dim=64, seq_len_bound=16, causal=true, RoPE theta=1000000.0. The supplied attention_semantics_check reports pass for q=14, kv=2, head_dim=64.\",\"The candidate uses 32-bit block input, residual, and block output streams while normalized/projection/intermediate streams are 16-bit. This appears to be an explicit residual/accumulator boundary policy, but downstream code generation must propagate it exactly rather than assuming activation_bits=16 for all activation edges.\",\"The supplied checker_results do not include numeric_policy_check, template_coverage_check, parameter_binding_static_check, or sacg_static_check. Because these are named acceptance checkers for this subtask, the current evidence is insufficient to claim full numeric/template approval.\",\"The supplied artifact IDs show artifact.input.template_library, artifact.input.template_metadata, and artifact.stage2.template_selection exist, but the visible prompt slice does not expose their detailed rows. Consistency with the selected template library therefore must be established by template_coverage_check and parameter_binding_static_check, not inferred from template_id/source strings alone.\",\"The stage_gate_policy correctly prevents using symbolic_first_order latency as throughput, timing, or hardware-pass evidence. This review makes no hardware correctness, timing, or board-pass claim.\"],\"risks\":[\"Current-stage blocking evidence gap: numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check results are absent from the supplied checker_results, so the numeric/template contract cannot yet be promoted by this specialist.\",\"Current-stage parameter-binding risk: the visible stages expose bit widths and template IDs, but not the complete per-template parameter map required by template_metadata, such as inherited rounding/saturation flags, FFN role bindings, elementwise activation/multiply selector, GQA projection parameters, lane/tile bindings, and stream-width bindings. This must be closed by parameter_binding_static_check.\",\"Cross-layer consistency risk if not explicitly bound for Stage 4: runtime packing, stream widths, residual 32-bit boundaries, and template numeric parameters could drift from the current numeric policy even though the Stage 3 stream and shape checks pass.\",\"No resolved checker-backed items from the supplied Stage 3 checker_results are listed as risks; later-stage obligations remain handoff actions unless a required current-stage checker fails.\"],\"proposed_actions\":[\"Run or attach the missing numeric/template acceptance checker evidence before promotion: numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check, while preserving the existing template_binding_static_check pass evidence.\",\"Produce artifact.pipeline_planning.numeric_template_review with a per-stage numeric/template binding matrix that explicitly records template_id, source template, input/internal/output bits, accumulator_bits, inherited rounding, saturation policy, tensor dimensions, and critical template parameters.\",\"If any checker fails, perform only bounded template/pipeline contract repair using trusted templates; do not change golden outputs, loosen tolerance, or emit free-form RTL.\",\"After all current-stage gates pass, hand off to Stage 4 to materialize the final parameter binding/code-generation manifest, including exact numeric policy inheritance, attention GQA parameters, FFN roles, elementwise activation/multiply behavior, stream widths, buffer depths, and AXI beat/count contracts.\",\"Record the review outcome and absence of open SACG retry/backtrack/contamination blockers in SACG memory for the pipeline_planning.evidence_gate_auditor handoff.\"],\"executable_actions\":[{\"id\":\"pipeline_planning.run_numeric_template_acceptance_gate\",\"stage\":\"pipeline_planning\",\"action_type\":\"template_binding_review\",\"rationale\":\"Complete the current-stage acceptance evidence by checking the candidate pipeline plan against the numeric policy, selected template library, template metadata, Stage 2 template selection, and SACG constraints. The candidate has a passing template_binding_static_check, but the required numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check evidence is not visible.\",\"consumes\":[\"candidate_stage_artifact\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.stage2.template_selection\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.arch.design_space\",\"candidate_stage_artifact.checker_results\"],\"produces\":[\"artifact.pipeline_planning.numeric_template_review\",\"per-stage numeric/template binding matrix\",\"checker_results.numeric_policy_check\",\"checker_results.template_coverage_check\",\"checker_results.parameter_binding_static_check\",\"checker_results.sacg_static_check\"],\"tool_roles\":[\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"sacg_static_check\"],\"acceptance_checkers\":[\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"sacg_static_check\"],\"on_failure\":\"Do not promote the pipeline plan. Localize the failed numeric/template field and route to bounded_template_repair; do not modify golden outputs, loosen tolerance, or bypass the failed checker.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.repair_numeric_template_binding_if_gate_fails\",\"stage\":\"pipeline_planning\",\"action_type\":\"bounded_repair\",\"rationale\":\"If the acceptance gate identifies missing or inconsistent numeric/template bindings, repair only bounded contract fields such as per-stage rounding/saturation inheritance, FFN role parameters, elementwise activation/multiply selector, GQA bindings, tensor dimensions, lane/tile bindings, stream widths, or accumulator declarations while staying inside the trusted template library.\",\"consumes\":[\"artifact.pipeline_planning.numeric_template_review\",\"checker_results.numeric_policy_check\",\"checker_results.template_coverage_check\",\"checker_results.parameter_binding_static_check\",\"checker_results.template_binding_static_check\",\"checker_results.sacg_static_check\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"candidate_stage_artifact\"],\"produces\":[\"candidate_stage_artifact.refined_pipeline_plan\",\"bounded repair notes for missing or inconsistent template parameters\",\"updated per-stage numeric/template binding matrix\"],\"tool_roles\":[\"bounded_template_repair\",\"pipeline_repair\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"sacg_static_check\"],\"on_failure\":\"Keep promotion blocked. If repair requires changing numeric policy, replacing trusted templates, changing architecture/pipeline structure, or changing memory layout, emit a stage_backtrack_request and require explicit approval.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.prepare_stage4_parameter_binding_handoff\",\"stage\":\"stage4_parameter_binding\",\"action_type\":\"handoff_contract_generation\",\"rationale\":\"After all current-stage numeric/template gates pass, materialize the final per-template parameter and code-generation manifest so Stage 4 cannot drift from the checked numeric policy, stage bit widths, accumulator policy, attention parameters, stream order, buffer depths, and AXI transfer contracts.\",\"consumes\":[\"artifact.pipeline_planning.numeric_template_review\",\"candidate_stage_artifact\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.arch.design_space\"],\"produces\":[\"artifact.stage4.parameter_binding_manifest\",\"artifact.stage4.code_generation_manifest\",\"artifact.stage4.template_bound_numeric_contract\"],\"tool_roles\":[\"parameter_binding_static_check\",\"code_generation_manifest_static_check\",\"codegen_contract_check\",\"codegen_package_static_check\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"code_generation_manifest_static_check\",\"codegen_contract_check\",\"codegen_package_static_check\",\"template_binding_static_check\",\"numeric_policy_check\"],\"on_failure\":\"Keep Stage 4 code generation blocked and route the failed manifest fields back to bounded template/parameter repair; do not emit or consume RTL generated from an unverified manifest.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.record_numeric_template_review_in_sacg_memory\",\"stage\":\"pipeline_planning\",\"action_type\":\"sacg_memory_update\",\"rationale\":\"Persist the numeric/template review result, the per-stage binding matrix, and the explicit absence of open retry, backtrack, or contamination barriers into SACG memory for the pipeline_planning.evidence_gate_auditor handoff.\",\"consumes\":[\"artifact.pipeline_planning.numeric_template_review\",\"sacg_memory\"],\"produces\":[\"sacg_memory.updated\",\"handoff note for pipeline_planning.evidence_gate_auditor\"],\"tool_roles\":[\"sacg_memory_update\",\"sacg_validate\"],\"acceptance_checkers\":[\"sacg_memory_check\",\"sacg_static_check\"],\"on_failure\":\"Do not promote the review artifact until SACG memory is updated and validated without dropping any retry, backtrack, contamination, or failure-lesson state.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any change to the current numeric policy: activation_bits=16, weight_bits=16, scale_bits=16, accumulator_bits=32, rounding=nearest_even, saturation=false.\",\"Any replacement of selected trusted templates or major change to the template library/template metadata.\",\"Any architecture, pipeline, memory-layout, or board/runtime contract change needed to resolve a numeric/template binding failure.\",\"Any attempt to reinterpret symbolic_first_order latency as timing, throughput, or hardware-pass evidence.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/numeric_template_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/numeric_template_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "pipeline_planning.numeric template engineer",
+  "used_fallback": false
+}

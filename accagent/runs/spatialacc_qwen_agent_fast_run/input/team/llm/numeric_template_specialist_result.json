@@ -1,0 +1,237 @@
+{
+  "agent": "numeric_template_specialist",
+  "duration_sec": 366.3131096880006,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "numeric_template_specialist",
+    "approval_required_for": [
+      "Changing artifact.input.numeric_policy quantization formats, scaling, rounding, saturation, accumulator width, or numeric comparison policy.",
+      "Adding, replacing, or materially modifying trusted templates or template metadata used by artifact.input.template_library.",
+      "Changing artifact.input.design_space hard constraints, architecture choices, tiling/parallelism limits, memory layout, transfer unit assumptions, or resource budgets to close coverage gaps.",
+      "Promoting any repair that expands beyond bounded glue code or trusted-template parameter binding."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "template_binding_review",
+        "consumes": [
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.model_config",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.model.decoder",
+          "constraint.shape.model"
+        ],
+        "id": "input_preparation.run_numeric_template_static_audit",
+        "on_failure": "Keep the numeric/template audit unapproved, mark failed or unavailable checker results explicitly, and route unsupported quantization, template coverage gaps, or unbound parameters to bounded repair or architecture review. Do not promote artifacts to SACG extraction or code generation.",
+        "produces": [
+          "artifact.input_audit.numeric_template_report",
+          "artifact.input_audit.template_coverage_matrix",
+          "artifact.input_audit.parameter_binding_gap_list",
+          "artifact.input_audit.numeric_template_checker_results"
+        ],
+        "rationale": "Generate the stage-required evidence for supported quantization, trusted template coverage, and static parameter binding. The current prompt only proves artifact presence, not checker pass status.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "human_boundary_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check"
+        ],
+        "action_type": "bounded_repair_or_architecture_review",
+        "consumes": [
+          "artifact.input_audit.numeric_template_report",
+          "artifact.input_audit.template_coverage_matrix",
+          "artifact.input_audit.parameter_binding_gap_list",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.human_agent_boundary",
+          "constraint.human.boundary"
+        ],
+        "id": "input_preparation.resolve_numeric_template_binding_gaps",
+        "on_failure": "Do not apply or promote the repair candidate. Emit a backtrack request or approval request naming the exact numeric policy, template, metadata, or design_space change required.",
+        "produces": [
+          "artifact.input.numeric_policy.repair_candidate",
+          "artifact.input.template_metadata.repair_candidate",
+          "artifact.input.design_space.repair_candidate",
+          "artifact.input_audit.repair_decision_record",
+          "stage_backtrack_request_if_unrepairable"
+        ],
+        "rationale": "If the static audit finds unsupported quantization, missing trusted-template coverage, or illegal parameter ranges, the repair must stay inside trusted template boundaries or become an explicit architecture/numeric-policy approval item.",
+        "requires_approval": true,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "bounded_template_repair",
+          "architecture_review",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "deployment_board_check",
+          "sacg_static_check"
+        ],
+        "action_type": "resource_risk_assumption_review",
+        "consumes": [
+          "artifact.input.design_space",
+          "artifact.input.template_metadata",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "constraint.arch.design_space",
+          "constraint.memory.board",
+          "constraint.deployment.board",
+          "constraint.runtime.board"
+        ],
+        "id": "input_preparation.bind_design_space_resource_risks",
+        "on_failure": "Keep resource-risk assumptions as unresolved handoff risks for the cross-layer evidence gate; do not claim timing, utilization, bandwidth, or board feasibility until later real tool evidence exists.",
+        "produces": [
+          "artifact.input_audit.resource_risk_assumption_report",
+          "artifact.input_audit.design_space_board_binding_notes"
+        ],
+        "rationale": "Resource-risk assumptions in design_space must be carried forward as bounded risks, not as timing/resource pass claims, and must be tied to board memory/runtime/deployment constraints before backend use.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "architecture_review",
+          "memory_runtime_plan_check",
+          "deployment_board_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_memory_update",
+        "consumes": [
+          "artifact.input_audit.numeric_template_report",
+          "artifact.input_audit.template_coverage_matrix",
+          "artifact.input_audit.parameter_binding_gap_list",
+          "artifact.input_audit.resource_risk_assumption_report"
+        ],
+        "id": "input_preparation.record_numeric_template_audit_in_sacg_memory",
+        "on_failure": "Do not hand off the audit as completed. Preserve the current blocker that checker-backed numeric/template evidence has not been committed to SACG memory.",
+        "produces": [
+          "artifact.sacg_memory.numeric_template_audit_record"
+        ],
+        "rationale": "SACG memory is the shared evidence ledger; the numeric/template audit result, including not_run or failed checker states, must be recorded for later stages to avoid relying on informal memory.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_memory_update",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "State summary lists artifact.input.numeric_policy, artifact.input.template_library, artifact.input.template_metadata, and artifact.input.design_space as present input artifacts; therefore absence of detailed rows in the compact prompt is treated as insufficient visible evidence, not proof that fields are missing.",
+      "Candidate artifact summary exposes only top-level design_space keys, including hard_constraints, objectives, notes, schema_version, and _llm_provenance. These keys indicate design-space intent exists, but do not by themselves prove resource feasibility, template coverage, or parameter binding correctness.",
+      "No checker result is supplied for the required subtask checkers: numeric_policy_check, template_coverage_check, template_binding_static_check, parameter_binding_static_check, and sacg_static_check. Pass/fail must remain not_run or pending until those tools bind evidence to the named SACG constraints.",
+      "The visible SACG state has nodes=0 and edges=0, so there is not yet a populated graph proving numeric, template, design-space, shape, memory, or runtime consistency.",
+      "state_summary.sacg_memory reports active_contamination_barriers=[], open_backtrack_requests=[], and open_retry_requests=[]; the separate sacg_memory block is empty. No current-stage retry, backtrack, or contamination barrier is visible for this numeric/template audit.",
+      "LLM provenance in design_space is not hardware or checker evidence. It may help trace intent, but cannot replace numeric policy, template coverage, parameter binding, or SACG static checks."
+    ],
+    "proposed_actions": [
+      "Run the required static audit over numeric_policy, template_library, template_metadata, and design_space; produce numeric_template_report, template_coverage_matrix, and parameter_binding_gap_list with each checker result recorded as pass, fail, or not_run.",
+      "Build a coverage matrix that maps every model/shape operation required by the accelerator flow to a trusted template, supported numeric format, legal parameter range, expected data order, and resource-risk note.",
+      "Block downstream consumption if any numeric format, operator, template, or parameter binding is unsupported or unbound; route failures to bounded template repair or architecture review rather than free-form RTL edits.",
+      "If resolving a gap requires changing numeric policy, trusted template inventory/metadata, design_space hard constraints, memory layout, or resource assumptions, require explicit approval before promotion.",
+      "Record the audit result and any gap list into SACG memory after checker execution so later stages do not rely on natural-language memory or LLM provenance as correctness evidence."
+    ],
+    "risks": [
+      "Current-stage blocker: downstream SACG extraction or code generation would be unsafe without checker evidence that the numeric policy is supported by the trusted template metadata and design_space constraints.",
+      "Current-stage blocker: unverified template coverage may allow unsupported operators, tensor shapes, data orders, accumulator widths, or transfer units to slip into a template-constrained flow.",
+      "Current-stage blocker: unverified parameter binding may leave template parameters such as bit widths, scale formats, tiling factors, strides, buffer depths, or parallelism unbound or inconsistently named across numeric_policy, template_metadata, and design_space.",
+      "Cross-layer risk: numeric choices not proven against model_config and shape constraints can create mismatch between golden software behavior and generated accelerator arithmetic.",
+      "Cross-layer risk: design_space resource-risk assumptions are visible only as high-level keys; if not bound to board memory/runtime/deployment constraints, later Vivado or board integration may fail due to BRAM/DSP/DDR bandwidth, AXI transfer-count, or timing assumptions.",
+      "Template trust risk: adding or modifying templates to close coverage gaps without approval would violate the template-constrained flow and could contaminate downstream verification evidence."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.model_config",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.human_agent_boundary",
+        "artifact.input_audit.numeric_template_report",
+        "artifact.input_audit.template_coverage_matrix",
+        "artifact.input_audit.parameter_binding_gap_list"
+      ],
+      "constraints": [
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.memory.board",
+        "constraint.deployment.board",
+        "constraint.runtime.board",
+        "constraint.tool.protocols",
+        "constraint.human.boundary"
+      ],
+      "edges": [
+        "constraint.numeric.policy -> artifact.input.numeric_policy",
+        "artifact.input.numeric_policy -> artifact.input.template_metadata (quantization and accumulator support binding)",
+        "artifact.input.template_library -> artifact.input.template_metadata (trusted template identity and parameter surface binding)",
+        "artifact.input.template_metadata -> artifact.input.design_space (legal parameter ranges, tiling, parallelism, and resource assumptions)",
+        "artifact.input.design_space -> constraint.arch.design_space",
+        "artifact.input.design_space -> constraint.memory.board / constraint.deployment.board / constraint.runtime.board (resource-risk handoff)",
+        "artifact.input.model_config -> artifact.input.template_metadata (shape/operator binding)"
+      ],
+      "nodes": [
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "numeric_policy_support_set",
+        "trusted_template_coverage_set",
+        "template_parameter_binding_set",
+        "design_space_resource_risk_assumption_set"
+      ]
+    },
+    "schema_version": "spatialaccagent.input_audit.numeric_template_report.v0",
+    "stage": "input_preparation",
+    "status": "blocked_pending_static_checker_evidence",
+    "summary": "The numeric/template/design-space artifact classes are present in the supplied stage inventory, but the visible summary does not expose quantization modes, template parameter surfaces, trusted-template coverage rows, or resource-risk assumptions. No checker evidence is supplied for numeric_policy_check, template_coverage_check, template_binding_static_check, parameter_binding_static_check, or sacg_static_check, so this stage cannot approve downstream SACG consumption yet. There are no visible open retry, backtrack, or contamination barriers relevant to this stage."
+  },
+  "prompt_bytes": 24909,
+  "prompt_hash": "d984fa0f00282aedcfb034c99a16c4d3e237afb30686e54720e3f6060becb532",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.input_audit.numeric_template_report.v0\",\"agent\":\"numeric_template_specialist\",\"stage\":\"input_preparation\",\"status\":\"blocked_pending_static_checker_evidence\",\"summary\":\"The numeric/template/design-space artifact classes are present in the supplied stage inventory, but the visible summary does not expose quantization modes, template parameter surfaces, trusted-template coverage rows, or resource-risk assumptions. No checker evidence is supplied for numeric_policy_check, template_coverage_check, template_binding_static_check, parameter_binding_static_check, or sacg_static_check, so this stage cannot approve downstream SACG consumption yet. There are no visible open retry, backtrack, or contamination barriers relevant to this stage.\",\"sacg_focus\":{\"nodes\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"numeric_policy_support_set\",\"trusted_template_coverage_set\",\"template_parameter_binding_set\",\"design_space_resource_risk_assumption_set\"],\"edges\":[\"constraint.numeric.policy -> artifact.input.numeric_policy\",\"artifact.input.numeric_policy -> artifact.input.template_metadata (quantization and accumulator support binding)\",\"artifact.input.template_library -> artifact.input.template_metadata (trusted template identity and parameter surface binding)\",\"artifact.input.template_metadata -> artifact.input.design_space (legal parameter ranges, tiling, parallelism, and resource assumptions)\",\"artifact.input.design_space -> constraint.arch.design_space\",\"artifact.input.design_space -> constraint.memory.board / constraint.deployment.board / constraint.runtime.board (resource-risk handoff)\",\"artifact.input.model_config -> artifact.input.template_metadata (shape/operator binding)\"],\"constraints\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.memory.board\",\"constraint.deployment.board\",\"constraint.runtime.board\",\"constraint.tool.protocols\",\"constraint.human.boundary\"],\"artifacts\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.model_config\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.human_agent_boundary\",\"artifact.input_audit.numeric_template_report\",\"artifact.input_audit.template_coverage_matrix\",\"artifact.input_audit.parameter_binding_gap_list\"]},\"observations\":[\"State summary lists artifact.input.numeric_policy, artifact.input.template_library, artifact.input.template_metadata, and artifact.input.design_space as present input artifacts; therefore absence of detailed rows in the compact prompt is treated as insufficient visible evidence, not proof that fields are missing.\",\"Candidate artifact summary exposes only top-level design_space keys, including hard_constraints, objectives, notes, schema_version, and _llm_provenance. These keys indicate design-space intent exists, but do not by themselves prove resource feasibility, template coverage, or parameter binding correctness.\",\"No checker result is supplied for the required subtask checkers: numeric_policy_check, template_coverage_check, template_binding_static_check, parameter_binding_static_check, and sacg_static_check. Pass/fail must remain not_run or pending until those tools bind evidence to the named SACG constraints.\",\"The visible SACG state has nodes=0 and edges=0, so there is not yet a populated graph proving numeric, template, design-space, shape, memory, or runtime consistency.\",\"state_summary.sacg_memory reports active_contamination_barriers=[], open_backtrack_requests=[], and open_retry_requests=[]; the separate sacg_memory block is empty. No current-stage retry, backtrack, or contamination barrier is visible for this numeric/template audit.\",\"LLM provenance in design_space is not hardware or checker evidence. It may help trace intent, but cannot replace numeric policy, template coverage, parameter binding, or SACG static checks.\"],\"risks\":[\"Current-stage blocker: downstream SACG extraction or code generation would be unsafe without checker evidence that the numeric policy is supported by the trusted template metadata and design_space constraints.\",\"Current-stage blocker: unverified template coverage may allow unsupported operators, tensor shapes, data orders, accumulator widths, or transfer units to slip into a template-constrained flow.\",\"Current-stage blocker: unverified parameter binding may leave template parameters such as bit widths, scale formats, tiling factors, strides, buffer depths, or parallelism unbound or inconsistently named across numeric_policy, template_metadata, and design_space.\",\"Cross-layer risk: numeric choices not proven against model_config and shape constraints can create mismatch between golden software behavior and generated accelerator arithmetic.\",\"Cross-layer risk: design_space resource-risk assumptions are visible only as high-level keys; if not bound to board memory/runtime/deployment constraints, later Vivado or board integration may fail due to BRAM/DSP/DDR bandwidth, AXI transfer-count, or timing assumptions.\",\"Template trust risk: adding or modifying templates to close coverage gaps without approval would violate the template-constrained flow and could contaminate downstream verification evidence.\"],\"proposed_actions\":[\"Run the required static audit over numeric_policy, template_library, template_metadata, and design_space; produce numeric_template_report, template_coverage_matrix, and parameter_binding_gap_list with each checker result recorded as pass, fail, or not_run.\",\"Build a coverage matrix that maps every model/shape operation required by the accelerator flow to a trusted template, supported numeric format, legal parameter range, expected data order, and resource-risk note.\",\"Block downstream consumption if any numeric format, operator, template, or parameter binding is unsupported or unbound; route failures to bounded template repair or architecture review rather than free-form RTL edits.\",\"If resolving a gap requires changing numeric policy, trusted template inventory/metadata, design_space hard constraints, memory layout, or resource assumptions, require explicit approval before promotion.\",\"Record the audit result and any gap list into SACG memory after checker execution so later stages do not rely on natural-language memory or LLM provenance as correctness evidence.\"],\"executable_actions\":[{\"id\":\"input_preparation.run_numeric_template_static_audit\",\"stage\":\"input_preparation\",\"action_type\":\"template_binding_review\",\"rationale\":\"Generate the stage-required evidence for supported quantization, trusted template coverage, and static parameter binding. The current prompt only proves artifact presence, not checker pass status.\",\"consumes\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.model_config\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.model.decoder\",\"constraint.shape.model\"],\"produces\":[\"artifact.input_audit.numeric_template_report\",\"artifact.input_audit.template_coverage_matrix\",\"artifact.input_audit.parameter_binding_gap_list\",\"artifact.input_audit.numeric_template_checker_results\"],\"tool_roles\":[\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"sacg_static_check\"],\"acceptance_checkers\":[\"numeric_policy_check\",\"template_coverage_check\",\"template_binding_static_check\",\"parameter_binding_static_check\",\"sacg_static_check\"],\"on_failure\":\"Keep the numeric/template audit unapproved, mark failed or unavailable checker results explicitly, and route unsupported quantization, template coverage gaps, or unbound parameters to bounded repair or architecture review. Do not promote artifacts to SACG extraction or code generation.\",\"requires_approval\":false},{\"id\":\"input_preparation.resolve_numeric_template_binding_gaps\",\"stage\":\"input_preparation\",\"action_type\":\"bounded_repair_or_architecture_review\",\"rationale\":\"If the static audit finds unsupported quantization, missing trusted-template coverage, or illegal parameter ranges, the repair must stay inside trusted template boundaries or become an explicit architecture/numeric-policy approval item.\",\"consumes\":[\"artifact.input_audit.numeric_template_report\",\"artifact.input_audit.template_coverage_matrix\",\"artifact.input_audit.parameter_binding_gap_list\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.human_agent_boundary\",\"constraint.human.boundary\"],\"produces\":[\"artifact.input.numeric_policy.repair_candidate\",\"artifact.input.template_metadata.repair_candidate\",\"artifact.input.design_space.repair_candidate\",\"artifact.input_audit.repair_decision_record\",\"stage_backtrack_request_if_unrepairable\"],\"tool_roles\":[\"bounded_template_repair\",\"architecture_review\",\"human_boundary_check\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"human_boundary_check\",\"numeric_policy_check\",\"template_coverage_check\",\"template_binding_static_check\",\"parameter_binding_static_check\"],\"on_failure\":\"Do not apply or promote the repair candidate. Emit a backtrack request or approval request naming the exact numeric policy, template, metadata, or design_space change required.\",\"requires_approval\":true},{\"id\":\"input_preparation.bind_design_space_resource_risks\",\"stage\":\"input_preparation\",\"action_type\":\"resource_risk_assumption_review\",\"rationale\":\"Resource-risk assumptions in design_space must be carried forward as bounded risks, not as timing/resource pass claims, and must be tied to board memory/runtime/deployment constraints before backend use.\",\"consumes\":[\"artifact.input.design_space\",\"artifact.input.template_metadata\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"constraint.arch.design_space\",\"constraint.memory.board\",\"constraint.deployment.board\",\"constraint.runtime.board\"],\"produces\":[\"artifact.input_audit.resource_risk_assumption_report\",\"artifact.input_audit.design_space_board_binding_notes\"],\"tool_roles\":[\"architecture_review\",\"memory_runtime_plan_check\",\"deployment_board_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"deployment_board_check\",\"sacg_static_check\"],\"on_failure\":\"Keep resource-risk assumptions as unresolved handoff risks for the cross-layer evidence gate; do not claim timing, utilization, bandwidth, or board feasibility until later real tool evidence exists.\",\"requires_approval\":false},{\"id\":\"input_preparation.record_numeric_template_audit_in_sacg_memory\",\"stage\":\"input_preparation\",\"action_type\":\"sacg_memory_update\",\"rationale\":\"SACG memory is the shared evidence ledger; the numeric/template audit result, including not_run or failed checker states, must be recorded for later stages to avoid relying on informal memory.\",\"consumes\":[\"artifact.input_audit.numeric_template_report\",\"artifact.input_audit.template_coverage_matrix\",\"artifact.input_audit.parameter_binding_gap_list\",\"artifact.input_audit.resource_risk_assumption_report\"],\"produces\":[\"artifact.sacg_memory.numeric_template_audit_record\"],\"tool_roles\":[\"sacg_memory_update\",\"sacg_static_check\"],\"acceptance_checkers\":[\"sacg_memory_check\",\"sacg_static_check\"],\"on_failure\":\"Do not hand off the audit as completed. Preserve the current blocker that checker-backed numeric/template evidence has not been committed to SACG memory.\",\"requires_approval\":false}],\"approval_required_for\":[\"Changing artifact.input.numeric_policy quantization formats, scaling, rounding, saturation, accumulator width, or numeric comparison policy.\",\"Adding, replacing, or materially modifying trusted templates or template metadata used by artifact.input.template_library.\",\"Changing artifact.input.design_space hard constraints, architecture choices, tiling/parallelism limits, memory layout, transfer unit assumptions, or resource budgets to close coverage gaps.\",\"Promoting any repair that expands beyond bounded glue code or trusted-template parameter binding.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/team/llm/numeric_template_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/team/llm/numeric_template_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.numeric and template binding engineer",
+  "used_fallback": false
+}

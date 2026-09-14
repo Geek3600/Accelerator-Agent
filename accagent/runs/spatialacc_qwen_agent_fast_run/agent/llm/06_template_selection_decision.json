@@ -1,0 +1,96 @@
+{
+  "decision": {
+    "approval_required_for": [
+      "Committing selected hardware templates as architecture-level decisions for any model operator",
+      "Any template choice that fixes or changes pipeline stages, tile sizes, operator parallelism, memory layout, data packing, AXI/DDR access pattern, or numeric policy",
+      "Any major template-library substitution or template implementation change beyond selecting an existing candidate template"
+    ],
+    "decision": "run_tool",
+    "expected_evidence": [
+      "Candidate template-selection artifact mapping each model operator to a template with template IDs and source provenance from artifact.input.template_library and artifact.input.template_metadata",
+      "Traceability from each selected template to constraint.model.decoder, constraint.shape.model, constraint.numeric.policy, constraint.arch.design_space, constraint.deployment.board, constraint.memory.board, constraint.runtime.board, constraint.tool.profile, and constraint.tool.protocols",
+      "Explicit handling evidence for self_attention preserving Qwen2 attention semantics, including not treating GQA as MHA if the model configuration uses GQA",
+      "Evidence that RMSNorm, residual add, MLP gate/up/down projections, activation/multiply, and attention templates preserve model operator order and semantics along edge.model_order.00 through edge.model_order.07",
+      "Records of any inferred pipeline, tile, parallelism, layout, packing, memory-interface, or numeric assumptions so later checker and human-approval stages can validate them",
+      "A later checker result confirming selected templates are compatible with model shapes, numeric policy, board memory/runtime limits, and available tools before design pass is claimed"
+    ],
+    "reason": "template_selection is a planning/design-space stage that selects candidate hardware templates from existing inputs. It is safe to run because it does not itself delete tests, modify golden outputs, loosen tolerance, bypass checkers, or claim a design pass. However, its outputs may become architecture-level commitments, so approval requirements and later checker evidence must be tracked in the SACG.",
+    "risks": [
+      "Template selection can silently impose pipeline stages, tile sizes, parallelism, memory layout, data packing, AXI/DDR behavior, or numeric choices that require human approval before being finalized",
+      "Self-attention template mismatch could change Qwen2 semantics, especially if GQA is incorrectly mapped to an MHA-style template",
+      "Cross-layer mismatch is possible between model shapes, numeric policy, template capabilities, board memory/runtime constraints, and tool/backend support",
+      "No checker evidence exists yet; candidate selections must not be treated as a design pass until validated",
+      "The SACG summary is partially truncated for model operator nodes while model_order edges reference later operators, so the tool must rely on the full SACG file and preserve all referenced operator mappings"
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.case.adapter",
+        "constraint.human.boundary",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.model_order.00",
+        "edge.model_order.01",
+        "edge.model_order.02",
+        "edge.model_order.03",
+        "edge.model_order.04",
+        "edge.model_order.05",
+        "edge.model_order.06",
+        "edge.model_order.07"
+      ],
+      "nodes": [
+        "node.model",
+        "node.numeric_policy",
+        "node.template_library",
+        "node.design_space",
+        "node.target_board",
+        "node.tool_profile",
+        "node.tool_protocols",
+        "node.case_adapter",
+        "node.human_boundary",
+        "node.model_op.00_rms_norm_1",
+        "node.model_op.01_self_attention",
+        "node.model_op.02_residual_add_1",
+        "node.model_op.03_rms_norm_2",
+        "node.model_op.04_mlp_gate_proj",
+        "node.model_op.05_mlp_up_proj",
+        "node.model_op.06_activation_mul",
+        "node.model_op.07_mlp_down_proj",
+        "node.model_op.08_residual_add_2"
+      ]
+    },
+    "stage": "template_selection",
+    "tool_command_allowed": true
+  },
+  "duration_sec": 33.07087387499996,
+  "enforced": true,
+  "error": null,
+  "mode": "llm",
+  "prompt_hash": "6c86a43fe84297bf864e73fc922462e2674581a9b742e53b9c20cac96297451f",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/llm/06_template_selection_request.json",
+  "schema_version": "spatialaccagent.pre_stage_safety_gate_decision.v0",
+  "stage": "template_selection"
+}

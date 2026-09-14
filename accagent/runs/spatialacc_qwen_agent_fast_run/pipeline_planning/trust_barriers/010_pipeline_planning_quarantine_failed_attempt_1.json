@@ -1,0 +1,43 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "stage_artifact_trust_barrier_check",
+      "stage_retry_request_check",
+      "sacg_memory_check"
+    ],
+    "action_type": "artifact_trust_barrier_and_retry_request",
+    "consumes": [
+      "sacg_memory",
+      "recent_stage_summary",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/28_pipeline_planning.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json"
+    ],
+    "id": "pipeline_planning.quarantine_failed_attempt_1",
+    "on_failure": "Stop before retrying or proceeding; failed pipeline_planning artifacts must remain blocked to avoid contamination.",
+    "produces": [
+      "sacg_memory update: pipeline_planning attempt 1 artifact trust barrier",
+      "sacg_memory update: bounded pipeline_planning retry request for attempt 2",
+      "diagnostic-only artifact manifest for failed pipeline_planning attempt 1"
+    ],
+    "rationale": "The command failed and the existing pipeline_planning_report.json is incomplete and unpromoted. Before any retry or downstream action, record that attempt 1 artifacts are diagnostic-only and open a bounded same-stage retry request.",
+    "requires_approval": false,
+    "stage": "pipeline_planning",
+    "tool_roles": [
+      "stage_artifact_trust_barrier",
+      "stage_retry_request",
+      "sacg_memory_update"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 10,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/010_retry.json",
+  "stage": "pipeline_planning"
+}

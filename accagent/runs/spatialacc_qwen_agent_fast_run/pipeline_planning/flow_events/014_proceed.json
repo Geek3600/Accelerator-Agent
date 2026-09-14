@@ -1,0 +1,240 @@
+{
+  "attempt_count": 1,
+  "decision": "proceed",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "task_card_check",
+        "verification_action_audit_check",
+        "sacg_static_check",
+        "sacg_reference_check",
+        "sacg_memory_check"
+      ],
+      "action_type": "handoff_canonicalization",
+      "consumes": [
+        "recent_stage_summary.outputs.pipeline_plan",
+        "recent_stage_summary.outputs.pipeline_static_checks",
+        "recent_stage_summary.outputs.team_aggregate",
+        "recent_stage_summary.outputs.sacg_state",
+        "recent_stage_summary.llm_agent.executable_actions",
+        "sacg_memory_truth",
+        "action_grounding_registry"
+      ],
+      "id": "flow.pipeline_planning.materialize_canonical_handoff_guard",
+      "on_failure": "Hold downstream transition and report the conflicting producer, missing evidence, or SACG mismatch. Do not retry or repair the design unless the failure identifies a checker-backed Stage 3 contract violation; do not consume ambiguous handoff artifacts downstream.",
+      "produces": [
+        "pipeline_planning/canonical_handoff_manifest.json",
+        "pipeline_planning/checker_evidence_ledger.json",
+        "pipeline_planning/memory_address_semantics_guard.json",
+        "pipeline_planning/downstream_consumption_guard.json"
+      ],
+      "rationale": "The current stage passed, but the supplied team aggregate contains overlapping downstream handoff actions. Produce one ordered, checker-backed handoff manifest and evidence ledger so Stage 4 consumes the accepted Stage 3 contract without ambiguous artifact producers or accidental memory-address promotion.",
+      "requires_approval": false,
+      "stage": "pipeline_planning_to_parameter_binding",
+      "tool_roles": [
+        "team_aggregate",
+        "verification_action_audit",
+        "sacg_validate",
+        "sacg_reference_check",
+        "task_card_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "sacg_memory_check",
+        "stage_retry_request_check",
+        "stage_backtrack_request_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "stage_transition",
+      "consumes": [
+        "pipeline_planning/canonical_handoff_manifest.json",
+        "pipeline_planning/checker_evidence_ledger.json",
+        "pipeline_planning/downstream_consumption_guard.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+        "sacg_memory_truth",
+        "flow_policy"
+      ],
+      "id": "flow.pipeline_planning.release_stage3_state_to_parameter_binding",
+      "on_failure": "If a new active barrier or open retry/backtrack request is detected, stop the transition and route according to that current SACG-memory blocker. If only handoff evidence is missing, return to the handoff guard action without treating historical closed records as active blockers.",
+      "produces": [
+        "flow_decision.proceed_to_parameter_binding.json",
+        "next_stage_invocation.parameter_binding",
+        "next_stage.source_sacg_state.pipeline_planning_sacg_state",
+        "stage_transition_contamination_guard.json"
+      ],
+      "rationale": "SACG memory has no active blockers and the stage passed. Release the pipeline_planning SACG state as the source for parameter_binding while preserving retry/backtrack and contamination-barrier checks at the boundary.",
+      "requires_approval": false,
+      "stage": "flow_control",
+      "tool_roles": [
+        "sacg_validate",
+        "sacg_static_check",
+        "sacg_memory_update",
+        "sacg_reference_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "parameter_binding_static_check",
+        "template_coverage_check",
+        "boundary_contract_check",
+        "template_binding_static_check",
+        "sacg_reference_check"
+      ],
+      "action_type": "parameter_binding",
+      "consumes": [
+        "next_stage_invocation.parameter_binding",
+        "next_stage.source_sacg_state.pipeline_planning_sacg_state",
+        "artifact.stage3.accepted_pipeline_plan",
+        "pipeline_planning/canonical_handoff_manifest.json",
+        "pipeline_planning/checker_evidence_ledger.json",
+        "artifact.stage2.template_selection",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy"
+      ],
+      "id": "parameter_binding.bind_parameters_from_accepted_stage3_contract",
+      "on_failure": "Block code_generation. Localize the specific unbound parameter, incompatible template, boundary contract mismatch, or SACG reference mismatch; route only that slice to bounded pipeline/template repair or an explicit backtrack request. Do not infer defaults, substitute free-form RTL, edit golden outputs, or loosen tolerances.",
+      "produces": [
+        "artifact.stage4.parameter_binding_contract",
+        "artifact.stage4.bound_template_parameter_manifest",
+        "artifact.stage4.boundary_stream_contract",
+        "parameter_binding/static_check_report.json"
+      ],
+      "rationale": "Proceed with Stage 4 by freezing template parameters from the accepted Stage 3 logical pipeline contract, preserving model shape, GQA mapping, seq_len bound, numeric widths and policy, stream order, residual/MLP join semantics, and trusted template boundaries.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "parameter_binding_static_check",
+        "template_coverage_check",
+        "boundary_contract_generate",
+        "sacg_reference_check"
+      ]
+    }
+  ],
+  "flow_event_index": 14,
+  "llm_flow_controller": {
+    "agent_executable_actions": [
+      {
+        "acceptance_checkers": [
+          "task_card_check",
+          "verification_action_audit_check",
+          "sacg_static_check",
+          "sacg_reference_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "handoff_canonicalization",
+        "consumes": [
+          "recent_stage_summary.outputs.pipeline_plan",
+          "recent_stage_summary.outputs.pipeline_static_checks",
+          "recent_stage_summary.outputs.team_aggregate",
+          "recent_stage_summary.outputs.sacg_state",
+          "recent_stage_summary.llm_agent.executable_actions",
+          "sacg_memory_truth",
+          "action_grounding_registry"
+        ],
+        "id": "flow.pipeline_planning.materialize_canonical_handoff_guard",
+        "on_failure": "Hold downstream transition and report the conflicting producer, missing evidence, or SACG mismatch. Do not retry or repair the design unless the failure identifies a checker-backed Stage 3 contract violation; do not consume ambiguous handoff artifacts downstream.",
+        "produces": [
+          "pipeline_planning/canonical_handoff_manifest.json",
+          "pipeline_planning/checker_evidence_ledger.json",
+          "pipeline_planning/memory_address_semantics_guard.json",
+          "pipeline_planning/downstream_consumption_guard.json"
+        ],
+        "rationale": "The current stage passed, but the supplied team aggregate contains overlapping downstream handoff actions. Produce one ordered, checker-backed handoff manifest and evidence ledger so Stage 4 consumes the accepted Stage 3 contract without ambiguous artifact producers or accidental memory-address promotion.",
+        "requires_approval": false,
+        "stage": "pipeline_planning_to_parameter_binding",
+        "tool_roles": [
+          "team_aggregate",
+          "verification_action_audit",
+          "sacg_validate",
+          "sacg_reference_check",
+          "task_card_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_memory_check",
+          "stage_retry_request_check",
+          "stage_backtrack_request_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "stage_transition",
+        "consumes": [
+          "pipeline_planning/canonical_handoff_manifest.json",
+          "pipeline_planning/checker_evidence_ledger.json",
+          "pipeline_planning/downstream_consumption_guard.json",
+          "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+          "sacg_memory_truth",
+          "flow_policy"
+        ],
+        "id": "flow.pipeline_planning.release_stage3_state_to_parameter_binding",
+        "on_failure": "If a new active barrier or open retry/backtrack request is detected, stop the transition and route according to that current SACG-memory blocker. If only handoff evidence is missing, return to the handoff guard action without treating historical closed records as active blockers.",
+        "produces": [
+          "flow_decision.proceed_to_parameter_binding.json",
+          "next_stage_invocation.parameter_binding",
+          "next_stage.source_sacg_state.pipeline_planning_sacg_state",
+          "stage_transition_contamination_guard.json"
+        ],
+        "rationale": "SACG memory has no active blockers and the stage passed. Release the pipeline_planning SACG state as the source for parameter_binding while preserving retry/backtrack and contamination-barrier checks at the boundary.",
+        "requires_approval": false,
+        "stage": "flow_control",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "sacg_memory_update",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_coverage_check",
+          "boundary_contract_check",
+          "template_binding_static_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "parameter_binding",
+        "consumes": [
+          "next_stage_invocation.parameter_binding",
+          "next_stage.source_sacg_state.pipeline_planning_sacg_state",
+          "artifact.stage3.accepted_pipeline_plan",
+          "pipeline_planning/canonical_handoff_manifest.json",
+          "pipeline_planning/checker_evidence_ledger.json",
+          "artifact.stage2.template_selection",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy"
+        ],
+        "id": "parameter_binding.bind_parameters_from_accepted_stage3_contract",
+        "on_failure": "Block code_generation. Localize the specific unbound parameter, incompatible template, boundary contract mismatch, or SACG reference mismatch; route only that slice to bounded pipeline/template repair or an explicit backtrack request. Do not infer defaults, substitute free-form RTL, edit golden outputs, or loosen tolerances.",
+        "produces": [
+          "artifact.stage4.parameter_binding_contract",
+          "artifact.stage4.bound_template_parameter_manifest",
+          "artifact.stage4.boundary_stream_contract",
+          "parameter_binding/static_check_report.json"
+        ],
+        "rationale": "Proceed with Stage 4 by freezing template parameters from the accepted Stage 3 logical pipeline contract, preserving model shape, GQA mapping, seq_len bound, numeric widths and policy, stream order, residual/MLP join semantics, and trusted template boundaries.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "template_coverage_check",
+          "boundary_contract_generate",
+          "sacg_reference_check"
+        ]
+      }
+    ],
+    "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/014_pipeline_planning/llm/flow_controller_agent_result.json",
+    "agent_status": "proceed_to_parameter_binding_after_handoff_guard",
+    "agent_summary": "Proceed to the next stage. The pipeline_planning stage passed on attempt 1 with command return code 0, 10/10 supplied checks passing, no warnings, and sacg_memory_truth reporting zero active contamination barriers, zero open retry requests, and zero open backtrack requests. Do not retry, backtrack, or repair the current stage. Before downstream consumption, materialize a canonical handoff/evidence guard so duplicate team handoff variants and Stage 3 memory-address hints cannot contaminate Stage 4+ artifacts."
+  },
+  "reason": "stage passed and no open backtrack request",
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_event_action_record.v0",
+  "stage": "pipeline_planning"
+}

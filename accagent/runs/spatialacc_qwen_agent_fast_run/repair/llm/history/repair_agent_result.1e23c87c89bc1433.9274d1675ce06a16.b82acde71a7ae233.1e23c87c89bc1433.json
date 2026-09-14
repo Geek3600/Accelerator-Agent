@@ -1,0 +1,331 @@
+{
+  "agent": "repair_agent",
+  "duration_sec": 249.8495237340103,
+  "error": null,
+  "http_transport": "curl_direct_http1",
+  "live_transaction_id": "a820c6ac85894bcfae931dcf398ba3b0",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "agent": "repair_agent",
+    "approval_required_for": [
+      "Approval is required if ACTIVATION_AXI_BEATS_PER_TOKEN cannot be uniquely resolved from an existing exact ABI/shape/stream authority, or if authoritative sources disagree.",
+      "Approval is required for any change to the user-supplied board wrapper, Vivado target/export facts, compute-slot ABI, memory layout, pipeline architecture, target checkpoint/stimulus, target-model golden, numeric policy/tolerance, or accelerator scope.",
+      "Approval is required for any proposed lower-layer backtrack; it must be accompanied by a current hash-bound board trace that explicitly contradicts a named lower-layer certificate invariant."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "current_layer_failure_localization",
+        "consumes": [
+          "verification/qwen_hierarchy/axi_ddr_interface.json",
+          "verification/vcs/case_board_vcs_functional.json",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/board_simulation/board_simulation_executed_manifest.json",
+          "verification/board_interface/board_source_identity.json",
+          "the identity document's bound Vivado facts and compute-slot ABI hashes",
+          "generated/board_integration/spatialacc_exact_board_multilayer_tb.sv or its manifest-selected equivalent",
+          "verification/semantic_testbench/semantic_testbench_manifest.json",
+          "generated/memory/dut_weight_binding_manifest.json",
+          "hierarchical_learning_context lower-layer certificates"
+        ],
+        "handoff_to": "repair_executor",
+        "id": "repair.board_current_layer_localize_identity_and_symbol",
+        "on_failure": "If the activation-beat symbol cannot be uniquely traced to an existing ABI/shape/stream authority, or if identity/Vivado facts conflict, emit an ambiguity report and request bounded approval. Do not edit sources, alter tolerances, rerun lower layers, or use any unbound executable.",
+        "produces": [
+          "repair_execution/current_board_integration_localization.json",
+          "repair_execution/current_board_authoritative_binding_map.json",
+          "repair_execution/current_board_patch_spec.json"
+        ],
+        "rationale": "Use the current checker report and hash-bound VCS compile log to create a bounded, auditable edit specification. The only eligible repair targets are generated board-integration provenance/compile-plan metadata and the unresolved testbench symbol; no leaf, connected-kernel, user-wrapper, target-model, numeric-policy, or golden change is authorized.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_board_interface_discovery",
+          "case_axi_ddr_interface",
+          "artifact_hash_check",
+          "numeric_policy_check",
+          "tool_protocol_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "bounded_integration_harness_repair",
+        "consumes": [
+          "repair_execution/current_board_patch_spec.json",
+          "repair_execution/current_board_authoritative_binding_map.json",
+          "verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+          "the manifest-selected generated exact-board testbench source",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/semantic_testbench/semantic_testbench_manifest.json",
+          "current target checkpoint/reference and immutable numeric-policy artifacts"
+        ],
+        "handoff_to": "verification_executor",
+        "id": "repair.board_apply_minimal_harness_and_compileplan_fix",
+        "on_failure": "If the static checker still rejects identity, authority, command authorization, or source hashes, retain the active SACG barriers and return the new checker output to current-layer localization. If the necessary edit would modify the exact user wrapper, ABI, Vivado target facts, semantic stimulus/golden contract, numeric policy, or target-model scope, stop and request approval rather than broaden the patch.",
+        "produces": [
+          "generated/board_integration/spatialacc_exact_board_multilayer_tb.sv",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/board_simulation/canonical_vcs_compile_plan.json",
+          "verification/board_interface/board_source_identity_revalidation.json",
+          "repair_execution/board_integration_delta_audit.json",
+          "verification/qwen_hierarchy/axi_ddr_interface.json"
+        ],
+        "rationale": "Repair the current board integration only: restore a contract-derived declaration/binding for ACTIVATION_AXI_BEATS_PER_TOKEN and regenerate the board simulation manifest/ordered VCS plan so they bind the current exact board identity, current Vivado export facts, authorized executables, and generated-source hashes. This is a verification-capability and generated-harness repair, not a hardware correctness claim.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "bounded_template_repair",
+          "case_board_interface_discovery",
+          "artifact_hash_check",
+          "numeric_policy_check",
+          "tool_protocol_check",
+          "case_axi_ddr_interface"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "functional_sim",
+          "targeted_replay_check",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "numeric_compare",
+          "artifact_hash_check"
+        ],
+        "action_type": "current_layer_real_tool_replay",
+        "consumes": [
+          "passing verification/qwen_hierarchy/axi_ddr_interface.json",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/board_simulation/canonical_vcs_compile_plan.json",
+          "verification/board_interface/board_source_identity_revalidation.json",
+          "verification/model_reference/reference_manifest.json or the current manifest-bound target-model reference",
+          "verification/semantic_testbench/semantic_testbench_manifest.json",
+          "generated/memory/dut_weight_binding_manifest.json",
+          "immutable checkpoint, stimulus provenance, numeric policy, and expected-output artifacts"
+        ],
+        "handoff_to": "verification_executor",
+        "id": "repair.board_run_exact_vcs_targeted_replay",
+        "on_failure": "For a compile failure, localize only the new generated integration/compile-plan error and return to the bounded current-layer repair. For an executed runtime failure, use the analyzer's current boundary trace to identify the earliest board boundary before proposing another repair. Do not claim liveness or functional pass from clock/AXI activity, and do not reopen the kernel unless the trace contains direct core start, complete ingress, ready egress, a named causal boundary, and matching current lower-certificate hashes that contradict a named invariant.",
+        "produces": [
+          "verification/vcs/case_board_vcs_functional.json",
+          "verification/board_simulation/reports/compile.log",
+          "verification/board_simulation/reports/simulation.log",
+          "verification/board_simulation/reports/hierarchy_report.json",
+          "verification/board_simulation/reports/progress_event_log.jsonl",
+          "verification/board_simulation/reports/runtime_loader_report.json",
+          "verification/board_simulation/reports/axi_protocol_report.json",
+          "verification/board_simulation/reports/pipeline_overlap_report.json",
+          "verification/debug_closure/boundary_trace.json",
+          "verification/case_diagnostics/vcs_functional_diagnosis.json"
+        ],
+        "rationale": "Once the static identity gate passes, execute the exact-board VCS replay on the immutable checkpoint, stimulus, target-model reference, tolerance, semantic contract, and repaired authorized source closure. Produce a current runtime trace rather than relying on the prior compile-only diagnosis. The expected output remains target-model inference for Transformer blocks only.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "case_vcs_functional_sim",
+          "case_vcs_evidence_analyzer",
+          "boundary_trace_rerun",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "numeric_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_multilayer_pipeline",
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_board_semantic_evidence",
+          "functional_sim",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "numeric_compare",
+          "real_weight_semantic_evidence_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "board_layer_regression_and_semantic_evidence",
+        "consumes": [
+          "passing current exact-board VCS replay and analyzer artifacts",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/board_interface/board_source_identity_revalidation.json",
+          "verification/debug_closure/boundary_trace.json",
+          "verification/case_diagnostics/vcs_functional_diagnosis.json",
+          "verification/semantic_testbench/semantic_testbench_manifest.json",
+          "verification/model_reference/reference_manifest.json or its manifest-bound equivalent",
+          "generated/memory/dut_weight_binding_manifest.json",
+          "immutable numeric comparison policy and Transformer-block expected outputs"
+        ],
+        "handoff_to": "verification_agent",
+        "id": "repair.board_rerun_current_layer_acceptance_dag",
+        "on_failure": "Keep this board layer in repair and pack the earliest failed real-tool boundary/contract for a new bounded board-only action. Missing semantic evidence is a verifier/evidence blocker, not a hardware pass. A loader report must prove every required Transformer-block tensor was consumed at runtime; static manifests, sampled tensors, random expected values, and RTL-derived expected values are unacceptable.",
+        "produces": [
+          "verification/real_tools/case_multilayer_pipeline.json",
+          "verification/real_tools/case_multilayer_functional.json",
+          "verification/real_tools/case_pipeline_deadlock_check.json",
+          "verification/real_tools/case_deadlock_axi_check.json",
+          "verification/real_tools/case_axi_protocol_check.json",
+          "verification/real_tools/case_ddr_image_roundtrip.json",
+          "verification/real_tools/case_board_semantic_evidence.json",
+          "verification/semantic_evidence/board_axi_ddr.json",
+          "repair_execution/current_board_acceptance_rerun_summary.json"
+        ],
+        "rationale": "Revalidate the complete current board layer after the generated integration change. This supplies the previously missing functional, pipeline, AXI protocol, DDR image, loader-consumption, data-order, numeric, and semantic-evidence records using real tools. The previously passed current-layer pipeline gate is rechecked because the board integration source/plan changed; lower hardware layers are not replayed.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "case_multilayer_pipeline",
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "case_deadlock_axi_check",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_board_semantic_evidence",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "numeric_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "real_weight_semantic_evidence_check",
+          "verification_action_audit_check",
+          "sacg_memory_check",
+          "stage_retry_request_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "verified_retry_handoff",
+        "consumes": [
+          "repair_execution/current_board_integration_localization.json",
+          "repair_execution/board_integration_delta_audit.json",
+          "repair_execution/current_board_acceptance_rerun_summary.json",
+          "fresh current board real-tool reports and semantic evidence",
+          "sacg_memory_truth active contamination barriers",
+          "sacg_memory_truth open retry requests retry_request.0136, retry_request.0140, retry_request.0141, retry_request.0142, retry_request.0143, retry_request.0144"
+        ],
+        "handoff_to": "stage7_verification_agent",
+        "id": "repair.stage7_retry_and_sacg_reconciliation",
+        "on_failure": "Preserve all active barriers and open retries, mark the fresh candidate as non-promotable, and return only the earliest failed current-board evidence to repair. Do not treat this handoff, a prior rejected artifact, or absence of specialist review as a functional pass or backend-release authorization.",
+        "produces": [
+          "repair_execution/current_board_repair_execution_report.json",
+          "verification/current_board_stage7_retry_input.json",
+          "verification/current_board_stage7_verification_result.json",
+          "sacg/current_board_retry_reconciliation_record.json"
+        ],
+        "rationale": "Address the active SACG contamination barriers and open retry requests with an explicit fresh Stage7 retry. This action may only package fresh candidate evidence after all preceding current-board acceptance checks pass; it cannot clear barriers, reuse rejected reports as validated inputs, or promote to backend on its own.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "targeted_failed_checker_rerun",
+          "verification_plan_static_check",
+          "verification_action_audit",
+          "sacg_memory_update",
+          "stage_retry_request",
+          "stage_artifact_trust_barrier"
+        ]
+      }
+    ],
+    "observations": [
+      "The conditional design-team router returned no_split. No specialist review was triggered, and this primary repair decision is based on deterministic current-layer evidence.",
+      "The current exact user-supplied board wrapper identity is itself reported pass, including the bound compute-slot ABI and Vivado facts. The failure is that the board simulation manifest and canonical VCS compile plan do not bind that current identity and export authority, not evidence that the wrapper RTL is incorrect.",
+      "real_tool.case_axi_ddr_interface is the earliest executed current-layer failure. It rejects simulation.source_identity_sha256, compile_authority, both ordered-command authority references, and simulator executable authorization. functional_sim is dependency-blocked rather than a completed functional failure.",
+      "The applicable VCS diagnosis is hash-bound to the current board layer and records a real VCS compile failure before simulation: Error-[IND] Identifier not declared for ACTIVATION_AXI_BEATS_PER_TOKEN at spatialacc_exact_board_multilayer_tb.sv:2578. This localizes the immediate repair to generated board-integration source or compile-plan metadata.",
+      "The CCTG causal slice is explicitly not applicable before runtime execution. The normalized boundary trace has no failed boundary records, no completed live progress events, and no board-to-kernel contradiction evidence; therefore a runtime targeted replay cannot precede repair of the verification/compile capability.",
+      "Operator-leaf and single-transformer-layer required gates are passed. Live lower-layer certificates preserve an elastic variable-latency token pipeline with required boundary order and different-token overlap; they do not establish board AXI/DDR correctness. No current direct-core start, ingress, egress, named causal-boundary, and lower-certificate contradiction exists to justify reopening either lower layer.",
+      "A target-model expected output and a broad static tensor-hash binding manifest exist, but no completed board execution proves that the DUT dynamically consumed all required Transformer-block tensors. Expected outputs must continue to come from the existing target-model inference on the immutable checkpoint and stimulus, not from random data or RTL output.",
+      "sacg_memory_truth has active contamination barriers for rejected Stage7 and Stage8 artifacts and six open retry requests in this board scope. Historical labels containing case_multilayer_pipeline or case_board_interface_discovery do not override the supplied current gate statuses, but all active barriers still prohibit downstream consumption and promotion until fresh Stage7 evidence is accepted."
+    ],
+    "proposed_actions": [
+      "Localize the two concrete current-board integration defects against authoritative source/ABI/Vivado artifacts before editing: stale identity/compile-plan authority bindings and the unresolved activation-beat identifier.",
+      "Apply a minimal generated-board integration repair only when the activation-beat declaration is uniquely derivable from an existing bound contract. Preserve all immutable semantic inputs and exact sample-wrapper hashes, then rerun case_board_interface_discovery and case_axi_ddr_interface.",
+      "After static board identity and compile-plan checks pass, run the same exact-board VCS replay and VCS evidence analyzer to obtain current compile, elaboration, runtime, boundary-trace, numeric, data-order, and progress evidence.",
+      "Re-run the remaining current board-layer acceptance DAG with the repaired integration. If any dynamic result fails, localize its earliest current board boundary before any further patch; do not promote or reopen lower layers without the prescribed contradiction evidence.",
+      "Record the fresh repair outcome and issue the Stage7 retry only after the current board gate set passes. Existing contamination barriers remain active until the fresh Stage7 result is accepted."
+    ],
+    "risks": [
+      "Assigning a guessed value or source to ACTIVATION_AXI_BEATS_PER_TOKEN could silently change activation beat counts, AXI transfer counts, memory addressing, data order, or runtime ABI. The repair must stop for approval if authoritative bound contracts do not uniquely resolve it.",
+      "Refreshing a VCS compile plan without binding its commands to the current exact source identity, Vivado export facts, and authorized executable profile would bypass the failed checker rather than repair it.",
+      "A generated board-testbench or manifest edit can contaminate the immutable semantic contract. The repair may fix only the declared compile symbol and provenance metadata; it must not change checkpoint, stimulus, target-model golden, tolerance, weight catalog scope, or the exact user wrapper.",
+      "There is no current board evidence for AXI protocol legality, DDR image roundtrip, liveness, output frontier, token order, numeric comparison, or runtime weight consumption. Static weight hashes and an RTL-output hash are not substitutes for dynamic real-tool evidence.",
+      "A board symptom or later runtime failure must not trigger leaf/kernel revalidation unless a new current trace contains the required hash-bound direct contradiction. Independent AXI or prefetch progress is not output or lifecycle-frontier progress.",
+      "Embedding/tokenization, final norm, LM head/logits, sampling, and all other model-tail behavior remain outside the DUT and must not be added to the golden or weight-consumption scope during this repair."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+        "verification/board_simulation/board_simulation_manifest.json sha256=5f0f8f6d3362c44f074aef7c5f38f4093ecababb802dbdb6672be57903579272",
+        "verification/vcs/case_board_vcs_functional.json sha256=98971b9e2f83590aa32ce0a07fbde64a6a3d62d1cfe4048bb8a766b4e35bc6d1",
+        "verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=0c734734b891dfb00355f84a3a7a59774c173f313b4ebe7579830b78dcc82139",
+        "verification/semantic_testbench/semantic_testbench_manifest.json sha256=45adbf89e7954e69f04138976b2ab49a7f90e069aa2bba61c80106126effc645",
+        "generated/memory/dut_weight_binding_manifest.json sha256=96e2a14ffb8961644d4fc0836e6f8a8c44d05295cff0fbb7f6b41ac0c70a1188",
+        "verification/certificates/operator_leaf_promotion_certificate.json sha256=2bbc6880205155cbc1119882b2503281c2cb43b4b3c0d40a1754acb1e3a20569",
+        "verification/certificates/single_layer_promotion_certificate.json sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7"
+      ],
+      "constraints": [
+        "Repair only the current board_axi_ddr_wrapped_system layer; lower-layer certificates are read-only unless a current hash-bound trace directly contradicts a named invariant.",
+        "Preserve the exact user-supplied wrapper, AXI interface, compute-slot ABI, timing-contract, and Vivado-fact hashes; do not substitute a simplified wrapper or guess a board target.",
+        "Keep checkpoint, stimulus provenance, target-model expected outputs, numeric policy/tolerances, semantic-testbench contract, and Transformer-block golden boundary immutable.",
+        "Derive ACTIVATION_AXI_BEATS_PER_TOKEN only from an already bound authoritative ABI/shape/stream contract; do not hardcode or infer a value from RTL output.",
+        "Functional acceptance requires current real-tool evidence of target-model comparison, data order, runtime loading of every required Transformer-block tensor, AXI/DDR protocol behavior, and board lifecycle/output progress.",
+        "Active SACG contamination barriers and open Stage7/Stage8 retry requests block downstream consumption and promotion until a fresh successful Stage7 result is recorded."
+      ],
+      "edges": [
+        "exact user-supplied board wrapper identity and Vivado export facts -> canonical VCS compile plan",
+        "case_axi_ddr_interface pass -> case_vcs_functional_sim replay -> VCS evidence analysis and current boundary trace",
+        "successful current board functional replay -> multilayer/AXI/DDR/semantic-evidence gates -> Stage7 retry",
+        "current board trace with direct named lower-layer contradiction and matching lower-certificate hashes -> targeted lower-layer backtrack; no such edge is currently enabled"
+      ],
+      "nodes": [
+        "board_axi_ddr_wrapped_system",
+        "case_axi_ddr_interface",
+        "case_vcs_functional_sim",
+        "case_vcs_evidence_analyzer",
+        "artifact.stage7.verification_result",
+        "artifact.stage8.repair_plan",
+        "artifact.stage8.repair_execution_report",
+        "artifact.stage7.single_layer_promotion_certificate",
+        "artifact.stage7.operator_leaf_promotion_certificate"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_agent_decision.v1",
+    "stage": "repair",
+    "status": "needs_repair",
+    "summary": "Fail-closed current-layer repair decision: repair only the board AXI/DDR integration harness and its canonical VCS-plan identity bindings, then rerun the board layer. The earliest executed gate failure is case_axi_ddr_interface, which rejects stale/unbound board identity, Vivado-export authority, ordered-command authority references, and simulator executable authorization. The applicable hash-bound VCS diagnosis additionally identifies a concrete generated-board-testbench compile error: undeclared ACTIVATION_AXI_BEATS_PER_TOKEN at spatialacc_exact_board_multilayer_tb.sv:2578. No board runtime trace exists because compilation did not complete. Operator-leaf and connected-kernel certificates remain reusable and must not be reopened because no current trace directly contradicts any lower-layer invariant. Backend, bitstream, runtime-ABI release, and board runtime remain blocked."
+  },
+  "prompt_bytes": 307537,
+  "prompt_hash": "7a9e4b8728f097e4541239c308c1bdcf8b582793a6fce2cad972c31985d0f9eb",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.repair_agent_decision.v1\",\"agent\":\"repair_agent\",\"stage\":\"repair\",\"status\":\"needs_repair\",\"summary\":\"Fail-closed current-layer repair decision: repair only the board AXI/DDR integration harness and its canonical VCS-plan identity bindings, then rerun the board layer. The earliest executed gate failure is case_axi_ddr_interface, which rejects stale/unbound board identity, Vivado-export authority, ordered-command authority references, and simulator executable authorization. The applicable hash-bound VCS diagnosis additionally identifies a concrete generated-board-testbench compile error: undeclared ACTIVATION_AXI_BEATS_PER_TOKEN at spatialacc_exact_board_multilayer_tb.sv:2578. No board runtime trace exists because compilation did not complete. Operator-leaf and connected-kernel certificates remain reusable and must not be reopened because no current trace directly contradicts any lower-layer invariant. Backend, bitstream, runtime-ABI release, and board runtime remain blocked.\",\"sacg_focus\":{\"nodes\":[\"board_axi_ddr_wrapped_system\",\"case_axi_ddr_interface\",\"case_vcs_functional_sim\",\"case_vcs_evidence_analyzer\",\"artifact.stage7.verification_result\",\"artifact.stage8.repair_plan\",\"artifact.stage8.repair_execution_report\",\"artifact.stage7.single_layer_promotion_certificate\",\"artifact.stage7.operator_leaf_promotion_certificate\"],\"edges\":[\"exact user-supplied board wrapper identity and Vivado export facts -> canonical VCS compile plan\",\"case_axi_ddr_interface pass -> case_vcs_functional_sim replay -> VCS evidence analysis and current boundary trace\",\"successful current board functional replay -> multilayer/AXI/DDR/semantic-evidence gates -> Stage7 retry\",\"current board trace with direct named lower-layer contradiction and matching lower-certificate hashes -> targeted lower-layer backtrack; no such edge is currently enabled\"],\"constraints\":[\"Repair only the current board_axi_ddr_wrapped_system layer; lower-layer certificates are read-only unless a current hash-bound trace directly contradicts a named invariant.\",\"Preserve the exact user-supplied wrapper, AXI interface, compute-slot ABI, timing-contract, and Vivado-fact hashes; do not substitute a simplified wrapper or guess a board target.\",\"Keep checkpoint, stimulus provenance, target-model expected outputs, numeric policy/tolerances, semantic-testbench contract, and Transformer-block golden boundary immutable.\",\"Derive ACTIVATION_AXI_BEATS_PER_TOKEN only from an already bound authoritative ABI/shape/stream contract; do not hardcode or infer a value from RTL output.\",\"Functional acceptance requires current real-tool evidence of target-model comparison, data order, runtime loading of every required Transformer-block tensor, AXI/DDR protocol behavior, and board lifecycle/output progress.\",\"Active SACG contamination barriers and open Stage7/Stage8 retry requests block downstream consumption and promotion until a fresh successful Stage7 result is recorded.\"],\"artifacts\":[\"verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"verification/board_simulation/board_simulation_manifest.json sha256=5f0f8f6d3362c44f074aef7c5f38f4093ecababb802dbdb6672be57903579272\",\"verification/vcs/case_board_vcs_functional.json sha256=98971b9e2f83590aa32ce0a07fbde64a6a3d62d1cfe4048bb8a766b4e35bc6d1\",\"verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=0c734734b891dfb00355f84a3a7a59774c173f313b4ebe7579830b78dcc82139\",\"verification/semantic_testbench/semantic_testbench_manifest.json sha256=45adbf89e7954e69f04138976b2ab49a7f90e069aa2bba61c80106126effc645\",\"generated/memory/dut_weight_binding_manifest.json sha256=96e2a14ffb8961644d4fc0836e6f8a8c44d05295cff0fbb7f6b41ac0c70a1188\",\"verification/certificates/operator_leaf_promotion_certificate.json sha256=2bbc6880205155cbc1119882b2503281c2cb43b4b3c0d40a1754acb1e3a20569\",\"verification/certificates/single_layer_promotion_certificate.json sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7\"]},\"observations\":[\"The conditional design-team router returned no_split. No specialist review was triggered, and this primary repair decision is based on deterministic current-layer evidence.\",\"The current exact user-supplied board wrapper identity is itself reported pass, including the bound compute-slot ABI and Vivado facts. The failure is that the board simulation manifest and canonical VCS compile plan do not bind that current identity and export authority, not evidence that the wrapper RTL is incorrect.\",\"real_tool.case_axi_ddr_interface is the earliest executed current-layer failure. It rejects simulation.source_identity_sha256, compile_authority, both ordered-command authority references, and simulator executable authorization. functional_sim is dependency-blocked rather than a completed functional failure.\",\"The applicable VCS diagnosis is hash-bound to the current board layer and records a real VCS compile failure before simulation: Error-[IND] Identifier not declared for ACTIVATION_AXI_BEATS_PER_TOKEN at spatialacc_exact_board_multilayer_tb.sv:2578. This localizes the immediate repair to generated board-integration source or compile-plan metadata.\",\"The CCTG causal slice is explicitly not applicable before runtime execution. The normalized boundary trace has no failed boundary records, no completed live progress events, and no board-to-kernel contradiction evidence; therefore a runtime targeted replay cannot precede repair of the verification/compile capability.\",\"Operator-leaf and single-transformer-layer required gates are passed. Live lower-layer certificates preserve an elastic variable-latency token pipeline with required boundary order and different-token overlap; they do not establish board AXI/DDR correctness. No current direct-core start, ingress, egress, named causal-boundary, and lower-certificate contradiction exists to justify reopening either lower layer.\",\"A target-model expected output and a broad static tensor-hash binding manifest exist, but no completed board execution proves that the DUT dynamically consumed all required Transformer-block tensors. Expected outputs must continue to come from the existing target-model inference on the immutable checkpoint and stimulus, not from random data or RTL output.\",\"sacg_memory_truth has active contamination barriers for rejected Stage7 and Stage8 artifacts and six open retry requests in this board scope. Historical labels containing case_multilayer_pipeline or case_board_interface_discovery do not override the supplied current gate statuses, but all active barriers still prohibit downstream consumption and promotion until fresh Stage7 evidence is accepted.\"],\"risks\":[\"Assigning a guessed value or source to ACTIVATION_AXI_BEATS_PER_TOKEN could silently change activation beat counts, AXI transfer counts, memory addressing, data order, or runtime ABI. The repair must stop for approval if authoritative bound contracts do not uniquely resolve it.\",\"Refreshing a VCS compile plan without binding its commands to the current exact source identity, Vivado export facts, and authorized executable profile would bypass the failed checker rather than repair it.\",\"A generated board-testbench or manifest edit can contaminate the immutable semantic contract. The repair may fix only the declared compile symbol and provenance metadata; it must not change checkpoint, stimulus, target-model golden, tolerance, weight catalog scope, or the exact user wrapper.\",\"There is no current board evidence for AXI protocol legality, DDR image roundtrip, liveness, output frontier, token order, numeric comparison, or runtime weight consumption. Static weight hashes and an RTL-output hash are not substitutes for dynamic real-tool evidence.\",\"A board symptom or later runtime failure must not trigger leaf/kernel revalidation unless a new current trace contains the required hash-bound direct contradiction. Independent AXI or prefetch progress is not output or lifecycle-frontier progress.\",\"Embedding/tokenization, final norm, LM head/logits, sampling, and all other model-tail behavior remain outside the DUT and must not be added to the golden or weight-consumption scope during this repair.\"],\"proposed_actions\":[\"Localize the two concrete current-board integration defects against authoritative source/ABI/Vivado artifacts before editing: stale identity/compile-plan authority bindings and the unresolved activation-beat identifier.\",\"Apply a minimal generated-board integration repair only when the activation-beat declaration is uniquely derivable from an existing bound contract. Preserve all immutable semantic inputs and exact sample-wrapper hashes, then rerun case_board_interface_discovery and case_axi_ddr_interface.\",\"After static board identity and compile-plan checks pass, run the same exact-board VCS replay and VCS evidence analyzer to obtain current compile, elaboration, runtime, boundary-trace, numeric, data-order, and progress evidence.\",\"Re-run the remaining current board-layer acceptance DAG with the repaired integration. If any dynamic result fails, localize its earliest current board boundary before any further patch; do not promote or reopen lower layers without the prescribed contradiction evidence.\",\"Record the fresh repair outcome and issue the Stage7 retry only after the current board gate set passes. Existing contamination barriers remain active until the fresh Stage7 result is accepted.\"],\"executable_actions\":[{\"id\":\"repair.board_current_layer_localize_identity_and_symbol\",\"stage\":\"repair\",\"action_type\":\"current_layer_failure_localization\",\"rationale\":\"Use the current checker report and hash-bound VCS compile log to create a bounded, auditable edit specification. The only eligible repair targets are generated board-integration provenance/compile-plan metadata and the unresolved testbench symbol; no leaf, connected-kernel, user-wrapper, target-model, numeric-policy, or golden change is authorized.\",\"consumes\":[\"verification/qwen_hierarchy/axi_ddr_interface.json\",\"verification/vcs/case_board_vcs_functional.json\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/board_simulation/board_simulation_executed_manifest.json\",\"verification/board_interface/board_source_identity.json\",\"the identity document's bound Vivado facts and compute-slot ABI hashes\",\"generated/board_integration/spatialacc_exact_board_multilayer_tb.sv or its manifest-selected equivalent\",\"verification/semantic_testbench/semantic_testbench_manifest.json\",\"generated/memory/dut_weight_binding_manifest.json\",\"hierarchical_learning_context lower-layer certificates\"],\"produces\":[\"repair_execution/current_board_integration_localization.json\",\"repair_execution/current_board_authoritative_binding_map.json\",\"repair_execution/current_board_patch_spec.json\"],\"tool_roles\":[\"failure_slice_localization\",\"causal_repair_context_pack\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"repair_boundary_check\",\"artifact_hash_check\"],\"on_failure\":\"If the activation-beat symbol cannot be uniquely traced to an existing ABI/shape/stream authority, or if identity/Vivado facts conflict, emit an ambiguity report and request bounded approval. Do not edit sources, alter tolerances, rerun lower layers, or use any unbound executable.\",\"requires_approval\":false,\"handoff_to\":\"repair_executor\"},{\"id\":\"repair.board_apply_minimal_harness_and_compileplan_fix\",\"stage\":\"repair\",\"action_type\":\"bounded_integration_harness_repair\",\"rationale\":\"Repair the current board integration only: restore a contract-derived declaration/binding for ACTIVATION_AXI_BEATS_PER_TOKEN and regenerate the board simulation manifest/ordered VCS plan so they bind the current exact board identity, current Vivado export facts, authorized executables, and generated-source hashes. This is a verification-capability and generated-harness repair, not a hardware correctness claim.\",\"consumes\":[\"repair_execution/current_board_patch_spec.json\",\"repair_execution/current_board_authoritative_binding_map.json\",\"verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"the manifest-selected generated exact-board testbench source\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/semantic_testbench/semantic_testbench_manifest.json\",\"current target checkpoint/reference and immutable numeric-policy artifacts\"],\"produces\":[\"generated/board_integration/spatialacc_exact_board_multilayer_tb.sv\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/board_simulation/canonical_vcs_compile_plan.json\",\"verification/board_interface/board_source_identity_revalidation.json\",\"repair_execution/board_integration_delta_audit.json\",\"verification/qwen_hierarchy/axi_ddr_interface.json\"],\"tool_roles\":[\"bounded_template_repair\",\"case_board_interface_discovery\",\"artifact_hash_check\",\"numeric_policy_check\",\"tool_protocol_check\",\"case_axi_ddr_interface\"],\"acceptance_checkers\":[\"case_board_interface_discovery\",\"case_axi_ddr_interface\",\"artifact_hash_check\",\"numeric_policy_check\",\"tool_protocol_check\",\"repair_boundary_check\"],\"on_failure\":\"If the static checker still rejects identity, authority, command authorization, or source hashes, retain the active SACG barriers and return the new checker output to current-layer localization. If the necessary edit would modify the exact user wrapper, ABI, Vivado target facts, semantic stimulus/golden contract, numeric policy, or target-model scope, stop and request approval rather than broaden the patch.\",\"requires_approval\":false,\"handoff_to\":\"verification_executor\"},{\"id\":\"repair.board_run_exact_vcs_targeted_replay\",\"stage\":\"repair\",\"action_type\":\"current_layer_real_tool_replay\",\"rationale\":\"Once the static identity gate passes, execute the exact-board VCS replay on the immutable checkpoint, stimulus, target-model reference, tolerance, semantic contract, and repaired authorized source closure. Produce a current runtime trace rather than relying on the prior compile-only diagnosis. The expected output remains target-model inference for Transformer blocks only.\",\"consumes\":[\"passing verification/qwen_hierarchy/axi_ddr_interface.json\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/board_simulation/canonical_vcs_compile_plan.json\",\"verification/board_interface/board_source_identity_revalidation.json\",\"verification/model_reference/reference_manifest.json or the current manifest-bound target-model reference\",\"verification/semantic_testbench/semantic_testbench_manifest.json\",\"generated/memory/dut_weight_binding_manifest.json\",\"immutable checkpoint, stimulus provenance, numeric policy, and expected-output artifacts\"],\"produces\":[\"verification/vcs/case_board_vcs_functional.json\",\"verification/board_simulation/reports/compile.log\",\"verification/board_simulation/reports/simulation.log\",\"verification/board_simulation/reports/hierarchy_report.json\",\"verification/board_simulation/reports/progress_event_log.jsonl\",\"verification/board_simulation/reports/runtime_loader_report.json\",\"verification/board_simulation/reports/axi_protocol_report.json\",\"verification/board_simulation/reports/pipeline_overlap_report.json\",\"verification/debug_closure/boundary_trace.json\",\"verification/case_diagnostics/vcs_functional_diagnosis.json\"],\"tool_roles\":[\"case_vcs_functional_sim\",\"case_vcs_evidence_analyzer\",\"boundary_trace_rerun\",\"deadlock_watchdog\",\"data_order_trace_check\",\"numeric_compare\"],\"acceptance_checkers\":[\"functional_sim\",\"targeted_replay_check\",\"deadlock_watchdog\",\"data_order_trace_check\",\"numeric_compare\",\"artifact_hash_check\"],\"on_failure\":\"For a compile failure, localize only the new generated integration/compile-plan error and return to the bounded current-layer repair. For an executed runtime failure, use the analyzer's current boundary trace to identify the earliest board boundary before proposing another repair. Do not claim liveness or functional pass from clock/AXI activity, and do not reopen the kernel unless the trace contains direct core start, complete ingress, ready egress, a named causal boundary, and matching current lower-certificate hashes that contradict a named invariant.\",\"requires_approval\":false,\"handoff_to\":\"verification_executor\"},{\"id\":\"repair.board_rerun_current_layer_acceptance_dag\",\"stage\":\"repair\",\"action_type\":\"board_layer_regression_and_semantic_evidence\",\"rationale\":\"Revalidate the complete current board layer after the generated integration change. This supplies the previously missing functional, pipeline, AXI protocol, DDR image, loader-consumption, data-order, numeric, and semantic-evidence records using real tools. The previously passed current-layer pipeline gate is rechecked because the board integration source/plan changed; lower hardware layers are not replayed.\",\"consumes\":[\"passing current exact-board VCS replay and analyzer artifacts\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/board_interface/board_source_identity_revalidation.json\",\"verification/debug_closure/boundary_trace.json\",\"verification/case_diagnostics/vcs_functional_diagnosis.json\",\"verification/semantic_testbench/semantic_testbench_manifest.json\",\"verification/model_reference/reference_manifest.json or its manifest-bound equivalent\",\"generated/memory/dut_weight_binding_manifest.json\",\"immutable numeric comparison policy and Transformer-block expected outputs\"],\"produces\":[\"verification/real_tools/case_multilayer_pipeline.json\",\"verification/real_tools/case_multilayer_functional.json\",\"verification/real_tools/case_pipeline_deadlock_check.json\",\"verification/real_tools/case_deadlock_axi_check.json\",\"verification/real_tools/case_axi_protocol_check.json\",\"verification/real_tools/case_ddr_image_roundtrip.json\",\"verification/real_tools/case_board_semantic_evidence.json\",\"verification/semantic_evidence/board_axi_ddr.json\",\"repair_execution/current_board_acceptance_rerun_summary.json\"],\"tool_roles\":[\"case_multilayer_pipeline\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_deadlock_axi_check\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_board_semantic_evidence\",\"deadlock_watchdog\",\"data_order_trace_check\",\"numeric_compare\"],\"acceptance_checkers\":[\"case_multilayer_pipeline\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_board_semantic_evidence\",\"functional_sim\",\"deadlock_watchdog\",\"data_order_trace_check\",\"numeric_compare\",\"real_weight_semantic_evidence_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Keep this board layer in repair and pack the earliest failed real-tool boundary/contract for a new bounded board-only action. Missing semantic evidence is a verifier/evidence blocker, not a hardware pass. A loader report must prove every required Transformer-block tensor was consumed at runtime; static manifests, sampled tensors, random expected values, and RTL-derived expected values are unacceptable.\",\"requires_approval\":false,\"handoff_to\":\"verification_agent\"},{\"id\":\"repair.stage7_retry_and_sacg_reconciliation\",\"stage\":\"verification\",\"action_type\":\"verified_retry_handoff\",\"rationale\":\"Address the active SACG contamination barriers and open retry requests with an explicit fresh Stage7 retry. This action may only package fresh candidate evidence after all preceding current-board acceptance checks pass; it cannot clear barriers, reuse rejected reports as validated inputs, or promote to backend on its own.\",\"consumes\":[\"repair_execution/current_board_integration_localization.json\",\"repair_execution/board_integration_delta_audit.json\",\"repair_execution/current_board_acceptance_rerun_summary.json\",\"fresh current board real-tool reports and semantic evidence\",\"sacg_memory_truth active contamination barriers\",\"sacg_memory_truth open retry requests retry_request.0136, retry_request.0140, retry_request.0141, retry_request.0142, retry_request.0143, retry_request.0144\"],\"produces\":[\"repair_execution/current_board_repair_execution_report.json\",\"verification/current_board_stage7_retry_input.json\",\"verification/current_board_stage7_verification_result.json\",\"sacg/current_board_retry_reconciliation_record.json\"],\"tool_roles\":[\"targeted_failed_checker_rerun\",\"verification_plan_static_check\",\"verification_action_audit\",\"sacg_memory_update\",\"stage_retry_request\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"real_weight_semantic_evidence_check\",\"verification_action_audit_check\",\"sacg_memory_check\",\"stage_retry_request_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Preserve all active barriers and open retries, mark the fresh candidate as non-promotable, and return only the earliest failed current-board evidence to repair. Do not treat this handoff, a prior rejected artifact, or absence of specialist review as a functional pass or backend-release authorization.\",\"requires_approval\":false,\"handoff_to\":\"stage7_verification_agent\"}],\"approval_required_for\":[\"Approval is required if ACTIVATION_AXI_BEATS_PER_TOKEN cannot be uniquely resolved from an existing exact ABI/shape/stream authority, or if authoritative sources disagree.\",\"Approval is required for any change to the user-supplied board wrapper, Vivado target/export facts, compute-slot ABI, memory layout, pipeline architecture, target checkpoint/stimulus, target-model golden, numeric policy/tolerance, or accelerator scope.\",\"Approval is required for any proposed lower-layer backtrack; it must be accompanied by a current hash-bound board trace that explicitly contradicts a named lower-layer certificate invariant.\"]}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair",
+  "stream": true,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/history/repair_agent_result.9c13447f5328a834.21c604d784bf8f52.7a9e4b8728f097e4.snapshot.json",
+    "replaced_prompt_hash": "40e329e4c7342ab72887fe394dbce0775e55cfbe7f70deaaaa45ab645d13aff5",
+    "replaced_result_sha256": "9c13447f5328a834a56dfda498dbe118d1c70fff67cfed060e20f0f763e86f5c",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "9c13447f5328a834.21c604d784bf8f52.7a9e4b8728f097e4"
+  },
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

@@ -1,0 +1,97 @@
+{
+  "decision": {
+    "approval_required_for": [
+      "operator-to-hardware-template binding if it commits architecture-level template choices",
+      "any selected template that fixes or changes pipeline stages, tile sizes, parallelism, memory layout, data packing, AXI/DDR access pattern, or numeric policy",
+      "any replacement of Qwen2 self-attention/GQA semantics with an MHA-equivalent template",
+      "any major template-library override or new template introduction"
+    ],
+    "decision": "run_tool",
+    "expected_evidence": [
+      "template_selection artifact mapping every model_operator node to a template_library entry or explicitly marking unsupported operators",
+      "compatibility evidence tying each selected template to constraint.model.decoder, constraint.shape.model, constraint.template.library, and constraint.arch.design_space",
+      "self_attention evidence preserving Qwen2 attention semantics, including GQA/KV-head handling, and not treating GQA as MHA",
+      "numeric evidence that selected templates honor constraint.numeric.policy and do not introduce implicit quantization or tolerance changes",
+      "model-order preservation evidence for edge.model_order.00 through edge.model_order.07",
+      "deployment/tool compatibility evidence against constraint.deployment.board, constraint.memory.board, constraint.runtime.board, constraint.tool.profile, and constraint.tool.protocols",
+      "traceability from input artifacts to the generated candidate template-selection artifact for later checker stages"
+    ],
+    "reason": "template_selection is a candidate planning stage that selects operator templates from declared inputs and does not itself claim checker pass or final design pass. It is safe to run as long as its output remains a candidate artifact subject to later checker validation and any architecture-level commitments are recorded for human approval.",
+    "risks": [
+      "Template selection can implicitly commit architecture-level choices such as pipeline, tiling, parallelism, data packing, memory layout, or memory-interface behavior.",
+      "node.numeric_policy is named missing_explicit_quantization_policy, so selected templates must not infer or change quantization/numeric semantics without approval.",
+      "Qwen2 self_attention may use GQA; selecting an MHA-only template would violate model semantics.",
+      "The SACG summary shows model_order edges through operators 04-08 while the displayed node list is truncated, so coverage must be checked against the full SACG state file, not only the prompt summary.",
+      "No checker evidence exists yet; later checker stages must validate template coverage and cross-layer consistency before any design pass is claimed."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_protocols",
+        "artifact.input.case_adapter",
+        "artifact.input.field_evidence"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.case.adapter",
+        "constraint.human.boundary",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.model_order.00",
+        "edge.model_order.01",
+        "edge.model_order.02",
+        "edge.model_order.03",
+        "edge.model_order.04",
+        "edge.model_order.05",
+        "edge.model_order.06",
+        "edge.model_order.07"
+      ],
+      "nodes": [
+        "node.model",
+        "node.numeric_policy",
+        "node.template_library",
+        "node.design_space",
+        "node.target_board",
+        "node.tool_profile",
+        "node.tool_protocols",
+        "node.case_adapter",
+        "node.human_boundary",
+        "node.model_op.00_rms_norm_1",
+        "node.model_op.01_self_attention",
+        "node.model_op.02_residual_add_1",
+        "node.model_op.03_rms_norm_2",
+        "node.model_op.04_mlp_gate_proj",
+        "node.model_op.05_mlp_up_proj",
+        "node.model_op.06_activation_mul",
+        "node.model_op.07_mlp_down_proj",
+        "node.model_op.08_residual_add_2"
+      ]
+    },
+    "stage": "template_selection",
+    "tool_command_allowed": true
+  },
+  "duration_sec": 33.6012808480009,
+  "enforced": true,
+  "error": null,
+  "mode": "llm",
+  "prompt_hash": "72f4641e99ac891944c480420b899c87c58c178f9313503aab0aebb94256eef3",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/llm/05_template_selection_request.json",
+  "schema_version": "spatialaccagent.pre_stage_safety_gate_decision.v0",
+  "stage": "template_selection"
+}

@@ -1,0 +1,396 @@
+{
+  "design_team": {
+    "completed_subtasks": 1,
+    "decomposer_used_fallback": false,
+    "decomposition_source": "deterministic_conditional_router",
+    "errors": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "causal_repair_context_check",
+          "boundary_contract_check",
+          "repair_boundary_check",
+          "artifact_hash_check",
+          "human_boundary_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "verification_capability_repair",
+        "consumes": [
+          "verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=285ccac4dc8445718f3e2250b77095ec73070f0643b544a0d0632aee6b0b5e99",
+          "verification/debug_closure/boundary_contracts.json sha256=1847138114a3f5a3e7b4c427948dfd4b2aa152a7af6da55f2ee3567359dc3c",
+          "verification/board_simulation/reports/progress_event_log.jsonl sha256=8a63ac4665ff70d8ae8307fe6781a069d759ae704aa15099f41512c90b8ae4cd",
+          "hierarchical_learning_context connected-kernel timing contract sha256=496fc6b3c907d9401a2156dc906f39f7a7ade964fa60f682fff0be5f31b5b393",
+          "completed connected-kernel targeted replay context sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc",
+          "verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+          "verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+          "sacg_memory_truth active barriers and open retry requests"
+        ],
+        "id": "repair.board_lifecycle_observability_contract_reconciliation",
+        "on_failure": "Block the VCS rerun and classify the result as a verification-capability repair failure. Do not modify RTL, wrapper, golden outputs, tolerance, or lower-layer artifacts; return a bounded analyzer-side correction request with the failed schema, DAG declaration, or immutability check.",
+        "produces": [
+          "candidate analyzer-side board lifecycle observability contract with a new hash",
+          "candidate complete-DAG debug-observability sidecar manifest with schema version and simulation-only declaration",
+          "boundary-contract reconciliation report identifying kernel_start_precedes_stage0_input as a contract inconsistency rather than an RTL failure",
+          "immutable-artifact hash-preservation report covering exact wrapper identity, semantic testbench, target reference, numeric policy, and DUT weight-binding manifest",
+          "SACG repair-context update stating that the candidate is planning/debug evidence only pending Stage7 rerun"
+        ],
+        "rationale": "Reconcile the CCTG lifecycle interpretation with the live hash-validated invariant that accepted ingress precedes kernel lifecycle start. Repair only the analyzer-side observability contract and its sidecar manifest: classify prestart ingress as required context, preserve tx/order/count capture, retain the complete DAG declaration, and leave the first-output-no-later-than-final-input rule unchanged. This is a checker/instrumentation repair, not a hardware-correctness claim; it must not alter DUT RTL, exact sample-project wrapper sources, semantic-testbench behavior, checkpoint, stimulus, target-model golden, numeric policy, tolerance, or weight/runtime artifacts.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "causal_repair_context_pack",
+          "boundary_contract_generate",
+          "bounded_template_repair",
+          "artifact_hash_check",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_vcs_functional_sim",
+          "functional_sim",
+          "boundary_contract_check",
+          "failure_localization_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "current_layer_real_tool_rerun",
+        "consumes": [
+          "passed candidate analyzer-side board lifecycle observability contract from repair.board_lifecycle_observability_contract_reconciliation",
+          "verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+          "selected exact board simulation source closure sha256=6665a9df4e0b86fdbd47c48e76b63137069f4c2505d914d6ceee233447a1c5c5",
+          "current immutable input fingerprint sha256=9e2465a8c89008a78be4ef3a7e71cb87138b7ff0ab76c10fa45d3de9e2ffb673",
+          "verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+          "target-model expected output sha256=92fc53de80c8caca6ea04cc69ab768a1f6db0e55a2ab0ebbd9ac0adc6e3c85b4",
+          "generated/memory/dut_weight_binding_manifest.json sha256=d3ed9f9e1b1f410f4ed87de616d5184b6a88b7b46c00b433ba5911589545821d",
+          "single-layer certificate sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7"
+        ],
+        "id": "repair.board_exact_vcs_rerun_after_lifecycle_contract_reconciliation",
+        "on_failure": "Keep functional_sim failed and all dependency-blocked board gates unrun. Use the fresh source-bound CCTG slice to schedule only the next board wrapper/harness/integration localization action. Do not reopen operator or connected-kernel tests unless the fresh trace directly contradicts a named certified invariant with current certificate, source-closure, lifecycle-start, direct ingress, direct egress, and causal-boundary bindings. On a functional pass, hand off only to the current board-layer gate scheduler for case_multilayer_functional and its dependent board gates; do not promote to backend or board runtime.",
+        "produces": [
+          "fresh exact-board VCS execution report and manifest-bound logs",
+          "fresh source-bound boundary trace and CCTG causal slice using the reconciled lifecycle interpretation",
+          "fresh functional_sim result for board_axi_ddr_wrapped_system",
+          "fresh failure-localization report that either identifies a board integration boundary after the lifecycle correction or records a real functional pass",
+          "source-identity comparison report binding the rerun to the exact wrapper and simulation closure"
+        ],
+        "rationale": "After the analyzer-side candidate passes static checks, rerun the same failed board_axi_ddr_wrapped_system functional gate using the exact immutable wrapper/source closure and the corrected interpretation of its observational trace. This rerun is required to distinguish the corrected lifecycle record from the still-unresolved ready-egress/zero-output liveness failure; it neither reopens the connected kernel nor authorizes downstream board or backend tools.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "targeted_failed_checker_rerun",
+          "case_vcs_functional_sim",
+          "case_vcs_evidence_analyzer",
+          "failure_slice_localization",
+          "artifact_hash_check"
+        ]
+      }
+    ],
+    "reason": "board_wrapper_or_pipeline_integration",
+    "routing_mode": "conditional",
+    "schema_version": "spatialaccagent.conditional_review_summary.v0",
+    "specialist": {
+      "agent": "repair_targeted_specialist_agent",
+      "approval_required_for": [
+        "No approval is requested for the analyzer-side contract correction or same-layer rerun. Human approval is required before any change to the accepted-input-before-start lifecycle ABI, exact user sample wrapper/compute-slot ABI, connected-kernel pipeline semantics, runtime memory layout, numeric policy/tolerance, checkpoint/stimulus/golden boundary, or any lower-layer reopening."
+      ],
+      "executable_actions": [
+        {
+          "acceptance_checkers": [
+            "causal_repair_context_check",
+            "boundary_contract_check",
+            "repair_boundary_check",
+            "artifact_hash_check",
+            "human_boundary_check",
+            "sacg_memory_check"
+          ],
+          "action_type": "verification_capability_repair",
+          "consumes": [
+            "verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=285ccac4dc8445718f3e2250b77095ec73070f0643b544a0d0632aee6b0b5e99",
+            "verification/debug_closure/boundary_contracts.json sha256=1847138114a3f5a3e7b4c427948dfd4b2aa152a7af6da55f2ee3567359dc3c",
+            "verification/board_simulation/reports/progress_event_log.jsonl sha256=8a63ac4665ff70d8ae8307fe6781a069d759ae704aa15099f41512c90b8ae4cd",
+            "hierarchical_learning_context connected-kernel timing contract sha256=496fc6b3c907d9401a2156dc906f39f7a7ade964fa60f682fff0be5f31b5b393",
+            "completed connected-kernel targeted replay context sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc",
+            "verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+            "verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+            "sacg_memory_truth active barriers and open retry requests"
+          ],
+          "id": "repair.board_lifecycle_observability_contract_reconciliation",
+          "on_failure": "Block the VCS rerun and classify the result as a verification-capability repair failure. Do not modify RTL, wrapper, golden outputs, tolerance, or lower-layer artifacts; return a bounded analyzer-side correction request with the failed schema, DAG declaration, or immutability check.",
+          "produces": [
+            "candidate analyzer-side board lifecycle observability contract with a new hash",
+            "candidate complete-DAG debug-observability sidecar manifest with schema version and simulation-only declaration",
+            "boundary-contract reconciliation report identifying kernel_start_precedes_stage0_input as a contract inconsistency rather than an RTL failure",
+            "immutable-artifact hash-preservation report covering exact wrapper identity, semantic testbench, target reference, numeric policy, and DUT weight-binding manifest",
+            "SACG repair-context update stating that the candidate is planning/debug evidence only pending Stage7 rerun"
+          ],
+          "rationale": "Reconcile the CCTG lifecycle interpretation with the live hash-validated invariant that accepted ingress precedes kernel lifecycle start. Repair only the analyzer-side observability contract and its sidecar manifest: classify prestart ingress as required context, preserve tx/order/count capture, retain the complete DAG declaration, and leave the first-output-no-later-than-final-input rule unchanged. This is a checker/instrumentation repair, not a hardware-correctness claim; it must not alter DUT RTL, exact sample-project wrapper sources, semantic-testbench behavior, checkpoint, stimulus, target-model golden, numeric policy, tolerance, or weight/runtime artifacts.",
+          "requires_approval": false,
+          "stage": "repair",
+          "tool_roles": [
+            "causal_repair_context_pack",
+            "boundary_contract_generate",
+            "bounded_template_repair",
+            "artifact_hash_check",
+            "sacg_memory_update"
+          ]
+        },
+        {
+          "acceptance_checkers": [
+            "real_tool.case_vcs_functional_sim",
+            "functional_sim",
+            "boundary_contract_check",
+            "failure_localization_check",
+            "artifact_hash_check"
+          ],
+          "action_type": "current_layer_real_tool_rerun",
+          "consumes": [
+            "passed candidate analyzer-side board lifecycle observability contract from repair.board_lifecycle_observability_contract_reconciliation",
+            "verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+            "selected exact board simulation source closure sha256=6665a9df4e0b86fdbd47c48e76b63137069f4c2505d914d6ceee233447a1c5c5",
+            "current immutable input fingerprint sha256=9e2465a8c89008a78be4ef3a7e71cb87138b7ff0ab76c10fa45d3de9e2ffb673",
+            "verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+            "target-model expected output sha256=92fc53de80c8caca6ea04cc69ab768a1f6db0e55a2ab0ebbd9ac0adc6e3c85b4",
+            "generated/memory/dut_weight_binding_manifest.json sha256=d3ed9f9e1b1f410f4ed87de616d5184b6a88b7b46c00b433ba5911589545821d",
+            "single-layer certificate sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7"
+          ],
+          "id": "repair.board_exact_vcs_rerun_after_lifecycle_contract_reconciliation",
+          "on_failure": "Keep functional_sim failed and all dependency-blocked board gates unrun. Use the fresh source-bound CCTG slice to schedule only the next board wrapper/harness/integration localization action. Do not reopen operator or connected-kernel tests unless the fresh trace directly contradicts a named certified invariant with current certificate, source-closure, lifecycle-start, direct ingress, direct egress, and causal-boundary bindings. On a functional pass, hand off only to the current board-layer gate scheduler for case_multilayer_functional and its dependent board gates; do not promote to backend or board runtime.",
+          "produces": [
+            "fresh exact-board VCS execution report and manifest-bound logs",
+            "fresh source-bound boundary trace and CCTG causal slice using the reconciled lifecycle interpretation",
+            "fresh functional_sim result for board_axi_ddr_wrapped_system",
+            "fresh failure-localization report that either identifies a board integration boundary after the lifecycle correction or records a real functional pass",
+            "source-identity comparison report binding the rerun to the exact wrapper and simulation closure"
+          ],
+          "rationale": "After the analyzer-side candidate passes static checks, rerun the same failed board_axi_ddr_wrapped_system functional gate using the exact immutable wrapper/source closure and the corrected interpretation of its observational trace. This rerun is required to distinguish the corrected lifecycle record from the still-unresolved ready-egress/zero-output liveness failure; it neither reopens the connected kernel nor authorizes downstream board or backend tools.",
+          "requires_approval": false,
+          "stage": "repair",
+          "tool_roles": [
+            "targeted_failed_checker_rerun",
+            "case_vcs_functional_sim",
+            "case_vcs_evidence_analyzer",
+            "failure_slice_localization",
+            "artifact_hash_check"
+          ]
+        }
+      ],
+      "observations": [
+        "The board_axi_ddr_wrapped_system is the active failed layer: functional_sim failed, while case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence are dependency-blocked and must remain unrun until functional_sim closes.",
+        "At cycle 20572946, the first stage-00/core-ingress transfer fired with kernel_start_to_core=0; the lifecycle start was observed at cycle 20572948. This is the first CCTG finding by transaction order, but hierarchical_learning_context explicitly states that an accepted input handshake is required before kernel lifecycle start. The reported start-before-ingress predicate is therefore an inconsistent checker contract rather than proof of an RTL defect.",
+        "The real board trace still proves an unresolved board liveness symptom: 1792 core ingress beats were accepted, core egress was ready, and zero core egress beats were accepted. The output-liveness failure at connected_kernel_input_to_output is not cleared by correcting the earlier lifecycle interpretation.",
+        "No lower-layer action is legal now. The certified connected kernel has live hash-validated elastic-pipeline evidence, and the completed targeted replay passed 1792 ingress and 1792 egress beats with 416 accepted trace records. sacg_memory_truth has zero open backtrack requests, and the supplied current evidence does not directly contradict the certified timing invariant; prior lower-layer-routing claims are superseded by this completed replay evidence.",
+        "The exact user sample wrapper identity and simulation source closure are presently hash-bound and passing. The legal correction is an analyzer/observability sidecar change only: do not edit the wrapper, DUT, sample-project sources, checkpoint, stimulus, expected-output reference, numeric policy, tolerance, runtime layout, or semantic-testbench behavior.",
+        "The observed runtime load count of 1056/1056 is supporting progress evidence only. The failed dynamic runtime-loader report lacks required bound fields, so it neither proves complete board-level weight consumption nor identifies the liveness root cause. Likewise, no board-level numeric, data-order, DDR-roundtrip, protocol, or output-count pass exists.",
+        "sacg_memory_truth reports 24 active contamination barriers and 8 open retry requests in this board scope. Rejected Stage7/Stage8 artifacts remain usable only as planning/debug evidence; this refined candidate cannot promote or clear those barriers until a subsequent Stage7 result passes."
+      ],
+      "proposed_actions": [
+        "Treat kernel_start_precedes_stage0_input as an analyzer-side CCTG contract inconsistency because it conflicts with the live accepted-input-before-start invariant; do not patch block_input, the connected kernel, or the board wrapper on this evidence.",
+        "Create a hash-bound, simulation-observability-only candidate contract that records prestart ingress as required lifecycle context, retains the unchanged output-liveness and data-order checks, and declares the complete current DAG boundary set.",
+        "After the candidate contract passes static boundary and human-boundary checks, rerun only the failed exact-board VCS functional gate with the immutable wrapper, semantic testbench, checkpoint, stimulus, target reference, numeric policy, and bound weights. Use the resulting source-bound trace to localize the next board-only repair decision.",
+        "Keep all dependency-blocked board checks unrun until the VCS functional rerun passes. If the rerun still stalls, retain the board layer and request a lower-layer backtrack only if its current trace directly contradicts a named lower certificate invariant with complete source and certificate bindings."
+      ],
+      "risks": [
+        "Changing the lifecycle predicate without preserving a separate recorded prestart-ingress event could mask a real dropped-token or reset/launch defect. The corrected contract must retain ingress counts, ordered transaction IDs, start-cycle capture, and the unchanged first-output-no-later-than-final-input rule.",
+        "Model, shape, and numeric risk remains open: the immutable target-model expected output exists, but zero board output beats means no current board numeric comparison, token-order validation, or output-shape pass can be claimed.",
+        "Memory/runtime risk remains open: runtime-load progress does not establish the required address-contiguous, image-matching, exactly-once consumption proof, and no loader or memory-layout modification is authorized by the current evidence.",
+        "Implementation/board risk remains open: exact wrapper identity is known, but the failed run lacks a successful manifest-bound elaborated-hierarchy report. Do not infer a wrapper, compute-slot, reset, scheduler, AXI, or internal-kernel RTL root cause from the frontier symptom alone.",
+        "The connected kernel is an elastic variable-latency pipeline; unequal stage timing is not a failure. A corrected board analyzer must continue to require ordered cross-token overlap and must not substitute same-cycle stage completion requirements.",
+        "Active contamination barriers and open retry requests prohibit backend, synthesis, implementation, bitstream, runtime-ABI, or board-runtime promotion regardless of whether the observability correction passes static checks."
+      ],
+      "sacg_focus": {
+        "artifacts": [
+          "verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=285ccac4dc8445718f3e2250b77095ec73070f0643b544a0d0632aee6b0b5e99",
+          "verification/debug_closure/boundary_contracts.json sha256=1847138114a3f5a3e7b4c427948dfd4b2aa152a7af6da55f2ee3567359dc3c",
+          "verification/board_simulation/reports/progress_event_log.jsonl sha256=8a63ac4665ff70d8ae8307fe6781a069d759ae704aa15099f41512c90b8ae4cd",
+          "verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+          "verification/certificates/single_layer_promotion_certificate.json sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7",
+          "completed connected-kernel targeted replay context sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc",
+          "connected-kernel timing evidence sha256=8475614f6ff71fd6b7ccb2c80a307fa12ed0ed6517b0eb71ac74b010b19f748f",
+          "immutable target-model expected output sha256=92fc53de80c8caca6ea04cc69ab768a1f6db0e55a2ab0ebbd9ac0adc6e3c85b4",
+          "immutable semantic testbench manifest sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7"
+        ],
+        "constraints": [
+          "accepted_input_handshake_required_before_kernel_lifecycle_start",
+          "kernel_start_precedes_stage0_input is inconsistent with the live board lifecycle invariant and must not be treated as a hardware failure",
+          "first_output_no_later_than_final_input",
+          "required_dataflow_edges_must_observe_different_tokens_in_flight",
+          "exact user-supplied wrapper and source hashes remain immutable",
+          "target checkpoint, stimulus, target-model reference, numeric policy, tolerance, and semantic-testbench behavior remain immutable",
+          "no lower-layer reopening without a current hash-bound direct contradiction of a named certified invariant",
+          "active SACG contamination barriers and open Stage7/Stage8 retry requests block promotion and downstream consumption"
+        ],
+        "edges": [
+          "boundary.edge_data_block_input_to_stage_00_rms_norm_1_input",
+          "kernel_lifecycle.start->kernel.core_ingress",
+          "boundary.edge_data_stage_00_rms_norm_1_to_stage_01_self_attention_main",
+          "connected_kernel_input_to_output"
+        ],
+        "nodes": [
+          "board_axi_ddr_wrapped_system",
+          "compute_slot_axi",
+          "kernel_lifecycle.start",
+          "kernel.core_ingress",
+          "block_input",
+          "stage_00_rms_norm_1",
+          "connected_kernel_input_to_output",
+          "kernel.mlp_down.output"
+        ]
+      },
+      "schema_version": "spatialaccagent.repair_targeted_specialist_agent.v1",
+      "stage": "repair",
+      "status": "needs_repair",
+      "summary": "The earliest reported CCTG failure is the lifecycle-order predicate kernel_start_precedes_stage0_input at transaction 0, but it conflicts with the live hash-validated board policy requiring an accepted input handshake before kernel lifecycle start. The smallest legal repair is therefore an analyzer-side, testbench-observability contract correction that preserves all immutable semantic artifacts and output-liveness requirements; it is not a lower-layer or RTL repair. The ready-egress/zero-output condition remains an unresolved board-layer liveness failure that must be re-localized by a fresh exact-board rerun after this correction."
+    },
+    "stage": "repair",
+    "status": "ready",
+    "subtask_count": 1,
+    "used_fallback_count": 0
+  },
+  "errors": [
+    "real_tool.case_vcs_functional_sim: returncode=1",
+    "real_tool.case_deadlock_axi_check: returncode=1 report_status=fail report_summary=23 blocker(s) report_status=fail blockers=case_vcs_functional_sim did not pass; real DDR functional pass line is missing; VCS diagnosis is not a clean functional pass; real DDR input/weight/output counters are not all positive",
+    "required_real_tool_evidence_check: required real-tool evidence missing or failed: case_deadlock_axi_check=fail, functional_sim: need one real functional pass; smoke/liveness candidates are not acceptance evidence [case_vcs_functional_sim=fail]; dependency_blocked=['case_multilayer_functional=not_run', 'case_pipeline_deadlock_check=not_run', 'case_axi_protocol_check=not_run', 'case_ddr_image_roundtrip=not_run', 'case_board_semantic_evidence=not_run']",
+    "real_weight_semantic_evidence_check: real-weight semantic evidence contract failed: axi_ddr_functional: semantic evidence report is missing: /home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/semantic_evidence/board_axi_ddr.json; multilayer_pipeline_functional: semantic evidence report is missing: /home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/semantic_evidence/board_axi_ddr.json",
+    "hierarchical_verification_maturity_check: multilayer_pipeline_functional: functional_sim=fail, case_multilayer_functional=not_run, case_pipeline_deadlock_check=not_run; axi_ddr_functional: functional_sim=fail, case_axi_protocol_check=not_run, case_ddr_image_roundtrip=not_run, case_board_semantic_evidence=not_run; real-weight semantic evidence contract failed: axi_ddr_functional: semantic evidence report is missing: /home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/semantic_evidence/board_axi_ddr.json; multilayer_pipeline_functional: semantic evidence report is missing: /home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/semantic_evidence/board_axi_ddr.json",
+    "verification_agent_decision_check: verification.evidence_classifier: needs_repair: Authoritative Stage7 decision: fail closed at the board_axi_ddr_wrapped_system layer. The exact-board identity, multilayer-pipeline preparation, AXI/DDR-interface preparation, immutable target-model reference, semantic testbench, complete lower-scope weight evidence, and certified operator-leaf/single-layer closures are reusable prerequisites. They do not establish board correctness. The required exact-board VCS functional simulation failed with returncode=1; its executed analyzer reports that all 16 input tokens completed by cycle 20805737 while zero ready-kernel output beats were accepted. The required deadlock/AXI diagnostic also failed, and dependent multilayer-functional, liveness, AXI-protocol, DDR-roundtrip, and board-semantic gates are not_run. No deterministic board-level target-model numeric, data-order, output-count, DDR-roundtrip, protocol, lifecycle, or complete-scope DUT weight-consumption pass exists. block_input / kernel_start_precedes_stage0_input is a current CCTG localization candidate, not a proven RTL root cause, because source-token diagnostic findings conflict with the passed elaborated interface evidence. The conditional specialist review is consistent with this decision but cannot replace failing real-tool evidence. Do not promote to synthesis, implementation, bitstream, runtime-ABI, or board-runtime stages."
+  ],
+  "llm_agent": {
+    "agent": "repair_agent",
+    "approval_required_for": [],
+    "executable_actions": [],
+    "observations": [
+      "repair_kind=board_semantic_rtl_repair",
+      "failure_class=internal_pipeline_stop",
+      "the implementation Agent must reject any non-contract-derived patch"
+    ],
+    "proposed_actions": [
+      "Execute the existing exact-board implementation workflow without a second planning LLM call."
+    ],
+    "risks": [
+      "The exact user wrapper, ABI, model artifacts, and numeric policy remain read-only."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage8.repair_plan"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.tool.protocols",
+        "constraint.human.boundary",
+        "constraint.case.adapter"
+      ],
+      "edges": [],
+      "nodes": [
+        "connected_kernel_internal_pipeline"
+      ]
+    },
+    "schema_version": "spatialaccagent.stage_worker_output.v0",
+    "stage": "repair",
+    "status": "ready",
+    "summary": "The current board trace is localized to the compiled internal RTL closure; invoke the bounded semantic RTL Agent directly with the preserved evidence package."
+  },
+  "llm_error": null,
+  "llm_executable_actions": [],
+  "llm_review_routing": {
+    "deterministic_exact_localized_route": true,
+    "fixed_decomposer_and_multi_specialist_fanout_removed": true,
+    "mode": "conditional",
+    "primary_agent_required": false,
+    "specialist_trigger": "board_wrapper_or_pipeline_integration"
+  },
+  "outputs": {
+    "llm_agent": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_deterministic_board_semantic_rtl_route.json",
+    "repair_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/repair_plan.json",
+    "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/sacg_state.json",
+    "team_aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_targeted_specialist_agent_result.json",
+    "team_subtask_plan": null
+  },
+  "repair_status": "needs_repair",
+  "sacg_transition_id": "transition.2590",
+  "schema_version": "spatialaccagent.repair_report.v0",
+  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair_execution/sacg_state.json",
+  "stage": "repair",
+  "status": "needs_repair",
+  "team_error": null,
+  "team_executable_actions": [
+    {
+      "acceptance_checkers": [
+        "causal_repair_context_check",
+        "boundary_contract_check",
+        "repair_boundary_check",
+        "artifact_hash_check",
+        "human_boundary_check",
+        "sacg_memory_check"
+      ],
+      "action_type": "verification_capability_repair",
+      "consumes": [
+        "verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=285ccac4dc8445718f3e2250b77095ec73070f0643b544a0d0632aee6b0b5e99",
+        "verification/debug_closure/boundary_contracts.json sha256=1847138114a3f5a3e7b4c427948dfd4b2aa152a7af6da55f2ee3567359dc3c",
+        "verification/board_simulation/reports/progress_event_log.jsonl sha256=8a63ac4665ff70d8ae8307fe6781a069d759ae704aa15099f41512c90b8ae4cd",
+        "hierarchical_learning_context connected-kernel timing contract sha256=496fc6b3c907d9401a2156dc906f39f7a7ade964fa60f682fff0be5f31b5b393",
+        "completed connected-kernel targeted replay context sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc",
+        "verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+        "verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+        "sacg_memory_truth active barriers and open retry requests"
+      ],
+      "id": "repair.board_lifecycle_observability_contract_reconciliation",
+      "on_failure": "Block the VCS rerun and classify the result as a verification-capability repair failure. Do not modify RTL, wrapper, golden outputs, tolerance, or lower-layer artifacts; return a bounded analyzer-side correction request with the failed schema, DAG declaration, or immutability check.",
+      "produces": [
+        "candidate analyzer-side board lifecycle observability contract with a new hash",
+        "candidate complete-DAG debug-observability sidecar manifest with schema version and simulation-only declaration",
+        "boundary-contract reconciliation report identifying kernel_start_precedes_stage0_input as a contract inconsistency rather than an RTL failure",
+        "immutable-artifact hash-preservation report covering exact wrapper identity, semantic testbench, target reference, numeric policy, and DUT weight-binding manifest",
+        "SACG repair-context update stating that the candidate is planning/debug evidence only pending Stage7 rerun"
+      ],
+      "rationale": "Reconcile the CCTG lifecycle interpretation with the live hash-validated invariant that accepted ingress precedes kernel lifecycle start. Repair only the analyzer-side observability contract and its sidecar manifest: classify prestart ingress as required context, preserve tx/order/count capture, retain the complete DAG declaration, and leave the first-output-no-later-than-final-input rule unchanged. This is a checker/instrumentation repair, not a hardware-correctness claim; it must not alter DUT RTL, exact sample-project wrapper sources, semantic-testbench behavior, checkpoint, stimulus, target-model golden, numeric policy, tolerance, or weight/runtime artifacts.",
+      "requires_approval": false,
+      "stage": "repair",
+      "tool_roles": [
+        "causal_repair_context_pack",
+        "boundary_contract_generate",
+        "bounded_template_repair",
+        "artifact_hash_check",
+        "sacg_memory_update"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "real_tool.case_vcs_functional_sim",
+        "functional_sim",
+        "boundary_contract_check",
+        "failure_localization_check",
+        "artifact_hash_check"
+      ],
+      "action_type": "current_layer_real_tool_rerun",
+      "consumes": [
+        "passed candidate analyzer-side board lifecycle observability contract from repair.board_lifecycle_observability_contract_reconciliation",
+        "verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+        "selected exact board simulation source closure sha256=6665a9df4e0b86fdbd47c48e76b63137069f4c2505d914d6ceee233447a1c5c5",
+        "current immutable input fingerprint sha256=9e2465a8c89008a78be4ef3a7e71cb87138b7ff0ab76c10fa45d3de9e2ffb673",
+        "verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+        "target-model expected output sha256=92fc53de80c8caca6ea04cc69ab768a1f6db0e55a2ab0ebbd9ac0adc6e3c85b4",
+        "generated/memory/dut_weight_binding_manifest.json sha256=d3ed9f9e1b1f410f4ed87de616d5184b6a88b7b46c00b433ba5911589545821d",
+        "single-layer certificate sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7"
+      ],
+      "id": "repair.board_exact_vcs_rerun_after_lifecycle_contract_reconciliation",
+      "on_failure": "Keep functional_sim failed and all dependency-blocked board gates unrun. Use the fresh source-bound CCTG slice to schedule only the next board wrapper/harness/integration localization action. Do not reopen operator or connected-kernel tests unless the fresh trace directly contradicts a named certified invariant with current certificate, source-closure, lifecycle-start, direct ingress, direct egress, and causal-boundary bindings. On a functional pass, hand off only to the current board-layer gate scheduler for case_multilayer_functional and its dependent board gates; do not promote to backend or board runtime.",
+      "produces": [
+        "fresh exact-board VCS execution report and manifest-bound logs",
+        "fresh source-bound boundary trace and CCTG causal slice using the reconciled lifecycle interpretation",
+        "fresh functional_sim result for board_axi_ddr_wrapped_system",
+        "fresh failure-localization report that either identifies a board integration boundary after the lifecycle correction or records a real functional pass",
+        "source-identity comparison report binding the rerun to the exact wrapper and simulation closure"
+      ],
+      "rationale": "After the analyzer-side candidate passes static checks, rerun the same failed board_axi_ddr_wrapped_system functional gate using the exact immutable wrapper/source closure and the corrected interpretation of its observational trace. This rerun is required to distinguish the corrected lifecycle record from the still-unresolved ready-egress/zero-output liveness failure; it neither reopens the connected kernel nor authorizes downstream board or backend tools.",
+      "requires_approval": false,
+      "stage": "repair",
+      "tool_roles": [
+        "targeted_failed_checker_rerun",
+        "case_vcs_functional_sim",
+        "case_vcs_evidence_analyzer",
+        "failure_slice_localization",
+        "artifact_hash_check"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,208 @@
+{
+  "agent": "single_layer_compile_rtl_repair_agent",
+  "compact_retry_prompt_bytes": 1035627,
+  "compact_retry_prompt_hash": "c6aefe47d88fd26329a4c90365052fdfdf604cd0eb89d5fa0cba653aa95ba7a2",
+  "compact_retry_request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair_execution/llm/single_layer_compile_rtl_repair_agent_compact_retry_prompt.md",
+  "duration_sec": 8776.988576855976,
+  "error": null,
+  "full_prompt_bytes": 7843361,
+  "full_prompt_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair_execution/llm/single_layer_compile_rtl_repair_agent_prompt.md",
+  "http_transport": "urllib",
+  "live_transaction_id": "734f5682bc0545debb51a849d830535a",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair_execution/llm/single_layer_compile_rtl_repair_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "agent": "single_layer_compile_rtl_repair_agent_compact_retry",
+    "approval_required_for": [],
+    "blocked_reasons": [],
+    "causal_prediction": {
+      "evidence_refs": [
+        "/current_board_vcs_feedback/diagnosis/value/failure_evidence/first_real_error",
+        "/current_board_vcs_feedback/diagnosis/value/failure_evidence/compile/returncode"
+      ],
+      "expected_progress_changes": [
+        {
+          "metric": "vcs_compile_returncode",
+          "relation": "reach_at_most",
+          "value": 0
+        }
+      ],
+      "falsified_if": "The unchanged authoritative VCS gate still reports an undefined io_in_bits_addr or io_in_bits_last port on the Linear_4 instance, or the patch application changes any source text outside the two named associations.",
+      "intervention_family": "source-bound removal of unsupported Linear_4 input port associations",
+      "target_frontier_id": "single_layer_vcs_compile"
+    },
+    "checkpoint_impact": {
+      "affected_cctg_nodes": [
+        "GatedMLP",
+        "stage_07_mlp_down_proj"
+      ],
+      "changed_state_elements": [],
+      "evidence_refs": [
+        "/current_board_vcs_feedback/diagnosis/value/failure_evidence/causal_log_excerpt"
+      ],
+      "rationale": "The edit removes only two invalid instance port associations. It adds no registers, memories, state-machine states, or protocol state and does not change the existing data, weight, or output-sideband logic.",
+      "state_schema_change": "none",
+      "status": "ready"
+    },
+    "file_edits": [
+      {
+        "content": "",
+        "expected_sha256": "0191984a7b2b645bf3427b982f6a98e675b1bc4af8fd10719849e1d4d5d38a07",
+        "operation": "replace_text",
+        "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/generated/semantic_harness/single_layer/GatedMLP.sv",
+        "rationale": "Remove exactly the two named connections proven invalid by the current VCS UPIMI-E diagnostic. Preserve all surrounding source text and legal data/st, output sideband, ready/valid, and real weight wiring.",
+        "text_replacements": [
+          {
+            "new_text": "",
+            "old_text": "    .io_in_bits_addr        (_mul_io_out_bits_addr),\n    .io_in_bits_last        (_mul_io_out_bits_last),\n"
+          }
+        ]
+      }
+    ],
+    "project_knowledge_updates": [
+      {
+        "claim": "Under the current generated source fingerprint, Linear_4 exposes data and st on its input stream but does not expose io_in_bits_addr or io_in_bits_last input ports. GatedMLP must not bind unsupported input sidebands; the existing Linear_4 output sideband wiring remains the legal downstream stream interface.",
+        "confidence": "high",
+        "contradicts_knowledge_ids": [],
+        "evidence_refs": [
+          "/current_board_vcs_feedback/diagnosis/value/failure_evidence/causal_log_excerpt",
+          "/current_board_vcs_feedback/diagnosis/value/failure_evidence/first_real_error"
+        ],
+        "knowledge_kind": "ready_valid_protocol",
+        "reuse_guidance": "For this source fingerprint, remove unsupported Linear_4 input sideband associations rather than adding ports to Linear_4 or modifying any downstream protocol. Revalidate with the unchanged real case_single_layer_functional VCS gate.",
+        "subject_ids": [
+          "GatedMLP",
+          "Linear_4",
+          "stage_07_mlp_down_proj"
+        ],
+        "supersedes_knowledge_ids": [],
+        "timing_observations": [],
+        "validity_conditions": [
+          "The current GatedMLP.sv source hash remains 0191984a7b2b645bf3427b982f6a98e675b1bc4af8fd10719849e1d4d5d38a07 before patch application.",
+          "The current Linear_4 module interface and VCS diagnostic remain unchanged."
+        ],
+        "validity_scope": "current_source_fingerprint"
+      }
+    ],
+    "requested_validation": [],
+    "required_capabilities": [
+      {
+        "capability_id": "case_single_layer_functional",
+        "debug_layer": "single_transformer_layer_kernel",
+        "producer_scope": "framework_authoritative_real_vcs_gate",
+        "rationale": "The patch is compile-only and must be checked by the mandatory real case_single_layer_functional gate before any later board VCS chain resumes.",
+        "required_evidence": [
+          "fresh real VCS compile and elaboration result for the patched single-layer source set",
+          "unchanged checkpoint, stimulus, expected-output, numeric-policy, and complete-scope weight-binding identities",
+          "no unapproved source edits outside the authorized GatedMLP.sv file"
+        ],
+        "target_modules": [
+          "GatedMLP",
+          "Linear_4"
+        ]
+      }
+    ],
+    "root_cause": "Current GatedMLP.sv connects io_in_bits_addr and io_in_bits_last when instantiating Linear_4, but the source-bound compiler diagnostic proves that Linear_4 does not define either input port. This is a localized interface mismatch. The legal down-projection interface continues to receive io_in_valid, io_in_bits_data, and io_in_bits_st, while its existing output data, st, addr, and last connections and all real weight connections remain unchanged.",
+    "schema_version": "spatialaccagent.single_layer_compile_rtl_repair.v1",
+    "stage": "repair_execution",
+    "status": "ready_to_apply",
+    "summary": "The source-bound VCS diagnostic identifies two unsupported named port connections in the current GatedMLP Linear_4 down instance. Remove only those two io_in_bits_addr and io_in_bits_last associations; preserve every other line, including data/st stream wiring, Linear_4 output addr/last sidebands, weight ports, and external behavior. The authoritative case_single_layer_functional VCS gate remains pending."
+  },
+  "proactive_prompt_compaction": true,
+  "prompt_bytes": 1035627,
+  "prompt_compaction_protocol": "spatialaccagent.evidence_preserving_prompt_compaction.v10",
+  "prompt_hash": "c6aefe47d88fd26329a4c90365052fdfdf604cd0eb89d5fa0cba653aa95ba7a2",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.single_layer_compile_rtl_repair.v1\",\"agent\":\"single_layer_compile_rtl_repair_agent_compact_retry\",\"stage\":\"repair_execution\",\"status\":\"ready_to_apply\",\"summary\":\"The source-bound VCS diagnostic identifies two unsupported named port connections in the current GatedMLP Linear_4 down instance. Remove only those two io_in_bits_addr and io_in_bits_last associations; preserve every other line, including data/st stream wiring, Linear_4 output addr/last sidebands, weight ports, and external behavior. The authoritative case_single_layer_functional VCS gate remains pending.\",\"root_cause\":\"Current GatedMLP.sv connects io_in_bits_addr and io_in_bits_last when instantiating Linear_4, but the source-bound compiler diagnostic proves that Linear_4 does not define either input port. This is a localized interface mismatch. The legal down-projection interface continues to receive io_in_valid, io_in_bits_data, and io_in_bits_st, while its existing output data, st, addr, and last connections and all real weight connections remain unchanged.\",\"project_knowledge_updates\":[{\"knowledge_kind\":\"ready_valid_protocol\",\"subject_ids\":[\"GatedMLP\",\"Linear_4\",\"stage_07_mlp_down_proj\"],\"claim\":\"Under the current generated source fingerprint, Linear_4 exposes data and st on its input stream but does not expose io_in_bits_addr or io_in_bits_last input ports. GatedMLP must not bind unsupported input sidebands; the existing Linear_4 output sideband wiring remains the legal downstream stream interface.\",\"timing_observations\":[],\"validity_scope\":\"current_source_fingerprint\",\"validity_conditions\":[\"The current GatedMLP.sv source hash remains 0191984a7b2b645bf3427b982f6a98e675b1bc4af8fd10719849e1d4d5d38a07 before patch application.\",\"The current Linear_4 module interface and VCS diagnostic remain unchanged.\"],\"evidence_refs\":[\"/current_board_vcs_feedback/diagnosis/value/failure_evidence/causal_log_excerpt\",\"/current_board_vcs_feedback/diagnosis/value/failure_evidence/first_real_error\"],\"confidence\":\"high\",\"reuse_guidance\":\"For this source fingerprint, remove unsupported Linear_4 input sideband associations rather than adding ports to Linear_4 or modifying any downstream protocol. Revalidate with the unchanged real case_single_layer_functional VCS gate.\",\"supersedes_knowledge_ids\":[],\"contradicts_knowledge_ids\":[]}],\"checkpoint_impact\":{\"status\":\"ready\",\"state_schema_change\":\"none\",\"affected_cctg_nodes\":[\"GatedMLP\",\"stage_07_mlp_down_proj\"],\"changed_state_elements\":[],\"evidence_refs\":[\"/current_board_vcs_feedback/diagnosis/value/failure_evidence/causal_log_excerpt\"],\"rationale\":\"The edit removes only two invalid instance port associations. It adds no registers, memories, state-machine states, or protocol state and does not change the existing data, weight, or output-sideband logic.\"},\"causal_prediction\":{\"intervention_family\":\"source-bound removal of unsupported Linear_4 input port associations\",\"target_frontier_id\":\"single_layer_vcs_compile\",\"expected_progress_changes\":[{\"metric\":\"vcs_compile_returncode\",\"relation\":\"reach_at_most\",\"value\":0}],\"falsified_if\":\"The unchanged authoritative VCS gate still reports an undefined io_in_bits_addr or io_in_bits_last port on the Linear_4 instance, or the patch application changes any source text outside the two named associations.\",\"evidence_refs\":[\"/current_board_vcs_feedback/diagnosis/value/failure_evidence/first_real_error\",\"/current_board_vcs_feedback/diagnosis/value/failure_evidence/compile/returncode\"]},\"required_capabilities\":[{\"capability_id\":\"case_single_layer_functional\",\"debug_layer\":\"single_transformer_layer_kernel\",\"producer_scope\":\"framework_authoritative_real_vcs_gate\",\"target_modules\":[\"GatedMLP\",\"Linear_4\"],\"required_evidence\":[\"fresh real VCS compile and elaboration result for the patched single-layer source set\",\"unchanged checkpoint, stimulus, expected-output, numeric-policy, and complete-scope weight-binding identities\",\"no unapproved source edits outside the authorized GatedMLP.sv file\"],\"rationale\":\"The patch is compile-only and must be checked by the mandatory real case_single_layer_functional gate before any later board VCS chain resumes.\"}],\"file_edits\":[{\"path\":\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/generated/semantic_harness/single_layer/GatedMLP.sv\",\"operation\":\"replace_text\",\"expected_sha256\":\"0191984a7b2b645bf3427b982f6a98e675b1bc4af8fd10719849e1d4d5d38a07\",\"content\":\"\",\"text_replacements\":[{\"old_text\":\"    .io_in_bits_addr        (_mul_io_out_bits_addr),\\n    .io_in_bits_last        (_mul_io_out_bits_last),\\n\",\"new_text\":\"\"}],\"rationale\":\"Remove exactly the two named connections proven invalid by the current VCS UPIMI-E diagnostic. Preserve all surrounding source text and legal data/st, output sideband, ready/valid, and real weight wiring.\"}],\"requested_validation\":[],\"blocked_reasons\":[],\"approval_required_for\":[]}",
+  "reasoning_effort": "xhigh",
+  "repair_execution_context": {
+    "debug_layer": "board_axi_ddr_wrapped_system",
+    "repair_scope": "verification_capability_repair",
+    "repair_step_id": "repair_step.00",
+    "schema_version": "spatialaccagent.repair_execution_agent_context.v1",
+    "verification_scope": "board_axi_ddr_closure"
+  },
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair_execution/llm/single_layer_compile_rtl_repair_agent_compact_retry_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair_execution/llm/single_layer_compile_rtl_repair_agent_result.json",
+  "retry_errors": [
+    "attempt 1: streaming LLM response failed: {'type': 'response.failed', 'response': {'id': 'resp_cpa_error', 'object': 'response', 'created_at': 0, 'status': 'failed', 'model': 'gpt-5.6-sol', 'error': {'code': 'internal_server_error', 'message': 'websocket: close 1006 (abnormal closure): unexpected EOF'}}}",
+    "attempt 2: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 3: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 4: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 5: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 6: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 7: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 8: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 9: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 10: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 11: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 12: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 13: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 14: HTTP Error 429: Too Many Requests; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 15: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 16: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 17: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 18: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 19: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 20: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 21: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 22: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 23: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 24: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 25: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 26: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 27: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 28: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 29: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 30: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 31: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 32: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 33: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 34: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 35: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 36: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 37: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 38: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 39: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 40: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 41: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 42: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 43: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 44: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 45: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 46: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 47: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 48: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 49: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 50: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 51: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 52: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 53: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 54: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 55: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 56: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 57: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 58: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 59: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 60: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 61: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 62: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 63: HTTP Error 429: Too Many Requests; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "... additional transient retry errors suppressed; latest: attempt 71: HTTP Error 502: Bad Gateway; response_body={\"error\":{\"message\":\"Upstream access forbidden, please contact administrator\",\"type\":\"upstream_error\"}}"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair_execution",
+  "stream": true,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 3,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair_execution/llm/history/single_layer_compile_rtl_repair_agent_result.1325769f32405f57.6cc4c682500be8b2.c6aefe47d88fd263.snapshot.json",
+    "replaced_prompt_hash": "9ca450949b31ca66ab2bc8abccb3ece79d787318093bf5fe49a09232acde45b1",
+    "replaced_result_sha256": "1325769f32405f57542b10926b85a80b6bf4f38a831567295758fb87390ea1fc",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "1325769f32405f57.6cc4c682500be8b2.c6aefe47d88fd263"
+  },
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

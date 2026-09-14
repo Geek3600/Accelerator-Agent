@@ -1,0 +1,387 @@
+{
+  "agent": "repair_boundary_auditor",
+  "duration_sec": 640.3720291450009,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "repair_boundary_auditor",
+    "approval_required_for": [
+      "Any architecture, pipeline structure, model shape/order, stream-order contract, memory layout, runtime ABI, board deployment profile, numeric precision/tolerance, or major template change.",
+      "Any change to Stage6 or Stage7 verification scope, selected gate set, promotion criteria, dependency semantics, or tool protocol beyond contract-consistent rerun/reconciliation.",
+      "Any backend/app-shell target-name selection or board integration decision where supplied materials and real tool evidence are ambiguous.",
+      "Any code or template repair outside a localized operator/leaf causal slice after a failed retry, unless it is reduced to a bounded checker-accepted repair request.",
+      "Any manual decision to proceed with approval-required changes must be recorded through the human-boundary path; manual waiver of checkers, golden modification, tolerance loosening, or SACG barrier override remains forbidden."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "human_boundary_check",
+          "sacg_memory_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "auto_allowed_boundary_gate",
+        "consumes": [
+          "artifact.input.human_agent_boundary",
+          "state_summary.sacg_memory_truth",
+          "artifact.repair.bounded_repair_candidate_list",
+          "artifact.repair.targeted_stage7_rerun_plan",
+          "artifact.repair.gate_dag_reconciliation_report",
+          "artifact.repair.retry_or_backtrack_decision",
+          "candidate_stage_artifact"
+        ],
+        "id": "repair.boundary.audit_candidate_actions",
+        "on_failure": "Block team_aggregate handoff; preserve all Stage7 contamination barriers and return offending action IDs for reclassification.",
+        "produces": [
+          "artifact.repair.boundary_approval_matrix",
+          "artifact.repair.final_bounded_repair_plan"
+        ],
+        "rationale": "Classify the visible bounded repair classes and the full peer candidate list against human-agent boundary rules and active SACG trust barriers without executing repairs.",
+        "requires_approval": false,
+        "stage": "repair.boundary_approval",
+        "tool_roles": [
+          "repair_boundary_check",
+          "human_boundary_check",
+          "stage_artifact_trust_barrier",
+          "sacg_validate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "hierarchical_verification_plan_check",
+          "targeted_failed_checker_rerun",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "auto_allowed_evidence_checker_order_reconciliation",
+        "consumes": [
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.llm_action_audit",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage7.verification_result:debug_only",
+          "artifact.stage7.real_tool_results:debug_only",
+          "artifact.repair.gate_dag_reconciliation_report"
+        ],
+        "id": "repair.stage7.reconcile_precondition_gate_dag",
+        "on_failure": "Do not promote operator-leaf evidence; issue a conditional Stage6 backtrack if contracts or tool protocols are incomplete, otherwise keep the Stage7 retry open.",
+        "produces": [
+          "artifact.repair.targeted_stage7_rerun_plan.reconciled",
+          "artifact.repair.gate_dag_reconciliation_report.accepted_or_backtrack_reason"
+        ],
+        "rationale": "The failed decision checker reports a mismatch between top-level precondition failure and later materialized evidence. Contract-consistent rerun/reconciliation is allowed only if selected gates, pass criteria, hierarchy, and promotion semantics are unchanged.",
+        "requires_approval": false,
+        "stage": "stage7.verification",
+        "tool_roles": [
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "hierarchical_verification_plan_check",
+          "targeted_failed_checker_rerun",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_retry_request_check",
+          "case_real_weight_artifacts",
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "numeric_compare",
+          "artifact_hash_check",
+          "deadlock_watchdog",
+          "required_real_tool_evidence_check",
+          "verification_action_audit_check",
+          "targeted_failed_checker_rerun"
+        ],
+        "action_type": "retry_only_targeted_rerun",
+        "consumes": [
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.llm_action_audit",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.input.numeric_policy",
+          "artifact.stage7.verification_result:debug_only",
+          "artifact.stage7.real_tool_results:debug_only",
+          "artifact.stage7.debug_closure:debug_only"
+        ],
+        "id": "repair.stage7.operator_leaf_retry_request_0001",
+        "on_failure": "Preserve all Stage7 contamination barriers; route real tool output to contract-guided operator/leaf localization and bounded Stage8 repair, or request Stage6 backtrack if the verification contract/tool protocol is incomplete. Do not advance to single-layer or board gates.",
+        "produces": [
+          "verification/qwen_real_weights/weight_manifest.json",
+          "verification/qwen_real_weights/packed_weight_manifest.json",
+          "verification/qwen_real_weights/input_manifest.json",
+          "verification/qwen_real_weights/input_activation.u32.memh",
+          "verification/qwen_real_weights/weight_prefetch.u32.memh",
+          "verification/qwen_hierarchy/real_weights.json",
+          "verification/qwen_hierarchy/stage_leaf_static.json",
+          "artifact.stage7.verification_result.retry_candidate",
+          "artifact.stage7.real_tool_results.retry_candidate",
+          "artifact.stage7.debug_closure.retry_candidate"
+        ],
+        "rationale": "Satisfy retry_request.0001 at the current operator/leaf layer by repairing evidence preconditions and rerunning selected real-tool/checker gates. Existing Stage7 artifacts remain debug evidence only until replacement artifacts pass all selected checks.",
+        "requires_approval": false,
+        "stage": "stage7.verification",
+        "tool_roles": [
+          "stage_retry_request",
+          "case_weight_manifest_generate",
+          "case_real_weight_artifacts",
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "numeric_compare",
+          "artifact_hash_check",
+          "deadlock_watchdog",
+          "verification_action_audit",
+          "real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "stage_artifact_trust_barrier_check",
+          "sacg_static_check",
+          "stage_retry_request_check"
+        ],
+        "action_type": "auto_allowed_trust_barrier_update_after_evidence",
+        "consumes": [
+          "state_summary.sacg_memory_truth",
+          "artifact.repair.boundary_approval_matrix",
+          "artifact.stage7.verification_result.retry_candidate",
+          "artifact.stage7.real_tool_results.retry_candidate",
+          "artifact.stage7.debug_closure.retry_candidate"
+        ],
+        "id": "repair.sacg.update_barriers_after_stage7_retry",
+        "on_failure": "Keep retry_request.0001 and contamination_barrier.0001 through contamination_barrier.0003 active; do not hand off contaminated Stage7 artifacts as validated inputs.",
+        "produces": [
+          "artifact.repair.sacg_memory_update_plan",
+          "artifact.repair.retry_backtrack_request_update",
+          "sacg_memory.contamination_barrier_close_or_preserve_record"
+        ],
+        "rationale": "SACG barriers must remain active until accepted retry evidence replaces the rejected Stage7 artifacts. Memory update is allowed only to record checker-grounded closure, preservation, or a bounded next retry/backtrack request.",
+        "requires_approval": false,
+        "stage": "sacg_memory_update",
+        "tool_roles": [
+          "sacg_memory_update",
+          "stage_artifact_trust_barrier",
+          "sacg_validate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_backtrack_request_check",
+          "verification_plan_static_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "hierarchical_verification_plan_check",
+          "human_boundary_check"
+        ],
+        "action_type": "backtrack_required_on_condition",
+        "consumes": [
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.stage7_gate_selector_contract",
+          "artifact.stage6.llm_action_audit",
+          "artifact.repair.gate_dag_reconciliation_report.accepted_or_backtrack_reason",
+          "artifact.stage7.verification_result.retry_candidate"
+        ],
+        "id": "repair.stage6.conditional_backtrack_if_verification_contract_incomplete",
+        "on_failure": "Keep the Stage7 retry open and barriers active; do not mutate Stage6 artifacts or verification policy without a checker-accepted backtrack request and any required human approval.",
+        "produces": [
+          "artifact.repair.retry_backtrack_request_update",
+          "stage_backtrack_request.stage6.verification_artifacts"
+        ],
+        "rationale": "No backtrack request is currently open. A Stage6 backtrack is required only if Stage7 reconciliation or retry evidence proves the verification artifact contract, gate selector, hierarchy plan, or tool protocol cannot support the selected Stage7 gates.",
+        "requires_approval": false,
+        "stage": "stage_backtrack_request",
+        "tool_roles": [
+          "stage_backtrack_request",
+          "verification_plan_static_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "hierarchical_verification_plan_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "human_boundary_check",
+          "repair_boundary_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "template_binding_static_check",
+          "deployment_board_check"
+        ],
+        "action_type": "approval_required_boundary_gate",
+        "consumes": [
+          "artifact.input.human_agent_boundary",
+          "artifact.repair.bounded_repair_candidate_list",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.stage2.template_selection",
+          "artifact.input.template_metadata",
+          "artifact.input.target_board_profile"
+        ],
+        "id": "repair.human_approval_gate_unbounded_changes",
+        "on_failure": "Reject or quarantine unapproved changes and continue only with the bounded Stage7 retry/backtrack path allowed by the boundary matrix.",
+        "produces": [
+          "artifact.repair.human_approval_request_queue",
+          "artifact.repair.boundary_approval_matrix.approval_required_entries"
+        ],
+        "rationale": "Human approval is required for any repair that exceeds bounded evidence/checker repair and affects architecture, pipeline, memory/runtime ABI, numeric policy, model shape/order, board deployment facts, major templates, or verification promotion policy.",
+        "requires_approval": true,
+        "stage": "repair.boundary_approval",
+        "tool_roles": [
+          "human_boundary_check",
+          "repair_boundary_check",
+          "architecture_review",
+          "pipeline_repair",
+          "memory_runtime_repair",
+          "bounded_template_repair",
+          "numeric_policy_check",
+          "model_config_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "human_boundary_check",
+          "stage_artifact_trust_barrier_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "forbidden_action_quarantine",
+        "consumes": [
+          "artifact.input.human_agent_boundary",
+          "state_summary.sacg_memory_truth",
+          "artifact.repair.bounded_repair_candidate_list",
+          "artifact.stage7.verification_result",
+          "artifact.stage7.real_tool_results",
+          "artifact.stage7.debug_closure"
+        ],
+        "id": "repair.block_forbidden_promotions_and_unchecked_repairs",
+        "on_failure": "Do not hand off to team_aggregate; keep all blocked actions quarantined until reclassified by checker-accepted boundary audit.",
+        "produces": [
+          "artifact.repair.boundary_approval_matrix.forbidden_entries",
+          "artifact.repair.final_bounded_repair_plan.quarantine_notes"
+        ],
+        "rationale": "Candidates that claim pass from contaminated artifacts, skip the required hierarchy, modify goldens or tolerances, manually clear SACG barriers, or propose unlocalized free-form RTL/template rewrites are forbidden under the active trust-barrier and human-boundary policy.",
+        "requires_approval": false,
+        "stage": "repair.boundary_approval",
+        "tool_roles": [
+          "repair_boundary_check",
+          "human_boundary_check",
+          "stage_artifact_trust_barrier",
+          "sacg_validate"
+        ]
+      }
+    ],
+    "observations": [
+      "Role scope is limited to human-boundary and SACG trust-barrier audit; no repair tool execution, root-cause reclassification, design artifact modification, or human-boundary override is authorized here.",
+      "Using the populated state_summary.sacg_memory_truth named by this subtask, the current blocker set contains three active contamination barriers on artifact.stage7.verification_result, artifact.stage7.real_tool_results, and artifact.stage7.debug_closure.",
+      "state_summary.sacg_memory_truth lists one open retry request, retry_request.0001, targeting stage7.verification and blocking artifact.stage7.verification_result. It lists zero open backtrack requests.",
+      "Visible failed invariants are case_functional_sim_precondition_check and verification_agent_decision_check. They indicate missing or stale Stage7 real-weight/input manifests, hierarchy reports, and checker-order reconciliation issues; they do not prove hardware correctness and do not justify RTL/template changes by themselves.",
+      "Contaminated Stage7 artifacts may be consumed only as planning/debug evidence until a targeted Stage7 retry produces checker-accepted replacement artifacts and SACG trust barriers are updated.",
+      "Earlier Stage4, Stage5, and Stage6 outcomes are summarized as ready, so the auto-allowed path is a bounded Stage7 retry using existing Stage6 verification contracts unless rerun evidence proves those contracts or tool protocols incomplete.",
+      "The current verification layer is operator/leaf closure. Single-transformer-layer, multilayer, AXI/DDR, bitstream, and board-runtime gates are deferred and must not be claimed passed or skipped to while the operator/leaf layer is unresolved.",
+      "The detailed peer candidate repair list is not fully visible in the compact artifact slice. This audit classifies the visible action classes and requires team_aggregate to apply the same boundary matrix to any omitted candidate rows before execution."
+    ],
+    "proposed_actions": [
+      "AUTO-ALLOWED: Produce and apply a boundary approval matrix that preserves all active Stage7 contamination barriers and allows only contract-consistent evidence/checker-order reconciliation plus targeted rerun of the failed Stage7 operator-leaf gates.",
+      "RETRY-ONLY: Satisfy retry_request.0001 through a bounded Stage7 operator-leaf retry that regenerates or validates required real-weight/input artifacts, reruns stage-leaf static and leaf functional/golden checks, and emits new candidate Stage7 artifacts.",
+      "BACKTRACK-REQUIRED-ON-CONDITION: Create a Stage6 backtrack request only if Stage7 reconciliation or retry evidence shows the Stage6 verification artifact contract, gate selector contract, or tool protocol is incomplete or unsatisfiable.",
+      "APPROVAL-REQUIRED: Escalate any architecture, pipeline, memory layout/runtime ABI, numeric policy/tolerance, model shape/order, board deployment profile, or major template/gate-policy change before execution.",
+      "FORBIDDEN: Do not consume contaminated Stage7 artifacts as validated inputs, claim single-layer/AXI/DDR/bitstream/board pass, skip the operator-leaf layer, loosen golden/numeric checks, manually clear SACG barriers, or perform unlocalized free-form RTL/template rewrites.",
+      "SACG UPDATE: After accepted retry evidence, update SACG memory to either close the Stage7 retry/barriers for replaced artifacts or preserve them with a new failure lesson and bounded next request."
+    ],
+    "risks": [
+      "Historical or diagnostic text that says there are no active blockers conflicts with the current state_summary.sacg_memory_truth. Consuming that text instead of the current truth could bypass active contamination barriers.",
+      "Missing weight/input manifests and DDR images create cross-layer consistency risk across model values, numeric policy, data order, transfer counts, address maps, memory layout, runtime configuration, and golden comparison evidence.",
+      "A gate-DAG reconciliation that merely relabels stale evidence as pass, without rerunning required failed/precondition checkers, would violate source-evidence and verification-plan constraints.",
+      "Treating not_run or deferred single-layer/board tools as failures for code repair, or as passes for promotion, would break the hierarchical verification loop.",
+      "Any unlocalized RTL/codegen/template repair based only on precondition evidence risks changing architecture, pipeline, memory layout, or numeric behavior without causal proof or human approval.",
+      "Manual waiver of SACG contamination barriers, modification of golden outputs, tolerance loosening, or pass claims from contaminated Stage7 artifacts are forbidden, not approval-substitutable repairs."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.human_agent_boundary",
+        "state_summary.sacg_memory_truth",
+        "artifact.repair.bounded_repair_candidate_list",
+        "artifact.repair.targeted_stage7_rerun_plan",
+        "artifact.repair.gate_dag_reconciliation_report",
+        "artifact.repair.retry_or_backtrack_decision",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.llm_action_audit",
+        "artifact.stage6.stage7_gate_selector_contract",
+        "artifact.stage7.verification_result",
+        "artifact.stage7.real_tool_results",
+        "artifact.stage7.debug_closure"
+      ],
+      "constraints": [
+        "constraint.human.boundary",
+        "constraint.verification.plan",
+        "constraint.verification.hierarchy",
+        "constraint.verification.artifacts",
+        "constraint.tool.protocols",
+        "constraint.source.evidence",
+        "constraint.cross_layer.input_consistency",
+        "constraint.numeric.policy",
+        "constraint.stream.order",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "artifact.stage6.verification_artifact_contract -> artifact.stage7.verification_result",
+        "artifact.stage6.llm_action_audit -> artifact.stage7.verification_result",
+        "artifact.stage6.stage7_gate_selector_contract -> targeted Stage7 gate rerun",
+        "contamination_barrier.0001 -> artifact.stage7.verification_result downstream consumption gate",
+        "contamination_barrier.0002 -> artifact.stage7.real_tool_results downstream consumption gate",
+        "contamination_barrier.0003 -> artifact.stage7.debug_closure downstream consumption gate",
+        "retry_request.0001 -> stage7.verification targeted retry",
+        "failed Stage7 checker evidence -> conditional Stage6 backtrack only if contracts/tool protocols are incomplete"
+      ],
+      "nodes": [
+        "node.stage7.operator_leaf_closure",
+        "node.retry_request.0001",
+        "node.contamination_barrier.0001",
+        "node.contamination_barrier.0002",
+        "node.contamination_barrier.0003",
+        "node.stage6.verification_artifact_contract",
+        "node.stage6.llm_action_audit",
+        "node.stage6.stage7_gate_selector_contract"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_boundary_auditor.v0",
+    "stage": "repair",
+    "status": "retry_only_with_active_sacg_barriers",
+    "summary": "Current repair path is bounded to Stage7 operator-leaf evidence/checker-order reconciliation and targeted retry. The active Stage7 contamination barriers remain in force until checker-accepted retry artifacts replace the rejected Stage7 artifacts. No current backtrack request is open; Stage6 backtrack is conditional only if the Stage7 retry proves verification contracts or tool protocols incomplete."
+  },
+  "prompt_bytes": 48464,
+  "prompt_hash": "850da55ff8e3aa20067027d7c42048419d0aa41a51313d4d95a920004a1e0d1b",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.repair_boundary_auditor.v0\",\"agent\":\"repair_boundary_auditor\",\"stage\":\"repair\",\"status\":\"retry_only_with_active_sacg_barriers\",\"summary\":\"Current repair path is bounded to Stage7 operator-leaf evidence/checker-order reconciliation and targeted retry. The active Stage7 contamination barriers remain in force until checker-accepted retry artifacts replace the rejected Stage7 artifacts. No current backtrack request is open; Stage6 backtrack is conditional only if the Stage7 retry proves verification contracts or tool protocols incomplete.\",\"sacg_focus\":{\"nodes\":[\"node.stage7.operator_leaf_closure\",\"node.retry_request.0001\",\"node.contamination_barrier.0001\",\"node.contamination_barrier.0002\",\"node.contamination_barrier.0003\",\"node.stage6.verification_artifact_contract\",\"node.stage6.llm_action_audit\",\"node.stage6.stage7_gate_selector_contract\"],\"edges\":[\"artifact.stage6.verification_artifact_contract -> artifact.stage7.verification_result\",\"artifact.stage6.llm_action_audit -> artifact.stage7.verification_result\",\"artifact.stage6.stage7_gate_selector_contract -> targeted Stage7 gate rerun\",\"contamination_barrier.0001 -> artifact.stage7.verification_result downstream consumption gate\",\"contamination_barrier.0002 -> artifact.stage7.real_tool_results downstream consumption gate\",\"contamination_barrier.0003 -> artifact.stage7.debug_closure downstream consumption gate\",\"retry_request.0001 -> stage7.verification targeted retry\",\"failed Stage7 checker evidence -> conditional Stage6 backtrack only if contracts/tool protocols are incomplete\"],\"constraints\":[\"constraint.human.boundary\",\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.verification.artifacts\",\"constraint.tool.protocols\",\"constraint.source.evidence\",\"constraint.cross_layer.input_consistency\",\"constraint.numeric.policy\",\"constraint.stream.order\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\"],\"artifacts\":[\"artifact.input.human_agent_boundary\",\"state_summary.sacg_memory_truth\",\"artifact.repair.bounded_repair_candidate_list\",\"artifact.repair.targeted_stage7_rerun_plan\",\"artifact.repair.gate_dag_reconciliation_report\",\"artifact.repair.retry_or_backtrack_decision\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\"]},\"observations\":[\"Role scope is limited to human-boundary and SACG trust-barrier audit; no repair tool execution, root-cause reclassification, design artifact modification, or human-boundary override is authorized here.\",\"Using the populated state_summary.sacg_memory_truth named by this subtask, the current blocker set contains three active contamination barriers on artifact.stage7.verification_result, artifact.stage7.real_tool_results, and artifact.stage7.debug_closure.\",\"state_summary.sacg_memory_truth lists one open retry request, retry_request.0001, targeting stage7.verification and blocking artifact.stage7.verification_result. It lists zero open backtrack requests.\",\"Visible failed invariants are case_functional_sim_precondition_check and verification_agent_decision_check. They indicate missing or stale Stage7 real-weight/input manifests, hierarchy reports, and checker-order reconciliation issues; they do not prove hardware correctness and do not justify RTL/template changes by themselves.\",\"Contaminated Stage7 artifacts may be consumed only as planning/debug evidence until a targeted Stage7 retry produces checker-accepted replacement artifacts and SACG trust barriers are updated.\",\"Earlier Stage4, Stage5, and Stage6 outcomes are summarized as ready, so the auto-allowed path is a bounded Stage7 retry using existing Stage6 verification contracts unless rerun evidence proves those contracts or tool protocols incomplete.\",\"The current verification layer is operator/leaf closure. Single-transformer-layer, multilayer, AXI/DDR, bitstream, and board-runtime gates are deferred and must not be claimed passed or skipped to while the operator/leaf layer is unresolved.\",\"The detailed peer candidate repair list is not fully visible in the compact artifact slice. This audit classifies the visible action classes and requires team_aggregate to apply the same boundary matrix to any omitted candidate rows before execution.\"],\"risks\":[\"Historical or diagnostic text that says there are no active blockers conflicts with the current state_summary.sacg_memory_truth. Consuming that text instead of the current truth could bypass active contamination barriers.\",\"Missing weight/input manifests and DDR images create cross-layer consistency risk across model values, numeric policy, data order, transfer counts, address maps, memory layout, runtime configuration, and golden comparison evidence.\",\"A gate-DAG reconciliation that merely relabels stale evidence as pass, without rerunning required failed/precondition checkers, would violate source-evidence and verification-plan constraints.\",\"Treating not_run or deferred single-layer/board tools as failures for code repair, or as passes for promotion, would break the hierarchical verification loop.\",\"Any unlocalized RTL/codegen/template repair based only on precondition evidence risks changing architecture, pipeline, memory layout, or numeric behavior without causal proof or human approval.\",\"Manual waiver of SACG contamination barriers, modification of golden outputs, tolerance loosening, or pass claims from contaminated Stage7 artifacts are forbidden, not approval-substitutable repairs.\"],\"proposed_actions\":[\"AUTO-ALLOWED: Produce and apply a boundary approval matrix that preserves all active Stage7 contamination barriers and allows only contract-consistent evidence/checker-order reconciliation plus targeted rerun of the failed Stage7 operator-leaf gates.\",\"RETRY-ONLY: Satisfy retry_request.0001 through a bounded Stage7 operator-leaf retry that regenerates or validates required real-weight/input artifacts, reruns stage-leaf static and leaf functional/golden checks, and emits new candidate Stage7 artifacts.\",\"BACKTRACK-REQUIRED-ON-CONDITION: Create a Stage6 backtrack request only if Stage7 reconciliation or retry evidence shows the Stage6 verification artifact contract, gate selector contract, or tool protocol is incomplete or unsatisfiable.\",\"APPROVAL-REQUIRED: Escalate any architecture, pipeline, memory layout/runtime ABI, numeric policy/tolerance, model shape/order, board deployment profile, or major template/gate-policy change before execution.\",\"FORBIDDEN: Do not consume contaminated Stage7 artifacts as validated inputs, claim single-layer/AXI/DDR/bitstream/board pass, skip the operator-leaf layer, loosen golden/numeric checks, manually clear SACG barriers, or perform unlocalized free-form RTL/template rewrites.\",\"SACG UPDATE: After accepted retry evidence, update SACG memory to either close the Stage7 retry/barriers for replaced artifacts or preserve them with a new failure lesson and bounded next request.\"],\"executable_actions\":[{\"id\":\"repair.boundary.audit_candidate_actions\",\"stage\":\"repair.boundary_approval\",\"action_type\":\"auto_allowed_boundary_gate\",\"rationale\":\"Classify the visible bounded repair classes and the full peer candidate list against human-agent boundary rules and active SACG trust barriers without executing repairs.\",\"consumes\":[\"artifact.input.human_agent_boundary\",\"state_summary.sacg_memory_truth\",\"artifact.repair.bounded_repair_candidate_list\",\"artifact.repair.targeted_stage7_rerun_plan\",\"artifact.repair.gate_dag_reconciliation_report\",\"artifact.repair.retry_or_backtrack_decision\",\"candidate_stage_artifact\"],\"produces\":[\"artifact.repair.boundary_approval_matrix\",\"artifact.repair.final_bounded_repair_plan\"],\"tool_roles\":[\"repair_boundary_check\",\"human_boundary_check\",\"stage_artifact_trust_barrier\",\"sacg_validate\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"human_boundary_check\",\"sacg_memory_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Block team_aggregate handoff; preserve all Stage7 contamination barriers and return offending action IDs for reclassification.\",\"requires_approval\":false},{\"id\":\"repair.stage7.reconcile_precondition_gate_dag\",\"stage\":\"stage7.verification\",\"action_type\":\"auto_allowed_evidence_checker_order_reconciliation\",\"rationale\":\"The failed decision checker reports a mismatch between top-level precondition failure and later materialized evidence. Contract-consistent rerun/reconciliation is allowed only if selected gates, pass criteria, hierarchy, and promotion semantics are unchanged.\",\"consumes\":[\"artifact.stage6.verification_plan\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage7.verification_result:debug_only\",\"artifact.stage7.real_tool_results:debug_only\",\"artifact.repair.gate_dag_reconciliation_report\"],\"produces\":[\"artifact.repair.targeted_stage7_rerun_plan.reconciled\",\"artifact.repair.gate_dag_reconciliation_report.accepted_or_backtrack_reason\"],\"tool_roles\":[\"verification_artifact_contract_check\",\"tool_protocol_check\",\"hierarchical_verification_plan_check\",\"targeted_failed_checker_rerun\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"verification_artifact_contract_check\",\"tool_protocol_check\",\"hierarchical_verification_plan_check\",\"targeted_failed_checker_rerun\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not promote operator-leaf evidence; issue a conditional Stage6 backtrack if contracts or tool protocols are incomplete, otherwise keep the Stage7 retry open.\",\"requires_approval\":false},{\"id\":\"repair.stage7.operator_leaf_retry_request_0001\",\"stage\":\"stage7.verification\",\"action_type\":\"retry_only_targeted_rerun\",\"rationale\":\"Satisfy retry_request.0001 at the current operator/leaf layer by repairing evidence preconditions and rerunning selected real-tool/checker gates. Existing Stage7 artifacts remain debug evidence only until replacement artifacts pass all selected checks.\",\"consumes\":[\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.input.numeric_policy\",\"artifact.stage7.verification_result:debug_only\",\"artifact.stage7.real_tool_results:debug_only\",\"artifact.stage7.debug_closure:debug_only\"],\"produces\":[\"verification/qwen_real_weights/weight_manifest.json\",\"verification/qwen_real_weights/packed_weight_manifest.json\",\"verification/qwen_real_weights/input_manifest.json\",\"verification/qwen_real_weights/input_activation.u32.memh\",\"verification/qwen_real_weights/weight_prefetch.u32.memh\",\"verification/qwen_hierarchy/real_weights.json\",\"verification/qwen_hierarchy/stage_leaf_static.json\",\"artifact.stage7.verification_result.retry_candidate\",\"artifact.stage7.real_tool_results.retry_candidate\",\"artifact.stage7.debug_closure.retry_candidate\"],\"tool_roles\":[\"stage_retry_request\",\"case_weight_manifest_generate\",\"case_real_weight_artifacts\",\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"data_order_trace_check\",\"transfer_count_check\",\"addr_map_check\",\"numeric_compare\",\"artifact_hash_check\",\"deadlock_watchdog\",\"verification_action_audit\",\"real_tool_evidence_check\"],\"acceptance_checkers\":[\"stage_retry_request_check\",\"case_real_weight_artifacts\",\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"data_order_trace_check\",\"transfer_count_check\",\"addr_map_check\",\"numeric_compare\",\"artifact_hash_check\",\"deadlock_watchdog\",\"required_real_tool_evidence_check\",\"verification_action_audit_check\",\"targeted_failed_checker_rerun\"],\"on_failure\":\"Preserve all Stage7 contamination barriers; route real tool output to contract-guided operator/leaf localization and bounded Stage8 repair, or request Stage6 backtrack if the verification contract/tool protocol is incomplete. Do not advance to single-layer or board gates.\",\"requires_approval\":false},{\"id\":\"repair.sacg.update_barriers_after_stage7_retry\",\"stage\":\"sacg_memory_update\",\"action_type\":\"auto_allowed_trust_barrier_update_after_evidence\",\"rationale\":\"SACG barriers must remain active until accepted retry evidence replaces the rejected Stage7 artifacts. Memory update is allowed only to record checker-grounded closure, preservation, or a bounded next retry/backtrack request.\",\"consumes\":[\"state_summary.sacg_memory_truth\",\"artifact.repair.boundary_approval_matrix\",\"artifact.stage7.verification_result.retry_candidate\",\"artifact.stage7.real_tool_results.retry_candidate\",\"artifact.stage7.debug_closure.retry_candidate\"],\"produces\":[\"artifact.repair.sacg_memory_update_plan\",\"artifact.repair.retry_backtrack_request_update\",\"sacg_memory.contamination_barrier_close_or_preserve_record\"],\"tool_roles\":[\"sacg_memory_update\",\"stage_artifact_trust_barrier\",\"sacg_validate\"],\"acceptance_checkers\":[\"sacg_memory_check\",\"stage_artifact_trust_barrier_check\",\"sacg_static_check\",\"stage_retry_request_check\"],\"on_failure\":\"Keep retry_request.0001 and contamination_barrier.0001 through contamination_barrier.0003 active; do not hand off contaminated Stage7 artifacts as validated inputs.\",\"requires_approval\":false},{\"id\":\"repair.stage6.conditional_backtrack_if_verification_contract_incomplete\",\"stage\":\"stage_backtrack_request\",\"action_type\":\"backtrack_required_on_condition\",\"rationale\":\"No backtrack request is currently open. A Stage6 backtrack is required only if Stage7 reconciliation or retry evidence proves the verification artifact contract, gate selector, hierarchy plan, or tool protocol cannot support the selected Stage7 gates.\",\"consumes\":[\"artifact.stage6.verification_plan\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.llm_action_audit\",\"artifact.repair.gate_dag_reconciliation_report.accepted_or_backtrack_reason\",\"artifact.stage7.verification_result.retry_candidate\"],\"produces\":[\"artifact.repair.retry_backtrack_request_update\",\"stage_backtrack_request.stage6.verification_artifacts\"],\"tool_roles\":[\"stage_backtrack_request\",\"verification_plan_static_check\",\"verification_artifact_contract_check\",\"tool_protocol_check\",\"hierarchical_verification_plan_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"stage_backtrack_request_check\",\"verification_plan_static_check\",\"verification_artifact_contract_check\",\"tool_protocol_check\",\"hierarchical_verification_plan_check\",\"human_boundary_check\"],\"on_failure\":\"Keep the Stage7 retry open and barriers active; do not mutate Stage6 artifacts or verification policy without a checker-accepted backtrack request and any required human approval.\",\"requires_approval\":false},{\"id\":\"repair.human_approval_gate_unbounded_changes\",\"stage\":\"repair.boundary_approval\",\"action_type\":\"approval_required_boundary_gate\",\"rationale\":\"Human approval is required for any repair that exceeds bounded evidence/checker repair and affects architecture, pipeline, memory/runtime ABI, numeric policy, model shape/order, board deployment facts, major templates, or verification promotion policy.\",\"consumes\":[\"artifact.input.human_agent_boundary\",\"artifact.repair.bounded_repair_candidate_list\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage3.pipeline_plan\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage2.template_selection\",\"artifact.input.template_metadata\",\"artifact.input.target_board_profile\"],\"produces\":[\"artifact.repair.human_approval_request_queue\",\"artifact.repair.boundary_approval_matrix.approval_required_entries\"],\"tool_roles\":[\"human_boundary_check\",\"repair_boundary_check\",\"architecture_review\",\"pipeline_repair\",\"memory_runtime_repair\",\"bounded_template_repair\",\"numeric_policy_check\",\"model_config_check\"],\"acceptance_checkers\":[\"human_boundary_check\",\"repair_boundary_check\",\"model_config_check\",\"numeric_policy_check\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"template_binding_static_check\",\"deployment_board_check\"],\"on_failure\":\"Reject or quarantine unapproved changes and continue only with the bounded Stage7 retry/backtrack path allowed by the boundary matrix.\",\"requires_approval\":true},{\"id\":\"repair.block_forbidden_promotions_and_unchecked_repairs\",\"stage\":\"repair.boundary_approval\",\"action_type\":\"forbidden_action_quarantine\",\"rationale\":\"Candidates that claim pass from contaminated artifacts, skip the required hierarchy, modify goldens or tolerances, manually clear SACG barriers, or propose unlocalized free-form RTL/template rewrites are forbidden under the active trust-barrier and human-boundary policy.\",\"consumes\":[\"artifact.input.human_agent_boundary\",\"state_summary.sacg_memory_truth\",\"artifact.repair.bounded_repair_candidate_list\",\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\"],\"produces\":[\"artifact.repair.boundary_approval_matrix.forbidden_entries\",\"artifact.repair.final_bounded_repair_plan.quarantine_notes\"],\"tool_roles\":[\"repair_boundary_check\",\"human_boundary_check\",\"stage_artifact_trust_barrier\",\"sacg_validate\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"human_boundary_check\",\"stage_artifact_trust_barrier_check\",\"sacg_memory_check\"],\"on_failure\":\"Do not hand off to team_aggregate; keep all blocked actions quarantined until reclassified by checker-accepted boundary audit.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any architecture, pipeline structure, model shape/order, stream-order contract, memory layout, runtime ABI, board deployment profile, numeric precision/tolerance, or major template change.\",\"Any change to Stage6 or Stage7 verification scope, selected gate set, promotion criteria, dependency semantics, or tool protocol beyond contract-consistent rerun/reconciliation.\",\"Any backend/app-shell target-name selection or board integration decision where supplied materials and real tool evidence are ambiguous.\",\"Any code or template repair outside a localized operator/leaf causal slice after a failed retry, unless it is reduced to a bounded checker-accepted repair request.\",\"Any manual decision to proceed with approval-required changes must be recorded through the human-boundary path; manual waiver of checkers, golden modification, tolerance loosening, or SACG barrier override remains forbidden.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/team/llm/repair_boundary_auditor_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/team/llm/repair_boundary_auditor_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n",
+    "attempt 2: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032)>"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair.human-boundary and SACG trust-barrier auditor",
+  "used_fallback": false
+}

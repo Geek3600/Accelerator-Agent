@@ -1,0 +1,160 @@
+{
+  "agent": "repair_targeted_specialist_agent",
+  "duration_sec": 80.68474867400073,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "repair_targeted_specialist_agent",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ],
+        "action_type": "bounded_checker_contract_repair",
+        "consumes": [
+          "candidate_repair_plan.failures",
+          "candidate_repair_plan.diagnostics.hierarchical_repair_loop",
+          "candidate_repair_plan.repair_workflow",
+          "operator-leaf real-tool evidence bundle",
+          "verification/model_reference/reference_manifest.json",
+          "verification/semantic_testbench/semantic_testbench_manifest.json",
+          "generated/memory/dut_weight_binding_manifest.json",
+          "current immutable numeric policy artifact"
+        ],
+        "id": "repair.stage7_checker_scope_and_loader_binding",
+        "on_failure": "Keep Stage7 closure blocked. Do not run boundary tracing, single-layer simulation, board-wrapper simulation, or modify DUT/reference/tolerance artifacts. Return the unresolved loader token or dependency-selection mismatch for another bounded checker-contract repair.",
+        "produces": [
+          "artifact.stage7.refined_operator_leaf_gate_scope_contract",
+          "artifact.stage7.refined_testbench_artifact_loading_binding",
+          "artifact.repair.superseding_workflow_without_repair_step.00"
+        ],
+        "rationale": "Repair the earliest violated verification contract by aligning artifact loading and dependency filtering with the active operator-leaf closure. This is a checker/harness repair, not a DUT repair, and it must preserve all mandatory semantic checks.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "bounded_template_repair",
+          "repair_boundary_check",
+          "hierarchical_verification_plan_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "targeted_failed_checker_rerun",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check",
+          "numeric_policy_check",
+          "verification_action_audit_check",
+          "case_operator_leaf_semantic_evidence"
+        ],
+        "action_type": "targeted_checker_rerun",
+        "consumes": [
+          "artifact.stage7.refined_operator_leaf_gate_scope_contract",
+          "artifact.stage7.refined_testbench_artifact_loading_binding",
+          "operator-leaf real-tool evidence bundle",
+          "verification/model_reference/reference_manifest.json",
+          "verification/semantic_testbench/semantic_testbench_manifest.json",
+          "generated/memory/dut_weight_binding_manifest.json",
+          "current immutable numeric policy artifact"
+        ],
+        "id": "repair.rerun_stage7_operator_leaf_closure_checkers",
+        "on_failure": "If any mandatory token or hash remains unresolved, classify it as a checker/harness artifact-binding defect and return to the preceding bounded repair. If real evidence contradicts a reported leaf pass, record the exact contradicted artifact or gate before requesting a targeted backtrack. Do not promote to single-layer execution and do not run board tools.",
+        "produces": [
+          "artifact.stage7.case_functional_sim_precondition_check_rerun",
+          "artifact.stage7.verification_agent_decision_check_rerun",
+          "artifact.stage7.operator_leaf_closure_candidate",
+          "artifact.stage7.updated_hierarchical_gate_state"
+        ],
+        "rationale": "Validate the refined current-layer contract against the existing immutable real-tool bundle. The rerun must prove that mandatory semantic artifacts are actually bound while later-layer prerequisites remain pending.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "targeted_failed_checker_rerun",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check",
+          "verification_action_audit"
+        ]
+      }
+    ],
+    "observations": [
+      "All eight operator-leaf required gates are reported pass, including the target-model reference, semantic testbench, leaf functional and golden comparisons, complete real-weight artifacts, and operator-leaf semantic aggregate.",
+      "The single-transformer-layer gates are pending_later_stage rather than failed. Board AXI/DDR and runtime gates are also pending_later_stage and remain blocked by hierarchy.",
+      "No failing hardware transaction, failed CCTG boundary, observed-versus-expected value, root candidate module, or contradicting lower-layer trace is supplied. Therefore an RTL or interconnect repair is not justified.",
+      "The earliest violated contract is the Stage7 checker/harness contract: it must load the mandatory current-scope semantic tokens from the existing immutable artifacts while excluding later-layer dependencies from the operator-leaf closure decision.",
+      "The generated repair_step.00 is illegal for the current ambiguity because its resolved protocol is an all-target-layer, exact-board-wrapper simulator and its own tool-scope check says it cannot provide a single-layer trace rerun.",
+      "The authoritative sacg_memory_truth contains no active contamination barriers and no open retry or backtrack requests. Historical text in the verifier summary claiming such blockers must not be treated as current SACG-memory state.",
+      "The supplied evidence does not authorize changing the model, shapes, numeric tolerance, data order, weight layout, runtime ABI, RTL, or board wrapper."
+    ],
+    "proposed_actions": [
+      "Supersede repair_step.00 with a bounded Stage7 checker/gate-scope repair; do not invoke case_vcs_functional_sim or any single-layer/board tool.",
+      "Bind the operator-leaf precondition loader to the existing target-model reference manifest, complete DUT weight-binding manifest, semantic-testbench manifest, and numeric-policy hash.",
+      "Filter the closure dependency set by the active operator_leaf_closure level so later single-layer, multilayer, AXI/DDR, and board-runtime gates remain pending rather than failing.",
+      "Rerun only case_functional_sim_precondition_check and verification_agent_decision_check through the grounded targeted failed-checker path, while auditing immutable artifact hashes and required real-tool evidence.",
+      "Promote the operator-leaf closure only if the repaired checker passes without suppressing mandatory semantic evidence. Single-layer execution becomes eligible only after that promotion."
+    ],
+    "risks": [
+      "Merely deleting the three missing-token checks would create a false pass. The repaired checker must resolve `target_model_inference`, `dut_weight_binding`, and `numeric_policy_sha256` to the already-produced immutable artifacts and validate their hashes and scope.",
+      "Allowing pending single-layer or board prerequisites to remain in the operator-leaf dependency set can cause repeated false closure failures and out-of-order board simulation.",
+      "Executing the proposed board-wrapper simulator now could contaminate localization by mixing single-layer, multilayer, AXI/DDR, runtime, and exact-wrapper behavior before the current closure is accepted.",
+      "Regenerating reference outputs, stimulus, tolerances, testbench semantics, or weight manifests during this repair could invalidate otherwise reusable leaf evidence or conceal an artifact-loader defect.",
+      "A later contradiction in model configuration, tensor shapes, numeric policy, stream/data order, memory layout, runtime ABI, implementation hierarchy, or exact board-wrapper hashes must be routed to its owning layer; none is presently evidenced as a current blocker."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_repair_plan.diagnostics.hierarchical_repair_loop",
+        "candidate_repair_plan.diagnostics.contract_guided_debug_closure",
+        "candidate_repair_plan.failures",
+        "candidate_repair_plan.repair_workflow",
+        "operator-leaf real-tool evidence bundle",
+        "verification/model_reference/reference_manifest.json",
+        "verification/semantic_testbench/semantic_testbench_manifest.json",
+        "generated/memory/dut_weight_binding_manifest.json",
+        "current numeric policy artifact"
+      ],
+      "constraints": [
+        "Later single-layer, multilayer, AXI/DDR, and board-runtime gates that are pending later scope must not fail an operator_leaf_closure run.",
+        "Current-scope semantic preconditions must still bind target-model inference, complete DUT weight-consumption evidence, and the numeric-policy hash; they must not be waived to repair gate scope.",
+        "Do not reopen passed operator-leaf modules without a boundary trace or contract change that contradicts their pass evidence.",
+        "Do not run single-layer or board-wrapper tools before the operator-leaf closure artifact is cleanly accepted.",
+        "Checkpoint, stimulus, target-model reference, numeric policy and tolerance, semantic testbench contract, and board-wrapper hashes remain immutable.",
+        "Transformer-block scope excludes embedding/tokenization, final model norm, LM head/logits, and sampling."
+      ],
+      "edges": [
+        "operator_leaf_modules pass evidence -> Stage7 operator-leaf closure decision",
+        "current immutable semantic artifacts -> testbench_artifact_loading",
+        "operator-leaf closure -> single_transformer_layer_kernel eligibility",
+        "single_transformer_layer_kernel closure -> board_axi_ddr_wrapped_system eligibility"
+      ],
+      "nodes": [
+        "operator_leaf_modules",
+        "single_transformer_layer_kernel",
+        "board_axi_ddr_wrapped_system",
+        "case_functional_sim_precondition_check",
+        "verification_agent_decision_check",
+        "testbench_artifact_loading"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_targeted_specialist.v0",
+    "stage": "repair",
+    "status": "needs_checker_scope_repair",
+    "summary": "The earliest visible violation is the Stage7 verification precondition/gate-scope contract, not a Transformer RTL boundary. The operator-leaf layer has pass evidence for every required gate, while single-layer and board AXI/DDR gates are explicitly pending later scope. The failing precondition both fails to bind the existing mandatory leaf semantic artifacts (`target_model_inference`, `dut_weight_binding`, and `numeric_policy_sha256`) and incorrectly treats later-layer prerequisites as current blockers. The smallest legal repair is to correct that checker artifact-loading and active-layer filtering, then rerun only the failed Stage7 closure checkers. The proposed single-layer boundary-trace run through an all-layer board-wrapper simulator is out of order and must not execute."
+  },
+  "prompt_bytes": 51981,
+  "prompt_hash": "e81dd12f42ee3199a6c492abde1adf6b49fa413fbc79b000138a2358f87b73ef",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.repair_targeted_specialist.v0\",\"agent\":\"repair_targeted_specialist_agent\",\"stage\":\"repair\",\"status\":\"needs_checker_scope_repair\",\"summary\":\"The earliest visible violation is the Stage7 verification precondition/gate-scope contract, not a Transformer RTL boundary. The operator-leaf layer has pass evidence for every required gate, while single-layer and board AXI/DDR gates are explicitly pending later scope. The failing precondition both fails to bind the existing mandatory leaf semantic artifacts (`target_model_inference`, `dut_weight_binding`, and `numeric_policy_sha256`) and incorrectly treats later-layer prerequisites as current blockers. The smallest legal repair is to correct that checker artifact-loading and active-layer filtering, then rerun only the failed Stage7 closure checkers. The proposed single-layer boundary-trace run through an all-layer board-wrapper simulator is out of order and must not execute.\",\"sacg_focus\":{\"nodes\":[\"operator_leaf_modules\",\"single_transformer_layer_kernel\",\"board_axi_ddr_wrapped_system\",\"case_functional_sim_precondition_check\",\"verification_agent_decision_check\",\"testbench_artifact_loading\"],\"edges\":[\"operator_leaf_modules pass evidence -> Stage7 operator-leaf closure decision\",\"current immutable semantic artifacts -> testbench_artifact_loading\",\"operator-leaf closure -> single_transformer_layer_kernel eligibility\",\"single_transformer_layer_kernel closure -> board_axi_ddr_wrapped_system eligibility\"],\"constraints\":[\"Later single-layer, multilayer, AXI/DDR, and board-runtime gates that are pending later scope must not fail an operator_leaf_closure run.\",\"Current-scope semantic preconditions must still bind target-model inference, complete DUT weight-consumption evidence, and the numeric-policy hash; they must not be waived to repair gate scope.\",\"Do not reopen passed operator-leaf modules without a boundary trace or contract change that contradicts their pass evidence.\",\"Do not run single-layer or board-wrapper tools before the operator-leaf closure artifact is cleanly accepted.\",\"Checkpoint, stimulus, target-model reference, numeric policy and tolerance, semantic testbench contract, and board-wrapper hashes remain immutable.\",\"Transformer-block scope excludes embedding/tokenization, final model norm, LM head/logits, and sampling.\"],\"artifacts\":[\"candidate_repair_plan.diagnostics.hierarchical_repair_loop\",\"candidate_repair_plan.diagnostics.contract_guided_debug_closure\",\"candidate_repair_plan.failures\",\"candidate_repair_plan.repair_workflow\",\"operator-leaf real-tool evidence bundle\",\"verification/model_reference/reference_manifest.json\",\"verification/semantic_testbench/semantic_testbench_manifest.json\",\"generated/memory/dut_weight_binding_manifest.json\",\"current numeric policy artifact\"]},\"observations\":[\"All eight operator-leaf required gates are reported pass, including the target-model reference, semantic testbench, leaf functional and golden comparisons, complete real-weight artifacts, and operator-leaf semantic aggregate.\",\"The single-transformer-layer gates are pending_later_stage rather than failed. Board AXI/DDR and runtime gates are also pending_later_stage and remain blocked by hierarchy.\",\"No failing hardware transaction, failed CCTG boundary, observed-versus-expected value, root candidate module, or contradicting lower-layer trace is supplied. Therefore an RTL or interconnect repair is not justified.\",\"The earliest violated contract is the Stage7 checker/harness contract: it must load the mandatory current-scope semantic tokens from the existing immutable artifacts while excluding later-layer dependencies from the operator-leaf closure decision.\",\"The generated repair_step.00 is illegal for the current ambiguity because its resolved protocol is an all-target-layer, exact-board-wrapper simulator and its own tool-scope check says it cannot provide a single-layer trace rerun.\",\"The authoritative sacg_memory_truth contains no active contamination barriers and no open retry or backtrack requests. Historical text in the verifier summary claiming such blockers must not be treated as current SACG-memory state.\",\"The supplied evidence does not authorize changing the model, shapes, numeric tolerance, data order, weight layout, runtime ABI, RTL, or board wrapper.\"],\"risks\":[\"Merely deleting the three missing-token checks would create a false pass. The repaired checker must resolve `target_model_inference`, `dut_weight_binding`, and `numeric_policy_sha256` to the already-produced immutable artifacts and validate their hashes and scope.\",\"Allowing pending single-layer or board prerequisites to remain in the operator-leaf dependency set can cause repeated false closure failures and out-of-order board simulation.\",\"Executing the proposed board-wrapper simulator now could contaminate localization by mixing single-layer, multilayer, AXI/DDR, runtime, and exact-wrapper behavior before the current closure is accepted.\",\"Regenerating reference outputs, stimulus, tolerances, testbench semantics, or weight manifests during this repair could invalidate otherwise reusable leaf evidence or conceal an artifact-loader defect.\",\"A later contradiction in model configuration, tensor shapes, numeric policy, stream/data order, memory layout, runtime ABI, implementation hierarchy, or exact board-wrapper hashes must be routed to its owning layer; none is presently evidenced as a current blocker.\"],\"proposed_actions\":[\"Supersede repair_step.00 with a bounded Stage7 checker/gate-scope repair; do not invoke case_vcs_functional_sim or any single-layer/board tool.\",\"Bind the operator-leaf precondition loader to the existing target-model reference manifest, complete DUT weight-binding manifest, semantic-testbench manifest, and numeric-policy hash.\",\"Filter the closure dependency set by the active operator_leaf_closure level so later single-layer, multilayer, AXI/DDR, and board-runtime gates remain pending rather than failing.\",\"Rerun only case_functional_sim_precondition_check and verification_agent_decision_check through the grounded targeted failed-checker path, while auditing immutable artifact hashes and required real-tool evidence.\",\"Promote the operator-leaf closure only if the repaired checker passes without suppressing mandatory semantic evidence. Single-layer execution becomes eligible only after that promotion.\"],\"executable_actions\":[{\"id\":\"repair.stage7_checker_scope_and_loader_binding\",\"stage\":\"repair\",\"action_type\":\"bounded_checker_contract_repair\",\"rationale\":\"Repair the earliest violated verification contract by aligning artifact loading and dependency filtering with the active operator-leaf closure. This is a checker/harness repair, not a DUT repair, and it must preserve all mandatory semantic checks.\",\"consumes\":[\"candidate_repair_plan.failures\",\"candidate_repair_plan.diagnostics.hierarchical_repair_loop\",\"candidate_repair_plan.repair_workflow\",\"operator-leaf real-tool evidence bundle\",\"verification/model_reference/reference_manifest.json\",\"verification/semantic_testbench/semantic_testbench_manifest.json\",\"generated/memory/dut_weight_binding_manifest.json\",\"current immutable numeric policy artifact\"],\"produces\":[\"artifact.stage7.refined_operator_leaf_gate_scope_contract\",\"artifact.stage7.refined_testbench_artifact_loading_binding\",\"artifact.repair.superseding_workflow_without_repair_step.00\"],\"tool_roles\":[\"bounded_template_repair\",\"repair_boundary_check\",\"hierarchical_verification_plan_check\",\"tool_protocol_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"tool_protocol_check\",\"human_boundary_check\"],\"on_failure\":\"Keep Stage7 closure blocked. Do not run boundary tracing, single-layer simulation, board-wrapper simulation, or modify DUT/reference/tolerance artifacts. Return the unresolved loader token or dependency-selection mismatch for another bounded checker-contract repair.\",\"requires_approval\":false},{\"id\":\"repair.rerun_stage7_operator_leaf_closure_checkers\",\"stage\":\"repair\",\"action_type\":\"targeted_checker_rerun\",\"rationale\":\"Validate the refined current-layer contract against the existing immutable real-tool bundle. The rerun must prove that mandatory semantic artifacts are actually bound while later-layer prerequisites remain pending.\",\"consumes\":[\"artifact.stage7.refined_operator_leaf_gate_scope_contract\",\"artifact.stage7.refined_testbench_artifact_loading_binding\",\"operator-leaf real-tool evidence bundle\",\"verification/model_reference/reference_manifest.json\",\"verification/semantic_testbench/semantic_testbench_manifest.json\",\"generated/memory/dut_weight_binding_manifest.json\",\"current immutable numeric policy artifact\"],\"produces\":[\"artifact.stage7.case_functional_sim_precondition_check_rerun\",\"artifact.stage7.verification_agent_decision_check_rerun\",\"artifact.stage7.operator_leaf_closure_candidate\",\"artifact.stage7.updated_hierarchical_gate_state\"],\"tool_roles\":[\"targeted_failed_checker_rerun\",\"required_real_tool_evidence_check\",\"artifact_hash_check\",\"verification_action_audit\"],\"acceptance_checkers\":[\"targeted_failed_checker_rerun\",\"required_real_tool_evidence_check\",\"artifact_hash_check\",\"numeric_policy_check\",\"verification_action_audit_check\",\"case_operator_leaf_semantic_evidence\"],\"on_failure\":\"If any mandatory token or hash remains unresolved, classify it as a checker/harness artifact-binding defect and return to the preceding bounded repair. If real evidence contradicts a reported leaf pass, record the exact contradicted artifact or gate before requesting a targeted backtrack. Do not promote to single-layer execution and do not run board tools.\",\"requires_approval\":false}],\"approval_required_for\":[]}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_targeted_specialist_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_targeted_specialist_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair.targeted_specialist",
+  "stream": true,
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

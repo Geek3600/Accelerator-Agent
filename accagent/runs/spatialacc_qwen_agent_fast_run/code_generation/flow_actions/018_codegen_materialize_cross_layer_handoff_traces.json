@@ -1,0 +1,78 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "sacg_static_check",
+      "model_config_check",
+      "numeric_policy_check",
+      "parameter_binding_static_check",
+      "memory_runtime_plan_check",
+      "stream_plan_check",
+      "addr_map_check",
+      "transfer_count_check",
+      "template_binding_static_check",
+      "template_coverage_check",
+      "codegen_contract_check",
+      "codegen_package_static_check",
+      "sacg_reference_check"
+    ],
+    "action_type": "cross_layer_consistency_review",
+    "consumes": [
+      "artifact.input.model_config",
+      "artifact.input.numeric_policy",
+      "artifact.stage3.pipeline_plan",
+      "artifact.stage4.parameter_binding",
+      "candidate_stage_artifact.generated_top",
+      "candidate_stage_artifact.generated_files",
+      "candidate_stage_artifact.compile_gate",
+      "candidate_stage_artifact.contract_check",
+      "candidate_stage_artifact.package_static_check",
+      "generated/chisel/memory/memory_layout.json",
+      "generated/chisel/runtime/runtime_config.json",
+      "state_summary.sacg_memory_truth"
+    ],
+    "id": "codegen.materialize_cross_layer_handoff_traces",
+    "on_failure": "Block downstream consumption of the affected handoff record. If the mismatch is local to generated metadata, route to bounded_template_repair or memory_runtime_repair with repair_boundary_check; if stage3/stage4 artifacts conflict, raise a stage_backtrack_request instead of editing generated outputs or loosening checks.",
+    "produces": [
+      "model_numeric_codegen_consistency_report.json",
+      "generated_params_shape_trace.json",
+      "numeric_policy_binding_trace.json",
+      "memory_runtime_codegen_audit.json",
+      "addr_map_alignment_report.json",
+      "runtime_abi_handoff_notes.json",
+      "template_codegen_audit.json",
+      "generated_source_to_template_trace.json",
+      "compile_gate_evidence_summary.json",
+      "code_generation.cross_layer_model_numeric_handoff.json",
+      "code_generation.memory_runtime_package_handoff.json",
+      "code_generation.evidence_gate_handoff.json"
+    ],
+    "rationale": "Materialize downstream-consumption handoff artifacts from the passed codegen evidence so peer agents can trace model shape, numeric policy, template provenance, memory layout, runtime ABI, and compile/package/contract boundaries without inferring them from compact summaries.",
+    "requires_approval": false,
+    "stage": "code_generation",
+    "tool_roles": [
+      "sacg_static_check",
+      "model_config_check",
+      "numeric_policy_check",
+      "parameter_binding_static_check",
+      "memory_runtime_plan_check",
+      "stream_plan_check",
+      "addr_map_check",
+      "transfer_count_check",
+      "template_coverage_check",
+      "codegen_contract_check",
+      "codegen_package_static_check"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "proceed",
+  "flow_event_index": 18,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/flow_events/018_proceed.json",
+  "stage": "code_generation"
+}

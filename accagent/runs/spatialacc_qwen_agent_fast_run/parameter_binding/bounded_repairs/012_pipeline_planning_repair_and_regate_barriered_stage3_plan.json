@@ -1,0 +1,63 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "sacg_static_check",
+      "task_card_check",
+      "model_config_check",
+      "numeric_policy_check",
+      "template_coverage_check",
+      "stream_plan_check",
+      "memory_runtime_plan_check",
+      "boundary_contract_check",
+      "human_boundary_check",
+      "stage_artifact_trust_barrier_check"
+    ],
+    "action_type": "bounded_repair_backtrack",
+    "consumes": [
+      "artifact.stage3.pipeline_plan as barriered_debug_evidence_only",
+      "artifact.stage3.pipeline_static_checks as barriered_debug_evidence_only",
+      "source_sacg_state:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+      "updated_sacg_memory.backtrack_request",
+      "constraint.cross_layer.input_consistency",
+      "flow_policy"
+    ],
+    "id": "pipeline_planning.repair_and_regate_barriered_stage3_plan",
+    "on_failure": "Keep contamination_barrier.0001 and contamination_barrier.0002 active, do not rerun parameter_binding, and return a bounded pipeline_planning repair failure with no promoted Stage 3 artifact.",
+    "produces": [
+      "candidate.artifact.stage3.pipeline_plan.repaired",
+      "candidate.artifact.stage3.pipeline_static_checks.repaired",
+      "candidate.artifact.stage3.pipeline_planning_gate_decision",
+      "sacg_memory.contamination_barrier_resolution_evidence"
+    ],
+    "rationale": "Resolve the upstream pipeline_planning failure that created contamination_barrier.0001 and contamination_barrier.0002. The barriered Stage 3 artifacts may be used only as planning/debug evidence; a repaired pipeline plan must pass static, model, numeric, template, stream, memory/runtime, boundary, and trust-barrier checks before it can become an authoritative input to parameter_binding.",
+    "requires_approval": false,
+    "stage": "pipeline_planning",
+    "tool_roles": [
+      "pipeline_repair",
+      "architecture_review",
+      "team_aggregate",
+      "sacg_validate",
+      "sacg_static_check",
+      "task_card_check",
+      "model_config_check",
+      "numeric_policy_check",
+      "template_coverage_check",
+      "stream_plan_check",
+      "memory_runtime_plan_check",
+      "boundary_contract_check",
+      "human_boundary_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "stop",
+  "flow_event_index": 12,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/flow_events/012_stop.json",
+  "stage": "parameter_binding"
+}

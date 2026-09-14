@@ -1,0 +1,238 @@
+{
+  "agent": "memory_runtime_package_engineer",
+  "duration_sec": 569.9556472939876,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "memory_runtime_package_engineer",
+    "approval_required_for": [
+      "Assigning any nonzero clock_target_mhz or timing/runtime target before board-profile, Vivado, or app-shell evidence exists.",
+      "Changing memory_layout.json base addresses, address regions, alignment policy, buffer sizing, RAM dimensions, or non-overlap assumptions.",
+      "Changing runtime_config.json ABI fields, transfer counts, data order, host/runtime protocol fields, or board runtime references.",
+      "Changing pipeline schedule, stream beat width/order, lanes, or memory architecture outside bounded repair rules.",
+      "Selecting ambiguous backend/app-shell target names without cited real tool evidence."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "codegen_contract_check",
+          "codegen_package_static_check"
+        ],
+        "action_type": "memory_runtime_handoff_review",
+        "consumes": [
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "generated/chisel/GeneratedAxiDdrTop.sv",
+          "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAxiDdrTop.scala",
+          "generated/chisel/ram_1792x256.sv",
+          "generated/chisel/ram_4x129.sv",
+          "generated/chisel/logs/codegen_contract_check.json",
+          "generated/chisel/logs/codegen_package_static_check.json",
+          "generated/chisel/logs/compile_check.json"
+        ],
+        "id": "codegen.memory_runtime_static_handoff_check",
+        "on_failure": "Block evidence-gate promotion for memory/runtime handoff, preserve the failing checker evidence, and route to bounded memory_runtime_repair with repair_boundary_check; do not loosen checks, alter golden outputs, or silently change pipeline/memory architecture.",
+        "produces": [
+          "memory_runtime_codegen_audit.json",
+          "addr_map_alignment_report.json",
+          "runtime_abi_handoff_notes.json"
+        ],
+        "rationale": "Produce the specialist handoff artifacts by binding the generated memory/runtime artifacts and wrapper evidence to the named SACG constraints, while recording standalone checker status instead of inferring field-level address or transfer details from the compact summary.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "codegen_contract_check",
+          "codegen_package_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_stage_leaf_static",
+          "case_single_transformer_layer",
+          "functional_sim",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "verification_artifact_contract_check"
+        ],
+        "action_type": "hierarchical_real_tool_planning_and_execution",
+        "consumes": [
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.verification_artifact_contract",
+          "memory_runtime_codegen_audit.json",
+          "addr_map_alignment_report.json",
+          "runtime_abi_handoff_notes.json",
+          "artifact.stage3.pipeline_plan",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "generated/chisel/GeneratedAcceleratorTop.sv",
+          "generated/chisel/GeneratedAxiDdrTop.sv",
+          "generated/chisel/ram_1792x256.sv",
+          "generated/chisel/ram_4x129.sv"
+        ],
+        "id": "verification.hierarchical_memory_transfer_validation",
+        "on_failure": "Stop at the failed layer, localize the earliest causal boundary/module using tool evidence and SACG constraints, enter bounded repair, and rerun the failed layer; do not skip to AXI/DDR wrapper or board runtime.",
+        "produces": [
+          "verification/case_diagnostics/memory_transfer_validation.json",
+          "verification/case_diagnostics/addr_transfer_trace_report.json",
+          "verification/case_diagnostics/deadlock_liveness_report.json"
+        ],
+        "rationale": "Validate transfer count, stream order, liveness, and address-map assumptions in the required layer order before any board-accurate wrapper claim: leaf/static boundaries first, connected single-transformer-layer checks second, and wrapper/system checks only after lower layers pass.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_stage_leaf_static",
+          "case_single_transformer_layer",
+          "functional_sim",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "addr_map_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_board_interface_discovery",
+          "real_tool.case_axi_ddr_interface",
+          "real_tool.case_axi_protocol_check",
+          "real_tool.case_ddr_image_roundtrip",
+          "real_tool.case_runtime_abi_check",
+          "real_tool.case_runtime_bitstream",
+          "required_real_tool_evidence_check",
+          "deployment_board_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "artifact.stage9.app_shell_integration_contract",
+          "memory_runtime_codegen_audit.json",
+          "addr_map_alignment_report.json",
+          "runtime_abi_handoff_notes.json",
+          "verification/case_diagnostics/memory_transfer_validation.json",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "generated/chisel/GeneratedAxiDdrTop.sv"
+        ],
+        "id": "backend_board.memory_runtime_real_tool_closure",
+        "on_failure": "Keep runtime bitstream and board runtime blocked, localize the failing interface/ABI/address boundary from tool evidence, and request bounded recovery or approval if app-shell targets or clock/runtime fields are ambiguous; do not modify memory layout, runtime ABI, or clock target without approval.",
+        "produces": [
+          "backend_board/case_diagnostics/board_interface_discovery.json",
+          "backend_board/case_diagnostics/axi_ddr_interface_check.json",
+          "backend_board/case_diagnostics/axi_protocol_check.json",
+          "backend_board/case_diagnostics/ddr_image_roundtrip.json",
+          "backend_board/case_diagnostics/runtime_abi_check.json",
+          "backend_board/case_diagnostics/runtime_bitstream_report.json"
+        ],
+        "rationale": "After verification evidence passes, close the deployment boundary with real board/tool evidence for the generated memory layout, runtime ABI, and AXI/DDR wrapper rather than treating codegen elaboration as hardware validation.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "case_board_interface_discovery",
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_runtime_abi_check",
+          "case_runtime_bitstream"
+        ]
+      }
+    ],
+    "observations": [
+      "SACG memory truth in the supplied state reports zero active contamination barriers and zero open retry/backtrack requests; no memory/runtime SACG blocker is active for this review.",
+      "The generated file list includes memory/memory_layout.json, runtime/runtime_config.json, GeneratedAxiDdrTop.sv, the Chisel source for GeneratedAxiDdrTop, and RAM artifacts ram_1792x256.sv and ram_4x129.sv.",
+      "codegen_package_static_check status is pass with no errors or warnings, covering generated_package_required_files, target_artifact_match_explicit, planned_output_status, template_source_coverage, and compile_and_contract_gate_status.",
+      "codegen_contract_check status is pass with no errors or warnings and explicitly includes memory_layout_alignment_nonoverlap and runtime_config_consistency, which is the supplied current-stage evidence for layout alignment/non-overlap and runtime configuration consistency.",
+      "The compile/elaboration gate passed all declared SBT steps, including GeneratedContractCheck, ElaborateGeneratedAccelerator, and ElaborateGeneratedAxiDdrTop, so the AXI/DDR wrapper elaborates under the generated parameter set.",
+      "Generated parameters expose clock_target_mhz=0, lanes=8, elem_bits=16, input_bits=32, output_bits=32, hidden_size=896, max_seq_len=16, num_q_heads=14, num_kv_heads=2, and head_dim=64. The zero clock target correctly preserves the board-shell-clock unknown boundary.",
+      "Standalone memory_runtime_plan_check, stream_plan_check, addr_map_check, and transfer_count_check results are not shown as separate executed logs in the supplied candidate summary. This review therefore treats those detailed checker outputs as not evidenced unless materialized by the evidence gate or rerun by later tools.",
+      "The supplied stage_gate_policy states that VCS/Verilator simulation, numerical/model validation, Vivado synthesis/implementation/timing, DDR image roundtrip, runtime ABI execution, and board runtime are later-stage gates; this handoff must not be consumed as a hardware-pass claim."
+    ],
+    "proposed_actions": [
+      "Materialize memory_runtime_codegen_audit.json, addr_map_alignment_report.json, and runtime_abi_handoff_notes.json from the referenced logs and any rerun standalone checker outputs, explicitly recording not_run for memory_runtime_plan_check, stream_plan_check, addr_map_check, or transfer_count_check if they are not executed.",
+      "Before verification promotion, run or cite memory_runtime_plan_check, stream_plan_check, addr_map_check, and transfer_count_check against the pipeline plan, generated memory_layout.json, runtime_config.json, RAM files, and GeneratedAxiDdrTop artifacts; route mismatches to bounded memory_runtime_repair rather than changing architecture implicitly.",
+      "In verification, preserve the three-layer validation order: leaf/operator and RAM/static checks first, then connected single-transformer-layer transfer checks, then board-accurate AXI/DDR wrapper checks only after lower layers pass.",
+      "In backend_board, require real tool evidence for board interface discovery, AXI/DDR interface binding, AXI protocol behavior, DDR image roundtrip, runtime ABI, bitstream packaging, and board runtime before any hardware pass claim.",
+      "Keep clock_target_mhz=0 until board-profile or Vivado/app-shell evidence identifies the clock, or until an explicit approval updates the runtime/deployment contract."
+    ],
+    "risks": [
+      "No current-stage memory/runtime blocker is indicated by the supplied codegen_contract_check, codegen_package_static_check, compile/elaboration gate, or SACG memory truth.",
+      "Later-stage overclaim risk: layout/runtime checker pass plus wrapper elaboration does not prove AXI protocol correctness, DDR image roundtrip, runtime ABI compatibility on the board, data-order preservation under simulation, transfer-count liveness, timing closure, or board execution.",
+      "Field-level address-map and runtime-config contents are not visible in the compact artifact summary; peer agents must consume the referenced log files or rerun the named checkers before asserting exact base addresses, region sizes, beat counts, or host/runtime ABI fields.",
+      "clock_target_mhz=0 means the board shell clock is unknown. Assigning a nonzero clock or deriving timing/runtime deadlines without target-board/tool evidence would violate the deployment boundary."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "generated/chisel/memory/memory_layout.json",
+        "generated/chisel/runtime/runtime_config.json",
+        "generated/chisel/GeneratedAxiDdrTop.sv",
+        "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAxiDdrTop.scala",
+        "generated/chisel/ram_1792x256.sv",
+        "generated/chisel/ram_4x129.sv",
+        "generated/chisel/logs/codegen_contract_check.json",
+        "generated/chisel/logs/codegen_package_static_check.json",
+        "generated/chisel/logs/compile_check.json"
+      ],
+      "constraints": [
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.memory_schedule.pipeline",
+        "constraint.liveness.pipeline"
+      ],
+      "edges": [
+        "artifact.stage3.pipeline_plan -> generated.memory_layout via pipeline memory schedule and transfer assumptions",
+        "artifact.stage4.parameter_binding -> generated.memory_layout via lanes, element width, sequence length, and buffer dimensions",
+        "artifact.input.target_board_profile -> generated.memory_layout and generated.runtime_config via board memory/runtime constraints",
+        "generated.memory_layout -> generated.runtime_config via runtime address/region references",
+        "generated.fpga_axi_ddr_top_wrapper -> generated.codegen_compile_gate via ElaborateGeneratedAxiDdrTop",
+        "generated.memory_layout + generated.runtime_config + generated.codegen_compile_gate -> generated.codegen_contract_check via layout alignment/non-overlap and runtime consistency checks"
+      ],
+      "nodes": [
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_protocols",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "generated.memory_layout",
+        "generated.runtime_config",
+        "generated.fpga_axi_ddr_top_wrapper",
+        "generated.codegen_compile_gate",
+        "generated.codegen_contract_check",
+        "generated.codegen_package_static_check"
+      ]
+    },
+    "schema_version": "spatialaccagent.memory_runtime_package_engineer.v0",
+    "stage": "code_generation",
+    "status": "ready",
+    "summary": "The generated memory/runtime package is ready for code_generation evidence-gate handoff within the supplied checker scope: memory_layout.json, runtime_config.json, RAM artifacts, and GeneratedAxiDdrTop artifacts are present; codegen_package_static_check passed; codegen_contract_check passed memory_layout_alignment_nonoverlap and runtime_config_consistency; and GeneratedAxiDdrTop elaboration returned 0. This is not board/runtime hardware validation: AXI protocol, DDR roundtrip, runtime ABI execution, timing, and board run remain later-stage obligations, and clock_target_mhz=0 must be preserved unless board-profile/tool evidence or approval exists."
+  },
+  "prompt_bytes": 66763,
+  "prompt_hash": "4d03c7bab20c7e99d2e3916256ce9824e387aebb65161d5f8d3e05a5f37ed552",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.memory_runtime_package_engineer.v0\",\"agent\":\"memory_runtime_package_engineer\",\"stage\":\"code_generation\",\"status\":\"ready\",\"summary\":\"The generated memory/runtime package is ready for code_generation evidence-gate handoff within the supplied checker scope: memory_layout.json, runtime_config.json, RAM artifacts, and GeneratedAxiDdrTop artifacts are present; codegen_package_static_check passed; codegen_contract_check passed memory_layout_alignment_nonoverlap and runtime_config_consistency; and GeneratedAxiDdrTop elaboration returned 0. This is not board/runtime hardware validation: AXI protocol, DDR roundtrip, runtime ABI execution, timing, and board run remain later-stage obligations, and clock_target_mhz=0 must be preserved unless board-profile/tool evidence or approval exists.\",\"sacg_focus\":{\"nodes\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"generated.memory_layout\",\"generated.runtime_config\",\"generated.fpga_axi_ddr_top_wrapper\",\"generated.codegen_compile_gate\",\"generated.codegen_contract_check\",\"generated.codegen_package_static_check\"],\"edges\":[\"artifact.stage3.pipeline_plan -> generated.memory_layout via pipeline memory schedule and transfer assumptions\",\"artifact.stage4.parameter_binding -> generated.memory_layout via lanes, element width, sequence length, and buffer dimensions\",\"artifact.input.target_board_profile -> generated.memory_layout and generated.runtime_config via board memory/runtime constraints\",\"generated.memory_layout -> generated.runtime_config via runtime address/region references\",\"generated.fpga_axi_ddr_top_wrapper -> generated.codegen_compile_gate via ElaborateGeneratedAxiDdrTop\",\"generated.memory_layout + generated.runtime_config + generated.codegen_compile_gate -> generated.codegen_contract_check via layout alignment/non-overlap and runtime consistency checks\"],\"constraints\":[\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.memory_schedule.pipeline\",\"constraint.liveness.pipeline\"],\"artifacts\":[\"generated/chisel/memory/memory_layout.json\",\"generated/chisel/runtime/runtime_config.json\",\"generated/chisel/GeneratedAxiDdrTop.sv\",\"generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAxiDdrTop.scala\",\"generated/chisel/ram_1792x256.sv\",\"generated/chisel/ram_4x129.sv\",\"generated/chisel/logs/codegen_contract_check.json\",\"generated/chisel/logs/codegen_package_static_check.json\",\"generated/chisel/logs/compile_check.json\"]},\"observations\":[\"SACG memory truth in the supplied state reports zero active contamination barriers and zero open retry/backtrack requests; no memory/runtime SACG blocker is active for this review.\",\"The generated file list includes memory/memory_layout.json, runtime/runtime_config.json, GeneratedAxiDdrTop.sv, the Chisel source for GeneratedAxiDdrTop, and RAM artifacts ram_1792x256.sv and ram_4x129.sv.\",\"codegen_package_static_check status is pass with no errors or warnings, covering generated_package_required_files, target_artifact_match_explicit, planned_output_status, template_source_coverage, and compile_and_contract_gate_status.\",\"codegen_contract_check status is pass with no errors or warnings and explicitly includes memory_layout_alignment_nonoverlap and runtime_config_consistency, which is the supplied current-stage evidence for layout alignment/non-overlap and runtime configuration consistency.\",\"The compile/elaboration gate passed all declared SBT steps, including GeneratedContractCheck, ElaborateGeneratedAccelerator, and ElaborateGeneratedAxiDdrTop, so the AXI/DDR wrapper elaborates under the generated parameter set.\",\"Generated parameters expose clock_target_mhz=0, lanes=8, elem_bits=16, input_bits=32, output_bits=32, hidden_size=896, max_seq_len=16, num_q_heads=14, num_kv_heads=2, and head_dim=64. The zero clock target correctly preserves the board-shell-clock unknown boundary.\",\"Standalone memory_runtime_plan_check, stream_plan_check, addr_map_check, and transfer_count_check results are not shown as separate executed logs in the supplied candidate summary. This review therefore treats those detailed checker outputs as not evidenced unless materialized by the evidence gate or rerun by later tools.\",\"The supplied stage_gate_policy states that VCS/Verilator simulation, numerical/model validation, Vivado synthesis/implementation/timing, DDR image roundtrip, runtime ABI execution, and board runtime are later-stage gates; this handoff must not be consumed as a hardware-pass claim.\"],\"risks\":[\"No current-stage memory/runtime blocker is indicated by the supplied codegen_contract_check, codegen_package_static_check, compile/elaboration gate, or SACG memory truth.\",\"Later-stage overclaim risk: layout/runtime checker pass plus wrapper elaboration does not prove AXI protocol correctness, DDR image roundtrip, runtime ABI compatibility on the board, data-order preservation under simulation, transfer-count liveness, timing closure, or board execution.\",\"Field-level address-map and runtime-config contents are not visible in the compact artifact summary; peer agents must consume the referenced log files or rerun the named checkers before asserting exact base addresses, region sizes, beat counts, or host/runtime ABI fields.\",\"clock_target_mhz=0 means the board shell clock is unknown. Assigning a nonzero clock or deriving timing/runtime deadlines without target-board/tool evidence would violate the deployment boundary.\"],\"proposed_actions\":[\"Materialize memory_runtime_codegen_audit.json, addr_map_alignment_report.json, and runtime_abi_handoff_notes.json from the referenced logs and any rerun standalone checker outputs, explicitly recording not_run for memory_runtime_plan_check, stream_plan_check, addr_map_check, or transfer_count_check if they are not executed.\",\"Before verification promotion, run or cite memory_runtime_plan_check, stream_plan_check, addr_map_check, and transfer_count_check against the pipeline plan, generated memory_layout.json, runtime_config.json, RAM files, and GeneratedAxiDdrTop artifacts; route mismatches to bounded memory_runtime_repair rather than changing architecture implicitly.\",\"In verification, preserve the three-layer validation order: leaf/operator and RAM/static checks first, then connected single-transformer-layer transfer checks, then board-accurate AXI/DDR wrapper checks only after lower layers pass.\",\"In backend_board, require real tool evidence for board interface discovery, AXI/DDR interface binding, AXI protocol behavior, DDR image roundtrip, runtime ABI, bitstream packaging, and board runtime before any hardware pass claim.\",\"Keep clock_target_mhz=0 until board-profile or Vivado/app-shell evidence identifies the clock, or until an explicit approval updates the runtime/deployment contract.\"],\"executable_actions\":[{\"id\":\"codegen.memory_runtime_static_handoff_check\",\"stage\":\"code_generation\",\"action_type\":\"memory_runtime_handoff_review\",\"rationale\":\"Produce the specialist handoff artifacts by binding the generated memory/runtime artifacts and wrapper evidence to the named SACG constraints, while recording standalone checker status instead of inferring field-level address or transfer details from the compact summary.\",\"consumes\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"generated/chisel/memory/memory_layout.json\",\"generated/chisel/runtime/runtime_config.json\",\"generated/chisel/GeneratedAxiDdrTop.sv\",\"generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAxiDdrTop.scala\",\"generated/chisel/ram_1792x256.sv\",\"generated/chisel/ram_4x129.sv\",\"generated/chisel/logs/codegen_contract_check.json\",\"generated/chisel/logs/codegen_package_static_check.json\",\"generated/chisel/logs/compile_check.json\"],\"produces\":[\"memory_runtime_codegen_audit.json\",\"addr_map_alignment_report.json\",\"runtime_abi_handoff_notes.json\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"stream_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"codegen_contract_check\",\"codegen_package_static_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"stream_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"codegen_contract_check\",\"codegen_package_static_check\"],\"on_failure\":\"Block evidence-gate promotion for memory/runtime handoff, preserve the failing checker evidence, and route to bounded memory_runtime_repair with repair_boundary_check; do not loosen checks, alter golden outputs, or silently change pipeline/memory architecture.\",\"requires_approval\":false},{\"id\":\"verification.hierarchical_memory_transfer_validation\",\"stage\":\"verification\",\"action_type\":\"hierarchical_real_tool_planning_and_execution\",\"rationale\":\"Validate transfer count, stream order, liveness, and address-map assumptions in the required layer order before any board-accurate wrapper claim: leaf/static boundaries first, connected single-transformer-layer checks second, and wrapper/system checks only after lower layers pass.\",\"consumes\":[\"artifact.stage6.verification_plan\",\"artifact.stage6.verification_artifact_contract\",\"memory_runtime_codegen_audit.json\",\"addr_map_alignment_report.json\",\"runtime_abi_handoff_notes.json\",\"artifact.stage3.pipeline_plan\",\"generated/chisel/memory/memory_layout.json\",\"generated/chisel/runtime/runtime_config.json\",\"generated/chisel/GeneratedAcceleratorTop.sv\",\"generated/chisel/GeneratedAxiDdrTop.sv\",\"generated/chisel/ram_1792x256.sv\",\"generated/chisel/ram_4x129.sv\"],\"produces\":[\"verification/case_diagnostics/memory_transfer_validation.json\",\"verification/case_diagnostics/addr_transfer_trace_report.json\",\"verification/case_diagnostics/deadlock_liveness_report.json\"],\"tool_roles\":[\"case_stage_leaf_static\",\"case_single_transformer_layer\",\"functional_sim\",\"deadlock_watchdog\",\"data_order_trace_check\",\"transfer_count_check\",\"addr_map_check\"],\"acceptance_checkers\":[\"case_stage_leaf_static\",\"case_single_transformer_layer\",\"functional_sim\",\"deadlock_watchdog\",\"data_order_trace_check\",\"transfer_count_check\",\"addr_map_check\",\"verification_artifact_contract_check\"],\"on_failure\":\"Stop at the failed layer, localize the earliest causal boundary/module using tool evidence and SACG constraints, enter bounded repair, and rerun the failed layer; do not skip to AXI/DDR wrapper or board runtime.\",\"requires_approval\":false},{\"id\":\"backend_board.memory_runtime_real_tool_closure\",\"stage\":\"backend_board\",\"action_type\":\"real_tool_execution\",\"rationale\":\"After verification evidence passes, close the deployment boundary with real board/tool evidence for the generated memory layout, runtime ABI, and AXI/DDR wrapper rather than treating codegen elaboration as hardware validation.\",\"consumes\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.stage9.app_shell_integration_contract\",\"memory_runtime_codegen_audit.json\",\"addr_map_alignment_report.json\",\"runtime_abi_handoff_notes.json\",\"verification/case_diagnostics/memory_transfer_validation.json\",\"generated/chisel/memory/memory_layout.json\",\"generated/chisel/runtime/runtime_config.json\",\"generated/chisel/GeneratedAxiDdrTop.sv\"],\"produces\":[\"backend_board/case_diagnostics/board_interface_discovery.json\",\"backend_board/case_diagnostics/axi_ddr_interface_check.json\",\"backend_board/case_diagnostics/axi_protocol_check.json\",\"backend_board/case_diagnostics/ddr_image_roundtrip.json\",\"backend_board/case_diagnostics/runtime_abi_check.json\",\"backend_board/case_diagnostics/runtime_bitstream_report.json\"],\"tool_roles\":[\"case_board_interface_discovery\",\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_runtime_abi_check\",\"case_runtime_bitstream\"],\"acceptance_checkers\":[\"real_tool.case_board_interface_discovery\",\"real_tool.case_axi_ddr_interface\",\"real_tool.case_axi_protocol_check\",\"real_tool.case_ddr_image_roundtrip\",\"real_tool.case_runtime_abi_check\",\"real_tool.case_runtime_bitstream\",\"required_real_tool_evidence_check\",\"deployment_board_check\"],\"on_failure\":\"Keep runtime bitstream and board runtime blocked, localize the failing interface/ABI/address boundary from tool evidence, and request bounded recovery or approval if app-shell targets or clock/runtime fields are ambiguous; do not modify memory layout, runtime ABI, or clock target without approval.\",\"requires_approval\":false}],\"approval_required_for\":[\"Assigning any nonzero clock_target_mhz or timing/runtime target before board-profile, Vivado, or app-shell evidence exists.\",\"Changing memory_layout.json base addresses, address regions, alignment policy, buffer sizing, RAM dimensions, or non-overlap assumptions.\",\"Changing runtime_config.json ABI fields, transfer counts, data order, host/runtime protocol fields, or board runtime references.\",\"Changing pipeline schedule, stream beat width/order, lanes, or memory architecture outside bounded repair rules.\",\"Selecting ambiguous backend/app-shell target names without cited real tool evidence.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/team/llm/memory_runtime_package_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/team/llm/memory_runtime_package_engineer_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "code_generation.memory and runtime integration engineer",
+  "used_fallback": false
+}

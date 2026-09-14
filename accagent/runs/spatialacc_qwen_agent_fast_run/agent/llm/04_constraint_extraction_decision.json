@@ -1,0 +1,64 @@
+{
+  "decision": {
+    "approval_required_for": [],
+    "decision": "run_tool",
+    "expected_evidence": [
+      "Successful execution of accagent.framework.stage_constraints with zero reported errors.",
+      "Initial SACG/design-graph artifact emitted with schema version, design_id qwen2_spatialacc_agent_run, and provenance back to /home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/prepared_inputs.json.",
+      "Prepared-input warning about unreadable sample project references is preserved as a risk or unresolved evidence requirement for later real-tool/remote probes.",
+      "Extracted nodes and edges cover model, shape, numeric, memory, runtime, tool, backend, and deployment constraints without claiming checker/design pass.",
+      "Any inferred Qwen2 attention constraints explicitly preserve GQA semantics and do not collapse GQA into MHA."
+    ],
+    "reason": "constraint_extraction is an analysis/artifact-creation stage that builds the initial constraint graph from prepared inputs. It does not delete tests, modify golden outputs, loosen tolerances, change model semantics, or bypass checkers. The prepared inputs are ready and contain only a warning that should be carried forward for later evidence collection, so the deterministic tool is safe to run.",
+    "risks": [
+      "Prepared-input warning indicates one or more declared sample project references could not be read; downstream probes must confirm or reject those references before relying on them.",
+      "Initial extraction may be incomplete if source inputs omit model, shape, numeric, memory, backend, or deployment details; later checkers must validate coverage and provenance.",
+      "Cross-layer mismatch risk if Qwen2 GQA head/KV-head constraints are represented incorrectly as ordinary MHA.",
+      "Risk of unproven inferred constraints if the graph includes assumptions not traceable to prepared inputs or executable evidence."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/prepared_inputs.json",
+        "Initial SACG/design graph artifact produced by accagent.framework.stage_constraints",
+        "Constraint extraction log and status report",
+        "Warning/provenance records for unreadable sample project references"
+      ],
+      "constraints": [
+        "Preserve Qwen2 model semantics; do not change operators, weights, tokenization, or attention behavior.",
+        "Represent GQA distinctly from MHA, including query-head to KV-head grouping constraints if present.",
+        "Capture exact tensor shapes, sequence/batch assumptions, dtypes, quantization/numeric policy, and tolerance requirements without loosening them.",
+        "Capture memory, runtime, toolchain, backend, and deployment constraints only with source provenance or as unresolved requirements.",
+        "Do not treat this stage as checker pass or final design pass."
+      ],
+      "edges": [
+        "prepared_inputs -> extracted SACG nodes with provenance",
+        "model specification -> operator, tensor-shape, and numeric constraints",
+        "attention configuration -> GQA/KV-cache/head-grouping constraints",
+        "memory/runtime/tool/backend/deployment inputs -> corresponding implementation constraints",
+        "input warnings -> downstream evidence/probe requirements"
+      ],
+      "nodes": [
+        "prepared_inputs",
+        "design_id:qwen2_spatialacc_agent_run",
+        "model_semantics:Qwen2",
+        "operator_constraints",
+        "attention_constraints:GQA",
+        "tensor_shape_constraints",
+        "numeric_policy_constraints",
+        "memory_and_data_movement_constraints",
+        "runtime_tool_backend_deployment_constraints",
+        "sample_project_reference_warnings"
+      ]
+    },
+    "stage": "constraint_extraction",
+    "tool_command_allowed": true
+  },
+  "duration_sec": 26.607896317000268,
+  "enforced": true,
+  "error": null,
+  "mode": "llm",
+  "prompt_hash": "591cf5d6848ab1a824b99daf7a6f69c2bb91687e8f320c5f898269ab6a412191",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/llm/04_constraint_extraction_request.json",
+  "schema_version": "spatialaccagent.pre_stage_safety_gate_decision.v0",
+  "stage": "constraint_extraction"
+}

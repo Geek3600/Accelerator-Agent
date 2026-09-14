@@ -1,0 +1,270 @@
+{
+  "agent": "verification_repair_specialist",
+  "duration_sec": 347.50399220300096,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "verification_repair_specialist",
+    "approval_required_for": [
+      "Selecting, adding, or changing FFN tile_m/tile_n/tile_k values that are not already explicit deterministic legal facts in the current design-space/SACG inputs.",
+      "Any architecture design-space change, pipeline schedule change, memory layout or transfer-unit change, numeric policy change, data-order change, board/runtime assumption change, or major template modification proposed to accommodate FFN tiling."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "stage_artifact_trust_barrier_check",
+          "repair_boundary_check",
+          "human_boundary_check"
+        ],
+        "action_type": "stage_gate_block_and_trust_barrier",
+        "consumes": [
+          "candidate_stage_artifact",
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.unsupported_bindings",
+          "candidate_stage_artifact.stage_gate_policy",
+          "state_summary.sacg_memory"
+        ],
+        "id": "template_selection.record_ffn_tile_blocker_and_trust_barrier",
+        "on_failure": "Keep template_selection blocked and prohibit promotion of the candidate artifact until a valid trust barrier or equivalent stage gate decision is recorded.",
+        "produces": [
+          "artifact.template_selection.stage_gate_decision",
+          "artifact.template_selection.stage_artifact_trust_barrier",
+          "sacg_memory.update.template_selection_ffn_tile_blocker"
+        ],
+        "rationale": "The candidate has a deterministic current-stage parameter-binding failure. A trust barrier prevents downstream stages from consuming unsupported FFN tile bindings or interpreting later-stage implementation absence/presence as template-selection success.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "team_aggregate",
+          "stage_artifact_trust_barrier",
+          "sacg_memory_update",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "parameter_binding_static_check"
+        ],
+        "action_type": "failure_localization",
+        "consumes": [
+          "candidate_stage_artifact.parameter_bindings",
+          "candidate_stage_artifact.unsupported_bindings",
+          "candidate_stage_artifact.template_source_checks",
+          "artifact.input.template_metadata",
+          "constraint.parameter.binding",
+          "constraint.arch.design_space"
+        ],
+        "id": "template_selection.localize_ffn_tile_binding_failure",
+        "on_failure": "Do not edit FFN.scala or other template internals; keep the stage blocked and escalate to a stage backtrack request for parameter-binding evidence.",
+        "produces": [
+          "artifact.template_selection.ffn_tile_failure_localization"
+        ],
+        "rationale": "The passing source/interface and coverage evidence indicate the earliest causal boundary is missing FFN tile parameter binding for the selected ffn template instances, not unsupported operators or missing source files.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "failure_slice_localization",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "bounded_parameter_binding_repair",
+        "consumes": [
+          "artifact.template_selection.ffn_tile_failure_localization",
+          "artifact.input.design_space",
+          "constraint.arch.design_space",
+          "constraint.memory.board",
+          "constraint.numeric.policy",
+          "candidate_stage_artifact.parameter_bindings",
+          "artifact.input.template_metadata"
+        ],
+        "id": "template_selection.apply_bounded_ffn_tile_binding_repair",
+        "on_failure": "If no deterministic legal tile values are present in existing SACG/input artifacts, produce no promoted candidate and execute template_selection.request_architecture_tile_backtrack_if_unbound.",
+        "produces": [
+          "artifact.template_selection.refined_candidate_with_ffn_tile_bindings",
+          "artifact.template_selection.ffn_tile_binding_evidence"
+        ],
+        "rationale": "If existing SACG/input design-space facts contain a single legal FFN tile_m, tile_n, and tile_k choice, bind those values explicitly into the template-selection contract. This is a bounded contract repair only; it must not alter numeric policy, memory layout, data order, board facts, or template internals.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "bounded_template_repair",
+          "parameter_binding_static_check",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_backtrack_request_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "stage_backtrack_request",
+        "consumes": [
+          "artifact.template_selection.ffn_tile_failure_localization",
+          "artifact.template_selection.ffn_tile_binding_evidence",
+          "candidate_stage_artifact.unsupported_bindings",
+          "constraint.arch.design_space",
+          "constraint.human.boundary"
+        ],
+        "id": "template_selection.request_architecture_tile_backtrack_if_unbound",
+        "on_failure": "Keep the current template-selection artifact blocked and preserve the trust barrier until an approved design-space tile policy is available.",
+        "produces": [
+          "artifact.template_selection.backtrack_request.ffn_tile_policy"
+        ],
+        "rationale": "Selecting or adding FFN tile_m, tile_n, or tile_k values when they are absent from current SACG/input facts is an architecture/design-space decision and requires bounded approval rather than guessing or using defaults.",
+        "requires_approval": true,
+        "stage": "template_selection",
+        "tool_roles": [
+          "stage_backtrack_request",
+          "architecture_review",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "targeted_failed_checker_rerun",
+          "sacg_static_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "repair_boundary_check",
+          "human_boundary_check",
+          "stage_backtrack_request_check"
+        ],
+        "action_type": "targeted_static_checker_rerun",
+        "consumes": [
+          "artifact.template_selection.refined_candidate_with_ffn_tile_bindings",
+          "artifact.template_selection.ffn_tile_binding_evidence",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "constraint.template.library",
+          "constraint.parameter.binding",
+          "constraint.cross_layer.input_consistency",
+          "constraint.human.boundary",
+          "state_summary.sacg_memory"
+        ],
+        "id": "template_selection.rerun_static_gate_after_tile_repair",
+        "on_failure": "Retain blocked_current_stage status, keep unsupported bindings quarantined, and route the new failed checker evidence back to failure localization without proceeding to code generation or implementation stages.",
+        "produces": [
+          "artifact.template_selection.updated_checker_disposition",
+          "artifact.template_selection.stage_gate_decision"
+        ],
+        "rationale": "After any bounded tile-binding repair or approved backtrack resolution, the stage must rerun deterministic static expectations and produce an updated disposition for coverage, parameter binding, template binding/source-interface expectations, attention semantic expansion, and cross-layer trace before promotion.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "targeted_failed_checker_rerun",
+          "sacg_static_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "repair_boundary_check",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "operator_coverage_check is pass: 9 required decoder operators are covered and the block wrapper is present.",
+      "template_parameter_binding_check is fail: tile_m, tile_n, and tile_k are unbound for mlp_gate_proj, mlp_up_proj, and mlp_down_proj, yielding nine parameter-binding errors.",
+      "template_source_and_interface_check is pass: FFN.scala exists, GatedMLPParams source/interface metadata matches, and the issue is not a missing source file or constructor mismatch.",
+      "attention_semantic_expansion_check is pass: QKV projection, RoPE, GQA head mapping with 14 query heads and 2 KV heads, softmax, output projection, and causal mask are covered; KV cache is marked not required.",
+      "cross_layer_trace_check is pass: numeric policy, board memory, board runtime, board deployment, and cross-layer input-consistency constraints are present in the trace.",
+      "The FFN tile issue is not resolved. The candidate artifact explicitly lists unsupported_bindings for all three FFN projections and marks their parameter_bindings status as incomplete.",
+      "Under the supplied stage_gate_policy, any selected template required parameter that is unbound is a current_stage_block. Therefore the stage cannot be approved even though other deterministic checkers pass.",
+      "No open backtrack_requests, retry_requests, or active contamination_barriers are reported in the visible state_summary.sacg_memory. Because the current candidate is blocked, a new stage artifact trust barrier should be recorded before downstream consumption.",
+      "Repair boundaries are strict: do not use Chisel constructor defaults for tile_m/tile_n/tile_k, do not edit template internals, do not change numeric policy/data order/memory layout/board assumptions, and do not close the issue with free-form RTL.",
+      "VCS/Verilator simulation, Vivado synthesis/implementation, bitstream generation, runtime driver generation, and board bring-up are later-stage actions under the supplied policy and provide no basis for passing this template-selection gate."
+    ],
+    "proposed_actions": [
+      "Keep template_selection blocked and record a stage artifact trust barrier for this candidate until FFN tile bindings are explicitly repaired and rechecked.",
+      "Localize the failure to FFN tile parameter binding, not to template coverage, FFN source/interface, attention semantics, or board/runtime trace.",
+      "Perform a bounded repair that binds tile_m, tile_n, and tile_k only from existing deterministic design-space/SACG facts if available; otherwise issue an architecture backtrack request for FFN tile policy approval.",
+      "Rerun the full static gate after repair: SACG static consistency, template coverage, template binding/source-interface expectations, parameter binding, repair boundary, human boundary, and stage backtrack request checks.",
+      "Do not claim hardware correctness, simulation pass, synthesis pass, timing closure, bitstream readiness, or board runtime pass from this stage artifact."
+    ],
+    "risks": [
+      "Current-stage block: selected FFN templates for mlp_gate_proj, mlp_up_proj, and mlp_down_proj require tile_m, tile_n, and tile_k, but those parameters are unbound from SACG/input artifacts.",
+      "Current-stage block: promoting the candidate would rely on unsupported or implicit FFN tile bindings, violating constraint.parameter.binding and the template library boundary.",
+      "Current-stage block: without an explicit legal FFN tile source or an approved architecture backtrack, downstream code generation would inherit ambiguous tile counts and transfer structure."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.parameter_bindings",
+        "candidate_stage_artifact.unsupported_bindings",
+        "candidate_stage_artifact.template_source_checks",
+        "candidate_stage_artifact.attention_semantics",
+        "candidate_stage_artifact.cross_layer_trace",
+        "candidate_stage_artifact.stage_gate_policy",
+        "artifact.input.design_space",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "state_summary.sacg_memory"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.human.boundary",
+        "constraint.template.library",
+        "constraint.parameter.binding",
+        "constraint.cross_layer.input_consistency",
+        "constraint.arch.design_space",
+        "constraint.numeric.policy",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "mlp_gate_proj -> selected template ffn -> FFN.scala/GatedMLPParams",
+        "mlp_up_proj -> selected template ffn -> FFN.scala/GatedMLPParams",
+        "mlp_down_proj -> selected template ffn -> FFN.scala/GatedMLPParams",
+        "ffn required_params -> tile_m,tile_n,tile_k",
+        "tile_m source path -> constraint.arch.design_space.search_params.tiles.tile_m_tokens -> value null/status missing",
+        "tile_n source path -> constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates.tile_n -> value null/status missing",
+        "tile_k source path -> constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates.tile_k -> value null/status missing",
+        "stage_gate_policy.current_stage_blocks -> any selected template required parameter unbound",
+        "cross_layer_trace -> numeric, memory, runtime, deployment, input-consistency constraints present"
+      ],
+      "nodes": [
+        "qwen2_block",
+        "self_attention",
+        "mlp_gate_proj",
+        "mlp_up_proj",
+        "activation_mul",
+        "mlp_down_proj",
+        "ffn template_id=ffn",
+        "constraint.arch.design_space.search_params.tiles",
+        "constraint.shape.model.hidden_size=896",
+        "constraint.shape.model.intermediate_size=4864",
+        "constraint.numeric.policy",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ]
+    },
+    "schema_version": "spatialaccagent.verification_repair_specialist.v0",
+    "stage": "template_selection",
+    "status": "blocked_current_stage",
+    "summary": "Template-selection cannot pass. The remaining FFN tile issue is unresolved and is a current-stage blocker: mlp_gate_proj, mlp_up_proj, and mlp_down_proj each still have unbound required tile_m, tile_n, and tile_k parameters. Coverage, source/interface, attention semantic, and cross-layer trace evidence pass, but parameter binding fails, so the artifact must not be promoted or used for later implementation claims."
+  },
+  "prompt_bytes": 58793,
+  "prompt_hash": "d65a4c1a837a0871def9ce1097b8521f299218280b03b9ca903ccf97ceb9ffa0",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.verification_repair_specialist.v0\",\"agent\":\"verification_repair_specialist\",\"stage\":\"template_selection\",\"status\":\"blocked_current_stage\",\"summary\":\"Template-selection cannot pass. The remaining FFN tile issue is unresolved and is a current-stage blocker: mlp_gate_proj, mlp_up_proj, and mlp_down_proj each still have unbound required tile_m, tile_n, and tile_k parameters. Coverage, source/interface, attention semantic, and cross-layer trace evidence pass, but parameter binding fails, so the artifact must not be promoted or used for later implementation claims.\",\"sacg_focus\":{\"nodes\":[\"qwen2_block\",\"self_attention\",\"mlp_gate_proj\",\"mlp_up_proj\",\"activation_mul\",\"mlp_down_proj\",\"ffn template_id=ffn\",\"constraint.arch.design_space.search_params.tiles\",\"constraint.shape.model.hidden_size=896\",\"constraint.shape.model.intermediate_size=4864\",\"constraint.numeric.policy\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\"],\"edges\":[\"mlp_gate_proj -> selected template ffn -> FFN.scala/GatedMLPParams\",\"mlp_up_proj -> selected template ffn -> FFN.scala/GatedMLPParams\",\"mlp_down_proj -> selected template ffn -> FFN.scala/GatedMLPParams\",\"ffn required_params -> tile_m,tile_n,tile_k\",\"tile_m source path -> constraint.arch.design_space.search_params.tiles.tile_m_tokens -> value null/status missing\",\"tile_n source path -> constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates.tile_n -> value null/status missing\",\"tile_k source path -> constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates.tile_k -> value null/status missing\",\"stage_gate_policy.current_stage_blocks -> any selected template required parameter unbound\",\"cross_layer_trace -> numeric, memory, runtime, deployment, input-consistency constraints present\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.human.boundary\",\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.cross_layer.input_consistency\",\"constraint.arch.design_space\",\"constraint.numeric.policy\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\"],\"artifacts\":[\"candidate_stage_artifact\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.parameter_bindings\",\"candidate_stage_artifact.unsupported_bindings\",\"candidate_stage_artifact.template_source_checks\",\"candidate_stage_artifact.attention_semantics\",\"candidate_stage_artifact.cross_layer_trace\",\"candidate_stage_artifact.stage_gate_policy\",\"artifact.input.design_space\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"state_summary.sacg_memory\"]},\"observations\":[\"operator_coverage_check is pass: 9 required decoder operators are covered and the block wrapper is present.\",\"template_parameter_binding_check is fail: tile_m, tile_n, and tile_k are unbound for mlp_gate_proj, mlp_up_proj, and mlp_down_proj, yielding nine parameter-binding errors.\",\"template_source_and_interface_check is pass: FFN.scala exists, GatedMLPParams source/interface metadata matches, and the issue is not a missing source file or constructor mismatch.\",\"attention_semantic_expansion_check is pass: QKV projection, RoPE, GQA head mapping with 14 query heads and 2 KV heads, softmax, output projection, and causal mask are covered; KV cache is marked not required.\",\"cross_layer_trace_check is pass: numeric policy, board memory, board runtime, board deployment, and cross-layer input-consistency constraints are present in the trace.\",\"The FFN tile issue is not resolved. The candidate artifact explicitly lists unsupported_bindings for all three FFN projections and marks their parameter_bindings status as incomplete.\",\"Under the supplied stage_gate_policy, any selected template required parameter that is unbound is a current_stage_block. Therefore the stage cannot be approved even though other deterministic checkers pass.\",\"No open backtrack_requests, retry_requests, or active contamination_barriers are reported in the visible state_summary.sacg_memory. Because the current candidate is blocked, a new stage artifact trust barrier should be recorded before downstream consumption.\",\"Repair boundaries are strict: do not use Chisel constructor defaults for tile_m/tile_n/tile_k, do not edit template internals, do not change numeric policy/data order/memory layout/board assumptions, and do not close the issue with free-form RTL.\",\"VCS/Verilator simulation, Vivado synthesis/implementation, bitstream generation, runtime driver generation, and board bring-up are later-stage actions under the supplied policy and provide no basis for passing this template-selection gate.\"],\"risks\":[\"Current-stage block: selected FFN templates for mlp_gate_proj, mlp_up_proj, and mlp_down_proj require tile_m, tile_n, and tile_k, but those parameters are unbound from SACG/input artifacts.\",\"Current-stage block: promoting the candidate would rely on unsupported or implicit FFN tile bindings, violating constraint.parameter.binding and the template library boundary.\",\"Current-stage block: without an explicit legal FFN tile source or an approved architecture backtrack, downstream code generation would inherit ambiguous tile counts and transfer structure.\"],\"proposed_actions\":[\"Keep template_selection blocked and record a stage artifact trust barrier for this candidate until FFN tile bindings are explicitly repaired and rechecked.\",\"Localize the failure to FFN tile parameter binding, not to template coverage, FFN source/interface, attention semantics, or board/runtime trace.\",\"Perform a bounded repair that binds tile_m, tile_n, and tile_k only from existing deterministic design-space/SACG facts if available; otherwise issue an architecture backtrack request for FFN tile policy approval.\",\"Rerun the full static gate after repair: SACG static consistency, template coverage, template binding/source-interface expectations, parameter binding, repair boundary, human boundary, and stage backtrack request checks.\",\"Do not claim hardware correctness, simulation pass, synthesis pass, timing closure, bitstream readiness, or board runtime pass from this stage artifact.\"],\"executable_actions\":[{\"id\":\"template_selection.record_ffn_tile_blocker_and_trust_barrier\",\"stage\":\"template_selection\",\"action_type\":\"stage_gate_block_and_trust_barrier\",\"rationale\":\"The candidate has a deterministic current-stage parameter-binding failure. A trust barrier prevents downstream stages from consuming unsupported FFN tile bindings or interpreting later-stage implementation absence/presence as template-selection success.\",\"consumes\":[\"candidate_stage_artifact\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.unsupported_bindings\",\"candidate_stage_artifact.stage_gate_policy\",\"state_summary.sacg_memory\"],\"produces\":[\"artifact.template_selection.stage_gate_decision\",\"artifact.template_selection.stage_artifact_trust_barrier\",\"sacg_memory.update.template_selection_ffn_tile_blocker\"],\"tool_roles\":[\"team_aggregate\",\"stage_artifact_trust_barrier\",\"sacg_memory_update\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"sacg_memory_check\",\"stage_artifact_trust_barrier_check\",\"repair_boundary_check\",\"human_boundary_check\"],\"on_failure\":\"Keep template_selection blocked and prohibit promotion of the candidate artifact until a valid trust barrier or equivalent stage gate decision is recorded.\",\"requires_approval\":false},{\"id\":\"template_selection.localize_ffn_tile_binding_failure\",\"stage\":\"template_selection\",\"action_type\":\"failure_localization\",\"rationale\":\"The passing source/interface and coverage evidence indicate the earliest causal boundary is missing FFN tile parameter binding for the selected ffn template instances, not unsupported operators or missing source files.\",\"consumes\":[\"candidate_stage_artifact.parameter_bindings\",\"candidate_stage_artifact.unsupported_bindings\",\"candidate_stage_artifact.template_source_checks\",\"artifact.input.template_metadata\",\"constraint.parameter.binding\",\"constraint.arch.design_space\"],\"produces\":[\"artifact.template_selection.ffn_tile_failure_localization\"],\"tool_roles\":[\"failure_slice_localization\",\"parameter_binding_static_check\"],\"acceptance_checkers\":[\"failure_localization_check\",\"parameter_binding_static_check\"],\"on_failure\":\"Do not edit FFN.scala or other template internals; keep the stage blocked and escalate to a stage backtrack request for parameter-binding evidence.\",\"requires_approval\":false},{\"id\":\"template_selection.apply_bounded_ffn_tile_binding_repair\",\"stage\":\"template_selection\",\"action_type\":\"bounded_parameter_binding_repair\",\"rationale\":\"If existing SACG/input design-space facts contain a single legal FFN tile_m, tile_n, and tile_k choice, bind those values explicitly into the template-selection contract. This is a bounded contract repair only; it must not alter numeric policy, memory layout, data order, board facts, or template internals.\",\"consumes\":[\"artifact.template_selection.ffn_tile_failure_localization\",\"artifact.input.design_space\",\"constraint.arch.design_space\",\"constraint.memory.board\",\"constraint.numeric.policy\",\"candidate_stage_artifact.parameter_bindings\",\"artifact.input.template_metadata\"],\"produces\":[\"artifact.template_selection.refined_candidate_with_ffn_tile_bindings\",\"artifact.template_selection.ffn_tile_binding_evidence\"],\"tool_roles\":[\"bounded_template_repair\",\"parameter_binding_static_check\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"template_binding_static_check\",\"repair_boundary_check\"],\"on_failure\":\"If no deterministic legal tile values are present in existing SACG/input artifacts, produce no promoted candidate and execute template_selection.request_architecture_tile_backtrack_if_unbound.\",\"requires_approval\":false},{\"id\":\"template_selection.request_architecture_tile_backtrack_if_unbound\",\"stage\":\"template_selection\",\"action_type\":\"stage_backtrack_request\",\"rationale\":\"Selecting or adding FFN tile_m, tile_n, or tile_k values when they are absent from current SACG/input facts is an architecture/design-space decision and requires bounded approval rather than guessing or using defaults.\",\"consumes\":[\"artifact.template_selection.ffn_tile_failure_localization\",\"artifact.template_selection.ffn_tile_binding_evidence\",\"candidate_stage_artifact.unsupported_bindings\",\"constraint.arch.design_space\",\"constraint.human.boundary\"],\"produces\":[\"artifact.template_selection.backtrack_request.ffn_tile_policy\"],\"tool_roles\":[\"stage_backtrack_request\",\"architecture_review\",\"human_boundary_check\"],\"acceptance_checkers\":[\"stage_backtrack_request_check\",\"human_boundary_check\",\"repair_boundary_check\"],\"on_failure\":\"Keep the current template-selection artifact blocked and preserve the trust barrier until an approved design-space tile policy is available.\",\"requires_approval\":true},{\"id\":\"template_selection.rerun_static_gate_after_tile_repair\",\"stage\":\"template_selection\",\"action_type\":\"targeted_static_checker_rerun\",\"rationale\":\"After any bounded tile-binding repair or approved backtrack resolution, the stage must rerun deterministic static expectations and produce an updated disposition for coverage, parameter binding, template binding/source-interface expectations, attention semantic expansion, and cross-layer trace before promotion.\",\"consumes\":[\"artifact.template_selection.refined_candidate_with_ffn_tile_bindings\",\"artifact.template_selection.ffn_tile_binding_evidence\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.cross_layer.input_consistency\",\"constraint.human.boundary\",\"state_summary.sacg_memory\"],\"produces\":[\"artifact.template_selection.updated_checker_disposition\",\"artifact.template_selection.stage_gate_decision\"],\"tool_roles\":[\"targeted_failed_checker_rerun\",\"sacg_static_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"repair_boundary_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"targeted_failed_checker_rerun\",\"sacg_static_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"repair_boundary_check\",\"human_boundary_check\",\"stage_backtrack_request_check\"],\"on_failure\":\"Retain blocked_current_stage status, keep unsupported bindings quarantined, and route the new failed checker evidence back to failure localization without proceeding to code generation or implementation stages.\",\"requires_approval\":false}],\"approval_required_for\":[\"Selecting, adding, or changing FFN tile_m/tile_n/tile_k values that are not already explicit deterministic legal facts in the current design-space/SACG inputs.\",\"Any architecture design-space change, pipeline schedule change, memory layout or transfer-unit change, numeric policy change, data-order change, board/runtime assumption change, or major template modification proposed to accommodate FFN tiling.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/verification_repair_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/verification_repair_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "template_selection.template selection verification and repair gate engineer",
+  "used_fallback": false
+}

@@ -1,0 +1,268 @@
+{
+  "agent": "constraint_extraction.constraint_graph_auditor",
+  "duration_sec": 186.9577748010015,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "constraint_extraction.constraint_graph_auditor",
+    "approval_required_for": [
+      "Any graph repair that changes architecture design space, pipeline structure, or major template family",
+      "Any change to numeric precision, scaling, accumulator width, tolerance, or golden-comparison policy",
+      "Any change to memory layout, data packing/order, transfer unit, AXI/DDR mapping, runtime ABI, or board profile facts",
+      "Any backend/app-shell target selection when supplied board materials and real Vivado/tool evidence are ambiguous",
+      "Any attempt to consume fallback diagnostics as successful LLM agent decisions under the enforced LLM policy"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "stage_artifact_trust_barrier_check",
+          "llm_io_quality_check",
+          "output_validity_check"
+        ],
+        "action_type": "evidence_gate",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "prepared_inputs_manifest",
+          "validation_errors",
+          "artifact.constraint_extraction.model_shape_review",
+          "artifact.constraint_extraction.numeric_template_review",
+          "artifact.constraint_extraction.data_memory_runtime_review",
+          "artifact.constraint_extraction.verification_boundary_review",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.field_evidence",
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary"
+        ],
+        "id": "constraint_extraction.run_current_stage_promotion_gate",
+        "on_failure": "Do not promote the candidate graph. Emit the failed checker evidence and route to bounded graph repair or approval/backtrack if the fix would alter architecture, numeric policy, memory layout, template selection, runtime ABI, or board facts.",
+        "produces": [
+          "artifact.constraint_extraction.audited_design_graph_closure",
+          "constraint_extraction_promotion_decision",
+          "cross_layer_consistency_gap_list"
+        ],
+        "rationale": "The visible graph has no validation_errors or failed_invariants, but promotion requires explicit current-stage checker evidence binding the candidate graph and specialist reviews to SACG constraints.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "sacg_reference_check",
+          "stage_artifact_trust_barrier",
+          "llm_io_quality_check",
+          "output_validity_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "sacg_static_check",
+          "sacg_reference_check",
+          "human_boundary_check"
+        ],
+        "action_type": "bounded_graph_repair",
+        "consumes": [
+          "artifact.constraint_extraction.audited_design_graph_closure",
+          "cross_layer_consistency_gap_list",
+          "candidate_design_graph_summary",
+          "prepared_inputs_manifest"
+        ],
+        "id": "constraint_extraction.repair_graph_binding_gaps_if_gate_fails",
+        "on_failure": "If repair cannot stay within metadata/evidence/edge binding boundaries, stop promotion and create an approval or backtrack request; do not rewrite numeric policy, architecture, memory layout, template family, or board/runtime facts as an unapproved repair.",
+        "produces": [
+          "artifact.constraint_extraction.repaired_design_graph_summary",
+          "artifact.constraint_extraction.repaired_cross_layer_edge_map",
+          "artifact.constraint_extraction.repair_delta_log"
+        ],
+        "rationale": "If the evidence gate reports missing references, absent not_run records, or weak cross-layer edge bindings, repair only SACG metadata, evidence tags, and constraint edges; do not change design policy or hardware intent without approval.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_validate",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "stage_artifact_trust_barrier_check",
+          "stage_backtrack_request_check"
+        ],
+        "action_type": "memory_update",
+        "consumes": [
+          "artifact.constraint_extraction.audited_design_graph_closure",
+          "constraint_extraction_promotion_decision",
+          "cross_layer_consistency_gap_list",
+          "artifact.constraint_extraction.repair_delta_log_if_any"
+        ],
+        "id": "constraint_extraction.update_sacg_memory_after_audit",
+        "on_failure": "Keep downstream stages from consuming stale memory; create a contamination barrier for the candidate graph if promotion/blocker status cannot be recorded.",
+        "produces": [
+          "sacg_memory_update_recommendations",
+          "sacg_memory.patch.constraint_extraction_audit"
+        ],
+        "rationale": "SACG memory is the shared long-context design memory and must preserve this audit decision, any gap list, and the absence or presence of barriers/backtrack requests for downstream stages.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_memory_update",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "memory_runtime_plan_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ],
+        "action_type": "downstream_handoff_gate",
+        "consumes": [
+          "artifact.constraint_extraction.audited_design_graph_closure",
+          "constraint_extraction_promotion_decision",
+          "cross_layer_consistency_gap_list",
+          "artifact.input.design_space",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.numeric_policy",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols",
+          "artifact.input.human_agent_boundary"
+        ],
+        "id": "architecture_planning.consume_promoted_constraint_graph",
+        "on_failure": "Return failed handoff evidence to constraint_extraction as a bounded backtrack request; do not select templates or alter numeric, memory, runtime, or board policy without approval.",
+        "produces": [
+          "artifact.architecture_planning.constraint_graph_handoff_contract",
+          "artifact.architecture_planning.initial_parameter_binding_plan"
+        ],
+        "rationale": "After current-stage closure passes, architecture_planning must consume the audited graph and re-check model, numeric, template, memory/runtime, tool, and human-boundary constraints before binding parameters or choosing templates.",
+        "requires_approval": false,
+        "stage": "architecture_planning",
+        "tool_roles": [
+          "architecture_review",
+          "parameter_binding_static_check",
+          "template_coverage_check",
+          "memory_runtime_plan_check",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The candidate summary reports 21 nodes, 16 constraints, 8 edges, and 50 evidence fields grouped under materials, evidence, and tools.",
+      "prepared_inputs_manifest reports independent_from_scratch_design mode, 16 input groups, and no manifest errors; validation_errors is empty and state_summary.failed_invariants is empty.",
+      "Core initial graph constraint classes are present for source materials/evidence, task goal, model decoder, model shape, numeric policy, template library, architecture design space, board deployment, board memory/runtime, tool profile/protocols, case adapter, human boundary, and cross-layer input consistency.",
+      "The detailed specialist review rows are not visible in the supplied artifact summary. The audit therefore cannot claim that model-shape, numeric-template, data-memory-runtime, or verification-boundary reviews passed; they must be bound by the current-stage evidence gate.",
+      "The prepared manifest exposes design_team fields including aggregate, completed_subtasks, decomposer_error, and decomposer_used_fallback, but the compact summary does not show their values. Because LLM planning is mandatory, llm_io_quality_check must verify that no fallback diagnostic is consumed as a successful agent decision.",
+      "state_summary.sacg_memory reports no active contamination barriers, no open backtrack requests, and no open retry requests. The separate sacg_memory payload is empty; no memory-based blocker is visible, but the audit outcome should be written back to SACG memory.",
+      "No retry_reconciliation_contract or stage_gate_policy is supplied. Same-stage retry promotion rules therefore do not apply here.",
+      "No hardware, Vivado, simulation, board-runtime, or backend/app-shell pass is implied by this constraint-extraction summary."
+    ],
+    "proposed_actions": [
+      "Run the current-stage promotion evidence gate over the candidate graph, prepared manifest, validation errors, specialist review artifacts, and input constraints.",
+      "If the evidence gate fails only due to missing references, absent checker records, or weak cross-layer links, perform a bounded SACG metadata/edge repair and rerun the gate.",
+      "If a required fix changes architecture, numeric precision/tolerance, template family, memory layout, runtime ABI, board profile, or human boundary, stop and request approval or backtrack rather than silently repairing the graph.",
+      "Write the audit outcome, gap list, and any trust barriers/backtrack needs into sacg_memory before downstream consumption.",
+      "Allow architecture_planning to consume only the promoted audited_design_graph_closure, not raw candidate summaries."
+    ],
+    "risks": [
+      "Current-stage promotion risk: absence of explicit sacg_static_check, sacg_reference_check, stage_artifact_trust_barrier_check, llm_io_quality_check, and output_validity_check result records prevents a checker-supported promotion claim.",
+      "Cross-layer binding risk: 8 reported edges for 16 constraints may be sufficient in a compact graph, but detailed edge coverage is not visible; missing or weak edges could disconnect model, shape, numeric, template, memory, runtime, tool, and board facts.",
+      "Model/shape risk: Qwen2 decoder and shape constraints are present, but visible evidence does not show that model_config dimensions, tensor ranks, sequence bounds, or layer counts are cross-checked against design-space/template assumptions.",
+      "Numeric/template risk: numeric policy, template library, and template metadata are present, but visible evidence does not show precision, scaling, tolerance, accumulator width, or supported-operator compatibility checks.",
+      "Data-order and transfer-unit risk: the visible named constraints do not expose explicit data-order, stream-order, packing, or transfer-count facts; this should be captured as a handoff gap unless detailed hidden rows already bind it.",
+      "Memory/runtime/board risk: board, memory, runtime, tool profile, and tool protocol constraints exist, but they are input-profile facts only at this stage; backend target names or runtime ABI choices must later be derived from cited board materials and real tool evidence, not guessed.",
+      "Human-boundary risk: any repair that changes architecture, pipeline, memory layout, numeric policy, major template selection, or board/runtime facts requires approval and must not be hidden as a metadata repair.",
+      "SACG-memory risk: because the explicit sacg_memory payload is empty, lessons and blockers from this audit must be recorded to avoid downstream stages consuming stale or unaudited graph state."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_design_graph_summary",
+        "prepared_inputs_manifest",
+        "validation_errors",
+        "artifact.constraint_extraction.model_shape_review",
+        "artifact.constraint_extraction.numeric_template_review",
+        "artifact.constraint_extraction.data_memory_runtime_review",
+        "artifact.constraint_extraction.verification_boundary_review",
+        "artifact.constraint_extraction.audited_design_graph_closure",
+        "constraint_extraction_promotion_decision",
+        "cross_layer_consistency_gap_list",
+        "sacg_memory_update_recommendations"
+      ],
+      "constraints": [
+        "constraint.source.materials",
+        "constraint.source.evidence",
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.case.adapter",
+        "constraint.human.boundary",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "candidate_design_graph_summary reports 8 SACG edges; detailed edge IDs are not visible in the supplied summary",
+        "constraint.source.materials -> constraint.source.evidence",
+        "constraint.task.goal/constraint.model.decoder/constraint.shape.model/constraint.numeric.policy/constraint.template.library/constraint.arch.design_space -> constraint.cross_layer.input_consistency",
+        "constraint.deployment.board/constraint.memory.board/constraint.runtime.board/constraint.tool.profile/constraint.tool.protocols/constraint.case.adapter -> constraint.cross_layer.input_consistency",
+        "constraint.human.boundary -> stage_artifact_trust_barrier_check",
+        "candidate and specialist-review artifacts -> artifact.constraint_extraction.audited_design_graph_closure"
+      ],
+      "nodes": [
+        "design:qwen2_spatialacc_agent_run",
+        "candidate_design_graph_summary.node_ids[21]",
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.field_evidence",
+        "artifact.input.task_card",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary"
+      ]
+    },
+    "schema_version": "spatialaccagent.constraint_graph_auditor.v0",
+    "stage": "constraint_extraction",
+    "status": "bounded_graph_closure_required",
+    "summary": "The visible candidate SACG is structurally clean at the summary level: 21 nodes, 16 constraints, 8 edges, 50 evidence fields, no validation_errors, and no failed_invariants. However, the supplied summary does not expose checker result records or detailed specialist-review bindings for model/shape, numeric/template, data/memory/runtime, and verification boundaries. Therefore the graph should not yet be promoted as a checker-supported cross-layer-consistent state. Bounded evidence-gate and graph-closure actions are required; substantive architecture, numeric, memory-layout, runtime ABI, board, or template changes require approval."
+  },
+  "prompt_bytes": 25583,
+  "prompt_hash": "0c6ac5c20b12090a55f1e1b729f17dbef0e03d146e95eba4dcd6fa5345894368",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.constraint_graph_auditor.v0\",\"agent\":\"constraint_extraction.constraint_graph_auditor\",\"stage\":\"constraint_extraction\",\"status\":\"bounded_graph_closure_required\",\"summary\":\"The visible candidate SACG is structurally clean at the summary level: 21 nodes, 16 constraints, 8 edges, 50 evidence fields, no validation_errors, and no failed_invariants. However, the supplied summary does not expose checker result records or detailed specialist-review bindings for model/shape, numeric/template, data/memory/runtime, and verification boundaries. Therefore the graph should not yet be promoted as a checker-supported cross-layer-consistent state. Bounded evidence-gate and graph-closure actions are required; substantive architecture, numeric, memory-layout, runtime ABI, board, or template changes require approval.\",\"sacg_focus\":{\"nodes\":[\"design:qwen2_spatialacc_agent_run\",\"candidate_design_graph_summary.node_ids[21]\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"artifact.input.field_evidence\",\"artifact.input.task_card\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.case_adapter\",\"artifact.input.human_agent_boundary\"],\"edges\":[\"candidate_design_graph_summary reports 8 SACG edges; detailed edge IDs are not visible in the supplied summary\",\"constraint.source.materials -> constraint.source.evidence\",\"constraint.task.goal/constraint.model.decoder/constraint.shape.model/constraint.numeric.policy/constraint.template.library/constraint.arch.design_space -> constraint.cross_layer.input_consistency\",\"constraint.deployment.board/constraint.memory.board/constraint.runtime.board/constraint.tool.profile/constraint.tool.protocols/constraint.case.adapter -> constraint.cross_layer.input_consistency\",\"constraint.human.boundary -> stage_artifact_trust_barrier_check\",\"candidate and specialist-review artifacts -> artifact.constraint_extraction.audited_design_graph_closure\"],\"constraints\":[\"constraint.source.materials\",\"constraint.source.evidence\",\"constraint.task.goal\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.profile\",\"constraint.tool.protocols\",\"constraint.case.adapter\",\"constraint.human.boundary\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"candidate_design_graph_summary\",\"prepared_inputs_manifest\",\"validation_errors\",\"artifact.constraint_extraction.model_shape_review\",\"artifact.constraint_extraction.numeric_template_review\",\"artifact.constraint_extraction.data_memory_runtime_review\",\"artifact.constraint_extraction.verification_boundary_review\",\"artifact.constraint_extraction.audited_design_graph_closure\",\"constraint_extraction_promotion_decision\",\"cross_layer_consistency_gap_list\",\"sacg_memory_update_recommendations\"]},\"observations\":[\"The candidate summary reports 21 nodes, 16 constraints, 8 edges, and 50 evidence fields grouped under materials, evidence, and tools.\",\"prepared_inputs_manifest reports independent_from_scratch_design mode, 16 input groups, and no manifest errors; validation_errors is empty and state_summary.failed_invariants is empty.\",\"Core initial graph constraint classes are present for source materials/evidence, task goal, model decoder, model shape, numeric policy, template library, architecture design space, board deployment, board memory/runtime, tool profile/protocols, case adapter, human boundary, and cross-layer input consistency.\",\"The detailed specialist review rows are not visible in the supplied artifact summary. The audit therefore cannot claim that model-shape, numeric-template, data-memory-runtime, or verification-boundary reviews passed; they must be bound by the current-stage evidence gate.\",\"The prepared manifest exposes design_team fields including aggregate, completed_subtasks, decomposer_error, and decomposer_used_fallback, but the compact summary does not show their values. Because LLM planning is mandatory, llm_io_quality_check must verify that no fallback diagnostic is consumed as a successful agent decision.\",\"state_summary.sacg_memory reports no active contamination barriers, no open backtrack requests, and no open retry requests. The separate sacg_memory payload is empty; no memory-based blocker is visible, but the audit outcome should be written back to SACG memory.\",\"No retry_reconciliation_contract or stage_gate_policy is supplied. Same-stage retry promotion rules therefore do not apply here.\",\"No hardware, Vivado, simulation, board-runtime, or backend/app-shell pass is implied by this constraint-extraction summary.\"],\"risks\":[\"Current-stage promotion risk: absence of explicit sacg_static_check, sacg_reference_check, stage_artifact_trust_barrier_check, llm_io_quality_check, and output_validity_check result records prevents a checker-supported promotion claim.\",\"Cross-layer binding risk: 8 reported edges for 16 constraints may be sufficient in a compact graph, but detailed edge coverage is not visible; missing or weak edges could disconnect model, shape, numeric, template, memory, runtime, tool, and board facts.\",\"Model/shape risk: Qwen2 decoder and shape constraints are present, but visible evidence does not show that model_config dimensions, tensor ranks, sequence bounds, or layer counts are cross-checked against design-space/template assumptions.\",\"Numeric/template risk: numeric policy, template library, and template metadata are present, but visible evidence does not show precision, scaling, tolerance, accumulator width, or supported-operator compatibility checks.\",\"Data-order and transfer-unit risk: the visible named constraints do not expose explicit data-order, stream-order, packing, or transfer-count facts; this should be captured as a handoff gap unless detailed hidden rows already bind it.\",\"Memory/runtime/board risk: board, memory, runtime, tool profile, and tool protocol constraints exist, but they are input-profile facts only at this stage; backend target names or runtime ABI choices must later be derived from cited board materials and real tool evidence, not guessed.\",\"Human-boundary risk: any repair that changes architecture, pipeline, memory layout, numeric policy, major template selection, or board/runtime facts requires approval and must not be hidden as a metadata repair.\",\"SACG-memory risk: because the explicit sacg_memory payload is empty, lessons and blockers from this audit must be recorded to avoid downstream stages consuming stale or unaudited graph state.\"],\"proposed_actions\":[\"Run the current-stage promotion evidence gate over the candidate graph, prepared manifest, validation errors, specialist review artifacts, and input constraints.\",\"If the evidence gate fails only due to missing references, absent checker records, or weak cross-layer links, perform a bounded SACG metadata/edge repair and rerun the gate.\",\"If a required fix changes architecture, numeric precision/tolerance, template family, memory layout, runtime ABI, board profile, or human boundary, stop and request approval or backtrack rather than silently repairing the graph.\",\"Write the audit outcome, gap list, and any trust barriers/backtrack needs into sacg_memory before downstream consumption.\",\"Allow architecture_planning to consume only the promoted audited_design_graph_closure, not raw candidate summaries.\"],\"executable_actions\":[{\"id\":\"constraint_extraction.run_current_stage_promotion_gate\",\"stage\":\"constraint_extraction\",\"action_type\":\"evidence_gate\",\"rationale\":\"The visible graph has no validation_errors or failed_invariants, but promotion requires explicit current-stage checker evidence binding the candidate graph and specialist reviews to SACG constraints.\",\"consumes\":[\"candidate_design_graph_summary\",\"prepared_inputs_manifest\",\"validation_errors\",\"artifact.constraint_extraction.model_shape_review\",\"artifact.constraint_extraction.numeric_template_review\",\"artifact.constraint_extraction.data_memory_runtime_review\",\"artifact.constraint_extraction.verification_boundary_review\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"artifact.input.field_evidence\",\"artifact.input.task_card\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.case_adapter\",\"artifact.input.human_agent_boundary\"],\"produces\":[\"artifact.constraint_extraction.audited_design_graph_closure\",\"constraint_extraction_promotion_decision\",\"cross_layer_consistency_gap_list\"],\"tool_roles\":[\"sacg_validate\",\"sacg_static_check\",\"sacg_reference_check\",\"stage_artifact_trust_barrier\",\"llm_io_quality_check\",\"output_validity_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"sacg_reference_check\",\"stage_artifact_trust_barrier_check\",\"llm_io_quality_check\",\"output_validity_check\"],\"on_failure\":\"Do not promote the candidate graph. Emit the failed checker evidence and route to bounded graph repair or approval/backtrack if the fix would alter architecture, numeric policy, memory layout, template selection, runtime ABI, or board facts.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.repair_graph_binding_gaps_if_gate_fails\",\"stage\":\"constraint_extraction\",\"action_type\":\"bounded_graph_repair\",\"rationale\":\"If the evidence gate reports missing references, absent not_run records, or weak cross-layer edge bindings, repair only SACG metadata, evidence tags, and constraint edges; do not change design policy or hardware intent without approval.\",\"consumes\":[\"artifact.constraint_extraction.audited_design_graph_closure\",\"cross_layer_consistency_gap_list\",\"candidate_design_graph_summary\",\"prepared_inputs_manifest\"],\"produces\":[\"artifact.constraint_extraction.repaired_design_graph_summary\",\"artifact.constraint_extraction.repaired_cross_layer_edge_map\",\"artifact.constraint_extraction.repair_delta_log\"],\"tool_roles\":[\"team_aggregate\",\"sacg_validate\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"sacg_static_check\",\"sacg_reference_check\",\"human_boundary_check\"],\"on_failure\":\"If repair cannot stay within metadata/evidence/edge binding boundaries, stop promotion and create an approval or backtrack request; do not rewrite numeric policy, architecture, memory layout, template family, or board/runtime facts as an unapproved repair.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.update_sacg_memory_after_audit\",\"stage\":\"constraint_extraction\",\"action_type\":\"memory_update\",\"rationale\":\"SACG memory is the shared long-context design memory and must preserve this audit decision, any gap list, and the absence or presence of barriers/backtrack requests for downstream stages.\",\"consumes\":[\"artifact.constraint_extraction.audited_design_graph_closure\",\"constraint_extraction_promotion_decision\",\"cross_layer_consistency_gap_list\",\"artifact.constraint_extraction.repair_delta_log_if_any\"],\"produces\":[\"sacg_memory_update_recommendations\",\"sacg_memory.patch.constraint_extraction_audit\"],\"tool_roles\":[\"sacg_memory_update\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"sacg_memory_check\",\"stage_artifact_trust_barrier_check\",\"stage_backtrack_request_check\"],\"on_failure\":\"Keep downstream stages from consuming stale memory; create a contamination barrier for the candidate graph if promotion/blocker status cannot be recorded.\",\"requires_approval\":false},{\"id\":\"architecture_planning.consume_promoted_constraint_graph\",\"stage\":\"architecture_planning\",\"action_type\":\"downstream_handoff_gate\",\"rationale\":\"After current-stage closure passes, architecture_planning must consume the audited graph and re-check model, numeric, template, memory/runtime, tool, and human-boundary constraints before binding parameters or choosing templates.\",\"consumes\":[\"artifact.constraint_extraction.audited_design_graph_closure\",\"constraint_extraction_promotion_decision\",\"cross_layer_consistency_gap_list\",\"artifact.input.design_space\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.numeric_policy\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\",\"artifact.input.human_agent_boundary\"],\"produces\":[\"artifact.architecture_planning.constraint_graph_handoff_contract\",\"artifact.architecture_planning.initial_parameter_binding_plan\"],\"tool_roles\":[\"architecture_review\",\"parameter_binding_static_check\",\"template_coverage_check\",\"memory_runtime_plan_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"task_card_check\",\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"memory_runtime_plan_check\",\"tool_protocol_check\",\"human_boundary_check\"],\"on_failure\":\"Return failed handoff evidence to constraint_extraction as a bounded backtrack request; do not select templates or alter numeric, memory, runtime, or board policy without approval.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any graph repair that changes architecture design space, pipeline structure, or major template family\",\"Any change to numeric precision, scaling, accumulator width, tolerance, or golden-comparison policy\",\"Any change to memory layout, data packing/order, transfer unit, AXI/DDR mapping, runtime ABI, or board profile facts\",\"Any backend/app-shell target selection when supplied board materials and real Vivado/tool evidence are ambiguous\",\"Any attempt to consume fallback diagnostics as successful LLM agent decisions under the enforced LLM policy\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/constraint_extraction.constraint_graph_auditor_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/constraint_extraction.constraint_graph_auditor_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction.constraint graph integrity auditor",
+  "used_fallback": false
+}

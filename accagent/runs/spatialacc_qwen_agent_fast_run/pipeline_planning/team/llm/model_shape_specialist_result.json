@@ -1,0 +1,240 @@
+{
+  "agent": "model_shape_specialist",
+  "duration_sec": 631.0547704729979,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "model_shape_specialist",
+    "approval_required_for": [
+      "changing decoder operator order or adding/removing stages",
+      "changing residual skip sources, join fire rules, or MLP split/join topology",
+      "changing GQA head counts, group size, RoPE policy, causal mask policy, or seq_len_bound",
+      "changing numeric policy, element widths, rounding, saturation, or data-order/transfer-unit policy",
+      "finalizing or changing memory layout, base addresses, runtime sequence policy, or external KV-cache materialization",
+      "introducing new templates, replacing trusted template bindings, or allowing free-form RTL generation"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "stream_plan_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_stage_artifact.pipeline_plan",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.cross_layer.input_consistency",
+          "constraint.template.library",
+          "sacg_memory"
+        ],
+        "id": "pp_audit_attach_model_pipeline_review",
+        "on_failure": "Block promotion to downstream stages. If a semantic, shape, stream, or template-boundary mismatch is found, route to pipeline_repair or architecture_review with the violated SACG constraints; do not modify golden outputs, loosen tolerances, or claim hardware pass.",
+        "produces": [
+          "artifact.pipeline_planning.model_pipeline_review",
+          "operator/stage boundary findings mapped to SACG constraints",
+          "handoff notes for model-shape or operator-order repair boundaries"
+        ],
+        "rationale": "Bind the model-shape semantic audit to the named SACG constraints and require the exact current-stage acceptance checkers before downstream promotion. This distinguishes semantic review from hardware proof and avoids consuming lower-level checker evidence as a substitute for the stage gate.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "model_config_check",
+          "stream_plan_check",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "numeric_policy_check",
+          "model_config_check"
+        ],
+        "action_type": "template_parameter_binding_handoff",
+        "consumes": [
+          "artifact.pipeline_planning.model_pipeline_review",
+          "candidate_stage_artifact.pipeline_plan",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata"
+        ],
+        "id": "pp_to_stage4_parameter_binding_guard",
+        "on_failure": "Return to pipeline_planning with a bounded repair request. Any change to operator order, branch topology, numeric policy, or template boundary requires approval; do not introduce free-form RTL.",
+        "produces": [
+          "artifact.stage4.template_parameter_binding_contract",
+          "template-bound operator parameter map for the decoder block"
+        ],
+        "rationale": "Ensure the refined pipeline contract is converted into template parameters without changing operator order or stage boundaries, including Qwen2 RMSNorm parameters, causal GQA/RoPE fields, residual source ports, gated MLP activation/multiply behavior, hidden/intermediate widths, element widths, and token/tile/lane/word order.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "template_coverage_check",
+          "numeric_policy_check",
+          "model_config_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "boundary_contract_check",
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "verification_plan_static_handoff",
+        "consumes": [
+          "artifact.pipeline_planning.model_pipeline_review",
+          "artifact.stage4.template_parameter_binding_contract",
+          "constraint.case.adapter",
+          "constraint.tool.protocols"
+        ],
+        "id": "pp_generate_boundary_contracts_for_hierarchical_verification",
+        "on_failure": "Keep verification and backend blocked. If a verifier capability is missing, classify it as a checker/golden-reference repair; if a real tool later reports liveness, value, order, or protocol failure, localize the earliest causal boundary before any code repair.",
+        "produces": [
+          "artifact.stage6.verification_artifact_contract",
+          "SACG-referenced boundary contracts for leaf modules and the single decoder block"
+        ],
+        "rationale": "Prepare downstream checkers to verify the same semantics at bounded boundaries: RMSNorm leaf, attention leaf, residual leaf, gated MLP elementwise/projection leaves, the connected single decoder block, and later the board-accurate AXI/DDR system. This preserves the required three-layer repair loop and prevents hardware claims from static planning evidence.",
+        "requires_approval": false,
+        "stage": "verification_planning",
+        "tool_roles": [
+          "boundary_contract_generate",
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check"
+        ],
+        "action_type": "memory_runtime_plan",
+        "consumes": [
+          "artifact.pipeline_planning.model_pipeline_review",
+          "candidate_stage_artifact.memory_schedule",
+          "candidate_stage_artifact.attention_contract",
+          "constraint.memory.board",
+          "constraint.runtime.board"
+        ],
+        "id": "pp_memory_runtime_handoff_for_seq_and_kv_bounds",
+        "on_failure": "Block code generation and backend use of the memory map. Invoke memory_runtime_repair with cited SACG constraints; changes to memory layout or KV-cache policy require approval.",
+        "produces": [
+          "artifact.stage5.memory_runtime_layout_contract",
+          "runtime transfer-count and sequence-bound check records"
+        ],
+        "rationale": "Finalize the later memory/runtime contract for target_seq_len<=16, transfer counts, base address assignment, and any external KV-cache materialization without changing the current operator-stream semantics.",
+        "requires_approval": true,
+        "stage": "memory_layout",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check"
+        ]
+      }
+    ],
+    "observations": [
+      "SACG memory shows no open backtrack_requests, retry_requests, or active contamination_barriers relevant to pipeline_planning; the separately supplied sacg_memory object is empty, so there is no same-stage retry/barrier blocker to resolve.",
+      "Candidate checker_summary reports 10 passed, 0 failed, and no warnings; state_summary reports failed_invariants as empty. The visible checker evidence includes operator_order_check, stream/data edge checks, shape/numeric checks, branch/join checks, buffer/liveness checks, attention_semantics_check, memory/runtime contract check, and template_binding_static_check.",
+      "The visible operator order matches a Qwen2 pre-norm decoder block: block_input feeds rms_norm_1, self_attention, residual_add_1 with the original input skip, rms_norm_2, parallel mlp_gate_proj and mlp_up_proj, activation_mul, mlp_down_proj, residual_add_2 with the post-attention residual skip, then block_output.",
+      "The attention contract is semantically consistent with causal GQA for the supplied model shape: num_q_heads=14, num_kv_heads=2, head_dim=64, hidden width 896, gqa_group_size=7, causal=true, RoPE enabled with rope_theta=1000000.0, and seq_len_bound=16.",
+      "Residual joins are explicit and ordered: residual_add_1 joins the original block input with self_attention output, while residual_add_2 joins the post-attention state from residual_add_1 with mlp_down_proj output. Both joins use all-required-inputs-valid-before-fire and the pairing key token/tile/lane/word.",
+      "The gated MLP branch topology is preserved: rms_norm_2 is atomically duplicated into gate and up branches using ready_valid_broadcast_with_per_output_fifo; gate and up projections both produce width 4864; activation_mul joins them with the same token/tile/lane/word pairing key before mlp_down_proj returns width 896.",
+      "Stream shapes and transfer counts are internally consistent in the visible plan: hidden tensors are seq_len 16 by width 896, MLP intermediate tensors are seq_len 16 by width 4864, transfer_order is consistently token/tile/lane/word, and full 64-byte AXI beats align with the stated element widths and byte counts.",
+      "Numeric policy is stage-constrained rather than full-precision semantic proof: activations/weights are 16-bit under the numeric policy, accumulators and residual/output paths use 32-bit where shown, and no golden numeric equivalence or hardware result is claimed at this stage.",
+      "Template constraints are satisfied in the visible artifact: all nine stages have template_id/source bindings from the supplied library family, template_binding_static_check passes, and free_form_rtl_generation=false.",
+      "The liveness_backpressure_check pass is useful for planning, but its own summary states it is not a latency-equality proof. Symbolic_first_order latency fields must remain planning metadata only."
+    ],
+    "proposed_actions": [
+      "Attach this model_pipeline_review to the pipeline_planning evidence gate and require the exact current-stage acceptance checkers before promotion.",
+      "In Stage 4, bind template parameters for RMSNorm, causal GQA/RoPE, residual ports, gated MLP activation/multiply, widths, element widths, and data order without changing the planned stage boundaries.",
+      "In the memory/runtime stage, finalize base addresses, sequence-length transfer-count derivation, and any external KV-cache policy as a separate memory-layout contract.",
+      "In verification planning, generate SACG-referenced boundary contracts and enforce the three-layer verification/repair loop: operator leaf modules first, then the connected single-decoder-layer kernel, then the board-accurate AXI/DDR wrapped system.",
+      "Keep symbolic latency estimates out of throughput, timing, or hardware-pass claims."
+    ],
+    "risks": [
+      "Current-stage promotion risk: the subtask names sacg_static_check, model_config_check, stream_plan_check, and template_binding_static_check as acceptance checkers, but the candidate artifact visibly contains only template_binding_static_check plus lower-level semantic/stream checks. The candidate should not be promoted until the exact named gate records are attached or rerun and pass.",
+      "Later-stage parameter-binding risk, not a current semantic-order blocker: stage_06_activation_mul must bind the Qwen2 gated activation behavior required by model_config, not degrade into an unactivated multiply. This should be checked during template parameter binding.",
+      "Later-stage memory/runtime risk, not a current pipeline-order blocker: the attention contract keeps KV storage bounded inside the generated block and states that external KV-cache materialization requires a later memory-layout artifact; runtime sequence length must remain <=16 and transfer counts must follow the configured sequence length.",
+      "Later-stage verification risk: symbolic latency, static liveness, and template binding evidence do not prove RTL, timing, board, or numeric golden correctness. Hierarchical leaf, single-layer, and board-accurate evidence must be collected before any hardware pass claim."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.pipeline_plan",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.stage2.template_selection",
+        "artifact.pipeline_planning.model_pipeline_review"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output"
+      ]
+    },
+    "schema_version": "spatialaccagent.model_pipeline_review.v0",
+    "stage": "pipeline_planning",
+    "status": "conditional_pass_pending_named_stage_gate_checks",
+    "summary": "The candidate operator-stream plan preserves the visible Qwen2 pre-norm decoder-block semantics: RMSNorm before causal GQA attention, original-input residual add, second RMSNorm, gated MLP gate/up split with activation/multiply, down projection, and final residual add from the post-attention state. Stage boundaries are bound to trusted templates with free-form RTL disabled. No hardware, timing, or numeric golden pass is claimed. Promotion should attach or rerun the exact current-stage acceptance checkers named by the subtask before downstream consumption."
+  },
+  "prompt_bytes": 64177,
+  "prompt_hash": "27f22f316c4b2b6ced98c9abf0461e8d7410c183ccf4ccd1bfe9f1a06a2558ad",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.model_pipeline_review.v0\",\"agent\":\"model_shape_specialist\",\"stage\":\"pipeline_planning\",\"status\":\"conditional_pass_pending_named_stage_gate_checks\",\"summary\":\"The candidate operator-stream plan preserves the visible Qwen2 pre-norm decoder-block semantics: RMSNorm before causal GQA attention, original-input residual add, second RMSNorm, gated MLP gate/up split with activation/multiply, down projection, and final residual add from the post-attention state. Stage boundaries are bound to trusted templates with free-form RTL disabled. No hardware, timing, or numeric golden pass is claimed. Promotion should attach or rerun the exact current-stage acceptance checkers named by the subtask before downstream consumption.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"candidate_stage_artifact.pipeline_plan\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"artifact.pipeline_planning.model_pipeline_review\"]},\"observations\":[\"SACG memory shows no open backtrack_requests, retry_requests, or active contamination_barriers relevant to pipeline_planning; the separately supplied sacg_memory object is empty, so there is no same-stage retry/barrier blocker to resolve.\",\"Candidate checker_summary reports 10 passed, 0 failed, and no warnings; state_summary reports failed_invariants as empty. The visible checker evidence includes operator_order_check, stream/data edge checks, shape/numeric checks, branch/join checks, buffer/liveness checks, attention_semantics_check, memory/runtime contract check, and template_binding_static_check.\",\"The visible operator order matches a Qwen2 pre-norm decoder block: block_input feeds rms_norm_1, self_attention, residual_add_1 with the original input skip, rms_norm_2, parallel mlp_gate_proj and mlp_up_proj, activation_mul, mlp_down_proj, residual_add_2 with the post-attention residual skip, then block_output.\",\"The attention contract is semantically consistent with causal GQA for the supplied model shape: num_q_heads=14, num_kv_heads=2, head_dim=64, hidden width 896, gqa_group_size=7, causal=true, RoPE enabled with rope_theta=1000000.0, and seq_len_bound=16.\",\"Residual joins are explicit and ordered: residual_add_1 joins the original block input with self_attention output, while residual_add_2 joins the post-attention state from residual_add_1 with mlp_down_proj output. Both joins use all-required-inputs-valid-before-fire and the pairing key token/tile/lane/word.\",\"The gated MLP branch topology is preserved: rms_norm_2 is atomically duplicated into gate and up branches using ready_valid_broadcast_with_per_output_fifo; gate and up projections both produce width 4864; activation_mul joins them with the same token/tile/lane/word pairing key before mlp_down_proj returns width 896.\",\"Stream shapes and transfer counts are internally consistent in the visible plan: hidden tensors are seq_len 16 by width 896, MLP intermediate tensors are seq_len 16 by width 4864, transfer_order is consistently token/tile/lane/word, and full 64-byte AXI beats align with the stated element widths and byte counts.\",\"Numeric policy is stage-constrained rather than full-precision semantic proof: activations/weights are 16-bit under the numeric policy, accumulators and residual/output paths use 32-bit where shown, and no golden numeric equivalence or hardware result is claimed at this stage.\",\"Template constraints are satisfied in the visible artifact: all nine stages have template_id/source bindings from the supplied library family, template_binding_static_check passes, and free_form_rtl_generation=false.\",\"The liveness_backpressure_check pass is useful for planning, but its own summary states it is not a latency-equality proof. Symbolic_first_order latency fields must remain planning metadata only.\"],\"risks\":[\"Current-stage promotion risk: the subtask names sacg_static_check, model_config_check, stream_plan_check, and template_binding_static_check as acceptance checkers, but the candidate artifact visibly contains only template_binding_static_check plus lower-level semantic/stream checks. The candidate should not be promoted until the exact named gate records are attached or rerun and pass.\",\"Later-stage parameter-binding risk, not a current semantic-order blocker: stage_06_activation_mul must bind the Qwen2 gated activation behavior required by model_config, not degrade into an unactivated multiply. This should be checked during template parameter binding.\",\"Later-stage memory/runtime risk, not a current pipeline-order blocker: the attention contract keeps KV storage bounded inside the generated block and states that external KV-cache materialization requires a later memory-layout artifact; runtime sequence length must remain <=16 and transfer counts must follow the configured sequence length.\",\"Later-stage verification risk: symbolic latency, static liveness, and template binding evidence do not prove RTL, timing, board, or numeric golden correctness. Hierarchical leaf, single-layer, and board-accurate evidence must be collected before any hardware pass claim.\"],\"proposed_actions\":[\"Attach this model_pipeline_review to the pipeline_planning evidence gate and require the exact current-stage acceptance checkers before promotion.\",\"In Stage 4, bind template parameters for RMSNorm, causal GQA/RoPE, residual ports, gated MLP activation/multiply, widths, element widths, and data order without changing the planned stage boundaries.\",\"In the memory/runtime stage, finalize base addresses, sequence-length transfer-count derivation, and any external KV-cache policy as a separate memory-layout contract.\",\"In verification planning, generate SACG-referenced boundary contracts and enforce the three-layer verification/repair loop: operator leaf modules first, then the connected single-decoder-layer kernel, then the board-accurate AXI/DDR wrapped system.\",\"Keep symbolic latency estimates out of throughput, timing, or hardware-pass claims.\"],\"executable_actions\":[{\"id\":\"pp_audit_attach_model_pipeline_review\",\"stage\":\"pipeline_planning\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"Bind the model-shape semantic audit to the named SACG constraints and require the exact current-stage acceptance checkers before downstream promotion. This distinguishes semantic review from hardware proof and avoids consuming lower-level checker evidence as a substitute for the stage gate.\",\"consumes\":[\"candidate_stage_artifact.pipeline_plan\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.cross_layer.input_consistency\",\"constraint.template.library\",\"sacg_memory\"],\"produces\":[\"artifact.pipeline_planning.model_pipeline_review\",\"operator/stage boundary findings mapped to SACG constraints\",\"handoff notes for model-shape or operator-order repair boundaries\"],\"tool_roles\":[\"sacg_validate\",\"sacg_static_check\",\"model_config_check\",\"stream_plan_check\",\"parameter_binding_static_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"model_config_check\",\"stream_plan_check\",\"template_binding_static_check\"],\"on_failure\":\"Block promotion to downstream stages. If a semantic, shape, stream, or template-boundary mismatch is found, route to pipeline_repair or architecture_review with the violated SACG constraints; do not modify golden outputs, loosen tolerances, or claim hardware pass.\",\"requires_approval\":false},{\"id\":\"pp_to_stage4_parameter_binding_guard\",\"stage\":\"parameter_binding\",\"action_type\":\"template_parameter_binding_handoff\",\"rationale\":\"Ensure the refined pipeline contract is converted into template parameters without changing operator order or stage boundaries, including Qwen2 RMSNorm parameters, causal GQA/RoPE fields, residual source ports, gated MLP activation/multiply behavior, hidden/intermediate widths, element widths, and token/tile/lane/word order.\",\"consumes\":[\"artifact.pipeline_planning.model_pipeline_review\",\"candidate_stage_artifact.pipeline_plan\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\"],\"produces\":[\"artifact.stage4.template_parameter_binding_contract\",\"template-bound operator parameter map for the decoder block\"],\"tool_roles\":[\"parameter_binding_static_check\",\"template_coverage_check\",\"numeric_policy_check\",\"model_config_check\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"template_binding_static_check\",\"numeric_policy_check\",\"model_config_check\"],\"on_failure\":\"Return to pipeline_planning with a bounded repair request. Any change to operator order, branch topology, numeric policy, or template boundary requires approval; do not introduce free-form RTL.\",\"requires_approval\":false},{\"id\":\"pp_generate_boundary_contracts_for_hierarchical_verification\",\"stage\":\"verification_planning\",\"action_type\":\"verification_plan_static_handoff\",\"rationale\":\"Prepare downstream checkers to verify the same semantics at bounded boundaries: RMSNorm leaf, attention leaf, residual leaf, gated MLP elementwise/projection leaves, the connected single decoder block, and later the board-accurate AXI/DDR system. This preserves the required three-layer repair loop and prevents hardware claims from static planning evidence.\",\"consumes\":[\"artifact.pipeline_planning.model_pipeline_review\",\"artifact.stage4.template_parameter_binding_contract\",\"constraint.case.adapter\",\"constraint.tool.protocols\"],\"produces\":[\"artifact.stage6.verification_artifact_contract\",\"SACG-referenced boundary contracts for leaf modules and the single decoder block\"],\"tool_roles\":[\"boundary_contract_generate\",\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"boundary_contract_check\",\"verification_plan_static_check\",\"hierarchical_verification_plan_check\",\"sacg_reference_check\"],\"on_failure\":\"Keep verification and backend blocked. If a verifier capability is missing, classify it as a checker/golden-reference repair; if a real tool later reports liveness, value, order, or protocol failure, localize the earliest causal boundary before any code repair.\",\"requires_approval\":false},{\"id\":\"pp_memory_runtime_handoff_for_seq_and_kv_bounds\",\"stage\":\"memory_layout\",\"action_type\":\"memory_runtime_plan\",\"rationale\":\"Finalize the later memory/runtime contract for target_seq_len<=16, transfer counts, base address assignment, and any external KV-cache materialization without changing the current operator-stream semantics.\",\"consumes\":[\"artifact.pipeline_planning.model_pipeline_review\",\"candidate_stage_artifact.memory_schedule\",\"candidate_stage_artifact.attention_contract\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"produces\":[\"artifact.stage5.memory_runtime_layout_contract\",\"runtime transfer-count and sequence-bound check records\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\"],\"on_failure\":\"Block code generation and backend use of the memory map. Invoke memory_runtime_repair with cited SACG constraints; changes to memory layout or KV-cache policy require approval.\",\"requires_approval\":true}],\"approval_required_for\":[\"changing decoder operator order or adding/removing stages\",\"changing residual skip sources, join fire rules, or MLP split/join topology\",\"changing GQA head counts, group size, RoPE policy, causal mask policy, or seq_len_bound\",\"changing numeric policy, element widths, rounding, saturation, or data-order/transfer-unit policy\",\"finalizing or changing memory layout, base addresses, runtime sequence policy, or external KV-cache materialization\",\"introducing new templates, replacing trusted template bindings, or allowing free-form RTL generation\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/model_shape_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/model_shape_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)",
+    "attempt 2: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "pipeline_planning.pipeline architect",
+  "used_fallback": false
+}

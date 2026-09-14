@@ -1,0 +1,51 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "real_tool.case_vivado_synthesis",
+      "real_tool.case_vivado_synthesis_report_check",
+      "real_tool.case_vivado_implementation",
+      "real_tool.case_vivado_implementation_report_check",
+      "timing_resource_check",
+      "required_real_tool_evidence_check"
+    ],
+    "action_type": "real_tool_execution",
+    "consumes": [
+      "artifact.stage5.generated_chisel_parameter_manifest",
+      "artifact.stage5.memory_runtime_plan",
+      "artifact.stage6.verification_hierarchy_pass_bundle",
+      "artifact.input.target_board_profile",
+      "artifact.input.tool_profile",
+      "stage4_static_evidence_limit_record.json"
+    ],
+    "id": "flow.later.backend.collect_real_vivado_evidence",
+    "on_failure": "Use the real tool output for contract-guided localization and bounded repair. Do not claim timing/resource pass, loosen numeric tolerance, modify golden outputs, or skip required verification layers.",
+    "produces": [
+      "backend_board/case_diagnostics/vivado_synthesis_report.json",
+      "backend_board/case_diagnostics/vivado_implementation_report.json",
+      "backend_board/case_diagnostics/timing_resource_evidence.json"
+    ],
+    "rationale": "Resource, timing, and implementation feasibility remain unproven until real Vivado synthesis and implementation reports are collected after static codegen, memory/runtime, and verification gates pass.",
+    "requires_approval": false,
+    "stage": "backend_board",
+    "tool_roles": [
+      "case_vivado_synthesis",
+      "case_vivado_synthesis_report_check",
+      "case_vivado_implementation",
+      "case_vivado_implementation_report_check",
+      "timing_resource_check",
+      "required_real_tool_evidence_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "proceed",
+  "flow_event_index": 15,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/flow_events/015_proceed.json",
+  "stage": "parameter_binding"
+}

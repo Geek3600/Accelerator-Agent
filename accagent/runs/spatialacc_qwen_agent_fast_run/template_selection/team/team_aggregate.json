@@ -1,0 +1,498 @@
+{
+  "approval_required_for": [
+    "Changing KV-cache scope from not_required to enabled, or introducing any KV-cache memory/runtime layout.",
+    "Changing attention architecture parameters after promotion, including num_q_heads, num_kv_heads, head_dim, seq_len, rope_theta, GQA grouping, or lanes.",
+    "Changing numeric policy or bound widths, including activation elem_bits, accumulator/input_bits, or decoder residual output_bits.",
+    "Replacing trusted attention templates, modifying template internals, changing data order, or adding free-form RTL for QKV projection, RoPE, softmax, mask, output projection, or GQA mapping.",
+    "future architecture/design-space changes that alter lanes or tile sizes",
+    "future major template substitutions, new required adapters, or edits to trusted template internals",
+    "future memory layout, data-order, board memory, or board runtime assumption changes",
+    "future numeric policy, precision, tolerance, or residual-stream width changes"
+  ],
+  "completed_subtasks": 4,
+  "decomposition_source": "llm",
+  "errors": [],
+  "event_log_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/event_log.jsonl",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "template_binding_static_check"
+      ],
+      "action_type": "stage_gate_promotion",
+      "consumes": [
+        "candidate_stage_artifact",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.cross_layer.input_consistency",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "id": "template_selection.promote_attention_semantic_binding",
+      "on_failure": "Block promotion to cross_layer_gate_engineer, record the failed constraint edge in SACG memory, and open a bounded template_selection retry rather than modifying templates or golden outputs.",
+      "produces": [
+        "attention_semantic_expansion_review",
+        "head_mapping_consistency_decision",
+        "attention_submodule_template_coverage_decision",
+        "template_selection.cross_layer_gate_handoff"
+      ],
+      "rationale": "All supplied current-stage deterministic checker results pass, attention submodule coverage is complete or explicitly not_required, and parameter bindings are sourced from SACG constraints rather than implicit defaults.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "sacg_static_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "parameter_binding_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "memory_runtime_plan_check",
+        "boundary_contract_check",
+        "human_boundary_check"
+      ],
+      "action_type": "handoff_guard",
+      "consumes": [
+        "candidate_stage_artifact.attention_semantics",
+        "constraint.model.decoder",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "id": "template_selection.record_kv_cache_scope_guard",
+      "on_failure": "Treat any attempted KV-cache enablement or hidden cache allocation as a memory-layout/architecture change requiring explicit approval before downstream consumption.",
+      "produces": [
+        "template_selection.kv_cache_scope_guard",
+        "memory_runtime_plan.kv_cache_not_required_constraint"
+      ],
+      "rationale": "The supplied attention semantics explicitly mark KV-cache as not_required. This scope must be preserved for memory/runtime planning so later stages do not allocate or depend on cache state without approved architecture and memory-layout changes.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "memory_runtime_plan_check",
+        "boundary_contract_check",
+        "human_boundary_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "code_generation_manifest_static_check",
+        "codegen_contract_check",
+        "artifact_hash_check"
+      ],
+      "action_type": "codegen_contract_check",
+      "consumes": [
+        "attention_semantic_expansion_review",
+        "head_mapping_consistency_decision",
+        "attention_submodule_template_coverage_decision",
+        "candidate_stage_artifact.template_source_checks",
+        "candidate_stage_artifact.parameter_bindings"
+      ],
+      "id": "code_generation.preserve_attention_template_bindings",
+      "on_failure": "Stop code generation promotion, localize the mismatched template/source/parameter edge, and route to bounded_template_repair with repair_boundary_check; do not alter trusted template internals without approval.",
+      "produces": [
+        "code_generation.attention_binding_manifest",
+        "code_generation.attention_template_hash_manifest"
+      ],
+      "rationale": "The current approval depends on trusted template and embedded-submodule coverage. Code generation must preserve source/template IDs, parameter values, and artifact hashes for attention modules rather than generating free-form replacement RTL.",
+      "requires_approval": false,
+      "stage": "code_generation",
+      "tool_roles": [
+        "code_generation_manifest_static_check",
+        "codegen_contract_check",
+        "artifact_hash_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_single_transformer_layer",
+        "case_single_layer_functional",
+        "case_single_layer_golden_compare",
+        "numeric_compare",
+        "data_order_trace_check"
+      ],
+      "action_type": "downstream_verification_plan",
+      "consumes": [
+        "attention_semantic_expansion_review",
+        "head_mapping_consistency_decision",
+        "attention_submodule_template_coverage_decision",
+        "artifact.input.case_adapter",
+        "verification_artifact_contract",
+        "generated_attention_or_decoder_artifacts"
+      ],
+      "id": "verification.plan_attention_numeric_compare",
+      "on_failure": "Do not promote to multilayer or board verification. Apply the three-layer repair loop: localize first at attention/operator leaf modules, then the connected single-transformer-layer kernel, and only after those pass proceed toward board-accurate AXI/DDR wrapping.",
+      "produces": [
+        "verification.attention_leaf_numeric_compare_report",
+        "verification.single_layer_attention_numeric_compare_report",
+        "verification.attention_data_order_trace_report"
+      ],
+      "rationale": "numeric_compare is not part of the supplied template-selection evidence and must be executed only after generated artifacts, verification contracts, and golden/reference tensors exist. This validates the semantic binding at leaf and connected single-layer levels before any board-accurate promotion.",
+      "requires_approval": false,
+      "stage": "verification",
+      "tool_roles": [
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_single_transformer_layer",
+        "case_single_layer_functional",
+        "case_single_layer_golden_compare",
+        "numeric_compare",
+        "data_order_trace_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "template_coverage_check",
+        "template_binding_static_check",
+        "sacg_reference_check"
+      ],
+      "action_type": "stage_gate_validation_and_promotion",
+      "consumes": [
+        "candidate_stage_artifact",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "state_summary.constraints"
+      ],
+      "id": "template_selection.finalize_operator_coverage_review",
+      "on_failure": "Do not promote to cross-layer gate. Localize the failed operator, parameter, source file, or SACG edge; if the gap is within approved template metadata/binding repair bounds route to bounded_template_repair, otherwise raise stage_backtrack_request rather than using free-form RTL.",
+      "produces": [
+        "operator_template_coverage_review",
+        "coverage_gap_or_pass_decision",
+        "SACG constraint references for every covered operator"
+      ],
+      "rationale": "Finalize the current candidate as a bounded operator-template coverage artifact by checking SACG references, selected template coverage, and template parameter/source binding using the registered acceptance checkers before cross-layer gate consumption.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "sacg_static_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "sacg_reference_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_reference_check",
+        "template_coverage_check",
+        "template_binding_static_check"
+      ],
+      "action_type": "handoff_package_generation",
+      "consumes": [
+        "operator_template_coverage_review",
+        "coverage_gap_or_pass_decision",
+        "candidate_stage_artifact.cross_layer_trace",
+        "candidate_stage_artifact.forbidden_edits"
+      ],
+      "id": "template_selection.handoff_coverage_to_cross_layer_gate",
+      "on_failure": "Keep the artifact in template_selection and regenerate the handoff package with missing SACG references or explicit blocker classification; do not rely on human memory or downstream inference to recover coverage evidence.",
+      "produces": [
+        "template_selection.cross_layer_gate_handoff",
+        "operator_coverage_sacg_focus"
+      ],
+      "rationale": "Package the ready coverage decision for template_selection.cross_layer_gate_engineer while preserving the no-free-form-RTL barrier and all model, shape, numeric, memory, runtime, deployment, and cross-layer references needed for the next gate.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "team_aggregate",
+        "sacg_reference_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "template_binding_static_check",
+        "artifact_hash_check",
+        "repair_boundary_check"
+      ],
+      "action_type": "static_gate_promotion",
+      "consumes": [
+        "candidate_stage_artifact",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.human_agent_boundary",
+        "state_summary.sacg_memory"
+      ],
+      "id": "template_selection.promote_template_binding_static_gate",
+      "on_failure": "Block promotion to the cross-layer gate; localize the failed binding/source/hash/boundary evidence, emit a bounded same-stage retry request, and do not edit golden outputs, loosen tolerance, or modify template internals without required approval.",
+      "produces": [
+        "artifact.template_selection.template_parameter_binding_review",
+        "artifact.template_selection.template_source_interface_review",
+        "artifact.template_selection.forbidden_edit_boundary_decision",
+        "artifact.template_selection.promoted_template_selection_contract"
+      ],
+      "rationale": "Seal the reviewed candidate as the promoted template-selection contract using registry-grounded static gates for SACG trace, numeric policy, parameter binding, template binding, source hash evidence, and repair boundaries. This preserves the current pass evidence and prevents downstream consumption of an unsealed retry or mutated artifact.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "sacg_static_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "artifact_hash_check",
+        "repair_boundary_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "template_binding_static_check",
+        "repair_boundary_check"
+      ],
+      "action_type": "handoff",
+      "consumes": [
+        "artifact.template_selection.promoted_template_selection_contract",
+        "artifact.template_selection.template_parameter_binding_review",
+        "artifact.template_selection.template_source_interface_review",
+        "artifact.template_selection.forbidden_edit_boundary_decision",
+        "candidate_stage_artifact.checker_results"
+      ],
+      "id": "template_selection.handoff_to_cross_layer_gate_engineer",
+      "on_failure": "Keep the artifact in template_selection; rerun the failed static checker with the same SACG constraints and route any concrete contradiction to bounded_template_repair or stage_backtrack_request before downstream consumption.",
+      "produces": [
+        "artifact.template_selection.cross_layer_gate_handoff_packet"
+      ],
+      "rationale": "The stage_gate_policy allows ready status when deterministic checker results pass and no current-stage blocks remain. Handoff should give the cross-layer gate engineer the sealed template binding and forbidden-edit decision while keeping later simulation/backend actions out of the current-stage risk set.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "team_aggregate",
+        "sacg_validate"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_memory_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "sacg_memory_update",
+      "consumes": [
+        "candidate_stage_artifact",
+        "artifact.template_selection.promoted_template_selection_contract",
+        "state_summary.sacg_memory"
+      ],
+      "id": "template_selection.record_ready_outcome_in_sacg_memory",
+      "on_failure": "Do not create a false pass memory record; keep the promoted contract as the authoritative artifact and rerun sacg_memory_update before later-stage aggregation.",
+      "produces": [
+        "artifact.sacg_memory.template_selection_ready_outcome"
+      ],
+      "rationale": "Record the ready outcome, absence of open barriers/backtracks/retries, and forbidden-edit boundaries in SACG memory so downstream agents do not rely on natural-language memory or stale failed artifacts.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "sacg_memory_update",
+        "stage_artifact_trust_barrier"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "template_binding_static_check",
+        "memory_runtime_plan_check",
+        "addr_map_check",
+        "deployment_board_check",
+        "human_boundary_check"
+      ],
+      "action_type": "stage_gate_evidence_audit",
+      "consumes": [
+        "candidate_stage_artifact.cross_layer_trace",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.stage_gate_policy",
+        "candidate_stage_artifact.selected_templates",
+        "candidate_stage_artifact.parameter_bindings",
+        "candidate_stage_artifact.template_source_checks",
+        "candidate_stage_artifact.forbidden_edits",
+        "state_summary.constraints",
+        "state_summary.sacg_memory"
+      ],
+      "id": "template_selection.final_cross_layer_gate_audit",
+      "on_failure": "Block promotion to code_generation, localize the failure to the missing or contradictory constraint/template/parameter/source/board fact, and issue a bounded repair request; do not reclassify absent VCS, Vivado, runtime, or board-run evidence as a template-selection failure.",
+      "produces": [
+        "template_selection_stage_gate_audit",
+        "cross_layer_trace_decision",
+        "repair_or_ready_classification"
+      ],
+      "rationale": "Aggregate the supplied checker evidence and stage_gate_policy to confirm that the required numeric, memory-board, runtime-board, deployment-board, and input-consistency constraints are present in the template-selection trace without claiming later hardware or simulation success.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "sacg_static_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "memory_runtime_plan_check",
+        "addr_map_check",
+        "deployment_board_check",
+        "human_boundary_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "code_generation_manifest_static_check",
+        "codegen_contract_check",
+        "codegen_package_static_check",
+        "sacg_reference_check"
+      ],
+      "action_type": "handoff_contract_generation",
+      "consumes": [
+        "template_selection_stage_gate_audit",
+        "candidate_stage_artifact.selected_templates",
+        "candidate_stage_artifact.parameter_bindings",
+        "candidate_stage_artifact.template_source_checks",
+        "candidate_stage_artifact.cross_layer_trace",
+        "candidate_stage_artifact.forbidden_edits"
+      ],
+      "id": "code_generation.prepare_bound_template_contract",
+      "on_failure": "Hold at code_generation and return the bounded mismatch to the template-selection/codegen contract owner; do not modify golden outputs, loosen tolerance, or change numeric, memory, runtime, board, or template policy without approval.",
+      "produces": [
+        "artifact.next_stage.code_generation_manifest",
+        "artifact.next_stage.codegen_contract",
+        "artifact.next_stage.sacg_reference_map"
+      ],
+      "rationale": "The next stage should materialize a code-generation contract from trusted selected templates while preserving SACG references for model shape, numeric policy, memory board, runtime board, deployment board, and input-consistency facts.",
+      "requires_approval": false,
+      "stage": "code_generation",
+      "tool_roles": [
+        "code_generation_manifest_static_check",
+        "codegen_contract_check",
+        "codegen_package_static_check",
+        "sacg_reference_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "verification_action_audit_check",
+        "verification_plan_static_check",
+        "tool_protocol_check",
+        "human_boundary_check"
+      ],
+      "action_type": "stage_boundary_annotation",
+      "consumes": [
+        "template_selection_stage_gate_audit",
+        "candidate_stage_artifact.stage_gate_policy",
+        "candidate_stage_artifact.cross_layer_trace_decision"
+      ],
+      "id": "stage_orchestrator.record_later_stage_gap_classification",
+      "on_failure": "Keep the handoff annotation unresolved and require orchestrator correction; do not add a current-stage risk unless a checker reports a concrete contradiction against the template-selection artifact or named SACG constraints.",
+      "produces": [
+        "artifact.stage_boundary.not_current_stage_gap_classification"
+      ],
+      "rationale": "Record that missing implementation, simulation, backend, runtime, and board-bring-up evidence is classified by the supplied stage_gate_policy as later-stage work so it is not misreported as a current template-selection failure.",
+      "requires_approval": false,
+      "stage": "stage_orchestrator",
+      "tool_roles": [
+        "team_aggregate",
+        "verification_action_audit",
+        "verification_plan_static_check",
+        "tool_protocol_check",
+        "human_boundary_check"
+      ]
+    }
+  ],
+  "execution_groups": [
+    0,
+    1
+  ],
+  "llm_io_metrics": {
+    "executable_action_count": 12,
+    "max_duration_sec": 459.0332762219987,
+    "max_prompt_bytes": 54951,
+    "result_count": 4,
+    "subtasks_without_executable_actions": [],
+    "total_duration_sec": 1181.1690842299977,
+    "total_prompt_bytes": 218715
+  },
+  "observations": [
+    "Reviewed only the supplied artifact summary and named constraints. The visible SACG memory/state summary contains no open retry requests, open backtrack requests, or active contamination barriers relevant to template_selection.",
+    "The candidate reports pass for operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, attention_semantic_expansion_check, and cross_layer_trace_check, with no errors or warnings listed.",
+    "Attention semantic coverage is complete for the current template-selection gate: QKV projection is covered in DecoderBlock.scala, RoPE is covered in DecoderBlock.scala, GQA head mapping is covered in QKVProjection.scala via kvGroupSize, softmax is covered by Softmax.scala/template_id=softmax, output projection is covered as an embedded Linear in DecoderBlock.scala, causal mask is covered by Mask.scala/template_id=mask, and KV-cache is explicitly scoped as not_required.",
+    "GQA parameter consistency is satisfied in the supplied bindings: num_q_heads=14, num_kv_heads=2, head_dim=64, hidden_size=896, 14*64=896, and 14/2 gives the recorded kvGroupSize=7 without a fractional group.",
+    "Sequence and positional parameters are bound from model/shape constraints: seq_len=16 from constraint.shape.model.target_max_seq_len and rope_theta=1000000.0 from constraint.model.decoder.position_encoding.rope_theta. RoPE theta is bound at the decoder block wrapper where RoPE coverage is reported.",
+    "Numeric and lane parameters are bound rather than inherited from implicit constructor defaults: attention elem_bits=16 from activation dtype, decoder residual stream output_bits=32 from accumulator dtype, and lanes=8 from design-space/memory/numeric constraints. Lanes=8 divides head_dim=64, seq_len=16, and hidden_size=896 in the supplied configuration.",
+    "Template source/interface checks report existing source files and matching required constructor metadata for DecoderBlock.scala, Attention.scala, Softmax.scala, Mask.scala, and other selected operator templates. Required adapters are empty and unsupported_bindings is empty.",
+    "The cross-layer trace records presence of numeric policy, board memory, board runtime, board deployment, and cross-layer input-consistency constraints, satisfying the current template-selection stage gate. VCS/Verilator, Vivado, board runtime, and final numeric accuracy evidence are not present and are not current-stage blockers under the supplied stage_gate_policy.",
+    "numeric_compare is not claimed as executed in the candidate template-selection evidence. It remains a downstream verification requirement after generated code, testbench/golden artifacts, and verification contracts exist.",
+    "SACG memory shows no open backtrack_requests, open retry_requests, active contamination_barriers, or recent contamination barriers relevant to this template_selection coverage review.",
+    "The visible operator_sequence contains 9 decoder operators: rms_norm_1, self_attention, residual_add_1, rms_norm_2, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, and residual_add_2. The artifact reports coverage.required_ops=9, coverage.covered_ops=9, coverage.has_block_wrapper=true, and missing_ops=[].",
+    "The block wrapper is explicitly covered by selected template qwen2_block -> decoder_block from DecoderBlock.scala with role=block_wrapper and status=ready in parameter_bindings.",
+    "Every top-level decoder operator is bound to a selected trusted template: rms_norm_1 -> norm, self_attention -> attention, residual_add_1 -> residual, rms_norm_2 -> norm, mlp_gate_proj -> ffn, mlp_up_proj -> ffn, activation_mul -> elementwise, mlp_down_proj -> ffn, and residual_add_2 -> residual.",
+    "Required attention semantic coverage is explicitly expanded rather than hidden inside an unreviewed free-form RTL assumption: qkv_projection is covered, RoPE is covered, GQA head mapping is covered with num_q_heads=14, num_kv_heads=2, group_size=7, softmax is covered, output_projection is covered, and causal_mask is covered. KV cache is recorded as not_required, not missing.",
+    "selected_templates also include attention submodule templates softmax -> softmax from Softmax.scala and causal_mask -> mask from Mask.scala, supporting the self_attention coverage requirement in the stage gate policy.",
+    "required_adapters=[] and unsupported_bindings=[], so this candidate does not rely on explicit adapters or unsupported/free-form bindings to close coverage gaps.",
+    "Parameter binding evidence reports no missing_params and no legality_errors for the block wrapper, all top-level decoder operators, and attention submodules. Bound sources reference model, shape, numeric, architecture, memory, and board-related SACG constraints rather than implicit constructor defaults.",
+    "Template source/interface evidence reports pass for DecoderBlock.scala, Norm.scala, Attention.scala, Residual.scala, FFN.scala, Elementwise.scala, Softmax.scala, and Mask.scala, with source files present and no metadata/constructor required-parameter mismatches reported.",
+    "Checker evidence in the candidate artifact reports pass for operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, attention_semantic_expansion_check, and cross_layer_trace_check with no errors or warnings.",
+    "The cross_layer_trace reports present=true for constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, constraint.deployment.board, and constraint.cross_layer.input_consistency, so template selection is tied to cross-layer facts beyond only model shape.",
+    "The artifact contains explicit forbidden_edits against closing missing template coverage with free-form RTL, relying on Chisel default constructor values when model/numeric/board values are available, or changing template internals, data order, memory layout, numeric policy, or board/runtime assumptions without approval.",
+    "Per stage_gate_policy, absent VCS/Verilator simulation, Vivado synthesis/implementation, generated accelerator code, runtime driver, board wrapper, full DDR/AXI integration, and later numeric/board bring-up evidence are not current-stage blockers and are not claimed as passed here.",
+    "SACG memory visible to this stage reports no active contamination barriers, no open backtrack requests, and no open retry requests; the separate sacg_memory payload is empty, so there is no current-stage memory blocker to reconcile.",
+    "Coverage evidence is complete for template_selection: coverage shows 9 required decoder operators covered, block wrapper present, missing_ops=[], required_adapters=[], unsupported_bindings=[], and checker_results for operator coverage, parameter binding, source/interface, attention semantic expansion, and cross-layer trace all report pass.",
+    "Every selected template required parameter has a corresponding explicit bound_params entry with status=bound and no missing_params or legality_errors. Key bindings include hidden_size=896, intermediate_size=4864, num_q_heads=14, num_kv_heads=2, head_dim=64, seq_len=16, lanes=8, elem_bits=16, input_bits=32, output_bits=32 where required, rope_theta=1000000.0, eps=1e-6, causal=true, and FFN tile_m=16/tile_n=128/tile_k=128.",
+    "The self_attention semantic expansion is covered: QKV projection, RoPE, GQA head mapping with num_q_heads=14, num_kv_heads=2 and group size 7, softmax, output projection, and causal mask are covered; KV cache is explicitly marked not_required for this stage artifact.",
+    "Template source/interface evidence records existing files and SHA-256 hashes for DecoderBlock.scala, Norm.scala, Attention.scala, Residual.scala, FFN.scala, Elementwise.scala, Softmax.scala, and Mask.scala; every template_source_checks row has status=pass, exists=true, errors=[], missing_required_params_in_constructor=[], numeric_constructor_params_not_bound_by_metadata=[], and source_required_params_missing_from_metadata=[].",
+    "Source hash evidence is recorded for selected sources: DecoderBlock.scala sha256=29b3b78cbb573e047a74761ec43996fa141a83be3fbdda92e6fd83fa9c11aec2; Norm.scala sha256=a3bcafab8c07f683696fa23b68f139af92b121eebc29b711be7b0db288981476; Attention.scala sha256=d94b29bbf3329e108ccebacf6f3afcabb2d582419981187352fb7b9123dd6b15; Residual.scala sha256=51b1114e8c133055f04aa516b6e27e4a840b87f598069535df0d4ca543d17059; FFN.scala sha256=3be3df816e484ee847e8cdfdab01d4f9dcf5b8eaccdb66e3a2d157f89383d1b1; Elementwise.scala sha256=b876ae4da79745cd56f747aadcb9dae234718a1d822277a9e172f830818f74e1; Softmax.scala sha256=a9221da8536731d475a36e3eb1bee5ccbaf87f5ffbb22de4691280cf54339d48; Mask.scala sha256=bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a.",
+    "The activation_mul template parameter named hidden_size is explicitly bound to constraint.shape.model.intermediate_size=4864, matching the gated MLP activation width; no legality error is reported for this intentional template-parameter naming mismatch.",
+    "Cross-layer trace presence is pass for numeric policy, board memory, board runtime, board deployment, and cross-layer input consistency, so this stage does not lack required cross-layer facts.",
+    "Forbidden-edit boundaries are explicit: do not close missing template coverage with free-form RTL; do not rely on Chisel default constructor values when model, numeric, or board values are available; do not change template internals, data order, memory layout, numeric policy, or board/runtime assumptions without approval.",
+    "cross_layer_trace.status is pass and marks constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, constraint.deployment.board, and constraint.cross_layer.input_consistency as present=true.",
+    "The visible checker_results all pass: operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, attention_semantic_expansion_check, and cross_layer_trace_check report no errors.",
+    "Operator coverage is complete for the current template-selection scope: 9 required decoder operators are covered, a block wrapper exists, and missing_ops is empty.",
+    "Attention semantic expansion is covered for QKV projection, RoPE, GQA head mapping with 14 query heads and 2 KV heads, softmax, output projection, and causal mask; KV cache is explicitly marked not_required for this artifact.",
+    "All visible selected template parameter bindings are status=ready with no missing_params, legality_errors, or unsupported_bindings; numeric parameters are bound to constraint.numeric.policy and lanes are bound through architecture, memory-board, and numeric-policy sources.",
+    "Template source checks show each selected Chisel template source exists and passes constructor/metadata consistency checks with recorded source hashes; the forbidden_edits list blocks free-form RTL coverage closure, implicit constructor defaults where real inputs exist, and unapproved changes to template internals, data order, memory layout, numeric policy, or board/runtime assumptions.",
+    "SACG memory in the state summary reports no active contamination barriers, no open backtrack_requests, and no open retry_requests; the separately supplied sacg_memory object is empty, so there is no relevant same-stage memory blocker to address.",
+    "Under the supplied stage_gate_policy, absent VCS/Verilator simulation, Vivado synthesis/implementation/bitstream, generated final accelerator code, runtime driver, board wrapper, DDR/AXI top-level integration, later numeric-accuracy evidence, and board bring-up evidence are not current-stage blocks and must not be reported as template-selection failures.",
+    "The named subtask acceptance checkers for memory/runtime/address/deployment/human-boundary should be preserved as promotion/handoff checks, but the current-stage blocker being audited here is trace absence; the supplied trace contains the required board and input-consistency constraints."
+  ],
+  "parallel_execution": true,
+  "proposed_actions": [
+    "Promote the attention_semantic_expansion_review, head_mapping_consistency_decision, and attention_submodule_template_coverage_decision to template_selection.cross_layer_gate_engineer with the reported checker evidence attached.",
+    "Carry KV-cache scope as an explicit boundary condition: current candidate is cacheless/not_required; any later autoregressive KV-cache enablement must reopen memory/runtime layout and approval rather than silently adding cache state.",
+    "During code generation, preserve embedded attention submodule coverage for QKVProjection, RoPE, output projection, softmax, and causal mask in the generated manifest so that trusted-template binding cannot drift into free-form RTL.",
+    "After code generation and verification artifact construction, run leaf and single-transformer-layer numeric_compare/golden checks for attention behavior, including QKV projection, RoPE, GQA grouping, causal mask ordering, softmax, and output projection.",
+    "Promote the operator_template_coverage_review to template_selection.cross_layer_gate_engineer with the per-operator SACG constraint references preserved.",
+    "Archive or rerun the canonical stage acceptance checks under the requested names sacg_static_check, template_coverage_check, and template_binding_static_check if the pipeline requires exact checker-name evidence rather than the candidate artifact's equivalent checker names.",
+    "Downstream code generation and verification stages must preserve the selected template source bindings, parameter sources, and forbidden-edits barrier; any later attempt to close coverage through free-form RTL should trigger bounded template repair or backtrack rather than promotion.",
+    "Promote the candidate template-selection contract only after preserving the recorded parameter bindings, source hashes, interface pass evidence, unsupported_bindings=[], and forbidden-edit boundaries in the handoff packet to template_selection.cross_layer_gate_engineer.",
+    "Treat absence of VCS/Verilator simulation, Vivado synthesis/implementation, final generated accelerator code, runtime driver, board wrapper, and board bring-up evidence as later-stage work under the supplied stage_gate_policy; these are not current template_selection blockers.",
+    "Downstream code generation and verification should consume the promoted contract without changing template internals, data order, memory layout, numeric policy, board/runtime assumptions, or selected template library unless an explicit approval and checker rerun is recorded.",
+    "Promote the candidate template-selection artifact as ready only with this gate audit attached and with the numeric, memory-board, runtime-board, deployment-board, and input-consistency trace facts locked as SACG handoff facts.",
+    "In code_generation, consume selected template IDs, source hashes, parameter bindings, forbidden edits, and cross-layer trace facts directly; do not alter numeric policy, memory layout, board/runtime assumptions, data order, or major template choices without explicit approval.",
+    "Record simulation, Vivado, runtime-driver, DDR/AXI-wrapper, bitstream, board-run, and later numeric-accuracy checks as later-stage planned work, not as current template-selection risks.",
+    "If a later checker finds a concrete contradiction in selected templates, parameter bindings, template metadata, or cross-layer trace facts, route it back as a bounded template-selection repair request with the violated SACG constraint cited."
+  ],
+  "risks": [],
+  "schema_version": "spatialaccagent.team_aggregate.v0",
+  "split_reason": "The template_selection stage is not atomic: strict closure requires independent review of operator coverage, parameter/source binding, attention semantics, and cross-layer board/numeric trace evidence. The candidate artifact reports ready status and passing deterministic checks, but the stage objective spans multiple constraint families where specialist parallel review adds value while staying within SACG-guided, template-constrained, checker-verified boundaries.",
+  "stage": "template_selection",
+  "status": "ready",
+  "subtask_count": 4,
+  "used_fallback_count": 0
+}

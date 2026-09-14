@@ -1,0 +1,39 @@
+{
+  "schema_version": "spatialaccagent.numeric_policy.v0",
+  "policy_id": "current_mixed_int8_fp32",
+  "default_rules": {
+    "weight_dtype": "int8",
+    "activation_dtype": "mixed_int8_fp32",
+    "acc_dtype": "int32_or_fp32_by_stage",
+    "scale_dtype": "fp32_or_uint32_by_stage",
+    "rounding": "truncate",
+    "saturation": true,
+    "tolerance_policy": "valid_output_required_for_board"
+  },
+  "stages": [
+    {
+      "stage_id": "linear_family",
+      "ops": ["qkv_projection", "out_proj", "ffn_up", "ffn_down"],
+      "weight_dtype": "int8",
+      "input_dtype": "int8_or_fp32_by_stage",
+      "output_dtype": "int8_or_fp32_by_stage"
+    },
+    {
+      "stage_id": "attention_family",
+      "ops": ["qk", "softmax", "pv"],
+      "input_dtype": "int8_or_fp32_by_stage",
+      "internal_dtype": "fp32_or_quantized_context",
+      "output_dtype": "int8_or_fp32_by_stage"
+    }
+  ],
+  "tolerance": {
+    "stage": "from_policy",
+    "top": "from_policy",
+    "board": "valid_output_required",
+    "comparison": {
+      "atol": 0.1,
+      "rtol": 0.1,
+      "max_mismatch_fraction": 0.05
+    }
+  }
+}

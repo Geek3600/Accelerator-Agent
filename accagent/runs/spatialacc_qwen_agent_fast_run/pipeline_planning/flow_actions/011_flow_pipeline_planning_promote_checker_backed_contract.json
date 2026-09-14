@@ -1,0 +1,51 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "sacg_static_check",
+      "sacg_memory_check",
+      "stage_artifact_trust_barrier_check",
+      "verification_action_audit_check"
+    ],
+    "action_type": "stage_gate_promotion",
+    "consumes": [
+      "recent_stage_summary.checker_summary",
+      "recent_stage_summary.outputs.pipeline_plan",
+      "recent_stage_summary.outputs.pipeline_static_checks",
+      "recent_stage_summary.outputs.sacg_state",
+      "recent_stage_summary.design_team.action_normalization",
+      "recent_stage_summary.llm_agent",
+      "sacg_memory",
+      "flow_policy"
+    ],
+    "id": "flow.pipeline_planning_promote_checker_backed_contract",
+    "on_failure": "Block promotion, quarantine the unpromoted promotion artifact, and create a checker-localized stage_retry_request or stage_backtrack_request. Because the bounded attempt count is already reached, do not blindly rerun the whole stage or consume the failed artifact downstream.",
+    "produces": [
+      "artifact.pipeline_planning.sacg_committed_pipeline_contract",
+      "sacg_memory.stage_outcome_record.pipeline_planning",
+      "artifact.flow.pipeline_planning_promotion_decision",
+      "next_stage_input.parameter_binding.sacg_state"
+    ],
+    "rationale": "The current stage passed, SACG memory has no retry/backtrack/barrier blockers, and the supplied LLM result is ready. Promote only the unchanged checker-backed Stage 3 contract and record that it is planning evidence, not hardware evidence.",
+    "requires_approval": false,
+    "stage": "pipeline_planning",
+    "tool_roles": [
+      "sacg_validate",
+      "sacg_static_check",
+      "sacg_memory_update",
+      "stage_artifact_trust_barrier",
+      "verification_action_audit"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "proceed",
+  "flow_event_index": 11,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/011_proceed.json",
+  "stage": "pipeline_planning"
+}

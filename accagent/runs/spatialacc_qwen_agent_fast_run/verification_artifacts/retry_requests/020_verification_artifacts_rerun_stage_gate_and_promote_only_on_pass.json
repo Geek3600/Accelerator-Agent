@@ -1,0 +1,50 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "verification_plan_static_check",
+      "tool_protocol_check",
+      "required_real_tool_evidence_check",
+      "verification_artifact_contract_check",
+      "sacg_static_check",
+      "output_validity_check"
+    ],
+    "action_type": "retry_current_stage",
+    "consumes": [
+      "artifact.stage.verification_artifacts.candidate_verification_plan",
+      "artifact.stage.verification_artifacts.candidate_boundary_contracts",
+      "artifact.stage.verification_artifacts.candidate_verification_artifact_contract",
+      "verification_artifacts/diagnostics/current_stage_risk_closure_evidence.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json"
+    ],
+    "id": "verification_artifacts.rerun_stage_gate_and_promote_only_on_pass",
+    "on_failure": "Because the second bounded attempt would fail, do not proceed to debug_loop/backend_board. Create localized retry/backtrack/trust-barrier evidence and stop autonomous downstream progress until flow control reviews it.",
+    "produces": [
+      "artifact.stage.verification_artifacts.promoted_report",
+      "artifact.stage.verification_artifacts.promoted_contract",
+      "artifact.stage.verification_artifacts.updated_sacg_state",
+      "verification_artifacts/diagnostics/retry_gate_results.json"
+    ],
+    "rationale": "One bounded same-stage retry remains. Rerun the verification_artifacts stage using the repaired candidate contract and promote outputs only if all current-stage gates pass.",
+    "requires_approval": false,
+    "stage": "verification_artifacts",
+    "tool_roles": [
+      "verification_plan_static_check",
+      "tool_protocol_check",
+      "required_real_tool_evidence_check",
+      "team_aggregate",
+      "sacg_static_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 20,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/flow_events/020_retry.json",
+  "stage": "verification_artifacts"
+}

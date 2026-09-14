@@ -1,0 +1,50 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "sacg_static_check",
+      "sacg_reference_check",
+      "stage_artifact_trust_barrier_check",
+      "stage_retry_request_check",
+      "stage_backtrack_request_check",
+      "sacg_memory_check"
+    ],
+    "action_type": "stage_gate_decision",
+    "consumes": [
+      "pipeline_planning/pipeline_planning_report_attempt_2_candidate.json",
+      "pipeline_planning/sacg_state_attempt_2_candidate.json",
+      "pipeline_planning/current_stage_checker_results_attempt_2.json",
+      "pipeline_planning/retry_reconciliation_contract_attempt_2.json",
+      "sacg_memory.contamination_barrier.pipeline_planning_attempt_1_failed_report"
+    ],
+    "id": "pipeline_planning.gate_retry_candidate_promotion",
+    "on_failure": "Keep parameter_binding and later stages blocked; do not consume any pipeline_planning candidate as validated input, and route the failure to bounded backtrack/escalation rather than further same-stage retries.",
+    "produces": [
+      "pipeline_planning/pipeline_planning_report.json promoted from attempt 2 when all checks pass",
+      "pipeline_planning/sacg_state.json promoted from attempt 2 when all checks pass",
+      "sacg_memory.retry_request_resolution.pipeline_planning_attempt_2",
+      "sacg_memory.stage_backtrack_request.pipeline_planning_if_attempt_2_fails"
+    ],
+    "rationale": "Only a retry candidate that passes current-stage SACG, stream, memory/runtime, numeric, template, parameter binding, boundary, and verification-plan gates may supersede failed attempt-1 artifacts and feed parameter_binding.",
+    "requires_approval": false,
+    "stage": "pipeline_planning",
+    "tool_roles": [
+      "sacg_validate",
+      "team_aggregate",
+      "stage_artifact_trust_barrier",
+      "stage_backtrack_request",
+      "sacg_memory_update"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 8,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/008_retry.json",
+  "stage": "pipeline_planning"
+}

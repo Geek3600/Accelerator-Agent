@@ -1,0 +1,282 @@
+{
+  "agent": "data_memory_runtime_specialist",
+  "duration_sec": 501.44326681500024,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "data_memory_runtime_specialist",
+    "approval_required_for": [
+      "Manual board or app-shell target selection if target discovery evidence remains ambiguous after cited material/sample and real Vivado checks.",
+      "Any DDR base address, DDR size, AXI data/address width, burst/alignment policy, address-map, transfer unit, or memory layout change not directly supported by cited board evidence and accepted checkers.",
+      "Any runtime ABI, host driver protocol, register map, buffer ordering, or deployment protocol override beyond the supplied target_board_profile, tool_protocols, and human_agent_boundary.",
+      "Any substitution of required real tools or consumption of fallback/diagnostic records as successful evidence."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "llm_semantic_extraction_check",
+          "no_static_keyword_semantic_matching_check",
+          "sacg_static_check"
+        ],
+        "action_type": "implementation_evidence_review",
+        "consumes": [
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.field_evidence",
+          "artifact.input.field_evidence_candidates",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index"
+        ],
+        "id": "input_preparation.audit_board_runtime_tool_evidence",
+        "on_failure": "Record the failed or not_run evidence item in artifact.input_audit.board_memory_runtime_gap_list and block downstream implementation, deployment, and hardware-pass claims that depend on it.",
+        "produces": [
+          "artifact.input_audit.board_runtime_tool_report",
+          "artifact.input_audit.tool_availability_matrix",
+          "artifact.input_audit.board_memory_runtime_gap_list",
+          "artifact.input_audit.field_evidence_trace_index"
+        ],
+        "rationale": "Consolidate the compact board, tool, material, sample, and field-evidence inputs into an explicit evidence ledger. The supplied summary cannot certify concrete DDR/AXI, address-map, runtime ABI, deployment, or real-tool facts, so each required item must be cited or marked not_run.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "real_tool_evidence_check",
+          "llm_semantic_extraction",
+          "no_static_keyword_semantic_matching"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_board_interface_discovery",
+          "case_axi_ddr_interface",
+          "addr_map_check",
+          "memory_runtime_plan_check",
+          "case_runtime_abi_check"
+        ],
+        "action_type": "board_memory_runtime_contract_validation",
+        "consumes": [
+          "artifact.input.target_board_profile",
+          "artifact.input.design_space",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.case_adapter",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input_audit.field_evidence_trace_index"
+        ],
+        "id": "input_preparation.validate_board_memory_runtime_contract",
+        "on_failure": "Localize the earliest missing or conflicting boundary among board profile, AXI/DDR interface, address map, transfer plan, and runtime ABI; do not repair by changing golden outputs, loosening tolerance, or silently adopting template defaults.",
+        "produces": [
+          "artifact.input_audit.board_axi_ddr_contract",
+          "artifact.input_audit.address_map_contract",
+          "artifact.input_audit.runtime_abi_contract",
+          "artifact.input_audit.board_memory_runtime_gap_list"
+        ],
+        "rationale": "Bind target board facts to a checked DDR/AXI interface, address map, transfer plan, and runtime ABI before templates or code generation consume any board defaults.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "case_board_interface_discovery",
+          "case_axi_ddr_interface",
+          "addr_map_check",
+          "memory_runtime_plan_check",
+          "case_runtime_abi_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "human_boundary_check"
+        ],
+        "action_type": "tool_availability_protocol_validation",
+        "consumes": [
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.human_agent_boundary"
+        ],
+        "id": "input_preparation.verify_tool_protocol_and_availability_matrix",
+        "on_failure": "Mark unavailable or protocol-ambiguous tools as blockers for the dependent checker stages and request bounded tool substitution or capability repair through the human-agent boundary.",
+        "produces": [
+          "artifact.input_audit.tool_availability_matrix",
+          "artifact.input_audit.tool_protocol_gap_list",
+          "artifact.input_audit.real_tool_evidence_requirements"
+        ],
+        "rationale": "The tool artifacts are present but detailed tool paths, versions, invocation protocols, and executable evidence are not visible in the supplied summary. This action verifies that later real-tool stages can be executed under the recorded protocols.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "backend_app_shell_integration_contract_static_check",
+          "backend_app_shell_target_discovery_check",
+          "backend_app_shell_target_hint_synthesis_check",
+          "backend_bounded_recovery_action_check",
+          "real_tool.app_shell_target_discovery_contract",
+          "real_tool.app_shell_target_hint_synthesis",
+          "real_tool.app_shell_target_discovery_after_hint",
+          "human_boundary_check"
+        ],
+        "action_type": "target_discovery_policy_update",
+        "consumes": [
+          "artifact.input.target_board_profile",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.field_evidence",
+          "artifact.input_audit.field_evidence_trace_index",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability"
+        ],
+        "id": "input_preparation.prepare_backend_app_shell_target_discovery_policy",
+        "on_failure": "Keep runtime bitstream generation and board runtime blocked; if discovery remains ambiguous after cited hints, produce a bounded recovery action and request approval rather than selecting an app-shell target by memory or guesswork.",
+        "produces": [
+          "artifact.input_audit.target_discovery_policy_update",
+          "artifact.input_audit.app_shell_target_discovery_contract",
+          "artifact.input_audit.backend_target_ambiguity_report"
+        ],
+        "rationale": "Backend/app-shell target discovery must be synthesized from supplied board materials, sample-project evidence, and real Vivado evidence. Since no concrete target names or Vivado discovery results are visible here, the policy must cite evidence, record ambiguity, and require bounded approval instead of guessing.",
+        "requires_approval": true,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "app_shell_target_discovery_contract",
+          "app_shell_target_hint_synthesis",
+          "app_shell_target_discovery_after_hint",
+          "backend_bounded_recovery_action"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_artifact_trust_barrier_check",
+          "sacg_memory_check",
+          "sacg_static_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "trust_barrier",
+        "consumes": [
+          "artifact.input_audit.board_runtime_tool_report",
+          "artifact.input_audit.board_memory_runtime_gap_list",
+          "artifact.input.field_evidence",
+          "sacg_memory"
+        ],
+        "id": "input_preparation.install_board_runtime_tool_trust_barrier",
+        "on_failure": "Block promotion to cross-layer evidence gate until the barrier state is recorded and downstream consumers are prevented from treating unverified implementation, bitstream, or board-runtime claims as facts.",
+        "produces": [
+          "sacg_memory.contamination_barrier.board_runtime_tool_evidence_pending",
+          "artifact.input_audit.unsupported_implementation_claim_blocklist"
+        ],
+        "rationale": "No active sacg_memory barrier is visible, but the current evidence summary is insufficient for downstream implementation claims. A temporary trust barrier prevents unverified board/runtime/tool claims from contaminating SACG-guided design decisions.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "stage_artifact_trust_barrier",
+          "sacg_memory_update",
+          "sacg_validate"
+        ]
+      }
+    ],
+    "observations": [
+      "State summary lists all target artifacts for this role, including target_board_profile, tool_profile, tool_availability, tool_protocols, field_evidence, field_evidence_candidates, material_index, and sample_project_index; the compact candidate summary does not expose their detailed rows, so detailed board facts must be treated as unverified rather than absent or passed.",
+      "candidate_stage_artifact.prepared_inputs reports errors size 0 and mode independent_from_scratch_design, but absence of preparation errors is not evidence that DDR, AXI, address-map, runtime ABI, deployment, or real-tool requirements are satisfied.",
+      "field_evidence is present with keys for evidence, policy, _domain_result_paths, and _regex_candidate_count, and field_evidence_candidates is present, but no concrete citations, paths, candidate rows, or promoted evidence entries are visible in the supplied summary.",
+      "No concrete board DDR base/size, AXI data/address width, AXI port naming, clock/reset convention, app-shell target, register map, buffer layout, or host runtime ABI is visible in the supplied summary; no such value should be inferred from template defaults or sample names.",
+      "tool_profile, tool_availability, and tool_protocols are present as artifacts, but the supplied summary does not show executable tool paths, versions, invocation protocols, not_run markers, or real-tool evidence logs.",
+      "No real_tool evidence is visible for Vivado synthesis, Vivado implementation, shell wrapper generation, runtime bitstream creation, DDR image roundtrip, board runtime, or AXI protocol checks; any hardware-pass or deployment-pass claim is unsupported at this point.",
+      "SACG graph summary reports 0 nodes and 0 edges while constraints are listed separately, so evidence-to-constraint binding has not been certified by the supplied summary.",
+      "sacg_memory in the state summary shows no open retry requests, backtrack requests, or active contamination barriers; the separate sacg_memory block is empty, so there is no current same-stage retry contract to reconcile and no prior barrier to clear.",
+      "Because no stage_gate_policy or presence_summary is supplied, this audit only classifies the visible lack of evidence binding as a downstream-consumption blocker; it does not declare detailed artifact fields missing beyond what the supplied summary proves."
+    ],
+    "proposed_actions": [
+      "Generate the board_runtime_tool_report, tool_availability_matrix, board_memory_runtime_gap_list, and field_evidence_trace_index from the listed input artifacts, recording concrete evidence or explicit not_run status for every required DDR/AXI, address-map, runtime ABI, deployment, and tool claim.",
+      "Run board interface, AXI/DDR, address-map, memory-runtime-plan, and runtime-ABI checkers before allowing code generation or backend packaging to consume board facts.",
+      "Verify tool availability and protocols against the human-agent boundary and required real-tool evidence policy; block fallback or diagnostic-only records from being treated as successful agent decisions.",
+      "Create a bounded backend/app-shell target discovery policy from cited material/sample evidence and real Vivado evidence; if multiple targets remain plausible, require approval rather than guessing a target name.",
+      "Install a SACG trust barrier that blocks downstream implementation and hardware-pass claims until the board/runtime/tool evidence is bound to constraints or marked not_run with an explicit gap list."
+    ],
+    "risks": [
+      "Cross-layer memory/runtime risk: model shape, numeric precision, data ordering, transfer counts, DDR capacity, and runtime buffer layout have not yet been bound to a checked address map.",
+      "Board integration risk: app-shell or backend target names could be guessed from samples if target discovery is not tied to cited board materials and real Vivado evidence.",
+      "AXI/DDR protocol risk: templates may assume AXI widths, burst lengths, outstanding transactions, alignment, or clock/reset domains that are not proven by target_board_profile or board evidence.",
+      "Runtime ABI risk: host driver arguments, register offsets, buffer ordering, packed weight/image layout, and completion/status semantics are not visible and may diverge from generated RTL expectations.",
+      "Tool evidence risk: tool availability artifacts exist, but no executable proof is visible that required tools can be invoked under the recorded protocols, nor that fallback diagnostics are blocked from being consumed as successful evidence.",
+      "Field-evidence contamination risk: regex candidates or sample-project snippets may be false positives unless promoted through a trace index with citations and checker status.",
+      "SACG binding risk: with zero recorded SACG nodes/edges in the summary, downstream stages could consume natural-language board claims without machine-checkable constraint bindings unless a trust barrier is installed."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.field_evidence",
+        "artifact.input.field_evidence_candidates",
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input_audit.board_runtime_tool_report",
+        "artifact.input_audit.tool_availability_matrix",
+        "artifact.input_audit.board_memory_runtime_gap_list",
+        "artifact.input_audit.field_evidence_trace_index"
+      ],
+      "constraints": [
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.protocols"
+      ],
+      "edges": [
+        "pending_binding:artifact.input.target_board_profile->constraint.deployment.board",
+        "pending_binding:artifact.input.target_board_profile->constraint.memory.board",
+        "pending_binding:artifact.input.tool_profile->constraint.tool.protocols",
+        "pending_binding:artifact.input.tool_availability->constraint.tool.protocols",
+        "pending_binding:artifact.input.tool_protocols->constraint.tool.protocols",
+        "pending_binding:artifact.input.field_evidence->constraint.memory.board",
+        "pending_binding:artifact.input.field_evidence->constraint.runtime.board",
+        "pending_binding:artifact.input.sample_project_index->constraint.deployment.board",
+        "pending_binding:artifact.input.material_index->constraint.deployment.board"
+      ],
+      "nodes": [
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.field_evidence",
+        "artifact.input.field_evidence_candidates",
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.protocols"
+      ]
+    },
+    "schema_version": "spatialaccagent.input_audit.board_runtime_tool_report.v0",
+    "stage": "input_preparation",
+    "status": "blocked_pending_evidence_binding",
+    "summary": "Input inventory lists the relevant board, memory, runtime, tool, field-evidence, material-index, and sample-project artifacts, but the supplied summary does not expose concrete DDR/AXI parameters, address maps, runtime ABI rows, tool invocation logs, or real Vivado/board evidence. Downstream implementation, bitstream, and board-runtime claims must remain blocked until evidence is traced to SACG constraints or explicitly recorded as not_run."
+  },
+  "prompt_bytes": 25288,
+  "prompt_hash": "aedf3c1a92e5ea6c08e7a8d21a16ac580a7cba6611273ddd8225ddb4377ed585",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.input_audit.board_runtime_tool_report.v0\",\"agent\":\"data_memory_runtime_specialist\",\"stage\":\"input_preparation\",\"status\":\"blocked_pending_evidence_binding\",\"summary\":\"Input inventory lists the relevant board, memory, runtime, tool, field-evidence, material-index, and sample-project artifacts, but the supplied summary does not expose concrete DDR/AXI parameters, address maps, runtime ABI rows, tool invocation logs, or real Vivado/board evidence. Downstream implementation, bitstream, and board-runtime claims must remain blocked until evidence is traced to SACG constraints or explicitly recorded as not_run.\",\"sacg_focus\":{\"nodes\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.field_evidence\",\"artifact.input.field_evidence_candidates\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"artifact.input.case_adapter\",\"artifact.input.human_agent_boundary\",\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.protocols\"],\"edges\":[\"pending_binding:artifact.input.target_board_profile->constraint.deployment.board\",\"pending_binding:artifact.input.target_board_profile->constraint.memory.board\",\"pending_binding:artifact.input.tool_profile->constraint.tool.protocols\",\"pending_binding:artifact.input.tool_availability->constraint.tool.protocols\",\"pending_binding:artifact.input.tool_protocols->constraint.tool.protocols\",\"pending_binding:artifact.input.field_evidence->constraint.memory.board\",\"pending_binding:artifact.input.field_evidence->constraint.runtime.board\",\"pending_binding:artifact.input.sample_project_index->constraint.deployment.board\",\"pending_binding:artifact.input.material_index->constraint.deployment.board\"],\"constraints\":[\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.protocols\"],\"artifacts\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.field_evidence\",\"artifact.input.field_evidence_candidates\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"artifact.input_audit.board_runtime_tool_report\",\"artifact.input_audit.tool_availability_matrix\",\"artifact.input_audit.board_memory_runtime_gap_list\",\"artifact.input_audit.field_evidence_trace_index\"]},\"observations\":[\"State summary lists all target artifacts for this role, including target_board_profile, tool_profile, tool_availability, tool_protocols, field_evidence, field_evidence_candidates, material_index, and sample_project_index; the compact candidate summary does not expose their detailed rows, so detailed board facts must be treated as unverified rather than absent or passed.\",\"candidate_stage_artifact.prepared_inputs reports errors size 0 and mode independent_from_scratch_design, but absence of preparation errors is not evidence that DDR, AXI, address-map, runtime ABI, deployment, or real-tool requirements are satisfied.\",\"field_evidence is present with keys for evidence, policy, _domain_result_paths, and _regex_candidate_count, and field_evidence_candidates is present, but no concrete citations, paths, candidate rows, or promoted evidence entries are visible in the supplied summary.\",\"No concrete board DDR base/size, AXI data/address width, AXI port naming, clock/reset convention, app-shell target, register map, buffer layout, or host runtime ABI is visible in the supplied summary; no such value should be inferred from template defaults or sample names.\",\"tool_profile, tool_availability, and tool_protocols are present as artifacts, but the supplied summary does not show executable tool paths, versions, invocation protocols, not_run markers, or real-tool evidence logs.\",\"No real_tool evidence is visible for Vivado synthesis, Vivado implementation, shell wrapper generation, runtime bitstream creation, DDR image roundtrip, board runtime, or AXI protocol checks; any hardware-pass or deployment-pass claim is unsupported at this point.\",\"SACG graph summary reports 0 nodes and 0 edges while constraints are listed separately, so evidence-to-constraint binding has not been certified by the supplied summary.\",\"sacg_memory in the state summary shows no open retry requests, backtrack requests, or active contamination barriers; the separate sacg_memory block is empty, so there is no current same-stage retry contract to reconcile and no prior barrier to clear.\",\"Because no stage_gate_policy or presence_summary is supplied, this audit only classifies the visible lack of evidence binding as a downstream-consumption blocker; it does not declare detailed artifact fields missing beyond what the supplied summary proves.\"],\"risks\":[\"Cross-layer memory/runtime risk: model shape, numeric precision, data ordering, transfer counts, DDR capacity, and runtime buffer layout have not yet been bound to a checked address map.\",\"Board integration risk: app-shell or backend target names could be guessed from samples if target discovery is not tied to cited board materials and real Vivado evidence.\",\"AXI/DDR protocol risk: templates may assume AXI widths, burst lengths, outstanding transactions, alignment, or clock/reset domains that are not proven by target_board_profile or board evidence.\",\"Runtime ABI risk: host driver arguments, register offsets, buffer ordering, packed weight/image layout, and completion/status semantics are not visible and may diverge from generated RTL expectations.\",\"Tool evidence risk: tool availability artifacts exist, but no executable proof is visible that required tools can be invoked under the recorded protocols, nor that fallback diagnostics are blocked from being consumed as successful evidence.\",\"Field-evidence contamination risk: regex candidates or sample-project snippets may be false positives unless promoted through a trace index with citations and checker status.\",\"SACG binding risk: with zero recorded SACG nodes/edges in the summary, downstream stages could consume natural-language board claims without machine-checkable constraint bindings unless a trust barrier is installed.\"],\"proposed_actions\":[\"Generate the board_runtime_tool_report, tool_availability_matrix, board_memory_runtime_gap_list, and field_evidence_trace_index from the listed input artifacts, recording concrete evidence or explicit not_run status for every required DDR/AXI, address-map, runtime ABI, deployment, and tool claim.\",\"Run board interface, AXI/DDR, address-map, memory-runtime-plan, and runtime-ABI checkers before allowing code generation or backend packaging to consume board facts.\",\"Verify tool availability and protocols against the human-agent boundary and required real-tool evidence policy; block fallback or diagnostic-only records from being treated as successful agent decisions.\",\"Create a bounded backend/app-shell target discovery policy from cited material/sample evidence and real Vivado evidence; if multiple targets remain plausible, require approval rather than guessing a target name.\",\"Install a SACG trust barrier that blocks downstream implementation and hardware-pass claims until the board/runtime/tool evidence is bound to constraints or marked not_run with an explicit gap list.\"],\"executable_actions\":[{\"id\":\"input_preparation.audit_board_runtime_tool_evidence\",\"stage\":\"input_preparation\",\"action_type\":\"implementation_evidence_review\",\"rationale\":\"Consolidate the compact board, tool, material, sample, and field-evidence inputs into an explicit evidence ledger. The supplied summary cannot certify concrete DDR/AXI, address-map, runtime ABI, deployment, or real-tool facts, so each required item must be cited or marked not_run.\",\"consumes\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.field_evidence\",\"artifact.input.field_evidence_candidates\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\"],\"produces\":[\"artifact.input_audit.board_runtime_tool_report\",\"artifact.input_audit.tool_availability_matrix\",\"artifact.input_audit.board_memory_runtime_gap_list\",\"artifact.input_audit.field_evidence_trace_index\"],\"tool_roles\":[\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"real_tool_evidence_check\",\"llm_semantic_extraction\",\"no_static_keyword_semantic_matching\"],\"acceptance_checkers\":[\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"llm_semantic_extraction_check\",\"no_static_keyword_semantic_matching_check\",\"sacg_static_check\"],\"on_failure\":\"Record the failed or not_run evidence item in artifact.input_audit.board_memory_runtime_gap_list and block downstream implementation, deployment, and hardware-pass claims that depend on it.\",\"requires_approval\":false},{\"id\":\"input_preparation.validate_board_memory_runtime_contract\",\"stage\":\"input_preparation\",\"action_type\":\"board_memory_runtime_contract_validation\",\"rationale\":\"Bind target board facts to a checked DDR/AXI interface, address map, transfer plan, and runtime ABI before templates or code generation consume any board defaults.\",\"consumes\":[\"artifact.input.target_board_profile\",\"artifact.input.design_space\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.case_adapter\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"artifact.input_audit.field_evidence_trace_index\"],\"produces\":[\"artifact.input_audit.board_axi_ddr_contract\",\"artifact.input_audit.address_map_contract\",\"artifact.input_audit.runtime_abi_contract\",\"artifact.input_audit.board_memory_runtime_gap_list\"],\"tool_roles\":[\"case_board_interface_discovery\",\"case_axi_ddr_interface\",\"addr_map_check\",\"memory_runtime_plan_check\",\"case_runtime_abi_check\"],\"acceptance_checkers\":[\"case_board_interface_discovery\",\"case_axi_ddr_interface\",\"addr_map_check\",\"memory_runtime_plan_check\",\"case_runtime_abi_check\"],\"on_failure\":\"Localize the earliest missing or conflicting boundary among board profile, AXI/DDR interface, address map, transfer plan, and runtime ABI; do not repair by changing golden outputs, loosening tolerance, or silently adopting template defaults.\",\"requires_approval\":false},{\"id\":\"input_preparation.verify_tool_protocol_and_availability_matrix\",\"stage\":\"input_preparation\",\"action_type\":\"tool_availability_protocol_validation\",\"rationale\":\"The tool artifacts are present but detailed tool paths, versions, invocation protocols, and executable evidence are not visible in the supplied summary. This action verifies that later real-tool stages can be executed under the recorded protocols.\",\"consumes\":[\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.human_agent_boundary\"],\"produces\":[\"artifact.input_audit.tool_availability_matrix\",\"artifact.input_audit.tool_protocol_gap_list\",\"artifact.input_audit.real_tool_evidence_requirements\"],\"tool_roles\":[\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"human_boundary_check\"],\"on_failure\":\"Mark unavailable or protocol-ambiguous tools as blockers for the dependent checker stages and request bounded tool substitution or capability repair through the human-agent boundary.\",\"requires_approval\":false},{\"id\":\"input_preparation.prepare_backend_app_shell_target_discovery_policy\",\"stage\":\"input_preparation\",\"action_type\":\"target_discovery_policy_update\",\"rationale\":\"Backend/app-shell target discovery must be synthesized from supplied board materials, sample-project evidence, and real Vivado evidence. Since no concrete target names or Vivado discovery results are visible here, the policy must cite evidence, record ambiguity, and require bounded approval instead of guessing.\",\"consumes\":[\"artifact.input.target_board_profile\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"artifact.input.field_evidence\",\"artifact.input_audit.field_evidence_trace_index\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\"],\"produces\":[\"artifact.input_audit.target_discovery_policy_update\",\"artifact.input_audit.app_shell_target_discovery_contract\",\"artifact.input_audit.backend_target_ambiguity_report\"],\"tool_roles\":[\"app_shell_target_discovery_contract\",\"app_shell_target_hint_synthesis\",\"app_shell_target_discovery_after_hint\",\"backend_bounded_recovery_action\"],\"acceptance_checkers\":[\"backend_app_shell_integration_contract_static_check\",\"backend_app_shell_target_discovery_check\",\"backend_app_shell_target_hint_synthesis_check\",\"backend_bounded_recovery_action_check\",\"real_tool.app_shell_target_discovery_contract\",\"real_tool.app_shell_target_hint_synthesis\",\"real_tool.app_shell_target_discovery_after_hint\",\"human_boundary_check\"],\"on_failure\":\"Keep runtime bitstream generation and board runtime blocked; if discovery remains ambiguous after cited hints, produce a bounded recovery action and request approval rather than selecting an app-shell target by memory or guesswork.\",\"requires_approval\":true},{\"id\":\"input_preparation.install_board_runtime_tool_trust_barrier\",\"stage\":\"input_preparation\",\"action_type\":\"trust_barrier\",\"rationale\":\"No active sacg_memory barrier is visible, but the current evidence summary is insufficient for downstream implementation claims. A temporary trust barrier prevents unverified board/runtime/tool claims from contaminating SACG-guided design decisions.\",\"consumes\":[\"artifact.input_audit.board_runtime_tool_report\",\"artifact.input_audit.board_memory_runtime_gap_list\",\"artifact.input.field_evidence\",\"sacg_memory\"],\"produces\":[\"sacg_memory.contamination_barrier.board_runtime_tool_evidence_pending\",\"artifact.input_audit.unsupported_implementation_claim_blocklist\"],\"tool_roles\":[\"stage_artifact_trust_barrier\",\"sacg_memory_update\",\"sacg_validate\"],\"acceptance_checkers\":[\"stage_artifact_trust_barrier_check\",\"sacg_memory_check\",\"sacg_static_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Block promotion to cross-layer evidence gate until the barrier state is recorded and downstream consumers are prevented from treating unverified implementation, bitstream, or board-runtime claims as facts.\",\"requires_approval\":false}],\"approval_required_for\":[\"Manual board or app-shell target selection if target discovery evidence remains ambiguous after cited material/sample and real Vivado checks.\",\"Any DDR base address, DDR size, AXI data/address width, burst/alignment policy, address-map, transfer unit, or memory layout change not directly supported by cited board evidence and accepted checkers.\",\"Any runtime ABI, host driver protocol, register map, buffer ordering, or deployment protocol override beyond the supplied target_board_profile, tool_protocols, and human_agent_boundary.\",\"Any substitution of required real tools or consumption of fallback/diagnostic records as successful evidence.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/team/llm/data_memory_runtime_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/team/llm/data_memory_runtime_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: Remote end closed connection without response",
+    "attempt 2: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.board runtime and tool evidence engineer",
+  "used_fallback": false
+}

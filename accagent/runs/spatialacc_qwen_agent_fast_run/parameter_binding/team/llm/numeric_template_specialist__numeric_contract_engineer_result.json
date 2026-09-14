@@ -1,0 +1,198 @@
+{
+  "agent": "numeric_template_specialist__numeric_contract_engineer",
+  "duration_sec": 566.7237383899919,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "numeric_template_specialist__numeric_contract_engineer",
+    "approval_required_for": [
+      "Any later change to numeric_policy_id, rounding mode, saturation behavior, activation/weight/accumulator dtype, input_bits/output_bits/internal_elem_bits, residual_precision, explicit cast points, stream_order, or memory/data layout."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "stream_plan_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_stage_artifact.numeric_binding_plan",
+          "candidate_stage_artifact.bindings",
+          "candidate_stage_artifact.stream_contract_trace",
+          "candidate_stage_artifact.checker_results",
+          "artifact.input.numeric_policy",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage3.pipeline_static_checks"
+        ],
+        "id": "parameter_binding.numeric_contract_evidence_gate",
+        "on_failure": "Block parameter_binding promotion, preserve the candidate artifact as failed evidence, and issue a bounded stage_retry_request targeted to the violated numeric or stream constraint; do not modify golden outputs or loosen tolerances.",
+        "produces": [
+          "parameter_binding.numeric_contract_audit",
+          "cast_point_consistency_table",
+          "edge_dtype_consistency_notes",
+          "parameter_binding.evidence_gate_numeric_status"
+        ],
+        "rationale": "Confirm the current candidate parameter binding against the registered SACG, numeric policy, parameter binding, and stream-plan checkers, and materialize the expected numeric audit artifacts before downstream consumption.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "sacg_validate",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "stream_plan_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "code_generation_manifest_static_check",
+          "codegen_contract_check"
+        ],
+        "action_type": "codegen_contract_check",
+        "consumes": [
+          "parameter_binding.numeric_contract_audit",
+          "cast_point_consistency_table",
+          "edge_dtype_consistency_notes",
+          "artifact.input.template_library",
+          "artifact.stage2.template_selection"
+        ],
+        "id": "code_generation.preserve_numeric_contract",
+        "on_failure": "Localize the mismatch to template binding or generated manifest fields and route to bounded_template_repair; require approval for any numeric policy, bit-width, residual precision, or cast-point change.",
+        "produces": [
+          "artifact.stage5.codegen_numeric_contract_trace",
+          "artifact.stage5.numeric_policy_propagation_report"
+        ],
+        "rationale": "Ensure the Stage 5 code generation manifest and generated template parameters preserve the audited bit widths, cast points, residual fp32 paths, numeric_policy_id, rounding, and saturation behavior without changing model or numeric semantics.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "code_generation_manifest_static_check",
+          "codegen_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "numeric_compare",
+          "failure_localization_check",
+          "targeted_replay_check"
+        ],
+        "action_type": "real_tool_execution_after_codegen",
+        "consumes": [
+          "parameter_binding.numeric_contract_audit",
+          "artifact.stage5.codegen_numeric_contract_trace",
+          "artifact.stage6.verification_artifact_contract",
+          "approved golden numeric reference",
+          "real simulator numeric trace"
+        ],
+        "id": "verification.numeric_compare_after_codegen",
+        "on_failure": "Treat failures as verification evidence, localize the earliest violated boundary or template module using the numeric contract and stream trace, then perform bounded repair and rerun; do not promote to backend or claim hardware pass.",
+        "produces": [
+          "verification.numeric_compare_report",
+          "verification.numeric_mismatch_localization_if_any"
+        ],
+        "rationale": "Static Stage 4 consistency does not prove numerical value correctness; after generated code and simulator traces exist, run numeric_compare against the approved golden reference while enforcing the audited numeric policy and stream order.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "numeric_compare",
+          "failure_slice_localization",
+          "targeted_replay"
+        ]
+      }
+    ],
+    "observations": [
+      "sacg_memory shows no active contamination barriers, open backtrack requests, or open retry requests relevant to this parameter_binding numeric audit.",
+      "Every visible binding has numeric_policy_id=current_run_numeric_policy.md, matching numeric_binding_plan.policy_id.",
+      "The visible numeric policy fields are activation_dtype=fp16, weight_dtype=fp16, acc_dtype=fp32, rounding=nearest_even, and saturation=false, sourced to constraint.numeric.policy.default_rules.",
+      "Cast-point pattern is consistent across the visible transformer block: rms_norm_1 and rms_norm_2 accept 32-bit residual-domain inputs and cast 32_to_16 for fp16 output; self_attention and mlp_down_proj emit 32-bit outputs via 16_to_32; residual_add_1 and residual_add_2 remain 32-bit with residual_precision=32.",
+      "The 13 visible Stage 3 stream_contract_trace rows have element_bits equal to both src_output_bits and dst_input_bits, and all visible stream_order entries are token,tile,lane,word.",
+      "Residual skip edges remain 32-bit: block_input to residual_add_1, stage_02_residual_add_1 to residual_add_2, and both residual add outputs to downstream/output 32-bit domains are consistent with residual_precision=32.",
+      "The MLP gate/up/mul/down path is dtype-consistent in the visible trace: rms_norm_2 outputs 16-bit to both mlp branches, gate/up outputs 16-bit to activation_mul, activation_mul outputs 16-bit to mlp_down_proj, and mlp_down_proj returns to 32-bit for residual_add_2.",
+      "Candidate checker_results report pass with no warnings/errors for parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, stream_packing_axi_check, tile_override_legality_check, bandwidth_memory_estimate_check, and fifo_contract_check.",
+      "AXI packing evidence is static only but numerically coherent: lanes=8 gives 128-bit fp16 datapaths and 256-bit fp32 residual datapaths, both compatible with the 512-bit AXI data width reported by stream_packing_axi_check.",
+      "Stage 4 local fifo_depth is explicitly scoped as a template default; Stage 3 edge buffer/FIFO contracts remain authoritative and are not numerically overridden by this binding artifact.",
+      "Bandwidth and resource estimates are correctly labeled symbolic sanity estimates only; they must not be consumed as simulation, timing, implementation, or hardware pass evidence.",
+      "The current artifact records rounding=nearest_even and saturation=false, but does not itself prove generated RTL/template code implements those behaviors; that remains a codegen and verification handoff item rather than a resolved hardware fact."
+    ],
+    "proposed_actions": [
+      "Materialize parameter_binding.numeric_contract_audit, cast_point_consistency_table, and edge_dtype_consistency_notes from the visible numeric_binding_plan, bindings, and stream_contract_trace, then hand them to parameter_binding.evidence_gate_auditor.",
+      "At the evidence gate, rerun or map the exact registered acceptance checkers sacg_static_check, numeric_policy_check, parameter_binding_static_check, and stream_plan_check against the candidate artifact before promotion.",
+      "Carry numeric_policy_id=current_run_numeric_policy.md, rounding=nearest_even, saturation=false, fp16 activation/weight widths, fp32 accumulator/residual-domain requirements, and every explicit cast point into the Stage 5 code generation manifest.",
+      "Schedule Stage 6+ numeric_compare only after approved generated code, golden references, and real simulator traces exist; do not treat the symbolic bandwidth/resource estimates as hardware correctness evidence.",
+      "Require explicit approval for any later change to numeric policy, bound bit widths, cast points, residual precision, stream order, or memory/data layout."
+    ],
+    "risks": [
+      "Later-stage non-blocking implementation risk: generated code or template glue could fail to preserve the audited numeric_policy_id, cast points, nearest_even rounding, saturation=false behavior, or fp32 residual precision unless the codegen contract and later numeric_compare explicitly check them.",
+      "Later-stage non-blocking verification risk: no numeric_compare or real simulation output is supplied in this Stage 4 artifact, so numerical value correctness is not established beyond static contract consistency."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.numeric_policy",
+        "artifact.stage2.template_selection",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage3.pipeline_static_checks",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.stream_contract_trace",
+        "candidate_stage_artifact.bindings",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.bandwidth_estimate"
+      ],
+      "constraints": [
+        "constraint.numeric.policy",
+        "constraint.parameter.binding",
+        "constraint.stream.order",
+        "constraint.cross_layer.input_consistency",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.beat.pipeline"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output"
+      ]
+    },
+    "schema_version": "spatialaccagent.numeric_contract_engineer_review.v0",
+    "stage": "parameter_binding",
+    "status": "ready_for_evidence_gate",
+    "summary": "The supplied Stage 4 parameter-binding artifact is internally consistent with the visible numeric binding plan and Stage 3 stream contract trace. All 9 bound stages carry numeric_policy_id=current_run_numeric_policy.md; the visible cast points preserve fp32 residual paths and use fp16 activation/weight paths where expected. Candidate checker_results report pass for numeric contract, edge dtype stream contract, AXI packing, tile legality, bandwidth estimate, and FIFO contract checks. No open sacg_memory backtrack requests or contamination barriers are visible. Promotion should still go through the parameter-binding evidence gate and carry the numeric policy into codegen and later numeric_compare; symbolic bandwidth/resource estimates are not hardware pass evidence."
+  },
+  "prompt_bytes": 49179,
+  "prompt_hash": "ea848e6e1c0b4d04375f6cf176d867ff2dbd5fcaa83918d107f314bcfb69f9dd",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.numeric_contract_engineer_review.v0\",\"agent\":\"numeric_template_specialist__numeric_contract_engineer\",\"stage\":\"parameter_binding\",\"status\":\"ready_for_evidence_gate\",\"summary\":\"The supplied Stage 4 parameter-binding artifact is internally consistent with the visible numeric binding plan and Stage 3 stream contract trace. All 9 bound stages carry numeric_policy_id=current_run_numeric_policy.md; the visible cast points preserve fp32 residual paths and use fp16 activation/weight paths where expected. Candidate checker_results report pass for numeric contract, edge dtype stream contract, AXI packing, tile legality, bandwidth estimate, and FIFO contract checks. No open sacg_memory backtrack requests or contamination barriers are visible. Promotion should still go through the parameter-binding evidence gate and carry the numeric policy into codegen and later numeric_compare; symbolic bandwidth/resource estimates are not hardware pass evidence.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.numeric.policy\",\"constraint.parameter.binding\",\"constraint.stream.order\",\"constraint.cross_layer.input_consistency\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.beat.pipeline\"],\"artifacts\":[\"artifact.input.numeric_policy\",\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"artifact.stage3.pipeline_static_checks\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.bindings\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.bandwidth_estimate\"]},\"observations\":[\"sacg_memory shows no active contamination barriers, open backtrack requests, or open retry requests relevant to this parameter_binding numeric audit.\",\"Every visible binding has numeric_policy_id=current_run_numeric_policy.md, matching numeric_binding_plan.policy_id.\",\"The visible numeric policy fields are activation_dtype=fp16, weight_dtype=fp16, acc_dtype=fp32, rounding=nearest_even, and saturation=false, sourced to constraint.numeric.policy.default_rules.\",\"Cast-point pattern is consistent across the visible transformer block: rms_norm_1 and rms_norm_2 accept 32-bit residual-domain inputs and cast 32_to_16 for fp16 output; self_attention and mlp_down_proj emit 32-bit outputs via 16_to_32; residual_add_1 and residual_add_2 remain 32-bit with residual_precision=32.\",\"The 13 visible Stage 3 stream_contract_trace rows have element_bits equal to both src_output_bits and dst_input_bits, and all visible stream_order entries are token,tile,lane,word.\",\"Residual skip edges remain 32-bit: block_input to residual_add_1, stage_02_residual_add_1 to residual_add_2, and both residual add outputs to downstream/output 32-bit domains are consistent with residual_precision=32.\",\"The MLP gate/up/mul/down path is dtype-consistent in the visible trace: rms_norm_2 outputs 16-bit to both mlp branches, gate/up outputs 16-bit to activation_mul, activation_mul outputs 16-bit to mlp_down_proj, and mlp_down_proj returns to 32-bit for residual_add_2.\",\"Candidate checker_results report pass with no warnings/errors for parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, stream_packing_axi_check, tile_override_legality_check, bandwidth_memory_estimate_check, and fifo_contract_check.\",\"AXI packing evidence is static only but numerically coherent: lanes=8 gives 128-bit fp16 datapaths and 256-bit fp32 residual datapaths, both compatible with the 512-bit AXI data width reported by stream_packing_axi_check.\",\"Stage 4 local fifo_depth is explicitly scoped as a template default; Stage 3 edge buffer/FIFO contracts remain authoritative and are not numerically overridden by this binding artifact.\",\"Bandwidth and resource estimates are correctly labeled symbolic sanity estimates only; they must not be consumed as simulation, timing, implementation, or hardware pass evidence.\",\"The current artifact records rounding=nearest_even and saturation=false, but does not itself prove generated RTL/template code implements those behaviors; that remains a codegen and verification handoff item rather than a resolved hardware fact.\"],\"risks\":[\"Later-stage non-blocking implementation risk: generated code or template glue could fail to preserve the audited numeric_policy_id, cast points, nearest_even rounding, saturation=false behavior, or fp32 residual precision unless the codegen contract and later numeric_compare explicitly check them.\",\"Later-stage non-blocking verification risk: no numeric_compare or real simulation output is supplied in this Stage 4 artifact, so numerical value correctness is not established beyond static contract consistency.\"],\"proposed_actions\":[\"Materialize parameter_binding.numeric_contract_audit, cast_point_consistency_table, and edge_dtype_consistency_notes from the visible numeric_binding_plan, bindings, and stream_contract_trace, then hand them to parameter_binding.evidence_gate_auditor.\",\"At the evidence gate, rerun or map the exact registered acceptance checkers sacg_static_check, numeric_policy_check, parameter_binding_static_check, and stream_plan_check against the candidate artifact before promotion.\",\"Carry numeric_policy_id=current_run_numeric_policy.md, rounding=nearest_even, saturation=false, fp16 activation/weight widths, fp32 accumulator/residual-domain requirements, and every explicit cast point into the Stage 5 code generation manifest.\",\"Schedule Stage 6+ numeric_compare only after approved generated code, golden references, and real simulator traces exist; do not treat the symbolic bandwidth/resource estimates as hardware correctness evidence.\",\"Require explicit approval for any later change to numeric policy, bound bit widths, cast points, residual precision, stream order, or memory/data layout.\"],\"executable_actions\":[{\"id\":\"parameter_binding.numeric_contract_evidence_gate\",\"stage\":\"parameter_binding\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"Confirm the current candidate parameter binding against the registered SACG, numeric policy, parameter binding, and stream-plan checkers, and materialize the expected numeric audit artifacts before downstream consumption.\",\"consumes\":[\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.bindings\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.checker_results\",\"artifact.input.numeric_policy\",\"artifact.stage3.pipeline_plan\",\"artifact.stage3.pipeline_static_checks\"],\"produces\":[\"parameter_binding.numeric_contract_audit\",\"cast_point_consistency_table\",\"edge_dtype_consistency_notes\",\"parameter_binding.evidence_gate_numeric_status\"],\"tool_roles\":[\"sacg_validate\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"stream_plan_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"stream_plan_check\"],\"on_failure\":\"Block parameter_binding promotion, preserve the candidate artifact as failed evidence, and issue a bounded stage_retry_request targeted to the violated numeric or stream constraint; do not modify golden outputs or loosen tolerances.\",\"requires_approval\":false},{\"id\":\"code_generation.preserve_numeric_contract\",\"stage\":\"code_generation\",\"action_type\":\"codegen_contract_check\",\"rationale\":\"Ensure the Stage 5 code generation manifest and generated template parameters preserve the audited bit widths, cast points, residual fp32 paths, numeric_policy_id, rounding, and saturation behavior without changing model or numeric semantics.\",\"consumes\":[\"parameter_binding.numeric_contract_audit\",\"cast_point_consistency_table\",\"edge_dtype_consistency_notes\",\"artifact.input.template_library\",\"artifact.stage2.template_selection\"],\"produces\":[\"artifact.stage5.codegen_numeric_contract_trace\",\"artifact.stage5.numeric_policy_propagation_report\"],\"tool_roles\":[\"code_generation_manifest_static_check\",\"codegen_contract_check\"],\"acceptance_checkers\":[\"code_generation_manifest_static_check\",\"codegen_contract_check\"],\"on_failure\":\"Localize the mismatch to template binding or generated manifest fields and route to bounded_template_repair; require approval for any numeric policy, bit-width, residual precision, or cast-point change.\",\"requires_approval\":false},{\"id\":\"verification.numeric_compare_after_codegen\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution_after_codegen\",\"rationale\":\"Static Stage 4 consistency does not prove numerical value correctness; after generated code and simulator traces exist, run numeric_compare against the approved golden reference while enforcing the audited numeric policy and stream order.\",\"consumes\":[\"parameter_binding.numeric_contract_audit\",\"artifact.stage5.codegen_numeric_contract_trace\",\"artifact.stage6.verification_artifact_contract\",\"approved golden numeric reference\",\"real simulator numeric trace\"],\"produces\":[\"verification.numeric_compare_report\",\"verification.numeric_mismatch_localization_if_any\"],\"tool_roles\":[\"verification_plan_static_check\",\"numeric_compare\",\"failure_slice_localization\",\"targeted_replay\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"numeric_compare\",\"failure_localization_check\",\"targeted_replay_check\"],\"on_failure\":\"Treat failures as verification evidence, localize the earliest violated boundary or template module using the numeric contract and stream trace, then perform bounded repair and rerun; do not promote to backend or claim hardware pass.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any later change to numeric_policy_id, rounding mode, saturation behavior, activation/weight/accumulator dtype, input_bits/output_bits/internal_elem_bits, residual_precision, explicit cast points, stream_order, or memory/data layout.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/numeric_template_specialist__numeric_contract_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/numeric_template_specialist__numeric_contract_engineer_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "parameter_binding.numeric contract engineer",
+  "used_fallback": false
+}

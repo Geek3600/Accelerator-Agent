@@ -1,0 +1,248 @@
+{
+  "agent": "template_numeric_engineer_agent",
+  "duration_sec": 353.9805809000027,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "template_numeric_engineer_agent",
+    "approval_required_for": [
+      "Changing numeric policy values such as activation_bits, accumulator_bits, rounding, saturation, or residual stream precision.",
+      "Changing the trusted template library, replacing a selected template, or allowing free-form RTL generation.",
+      "Changing architecture or pipeline precision boundaries beyond the visible 32-bit residual/boundary and 16-bit internal stream contract.",
+      "Selecting XDMA H2C/C2H runtime device templates without direct cited evidence from the supplied board/tool protocol artifacts."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "checker_execution",
+        "consumes": [
+          "candidate_stage_artifact.pipeline_plan",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.parameter.binding",
+          "constraint.arch.design_space",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "pipeline_planning.run_template_numeric_static_gate",
+        "on_failure": "Keep pipeline_planning blocked; route failing width, policy, template coverage, or binding evidence to bounded_template_repair or pipeline_repair without changing the numeric policy or trusted template library without approval.",
+        "produces": [
+          "checker_results.numeric_policy_check",
+          "checker_results.template_coverage_check",
+          "checker_results.parameter_binding_static_check",
+          "checker_results.template_binding_static_check",
+          "checker_results.sacg_static_check",
+          "artifact.pipeline_planning.template_numeric_review"
+        ],
+        "rationale": "The visible width pattern is coherent, but this role's required acceptance checkers are not all shown as pass. Run the checker-backed gate against the candidate, numeric policy, selected template library, template metadata, and Stage 2 template selection before promotion.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "sacg_static_check",
+          "sacg_validate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "numeric_policy_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "contract_audit_generation",
+        "consumes": [
+          "candidate_stage_artifact.pipeline_plan.numeric_stream_policy",
+          "candidate_stage_artifact.pipeline_plan.stages",
+          "candidate_stage_artifact.pipeline_plan.data_edges",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_metadata"
+        ],
+        "id": "pipeline_planning.emit_numeric_transition_audit",
+        "on_failure": "Do not promote the stage; localize the first inconsistent transition such as RMSNorm 32-to-16, attention 16-to-32, activation_mul 16-to-16 after multiply, or MLP down 16-to-32, then request bounded template/parameter repair.",
+        "produces": [
+          "artifact.pipeline_planning.numeric_transition_audit",
+          "checker_results.parameter_binding_static_check",
+          "checker_results.numeric_policy_check"
+        ],
+        "rationale": "The design relies on deliberate transitions between 32-bit residual/boundary streams and 16-bit internal streams. A bounded audit artifact is needed so later codegen, memory packing, runtime transfer counts, and numeric comparison use the same precision boundaries.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "numeric_policy_check",
+          "template_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "sacg_static_check"
+        ],
+        "action_type": "contract_repair",
+        "consumes": [
+          "candidate_stage_artifact.pipeline_plan.memory_schedule.runtime_config_requirements",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.tool.protocols",
+          "constraint.human.boundary"
+        ],
+        "id": "pipeline_planning.repair_runtime_device_template_bindings",
+        "on_failure": "Keep the overall pipeline_planning evidence gate blocked; if multiple H2C/C2H device templates are plausible or no cited evidence exists, request bounded approval instead of guessing device names.",
+        "produces": [
+          "artifact.pipeline_planning.runtime_config_requirements.repaired",
+          "checker_results.memory_runtime_plan_check",
+          "checker_results.tool_protocol_check",
+          "checker_results.human_boundary_check"
+        ],
+        "rationale": "The supplied checker_results show memory_runtime_contract_check failed because h2c_device_template and c2h_device_template are null. Stage gate policy makes memory/runtime handoff checker-backed at the current stage, so the missing runtime ABI fields must be repaired from supplied board/tool evidence or explicitly approved if ambiguous.",
+        "requires_approval": true,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "memory_runtime_repair",
+          "memory_runtime_plan_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "verification_action_audit_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "stage_gate_decision",
+        "consumes": [
+          "candidate_stage_artifact.pipeline_plan",
+          "artifact.pipeline_planning.template_numeric_review",
+          "artifact.pipeline_planning.numeric_transition_audit",
+          "artifact.pipeline_planning.runtime_config_requirements.repaired",
+          "checker_results.numeric_policy_check",
+          "checker_results.template_coverage_check",
+          "checker_results.parameter_binding_static_check",
+          "checker_results.template_binding_static_check",
+          "checker_results.memory_runtime_plan_check",
+          "checker_results.sacg_static_check"
+        ],
+        "id": "pipeline_planning.evidence_gate_after_numeric_and_runtime_closure",
+        "on_failure": "Do not hand off to code generation or verification planning; preserve failed checker evidence and request bounded repair or backtrack according to the violated SACG constraint.",
+        "produces": [
+          "artifact.pipeline_planning.evidence_gate_decision",
+          "sacg_memory.pipeline_planning_numeric_template_outcome"
+        ],
+        "rationale": "Once numeric/template/SACG checks and the memory/runtime repair are checker-backed, aggregate the evidence for handoff. This action prevents later stages from consuming a partially checked contract or relying on human memory.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_validate",
+          "verification_action_audit",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "sacg_memory in the supplied state has no active contamination barriers, open backtrack requests, or open retry requests relevant to this stage; no same-stage trust barrier needs reconciliation before reviewing the candidate artifact.",
+      "The candidate uses the intended mixed-precision stream pattern: block input and residual skip streams are 32-bit, RMSNorm outputs are 16-bit, attention consumes 16-bit and emits 32-bit for residual_add_1, RMSNorm_2 again emits 16-bit, MLP gate/up/activation streams remain 16-bit, MLP down emits 32-bit, and residual_add_2 emits a 32-bit block output.",
+      "All listed stages use accumulator_bits=32, matching numeric_stream_policy.accumulator_bits=32. The visible 16-bit internal element widths match numeric_stream_policy.activation_bits=16 and weight_bits=16 for projection/MLP streams.",
+      "The 16-to-32 transitions that matter for residual joins are explicitly represented: stage_01_self_attention output_bits=32 to stage_02_residual_add_1 main, and stage_07_mlp_down_proj output_bits=32 to stage_08_residual_add_2 main. The corresponding residual skip edges are also 32-bit, so residual_add_1 and residual_add_2 do not visibly join mismatched element widths.",
+      "The 32-to-16 transitions are explicitly represented at stage_00_rms_norm_1 and stage_03_rms_norm_2. Because numeric_stream_policy specifies rounding=nearest_even and saturation=false, the later parameter binding check must prove the trusted norm templates implement the down-conversion policy rather than relying on implicit truncation.",
+      "stage_06_activation_mul consumes two 16-bit branches and emits 16-bit with a 32-bit accumulator. This is plausible under the numeric policy, but the visible artifact does not include detailed scale/binary-point bindings; parameter_binding_static_check should confirm the 32-bit product/accumulator is rounded back to 16-bit according to the policy.",
+      "shape_numeric_contract_check is shown as pass with summary elem_bits=16, accumulator_bits=32. This supports the visible width pattern, but it is not a substitute for the required numeric_policy_check and parameter_binding_static_check.",
+      "template_binding_static_check is shown as pass with stages=9 and free_form_rtl_generation=false. The visible template IDs are norm, attention, residual, ffn, and elementwise, all bound to named source templates. This supports trusted-template use, but template_coverage_check and parameter_binding_static_check are not shown as pass in the supplied checker_results.",
+      "Transfer counts are arithmetically consistent with the visible element widths and 512-bit AXI beat size: 32-bit width-896 tensors use 57344 bytes and 896 AXI beats, 16-bit width-896 tensors use 28672 bytes and 448 AXI beats, and 16-bit width-4864 tensors use 155648 bytes and 2432 AXI beats.",
+      "The current pipeline artifact status is incomplete because memory_runtime_contract_check failed: runtime_config_requirements is missing h2c_device_template and c2h_device_template. Under the supplied stage_gate_policy, this is a current-stage evidence-gate blocker, even though it is not a numeric-width contradiction.",
+      "Symbolic_first_order latency fields are planning metadata only; they are not timing, throughput, simulation, or hardware correctness evidence."
+    ],
+    "proposed_actions": [
+      "Run the full current-stage numeric/template/SACG checker set on the candidate artifact before promotion: numeric_policy_check, template_coverage_check, parameter_binding_static_check, template_binding_static_check, and sacg_static_check.",
+      "Generate a numeric_transition_audit artifact that enumerates every 32-to-16 and 16-to-32 boundary, the responsible trusted template, accumulator width, rounding policy, saturation policy, and transfer-count consequence.",
+      "Repair the memory_runtime_contract_check failure by binding H2C/C2H device templates from supplied board/tool-protocol evidence only; require bounded approval if the evidence is ambiguous instead of guessing runtime device names.",
+      "After numeric/template checks and memory/runtime repair pass, send the updated contract to pipeline_planning.evidence_gate; do not claim simulation, timing, or hardware pass at this stage."
+    ],
+    "risks": [
+      "Current-stage blocker: numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check are required for this role but are not shown as run/pass, so the visible numeric/template consistency cannot be promoted as fully checker-backed.",
+      "Current-stage blocker: memory_runtime_contract_check failed due to missing h2c_device_template and c2h_device_template; the overall pipeline_planning artifact remains incomplete until runtime handoff requirements are repaired and rechecked.",
+      "Numeric handoff risk: 32-to-16 down-conversions at RMSNorm outputs and activation_mul output require explicit nearest_even/no-saturation binding to trusted template parameters; otherwise later numeric_compare failures could appear despite shape-level width consistency.",
+      "Cross-layer risk: residual streams are 32-bit while the general activation policy is 16-bit. This is intentional in the candidate, but must be explicitly accepted by numeric_policy_check as a residual/boundary precision rule so later memory, runtime, and verification artifacts do not pack these streams as 16-bit activations."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.stage2.template_selection",
+        "candidate_stage_artifact.pipeline_plan",
+        "artifact.pipeline_planning.template_numeric_review",
+        "artifact.pipeline_planning.numeric_transition_audit"
+      ],
+      "constraints": [
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.parameter.binding",
+        "constraint.arch.design_space",
+        "constraint.cross_layer.input_consistency",
+        "constraint.memory.board",
+        "constraint.runtime.board"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2"
+      ]
+    },
+    "schema_version": "spatialaccagent.template_numeric_engineer_review.v0",
+    "stage": "pipeline_planning",
+    "status": "blocked_by_incomplete_checker_evidence",
+    "summary": "Visible numeric contracts are internally coherent for the intended mixed-precision pattern: 32-bit residual/boundary streams, 16-bit internal projection/MLP streams, and 32-bit accumulators. Existing shape_numeric_contract_check and template_binding_static_check pass. However, the current-stage acceptance set for this role is not fully evidenced: numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check are not shown as run/pass, and the overall pipeline plan has a current-stage memory_runtime_contract_check failure for missing H2C/C2H device templates. Do not promote the pipeline_planning contract until those checks and the runtime handoff repair pass."
+  },
+  "prompt_bytes": 63991,
+  "prompt_hash": "a484300327cbdf8666f2b024d43cb2122a860f63cd3b0e729d290fce6b7d97f5",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.template_numeric_engineer_review.v0\",\"agent\":\"template_numeric_engineer_agent\",\"stage\":\"pipeline_planning\",\"status\":\"blocked_by_incomplete_checker_evidence\",\"summary\":\"Visible numeric contracts are internally coherent for the intended mixed-precision pattern: 32-bit residual/boundary streams, 16-bit internal projection/MLP streams, and 32-bit accumulators. Existing shape_numeric_contract_check and template_binding_static_check pass. However, the current-stage acceptance set for this role is not fully evidenced: numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check are not shown as run/pass, and the overall pipeline plan has a current-stage memory_runtime_contract_check failure for missing H2C/C2H device templates. Do not promote the pipeline_planning contract until those checks and the runtime handoff repair pass.\",\"sacg_focus\":{\"nodes\":[\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.arch.design_space\",\"constraint.cross_layer.input_consistency\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"artifacts\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.stage2.template_selection\",\"candidate_stage_artifact.pipeline_plan\",\"artifact.pipeline_planning.template_numeric_review\",\"artifact.pipeline_planning.numeric_transition_audit\"]},\"observations\":[\"sacg_memory in the supplied state has no active contamination barriers, open backtrack requests, or open retry requests relevant to this stage; no same-stage trust barrier needs reconciliation before reviewing the candidate artifact.\",\"The candidate uses the intended mixed-precision stream pattern: block input and residual skip streams are 32-bit, RMSNorm outputs are 16-bit, attention consumes 16-bit and emits 32-bit for residual_add_1, RMSNorm_2 again emits 16-bit, MLP gate/up/activation streams remain 16-bit, MLP down emits 32-bit, and residual_add_2 emits a 32-bit block output.\",\"All listed stages use accumulator_bits=32, matching numeric_stream_policy.accumulator_bits=32. The visible 16-bit internal element widths match numeric_stream_policy.activation_bits=16 and weight_bits=16 for projection/MLP streams.\",\"The 16-to-32 transitions that matter for residual joins are explicitly represented: stage_01_self_attention output_bits=32 to stage_02_residual_add_1 main, and stage_07_mlp_down_proj output_bits=32 to stage_08_residual_add_2 main. The corresponding residual skip edges are also 32-bit, so residual_add_1 and residual_add_2 do not visibly join mismatched element widths.\",\"The 32-to-16 transitions are explicitly represented at stage_00_rms_norm_1 and stage_03_rms_norm_2. Because numeric_stream_policy specifies rounding=nearest_even and saturation=false, the later parameter binding check must prove the trusted norm templates implement the down-conversion policy rather than relying on implicit truncation.\",\"stage_06_activation_mul consumes two 16-bit branches and emits 16-bit with a 32-bit accumulator. This is plausible under the numeric policy, but the visible artifact does not include detailed scale/binary-point bindings; parameter_binding_static_check should confirm the 32-bit product/accumulator is rounded back to 16-bit according to the policy.\",\"shape_numeric_contract_check is shown as pass with summary elem_bits=16, accumulator_bits=32. This supports the visible width pattern, but it is not a substitute for the required numeric_policy_check and parameter_binding_static_check.\",\"template_binding_static_check is shown as pass with stages=9 and free_form_rtl_generation=false. The visible template IDs are norm, attention, residual, ffn, and elementwise, all bound to named source templates. This supports trusted-template use, but template_coverage_check and parameter_binding_static_check are not shown as pass in the supplied checker_results.\",\"Transfer counts are arithmetically consistent with the visible element widths and 512-bit AXI beat size: 32-bit width-896 tensors use 57344 bytes and 896 AXI beats, 16-bit width-896 tensors use 28672 bytes and 448 AXI beats, and 16-bit width-4864 tensors use 155648 bytes and 2432 AXI beats.\",\"The current pipeline artifact status is incomplete because memory_runtime_contract_check failed: runtime_config_requirements is missing h2c_device_template and c2h_device_template. Under the supplied stage_gate_policy, this is a current-stage evidence-gate blocker, even though it is not a numeric-width contradiction.\",\"Symbolic_first_order latency fields are planning metadata only; they are not timing, throughput, simulation, or hardware correctness evidence.\"],\"risks\":[\"Current-stage blocker: numeric_policy_check, template_coverage_check, parameter_binding_static_check, and sacg_static_check are required for this role but are not shown as run/pass, so the visible numeric/template consistency cannot be promoted as fully checker-backed.\",\"Current-stage blocker: memory_runtime_contract_check failed due to missing h2c_device_template and c2h_device_template; the overall pipeline_planning artifact remains incomplete until runtime handoff requirements are repaired and rechecked.\",\"Numeric handoff risk: 32-to-16 down-conversions at RMSNorm outputs and activation_mul output require explicit nearest_even/no-saturation binding to trusted template parameters; otherwise later numeric_compare failures could appear despite shape-level width consistency.\",\"Cross-layer risk: residual streams are 32-bit while the general activation policy is 16-bit. This is intentional in the candidate, but must be explicitly accepted by numeric_policy_check as a residual/boundary precision rule so later memory, runtime, and verification artifacts do not pack these streams as 16-bit activations.\"],\"proposed_actions\":[\"Run the full current-stage numeric/template/SACG checker set on the candidate artifact before promotion: numeric_policy_check, template_coverage_check, parameter_binding_static_check, template_binding_static_check, and sacg_static_check.\",\"Generate a numeric_transition_audit artifact that enumerates every 32-to-16 and 16-to-32 boundary, the responsible trusted template, accumulator width, rounding policy, saturation policy, and transfer-count consequence.\",\"Repair the memory_runtime_contract_check failure by binding H2C/C2H device templates from supplied board/tool-protocol evidence only; require bounded approval if the evidence is ambiguous instead of guessing runtime device names.\",\"After numeric/template checks and memory/runtime repair pass, send the updated contract to pipeline_planning.evidence_gate; do not claim simulation, timing, or hardware pass at this stage.\"],\"executable_actions\":[{\"id\":\"pipeline_planning.run_template_numeric_static_gate\",\"stage\":\"pipeline_planning\",\"action_type\":\"checker_execution\",\"rationale\":\"The visible width pattern is coherent, but this role's required acceptance checkers are not all shown as pass. Run the checker-backed gate against the candidate, numeric policy, selected template library, template metadata, and Stage 2 template selection before promotion.\",\"consumes\":[\"candidate_stage_artifact.pipeline_plan\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.parameter.binding\",\"constraint.arch.design_space\",\"constraint.cross_layer.input_consistency\"],\"produces\":[\"checker_results.numeric_policy_check\",\"checker_results.template_coverage_check\",\"checker_results.parameter_binding_static_check\",\"checker_results.template_binding_static_check\",\"checker_results.sacg_static_check\",\"artifact.pipeline_planning.template_numeric_review\"],\"tool_roles\":[\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"sacg_static_check\",\"sacg_validate\"],\"acceptance_checkers\":[\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"sacg_static_check\"],\"on_failure\":\"Keep pipeline_planning blocked; route failing width, policy, template coverage, or binding evidence to bounded_template_repair or pipeline_repair without changing the numeric policy or trusted template library without approval.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.emit_numeric_transition_audit\",\"stage\":\"pipeline_planning\",\"action_type\":\"contract_audit_generation\",\"rationale\":\"The design relies on deliberate transitions between 32-bit residual/boundary streams and 16-bit internal streams. A bounded audit artifact is needed so later codegen, memory packing, runtime transfer counts, and numeric comparison use the same precision boundaries.\",\"consumes\":[\"candidate_stage_artifact.pipeline_plan.numeric_stream_policy\",\"candidate_stage_artifact.pipeline_plan.stages\",\"candidate_stage_artifact.pipeline_plan.data_edges\",\"artifact.input.numeric_policy\",\"artifact.input.template_metadata\"],\"produces\":[\"artifact.pipeline_planning.numeric_transition_audit\",\"checker_results.parameter_binding_static_check\",\"checker_results.numeric_policy_check\"],\"tool_roles\":[\"parameter_binding_static_check\",\"numeric_policy_check\",\"template_binding_static_check\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"numeric_policy_check\",\"template_binding_static_check\"],\"on_failure\":\"Do not promote the stage; localize the first inconsistent transition such as RMSNorm 32-to-16, attention 16-to-32, activation_mul 16-to-16 after multiply, or MLP down 16-to-32, then request bounded template/parameter repair.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.repair_runtime_device_template_bindings\",\"stage\":\"pipeline_planning\",\"action_type\":\"contract_repair\",\"rationale\":\"The supplied checker_results show memory_runtime_contract_check failed because h2c_device_template and c2h_device_template are null. Stage gate policy makes memory/runtime handoff checker-backed at the current stage, so the missing runtime ABI fields must be repaired from supplied board/tool evidence or explicitly approved if ambiguous.\",\"consumes\":[\"candidate_stage_artifact.pipeline_plan.memory_schedule.runtime_config_requirements\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.protocols\",\"constraint.human.boundary\"],\"produces\":[\"artifact.pipeline_planning.runtime_config_requirements.repaired\",\"checker_results.memory_runtime_plan_check\",\"checker_results.tool_protocol_check\",\"checker_results.human_boundary_check\"],\"tool_roles\":[\"memory_runtime_repair\",\"memory_runtime_plan_check\",\"tool_protocol_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"tool_protocol_check\",\"human_boundary_check\",\"sacg_static_check\"],\"on_failure\":\"Keep the overall pipeline_planning evidence gate blocked; if multiple H2C/C2H device templates are plausible or no cited evidence exists, request bounded approval instead of guessing device names.\",\"requires_approval\":true},{\"id\":\"pipeline_planning.evidence_gate_after_numeric_and_runtime_closure\",\"stage\":\"pipeline_planning\",\"action_type\":\"stage_gate_decision\",\"rationale\":\"Once numeric/template/SACG checks and the memory/runtime repair are checker-backed, aggregate the evidence for handoff. This action prevents later stages from consuming a partially checked contract or relying on human memory.\",\"consumes\":[\"candidate_stage_artifact.pipeline_plan\",\"artifact.pipeline_planning.template_numeric_review\",\"artifact.pipeline_planning.numeric_transition_audit\",\"artifact.pipeline_planning.runtime_config_requirements.repaired\",\"checker_results.numeric_policy_check\",\"checker_results.template_coverage_check\",\"checker_results.parameter_binding_static_check\",\"checker_results.template_binding_static_check\",\"checker_results.memory_runtime_plan_check\",\"checker_results.sacg_static_check\"],\"produces\":[\"artifact.pipeline_planning.evidence_gate_decision\",\"sacg_memory.pipeline_planning_numeric_template_outcome\"],\"tool_roles\":[\"team_aggregate\",\"sacg_validate\",\"verification_action_audit\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"sacg_static_check\",\"verification_action_audit_check\",\"sacg_memory_check\"],\"on_failure\":\"Do not hand off to code generation or verification planning; preserve failed checker evidence and request bounded repair or backtrack according to the violated SACG constraint.\",\"requires_approval\":false}],\"approval_required_for\":[\"Changing numeric policy values such as activation_bits, accumulator_bits, rounding, saturation, or residual stream precision.\",\"Changing the trusted template library, replacing a selected template, or allowing free-form RTL generation.\",\"Changing architecture or pipeline precision boundaries beyond the visible 32-bit residual/boundary and 16-bit internal stream contract.\",\"Selecting XDMA H2C/C2H runtime device templates without direct cited evidence from the supplied board/tool protocol artifacts.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/template_numeric_engineer_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/template_numeric_engineer_agent_result.json",
+  "retry_errors": [
+    "attempt 1: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "pipeline_planning.numeric template engineer",
+  "used_fallback": false
+}

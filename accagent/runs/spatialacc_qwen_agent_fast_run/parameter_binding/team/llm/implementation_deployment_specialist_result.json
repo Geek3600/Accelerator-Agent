@@ -1,0 +1,405 @@
+{
+  "agent": "implementation_deployment_specialist",
+  "duration_sec": 198.71107668199693,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "implementation_deployment_specialist",
+    "approval_required_for": [
+      "Changing lanes, datapath width, tile sizes, stage topology, or architecture outside constraint.arch.design_space.",
+      "Changing numeric policy, rounding semantics, saturation behavior, cast points, or fp16/fp32 residual precision from current_run_numeric_policy.md without numeric_policy_check approval.",
+      "Changing memory-layout policy outside the generated Stage 5 memory_runtime_plan, including base-address policy, alignment, DDR channel assumptions, or runtime ABI semantics.",
+      "Selecting or renaming backend/app-shell targets, clocks, AXI/DDRx interfaces, or board shell instances without unambiguous cited project/Vivado evidence.",
+      "Any major template rewrite or free-form RTL repair outside approved template binding, bounded glue-code, or repair_boundary_check limits."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "parameter_binding_static_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_stage_artifact.parameter_binding",
+          "candidate_stage_artifact.bindings.resource_estimate",
+          "candidate_stage_artifact.bandwidth_estimate.used_for",
+          "candidate_stage_artifact.stage_gate_policy",
+          "candidate_stage_artifact.global_params.clock_target_mhz",
+          "constraint.resource.estimate",
+          "constraint.bandwidth.estimate",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_availability"
+        ],
+        "id": "parameter_binding.non_evidence_claims_audit",
+        "on_failure": "Do not promote the parameter_binding artifact; open a stage retry request naming the unsupported claim or missing evidence and place the failed artifact behind a stage_artifact_trust_barrier.",
+        "produces": [
+          "parameter_binding.dse_resource_risk_report",
+          "non_evidence_claims_audit",
+          "later_stage_tool_obligation_list"
+        ],
+        "rationale": "Lock the current artifact as static-only evidence: resource_estimate is symbolic_first_order, bandwidth_estimate is symbolic transfer count, clock_target_mhz=0 is an unknown board-shell clock, and no SACG retry/backtrack/contamination barrier is open.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "sacg_validate",
+          "parameter_binding_static_check",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check"
+        ],
+        "action_type": "memory_runtime_contract_generation",
+        "consumes": [
+          "candidate_stage_artifact.bandwidth_estimate",
+          "candidate_stage_artifact.stream_contract_trace",
+          "artifact.stage3.pipeline_plan",
+          "artifact.input.target_board_profile",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.beat.pipeline",
+          "constraint.memory_schedule.pipeline"
+        ],
+        "id": "stage5.assign_memory_runtime_transfer_contract",
+        "on_failure": "Block code generation and backend execution; route the mismatch to memory_runtime_repair with the violated address, alignment, transfer-count, or stream-order constraint.",
+        "produces": [
+          "artifact.stage5.memory_runtime_plan",
+          "artifact.stage5.address_map",
+          "artifact.stage5.transfer_count_manifest"
+        ],
+        "rationale": "The bandwidth artifact provides static transfer counts but no concrete DDR layout. Stage 5 must assign aligned base addresses and runtime ABI fields without changing tensor shapes, stream order, numeric policy, or transfer counts.",
+        "requires_approval": false,
+        "stage": "memory_runtime_planning",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "code_generation_manifest_static_check",
+          "codegen_compile_gate_check",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "implementation_package_static"
+        ],
+        "action_type": "codegen_static_elaboration",
+        "consumes": [
+          "candidate_stage_artifact.bindings",
+          "candidate_stage_artifact.numeric_binding_plan",
+          "candidate_stage_artifact.global_param_scope",
+          "artifact.stage2.template_selection",
+          "artifact.stage3.pipeline_plan",
+          "artifact.input.template_library",
+          "artifact.stage5.memory_runtime_plan"
+        ],
+        "id": "stage5.codegen_package_static_gate",
+        "on_failure": "Do not run simulation or Vivado; localize the failed binding/package contract and repair only within approved template binding or bounded glue-code boundaries.",
+        "produces": [
+          "artifact.stage5.codegen_manifest",
+          "generated.chisel.parameterized_design_package",
+          "artifact.stage5.implementation_package_static_report"
+        ],
+        "rationale": "Convert the checked bound parameters into the trusted template package and verify packaging/elaboration only. implementation_package_static is not timing, synthesis, or board evidence.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "codegen_compile_gate",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "implementation_package_static"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_stage_leaf_static",
+          "real_tool.case_leaf_functional",
+          "real_tool.case_leaf_golden_compare",
+          "real_tool.case_single_transformer_layer",
+          "real_tool.case_single_layer_functional",
+          "real_tool.case_single_layer_golden_compare",
+          "real_tool.case_multilayer_functional",
+          "real_tool.case_pipeline_deadlock_check",
+          "data_order_trace_check",
+          "numeric_compare",
+          "deadlock_watchdog",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.stage5.codegen_manifest",
+          "generated.chisel.parameterized_design_package",
+          "artifact.stage5.memory_runtime_plan",
+          "artifact.input.case_adapter",
+          "artifact.input.tool_protocols",
+          "candidate_stage_artifact.stream_contract_trace",
+          "candidate_stage_artifact.numeric_binding_plan"
+        ],
+        "id": "stage6.hierarchical_real_verification_sequence",
+        "on_failure": "Stop at the failed layer; route tool output through boundary_contract_check, failure_localization_check, causal_repair_context_check, and targeted replay before any bounded repair. Do not promote to Vivado or board runtime from a failed verification layer.",
+        "produces": [
+          "verification.leaf_evidence_bundle",
+          "verification.single_layer_evidence_bundle",
+          "verification.pipeline_functional_deadlock_evidence_bundle"
+        ],
+        "rationale": "Real correctness evidence must be built in order: operator/leaf modules first, then the connected single-transformer-layer kernel, then the larger pipeline checks. Static estimates and generated packages cannot substitute for simulator/golden evidence.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_stage_leaf_static",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "case_multilayer_pipeline",
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "data_order_trace_check",
+          "numeric_compare",
+          "deadlock_watchdog",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_vivado_synthesis",
+          "real_tool.case_vivado_synthesis_report_check",
+          "real_tool.case_vivado_implementation",
+          "real_tool.case_vivado_implementation_report_check",
+          "timing_resource_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.stage5.implementation_package_static_report",
+          "verification.single_layer_evidence_bundle",
+          "verification.pipeline_functional_deadlock_evidence_bundle",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "constraint.tool.profile",
+          "constraint.tool.protocols",
+          "constraint.deployment.board"
+        ],
+        "id": "backend.run_vivado_timing_resource_evidence",
+        "on_failure": "Do not claim implementation or timing pass; localize whether the earliest cause is clock/target discovery, template packaging, resource overuse, or timing path, then request bounded repair or architecture approval as needed.",
+        "produces": [
+          "backend.vivado_synthesis_reports",
+          "backend.vivado_implementation_reports",
+          "timing_resource_evidence_report"
+        ],
+        "rationale": "Only real Vivado synthesis/implementation reports can convert symbolic sizing assumptions into resource and timing evidence. A concrete clock and board target must be bound before timing claims.",
+        "requires_approval": false,
+        "stage": "backend_implementation",
+        "tool_roles": [
+          "case_vivado_synthesis",
+          "case_vivado_synthesis_report_check",
+          "case_vivado_implementation",
+          "case_vivado_implementation_report_check",
+          "timing_resource_check",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "backend_app_shell_integration_contract_static_check",
+          "backend_app_shell_target_discovery_check",
+          "backend_app_shell_target_hint_synthesis_check",
+          "real_tool.case_board_interface_discovery",
+          "real_tool.case_axi_ddr_interface",
+          "real_tool.case_axi_protocol_check",
+          "real_tool.case_runtime_abi_check",
+          "deployment_board_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "target_discovery_and_deployment_gate",
+        "consumes": [
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.sample_project_index",
+          "backend.vivado_implementation_reports",
+          "constraint.backend_board.plan",
+          "constraint.deployment.board",
+          "constraint.memory.board",
+          "constraint.runtime.board"
+        ],
+        "id": "backend.discover_board_shell_target_and_runtime_contract",
+        "on_failure": "If no unique evidence-backed target exists, emit backend_bounded_recovery_action and require approval; keep runtime bitstream, app_shell_runtime_bitstream, and board_runtime blocked.",
+        "produces": [
+          "artifact.stage9.app_shell_integration_contract",
+          "artifact.stage9.target_discovery_policy_update",
+          "artifact.stage9.runtime_abi_contract",
+          "deployment_board_evidence_gate_report"
+        ],
+        "rationale": "The LLM board-integration role must synthesize target_discovery_policy updates only from supplied board materials and real Vivado evidence. Ambiguous target names, clocks, or shell interfaces require bounded approval instead of guessing.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "app_shell_target_discovery_contract",
+          "case_board_interface_discovery",
+          "app_shell_target_hint_synthesis",
+          "app_shell_target_discovery_after_hint",
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "case_runtime_abi_check",
+          "deployment_board_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_ddr_image_roundtrip",
+          "real_tool.case_runtime_bitstream",
+          "real_tool.board_runtime",
+          "output_validity_check",
+          "deployment_board_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.stage9.app_shell_integration_contract",
+          "artifact.stage9.runtime_abi_contract",
+          "artifact.stage5.address_map",
+          "backend.vivado_implementation_reports",
+          "verification.pipeline_functional_deadlock_evidence_bundle",
+          "artifact.input.target_board_profile"
+        ],
+        "id": "backend.run_board_runtime_evidence_gate",
+        "on_failure": "Do not claim board pass; localize the earliest failing boundary in the board-accurate AXI/DDR wrapped system and return to contract-guided bounded repair without skipping failed lower layers.",
+        "produces": [
+          "backend.runtime_bitstream_artifacts",
+          "backend.ddr_roundtrip_report",
+          "backend.board_runtime_report",
+          "deployment_board_pass_evidence_or_not_run"
+        ],
+        "rationale": "Board-pass evidence can only come after timing/resource, target discovery, runtime ABI, DDR image, bitstream, and board runtime checks. Static transfer counts and symbolic estimates remain non-evidence.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "case_ddr_image_roundtrip",
+          "case_runtime_bitstream",
+          "board_runtime",
+          "output_validity_check",
+          "deployment_board_check",
+          "required_real_tool_evidence_check"
+        ]
+      }
+    ],
+    "observations": [
+      "SACG memory review: the supplied state summary reports no active contamination barriers, no open backtrack requests, and no open retry requests relevant to this stage. The standalone sacg_memory object is empty, so there is no current-stage trust barrier to resolve before the evidence-gate handoff.",
+      "The candidate artifact's current-stage checker_results all pass: parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, tile_override_legality_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check. Under the supplied stage_gate_policy, these resolved static consistency items should not be reclassified as current-stage risks.",
+      "Every per-stage resource_estimate is explicitly estimate_kind=symbolic_first_order and used_for='parameter binding sanity check only; not timing, implementation, or hardware pass evidence'. This prevents promotion of compute_ops, activation_elements, weight_elements, datapath_bits, lanes, or tile parameters into synthesis/timing claims.",
+      "The bandwidth_estimate is explicitly estimate_kind=symbolic_transfer_count_from_bound_params and used_for='static transfer-count and AXI packing sanity only; not board bandwidth or timing pass evidence'. The total_aligned_bytes_per_layer=31202816 and per-stage AXI beat counts are static transfer-count facts only.",
+      "The AXI packing assumption is bounded to the supplied board memory facts: 512-bit/64-byte AXI data width, 37-bit addresses, 64-byte alignment, one DDR channel, protocol AXI, core-side pattern c0_ddr4_s_axi_*. The current artifact has no concrete DDR base-address map, non-overlap proof, runtime ABI, or board bandwidth measurement.",
+      "global_params.clock_target_mhz=0 and each stage carries clock_target_mhz=0. The artifact correctly scopes this as 'board shell clock is unknown unless non-null; this is not timing evidence'. No Fmax, timing slack, or implementation-resource pass may be inferred.",
+      "Per-stage MLP tile overrides tile_m=16, tile_n=128, tile_k=128 are authoritative while global tile_m=8, tile_n=24, tile_k=8 are defaults only. The tile_override_legality_check pass covers current-stage divisibility; downstream tools must preserve the per-stage overrides rather than reverting to global defaults.",
+      "Stage local fifo_depth=16 is scoped as a template default only. The fifo_contract_check pass states Stage 3 edge buffer depths remain authoritative, so implementation/codegen must consume the Stage 3 buffer_plan rather than treating Stage 4 fifo_depth as an edge FIFO contract.",
+      "Cross-layer dtype/order consistency is currently static-only but coherent in the visible trace: fp32 block input and residual paths, fp16 norm/attention/MLP internal streams where specified, fp32 residual outputs, stream_order token/tile/lane/word on all 13 edges, and tensor widths matching hidden_size=896 or intermediate_size=4864 with seq_len=16.",
+      "The candidate artifact uses status='ready' for parameter binding only. That status does not imply generated RTL, successful Chisel elaboration, simulation correctness, Vivado synthesis/implementation success, timing closure, bitstream generation, DDR roundtrip, runtime ABI pass, or board output validity."
+    ],
+    "proposed_actions": [
+      "Approve only the current-stage static risk classification for evidence-gate review; do not claim synthesis, timing, implementation, or board pass.",
+      "Attach a non_evidence_claims_audit stating that resource_estimate, bandwidth_estimate, checker_summary, and clock_target_mhz=0 are not hardware evidence.",
+      "Handoff to parameter_binding.evidence_gate_auditor to run SACG/static/evidence checks and produce parameter_binding.dse_resource_risk_report, non_evidence_claims_audit, and later_stage_tool_obligation_list.",
+      "In Stage 5, generate the memory/runtime plan with concrete 64-byte-aligned DDR base addresses, non-overlap checks, transfer-count preservation, and runtime ABI fields.",
+      "In code generation, elaborate the trusted templates with the bound per-stage parameters, preserve Stage 3 stream/FIFO contracts, and run compile/package static checks before any simulator or backend invocation.",
+      "In verification, enforce the three-layer sequence: operator/leaf modules, connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapped system. A failure at any layer must enter evidence-guided localization and bounded repair before higher-layer promotion.",
+      "In backend implementation, run real Vivado synthesis and implementation report checks before timing/resource claims, using a concrete clock/target shell discovered from supplied board materials and real tool evidence.",
+      "For backend/app-shell deployment, update target_discovery_policy only from cited board/project/Vivado evidence; if target names, clocks, memory interfaces, or shell instances are ambiguous, require bounded approval instead of guessing.",
+      "Run board runtime, DDR image roundtrip, runtime ABI, and output-validity checks only after target discovery, implementation, and timing gates pass."
+    ],
+    "risks": [
+      "Later-stage resource/timing closure risk: the three MLP projection stages each report 69730304 symbolic compute_ops and 4358144 fp16 weight elements, and self_attention reports 1835008 fp16 weight elements. These are sizing signals, not LUT/DSP/BRAM/URAM/Fmax evidence; timing_resource_check and real Vivado reports are still required.",
+      "Later-stage memory/runtime risk: the static transfer total is 31202816 aligned bytes per layer, but Stage 5 has not assigned concrete base addresses, buffer regions, non-overlap proofs, DDR image layout, or runtime ABI fields. This is not a current-stage blocker because the stage_gate_policy assigns it to Stage 5.",
+      "Later-stage clock risk: clock_target_mhz=0 leaves the board shell clock and timing constraints unbound. Implementation must discover or approve a concrete clock/XDC target before any timing-resource claim can be made.",
+      "Later-stage backend/app-shell risk: c0_ddr4_s_axi_* is a supplied interface-name pattern, not a discovered Vivado target instance. Backend target discovery must cite real project/tool evidence and must request bounded approval if multiple plausible targets or clocks are found.",
+      "Downstream contamination risk: if a later agent treats symbolic_first_order resource estimates, AXI beat counts, or current checker pass counts as hardware evidence, it would violate the stage_gate_policy and required_real_tool_evidence_check. The handoff must carry an explicit non-evidence claims audit.",
+      "Numeric implementation handoff risk: the visible numeric_binding_plan records rounding='nearest_even', while the stage_gate_policy says numeric rounding remains a later-stage obligation unless approved by numeric policy. Downstream codegen/verification must not convert this field into an unverified hardware rounding claim without numeric_policy_check and golden comparison evidence."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.bindings.resource_estimate",
+        "candidate_stage_artifact.bandwidth_estimate.used_for",
+        "candidate_stage_artifact.stage_gate_policy",
+        "candidate_stage_artifact.global_params.clock_target_mhz",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.stream_contract_trace",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_protocols",
+        "artifact.stage2.template_selection",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage3.pipeline_static_checks"
+      ],
+      "constraints": [
+        "constraint.arch.design_space",
+        "constraint.resource.estimate",
+        "constraint.bandwidth.estimate",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.backend_board.plan",
+        "constraint.numeric.policy",
+        "constraint.pipeline.structure",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.buffering.pipeline",
+        "constraint.memory_schedule.pipeline",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output",
+        "board_axi_ddr_interface:c0_ddr4_s_axi_*"
+      ]
+    },
+    "schema_version": "spatialaccagent.implementation_deployment_review.v0",
+    "stage": "parameter_binding",
+    "status": "ready_for_evidence_gate_handoff",
+    "summary": "Current-stage parameter binding is static-ready under the supplied checker summary: 6/6 candidate checks pass with no errors or warnings. The resource and bandwidth fields are correctly marked as symbolic/static sanity evidence only, clock_target_mhz=0 is explicitly an unknown board-shell clock rather than timing evidence, and no synthesis, timing, implementation, bitstream, or board-pass claim is supported at this stage."
+  },
+  "prompt_bytes": 49264,
+  "prompt_hash": "018eda072850b3d19d9a1fe25143ed84288f9adf5bb6d0c54962be9ecd081102",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.implementation_deployment_review.v0\",\"agent\":\"implementation_deployment_specialist\",\"stage\":\"parameter_binding\",\"status\":\"ready_for_evidence_gate_handoff\",\"summary\":\"Current-stage parameter binding is static-ready under the supplied checker summary: 6/6 candidate checks pass with no errors or warnings. The resource and bandwidth fields are correctly marked as symbolic/static sanity evidence only, clock_target_mhz=0 is explicitly an unknown board-shell clock rather than timing evidence, and no synthesis, timing, implementation, bitstream, or board-pass claim is supported at this stage.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\",\"board_axi_ddr_interface:c0_ddr4_s_axi_*\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.arch.design_space\",\"constraint.resource.estimate\",\"constraint.bandwidth.estimate\",\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.profile\",\"constraint.tool.protocols\",\"constraint.backend_board.plan\",\"constraint.numeric.policy\",\"constraint.pipeline.structure\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.buffering.pipeline\",\"constraint.memory_schedule.pipeline\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"candidate_stage_artifact.bindings.resource_estimate\",\"candidate_stage_artifact.bandwidth_estimate.used_for\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.global_params.clock_target_mhz\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.stream_contract_trace\",\"artifact.input.target_board_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"artifact.stage3.pipeline_static_checks\"]},\"observations\":[\"SACG memory review: the supplied state summary reports no active contamination barriers, no open backtrack requests, and no open retry requests relevant to this stage. The standalone sacg_memory object is empty, so there is no current-stage trust barrier to resolve before the evidence-gate handoff.\",\"The candidate artifact's current-stage checker_results all pass: parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, tile_override_legality_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check. Under the supplied stage_gate_policy, these resolved static consistency items should not be reclassified as current-stage risks.\",\"Every per-stage resource_estimate is explicitly estimate_kind=symbolic_first_order and used_for='parameter binding sanity check only; not timing, implementation, or hardware pass evidence'. This prevents promotion of compute_ops, activation_elements, weight_elements, datapath_bits, lanes, or tile parameters into synthesis/timing claims.\",\"The bandwidth_estimate is explicitly estimate_kind=symbolic_transfer_count_from_bound_params and used_for='static transfer-count and AXI packing sanity only; not board bandwidth or timing pass evidence'. The total_aligned_bytes_per_layer=31202816 and per-stage AXI beat counts are static transfer-count facts only.\",\"The AXI packing assumption is bounded to the supplied board memory facts: 512-bit/64-byte AXI data width, 37-bit addresses, 64-byte alignment, one DDR channel, protocol AXI, core-side pattern c0_ddr4_s_axi_*. The current artifact has no concrete DDR base-address map, non-overlap proof, runtime ABI, or board bandwidth measurement.\",\"global_params.clock_target_mhz=0 and each stage carries clock_target_mhz=0. The artifact correctly scopes this as 'board shell clock is unknown unless non-null; this is not timing evidence'. No Fmax, timing slack, or implementation-resource pass may be inferred.\",\"Per-stage MLP tile overrides tile_m=16, tile_n=128, tile_k=128 are authoritative while global tile_m=8, tile_n=24, tile_k=8 are defaults only. The tile_override_legality_check pass covers current-stage divisibility; downstream tools must preserve the per-stage overrides rather than reverting to global defaults.\",\"Stage local fifo_depth=16 is scoped as a template default only. The fifo_contract_check pass states Stage 3 edge buffer depths remain authoritative, so implementation/codegen must consume the Stage 3 buffer_plan rather than treating Stage 4 fifo_depth as an edge FIFO contract.\",\"Cross-layer dtype/order consistency is currently static-only but coherent in the visible trace: fp32 block input and residual paths, fp16 norm/attention/MLP internal streams where specified, fp32 residual outputs, stream_order token/tile/lane/word on all 13 edges, and tensor widths matching hidden_size=896 or intermediate_size=4864 with seq_len=16.\",\"The candidate artifact uses status='ready' for parameter binding only. That status does not imply generated RTL, successful Chisel elaboration, simulation correctness, Vivado synthesis/implementation success, timing closure, bitstream generation, DDR roundtrip, runtime ABI pass, or board output validity.\"],\"risks\":[\"Later-stage resource/timing closure risk: the three MLP projection stages each report 69730304 symbolic compute_ops and 4358144 fp16 weight elements, and self_attention reports 1835008 fp16 weight elements. These are sizing signals, not LUT/DSP/BRAM/URAM/Fmax evidence; timing_resource_check and real Vivado reports are still required.\",\"Later-stage memory/runtime risk: the static transfer total is 31202816 aligned bytes per layer, but Stage 5 has not assigned concrete base addresses, buffer regions, non-overlap proofs, DDR image layout, or runtime ABI fields. This is not a current-stage blocker because the stage_gate_policy assigns it to Stage 5.\",\"Later-stage clock risk: clock_target_mhz=0 leaves the board shell clock and timing constraints unbound. Implementation must discover or approve a concrete clock/XDC target before any timing-resource claim can be made.\",\"Later-stage backend/app-shell risk: c0_ddr4_s_axi_* is a supplied interface-name pattern, not a discovered Vivado target instance. Backend target discovery must cite real project/tool evidence and must request bounded approval if multiple plausible targets or clocks are found.\",\"Downstream contamination risk: if a later agent treats symbolic_first_order resource estimates, AXI beat counts, or current checker pass counts as hardware evidence, it would violate the stage_gate_policy and required_real_tool_evidence_check. The handoff must carry an explicit non-evidence claims audit.\",\"Numeric implementation handoff risk: the visible numeric_binding_plan records rounding='nearest_even', while the stage_gate_policy says numeric rounding remains a later-stage obligation unless approved by numeric policy. Downstream codegen/verification must not convert this field into an unverified hardware rounding claim without numeric_policy_check and golden comparison evidence.\"],\"proposed_actions\":[\"Approve only the current-stage static risk classification for evidence-gate review; do not claim synthesis, timing, implementation, or board pass.\",\"Attach a non_evidence_claims_audit stating that resource_estimate, bandwidth_estimate, checker_summary, and clock_target_mhz=0 are not hardware evidence.\",\"Handoff to parameter_binding.evidence_gate_auditor to run SACG/static/evidence checks and produce parameter_binding.dse_resource_risk_report, non_evidence_claims_audit, and later_stage_tool_obligation_list.\",\"In Stage 5, generate the memory/runtime plan with concrete 64-byte-aligned DDR base addresses, non-overlap checks, transfer-count preservation, and runtime ABI fields.\",\"In code generation, elaborate the trusted templates with the bound per-stage parameters, preserve Stage 3 stream/FIFO contracts, and run compile/package static checks before any simulator or backend invocation.\",\"In verification, enforce the three-layer sequence: operator/leaf modules, connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapped system. A failure at any layer must enter evidence-guided localization and bounded repair before higher-layer promotion.\",\"In backend implementation, run real Vivado synthesis and implementation report checks before timing/resource claims, using a concrete clock/target shell discovered from supplied board materials and real tool evidence.\",\"For backend/app-shell deployment, update target_discovery_policy only from cited board/project/Vivado evidence; if target names, clocks, memory interfaces, or shell instances are ambiguous, require bounded approval instead of guessing.\",\"Run board runtime, DDR image roundtrip, runtime ABI, and output-validity checks only after target discovery, implementation, and timing gates pass.\"],\"executable_actions\":[{\"id\":\"parameter_binding.non_evidence_claims_audit\",\"stage\":\"parameter_binding\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"Lock the current artifact as static-only evidence: resource_estimate is symbolic_first_order, bandwidth_estimate is symbolic transfer count, clock_target_mhz=0 is an unknown board-shell clock, and no SACG retry/backtrack/contamination barrier is open.\",\"consumes\":[\"candidate_stage_artifact.parameter_binding\",\"candidate_stage_artifact.bindings.resource_estimate\",\"candidate_stage_artifact.bandwidth_estimate.used_for\",\"candidate_stage_artifact.stage_gate_policy\",\"candidate_stage_artifact.global_params.clock_target_mhz\",\"constraint.resource.estimate\",\"constraint.bandwidth.estimate\",\"artifact.input.target_board_profile\",\"artifact.input.tool_availability\"],\"produces\":[\"parameter_binding.dse_resource_risk_report\",\"non_evidence_claims_audit\",\"later_stage_tool_obligation_list\"],\"tool_roles\":[\"sacg_validate\",\"parameter_binding_static_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"parameter_binding_static_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not promote the parameter_binding artifact; open a stage retry request naming the unsupported claim or missing evidence and place the failed artifact behind a stage_artifact_trust_barrier.\",\"requires_approval\":false},{\"id\":\"stage5.assign_memory_runtime_transfer_contract\",\"stage\":\"memory_runtime_planning\",\"action_type\":\"memory_runtime_contract_generation\",\"rationale\":\"The bandwidth artifact provides static transfer counts but no concrete DDR layout. Stage 5 must assign aligned base addresses and runtime ABI fields without changing tensor shapes, stream order, numeric policy, or transfer counts.\",\"consumes\":[\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.stream_contract_trace\",\"artifact.stage3.pipeline_plan\",\"artifact.input.target_board_profile\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.beat.pipeline\",\"constraint.memory_schedule.pipeline\"],\"produces\":[\"artifact.stage5.memory_runtime_plan\",\"artifact.stage5.address_map\",\"artifact.stage5.transfer_count_manifest\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\"],\"on_failure\":\"Block code generation and backend execution; route the mismatch to memory_runtime_repair with the violated address, alignment, transfer-count, or stream-order constraint.\",\"requires_approval\":false},{\"id\":\"stage5.codegen_package_static_gate\",\"stage\":\"code_generation\",\"action_type\":\"codegen_static_elaboration\",\"rationale\":\"Convert the checked bound parameters into the trusted template package and verify packaging/elaboration only. implementation_package_static is not timing, synthesis, or board evidence.\",\"consumes\":[\"candidate_stage_artifact.bindings\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.global_param_scope\",\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"artifact.input.template_library\",\"artifact.stage5.memory_runtime_plan\"],\"produces\":[\"artifact.stage5.codegen_manifest\",\"generated.chisel.parameterized_design_package\",\"artifact.stage5.implementation_package_static_report\"],\"tool_roles\":[\"codegen_compile_gate\",\"codegen_contract_check\",\"codegen_package_static_check\",\"implementation_package_static\"],\"acceptance_checkers\":[\"code_generation_manifest_static_check\",\"codegen_compile_gate_check\",\"codegen_contract_check\",\"codegen_package_static_check\",\"implementation_package_static\"],\"on_failure\":\"Do not run simulation or Vivado; localize the failed binding/package contract and repair only within approved template binding or bounded glue-code boundaries.\",\"requires_approval\":false},{\"id\":\"stage6.hierarchical_real_verification_sequence\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Real correctness evidence must be built in order: operator/leaf modules first, then the connected single-transformer-layer kernel, then the larger pipeline checks. Static estimates and generated packages cannot substitute for simulator/golden evidence.\",\"consumes\":[\"artifact.stage5.codegen_manifest\",\"generated.chisel.parameterized_design_package\",\"artifact.stage5.memory_runtime_plan\",\"artifact.input.case_adapter\",\"artifact.input.tool_protocols\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.numeric_binding_plan\"],\"produces\":[\"verification.leaf_evidence_bundle\",\"verification.single_layer_evidence_bundle\",\"verification.pipeline_functional_deadlock_evidence_bundle\"],\"tool_roles\":[\"case_stage_leaf_static\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"case_single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"case_multilayer_pipeline\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"data_order_trace_check\",\"numeric_compare\",\"deadlock_watchdog\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"case_stage_leaf_static\",\"real_tool.case_leaf_functional\",\"real_tool.case_leaf_golden_compare\",\"real_tool.case_single_transformer_layer\",\"real_tool.case_single_layer_functional\",\"real_tool.case_single_layer_golden_compare\",\"real_tool.case_multilayer_functional\",\"real_tool.case_pipeline_deadlock_check\",\"data_order_trace_check\",\"numeric_compare\",\"deadlock_watchdog\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Stop at the failed layer; route tool output through boundary_contract_check, failure_localization_check, causal_repair_context_check, and targeted replay before any bounded repair. Do not promote to Vivado or board runtime from a failed verification layer.\",\"requires_approval\":false},{\"id\":\"backend.run_vivado_timing_resource_evidence\",\"stage\":\"backend_implementation\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Only real Vivado synthesis/implementation reports can convert symbolic sizing assumptions into resource and timing evidence. A concrete clock and board target must be bound before timing claims.\",\"consumes\":[\"artifact.stage5.implementation_package_static_report\",\"verification.single_layer_evidence_bundle\",\"verification.pipeline_functional_deadlock_evidence_bundle\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"constraint.tool.profile\",\"constraint.tool.protocols\",\"constraint.deployment.board\"],\"produces\":[\"backend.vivado_synthesis_reports\",\"backend.vivado_implementation_reports\",\"timing_resource_evidence_report\"],\"tool_roles\":[\"case_vivado_synthesis\",\"case_vivado_synthesis_report_check\",\"case_vivado_implementation\",\"case_vivado_implementation_report_check\",\"timing_resource_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"real_tool.case_vivado_synthesis\",\"real_tool.case_vivado_synthesis_report_check\",\"real_tool.case_vivado_implementation\",\"real_tool.case_vivado_implementation_report_check\",\"timing_resource_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not claim implementation or timing pass; localize whether the earliest cause is clock/target discovery, template packaging, resource overuse, or timing path, then request bounded repair or architecture approval as needed.\",\"requires_approval\":false},{\"id\":\"backend.discover_board_shell_target_and_runtime_contract\",\"stage\":\"backend_board\",\"action_type\":\"target_discovery_and_deployment_gate\",\"rationale\":\"The LLM board-integration role must synthesize target_discovery_policy updates only from supplied board materials and real Vivado evidence. Ambiguous target names, clocks, or shell interfaces require bounded approval instead of guessing.\",\"consumes\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.sample_project_index\",\"backend.vivado_implementation_reports\",\"constraint.backend_board.plan\",\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"produces\":[\"artifact.stage9.app_shell_integration_contract\",\"artifact.stage9.target_discovery_policy_update\",\"artifact.stage9.runtime_abi_contract\",\"deployment_board_evidence_gate_report\"],\"tool_roles\":[\"app_shell_target_discovery_contract\",\"case_board_interface_discovery\",\"app_shell_target_hint_synthesis\",\"app_shell_target_discovery_after_hint\",\"case_axi_ddr_interface\",\"case_axi_protocol_check\",\"case_runtime_abi_check\",\"deployment_board_check\"],\"acceptance_checkers\":[\"backend_app_shell_integration_contract_static_check\",\"backend_app_shell_target_discovery_check\",\"backend_app_shell_target_hint_synthesis_check\",\"real_tool.case_board_interface_discovery\",\"real_tool.case_axi_ddr_interface\",\"real_tool.case_axi_protocol_check\",\"real_tool.case_runtime_abi_check\",\"deployment_board_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"If no unique evidence-backed target exists, emit backend_bounded_recovery_action and require approval; keep runtime bitstream, app_shell_runtime_bitstream, and board_runtime blocked.\",\"requires_approval\":false},{\"id\":\"backend.run_board_runtime_evidence_gate\",\"stage\":\"backend_board\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Board-pass evidence can only come after timing/resource, target discovery, runtime ABI, DDR image, bitstream, and board runtime checks. Static transfer counts and symbolic estimates remain non-evidence.\",\"consumes\":[\"artifact.stage9.app_shell_integration_contract\",\"artifact.stage9.runtime_abi_contract\",\"artifact.stage5.address_map\",\"backend.vivado_implementation_reports\",\"verification.pipeline_functional_deadlock_evidence_bundle\",\"artifact.input.target_board_profile\"],\"produces\":[\"backend.runtime_bitstream_artifacts\",\"backend.ddr_roundtrip_report\",\"backend.board_runtime_report\",\"deployment_board_pass_evidence_or_not_run\"],\"tool_roles\":[\"case_ddr_image_roundtrip\",\"case_runtime_bitstream\",\"board_runtime\",\"output_validity_check\",\"deployment_board_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"real_tool.case_ddr_image_roundtrip\",\"real_tool.case_runtime_bitstream\",\"real_tool.board_runtime\",\"output_validity_check\",\"deployment_board_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not claim board pass; localize the earliest failing boundary in the board-accurate AXI/DDR wrapped system and return to contract-guided bounded repair without skipping failed lower layers.\",\"requires_approval\":false}],\"approval_required_for\":[\"Changing lanes, datapath width, tile sizes, stage topology, or architecture outside constraint.arch.design_space.\",\"Changing numeric policy, rounding semantics, saturation behavior, cast points, or fp16/fp32 residual precision from current_run_numeric_policy.md without numeric_policy_check approval.\",\"Changing memory-layout policy outside the generated Stage 5 memory_runtime_plan, including base-address policy, alignment, DDR channel assumptions, or runtime ABI semantics.\",\"Selecting or renaming backend/app-shell targets, clocks, AXI/DDRx interfaces, or board shell instances without unambiguous cited project/Vivado evidence.\",\"Any major template rewrite or free-form RTL repair outside approved template binding, bounded glue-code, or repair_boundary_check limits.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/implementation_deployment_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/implementation_deployment_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "parameter_binding.DSE resource risk engineer",
+  "used_fallback": false
+}

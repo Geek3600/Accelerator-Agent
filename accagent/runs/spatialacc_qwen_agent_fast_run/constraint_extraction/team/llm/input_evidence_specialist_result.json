@@ -1,0 +1,284 @@
+{
+  "agent": "input_evidence_specialist",
+  "duration_sec": 126.81032536099883,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "input_evidence_specialist",
+    "approval_required_for": [
+      "Any repair that changes architecture, pipeline topology, memory layout, numeric policy, major template selection, runtime ABI, or board/app-shell target names rather than only correcting traceability, provenance, or evidence classification."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "task_card_check",
+          "tool_protocol_check",
+          "artifact_hash_check",
+          "llm_io_quality_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "prepared_inputs_manifest",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.field_evidence",
+          "prepared_inputs_manifest.inputs.field_evidence_candidates",
+          "artifact.input.task_card",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter"
+        ],
+        "id": "constraint_extraction.build_source_traceability_matrix",
+        "on_failure": "Block constraint_graph_auditor promotion and emit missing or ambiguous source rows as bounded repair items; do not infer missing fields from the compact prompt slice alone.",
+        "produces": [
+          "artifact.review.constraint_extraction.source_traceability_matrix",
+          "artifact.review.constraint_extraction.input_evidence_findings"
+        ],
+        "rationale": "The supplied summary shows expected artifact classes and constraints but not row-level mappings. A checker-produced traceability matrix is required before downstream agents consume the candidate graph as complete source evidence.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "task_card_check",
+          "tool_protocol_check",
+          "artifact_hash_check",
+          "llm_io_quality_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_artifact_trust_barrier_check",
+          "llm_io_quality_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "stage_artifact_trust_barrier",
+        "consumes": [
+          "prepared_inputs_manifest.design_team",
+          "llm_policy",
+          "candidate_design_graph_summary",
+          "sacg_memory"
+        ],
+        "id": "constraint_extraction.quarantine_fallback_and_diagnostics",
+        "on_failure": "Record an active contamination barrier, mark affected aggregate artifacts diagnostic-only, request same-stage retry, and prevent downstream consumption until a clean current-stage artifact supersedes the contaminated one.",
+        "produces": [
+          "artifact.review.constraint_extraction.fallback_diagnostic_trust_barrier",
+          "artifact.review.constraint_extraction.input_evidence_findings"
+        ],
+        "rationale": "prepared_inputs_manifest exposes decomposer_used_fallback and decomposer_error keys, and llm_policy states fallback records are diagnostics only. A trust barrier must ensure no fallback or diagnostic artifact is treated as successful LLM/team evidence.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "stage_artifact_trust_barrier",
+          "llm_io_quality_check",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "required_real_tool_evidence_check",
+          "tool_protocol_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "evidence_classification",
+        "consumes": [
+          "artifact.input.field_evidence",
+          "prepared_inputs_manifest.inputs.field_evidence_candidates",
+          "prepared_inputs_manifest.run_dir",
+          "artifact.input.tool_protocols",
+          "artifact.input.tool_availability"
+        ],
+        "id": "constraint_extraction.classify_field_evidence_candidates",
+        "on_failure": "Keep disputed evidence out of success paths, mark it not_run or diagnostic, and route the gap to the tool availability gap list instead of claiming verification/backend pass.",
+        "produces": [
+          "artifact.review.constraint_extraction.field_evidence_classification",
+          "artifact.review.constraint_extraction.source_traceability_matrix"
+        ],
+        "rationale": "Field evidence candidates are present but must not be equated with successful real-tool evidence unless they are hash-bound to accepted protocols and current-run provenance; otherwise they must be diagnostic, stale, fallback, or not_run.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "real_tool_evidence_check",
+          "required_real_tool_evidence_check",
+          "tool_protocol_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "tool_availability_audit",
+        "consumes": [
+          "artifact.input.tool_availability",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "prepared_inputs_manifest"
+        ],
+        "id": "constraint_extraction.produce_tool_availability_gap_list",
+        "on_failure": "Treat unresolved current-stage tool/profile contradictions as blockers; classify downstream-only missing tools as handoff gaps with planned_tool entries where needed.",
+        "produces": [
+          "artifact.review.constraint_extraction.tool_availability_gap_list",
+          "artifact.review.constraint_extraction.tool_protocol_binding_report"
+        ],
+        "rationale": "Tool availability and protocols are represented, but the compact summary does not show detailed availability, version, protocol, or missing-capability rows. A gap list is needed to prevent later stages from planning unavailable real tools.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "memory_runtime_plan_check",
+          "deployment_board_check",
+          "human_boundary_check"
+        ],
+        "action_type": "cross_layer_consistency_audit",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary"
+        ],
+        "id": "constraint_extraction.source_cross_layer_consistency_triage",
+        "on_failure": "Localize the inconsistent source domain and request bounded source-contract repair; do not change architecture, memory layout, numeric policy, template selection, or board target names without explicit approval.",
+        "produces": [
+          "artifact.review.constraint_extraction.cross_layer_input_consistency_notes",
+          "artifact.review.constraint_extraction.input_evidence_findings"
+        ],
+        "rationale": "The graph contains model, shape, numeric, template, architecture, board, memory, runtime, tool, case-adapter, and human-boundary constraints. Source-level consistency must be checked before later agents bind templates, streams, memory layouts, or board runtime assumptions.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "memory_runtime_plan_check",
+          "deployment_board_check",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "State summary lists all focal input artifact classes requested for this role: material index, sample project index, field evidence, task card, tool availability, prepared inputs manifest, and validation errors, plus model, numeric, template, design-space, board, runtime, case-adapter, and human-boundary inputs needed for cross-layer consistency.",
+      "Candidate graph summary reports 16 constraints and 21 nodes, matching the state summary, and validation_errors plus prepared_inputs_manifest.errors are empty. This is useful structural evidence but is not enough by itself to prove row-level source traceability.",
+      "Candidate graph input groups include evidence, materials, and tools, and evidence_fields has size 47. Because the prompt provides a compact summary rather than detailed rows, absence of visible row names is a handoff/checker action item rather than proof of missing fields.",
+      "Prepared inputs manifest records mode independent_from_scratch_design and run_dir /home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run. The path is provenance evidence, but it still needs artifact hash binding before any run-dir output is consumed as current-run evidence.",
+      "The manifest visibly includes design_team.decomposer_used_fallback and design_team.decomposer_error keys. Under the enforced LLM policy, fallback records and decomposer diagnostics are not successful team evidence; a trust-barrier check must verify they were not imported into the aggregate as approved LLM decisions.",
+      "The supplied sacg_memory in state_summary has no active contamination barriers, open retry requests, or open backtrack requests, and the separate sacg_memory payload is empty. No memory-driven blocker is currently visible, but sacg_memory_check should preserve this absence explicitly.",
+      "Tool availability is represented through artifact.input.tool_availability, artifact.input.tool_profile, and constraint.tool.profile; tool protocol representation is through artifact.input.tool_protocols and constraint.tool.protocols. Current-stage evidence can classify tools and gaps, but it must not claim downstream simulator, synthesis, implementation, or board success without real tool artifacts.",
+      "Field evidence candidates are present in prepared_inputs_manifest.inputs. They must remain candidates or not_run/diagnostic until required_real_tool_evidence_check and artifact_hash_check bind them to accepted tool protocols and run-dir provenance.",
+      "Cross-layer source domains are represented at the artifact/constraint level: model, shape, numeric policy, template library, design space, board deployment, board memory, runtime, tool profile, case adapter, and human boundary. Detailed consistency across data order, transfer units, memory layout, runtime ABI, implementation templates, and board facts remains a bounded checker task."
+    ],
+    "proposed_actions": [
+      "Generate a row-level source_traceability_matrix tying every supplied material, sample project index, field evidence candidate, task card fact, tool availability fact, and run-dir provenance item to the relevant SACG node, constraint, evidence status, and artifact hash.",
+      "Run a trust-barrier audit over prepared_inputs_manifest.design_team and llm_policy to prove decomposer fallback/error diagnostics were not consumed as successful LLM/team evidence; quarantine and block promotion if contamination is found.",
+      "Classify field_evidence and field_evidence_candidates as accepted real-tool evidence, diagnostic, fallback, stale, or not_run using tool protocols, required-real-tool-evidence rules, and artifact hashes.",
+      "Produce a tool_availability_gap_list from tool_profile, tool_availability, and tool_protocols, separating current-stage blockers from later-stage verification/backend tool gaps.",
+      "Run a source-level cross-layer consistency triage across model, shape, numeric policy, template library, design space, board memory/runtime/deployment, case adapter, and human boundary constraints without making architecture, memory-layout, numeric-policy, or board-target changes unless approval is requested."
+    ],
+    "risks": [
+      "Current-stage promotion risk: compact graph summary does not expose a row-level source_traceability_matrix, so individual material entries, sample project indices, task card facts, field evidence candidates, tool availability facts, and run-dir files cannot yet be audited one-by-one.",
+      "Contamination risk: decomposer fallback/error fields are present in the manifest. If any fallback or diagnostic aggregate is treated as successful LLM/team evidence, the candidate graph violates the LLM policy and must be quarantined.",
+      "Evidence classification risk: field_evidence_candidates may be mistaken for validated real-tool evidence unless each item is explicitly tagged as accepted real evidence, diagnostic, fallback, stale, or not_run with hashes and protocol references.",
+      "Provenance risk: the run_dir path alone is not sufficient to establish current-run provenance; hashes, timestamps or manifest bindings, and tool protocol association are required before consuming generated artifacts.",
+      "Cross-layer risk: source-level constraints for model shape, numeric policy, data order, memory layout, runtime ABI, template choices, implementation assumptions, and board DDR/AXI facts may exist but have not been shown as mutually consistent in the compact summary.",
+      "Tool gap risk: tool_availability is represented, but no detailed availability/gap list is visible; later verification/backend stages could plan unavailable real tools unless a gap list is produced now.",
+      "Board/app-shell risk: no backend target discovery evidence is supplied at this stage, so board target names or app-shell integration points must not be guessed from sample projects or diagnostics."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.field_evidence",
+        "artifact.input.task_card",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_protocols",
+        "artifact.input.case_adapter",
+        "prepared_inputs_manifest",
+        "validation_errors",
+        "artifact.review.constraint_extraction.input_evidence_findings",
+        "artifact.review.constraint_extraction.source_traceability_matrix",
+        "artifact.review.constraint_extraction.tool_availability_gap_list"
+      ],
+      "constraints": [
+        "constraint.source.materials",
+        "constraint.source.evidence",
+        "constraint.task.goal",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.case.adapter",
+        "constraint.cross_layer.input_consistency",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.human.boundary"
+      ],
+      "edges": [
+        "artifact.input.material_index -> constraint.source.materials",
+        "artifact.input.sample_project_index -> constraint.source.materials",
+        "artifact.input.field_evidence and prepared_inputs_manifest.inputs.field_evidence_candidates -> constraint.source.evidence",
+        "artifact.input.task_card -> constraint.task.goal",
+        "artifact.input.tool_availability and artifact.input.tool_profile -> constraint.tool.profile",
+        "artifact.input.tool_protocols -> constraint.tool.protocols",
+        "artifact.input.case_adapter -> constraint.case.adapter",
+        "prepared_inputs_manifest.run_dir -> constraint.source.evidence provenance"
+      ],
+      "nodes": [
+        "candidate_design_graph_summary.nodes=21",
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.field_evidence",
+        "prepared_inputs_manifest.inputs.field_evidence_candidates",
+        "artifact.input.task_card",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_protocols",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary",
+        "prepared_inputs_manifest.run_dir"
+      ]
+    },
+    "schema_version": "spatialaccagent.input_evidence_findings.v0",
+    "stage": "constraint_extraction",
+    "status": "blocked_pending_static_traceability_and_trust_barrier_checks",
+    "summary": "The compact candidate graph summary appears to include the expected source, evidence, tool, and cross-layer input artifact classes, with 21 nodes and 16 constraints matching the state summary and no reported validation errors. However, row-level traceability for every material, sample project index, field evidence candidate, task card fact, tool availability fact, and run-dir provenance item is not visible in the supplied summary, and the manifest exposes decomposer fallback/error fields that must be quarantined as diagnostics. Do not promote downstream until static traceability, artifact hashing, tool protocol, required-real-tool-evidence, and LLM trust-barrier checks bind the evidence to SACG constraints or mark it not_run/diagnostic."
+  },
+  "prompt_bytes": 25641,
+  "prompt_hash": "eeeaa04ad4540cf303b5538fdf56786446b63de2004825986b8041739c614262",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.input_evidence_findings.v0\",\"agent\":\"input_evidence_specialist\",\"stage\":\"constraint_extraction\",\"status\":\"blocked_pending_static_traceability_and_trust_barrier_checks\",\"summary\":\"The compact candidate graph summary appears to include the expected source, evidence, tool, and cross-layer input artifact classes, with 21 nodes and 16 constraints matching the state summary and no reported validation errors. However, row-level traceability for every material, sample project index, field evidence candidate, task card fact, tool availability fact, and run-dir provenance item is not visible in the supplied summary, and the manifest exposes decomposer fallback/error fields that must be quarantined as diagnostics. Do not promote downstream until static traceability, artifact hashing, tool protocol, required-real-tool-evidence, and LLM trust-barrier checks bind the evidence to SACG constraints or mark it not_run/diagnostic.\",\"sacg_focus\":{\"nodes\":[\"candidate_design_graph_summary.nodes=21\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"artifact.input.field_evidence\",\"prepared_inputs_manifest.inputs.field_evidence_candidates\",\"artifact.input.task_card\",\"artifact.input.tool_availability\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.input.case_adapter\",\"artifact.input.human_agent_boundary\",\"prepared_inputs_manifest.run_dir\"],\"edges\":[\"artifact.input.material_index -> constraint.source.materials\",\"artifact.input.sample_project_index -> constraint.source.materials\",\"artifact.input.field_evidence and prepared_inputs_manifest.inputs.field_evidence_candidates -> constraint.source.evidence\",\"artifact.input.task_card -> constraint.task.goal\",\"artifact.input.tool_availability and artifact.input.tool_profile -> constraint.tool.profile\",\"artifact.input.tool_protocols -> constraint.tool.protocols\",\"artifact.input.case_adapter -> constraint.case.adapter\",\"prepared_inputs_manifest.run_dir -> constraint.source.evidence provenance\"],\"constraints\":[\"constraint.source.materials\",\"constraint.source.evidence\",\"constraint.task.goal\",\"constraint.tool.profile\",\"constraint.tool.protocols\",\"constraint.case.adapter\",\"constraint.cross_layer.input_consistency\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.deployment.board\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.human.boundary\"],\"artifacts\":[\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"artifact.input.field_evidence\",\"artifact.input.task_card\",\"artifact.input.tool_availability\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.input.case_adapter\",\"prepared_inputs_manifest\",\"validation_errors\",\"artifact.review.constraint_extraction.input_evidence_findings\",\"artifact.review.constraint_extraction.source_traceability_matrix\",\"artifact.review.constraint_extraction.tool_availability_gap_list\"]},\"observations\":[\"State summary lists all focal input artifact classes requested for this role: material index, sample project index, field evidence, task card, tool availability, prepared inputs manifest, and validation errors, plus model, numeric, template, design-space, board, runtime, case-adapter, and human-boundary inputs needed for cross-layer consistency.\",\"Candidate graph summary reports 16 constraints and 21 nodes, matching the state summary, and validation_errors plus prepared_inputs_manifest.errors are empty. This is useful structural evidence but is not enough by itself to prove row-level source traceability.\",\"Candidate graph input groups include evidence, materials, and tools, and evidence_fields has size 47. Because the prompt provides a compact summary rather than detailed rows, absence of visible row names is a handoff/checker action item rather than proof of missing fields.\",\"Prepared inputs manifest records mode independent_from_scratch_design and run_dir /home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run. The path is provenance evidence, but it still needs artifact hash binding before any run-dir output is consumed as current-run evidence.\",\"The manifest visibly includes design_team.decomposer_used_fallback and design_team.decomposer_error keys. Under the enforced LLM policy, fallback records and decomposer diagnostics are not successful team evidence; a trust-barrier check must verify they were not imported into the aggregate as approved LLM decisions.\",\"The supplied sacg_memory in state_summary has no active contamination barriers, open retry requests, or open backtrack requests, and the separate sacg_memory payload is empty. No memory-driven blocker is currently visible, but sacg_memory_check should preserve this absence explicitly.\",\"Tool availability is represented through artifact.input.tool_availability, artifact.input.tool_profile, and constraint.tool.profile; tool protocol representation is through artifact.input.tool_protocols and constraint.tool.protocols. Current-stage evidence can classify tools and gaps, but it must not claim downstream simulator, synthesis, implementation, or board success without real tool artifacts.\",\"Field evidence candidates are present in prepared_inputs_manifest.inputs. They must remain candidates or not_run/diagnostic until required_real_tool_evidence_check and artifact_hash_check bind them to accepted tool protocols and run-dir provenance.\",\"Cross-layer source domains are represented at the artifact/constraint level: model, shape, numeric policy, template library, design space, board deployment, board memory, runtime, tool profile, case adapter, and human boundary. Detailed consistency across data order, transfer units, memory layout, runtime ABI, implementation templates, and board facts remains a bounded checker task.\"],\"risks\":[\"Current-stage promotion risk: compact graph summary does not expose a row-level source_traceability_matrix, so individual material entries, sample project indices, task card facts, field evidence candidates, tool availability facts, and run-dir files cannot yet be audited one-by-one.\",\"Contamination risk: decomposer fallback/error fields are present in the manifest. If any fallback or diagnostic aggregate is treated as successful LLM/team evidence, the candidate graph violates the LLM policy and must be quarantined.\",\"Evidence classification risk: field_evidence_candidates may be mistaken for validated real-tool evidence unless each item is explicitly tagged as accepted real evidence, diagnostic, fallback, stale, or not_run with hashes and protocol references.\",\"Provenance risk: the run_dir path alone is not sufficient to establish current-run provenance; hashes, timestamps or manifest bindings, and tool protocol association are required before consuming generated artifacts.\",\"Cross-layer risk: source-level constraints for model shape, numeric policy, data order, memory layout, runtime ABI, template choices, implementation assumptions, and board DDR/AXI facts may exist but have not been shown as mutually consistent in the compact summary.\",\"Tool gap risk: tool_availability is represented, but no detailed availability/gap list is visible; later verification/backend stages could plan unavailable real tools unless a gap list is produced now.\",\"Board/app-shell risk: no backend target discovery evidence is supplied at this stage, so board target names or app-shell integration points must not be guessed from sample projects or diagnostics.\"],\"proposed_actions\":[\"Generate a row-level source_traceability_matrix tying every supplied material, sample project index, field evidence candidate, task card fact, tool availability fact, and run-dir provenance item to the relevant SACG node, constraint, evidence status, and artifact hash.\",\"Run a trust-barrier audit over prepared_inputs_manifest.design_team and llm_policy to prove decomposer fallback/error diagnostics were not consumed as successful LLM/team evidence; quarantine and block promotion if contamination is found.\",\"Classify field_evidence and field_evidence_candidates as accepted real-tool evidence, diagnostic, fallback, stale, or not_run using tool protocols, required-real-tool-evidence rules, and artifact hashes.\",\"Produce a tool_availability_gap_list from tool_profile, tool_availability, and tool_protocols, separating current-stage blockers from later-stage verification/backend tool gaps.\",\"Run a source-level cross-layer consistency triage across model, shape, numeric policy, template library, design space, board memory/runtime/deployment, case adapter, and human boundary constraints without making architecture, memory-layout, numeric-policy, or board-target changes unless approval is requested.\"],\"executable_actions\":[{\"id\":\"constraint_extraction.build_source_traceability_matrix\",\"stage\":\"constraint_extraction\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"The supplied summary shows expected artifact classes and constraints but not row-level mappings. A checker-produced traceability matrix is required before downstream agents consume the candidate graph as complete source evidence.\",\"consumes\":[\"candidate_design_graph_summary\",\"prepared_inputs_manifest\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"artifact.input.field_evidence\",\"prepared_inputs_manifest.inputs.field_evidence_candidates\",\"artifact.input.task_card\",\"artifact.input.tool_availability\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"artifact.input.case_adapter\"],\"produces\":[\"artifact.review.constraint_extraction.source_traceability_matrix\",\"artifact.review.constraint_extraction.input_evidence_findings\"],\"tool_roles\":[\"sacg_validate\",\"sacg_static_check\",\"task_card_check\",\"tool_protocol_check\",\"artifact_hash_check\",\"llm_io_quality_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"task_card_check\",\"tool_protocol_check\",\"artifact_hash_check\",\"llm_io_quality_check\"],\"on_failure\":\"Block constraint_graph_auditor promotion and emit missing or ambiguous source rows as bounded repair items; do not infer missing fields from the compact prompt slice alone.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.quarantine_fallback_and_diagnostics\",\"stage\":\"constraint_extraction\",\"action_type\":\"stage_artifact_trust_barrier\",\"rationale\":\"prepared_inputs_manifest exposes decomposer_used_fallback and decomposer_error keys, and llm_policy states fallback records are diagnostics only. A trust barrier must ensure no fallback or diagnostic artifact is treated as successful LLM/team evidence.\",\"consumes\":[\"prepared_inputs_manifest.design_team\",\"llm_policy\",\"candidate_design_graph_summary\",\"sacg_memory\"],\"produces\":[\"artifact.review.constraint_extraction.fallback_diagnostic_trust_barrier\",\"artifact.review.constraint_extraction.input_evidence_findings\"],\"tool_roles\":[\"stage_artifact_trust_barrier\",\"llm_io_quality_check\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"stage_artifact_trust_barrier_check\",\"llm_io_quality_check\",\"sacg_memory_check\"],\"on_failure\":\"Record an active contamination barrier, mark affected aggregate artifacts diagnostic-only, request same-stage retry, and prevent downstream consumption until a clean current-stage artifact supersedes the contaminated one.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.classify_field_evidence_candidates\",\"stage\":\"constraint_extraction\",\"action_type\":\"evidence_classification\",\"rationale\":\"Field evidence candidates are present but must not be equated with successful real-tool evidence unless they are hash-bound to accepted protocols and current-run provenance; otherwise they must be diagnostic, stale, fallback, or not_run.\",\"consumes\":[\"artifact.input.field_evidence\",\"prepared_inputs_manifest.inputs.field_evidence_candidates\",\"prepared_inputs_manifest.run_dir\",\"artifact.input.tool_protocols\",\"artifact.input.tool_availability\"],\"produces\":[\"artifact.review.constraint_extraction.field_evidence_classification\",\"artifact.review.constraint_extraction.source_traceability_matrix\"],\"tool_roles\":[\"real_tool_evidence_check\",\"required_real_tool_evidence_check\",\"tool_protocol_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"required_real_tool_evidence_check\",\"tool_protocol_check\",\"artifact_hash_check\"],\"on_failure\":\"Keep disputed evidence out of success paths, mark it not_run or diagnostic, and route the gap to the tool availability gap list instead of claiming verification/backend pass.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.produce_tool_availability_gap_list\",\"stage\":\"constraint_extraction\",\"action_type\":\"tool_availability_audit\",\"rationale\":\"Tool availability and protocols are represented, but the compact summary does not show detailed availability, version, protocol, or missing-capability rows. A gap list is needed to prevent later stages from planning unavailable real tools.\",\"consumes\":[\"artifact.input.tool_availability\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"prepared_inputs_manifest\"],\"produces\":[\"artifact.review.constraint_extraction.tool_availability_gap_list\",\"artifact.review.constraint_extraction.tool_protocol_binding_report\"],\"tool_roles\":[\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"artifact_hash_check\"],\"on_failure\":\"Treat unresolved current-stage tool/profile contradictions as blockers; classify downstream-only missing tools as handoff gaps with planned_tool entries where needed.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.source_cross_layer_consistency_triage\",\"stage\":\"constraint_extraction\",\"action_type\":\"cross_layer_consistency_audit\",\"rationale\":\"The graph contains model, shape, numeric, template, architecture, board, memory, runtime, tool, case-adapter, and human-boundary constraints. Source-level consistency must be checked before later agents bind templates, streams, memory layouts, or board runtime assumptions.\",\"consumes\":[\"candidate_design_graph_summary\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.case_adapter\",\"artifact.input.human_agent_boundary\"],\"produces\":[\"artifact.review.constraint_extraction.cross_layer_input_consistency_notes\",\"artifact.review.constraint_extraction.input_evidence_findings\"],\"tool_roles\":[\"sacg_static_check\",\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"memory_runtime_plan_check\",\"deployment_board_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"memory_runtime_plan_check\",\"deployment_board_check\",\"human_boundary_check\"],\"on_failure\":\"Localize the inconsistent source domain and request bounded source-contract repair; do not change architecture, memory layout, numeric policy, template selection, or board target names without explicit approval.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any repair that changes architecture, pipeline topology, memory layout, numeric policy, major template selection, runtime ABI, or board/app-shell target names rather than only correcting traceability, provenance, or evidence classification.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/input_evidence_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/input_evidence_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032)>"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction.source evidence and tool availability engineer",
+  "used_fallback": false
+}

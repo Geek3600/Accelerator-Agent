@@ -1,0 +1,166 @@
+{
+  "agent": "repair_agent",
+  "duration_sec": 1947.3650059149368,
+  "error": null,
+  "http_transport": "curl_direct_http1",
+  "live_transaction_id": "f5686aff0c984270a3fe415ae83e856e",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "agent": "repair_agent",
+    "approval_required_for": [
+      "Any DUT RTL change to block_input lifecycle/start sequencing, connected-kernel scheduling, mlp_down valid/ready, residual/output logic, or AXI/DDR integration.",
+      "Any architecture, pipeline schedule, memory layout, numeric policy, tolerance, checkpoint, stimulus, target-model reference, golden output, loader schedule, testbench contract, exact wrapper, or source-hash change.",
+      "Any reopening, rerun, or repair of the certified operator-leaf or connected-kernel capability without a new current trace explicitly contradicting a named invariant.",
+      "Any promotion or execution of dependent higher gates before the current exact-board functional and boundary evidence closes."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "tool_protocol_check",
+          "verification_artifact_contract_check",
+          "causal_repair_context_check",
+          "targeted_replay_check",
+          "boundary_contract_check",
+          "failure_localization_check",
+          "data_order_trace_check",
+          "artifact_hash_check",
+          "human_boundary_check"
+        ],
+        "action_type": "exact_board_axi_ddr_targeted_replay",
+        "consumes": [
+          "current failed board VCS report and executed analyzer evidence",
+          "current board progress and boundary trace hashes, including progress_event_log_sha256=129dc61b63c19a3341143b11b26d53fc7cd2ea66450e594c32d03e3422713427",
+          "sacg_cctg_causal_slice.json sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c",
+          "boundary_contracts.json sha256=1847138114a3f5a3e5e7b4c427948dfd4b2aa152a7af6da55f2ee3567359dc3c",
+          "board_simulation_manifest.json sha256=3b2c8014529b75e595f44691b891863250a77a60e1efd4d2bfa222a83a8cd1cb",
+          "board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+          "selected simulation source closure sha256=6665a9df4e0b86fdbd47c48e76b63137069f4c2505d914d6ceee233447a1c5c5",
+          "semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+          "dut_weight_binding_manifest.json sha256=8f50ad18197f0392d9b75d5aeb1ecd632c10d58275d04288d5cd575a0fb90d4b",
+          "single-layer certificate sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7",
+          "completed lower-layer capability context sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc as read-only evidence",
+          "target-checkpoint tensor catalog and target-model inference expected-output manifest",
+          "immutable stimulus fingerprint sha256=4b3948f8c0038b657d1761286c9db47c1b951cd245953fb552a05714beb696d4 and frozen numeric comparison policy"
+        ],
+        "id": "repair_step.next_exact_board_axi_ddr_frontier_trace",
+        "on_failure": "Keep board_axi_ddr_wrapped_system in needs_repair and classify malformed or incomplete replay evidence as a verification-capability blocker. Do not patch block_input, the connected kernel, mlp_down, residual/output logic, or AXI/DDR RTL from this result alone. Do not rerun the closed connected-kernel replay, do not run dependent higher gates, preserve all active contamination barriers and open retry requests, and require a fresh valid exact-board trace before any approval-gated DUT repair.",
+        "produces": [
+          "corrected simulation-only debug observability contract with explicit schema_version",
+          "current-DAG 13-boundary declaration with lifecycle and direct-core ingress/egress probe bindings",
+          "hash-bound exact-wrapper AXI/DDR frontier replay report",
+          "runtime-load, compute-slot AXI, output-frontier, token-order, and ready/valid trace",
+          "CCTG causal-frontier reconciliation report and causal repair context package"
+        ],
+        "rationale": "The current board-layer failure is real enough to require current-layer localization, but the existing observability contract is malformed and its lifecycle expectation conflicts with the authoritative handshake invariant. The next causally distinct action is a simulation-only contract correction followed by one exact user-wrapper AXI/DDR frontier replay. The certified connected-kernel replay is consumed read-only and is not rerun.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "causal_repair_context_pack",
+          "boundary_trace_rerun",
+          "targeted_replay",
+          "case_vcs_functional_sim",
+          "case_vcs_evidence_analyzer",
+          "case_deadlock_axi_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The current failed layer is board_axi_ddr_wrapped_system. The exact user-supplied wrapper and simulation source closure are hash-bound and must remain unchanged.",
+      "The exact-board VCS run compiled, but the executed functional evidence failed: all 16 input tokens and 1792 core ingress beats completed, output_ready was 1, and zero output beats were accepted. This is a board-facing liveness/frontier failure, not a fixed-timeout pass or a hardware pass.",
+      "The CCTG lifecycle finding kernel_start_precedes_stage0_input conflicts with the authoritative accepted-input-before-kernel-lifecycle-start invariant: the trace shows first ingress at cycle 20572946 and kernel start at cycle 20572948. It is therefore an observability/contract ambiguity, not sufficient evidence for a block_input RTL patch.",
+      "The hash-bound operator-leaf and connected single-layer capability evidence is closed. Its replay passed 1792 ingress and 1792 egress beats with the certified elastic variable-latency pipeline behavior. No new post-certificate trace explicitly contradicting a named lower-layer invariant is supplied, so the connected-kernel replay must not be requested, rerun, or repaired.",
+      "The supplied board trace localizes the next observation to the board compute-slot AXI/DDR and output/lifecycle frontier. Independent runtime-load and prefetch progress do not prove output-frontier progress, output ordering, protocol correctness, or DUT weight consumption.",
+      "The exact-sample observability and dynamic-evidence contracts are invalid or incomplete, including missing schema and current-DAG declarations. This is a verification-capability blocker that must be repaired in the simulation/testbench evidence path before any DUT ownership claim.",
+      "The current truth set contains 24 active contamination barriers, 8 open same-scope retry requests, and no open same-scope backtrack request. Rejected artifacts remain diagnostic only; dependent multilayer, deadlock, AXI protocol, DDR roundtrip, and semantic aggregation gates remain blocked.",
+      "No board-level numeric comparison, output-count, data-order, AXI protocol, DDR roundtrip, complete-scope weight-consumption, or semantic evidence pass exists. Target-model inference expected outputs, checkpoint, stimulus, numeric policy, tolerance, loader manifest, and exact testbench artifacts must remain immutable.",
+      "The accelerator scope remains Transformer blocks only. Embedding/tokenization, final normalization, LM head/logits, sampling, and other model-tail work are outside this action and must not be added to DUT, weights, or golden boundaries."
+    ],
+    "proposed_actions": [
+      "Repair the simulation-only observability declaration and execute one hash-bound exact-wrapper AXI/DDR frontier targeted replay covering runtime-load-before-start, compute-slot AXI handshakes, lifecycle, direct ingress/egress, output writeback, all 13 dataflow boundaries, token order, ready/valid behavior, and the mlp_down tail; reconcile the earliest causal boundary before considering any DUT repair."
+    ],
+    "risks": [
+      "Patching block_input from the conflicting lifecycle record could reverse the certified accepted-input-before-start invariant.",
+      "Patching mlp_down, residual, or output logic from the zero-egress symptom would claim causal ownership without a valid current boundary trace.",
+      "Reusing the completed connected-kernel replay would violate the closed lower-layer capability evidence and anti-spin policy.",
+      "Changing the wrapper, source closure, memory layout, loader schedule, checkpoint, stimulus, target-model reference, numeric policy, tolerance, golden, or testbench contract would invalidate the repair comparison.",
+      "A successful diagnostic replay is not a functional pass and cannot unblock dependent gates or justify synthesis, implementation, bitstream, runtime-ABI, or board-runtime promotion.",
+      "Current AXI/DDR counters and loaded-word evidence must not be treated as proof that every required bound Transformer-block tensor was consumed."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66",
+        "selected simulation source closure sha256=6665a9df4e0b86fdbd47c48e76b63137069f4c2505d914d6ceee233447a1c5c5",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/board_simulation/board_simulation_manifest.json sha256=3b2c8014529b75e595f44691b891863250a77a60e1efd4d2bfa222a83a8cd1cb",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/debug_closure/boundary_contracts.json sha256=1847138114a3f5a3e5e7b4c427948dfd4b2aa152a7af6da55f2ee3567359dc3c",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/generated/memory/dut_weight_binding_manifest.json sha256=8f50ad18197f0392d9b75d5aeb1ecd632c10d58275d04288d5cd575a0fb90d4b",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7",
+        "single-layer promotion certificate sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7",
+        "completed lower-layer capability context sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc",
+        "immutable input fingerprint sha256=4b3948f8c0038b657d1761286c9db47c1b951cd245953fb552a05714beb696d4"
+      ],
+      "constraints": [
+        "accepted_input_handshake_required_before_kernel_lifecycle_start",
+        "first_output_no_later_than_final_input",
+        "required_dataflow_edges_must_observe_different_tokens_in_flight",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.liveness.pipeline",
+        "exact user-supplied sample wrapper and selected simulation source closure remain hash-bound",
+        "checkpoint, stimulus, target-model reference, numeric policy, tolerance, golden, and testbench contract remain immutable",
+        "no lower-layer reopen without a new current trace explicitly contradicting a named certified invariant"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output",
+        "board.compute_slot_axi.runtime_load",
+        "board.compute_slot_axi.output_writeback"
+      ],
+      "nodes": [
+        "node.pipeline.block_input",
+        "kernel.core_ingress",
+        "kernel.mlp_down.output",
+        "connected_kernel_input_to_output",
+        "compute_slot_axi",
+        "board_axi_ddr_wrapped_system"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_agent_decision.v1",
+    "stage": "repair",
+    "status": "needs_repair",
+    "summary": "Authoritative decision: keep board_axi_ddr_wrapped_system blocked and execute one exact-wrapper AXI/DDR frontier targeted replay with simulation-only observability repair. Do not patch DUT RTL, reopen certified leaf or connected-kernel evidence, run dependent higher gates, or promote."
+  },
+  "prompt_bytes": 906685,
+  "prompt_hash": "2cbed4a71db5d9d27ce33ec8020a3cfcc7ccb9e9e1380c12087d111296c889f0",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"agent\":\"repair_agent\",\"stage\":\"repair\",\"status\":\"needs_repair\",\"summary\":\"Authoritative decision: keep board_axi_ddr_wrapped_system blocked and execute one exact-wrapper AXI/DDR frontier targeted replay with simulation-only observability repair. Do not patch DUT RTL, reopen certified leaf or connected-kernel evidence, run dependent higher gates, or promote.\",\"sacg_focus\":{\"nodes\":[\"node.pipeline.block_input\",\"kernel.core_ingress\",\"kernel.mlp_down.output\",\"connected_kernel_input_to_output\",\"compute_slot_axi\",\"board_axi_ddr_wrapped_system\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\",\"board.compute_slot_axi.runtime_load\",\"board.compute_slot_axi.output_writeback\"],\"constraints\":[\"accepted_input_handshake_required_before_kernel_lifecycle_start\",\"first_output_no_later_than_final_input\",\"required_dataflow_edges_must_observe_different_tokens_in_flight\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.liveness.pipeline\",\"exact user-supplied sample wrapper and selected simulation source closure remain hash-bound\",\"checkpoint, stimulus, target-model reference, numeric policy, tolerance, golden, and testbench contract remain immutable\",\"no lower-layer reopen without a new current trace explicitly contradicting a named certified invariant\"],\"artifacts\":[\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/board_interface/board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"selected simulation source closure sha256=6665a9df4e0b86fdbd47c48e76b63137069f4c2505d914d6ceee233447a1c5c5\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/board_simulation/board_simulation_manifest.json sha256=3b2c8014529b75e595f44691b891863250a77a60e1efd4d2bfa222a83a8cd1cb\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/case_diagnostics/sacg_cctg_causal_slice.json sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/debug_closure/boundary_contracts.json sha256=1847138114a3f5a3e5e7b4c427948dfd4b2aa152a7af6da55f2ee3567359dc3c\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/generated/memory/dut_weight_binding_manifest.json sha256=8f50ad18197f0392d9b75d5aeb1ecd632c10d58275d04288d5cd575a0fb90d4b\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification/semantic_testbench/semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7\",\"single-layer promotion certificate sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7\",\"completed lower-layer capability context sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc\",\"immutable input fingerprint sha256=4b3948f8c0038b657d1761286c9db47c1b951cd245953fb552a05714beb696d4\"]},\"observations\":[\"The current failed layer is board_axi_ddr_wrapped_system. The exact user-supplied wrapper and simulation source closure are hash-bound and must remain unchanged.\",\"The exact-board VCS run compiled, but the executed functional evidence failed: all 16 input tokens and 1792 core ingress beats completed, output_ready was 1, and zero output beats were accepted. This is a board-facing liveness/frontier failure, not a fixed-timeout pass or a hardware pass.\",\"The CCTG lifecycle finding kernel_start_precedes_stage0_input conflicts with the authoritative accepted-input-before-kernel-lifecycle-start invariant: the trace shows first ingress at cycle 20572946 and kernel start at cycle 20572948. It is therefore an observability/contract ambiguity, not sufficient evidence for a block_input RTL patch.\",\"The hash-bound operator-leaf and connected single-layer capability evidence is closed. Its replay passed 1792 ingress and 1792 egress beats with the certified elastic variable-latency pipeline behavior. No new post-certificate trace explicitly contradicting a named lower-layer invariant is supplied, so the connected-kernel replay must not be requested, rerun, or repaired.\",\"The supplied board trace localizes the next observation to the board compute-slot AXI/DDR and output/lifecycle frontier. Independent runtime-load and prefetch progress do not prove output-frontier progress, output ordering, protocol correctness, or DUT weight consumption.\",\"The exact-sample observability and dynamic-evidence contracts are invalid or incomplete, including missing schema and current-DAG declarations. This is a verification-capability blocker that must be repaired in the simulation/testbench evidence path before any DUT ownership claim.\",\"The current truth set contains 24 active contamination barriers, 8 open same-scope retry requests, and no open same-scope backtrack request. Rejected artifacts remain diagnostic only; dependent multilayer, deadlock, AXI protocol, DDR roundtrip, and semantic aggregation gates remain blocked.\",\"No board-level numeric comparison, output-count, data-order, AXI protocol, DDR roundtrip, complete-scope weight-consumption, or semantic evidence pass exists. Target-model inference expected outputs, checkpoint, stimulus, numeric policy, tolerance, loader manifest, and exact testbench artifacts must remain immutable.\",\"The accelerator scope remains Transformer blocks only. Embedding/tokenization, final normalization, LM head/logits, sampling, and other model-tail work are outside this action and must not be added to DUT, weights, or golden boundaries.\"],\"risks\":[\"Patching block_input from the conflicting lifecycle record could reverse the certified accepted-input-before-start invariant.\",\"Patching mlp_down, residual, or output logic from the zero-egress symptom would claim causal ownership without a valid current boundary trace.\",\"Reusing the completed connected-kernel replay would violate the closed lower-layer capability evidence and anti-spin policy.\",\"Changing the wrapper, source closure, memory layout, loader schedule, checkpoint, stimulus, target-model reference, numeric policy, tolerance, golden, or testbench contract would invalidate the repair comparison.\",\"A successful diagnostic replay is not a functional pass and cannot unblock dependent gates or justify synthesis, implementation, bitstream, runtime-ABI, or board-runtime promotion.\",\"Current AXI/DDR counters and loaded-word evidence must not be treated as proof that every required bound Transformer-block tensor was consumed.\"],\"proposed_actions\":[\"Repair the simulation-only observability declaration and execute one hash-bound exact-wrapper AXI/DDR frontier targeted replay covering runtime-load-before-start, compute-slot AXI handshakes, lifecycle, direct ingress/egress, output writeback, all 13 dataflow boundaries, token order, ready/valid behavior, and the mlp_down tail; reconcile the earliest causal boundary before considering any DUT repair.\"],\"executable_actions\":[{\"id\":\"repair_step.next_exact_board_axi_ddr_frontier_trace\",\"stage\":\"repair\",\"action_type\":\"exact_board_axi_ddr_targeted_replay\",\"rationale\":\"The current board-layer failure is real enough to require current-layer localization, but the existing observability contract is malformed and its lifecycle expectation conflicts with the authoritative handshake invariant. The next causally distinct action is a simulation-only contract correction followed by one exact user-wrapper AXI/DDR frontier replay. The certified connected-kernel replay is consumed read-only and is not rerun.\",\"consumes\":[\"current failed board VCS report and executed analyzer evidence\",\"current board progress and boundary trace hashes, including progress_event_log_sha256=129dc61b63c19a3341143b11b26d53fc7cd2ea66450e594c32d03e3422713427\",\"sacg_cctg_causal_slice.json sha256=0ca529139e3a76501d3f6172eca7cbac4d1c58a0079a33fde1daa45689ec0f3c\",\"boundary_contracts.json sha256=1847138114a3f5a3e5e7b4c427948dfd4b2aa152a7af6da55f2ee3567359dc3c\",\"board_simulation_manifest.json sha256=3b2c8014529b75e595f44691b891863250a77a60e1efd4d2bfa222a83a8cd1cb\",\"board_source_identity.json sha256=37ebe27a4d9293741131ba64432dc6e71a10c10570780d03dbec910eee555e66\",\"selected simulation source closure sha256=6665a9df4e0b86fdbd47c48e76b63137069f4c2505d914d6ceee233447a1c5c5\",\"semantic_testbench_manifest.json sha256=3fc2032bd34d9fe1d295cf54ff106c1d7d4be2fc7cbd0195b027443d9c1b37a7\",\"dut_weight_binding_manifest.json sha256=8f50ad18197f0392d9b75d5aeb1ecd632c10d58275d04288d5cd575a0fb90d4b\",\"single-layer certificate sha256=44d3689d835f165fd30e794aeec2dabf648d1d65d17a24a53d3a6aac6e3854e7\",\"completed lower-layer capability context sha256=da18894b3b2f02f0af7de57c05072b5d69d4e9fe90eff2bc36d8ceca98c87adc as read-only evidence\",\"target-checkpoint tensor catalog and target-model inference expected-output manifest\",\"immutable stimulus fingerprint sha256=4b3948f8c0038b657d1761286c9db47c1b951cd245953fb552a05714beb696d4 and frozen numeric comparison policy\"],\"produces\":[\"corrected simulation-only debug observability contract with explicit schema_version\",\"current-DAG 13-boundary declaration with lifecycle and direct-core ingress/egress probe bindings\",\"hash-bound exact-wrapper AXI/DDR frontier replay report\",\"runtime-load, compute-slot AXI, output-frontier, token-order, and ready/valid trace\",\"CCTG causal-frontier reconciliation report and causal repair context package\"],\"tool_roles\":[\"causal_repair_context_pack\",\"boundary_trace_rerun\",\"targeted_replay\",\"case_vcs_functional_sim\",\"case_vcs_evidence_analyzer\",\"case_deadlock_axi_check\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"tool_protocol_check\",\"verification_artifact_contract_check\",\"causal_repair_context_check\",\"targeted_replay_check\",\"boundary_contract_check\",\"failure_localization_check\",\"data_order_trace_check\",\"artifact_hash_check\",\"human_boundary_check\"],\"on_failure\":\"Keep board_axi_ddr_wrapped_system in needs_repair and classify malformed or incomplete replay evidence as a verification-capability blocker. Do not patch block_input, the connected kernel, mlp_down, residual/output logic, or AXI/DDR RTL from this result alone. Do not rerun the closed connected-kernel replay, do not run dependent higher gates, preserve all active contamination barriers and open retry requests, and require a fresh valid exact-board trace before any approval-gated DUT repair.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any DUT RTL change to block_input lifecycle/start sequencing, connected-kernel scheduling, mlp_down valid/ready, residual/output logic, or AXI/DDR integration.\",\"Any architecture, pipeline schedule, memory layout, numeric policy, tolerance, checkpoint, stimulus, target-model reference, golden output, loader schedule, testbench contract, exact wrapper, or source-hash change.\",\"Any reopening, rerun, or repair of the certified operator-leaf or connected-kernel capability without a new current trace explicitly contradicting a named invariant.\",\"Any promotion or execution of dependent higher gates before the current exact-board functional and boundary evidence closes.\"] ,\"schema_version\":\"spatialaccagent.repair_agent_decision.v1\"}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_result.json",
+  "retry_errors": [
+    "attempt 1: streaming LLM response failed: {'type': 'response.failed', 'response': {'id': 'resp_421d62ab0f474b58b0c662c2d5214c5c', 'object': 'response', 'created_at': 1789015228, 'model': 'gpt-5.6-sol', 'status': 'failed', 'output': [], 'error': {'code': 'upstream_error', 'message': 'Upstream request failed'}}}",
+    "attempt 2: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 3: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 4: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"error\":{\"message\":\"Upstream rate limit exceeded, please retry later\",\"type\":\"rate_limit_error\"}}",
+    "attempt 5: HTTP Error 502: curl direct HTTP/1.1 response 502; response_body={\"error\":{\"message\":\"Upstream request failed\",\"type\":\"upstream_error\"}}"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair",
+  "stream": true,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/history/repair_agent_result.6021880461692d0f.81c835a60d559703.2cbed4a71db5d9d2.snapshot.json",
+    "replaced_prompt_hash": "215b74dc8400726e86b3f2b5800155bc6364723d6dab51bc79538b1b0186588e",
+    "replaced_result_sha256": "6021880461692d0f568af12029939ed9b28b901e5757281afca85122b805dab5",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "6021880461692d0f.81c835a60d559703.2cbed4a71db5d9d2"
+  },
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

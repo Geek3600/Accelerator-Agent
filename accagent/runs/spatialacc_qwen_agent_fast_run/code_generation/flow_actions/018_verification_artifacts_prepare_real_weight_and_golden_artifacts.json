@@ -1,0 +1,49 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "real_tool.case_real_weight_artifacts",
+      "artifact_hash_check",
+      "numeric_compare",
+      "numeric_policy_check"
+    ],
+    "action_type": "artifact_generation_and_hash_gate",
+    "consumes": [
+      "artifact.stage6.verification_artifact_contract",
+      "artifact.input.model_config",
+      "artifact.input.numeric_policy",
+      "artifact.input.case_adapter",
+      "generated/chisel/runtime/runtime_config.json",
+      "generated/chisel/memory/memory_layout.json"
+    ],
+    "id": "verification_artifacts.prepare_real_weight_and_golden_artifacts",
+    "on_failure": "Classify the issue as checker, golden-reference, or input/weight-packing repair unless real RTL tool evidence identifies a hardware failure. Do not alter tolerances, golden outputs, model tensors, or numeric policy without approval.",
+    "produces": [
+      "verification/case_real_weights/input_manifest.json",
+      "verification/case_real_weights/packed_weight_manifest.json",
+      "verification/case_real_weights/golden_reference_manifest.json",
+      "verification/case_real_weights/artifact_hashes.json"
+    ],
+    "rationale": "Generate reproducible input, packed-weight, golden-reference, and hash manifests from the accepted model, numeric, runtime, and memory contracts before real functional or numeric comparison tools run.",
+    "requires_approval": false,
+    "stage": "verification_artifacts",
+    "tool_roles": [
+      "case_weight_manifest_generate",
+      "case_real_weight_artifacts",
+      "artifact_hash_check",
+      "numeric_compare",
+      "numeric_policy_check"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "proceed",
+  "flow_event_index": 18,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/flow_events/018_proceed.json",
+  "stage": "code_generation"
+}

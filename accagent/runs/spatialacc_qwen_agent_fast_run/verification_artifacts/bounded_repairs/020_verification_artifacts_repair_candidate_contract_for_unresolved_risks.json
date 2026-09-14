@@ -1,0 +1,55 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "boundary_contract_check",
+      "verification_plan_static_check",
+      "hierarchical_verification_plan_check",
+      "verification_artifact_contract_check",
+      "sacg_reference_check",
+      "human_boundary_check"
+    ],
+    "action_type": "bounded_verification_artifact_repair",
+    "consumes": [
+      "verification_artifacts/diagnostics/unresolved_current_stage_risks.json",
+      "verification_artifacts/diagnostics/retry_resolution_tasks.json",
+      "artifact.stage4.parameter_binding",
+      "artifact.stage4.parameter_static_checks",
+      "artifact.stage5.design_artifact_manifest",
+      "artifact.stage5.generated_code_package",
+      "artifact.stage5.memory_layout",
+      "artifact.stage5.runtime_config",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json"
+    ],
+    "id": "verification_artifacts.repair_candidate_contract_for_unresolved_risks",
+    "on_failure": "Do not retry by loosening gates. If closure requires architecture, numeric, memory/runtime, or major template changes, stop this action and request approved backtrack or bounded repair with localized evidence.",
+    "produces": [
+      "artifact.stage.verification_artifacts.candidate_verification_plan",
+      "artifact.stage.verification_artifacts.candidate_boundary_contracts",
+      "artifact.stage.verification_artifacts.candidate_verification_artifact_contract",
+      "verification_artifacts/diagnostics/current_stage_risk_closure_evidence.json"
+    ],
+    "rationale": "Close only the current-stage verification-planning/artifact-contract gaps identified by the audit. This is not authorization to alter architecture, numeric policy, memory/runtime layout, golden references, or RTL templates.",
+    "requires_approval": false,
+    "stage": "verification_artifacts",
+    "tool_roles": [
+      "boundary_contract_generate",
+      "verification_plan_static_check",
+      "hierarchical_verification_plan_check",
+      "verification_artifact_contract_check",
+      "sacg_reference_check",
+      "human_boundary_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 20,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/flow_events/020_retry.json",
+  "stage": "verification_artifacts"
+}

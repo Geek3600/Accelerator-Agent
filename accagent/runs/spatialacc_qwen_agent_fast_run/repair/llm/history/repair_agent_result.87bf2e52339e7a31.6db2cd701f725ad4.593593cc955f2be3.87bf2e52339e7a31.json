@@ -1,0 +1,369 @@
+{
+  "agent": "repair_agent",
+  "duration_sec": 116.96834941301495,
+  "error": null,
+  "http_transport": "curl_direct_http1",
+  "live_transaction_id": "e718b0637a5b43bcbf45f1e55f96feeb",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_live_transaction.json",
+  "max_output_tokens": 32768,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "agent": "repair_agent",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "case_board_interface_discovery",
+          "verification_artifact_contract_check",
+          "artifact_hash_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ],
+        "action_type": "verification_capability_repair",
+        "consumes": [
+          "failed case_axi_ddr_interface report",
+          "failed functional_sim report",
+          "current case_board_interface_discovery evidence",
+          "current user-supplied sample-project source tree",
+          "current Vivado export facts",
+          "prior exact_board_integration_generation_agent review",
+          "verification/semantic_testbench/semantic_testbench_manifest.json",
+          "exact wrapper and simulation source hashes"
+        ],
+        "id": "repair.board.refresh_evidence_binding_and_probe_contract",
+        "on_failure": "Keep case_axi_ddr_interface, functional_sim, and all higher stages blocked. Do not execute an unauthorized compile command, substitute a wrapper, regenerate expected outputs, alter tolerances, or patch RTL. If the cited direct hierarchy is not present in the current exact source identity, request bounded target-discovery approval rather than guessing a name.",
+        "produces": [
+          "verification/board_simulation/current_source_identity.json",
+          "verification/board_simulation/current_vcs_compile_plan.json",
+          "verification/debug_closure/direct_certified_kernel_probe_contract.json",
+          "verification/board_simulation/evidence_binding_manifest.json"
+        ],
+        "rationale": "The failed checker currently rejects source identity and compile authority, so current evidence binding must be repaired before a hardware trace is interpreted. The probe contract uses the direct hierarchy cited by the conditional specialist review and adds observability only.",
+        "requires_approval": false,
+        "stage": "board_axi_ddr_closure",
+        "tool_roles": [
+          "case_board_interface_discovery",
+          "functional_sim_contract_check",
+          "boundary_contract_generate",
+          "artifact_hash_check",
+          "verification_artifact_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_vcs_functional_sim",
+          "real_tool.case_axi_ddr_interface",
+          "functional_sim",
+          "targeted_replay_check",
+          "failure_localization_check",
+          "deadlock_watchdog",
+          "transfer_count_check",
+          "data_order_trace_check",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "current_layer_boundary_trace_rerun",
+        "consumes": [
+          "verification/board_simulation/current_source_identity.json",
+          "verification/board_simulation/current_vcs_compile_plan.json",
+          "verification/debug_closure/direct_certified_kernel_probe_contract.json",
+          "verification/board_simulation/evidence_binding_manifest.json",
+          "single_layer_promotion_certificate.json",
+          "immutable checkpoint and stimulus manifests",
+          "immutable numeric policy and tolerance",
+          "immutable semantic testbench manifest",
+          "generated/memory/dut_weight_binding_manifest.json"
+        ],
+        "id": "repair.board.direct_kernel_boundary_targeted_replay",
+        "on_failure": "Retain the real simulator outputs and classify the earliest observed boundary. If the run lacks direct input valid/ready/accept counts, direct output valid/ready/accept counts, and kernel lifecycle values, classify it as an observability-capability failure and repair only the read-only instrumentation. Do not infer a core or wrapper RTL cause from the output frontier alone.",
+        "produces": [
+          "verification/vcs/current_board_targeted_replay.log",
+          "verification/debug_closure/direct_kernel_boundary_trace.json",
+          "verification/debug_closure/current_board_failure_slice.json",
+          "verification/case_diagnostics/current_vcs_functional_diagnosis.json",
+          "verification/board_simulation/current_transfer_counts.json",
+          "verification/board_simulation/current_deadlock_watchdog.json"
+        ],
+        "rationale": "A current, hash-bound direct-boundary trace is required to distinguish wrapper ingress, kernel acceptance and lifecycle, core egress, and wrapper propagation without reopening the certified kernel prematurely.",
+        "requires_approval": false,
+        "stage": "board_axi_ddr_closure",
+        "tool_roles": [
+          "boundary_trace_rerun",
+          "targeted_replay",
+          "case_vcs_functional_sim",
+          "functional_sim",
+          "case_axi_ddr_interface",
+          "case_vcs_evidence_analyzer",
+          "deadlock_watchdog",
+          "transfer_count_check",
+          "data_order_trace_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "stage_backtrack_request_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "cctg_contract_guided_localization",
+        "consumes": [
+          "verification/debug_closure/direct_kernel_boundary_trace.json",
+          "verification/debug_closure/current_board_failure_slice.json",
+          "verification/case_diagnostics/current_vcs_functional_diagnosis.json",
+          "single_layer_promotion_certificate.json",
+          "hierarchical_learning_context",
+          "current SACG constraints"
+        ],
+        "id": "repair.board.classify_causal_boundary_and_backtrack_eligibility",
+        "on_failure": "Do not select an RTL repair or reopen a lower layer. Request a narrower current-layer trace for the missing causal boundary and preserve all existing pass certificates and immutable contracts.",
+        "produces": [
+          "verification/debug_closure/current_board_causal_repair_context.json",
+          "verification/debug_closure/current_board_repair_branch_decision.json",
+          "conditional stage backtrack request naming the contradicted invariant, gate, certificate, and trace record"
+        ],
+        "rationale": "The trace must select the earliest violated current-layer boundary and determine whether any named lower-layer invariant is directly contradicted. A lower-layer backtrack is generated only when the trace includes current certificate identity, direct core start, ingress, egress, and causal-boundary evidence.",
+        "requires_approval": false,
+        "stage": "board_axi_ddr_closure",
+        "tool_roles": [
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "repair_boundary_check",
+          "stage_backtrack_request",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "boundary_contract_check",
+          "artifact_hash_check",
+          "verification_action_audit_check",
+          "human_boundary_check"
+        ],
+        "action_type": "conditional_bounded_current_layer_repair",
+        "consumes": [
+          "verification/debug_closure/current_board_causal_repair_context.json",
+          "verification/debug_closure/current_board_repair_branch_decision.json",
+          "exact wrapper and simulation source-hash manifest",
+          "current generated board-integration manifest",
+          "current SACG constraints"
+        ],
+        "id": "repair.board.apply_localized_integration_repair",
+        "on_failure": "Revert the candidate bounded patch and return to current-layer trace localization. Do not expand into certified kernel RTL, exact wrapper sources, architecture, pipeline semantics, memory layout, numeric policy, tolerance, or a major template change without a new evidence-backed decision and required approval.",
+        "produces": [
+          "one bounded generated-integration repair patch",
+          "updated generated board-integration manifest",
+          "repair scope and immutable-artifact hash audit"
+        ],
+        "rationale": "Execute only when the causal branch decision localizes the failure to generated board integration, loader/harness, scheduler, adapter, or instrumentation without contradicting the certified kernel. The exact sample-project wrapper and certified lower-layer RTL remain unchanged.",
+        "requires_approval": false,
+        "stage": "board_axi_ddr_closure",
+        "tool_roles": [
+          "bounded_template_repair",
+          "repair_boundary_check",
+          "artifact_hash_check",
+          "verification_action_audit"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_backtrack_request_check",
+          "targeted_replay_check",
+          "real_tool.case_single_layer_functional",
+          "real_tool.case_single_layer_golden_compare",
+          "case_single_layer_semantic_evidence",
+          "artifact_hash_check"
+        ],
+        "action_type": "conditional_lower_layer_revalidation",
+        "consumes": [
+          "accepted stage backtrack request",
+          "verification/debug_closure/direct_kernel_boundary_trace.json",
+          "verification/debug_closure/current_board_causal_repair_context.json",
+          "single_layer_promotion_certificate.json",
+          "immutable checkpoint, stimulus, target-model reference, numeric policy, tolerance, semantic testbench, and weight-binding manifests"
+        ],
+        "id": "repair.single_layer.conditional_targeted_backtrack",
+        "on_failure": "Enter the connected-kernel tool-output-to-CCTG bounded repair loop for only the challenged boundary. Do not run board promotion gates until lower-layer revalidation passes and the failed board layer is rerun.",
+        "produces": [
+          "verification/debug_closure/targeted_single_layer_replay.json",
+          "updated single-layer functional and golden-comparison evidence",
+          "updated single-layer semantic evidence",
+          "revalidated single-layer promotion certificate or localized lower-layer failure slice"
+        ],
+        "rationale": "Execute instead of the current-layer integration repair only when the causal decision explicitly names a lower-layer invariant contradicted by the current hash-bound direct-boundary trace. Revalidate only the challenged connected-kernel scope while preserving elastic variable-latency semantics.",
+        "requires_approval": false,
+        "stage": "single_layer_closure",
+        "tool_roles": [
+          "stage_backtrack_request",
+          "targeted_replay",
+          "boundary_trace_rerun",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "case_single_layer_semantic_evidence"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_board_interface_discovery",
+          "case_multilayer_pipeline",
+          "real_tool.case_multilayer_functional",
+          "real_tool.case_pipeline_deadlock_check",
+          "real_tool.case_axi_ddr_interface",
+          "real_tool.case_axi_protocol_check",
+          "real_tool.case_ddr_image_roundtrip",
+          "real_tool.case_vcs_functional_sim",
+          "functional_sim",
+          "case_board_semantic_evidence",
+          "numeric_compare",
+          "output_validity_check",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "current_layer_full_gate_rerun",
+        "consumes": [
+          "accepted bounded current-layer repair or revalidated single-layer certificate",
+          "current exact-board source identity and compile plan",
+          "exact user-supplied wrapper source hashes",
+          "complete target-checkpoint Transformer-block tensor catalog",
+          "immutable stimulus provenance",
+          "target-model inference reference for the same checkpoint and stimulus",
+          "immutable numeric policy and tolerance",
+          "immutable semantic testbench manifest",
+          "complete DUT weight-binding and consumption requirements"
+        ],
+        "id": "repair.board.rerun_complete_board_closure",
+        "on_failure": "Keep backend, bitstream, and board runtime blocked. Feed the new real-tool output into current-layer CCTG localization and repeat a bounded repair loop at the earliest failed board boundary; do not loosen tolerance, alter golden outputs, substitute the wrapper, or skip a failed or not-run gate.",
+        "produces": [
+          "current case_board_interface_discovery report",
+          "current case_multilayer_pipeline report",
+          "current case_multilayer_functional report",
+          "current case_pipeline_deadlock_check report",
+          "current case_axi_ddr_interface report",
+          "current case_axi_protocol_check report",
+          "current case_ddr_image_roundtrip report",
+          "current functional_sim report",
+          "current board Transformer-block semantic evidence",
+          "board-layer promotion decision"
+        ],
+        "rationale": "After the selected repair or lower-layer revalidation branch closes, rerun every required board-layer gate with real-tool and semantic evidence. Promotion requires the complete gate set rather than the earlier compile or ingress observations.",
+        "requires_approval": false,
+        "stage": "board_axi_ddr_closure",
+        "tool_roles": [
+          "case_board_interface_discovery",
+          "case_multilayer_pipeline",
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "case_axi_ddr_interface",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_vcs_functional_sim",
+          "functional_sim",
+          "case_board_semantic_evidence",
+          "numeric_compare",
+          "output_validity_check",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ]
+      }
+    ],
+    "observations": [
+      "Operator/leaf and connected single-transformer-layer gates have hash-bound pass evidence; the current failure is at board_axi_ddr_wrapped_system.",
+      "The lower-layer challenge status is no_lower_layer_challenge. No supplied current trace directly contradicts the connected-kernel certificate.",
+      "The current case_axi_ddr_interface failure is a verification-capability/evidence-binding failure: source_identity_sha256 and compile authority do not bind the current identity document and exact Vivado export facts.",
+      "The older VCS diagnosis is historical-only because a bound source artifact changed and its failed-gate relation is not current; it cannot authorize a repair.",
+      "The conditional exact-board integration review reports successful compilation, completed wrapper ingress, and zero accepted output beats at a ready wrapper frontier. That run is useful localization evidence but cannot count as a current accepted pass until its evidence bindings satisfy the gate contract.",
+      "The existing trace cannot distinguish no direct core ingress, ingress accepted without launch, internal retention, asserted but blocked core output, or completed output not propagated by integration.",
+      "A direct read-only probe at dut.spatialacc_single_kernel is the smallest current-layer action capable of distinguishing those cases.",
+      "Independent wrapper ingress progress and a stalled output frontier do not establish a root cause in the certified kernel, wrapper, scheduler, or output adapter.",
+      "Board functional promotion still requires all pending board gates and semantic comparison against the immutable target-model reference, including complete required Transformer-block weight-consumption evidence."
+    ],
+    "proposed_actions": [
+      "Refresh the current exact-board source identity and Vivado-export compile authority, and define a read-only direct-kernel probe contract without changing immutable sources or semantic contracts.",
+      "Rerun the failed board simulation and AXI/DDR gate with cycle-correlated direct kernel ingress, egress, lifecycle, transfer-count, and stall evidence.",
+      "Use CCTG-guided localization to classify the earliest current-layer violated boundary and issue a lower-layer backtrack only if the trace explicitly contradicts a named certified invariant.",
+      "Apply at most one localized current-layer integration repair when supported by the trace, or perform a targeted lower-layer replay when a certified invariant is explicitly contradicted.",
+      "After the selected branch closes, rerun the complete board-layer gate set and semantic comparison before any promotion."
+    ],
+    "risks": [
+      "Patching RTL from the downstream zero-output symptom could modify the wrong module and invalidate reusable lower-layer certification.",
+      "Running a trace with stale source identity or unauthorized compile commands would produce non-promotable evidence and could falsely appear to close the failure.",
+      "Changing the wrapper, semantic testbench, checkpoint, stimulus, reference outputs, numeric tolerance, or weight requirements during localization would contaminate the repair loop.",
+      "Interpreting unequal stage latency as a same-cycle timing failure would contradict the certified elastic pipeline contract.",
+      "A direct-boundary signal path must remain bound to the cited current hierarchy; silently guessing a replacement hierarchy name would invalidate the trace.",
+      "A board output alone cannot prove complete weight consumption or semantic correctness."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "failed case_axi_ddr_interface report",
+        "failed functional_sim report",
+        "current case_board_interface_discovery evidence",
+        "current Vivado export facts and compile authority",
+        "exact-board source identity and source-hash manifest",
+        "prior exact_board_integration_generation_agent review",
+        "single_layer_promotion_certificate.json",
+        "hierarchical_learning_context",
+        "verification/model_reference/reference_manifest.json",
+        "verification/semantic_testbench/semantic_testbench_manifest.json",
+        "generated/memory/dut_weight_binding_manifest.json"
+      ],
+      "constraints": [
+        "Repair the failed board_axi_ddr_wrapped_system layer before backend or board-runtime promotion.",
+        "Repair verification capability and evidence binding before interpreting hardware behavior.",
+        "Use the exact user-supplied wrapper and simulation sources; preserve their source hashes.",
+        "Preserve checkpoint, stimulus, target-model reference, numeric policy, tolerance, semantic testbench contract, and weight-binding requirements.",
+        "Expected outputs must come from target-model inference on the same checkpoint and stimulus.",
+        "Do not reopen a passed lower layer without a current hash-bound trace explicitly contradicting a named certified invariant.",
+        "Preserve elastic variable-latency token-pipeline semantics; do not require same-cycle stage start or completion.",
+        "Treat AXI or prefetch progress independently from output-frontier and lifecycle progress.",
+        "Keep accelerator acceptance limited to Transformer blocks, excluding embedding, tokenization, final model norm, LM head, logits, and sampling."
+      ],
+      "edges": [
+        "exact_board_wrapper_ingress_to_dut.spatialacc_single_kernel_input",
+        "dut.spatialacc_single_kernel_output_to_exact_board_wrapper_output_frontier",
+        "current_source_identity_to_exact_vivado_export_compile_authority",
+        "board_trace_to_current_layer_causal_localization",
+        "conditional_lower_layer_contradiction_to_targeted_backtrack",
+        "immutable_stimulus_to_target_model_reference_and_dut"
+      ],
+      "nodes": [
+        "board_axi_ddr_wrapped_system",
+        "exact_user_sample_project_wrapper",
+        "dut.spatialacc_single_kernel",
+        "spatialacc_exact_board_multilayer_tb",
+        "app_shell_9p_cnn_core_0_1",
+        "SingleLayerSemanticHarness",
+        "single_transformer_layer_kernel",
+        "target_model_reference",
+        "dut_weight_binding_manifest"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_decision.v1",
+    "stage": "board_axi_ddr_closure",
+    "status": "blocked_pending_current_layer_evidence_repair_and_targeted_replay",
+    "summary": "Do not patch or reopen the certified connected kernel. First repair the current board-simulation evidence binding without changing immutable design contracts, then rerun the failed board gate with read-only probes at the direct certified-kernel boundaries. The existing zero-output-frontier symptom localizes the next observation point but does not identify an RTL root cause or prove a lower-layer contradiction."
+  },
+  "prompt_bytes": 210224,
+  "prompt_hash": "72a327efbddaf76d4cc395018d5a4d92baac4422047b1d698b0f6fe9ed86d3ea",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.repair_decision.v1\",\n  \"agent\": \"repair_agent\",\n  \"stage\": \"board_axi_ddr_closure\",\n  \"status\": \"blocked_pending_current_layer_evidence_repair_and_targeted_replay\",\n  \"summary\": \"Do not patch or reopen the certified connected kernel. First repair the current board-simulation evidence binding without changing immutable design contracts, then rerun the failed board gate with read-only probes at the direct certified-kernel boundaries. The existing zero-output-frontier symptom localizes the next observation point but does not identify an RTL root cause or prove a lower-layer contradiction.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"board_axi_ddr_wrapped_system\",\n      \"exact_user_sample_project_wrapper\",\n      \"dut.spatialacc_single_kernel\",\n      \"spatialacc_exact_board_multilayer_tb\",\n      \"app_shell_9p_cnn_core_0_1\",\n      \"SingleLayerSemanticHarness\",\n      \"single_transformer_layer_kernel\",\n      \"target_model_reference\",\n      \"dut_weight_binding_manifest\"\n    ],\n    \"edges\": [\n      \"exact_board_wrapper_ingress_to_dut.spatialacc_single_kernel_input\",\n      \"dut.spatialacc_single_kernel_output_to_exact_board_wrapper_output_frontier\",\n      \"current_source_identity_to_exact_vivado_export_compile_authority\",\n      \"board_trace_to_current_layer_causal_localization\",\n      \"conditional_lower_layer_contradiction_to_targeted_backtrack\",\n      \"immutable_stimulus_to_target_model_reference_and_dut\"\n    ],\n    \"constraints\": [\n      \"Repair the failed board_axi_ddr_wrapped_system layer before backend or board-runtime promotion.\",\n      \"Repair verification capability and evidence binding before interpreting hardware behavior.\",\n      \"Use the exact user-supplied wrapper and simulation sources; preserve their source hashes.\",\n      \"Preserve checkpoint, stimulus, target-model reference, numeric policy, tolerance, semantic testbench contract, and weight-binding requirements.\",\n      \"Expected outputs must come from target-model inference on the same checkpoint and stimulus.\",\n      \"Do not reopen a passed lower layer without a current hash-bound trace explicitly contradicting a named certified invariant.\",\n      \"Preserve elastic variable-latency token-pipeline semantics; do not require same-cycle stage start or completion.\",\n      \"Treat AXI or prefetch progress independently from output-frontier and lifecycle progress.\",\n      \"Keep accelerator acceptance limited to Transformer blocks, excluding embedding, tokenization, final model norm, LM head, logits, and sampling.\"\n    ],\n    \"artifacts\": [\n      \"failed case_axi_ddr_interface report\",\n      \"failed functional_sim report\",\n      \"current case_board_interface_discovery evidence\",\n      \"current Vivado export facts and compile authority\",\n      \"exact-board source identity and source-hash manifest\",\n      \"prior exact_board_integration_generation_agent review\",\n      \"single_layer_promotion_certificate.json\",\n      \"hierarchical_learning_context\",\n      \"verification/model_reference/reference_manifest.json\",\n      \"verification/semantic_testbench/semantic_testbench_manifest.json\",\n      \"generated/memory/dut_weight_binding_manifest.json\"\n    ]\n  },\n  \"observations\": [\n    \"Operator/leaf and connected single-transformer-layer gates have hash-bound pass evidence; the current failure is at board_axi_ddr_wrapped_system.\",\n    \"The lower-layer challenge status is no_lower_layer_challenge. No supplied current trace directly contradicts the connected-kernel certificate.\",\n    \"The current case_axi_ddr_interface failure is a verification-capability/evidence-binding failure: source_identity_sha256 and compile authority do not bind the current identity document and exact Vivado export facts.\",\n    \"The older VCS diagnosis is historical-only because a bound source artifact changed and its failed-gate relation is not current; it cannot authorize a repair.\",\n    \"The conditional exact-board integration review reports successful compilation, completed wrapper ingress, and zero accepted output beats at a ready wrapper frontier. That run is useful localization evidence but cannot count as a current accepted pass until its evidence bindings satisfy the gate contract.\",\n    \"The existing trace cannot distinguish no direct core ingress, ingress accepted without launch, internal retention, asserted but blocked core output, or completed output not propagated by integration.\",\n    \"A direct read-only probe at dut.spatialacc_single_kernel is the smallest current-layer action capable of distinguishing those cases.\",\n    \"Independent wrapper ingress progress and a stalled output frontier do not establish a root cause in the certified kernel, wrapper, scheduler, or output adapter.\",\n    \"Board functional promotion still requires all pending board gates and semantic comparison against the immutable target-model reference, including complete required Transformer-block weight-consumption evidence.\"\n  ],\n  \"risks\": [\n    \"Patching RTL from the downstream zero-output symptom could modify the wrong module and invalidate reusable lower-layer certification.\",\n    \"Running a trace with stale source identity or unauthorized compile commands would produce non-promotable evidence and could falsely appear to close the failure.\",\n    \"Changing the wrapper, semantic testbench, checkpoint, stimulus, reference outputs, numeric tolerance, or weight requirements during localization would contaminate the repair loop.\",\n    \"Interpreting unequal stage latency as a same-cycle timing failure would contradict the certified elastic pipeline contract.\",\n    \"A direct-boundary signal path must remain bound to the cited current hierarchy; silently guessing a replacement hierarchy name would invalidate the trace.\",\n    \"A board output alone cannot prove complete weight consumption or semantic correctness.\"\n  ],\n  \"proposed_actions\": [\n    \"Refresh the current exact-board source identity and Vivado-export compile authority, and define a read-only direct-kernel probe contract without changing immutable sources or semantic contracts.\",\n    \"Rerun the failed board simulation and AXI/DDR gate with cycle-correlated direct kernel ingress, egress, lifecycle, transfer-count, and stall evidence.\",\n    \"Use CCTG-guided localization to classify the earliest current-layer violated boundary and issue a lower-layer backtrack only if the trace explicitly contradicts a named certified invariant.\",\n    \"Apply at most one localized current-layer integration repair when supported by the trace, or perform a targeted lower-layer replay when a certified invariant is explicitly contradicted.\",\n    \"After the selected branch closes, rerun the complete board-layer gate set and semantic comparison before any promotion.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"repair.board.refresh_evidence_binding_and_probe_contract\",\n      \"stage\": \"board_axi_ddr_closure\",\n      \"action_type\": \"verification_capability_repair\",\n      \"rationale\": \"The failed checker currently rejects source identity and compile authority, so current evidence binding must be repaired before a hardware trace is interpreted. The probe contract uses the direct hierarchy cited by the conditional specialist review and adds observability only.\",\n      \"consumes\": [\n        \"failed case_axi_ddr_interface report\",\n        \"failed functional_sim report\",\n        \"current case_board_interface_discovery evidence\",\n        \"current user-supplied sample-project source tree\",\n        \"current Vivado export facts\",\n        \"prior exact_board_integration_generation_agent review\",\n        \"verification/semantic_testbench/semantic_testbench_manifest.json\",\n        \"exact wrapper and simulation source hashes\"\n      ],\n      \"produces\": [\n        \"verification/board_simulation/current_source_identity.json\",\n        \"verification/board_simulation/current_vcs_compile_plan.json\",\n        \"verification/debug_closure/direct_certified_kernel_probe_contract.json\",\n        \"verification/board_simulation/evidence_binding_manifest.json\"\n      ],\n      \"tool_roles\": [\n        \"case_board_interface_discovery\",\n        \"functional_sim_contract_check\",\n        \"boundary_contract_generate\",\n        \"artifact_hash_check\",\n        \"verification_artifact_contract_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"case_board_interface_discovery\",\n        \"verification_artifact_contract_check\",\n        \"artifact_hash_check\",\n        \"tool_protocol_check\",\n        \"human_boundary_check\"\n      ],\n      \"on_failure\": \"Keep case_axi_ddr_interface, functional_sim, and all higher stages blocked. Do not execute an unauthorized compile command, substitute a wrapper, regenerate expected outputs, alter tolerances, or patch RTL. If the cited direct hierarchy is not present in the current exact source identity, request bounded target-discovery approval rather than guessing a name.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"repair.board.direct_kernel_boundary_targeted_replay\",\n      \"stage\": \"board_axi_ddr_closure\",\n      \"action_type\": \"current_layer_boundary_trace_rerun\",\n      \"rationale\": \"A current, hash-bound direct-boundary trace is required to distinguish wrapper ingress, kernel acceptance and lifecycle, core egress, and wrapper propagation without reopening the certified kernel prematurely.\",\n      \"consumes\": [\n        \"verification/board_simulation/current_source_identity.json\",\n        \"verification/board_simulation/current_vcs_compile_plan.json\",\n        \"verification/debug_closure/direct_certified_kernel_probe_contract.json\",\n        \"verification/board_simulation/evidence_binding_manifest.json\",\n        \"single_layer_promotion_certificate.json\",\n        \"immutable checkpoint and stimulus manifests\",\n        \"immutable numeric policy and tolerance\",\n        \"immutable semantic testbench manifest\",\n        \"generated/memory/dut_weight_binding_manifest.json\"\n      ],\n      \"produces\": [\n        \"verification/vcs/current_board_targeted_replay.log\",\n        \"verification/debug_closure/direct_kernel_boundary_trace.json\",\n        \"verification/debug_closure/current_board_failure_slice.json\",\n        \"verification/case_diagnostics/current_vcs_functional_diagnosis.json\",\n        \"verification/board_simulation/current_transfer_counts.json\",\n        \"verification/board_simulation/current_deadlock_watchdog.json\"\n      ],\n      \"tool_roles\": [\n        \"boundary_trace_rerun\",\n        \"targeted_replay\",\n        \"case_vcs_functional_sim\",\n        \"functional_sim\",\n        \"case_axi_ddr_interface\",\n        \"case_vcs_evidence_analyzer\",\n        \"deadlock_watchdog\",\n        \"transfer_count_check\",\n        \"data_order_trace_check\",\n        \"artifact_hash_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"real_tool.case_vcs_functional_sim\",\n        \"real_tool.case_axi_ddr_interface\",\n        \"functional_sim\",\n        \"targeted_replay_check\",\n        \"failure_localization_check\",\n        \"deadlock_watchdog\",\n        \"transfer_count_check\",\n        \"data_order_trace_check\",\n        \"artifact_hash_check\",\n        \"required_real_tool_evidence_check\"\n      ],\n      \"on_failure\": \"Retain the real simulator outputs and classify the earliest observed boundary. If the run lacks direct input valid/ready/accept counts, direct output valid/ready/accept counts, and kernel lifecycle values, classify it as an observability-capability failure and repair only the read-only instrumentation. Do not infer a core or wrapper RTL cause from the output frontier alone.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"repair.board.classify_causal_boundary_and_backtrack_eligibility\",\n      \"stage\": \"board_axi_ddr_closure\",\n      \"action_type\": \"cctg_contract_guided_localization\",\n      \"rationale\": \"The trace must select the earliest violated current-layer boundary and determine whether any named lower-layer invariant is directly contradicted. A lower-layer backtrack is generated only when the trace includes current certificate identity, direct core start, ingress, egress, and causal-boundary evidence.\",\n      \"consumes\": [\n        \"verification/debug_closure/direct_kernel_boundary_trace.json\",\n        \"verification/debug_closure/current_board_failure_slice.json\",\n        \"verification/case_diagnostics/current_vcs_functional_diagnosis.json\",\n        \"single_layer_promotion_certificate.json\",\n        \"hierarchical_learning_context\",\n        \"current SACG constraints\"\n      ],\n      \"produces\": [\n        \"verification/debug_closure/current_board_causal_repair_context.json\",\n        \"verification/debug_closure/current_board_repair_branch_decision.json\",\n        \"conditional stage backtrack request naming the contradicted invariant, gate, certificate, and trace record\"\n      ],\n      \"tool_roles\": [\n        \"failure_slice_localization\",\n        \"causal_repair_context_pack\",\n        \"repair_boundary_check\",\n        \"stage_backtrack_request\",\n        \"sacg_memory_update\"\n      ],\n      \"acceptance_checkers\": [\n        \"failure_localization_check\",\n        \"causal_repair_context_check\",\n        \"repair_boundary_check\",\n        \"stage_backtrack_request_check\",\n        \"sacg_memory_check\"\n      ],\n      \"on_failure\": \"Do not select an RTL repair or reopen a lower layer. Request a narrower current-layer trace for the missing causal boundary and preserve all existing pass certificates and immutable contracts.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"repair.board.apply_localized_integration_repair\",\n      \"stage\": \"board_axi_ddr_closure\",\n      \"action_type\": \"conditional_bounded_current_layer_repair\",\n      \"rationale\": \"Execute only when the causal branch decision localizes the failure to generated board integration, loader/harness, scheduler, adapter, or instrumentation without contradicting the certified kernel. The exact sample-project wrapper and certified lower-layer RTL remain unchanged.\",\n      \"consumes\": [\n        \"verification/debug_closure/current_board_causal_repair_context.json\",\n        \"verification/debug_closure/current_board_repair_branch_decision.json\",\n        \"exact wrapper and simulation source-hash manifest\",\n        \"current generated board-integration manifest\",\n        \"current SACG constraints\"\n      ],\n      \"produces\": [\n        \"one bounded generated-integration repair patch\",\n        \"updated generated board-integration manifest\",\n        \"repair scope and immutable-artifact hash audit\"\n      ],\n      \"tool_roles\": [\n        \"bounded_template_repair\",\n        \"repair_boundary_check\",\n        \"artifact_hash_check\",\n        \"verification_action_audit\"\n      ],\n      \"acceptance_checkers\": [\n        \"repair_boundary_check\",\n        \"boundary_contract_check\",\n        \"artifact_hash_check\",\n        \"verification_action_audit_check\",\n        \"human_boundary_check\"\n      ],\n      \"on_failure\": \"Revert the candidate bounded patch and return to current-layer trace localization. Do not expand into certified kernel RTL, exact wrapper sources, architecture, pipeline semantics, memory layout, numeric policy, tolerance, or a major template change without a new evidence-backed decision and required approval.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"repair.single_layer.conditional_targeted_backtrack\",\n      \"stage\": \"single_layer_closure\",\n      \"action_type\": \"conditional_lower_layer_revalidation\",\n      \"rationale\": \"Execute instead of the current-layer integration repair only when the causal decision explicitly names a lower-layer invariant contradicted by the current hash-bound direct-boundary trace. Revalidate only the challenged connected-kernel scope while preserving elastic variable-latency semantics.\",\n      \"consumes\": [\n        \"accepted stage backtrack request\",\n        \"verification/debug_closure/direct_kernel_boundary_trace.json\",\n        \"verification/debug_closure/current_board_causal_repair_context.json\",\n        \"single_layer_promotion_certificate.json\",\n        \"immutable checkpoint, stimulus, target-model reference, numeric policy, tolerance, semantic testbench, and weight-binding manifests\"\n      ],\n      \"produces\": [\n        \"verification/debug_closure/targeted_single_layer_replay.json\",\n        \"updated single-layer functional and golden-comparison evidence\",\n        \"updated single-layer semantic evidence\",\n        \"revalidated single-layer promotion certificate or localized lower-layer failure slice\"\n      ],\n      \"tool_roles\": [\n        \"stage_backtrack_request\",\n        \"targeted_replay\",\n        \"boundary_trace_rerun\",\n        \"case_single_layer_functional\",\n        \"case_single_layer_golden_compare\",\n        \"case_single_layer_semantic_evidence\"\n      ],\n      \"acceptance_checkers\": [\n        \"stage_backtrack_request_check\",\n        \"targeted_replay_check\",\n        \"real_tool.case_single_layer_functional\",\n        \"real_tool.case_single_layer_golden_compare\",\n        \"case_single_layer_semantic_evidence\",\n        \"artifact_hash_check\"\n      ],\n      \"on_failure\": \"Enter the connected-kernel tool-output-to-CCTG bounded repair loop for only the challenged boundary. Do not run board promotion gates until lower-layer revalidation passes and the failed board layer is rerun.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"repair.board.rerun_complete_board_closure\",\n      \"stage\": \"board_axi_ddr_closure\",\n      \"action_type\": \"current_layer_full_gate_rerun\",\n      \"rationale\": \"After the selected repair or lower-layer revalidation branch closes, rerun every required board-layer gate with real-tool and semantic evidence. Promotion requires the complete gate set rather than the earlier compile or ingress observations.\",\n      \"consumes\": [\n        \"accepted bounded current-layer repair or revalidated single-layer certificate\",\n        \"current exact-board source identity and compile plan\",\n        \"exact user-supplied wrapper source hashes\",\n        \"complete target-checkpoint Transformer-block tensor catalog\",\n        \"immutable stimulus provenance\",\n        \"target-model inference reference for the same checkpoint and stimulus\",\n        \"immutable numeric policy and tolerance\",\n        \"immutable semantic testbench manifest\",\n        \"complete DUT weight-binding and consumption requirements\"\n      ],\n      \"produces\": [\n        \"current case_board_interface_discovery report\",\n        \"current case_multilayer_pipeline report\",\n        \"current case_multilayer_functional report\",\n        \"current case_pipeline_deadlock_check report\",\n        \"current case_axi_ddr_interface report\",\n        \"current case_axi_protocol_check report\",\n        \"current case_ddr_image_roundtrip report\",\n        \"current functional_sim report\",\n        \"current board Transformer-block semantic evidence\",\n        \"board-layer promotion decision\"\n      ],\n      \"tool_roles\": [\n        \"case_board_interface_discovery\",\n        \"case_multilayer_pipeline\",\n        \"case_multilayer_functional\",\n        \"case_pipeline_deadlock_check\",\n        \"case_axi_ddr_interface\",\n        \"case_axi_protocol_check\",\n        \"case_ddr_image_roundtrip\",\n        \"case_vcs_functional_sim\",\n        \"functional_sim\",\n        \"case_board_semantic_evidence\",\n        \"numeric_compare\",\n        \"output_validity_check\",\n        \"artifact_hash_check\",\n        \"required_real_tool_evidence_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"real_tool.case_board_interface_discovery\",\n        \"case_multilayer_pipeline\",\n        \"real_tool.case_multilayer_functional\",\n        \"real_tool.case_pipeline_deadlock_check\",\n        \"real_tool.case_axi_ddr_interface\",\n        \"real_tool.case_axi_protocol_check\",\n        \"real_tool.case_ddr_image_roundtrip\",\n        \"real_tool.case_vcs_functional_sim\",\n        \"functional_sim\",\n        \"case_board_semantic_evidence\",\n        \"numeric_compare\",\n        \"output_validity_check\",\n        \"artifact_hash_check\",\n        \"required_real_tool_evidence_check\"\n      ],\n      \"on_failure\": \"Keep backend, bitstream, and board runtime blocked. Feed the new real-tool output into current-layer CCTG localization and repeat a bounded repair loop at the earliest failed board boundary; do not loosen tolerance, alter golden outputs, substitute the wrapper, or skip a failed or not-run gate.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair",
+  "stream": true,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/history/repair_agent_result.7aa4d51a6532d46c.ee0eea70c65c2e4c.72a327efbddaf76d.snapshot.json",
+    "replaced_prompt_hash": "67b2a11be656375007de4dd6616620a109e153d8f80fc436eef2f96675c5b810",
+    "replaced_result_sha256": "7aa4d51a6532d46c27244f93796f6f670be332aa3b638812e42cd08d6f8ee82f",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "7aa4d51a6532d46c.ee0eea70c65c2e4c.72a327efbddaf76d"
+  },
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

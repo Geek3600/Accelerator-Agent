@@ -1,0 +1,328 @@
+{
+  "agent": "repair_agent",
+  "duration_sec": 4002.124219616002,
+  "error": null,
+  "http_transport": "curl_direct_http1",
+  "live_transaction_id": "9ae657a5c12a4c848cb1b56c9d32b1cb",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_live_transaction.json",
+  "max_output_tokens": 32768,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "agent": "repair_agent",
+    "approval_required_for": [
+      "Conditional only: selecting a different sample-project wrapper, source path, Vivado export context, VCS executable, or board integration target when current exact-board discovery evidence is ambiguous. Such selection requires explicit bounded approval rather than guessing."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "case_board_interface_discovery",
+          "case_axi_ddr_interface",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "artifact_hash_check",
+          "human_boundary_check"
+        ],
+        "action_type": "exact_board_integration_harness_repair",
+        "consumes": [
+          "artifact.stage6.verification_artifact_contract",
+          "current board-simulation identity document",
+          "current exact Vivado-export contexts and current tool_profile",
+          "verification/board_interface/sample_project_sources/wrapper.v",
+          "immutable sample-project source-hash manifest",
+          "immutable checkpoint, stimulus, target-model reference, numeric policy, and semantic-testbench contract",
+          "prior repair execution feedback requiring direct dut.spatialacc_single_kernel boundary observation"
+        ],
+        "id": "repair.exact_board_harness_binding_and_probe",
+        "on_failure": "Do not run VCS or substitute another wrapper/export command. If the exact identity, Vivado export, or authorized executable is ambiguous or incompatible, preserve the failure and request bounded approval for an alternative explicitly evidenced sample-project binding; otherwise return to this action to repair the generated harness metadata only.",
+        "produces": [
+          "verification/board_simulation/board_tb.sv",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/board_simulation/source_identity_binding.json",
+          "verification/board_simulation/vcs_compile_plan.json",
+          "verification/board_simulation/direct_kernel_boundary_probe_contract.json",
+          "current case_axi_ddr_interface rerun report"
+        ],
+        "rationale": "Repair the verification capability that blocked case_axi_ddr_interface. Reconstruct board_tb.sv and its compile-plan metadata from the current exact sample-project identity and cited Vivado-export facts, and add only read-only direct-kernel observability. The discovered wrapper and all source hashes remain immutable; no simplified wrapper, guessed target, RTL replacement, golden replacement, or tolerance change is allowed.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "sacg_validate",
+          "case_board_interface_discovery",
+          "case_tb_scaffold_generate",
+          "functional_sim_contract_check",
+          "case_axi_ddr_interface",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_vcs_functional_sim",
+          "real_tool.case_deadlock_axi_check",
+          "targeted_replay_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "numeric_compare",
+          "artifact_hash_check"
+        ],
+        "action_type": "current_layer_targeted_replay",
+        "consumes": [
+          "passing current case_axi_ddr_interface report",
+          "verification/board_simulation/board_tb.sv",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/board_simulation/source_identity_binding.json",
+          "verification/board_simulation/vcs_compile_plan.json",
+          "verification/board_simulation/direct_kernel_boundary_probe_contract.json",
+          "complete Transformer-block checkpoint tensor catalog and bound DUT weight-consumption requirements",
+          "immutable deterministic or real stimulus provenance",
+          "immutable target-model inference expected-output manifest",
+          "immutable numeric comparison policy and tolerance",
+          "verification/certificates/single_layer_promotion_certificate.json",
+          "verification/certificates/operator_leaf_promotion_certificate.json"
+        ],
+        "id": "repair.current_board_direct_kernel_boundary_replay",
+        "on_failure": "If the replay cannot execute or lacks any required direct input/output accepted-handshake and lifecycle observation, treat it as a verification-capability failure and return to repair.exact_board_harness_binding_and_probe. If it executes and fails, retain the trace and proceed only to current-layer causal localization; do not patch RTL, reopen a lower layer, alter numeric policy, or claim board functionality.",
+        "produces": [
+          "verification/vcs/case_board_vcs_functional.json",
+          "verification/debug_closure/boundary_trace.json",
+          "verification/case_diagnostics/vcs_functional_diagnosis.json",
+          "verification/case_diagnostics/deadlock_axi_check.json",
+          "verification/board_simulation/dut_weight_consumption_report.json",
+          "verification/board_simulation/replay_output_and_handshake_trace.json"
+        ],
+        "rationale": "Once the harness is identity-bound, obtain current real-tool evidence before any hardware patch. The replay must use the exact board wrapper and immutable semantic inputs while recording direct kernel ingress/egress handshakes and lifecycle signals in the same stalled-cycle timeline as board AXI/DDR and output-frontier events.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "case_vcs_functional_sim",
+          "case_vcs_evidence_analyzer",
+          "case_deadlock_axi_check",
+          "boundary_trace_rerun",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "numeric_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "targeted_replay_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "contract_guided_failure_localization",
+        "consumes": [
+          "verification/debug_closure/boundary_trace.json",
+          "verification/case_diagnostics/vcs_functional_diagnosis.json",
+          "verification/case_diagnostics/deadlock_axi_check.json",
+          "verification/board_simulation/dut_weight_consumption_report.json",
+          "verification/certificates/single_layer_promotion_certificate.json",
+          "verification/certificates/operator_leaf_promotion_certificate.json",
+          "hierarchical_learning_context kernel timing knowledge"
+        ],
+        "id": "repair.localize_current_board_trace_before_any_code_change",
+        "on_failure": "Reject any patch proposal if the trace does not identify an earliest causal boundary. Preserve lower-layer closure unless the trace directly contradicts a named certificate invariant with current direct core start, ingress, egress, causal-boundary, and certificate evidence. A valid contradiction may schedule only the named lower-layer scope for revalidation; otherwise any later repair remains restricted to the board integration, loader/harness, instrumentation, or runtime-binding slice.",
+        "produces": [
+          "verification/debug_closure/current_cctg_localization.json",
+          "verification/debug_closure/causal_repair_context.json",
+          "verification/debug_closure/lower_layer_challenge_decision.json"
+        ],
+        "rationale": "Classify the earliest violated current-layer boundary from the new trace rather than treating a board output frontier as a preselected kernel defect. The localization must compare direct kernel ingress, lifecycle start/completion, egress, and wrapper propagation against the live lower-layer certificates.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "targeted_replay",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_board_semantic_evidence",
+          "functional_sim",
+          "real_weight_semantic_evidence_check",
+          "required_real_tool_evidence_check",
+          "sacg_memory_check",
+          "stage_retry_request_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "targeted_failed_checker_rerun",
+        "consumes": [
+          "passing exact-board harness binding artifacts",
+          "current replay and CCTG localization artifacts",
+          "artifact.stage6.verification_artifact_contract",
+          "immutable checkpoint, stimulus, target-model reference, expected-output manifest, numeric policy, and tolerance",
+          "complete Transformer-block tensor catalog and current DUT weight-consumption report",
+          "existing pass evidence for case_multilayer_pipeline and certified lower layers",
+          "active SACG retry requests and contamination barriers for board_axi_ddr_closure"
+        ],
+        "id": "repair.rerun_board_gate_dag_and_reconcile_sacg_only_on_pass",
+        "on_failure": "Keep all affected Stage7/Stage8 artifacts behind their active SACG trust barriers and return to current-layer localization for executed RTL/protocol/liveness/value failures or to harness binding repair for contract failures. Do not clear retries, promote to backend/board runtime, rerun certified lower layers, or relax comparison requirements on partial or dependency-blocked evidence.",
+        "produces": [
+          "fresh case_multilayer_functional report",
+          "fresh case_pipeline_deadlock_check report",
+          "fresh case_axi_protocol_check report",
+          "fresh case_ddr_image_roundtrip report",
+          "verification/semantic_evidence/board_axi_ddr.json",
+          "fresh Stage7 board verification result and real-tool evidence set",
+          "SACG retry/barrier reconciliation update, only if every required current board gate passes"
+        ],
+        "rationale": "After an identity-valid replay and localization decision permit continued board verification, rerun the remaining board-layer gates in dependency order. Publish board semantic evidence only from real target-model outputs, full Transformer-block weight-consumption evidence, immutable numeric comparison, and the exact wrapper. This is the only path that can update the current retry/barrier state.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "targeted_failed_checker_rerun",
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_board_semantic_evidence",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "The current board-layer failures are case_axi_ddr_interface and dependency-blocked functional_sim. case_axi_ddr_interface failed before simulation because its identity hash, Vivado-export compile authority, ordered-command authority references, and executable authorization do not bind the exact discovered sample-project facts; functional_sim also lacks verification/board_simulation/board_tb.sv.",
+      "The prior VCS diagnosis is explicitly historical-only because its source binding is stale. Its wrapper-ingress/zero-output-frontier symptom is planning context only, not current board or kernel evidence.",
+      "Hash-validated operator-leaf and connected single-transformer-layer certificates remain reusable. No current direct trace contradicts either certificate, so reopening leaf modules or the elastic connected kernel is prohibited.",
+      "The connected kernel certificate preserves boundary order and required cross-token overlap under elastic variable-latency semantics. Unequal stage start or completion cycles are not a failure criterion.",
+      "The required next observability is a read-only, cycle-correlated probe at dut.spatialacc_single_kernel: input and output valid/ready/accepted counts plus kernel start/completion lifecycle values. It must distinguish no ingress, accepted-but-no-output, blocked output, and completed-but-unpropagated output.",
+      "The missing board semantic evidence report is consequential to unexecuted board simulation, not independent proof of a weight, numeric, AXI, DDR, or RTL defect.",
+      "sacg_memory_truth reports 15 active contamination barriers and six open retry requests in this scope. Rejected Stage7 and Stage8 artifacts remain debug/planning evidence only; they cannot validate downstream work. No retry-reconciliation contract is supplied, so this candidate plan cannot itself clear or supersede them.",
+      "The conditional specialist router produced no split; no specialist conclusion substitutes for the required current tool evidence."
+    ],
+    "proposed_actions": [
+      "Repair the exact-board simulation harness and compile-plan binding without altering immutable sample-project sources, checkpoint, stimulus, target reference, golden outputs, numeric policy, tolerance, or DUT scope.",
+      "After the static exact-board binding passes, run a current real VCS targeted replay with read-only direct kernel boundary probes and immutable target-model/weight-binding inputs.",
+      "Use the resulting trace to localize the earliest causal boundary. Keep lower certificates closed unless the trace directly contradicts a named invariant; otherwise constrain any subsequent repair to the board integration, loader/harness, instrumentation, or runtime-binding slice.",
+      "Only after a valid replay/localization result, rerun the remaining board-layer gates in dependency order and retain SACG barriers on any failure. Do not promote to backend or board runtime."
+    ],
+    "risks": [
+      "Model and numeric risk: a board functional pass requires immutable same-checkpoint/same-stimulus target-model inference outputs and the already resolved numeric policy; expected values must never be inferred from RTL or random generation, and tolerance must not change.",
+      "Memory and scope risk: board evidence must prove consumption of every required Transformer-block tensor from a complete catalog through the bound loader/harness. Embedding/tokenization, final norm, LM head/logits, and sampling must remain outside both DUT and weight-coverage checks.",
+      "Data-order, shape, and runtime risk: an identity-correct compile plan alone does not establish AXI/DDR address mapping, transfer counts, ordering, token shape, liveness, or output-frontier progress.",
+      "Board risk: generating a simplified wrapper, guessing a different project path, replacing an unauthorized VCS executable, or modifying the discovered wrapper/source hashes would invalidate the intended board scope.",
+      "Hardware-localization risk: a board output-frontier stall cannot reopen the certified kernel unless a current hash-bound trace contains direct core lifecycle, ingress, egress, named causal-boundary evidence, and a direct contradiction of the current lower-layer certificate.",
+      "Promotion risk: active contamination barriers and open Stage7 retries remain in force until a fresh board-layer rerun passes all required gates and SACG checkers accept the updated artifact state."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage7.verification_result",
+        "artifact.stage7.real_tool_results",
+        "artifact.stage7.debug_closure",
+        "artifact.stage8.repair_plan",
+        "artifact.stage8.repair_execution_report",
+        "verification/board_interface/sample_project_sources/wrapper.v",
+        "verification/board_simulation/board_tb.sv",
+        "verification/debug_closure/boundary_trace.json",
+        "verification/certificates/single_layer_promotion_certificate.json",
+        "verification/certificates/operator_leaf_promotion_certificate.json"
+      ],
+      "constraints": [
+        "verification_semantic_capability_contract",
+        "current_verification_capability_must_execute_before_hardware_repair",
+        "exact sample-project wrapper and source hashes are immutable",
+        "current-layer trace required before lower-layer reopening",
+        "lower-layer reopening requires a current direct contradiction of named certificate evidence",
+        "immutable checkpoint, stimulus, target-model reference, numeric policy, tolerance, and testbench contract",
+        "complete-scope Transformer-block weight-consumption proof",
+        "Transformer blocks only; model-tail functions are outside DUT scope",
+        "active SACG contamination barriers and open Stage7 retry requests block downstream validated consumption"
+      ],
+      "edges": [
+        "exact sample-project identity and Vivado-export facts -> canonical VCS compile plan -> case_axi_ddr_interface",
+        "exact board wrapper ingress -> dut.spatialacc_single_kernel direct input boundary -> direct output boundary -> board output/lifecycle frontier",
+        "case_axi_ddr_interface -> case_vcs_functional_sim -> current CCTG localization -> remaining board-layer gate DAG",
+        "complete Transformer-block tensor catalog and immutable target-model reference -> board semantic evidence -> board-layer promotion decision"
+      ],
+      "nodes": [
+        "board_axi_ddr_wrapped_system",
+        "case_axi_ddr_interface",
+        "functional_sim",
+        "case_vcs_functional_sim",
+        "dut.spatialacc_single_kernel",
+        "single_transformer_layer_promotion_certificate",
+        "operator_leaf_promotion_certificate"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_agent_decision.v1",
+    "stage": "repair",
+    "status": "needs_repair",
+    "summary": "Keep board_axi_ddr_wrapped_system fail-closed. The only current proven failure is an exact-board verification-capability failure: the simulation identity, Vivado-export compile authority, command authority, executable authorization, and required board_tb.sv are not bound to the discovered sample project. Repair only the generated board simulation harness and read-only observability first, then perform a current hash-bound direct kernel-boundary replay. No RTL root cause, lower-layer regression, backend promotion, or board-runtime claim is authorized."
+  },
+  "prompt_bytes": 211641,
+  "prompt_hash": "d3108a6cfb7e405cd594d455730b6cf10675bf3a7099525ecc800ce0b4d52edf",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.repair_agent_decision.v1\",\"agent\":\"repair_agent\",\"stage\":\"repair\",\"status\":\"needs_repair\",\"summary\":\"Keep board_axi_ddr_wrapped_system fail-closed. The only current proven failure is an exact-board verification-capability failure: the simulation identity, Vivado-export compile authority, command authority, executable authorization, and required board_tb.sv are not bound to the discovered sample project. Repair only the generated board simulation harness and read-only observability first, then perform a current hash-bound direct kernel-boundary replay. No RTL root cause, lower-layer regression, backend promotion, or board-runtime claim is authorized.\",\"sacg_focus\":{\"nodes\":[\"board_axi_ddr_wrapped_system\",\"case_axi_ddr_interface\",\"functional_sim\",\"case_vcs_functional_sim\",\"dut.spatialacc_single_kernel\",\"single_transformer_layer_promotion_certificate\",\"operator_leaf_promotion_certificate\"],\"edges\":[\"exact sample-project identity and Vivado-export facts -> canonical VCS compile plan -> case_axi_ddr_interface\",\"exact board wrapper ingress -> dut.spatialacc_single_kernel direct input boundary -> direct output boundary -> board output/lifecycle frontier\",\"case_axi_ddr_interface -> case_vcs_functional_sim -> current CCTG localization -> remaining board-layer gate DAG\",\"complete Transformer-block tensor catalog and immutable target-model reference -> board semantic evidence -> board-layer promotion decision\"],\"constraints\":[\"verification_semantic_capability_contract\",\"current_verification_capability_must_execute_before_hardware_repair\",\"exact sample-project wrapper and source hashes are immutable\",\"current-layer trace required before lower-layer reopening\",\"lower-layer reopening requires a current direct contradiction of named certificate evidence\",\"immutable checkpoint, stimulus, target-model reference, numeric policy, tolerance, and testbench contract\",\"complete-scope Transformer-block weight-consumption proof\",\"Transformer blocks only; model-tail functions are outside DUT scope\",\"active SACG contamination barriers and open Stage7 retry requests block downstream validated consumption\"],\"artifacts\":[\"artifact.stage6.verification_artifact_contract\",\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\",\"artifact.stage8.repair_plan\",\"artifact.stage8.repair_execution_report\",\"verification/board_interface/sample_project_sources/wrapper.v\",\"verification/board_simulation/board_tb.sv\",\"verification/debug_closure/boundary_trace.json\",\"verification/certificates/single_layer_promotion_certificate.json\",\"verification/certificates/operator_leaf_promotion_certificate.json\"]},\"observations\":[\"The current board-layer failures are case_axi_ddr_interface and dependency-blocked functional_sim. case_axi_ddr_interface failed before simulation because its identity hash, Vivado-export compile authority, ordered-command authority references, and executable authorization do not bind the exact discovered sample-project facts; functional_sim also lacks verification/board_simulation/board_tb.sv.\",\"The prior VCS diagnosis is explicitly historical-only because its source binding is stale. Its wrapper-ingress/zero-output-frontier symptom is planning context only, not current board or kernel evidence.\",\"Hash-validated operator-leaf and connected single-transformer-layer certificates remain reusable. No current direct trace contradicts either certificate, so reopening leaf modules or the elastic connected kernel is prohibited.\",\"The connected kernel certificate preserves boundary order and required cross-token overlap under elastic variable-latency semantics. Unequal stage start or completion cycles are not a failure criterion.\",\"The required next observability is a read-only, cycle-correlated probe at dut.spatialacc_single_kernel: input and output valid/ready/accepted counts plus kernel start/completion lifecycle values. It must distinguish no ingress, accepted-but-no-output, blocked output, and completed-but-unpropagated output.\",\"The missing board semantic evidence report is consequential to unexecuted board simulation, not independent proof of a weight, numeric, AXI, DDR, or RTL defect.\",\"sacg_memory_truth reports 15 active contamination barriers and six open retry requests in this scope. Rejected Stage7 and Stage8 artifacts remain debug/planning evidence only; they cannot validate downstream work. No retry-reconciliation contract is supplied, so this candidate plan cannot itself clear or supersede them.\",\"The conditional specialist router produced no split; no specialist conclusion substitutes for the required current tool evidence.\"],\"risks\":[\"Model and numeric risk: a board functional pass requires immutable same-checkpoint/same-stimulus target-model inference outputs and the already resolved numeric policy; expected values must never be inferred from RTL or random generation, and tolerance must not change.\",\"Memory and scope risk: board evidence must prove consumption of every required Transformer-block tensor from a complete catalog through the bound loader/harness. Embedding/tokenization, final norm, LM head/logits, and sampling must remain outside both DUT and weight-coverage checks.\",\"Data-order, shape, and runtime risk: an identity-correct compile plan alone does not establish AXI/DDR address mapping, transfer counts, ordering, token shape, liveness, or output-frontier progress.\",\"Board risk: generating a simplified wrapper, guessing a different project path, replacing an unauthorized VCS executable, or modifying the discovered wrapper/source hashes would invalidate the intended board scope.\",\"Hardware-localization risk: a board output-frontier stall cannot reopen the certified kernel unless a current hash-bound trace contains direct core lifecycle, ingress, egress, named causal-boundary evidence, and a direct contradiction of the current lower-layer certificate.\",\"Promotion risk: active contamination barriers and open Stage7 retries remain in force until a fresh board-layer rerun passes all required gates and SACG checkers accept the updated artifact state.\"],\"proposed_actions\":[\"Repair the exact-board simulation harness and compile-plan binding without altering immutable sample-project sources, checkpoint, stimulus, target reference, golden outputs, numeric policy, tolerance, or DUT scope.\",\"After the static exact-board binding passes, run a current real VCS targeted replay with read-only direct kernel boundary probes and immutable target-model/weight-binding inputs.\",\"Use the resulting trace to localize the earliest causal boundary. Keep lower certificates closed unless the trace directly contradicts a named invariant; otherwise constrain any subsequent repair to the board integration, loader/harness, instrumentation, or runtime-binding slice.\",\"Only after a valid replay/localization result, rerun the remaining board-layer gates in dependency order and retain SACG barriers on any failure. Do not promote to backend or board runtime.\"],\"executable_actions\":[{\"id\":\"repair.exact_board_harness_binding_and_probe\",\"stage\":\"repair\",\"action_type\":\"exact_board_integration_harness_repair\",\"rationale\":\"Repair the verification capability that blocked case_axi_ddr_interface. Reconstruct board_tb.sv and its compile-plan metadata from the current exact sample-project identity and cited Vivado-export facts, and add only read-only direct-kernel observability. The discovered wrapper and all source hashes remain immutable; no simplified wrapper, guessed target, RTL replacement, golden replacement, or tolerance change is allowed.\",\"consumes\":[\"artifact.stage6.verification_artifact_contract\",\"current board-simulation identity document\",\"current exact Vivado-export contexts and current tool_profile\",\"verification/board_interface/sample_project_sources/wrapper.v\",\"immutable sample-project source-hash manifest\",\"immutable checkpoint, stimulus, target-model reference, numeric policy, and semantic-testbench contract\",\"prior repair execution feedback requiring direct dut.spatialacc_single_kernel boundary observation\"],\"produces\":[\"verification/board_simulation/board_tb.sv\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/board_simulation/source_identity_binding.json\",\"verification/board_simulation/vcs_compile_plan.json\",\"verification/board_simulation/direct_kernel_boundary_probe_contract.json\",\"current case_axi_ddr_interface rerun report\"],\"tool_roles\":[\"sacg_validate\",\"case_board_interface_discovery\",\"case_tb_scaffold_generate\",\"functional_sim_contract_check\",\"case_axi_ddr_interface\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"case_board_interface_discovery\",\"case_axi_ddr_interface\",\"verification_artifact_contract_check\",\"tool_protocol_check\",\"artifact_hash_check\",\"human_boundary_check\"],\"on_failure\":\"Do not run VCS or substitute another wrapper/export command. If the exact identity, Vivado export, or authorized executable is ambiguous or incompatible, preserve the failure and request bounded approval for an alternative explicitly evidenced sample-project binding; otherwise return to this action to repair the generated harness metadata only.\",\"requires_approval\":false},{\"id\":\"repair.current_board_direct_kernel_boundary_replay\",\"stage\":\"repair\",\"action_type\":\"current_layer_targeted_replay\",\"rationale\":\"Once the harness is identity-bound, obtain current real-tool evidence before any hardware patch. The replay must use the exact board wrapper and immutable semantic inputs while recording direct kernel ingress/egress handshakes and lifecycle signals in the same stalled-cycle timeline as board AXI/DDR and output-frontier events.\",\"consumes\":[\"passing current case_axi_ddr_interface report\",\"verification/board_simulation/board_tb.sv\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/board_simulation/source_identity_binding.json\",\"verification/board_simulation/vcs_compile_plan.json\",\"verification/board_simulation/direct_kernel_boundary_probe_contract.json\",\"complete Transformer-block checkpoint tensor catalog and bound DUT weight-consumption requirements\",\"immutable deterministic or real stimulus provenance\",\"immutable target-model inference expected-output manifest\",\"immutable numeric comparison policy and tolerance\",\"verification/certificates/single_layer_promotion_certificate.json\",\"verification/certificates/operator_leaf_promotion_certificate.json\"],\"produces\":[\"verification/vcs/case_board_vcs_functional.json\",\"verification/debug_closure/boundary_trace.json\",\"verification/case_diagnostics/vcs_functional_diagnosis.json\",\"verification/case_diagnostics/deadlock_axi_check.json\",\"verification/board_simulation/dut_weight_consumption_report.json\",\"verification/board_simulation/replay_output_and_handshake_trace.json\"],\"tool_roles\":[\"case_vcs_functional_sim\",\"case_vcs_evidence_analyzer\",\"case_deadlock_axi_check\",\"boundary_trace_rerun\",\"deadlock_watchdog\",\"data_order_trace_check\",\"transfer_count_check\",\"addr_map_check\",\"numeric_compare\"],\"acceptance_checkers\":[\"real_tool.case_vcs_functional_sim\",\"real_tool.case_deadlock_axi_check\",\"targeted_replay_check\",\"data_order_trace_check\",\"transfer_count_check\",\"addr_map_check\",\"numeric_compare\",\"artifact_hash_check\"],\"on_failure\":\"If the replay cannot execute or lacks any required direct input/output accepted-handshake and lifecycle observation, treat it as a verification-capability failure and return to repair.exact_board_harness_binding_and_probe. If it executes and fails, retain the trace and proceed only to current-layer causal localization; do not patch RTL, reopen a lower layer, alter numeric policy, or claim board functionality.\",\"requires_approval\":false},{\"id\":\"repair.localize_current_board_trace_before_any_code_change\",\"stage\":\"repair\",\"action_type\":\"contract_guided_failure_localization\",\"rationale\":\"Classify the earliest violated current-layer boundary from the new trace rather than treating a board output frontier as a preselected kernel defect. The localization must compare direct kernel ingress, lifecycle start/completion, egress, and wrapper propagation against the live lower-layer certificates.\",\"consumes\":[\"verification/debug_closure/boundary_trace.json\",\"verification/case_diagnostics/vcs_functional_diagnosis.json\",\"verification/case_diagnostics/deadlock_axi_check.json\",\"verification/board_simulation/dut_weight_consumption_report.json\",\"verification/certificates/single_layer_promotion_certificate.json\",\"verification/certificates/operator_leaf_promotion_certificate.json\",\"hierarchical_learning_context kernel timing knowledge\"],\"produces\":[\"verification/debug_closure/current_cctg_localization.json\",\"verification/debug_closure/causal_repair_context.json\",\"verification/debug_closure/lower_layer_challenge_decision.json\"],\"tool_roles\":[\"failure_slice_localization\",\"causal_repair_context_pack\",\"targeted_replay\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"targeted_replay_check\",\"repair_boundary_check\"],\"on_failure\":\"Reject any patch proposal if the trace does not identify an earliest causal boundary. Preserve lower-layer closure unless the trace directly contradicts a named certificate invariant with current direct core start, ingress, egress, causal-boundary, and certificate evidence. A valid contradiction may schedule only the named lower-layer scope for revalidation; otherwise any later repair remains restricted to the board integration, loader/harness, instrumentation, or runtime-binding slice.\",\"requires_approval\":false},{\"id\":\"repair.rerun_board_gate_dag_and_reconcile_sacg_only_on_pass\",\"stage\":\"verification\",\"action_type\":\"targeted_failed_checker_rerun\",\"rationale\":\"After an identity-valid replay and localization decision permit continued board verification, rerun the remaining board-layer gates in dependency order. Publish board semantic evidence only from real target-model outputs, full Transformer-block weight-consumption evidence, immutable numeric comparison, and the exact wrapper. This is the only path that can update the current retry/barrier state.\",\"consumes\":[\"passing exact-board harness binding artifacts\",\"current replay and CCTG localization artifacts\",\"artifact.stage6.verification_artifact_contract\",\"immutable checkpoint, stimulus, target-model reference, expected-output manifest, numeric policy, and tolerance\",\"complete Transformer-block tensor catalog and current DUT weight-consumption report\",\"existing pass evidence for case_multilayer_pipeline and certified lower layers\",\"active SACG retry requests and contamination barriers for board_axi_ddr_closure\"],\"produces\":[\"fresh case_multilayer_functional report\",\"fresh case_pipeline_deadlock_check report\",\"fresh case_axi_protocol_check report\",\"fresh case_ddr_image_roundtrip report\",\"verification/semantic_evidence/board_axi_ddr.json\",\"fresh Stage7 board verification result and real-tool evidence set\",\"SACG retry/barrier reconciliation update, only if every required current board gate passes\"],\"tool_roles\":[\"targeted_failed_checker_rerun\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_board_semantic_evidence\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_board_semantic_evidence\",\"functional_sim\",\"real_weight_semantic_evidence_check\",\"required_real_tool_evidence_check\",\"sacg_memory_check\",\"stage_retry_request_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Keep all affected Stage7/Stage8 artifacts behind their active SACG trust barriers and return to current-layer localization for executed RTL/protocol/liveness/value failures or to harness binding repair for contract failures. Do not clear retries, promote to backend/board runtime, rerun certified lower layers, or relax comparison requirements on partial or dependency-blocked evidence.\",\"requires_approval\":false}],\"approval_required_for\":[\"Conditional only: selecting a different sample-project wrapper, source path, Vivado export context, VCS executable, or board integration target when current exact-board discovery evidence is ambiguous. Such selection requires explicit bounded approval rather than guessing.\"]}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 2: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 3: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 4: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 5: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 6: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 7: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 8: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 9: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 10: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 11: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 12: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 13: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 14: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 15: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 16: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 17: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 18: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 19: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 20: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 21: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 22: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 23: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 24: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 25: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 26: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 27: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 28: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 29: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 30: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 31: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 32: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 33: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 34: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 35: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 36: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 37: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 38: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 39: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 40: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 41: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 42: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 43: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}",
+    "attempt 44: HTTP Error 429: curl direct HTTP/1.1 response 429; response_body={\"code\":\"USAGE_LIMIT_EXCEEDED\",\"message\":\"error: code=429 reason=\\\"DAILY_LIMIT_EXCEEDED\\\" message=\\\"daily usage limit exceeded\\\" metadata=map[]\"}"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair",
+  "stream": true,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/history/repair_agent_result.1420c43cd608136b.568bf747b886f67c.d3108a6cfb7e405c.snapshot.json",
+    "replaced_prompt_hash": "b272fa1fac4e367fcabb5395902dffd489203c39876bc711564f63478d8272c0",
+    "replaced_result_sha256": "1420c43cd608136b49de00234e84455255c0a7e297e151b2b5f80199b459328c",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "1420c43cd608136b.568bf747b886f67c.d3108a6cfb7e405c"
+  },
+  "transport": "responses_sse_stream",
+  "used_fallback": false
+}

@@ -1,0 +1,178 @@
+{
+  "agent": "model_shape_specialist",
+  "duration_sec": 204.8914340520023,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "model_shape_specialist",
+    "approval_required_for": [
+      "Any model_config override or surrogate default for missing decoder topology, attention/head, hidden-size, sequence-dimension, or residual-path facts",
+      "Any architecture, pipeline, memory-layout, numeric-policy, or major template change proposed to resolve a model-shape mismatch"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "llm_semantic_extraction_check",
+          "no_static_keyword_semantic_matching_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "candidate_stage_artifact.candidate_design_graph_summary"
+        ],
+        "id": "ce_model_shape_semantic_audit",
+        "on_failure": "Record each missing, ambiguous, or unsupported decoder/shape fact as a bounded patch request; keep the candidate SACG from being promoted to downstream binding or template stages.",
+        "produces": [
+          "artifact.review.constraint_extraction.model_shape_findings",
+          "artifact.review.constraint_extraction.model_shape_constraint_patch_requests"
+        ],
+        "rationale": "Verify, using artifact.input.model_config as the source of truth, that the candidate SACG captures decoder topology, operator order, residual paths, attention/head facts, hidden sizes, sequence dimensions, and shape dependency formulas without relying on Qwen/OPT-specific defaults or keyword matching.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "model_config_check",
+          "llm_semantic_extraction",
+          "no_static_keyword_semantic_matching"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "sacg_static_reference_gate",
+        "consumes": [
+          "artifact.input.model_config",
+          "candidate_stage_artifact.candidate_design_graph_summary",
+          "artifact.review.constraint_extraction.model_shape_findings"
+        ],
+        "id": "ce_sacg_model_shape_reference_gate",
+        "on_failure": "Return to bounded model-shape patching; reject unsupported model-specific assumptions and keep downstream shape, parameter, and template binding blocked.",
+        "produces": [
+          "artifact.review.constraint_extraction.model_shape_reference_gate"
+        ],
+        "rationale": "Check that every model-shape fact accepted by the semantic audit has a SACG node, constraint, edge, and source evidence reference, and that unsupported assumptions are not present in constraint.model.decoder, constraint.shape.model, or constraint.cross_layer.input_consistency.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_static_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "model_config_check",
+          "llm_semantic_extraction_check"
+        ],
+        "action_type": "bounded_sacg_patch",
+        "consumes": [
+          "artifact.input.model_config",
+          "candidate_stage_artifact.candidate_design_graph_summary",
+          "artifact.review.constraint_extraction.model_shape_findings",
+          "artifact.review.constraint_extraction.model_shape_constraint_patch_requests"
+        ],
+        "id": "ce_apply_bounded_model_shape_patch_if_needed",
+        "on_failure": "Do not promote the refined graph; emit a stage_backtrack_request if artifact.input.model_config lacks required facts, otherwise keep the patch request open for constraint_graph_auditor review.",
+        "produces": [
+          "artifact.constraint_extraction.candidate_design_graph.model_shape_refined",
+          "artifact.review.constraint_extraction.model_shape_patch_closure"
+        ],
+        "rationale": "If the semantic or reference gate finds missing or unsupported model-shape facts, update only the SACG model/shape constraints and evidence bindings using artifact.input.model_config; do not change architecture, pipeline, memory layout, numeric policy, or templates in this action.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "sacg_reference_check",
+          "model_config_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_backtrack_request_check",
+          "sacg_memory_check",
+          "human_boundary_check"
+        ],
+        "action_type": "stage_backtrack_request",
+        "consumes": [
+          "artifact.review.constraint_extraction.model_shape_findings",
+          "artifact.review.constraint_extraction.model_shape_constraint_patch_requests"
+        ],
+        "id": "ce_escalate_missing_model_shape_source_if_needed",
+        "on_failure": "Keep model-shape approval blocked and preserve the contamination barrier against consuming unsupported model-specific assumptions.",
+        "produces": [
+          "sacg_memory.open_backtrack_requests",
+          "artifact.review.constraint_extraction.model_shape_source_gap_report"
+        ],
+        "rationale": "If required decoder or shape facts cannot be derived from artifact.input.model_config, the correct repair is source-evidence backtracking rather than inventing defaults or contaminating the SACG with unsupported assumptions.",
+        "requires_approval": true,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "stage_backtrack_request",
+          "sacg_memory_update",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "SACG memory shows no active contamination barriers, no open backtrack_requests, and no open retry_requests relevant to this stage; the separate sacg_memory payload is empty and introduces no additional blockers.",
+      "The state summary lists the required model-shape source artifact and the three role-focus constraints: constraint.model.decoder, constraint.shape.model, and constraint.cross_layer.input_consistency.",
+      "The candidate summary reports 21 nodes, 16 constraints, 47 evidence fields, input groups for evidence/materials/tools, zero validation_errors, and the state summary reports no failed_invariants. This is graph-construction sanity evidence only; it is not semantic evidence that model topology and shape dependencies were captured correctly.",
+      "The detailed node IDs, constraint contents, evidence-field names, and edge bindings are omitted from the supplied prompt slice. Therefore this review cannot confirm the decoder layer order, attention block order, MLP order, residual/add paths, attention head counts, key/value head facts, hidden/intermediate sizes, maximum sequence dimensions, batch/token dimensions, or tensor dependency formulas.",
+      "Because artifact.input.model_config values are not visible, no Qwen2-specific or OPT-specific defaults should be inferred from the design_id or template context. Any decoder or shape fact must be directly extracted from artifact.input.model_config or explicitly marked unknown in the SACG.",
+      "No stage_gate_policy or retry_reconciliation_contract is supplied. The absence of semantic checker evidence should be treated as a current-stage handoff blocker for model-shape approval, while downstream numeric, memory, runtime, implementation, and board implications remain cross-layer risks to be checked after model-shape facts are evidence-bound."
+    ],
+    "proposed_actions": [
+      "Materialize or check a role-specific model-shape SACG slice that exposes exact model_config-derived facts, node IDs, constraint IDs, edge bindings, and evidence references for decoder topology and shape dependencies.",
+      "Run model_config_check plus llm_semantic_extraction_check with no_static_keyword_semantic_matching_check to ensure extraction is grounded in artifact.input.model_config rather than model-family keywords or hard-coded assumptions.",
+      "Run sacg_static_check and sacg_reference_check on the candidate graph so every decoder and shape constraint is connected to source evidence and required cross-layer dependency edges.",
+      "If any required model-shape fact is missing, ambiguous, or unsupported, emit bounded model_shape_constraint_patch_requests and block downstream consumption until the refined current-stage graph passes the same checks.",
+      "Escalate to human/source-material approval only if resolving a missing model-shape field would require a model_config override, surrogate default, architecture change, pipeline change, memory-layout change, or numeric-policy change."
+    ],
+    "risks": [
+      "Current-stage blocker: downstream parameter binding, template binding, stream planning, or verification could consume a graph whose model topology and shape facts are only counted, not evidence-bound to artifact.input.model_config.",
+      "Unsupported-assumption risk: a decoder topology or attention/head configuration could be filled from model family expectations rather than from the supplied model configuration.",
+      "Residual-path risk: if residual add edges are missing or ordered incorrectly, later single-layer and multilayer verification can fail even when individual operator shapes appear valid.",
+      "Shape-propagation risk: hidden size, intermediate size, head dimension, number of heads, number of key/value heads, vocabulary dimensions, sequence length, batch/token axes, and cache dimensions must remain consistent across numeric policy, data order, memory layout, runtime transfer counts, and implementation templates.",
+      "Edge-sparsity risk: the summary shows 8 graph edges for 21 nodes and 16 constraints, which may be adequate or may be under-linked; without detailed edge bindings, dependency coverage cannot be judged."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.model_config",
+        "candidate_stage_artifact.candidate_design_graph_summary",
+        "artifact.review.constraint_extraction.model_shape_findings",
+        "artifact.review.constraint_extraction.model_shape_constraint_patch_requests"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "state_summary.edges_count=8",
+        "candidate_design_graph_summary.edge_bindings_not_visible"
+      ],
+      "nodes": [
+        "candidate_design_graph_summary.node_ids(size=21, detailed_ids_not_visible)",
+        "artifact.input.model_config",
+        "candidate_design_graph_summary.evidence_fields(size=47, detailed_fields_not_visible)"
+      ]
+    },
+    "schema_version": "spatialaccagent.model_shape_review.v0",
+    "stage": "constraint_extraction",
+    "status": "not_approved_pending_model_shape_evidence",
+    "summary": "The supplied summary confirms that artifact.input.model_config exists and that constraint.model.decoder, constraint.shape.model, and constraint.cross_layer.input_consistency are present in the candidate SACG with no reported validation_errors or failed_invariants. However, only aggregate counts for node_ids, constraint_ids, evidence_fields, and edges are visible. There is not enough bound evidence to verify decoder topology, operator order, residual paths, attention/head facts, hidden sizes, sequence dimensions, or shape dependencies, and no pass should be claimed until model-config-grounded semantic and SACG reference checks run."
+  },
+  "prompt_bytes": 25290,
+  "prompt_hash": "c6f4bd146279d583718e098f568db5361cad588e3c2eec18193d61a8b840496c",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.model_shape_review.v0\",\"agent\":\"model_shape_specialist\",\"stage\":\"constraint_extraction\",\"status\":\"not_approved_pending_model_shape_evidence\",\"summary\":\"The supplied summary confirms that artifact.input.model_config exists and that constraint.model.decoder, constraint.shape.model, and constraint.cross_layer.input_consistency are present in the candidate SACG with no reported validation_errors or failed_invariants. However, only aggregate counts for node_ids, constraint_ids, evidence_fields, and edges are visible. There is not enough bound evidence to verify decoder topology, operator order, residual paths, attention/head facts, hidden sizes, sequence dimensions, or shape dependencies, and no pass should be claimed until model-config-grounded semantic and SACG reference checks run.\",\"sacg_focus\":{\"nodes\":[\"candidate_design_graph_summary.node_ids(size=21, detailed_ids_not_visible)\",\"artifact.input.model_config\",\"candidate_design_graph_summary.evidence_fields(size=47, detailed_fields_not_visible)\"],\"edges\":[\"state_summary.edges_count=8\",\"candidate_design_graph_summary.edge_bindings_not_visible\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"artifact.input.model_config\",\"candidate_stage_artifact.candidate_design_graph_summary\",\"artifact.review.constraint_extraction.model_shape_findings\",\"artifact.review.constraint_extraction.model_shape_constraint_patch_requests\"]},\"observations\":[\"SACG memory shows no active contamination barriers, no open backtrack_requests, and no open retry_requests relevant to this stage; the separate sacg_memory payload is empty and introduces no additional blockers.\",\"The state summary lists the required model-shape source artifact and the three role-focus constraints: constraint.model.decoder, constraint.shape.model, and constraint.cross_layer.input_consistency.\",\"The candidate summary reports 21 nodes, 16 constraints, 47 evidence fields, input groups for evidence/materials/tools, zero validation_errors, and the state summary reports no failed_invariants. This is graph-construction sanity evidence only; it is not semantic evidence that model topology and shape dependencies were captured correctly.\",\"The detailed node IDs, constraint contents, evidence-field names, and edge bindings are omitted from the supplied prompt slice. Therefore this review cannot confirm the decoder layer order, attention block order, MLP order, residual/add paths, attention head counts, key/value head facts, hidden/intermediate sizes, maximum sequence dimensions, batch/token dimensions, or tensor dependency formulas.\",\"Because artifact.input.model_config values are not visible, no Qwen2-specific or OPT-specific defaults should be inferred from the design_id or template context. Any decoder or shape fact must be directly extracted from artifact.input.model_config or explicitly marked unknown in the SACG.\",\"No stage_gate_policy or retry_reconciliation_contract is supplied. The absence of semantic checker evidence should be treated as a current-stage handoff blocker for model-shape approval, while downstream numeric, memory, runtime, implementation, and board implications remain cross-layer risks to be checked after model-shape facts are evidence-bound.\"],\"risks\":[\"Current-stage blocker: downstream parameter binding, template binding, stream planning, or verification could consume a graph whose model topology and shape facts are only counted, not evidence-bound to artifact.input.model_config.\",\"Unsupported-assumption risk: a decoder topology or attention/head configuration could be filled from model family expectations rather than from the supplied model configuration.\",\"Residual-path risk: if residual add edges are missing or ordered incorrectly, later single-layer and multilayer verification can fail even when individual operator shapes appear valid.\",\"Shape-propagation risk: hidden size, intermediate size, head dimension, number of heads, number of key/value heads, vocabulary dimensions, sequence length, batch/token axes, and cache dimensions must remain consistent across numeric policy, data order, memory layout, runtime transfer counts, and implementation templates.\",\"Edge-sparsity risk: the summary shows 8 graph edges for 21 nodes and 16 constraints, which may be adequate or may be under-linked; without detailed edge bindings, dependency coverage cannot be judged.\"],\"proposed_actions\":[\"Materialize or check a role-specific model-shape SACG slice that exposes exact model_config-derived facts, node IDs, constraint IDs, edge bindings, and evidence references for decoder topology and shape dependencies.\",\"Run model_config_check plus llm_semantic_extraction_check with no_static_keyword_semantic_matching_check to ensure extraction is grounded in artifact.input.model_config rather than model-family keywords or hard-coded assumptions.\",\"Run sacg_static_check and sacg_reference_check on the candidate graph so every decoder and shape constraint is connected to source evidence and required cross-layer dependency edges.\",\"If any required model-shape fact is missing, ambiguous, or unsupported, emit bounded model_shape_constraint_patch_requests and block downstream consumption until the refined current-stage graph passes the same checks.\",\"Escalate to human/source-material approval only if resolving a missing model-shape field would require a model_config override, surrogate default, architecture change, pipeline change, memory-layout change, or numeric-policy change.\"],\"executable_actions\":[{\"id\":\"ce_model_shape_semantic_audit\",\"stage\":\"constraint_extraction\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"Verify, using artifact.input.model_config as the source of truth, that the candidate SACG captures decoder topology, operator order, residual paths, attention/head facts, hidden sizes, sequence dimensions, and shape dependency formulas without relying on Qwen/OPT-specific defaults or keyword matching.\",\"consumes\":[\"artifact.input.model_config\",\"candidate_stage_artifact.candidate_design_graph_summary\"],\"produces\":[\"artifact.review.constraint_extraction.model_shape_findings\",\"artifact.review.constraint_extraction.model_shape_constraint_patch_requests\"],\"tool_roles\":[\"model_config_check\",\"llm_semantic_extraction\",\"no_static_keyword_semantic_matching\"],\"acceptance_checkers\":[\"model_config_check\",\"llm_semantic_extraction_check\",\"no_static_keyword_semantic_matching_check\"],\"on_failure\":\"Record each missing, ambiguous, or unsupported decoder/shape fact as a bounded patch request; keep the candidate SACG from being promoted to downstream binding or template stages.\",\"requires_approval\":false},{\"id\":\"ce_sacg_model_shape_reference_gate\",\"stage\":\"constraint_extraction\",\"action_type\":\"sacg_static_reference_gate\",\"rationale\":\"Check that every model-shape fact accepted by the semantic audit has a SACG node, constraint, edge, and source evidence reference, and that unsupported assumptions are not present in constraint.model.decoder, constraint.shape.model, or constraint.cross_layer.input_consistency.\",\"consumes\":[\"artifact.input.model_config\",\"candidate_stage_artifact.candidate_design_graph_summary\",\"artifact.review.constraint_extraction.model_shape_findings\"],\"produces\":[\"artifact.review.constraint_extraction.model_shape_reference_gate\"],\"tool_roles\":[\"sacg_static_check\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"sacg_reference_check\"],\"on_failure\":\"Return to bounded model-shape patching; reject unsupported model-specific assumptions and keep downstream shape, parameter, and template binding blocked.\",\"requires_approval\":false},{\"id\":\"ce_apply_bounded_model_shape_patch_if_needed\",\"stage\":\"constraint_extraction\",\"action_type\":\"bounded_sacg_patch\",\"rationale\":\"If the semantic or reference gate finds missing or unsupported model-shape facts, update only the SACG model/shape constraints and evidence bindings using artifact.input.model_config; do not change architecture, pipeline, memory layout, numeric policy, or templates in this action.\",\"consumes\":[\"artifact.input.model_config\",\"candidate_stage_artifact.candidate_design_graph_summary\",\"artifact.review.constraint_extraction.model_shape_findings\",\"artifact.review.constraint_extraction.model_shape_constraint_patch_requests\"],\"produces\":[\"artifact.constraint_extraction.candidate_design_graph.model_shape_refined\",\"artifact.review.constraint_extraction.model_shape_patch_closure\"],\"tool_roles\":[\"sacg_validate\",\"sacg_static_check\",\"sacg_reference_check\",\"model_config_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"sacg_reference_check\",\"model_config_check\",\"llm_semantic_extraction_check\"],\"on_failure\":\"Do not promote the refined graph; emit a stage_backtrack_request if artifact.input.model_config lacks required facts, otherwise keep the patch request open for constraint_graph_auditor review.\",\"requires_approval\":false},{\"id\":\"ce_escalate_missing_model_shape_source_if_needed\",\"stage\":\"constraint_extraction\",\"action_type\":\"stage_backtrack_request\",\"rationale\":\"If required decoder or shape facts cannot be derived from artifact.input.model_config, the correct repair is source-evidence backtracking rather than inventing defaults or contaminating the SACG with unsupported assumptions.\",\"consumes\":[\"artifact.review.constraint_extraction.model_shape_findings\",\"artifact.review.constraint_extraction.model_shape_constraint_patch_requests\"],\"produces\":[\"sacg_memory.open_backtrack_requests\",\"artifact.review.constraint_extraction.model_shape_source_gap_report\"],\"tool_roles\":[\"stage_backtrack_request\",\"sacg_memory_update\",\"human_boundary_check\"],\"acceptance_checkers\":[\"stage_backtrack_request_check\",\"sacg_memory_check\",\"human_boundary_check\"],\"on_failure\":\"Keep model-shape approval blocked and preserve the contamination barrier against consuming unsupported model-specific assumptions.\",\"requires_approval\":true}],\"approval_required_for\":[\"Any model_config override or surrogate default for missing decoder topology, attention/head, hidden-size, sequence-dimension, or residual-path facts\",\"Any architecture, pipeline, memory-layout, numeric-policy, or major template change proposed to resolve a model-shape mismatch\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/model_shape_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/model_shape_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction.model graph and shape engineer",
+  "used_fallback": false
+}

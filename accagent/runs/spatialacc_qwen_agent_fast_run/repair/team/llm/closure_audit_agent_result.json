@@ -1,0 +1,382 @@
+{
+  "agent": "closure_audit_agent",
+  "duration_sec": 644.3291592960013,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "closure_audit_agent",
+    "approval_required_for": [
+      "Any architecture, pipeline-structure, memory-layout, runtime-ABI, data-order, numeric-policy, tolerance, golden-reference, or major-template change beyond the bounded Stage6 contract repair and localized template/glue repair path.",
+      "Any manual clearing, suppression, or override of active contamination barriers or open retry requests without sacg_memory_check, stage_retry_request_check, and stage_artifact_trust_barrier_check evidence.",
+      "Any backend/app-shell target selection or board integration step where supplied board materials and real discovery/Vivado evidence are ambiguous; approval is required instead of guessing target names.",
+      "Any attempt to promote Stage7, Stage8, board, or hardware-pass claims before the ordered operator/leaf and single-transformer-layer checks pass under a clean Stage6 contract."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "repair_boundary_check",
+          "verification_action_audit_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "evidence_gate_audit",
+        "consumes": [
+          "candidate_stage_artifact.repair_evidence_classification_report",
+          "repair_evidence_classification_report",
+          "stage6_contract_repair_scope",
+          "stage7_clean_rerun_plan",
+          "repair_permission_matrix",
+          "bounded_repair_handoff_manifest",
+          "state_summary.sacg_memory_truth",
+          "artifact.stage7.verification_result",
+          "artifact.stage8.repair_execution_report"
+        ],
+        "id": "repair.closure_gate_register_blocked_claims",
+        "on_failure": "Keep Stage7, Stage8, and board promotion blocked; request the missing or inconsistent specialist artifact rather than assuming pass evidence.",
+        "produces": [
+          "repair_closure_audit_report",
+          "accepted_bounded_repair_plan.stage6_retry_only",
+          "blocked_claims_register",
+          "next_stage_handoff_decision.stage6_retry_then_stage7_clean_rerun"
+        ],
+        "rationale": "Aggregate the supplied specialist summaries into a checker-grounded handoff decision without rewriting them. The current evidence supports only a Stage6 retry handoff and must register unsupported Stage7, Stage8, and board claims as blocked.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_static_check",
+          "sacg_reference_check",
+          "repair_boundary_check",
+          "verification_action_audit",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "verification_action_audit_check",
+          "llm_io_quality_check",
+          "targeted_failed_checker_rerun",
+          "repair_boundary_check",
+          "sacg_static_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "contract_repair_and_static_gate",
+        "consumes": [
+          "artifact.stage5.design_artifact_manifest",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "artifact.input.numeric_policy",
+          "artifact.input.target_board_profile",
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.llm_action_audit"
+        ],
+        "id": "stage6.repair_verification_contract_retry_0001",
+        "on_failure": "Keep retry_request.0001 open, keep Stage6-derived artifacts under trust barrier, and do not rerun Stage7 until the gate DAG/tool protocol contract is complete.",
+        "produces": [
+          "artifact.stage6.verification_plan.retry",
+          "artifact.stage6.verification_artifact_contract.retry",
+          "artifact.stage6.llm_action_audit.retry",
+          "artifact.stage6.stage7_gate_selector_contract.retry",
+          "artifact.stage6.downstream_artifact_blocklist.retry",
+          "artifact.stage6.backend_app_shell_target_discovery_policy.retry_or_deferred",
+          "artifact.stage6.refinement_manifest.retry"
+        ],
+        "rationale": "retry_request.0001 and Stage6 contamination barriers are the earliest current blockers. Regenerate or refine the Stage6 verification plan/contract from trusted Stage5 and tool/case inputs, treating rejected Stage6 artifacts only as planning/debug evidence.",
+        "requires_approval": false,
+        "stage": "stage6.verification_artifacts",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "verification_action_audit",
+          "llm_io_quality_check",
+          "targeted_failed_checker_rerun",
+          "sacg_validate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "stage_retry_request_check",
+          "stage_artifact_trust_barrier_check",
+          "sacg_static_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "sacg_trust_reconciliation",
+        "consumes": [
+          "artifact.stage6.verification_plan.retry",
+          "artifact.stage6.verification_artifact_contract.retry",
+          "artifact.stage6.llm_action_audit.retry",
+          "artifact.stage6.stage7_gate_selector_contract.retry",
+          "artifact.stage6.refinement_manifest.retry",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "repair.reconcile_sacg_trust_after_stage6_retry",
+        "on_failure": "Treat the Stage6 retry as not promoted, keep Stage7 rerun blocked, and return to Stage6 contract repair with the failed trust-barrier evidence.",
+        "produces": [
+          "source_sacg_state.memory.updated",
+          "stage6_retry_request_resolution_record",
+          "stage6_contamination_barrier_resolution_record",
+          "stage7_clean_rerun_authorization_record"
+        ],
+        "rationale": "Only SACG trust-barrier tooling may close or supersede retry requests and contamination barriers after clean Stage6 checker evidence exists; the closure audit cannot clear them directly.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "sacg_memory_update",
+          "stage_retry_request",
+          "stage_artifact_trust_barrier",
+          "sacg_validate",
+          "sacg_static_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_real_weight_artifacts",
+          "case_stage_leaf_static",
+          "real_tool.boundary_contract_check",
+          "real_tool.case_leaf_functional",
+          "real_tool.case_leaf_golden_compare",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "numeric_compare",
+          "deadlock_watchdog",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_verification_rerun",
+        "consumes": [
+          "artifact.stage6.verification_artifact_contract.retry_promoted",
+          "artifact.stage6.llm_action_audit.retry_promoted",
+          "artifact.stage6.stage7_gate_selector_contract.retry_promoted",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.case_adapter"
+        ],
+        "id": "stage7.operator_leaf_clean_rerun",
+        "on_failure": "Do not promote to single-transformer-layer or board work; route the clean failing trace to Stage8 failure localization and bounded repair for the operator/leaf causal slice.",
+        "produces": [
+          "artifact.stage7.real_tool_results.operator_leaf_retry",
+          "artifact.stage7.verification_result.operator_leaf_retry",
+          "artifact.stage7.debug_closure.operator_leaf_retry",
+          "artifact.stage7.operator_leaf_promotion_certificate.retry"
+        ],
+        "rationale": "The hardware debug loop must restart at the operator/leaf layer using clean Stage6 artifacts; previous Stage7 real-tool results are planning/debug evidence only because their producer chain is contaminated.",
+        "requires_approval": false,
+        "stage": "stage7.verification",
+        "tool_roles": [
+          "case_real_weight_artifacts",
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "numeric_compare",
+          "deadlock_watchdog",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "repair_boundary_check",
+          "targeted_replay_check",
+          "codegen_compile_gate_check",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "human_boundary_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "conditional_bounded_repair",
+        "consumes": [
+          "artifact.stage7.debug_closure.operator_leaf_retry",
+          "artifact.stage7.real_tool_results.operator_leaf_retry",
+          "artifact.stage6.verification_artifact_contract.retry_promoted",
+          "repair_permission_matrix",
+          "bounded_repair_handoff_manifest"
+        ],
+        "id": "stage8.operator_leaf_failure_bounded_repair",
+        "on_failure": "Stop the repair loop and request bounded approval or Stage6/earlier backtrack only if evidence shows the fix requires architecture, pipeline, memory, numeric-policy, or major template changes.",
+        "produces": [
+          "artifact.stage8.failure_localization.operator_leaf_retry",
+          "artifact.stage8.causal_repair_context.operator_leaf_retry",
+          "artifact.stage8.repair_plan.operator_leaf_retry",
+          "artifact.stage8.repair_execution_report.operator_leaf_retry",
+          "artifact.stage5.generated_code_package.repaired_candidate"
+        ],
+        "rationale": "If the clean operator/leaf rerun fails, repair must be localized to the earliest causal boundary and remain within approved templates/glue. The existing Stage8 repair artifacts are contaminated and cannot be promoted as validated inputs.",
+        "requires_approval": false,
+        "stage": "stage8.repair",
+        "tool_roles": [
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "bounded_template_repair",
+          "repair_boundary_check",
+          "targeted_replay",
+          "codegen_compile_gate",
+          "codegen_contract_check",
+          "codegen_package_static_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_single_transformer_layer",
+          "real_tool.case_single_layer_functional",
+          "real_tool.case_single_layer_golden_compare",
+          "single_transformer_layer",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "numeric_compare",
+          "deadlock_watchdog",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "hierarchical_real_tool_verification",
+        "consumes": [
+          "artifact.stage7.operator_leaf_promotion_certificate.retry",
+          "artifact.stage6.verification_artifact_contract.retry_promoted",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.case_adapter"
+        ],
+        "id": "stage7.single_transformer_layer_closure_after_leaf_pass",
+        "on_failure": "Localize the single-layer failing transaction and return to Stage8 bounded repair for that causal slice; do not proceed to board/AXI/DDR/runtime work.",
+        "produces": [
+          "artifact.stage7.real_tool_results.single_transformer_layer_retry",
+          "artifact.stage7.verification_result.single_transformer_layer_retry",
+          "artifact.stage7.debug_closure.single_transformer_layer_retry",
+          "artifact.stage7.single_transformer_layer_promotion_certificate.retry"
+        ],
+        "rationale": "Only after operator/leaf evidence passes under a clean Stage6 contract may the design advance to the connected single-transformer-layer kernel. This preserves the required three-layer repair loop and still blocks board/AXI/DDR promotion.",
+        "requires_approval": false,
+        "stage": "stage7.verification",
+        "tool_roles": [
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "single_transformer_layer",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "numeric_compare",
+          "deadlock_watchdog",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The visible state summary marks verification_plan_static_check and verification_agent_decision_check as failed invariants; therefore no downstream pass or promotion claim can be based on the current Stage6, Stage7, or Stage8 artifacts.",
+      "The authoritative blocker set in state_summary.sacg_memory_truth lists 29 active contamination barriers and 6 open retry requests, with no open backtrack requests. The earliest current blocker is retry_request.0001 for Stage6 verification-plan/contract completeness and provenance.",
+      "Active Stage6 contamination barriers cover artifact.stage6.verification_plan, verification_artifact_contract, llm_action_audit, stage7_gate_selector_contract, and backend_app_shell_target_discovery_policy; these may be used only as planning/debug evidence until a clean Stage6 retry is checked and promoted.",
+      "Active Stage7 and Stage8 barriers mean artifact.stage7.verification_result, real_tool_results, debug_closure, operator_leaf_promotion_certificate, artifact.stage8.repair_plan, and repair_execution_report are not validated design inputs. Any statement that operator-leaf evidence passed is non-promotable until rebound to a clean Stage6 contract and rerun.",
+      "The candidate repair artifact classifies failures and includes contract-guided and hierarchical repair-loop diagnostics, but the compact summary does not provide checker evidence sufficient to clear SACG barriers. case_vcs_functional is null/not_run, which is an evidence gap rather than a hardware failure or pass.",
+      "The checker-grounded next path is bounded: repair/promote Stage6 verification artifacts, reconcile SACG trust state, rerun Stage7 operator/leaf verification under the clean contract, and only after that execute the connected single-transformer-layer closure. Board/AXI/DDR/runtime work must remain deferred."
+    ],
+    "proposed_actions": [
+      "Record the blocked-claims register: no Stage7 promotion, no Stage8 repair-output promotion, no hardware pass, and no board/runtime pass are supported by current evidence.",
+      "Accept handoff only to Stage6 verification_artifacts retry for the verification plan, artifact contract, LLM action audit, gate selector, and downstream blocklist/provenance state.",
+      "After Stage6 retry artifacts pass static/reference/action-audit checks, reconcile SACG retry requests and contamination barriers through the trust-barrier tools; the closure auditor must not clear them directly.",
+      "Rerun Stage7 operator/leaf verification from clean Stage6 artifacts using real-tool/golden/data-order/transfer/numeric/deadlock checks; route any failure to Stage8 contract-guided localization and bounded repair.",
+      "Promote to the connected single-transformer-layer verification only after operator/leaf passes under the clean contract; keep board/AXI/DDR/runtime execution blocked until that layer also closes."
+    ],
+    "risks": [
+      "Consuming contaminated Stage6, Stage7, or Stage8 artifacts as validated inputs would propagate rejected-producer evidence across the verification and deployment layers.",
+      "Executing Stage8 RTL/template repair before the Stage6 verification contract is clean risks repairing against an invalid gate DAG or tool protocol contract instead of the earliest causal blocker.",
+      "Current real-tool not_run/null evidence leaves data order, transfer count, address map, numeric comparison, deadlock/liveness, and artifact-hash consistency unproven under a clean contract.",
+      "The backend/app-shell target-discovery policy is among contaminated Stage6 artifacts; guessing shell target names or promoting board claims without real discovery/Vivado evidence would violate deployment-board and human-boundary constraints.",
+      "Any repair that changes architecture, pipeline structure, memory layout, runtime ABI, numeric policy, golden reference, tolerance, or major templates would exceed the accepted bounded path and needs explicit approval before execution."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage5.design_artifact_manifest",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "artifact.stage6.verification_plan",
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.llm_action_audit",
+        "artifact.stage6.stage7_gate_selector_contract",
+        "artifact.stage6.backend_app_shell_target_discovery_policy",
+        "artifact.stage7.verification_result",
+        "artifact.stage7.real_tool_results",
+        "artifact.stage7.debug_closure",
+        "artifact.stage7.operator_leaf_promotion_certificate",
+        "artifact.stage8.repair_plan",
+        "artifact.stage8.repair_execution_report",
+        "candidate_stage_artifact.repair_evidence_classification_report"
+      ],
+      "constraints": [
+        "constraint.cross_layer.input_consistency",
+        "constraint.verification.plan",
+        "constraint.verification.hierarchy",
+        "constraint.verification.artifacts",
+        "constraint.human.boundary",
+        "constraint.tool.protocols",
+        "constraint.case.adapter",
+        "constraint.numeric.policy",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "edge.stage5_manifest_to_stage6_verification_contract",
+        "edge.stage6_contract_to_stage7_gate_selector",
+        "edge.stage7_operator_leaf_to_stage8_bounded_repair_on_failure",
+        "edge.stage8_bounded_repair_to_stage7_clean_rerun",
+        "edge.stage7_operator_leaf_pass_to_single_transformer_layer",
+        "edge.single_transformer_layer_pass_to_board_gate_later"
+      ],
+      "nodes": [
+        "node.sacg_memory_truth.current_blockers",
+        "node.stage5.design_package",
+        "node.stage6.verification_artifacts",
+        "node.stage6.verification_contract_provenance",
+        "node.stage7.operator_leaf_verification",
+        "node.stage7.single_transformer_layer_verification",
+        "node.stage8.bounded_repair",
+        "node.board_backend_gate_deferred"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_closure_audit.v0",
+    "stage": "repair",
+    "status": "accepted_bounded_handoff_stage6_retry_only",
+    "summary": "The repair handoff is acceptable only as a bounded Stage6 verification-contract retry followed by clean Stage7 reruns. Stage7 promotion, Stage8 repair-output promotion, and any board/AXI/DDR/runtime claim remain blocked by the authoritative SACG blocker set and failed verification-plan/agent-decision invariants."
+  },
+  "prompt_bytes": 81308,
+  "prompt_hash": "a3a9d9ab5c702dcd0169fdf46fd985909dda5e86132d953bae80ba74070e6548",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.repair_closure_audit.v0\",\"agent\":\"closure_audit_agent\",\"stage\":\"repair\",\"status\":\"accepted_bounded_handoff_stage6_retry_only\",\"summary\":\"The repair handoff is acceptable only as a bounded Stage6 verification-contract retry followed by clean Stage7 reruns. Stage7 promotion, Stage8 repair-output promotion, and any board/AXI/DDR/runtime claim remain blocked by the authoritative SACG blocker set and failed verification-plan/agent-decision invariants.\",\"sacg_focus\":{\"nodes\":[\"node.sacg_memory_truth.current_blockers\",\"node.stage5.design_package\",\"node.stage6.verification_artifacts\",\"node.stage6.verification_contract_provenance\",\"node.stage7.operator_leaf_verification\",\"node.stage7.single_transformer_layer_verification\",\"node.stage8.bounded_repair\",\"node.board_backend_gate_deferred\"],\"edges\":[\"edge.stage5_manifest_to_stage6_verification_contract\",\"edge.stage6_contract_to_stage7_gate_selector\",\"edge.stage7_operator_leaf_to_stage8_bounded_repair_on_failure\",\"edge.stage8_bounded_repair_to_stage7_clean_rerun\",\"edge.stage7_operator_leaf_pass_to_single_transformer_layer\",\"edge.single_transformer_layer_pass_to_board_gate_later\"],\"constraints\":[\"constraint.cross_layer.input_consistency\",\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.verification.artifacts\",\"constraint.human.boundary\",\"constraint.tool.protocols\",\"constraint.case.adapter\",\"constraint.numeric.policy\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\"],\"artifacts\":[\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.stage6.verification_plan\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"artifact.stage6.stage7_gate_selector_contract\",\"artifact.stage6.backend_app_shell_target_discovery_policy\",\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\",\"artifact.stage7.operator_leaf_promotion_certificate\",\"artifact.stage8.repair_plan\",\"artifact.stage8.repair_execution_report\",\"candidate_stage_artifact.repair_evidence_classification_report\"]},\"observations\":[\"The visible state summary marks verification_plan_static_check and verification_agent_decision_check as failed invariants; therefore no downstream pass or promotion claim can be based on the current Stage6, Stage7, or Stage8 artifacts.\",\"The authoritative blocker set in state_summary.sacg_memory_truth lists 29 active contamination barriers and 6 open retry requests, with no open backtrack requests. The earliest current blocker is retry_request.0001 for Stage6 verification-plan/contract completeness and provenance.\",\"Active Stage6 contamination barriers cover artifact.stage6.verification_plan, verification_artifact_contract, llm_action_audit, stage7_gate_selector_contract, and backend_app_shell_target_discovery_policy; these may be used only as planning/debug evidence until a clean Stage6 retry is checked and promoted.\",\"Active Stage7 and Stage8 barriers mean artifact.stage7.verification_result, real_tool_results, debug_closure, operator_leaf_promotion_certificate, artifact.stage8.repair_plan, and repair_execution_report are not validated design inputs. Any statement that operator-leaf evidence passed is non-promotable until rebound to a clean Stage6 contract and rerun.\",\"The candidate repair artifact classifies failures and includes contract-guided and hierarchical repair-loop diagnostics, but the compact summary does not provide checker evidence sufficient to clear SACG barriers. case_vcs_functional is null/not_run, which is an evidence gap rather than a hardware failure or pass.\",\"The checker-grounded next path is bounded: repair/promote Stage6 verification artifacts, reconcile SACG trust state, rerun Stage7 operator/leaf verification under the clean contract, and only after that execute the connected single-transformer-layer closure. Board/AXI/DDR/runtime work must remain deferred.\"],\"risks\":[\"Consuming contaminated Stage6, Stage7, or Stage8 artifacts as validated inputs would propagate rejected-producer evidence across the verification and deployment layers.\",\"Executing Stage8 RTL/template repair before the Stage6 verification contract is clean risks repairing against an invalid gate DAG or tool protocol contract instead of the earliest causal blocker.\",\"Current real-tool not_run/null evidence leaves data order, transfer count, address map, numeric comparison, deadlock/liveness, and artifact-hash consistency unproven under a clean contract.\",\"The backend/app-shell target-discovery policy is among contaminated Stage6 artifacts; guessing shell target names or promoting board claims without real discovery/Vivado evidence would violate deployment-board and human-boundary constraints.\",\"Any repair that changes architecture, pipeline structure, memory layout, runtime ABI, numeric policy, golden reference, tolerance, or major templates would exceed the accepted bounded path and needs explicit approval before execution.\"],\"proposed_actions\":[\"Record the blocked-claims register: no Stage7 promotion, no Stage8 repair-output promotion, no hardware pass, and no board/runtime pass are supported by current evidence.\",\"Accept handoff only to Stage6 verification_artifacts retry for the verification plan, artifact contract, LLM action audit, gate selector, and downstream blocklist/provenance state.\",\"After Stage6 retry artifacts pass static/reference/action-audit checks, reconcile SACG retry requests and contamination barriers through the trust-barrier tools; the closure auditor must not clear them directly.\",\"Rerun Stage7 operator/leaf verification from clean Stage6 artifacts using real-tool/golden/data-order/transfer/numeric/deadlock checks; route any failure to Stage8 contract-guided localization and bounded repair.\",\"Promote to the connected single-transformer-layer verification only after operator/leaf passes under the clean contract; keep board/AXI/DDR/runtime execution blocked until that layer also closes.\"],\"executable_actions\":[{\"id\":\"repair.closure_gate_register_blocked_claims\",\"stage\":\"repair\",\"action_type\":\"evidence_gate_audit\",\"rationale\":\"Aggregate the supplied specialist summaries into a checker-grounded handoff decision without rewriting them. The current evidence supports only a Stage6 retry handoff and must register unsupported Stage7, Stage8, and board claims as blocked.\",\"consumes\":[\"candidate_stage_artifact.repair_evidence_classification_report\",\"repair_evidence_classification_report\",\"stage6_contract_repair_scope\",\"stage7_clean_rerun_plan\",\"repair_permission_matrix\",\"bounded_repair_handoff_manifest\",\"state_summary.sacg_memory_truth\",\"artifact.stage7.verification_result\",\"artifact.stage8.repair_execution_report\"],\"produces\":[\"repair_closure_audit_report\",\"accepted_bounded_repair_plan.stage6_retry_only\",\"blocked_claims_register\",\"next_stage_handoff_decision.stage6_retry_then_stage7_clean_rerun\"],\"tool_roles\":[\"team_aggregate\",\"sacg_static_check\",\"sacg_reference_check\",\"repair_boundary_check\",\"verification_action_audit\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"sacg_static_check\",\"sacg_reference_check\",\"repair_boundary_check\",\"verification_action_audit_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Keep Stage7, Stage8, and board promotion blocked; request the missing or inconsistent specialist artifact rather than assuming pass evidence.\",\"requires_approval\":false},{\"id\":\"stage6.repair_verification_contract_retry_0001\",\"stage\":\"stage6.verification_artifacts\",\"action_type\":\"contract_repair_and_static_gate\",\"rationale\":\"retry_request.0001 and Stage6 contamination barriers are the earliest current blockers. Regenerate or refine the Stage6 verification plan/contract from trusted Stage5 and tool/case inputs, treating rejected Stage6 artifacts only as planning/debug evidence.\",\"consumes\":[\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.input.tool_protocols\",\"artifact.input.case_adapter\",\"artifact.input.numeric_policy\",\"artifact.input.target_board_profile\",\"artifact.stage6.verification_plan\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\"],\"produces\":[\"artifact.stage6.verification_plan.retry\",\"artifact.stage6.verification_artifact_contract.retry\",\"artifact.stage6.llm_action_audit.retry\",\"artifact.stage6.stage7_gate_selector_contract.retry\",\"artifact.stage6.downstream_artifact_blocklist.retry\",\"artifact.stage6.backend_app_shell_target_discovery_policy.retry_or_deferred\",\"artifact.stage6.refinement_manifest.retry\"],\"tool_roles\":[\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"verification_action_audit\",\"llm_io_quality_check\",\"targeted_failed_checker_rerun\",\"sacg_validate\"],\"acceptance_checkers\":[\"verification_plan_static_check\",\"tool_protocol_check\",\"human_boundary_check\",\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"verification_action_audit_check\",\"llm_io_quality_check\",\"targeted_failed_checker_rerun\",\"repair_boundary_check\",\"sacg_static_check\",\"sacg_reference_check\"],\"on_failure\":\"Keep retry_request.0001 open, keep Stage6-derived artifacts under trust barrier, and do not rerun Stage7 until the gate DAG/tool protocol contract is complete.\",\"requires_approval\":false},{\"id\":\"repair.reconcile_sacg_trust_after_stage6_retry\",\"stage\":\"repair\",\"action_type\":\"sacg_trust_reconciliation\",\"rationale\":\"Only SACG trust-barrier tooling may close or supersede retry requests and contamination barriers after clean Stage6 checker evidence exists; the closure audit cannot clear them directly.\",\"consumes\":[\"artifact.stage6.verification_plan.retry\",\"artifact.stage6.verification_artifact_contract.retry\",\"artifact.stage6.llm_action_audit.retry\",\"artifact.stage6.stage7_gate_selector_contract.retry\",\"artifact.stage6.refinement_manifest.retry\",\"state_summary.sacg_memory_truth\"],\"produces\":[\"source_sacg_state.memory.updated\",\"stage6_retry_request_resolution_record\",\"stage6_contamination_barrier_resolution_record\",\"stage7_clean_rerun_authorization_record\"],\"tool_roles\":[\"sacg_memory_update\",\"stage_retry_request\",\"stage_artifact_trust_barrier\",\"sacg_validate\",\"sacg_static_check\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"sacg_memory_check\",\"stage_retry_request_check\",\"stage_artifact_trust_barrier_check\",\"sacg_static_check\",\"sacg_reference_check\"],\"on_failure\":\"Treat the Stage6 retry as not promoted, keep Stage7 rerun blocked, and return to Stage6 contract repair with the failed trust-barrier evidence.\",\"requires_approval\":false},{\"id\":\"stage7.operator_leaf_clean_rerun\",\"stage\":\"stage7.verification\",\"action_type\":\"real_tool_verification_rerun\",\"rationale\":\"The hardware debug loop must restart at the operator/leaf layer using clean Stage6 artifacts; previous Stage7 real-tool results are planning/debug evidence only because their producer chain is contaminated.\",\"consumes\":[\"artifact.stage6.verification_artifact_contract.retry_promoted\",\"artifact.stage6.llm_action_audit.retry_promoted\",\"artifact.stage6.stage7_gate_selector_contract.retry_promoted\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.input.numeric_policy\",\"artifact.input.case_adapter\"],\"produces\":[\"artifact.stage7.real_tool_results.operator_leaf_retry\",\"artifact.stage7.verification_result.operator_leaf_retry\",\"artifact.stage7.debug_closure.operator_leaf_retry\",\"artifact.stage7.operator_leaf_promotion_certificate.retry\"],\"tool_roles\":[\"case_real_weight_artifacts\",\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"data_order_trace_check\",\"transfer_count_check\",\"addr_map_check\",\"numeric_compare\",\"deadlock_watchdog\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"real_tool.case_real_weight_artifacts\",\"case_stage_leaf_static\",\"real_tool.boundary_contract_check\",\"real_tool.case_leaf_functional\",\"real_tool.case_leaf_golden_compare\",\"data_order_trace_check\",\"transfer_count_check\",\"addr_map_check\",\"numeric_compare\",\"deadlock_watchdog\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not promote to single-transformer-layer or board work; route the clean failing trace to Stage8 failure localization and bounded repair for the operator/leaf causal slice.\",\"requires_approval\":false},{\"id\":\"stage8.operator_leaf_failure_bounded_repair\",\"stage\":\"stage8.repair\",\"action_type\":\"conditional_bounded_repair\",\"rationale\":\"If the clean operator/leaf rerun fails, repair must be localized to the earliest causal boundary and remain within approved templates/glue. The existing Stage8 repair artifacts are contaminated and cannot be promoted as validated inputs.\",\"consumes\":[\"artifact.stage7.debug_closure.operator_leaf_retry\",\"artifact.stage7.real_tool_results.operator_leaf_retry\",\"artifact.stage6.verification_artifact_contract.retry_promoted\",\"repair_permission_matrix\",\"bounded_repair_handoff_manifest\"],\"produces\":[\"artifact.stage8.failure_localization.operator_leaf_retry\",\"artifact.stage8.causal_repair_context.operator_leaf_retry\",\"artifact.stage8.repair_plan.operator_leaf_retry\",\"artifact.stage8.repair_execution_report.operator_leaf_retry\",\"artifact.stage5.generated_code_package.repaired_candidate\"],\"tool_roles\":[\"failure_slice_localization\",\"causal_repair_context_pack\",\"bounded_template_repair\",\"repair_boundary_check\",\"targeted_replay\",\"codegen_compile_gate\",\"codegen_contract_check\",\"codegen_package_static_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"repair_boundary_check\",\"targeted_replay_check\",\"codegen_compile_gate_check\",\"codegen_contract_check\",\"codegen_package_static_check\",\"human_boundary_check\",\"sacg_reference_check\"],\"on_failure\":\"Stop the repair loop and request bounded approval or Stage6/earlier backtrack only if evidence shows the fix requires architecture, pipeline, memory, numeric-policy, or major template changes.\",\"requires_approval\":false},{\"id\":\"stage7.single_transformer_layer_closure_after_leaf_pass\",\"stage\":\"stage7.verification\",\"action_type\":\"hierarchical_real_tool_verification\",\"rationale\":\"Only after operator/leaf evidence passes under a clean Stage6 contract may the design advance to the connected single-transformer-layer kernel. This preserves the required three-layer repair loop and still blocks board/AXI/DDR promotion.\",\"consumes\":[\"artifact.stage7.operator_leaf_promotion_certificate.retry\",\"artifact.stage6.verification_artifact_contract.retry_promoted\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"artifact.input.numeric_policy\",\"artifact.input.case_adapter\"],\"produces\":[\"artifact.stage7.real_tool_results.single_transformer_layer_retry\",\"artifact.stage7.verification_result.single_transformer_layer_retry\",\"artifact.stage7.debug_closure.single_transformer_layer_retry\",\"artifact.stage7.single_transformer_layer_promotion_certificate.retry\"],\"tool_roles\":[\"case_single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"single_transformer_layer\",\"data_order_trace_check\",\"transfer_count_check\",\"addr_map_check\",\"numeric_compare\",\"deadlock_watchdog\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"real_tool.case_single_transformer_layer\",\"real_tool.case_single_layer_functional\",\"real_tool.case_single_layer_golden_compare\",\"single_transformer_layer\",\"data_order_trace_check\",\"transfer_count_check\",\"addr_map_check\",\"numeric_compare\",\"deadlock_watchdog\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Localize the single-layer failing transaction and return to Stage8 bounded repair for that causal slice; do not proceed to board/AXI/DDR/runtime work.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any architecture, pipeline-structure, memory-layout, runtime-ABI, data-order, numeric-policy, tolerance, golden-reference, or major-template change beyond the bounded Stage6 contract repair and localized template/glue repair path.\",\"Any manual clearing, suppression, or override of active contamination barriers or open retry requests without sacg_memory_check, stage_retry_request_check, and stage_artifact_trust_barrier_check evidence.\",\"Any backend/app-shell target selection or board integration step where supplied board materials and real discovery/Vivado evidence are ambiguous; approval is required instead of guessing target names.\",\"Any attempt to promote Stage7, Stage8, board, or hardware-pass claims before the ordered operator/leaf and single-transformer-layer checks pass under a clean Stage6 contract.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/team/llm/closure_audit_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/team/llm/closure_audit_agent_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair.SACG repair closure auditor",
+  "used_fallback": false
+}

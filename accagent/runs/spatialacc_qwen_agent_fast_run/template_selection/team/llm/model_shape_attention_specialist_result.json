@@ -1,0 +1,244 @@
+{
+  "agent": "model_shape_attention_specialist",
+  "duration_sec": 397.3632586240019,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "model_shape_attention_specialist",
+    "approval_required_for": [
+      "Changing attention architecture parameters after promotion, including num_q_heads, num_kv_heads, head_dim, seq_len, rope_theta, GQA grouping, or lanes.",
+      "Changing numeric policy or bound widths, including activation elem_bits, accumulator/input_bits, or decoder residual output_bits.",
+      "Changing KV-cache scope from not_required to enabled, or introducing any KV-cache memory/runtime layout.",
+      "Replacing trusted attention templates, modifying template internals, changing data order, or adding free-form RTL for QKV projection, RoPE, softmax, mask, output projection, or GQA mapping."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "stage_gate_promotion",
+        "consumes": [
+          "candidate_stage_artifact",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.cross_layer.input_consistency",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board"
+        ],
+        "id": "template_selection.promote_attention_semantic_binding",
+        "on_failure": "Block promotion to cross_layer_gate_engineer, record the failed constraint edge in SACG memory, and open a bounded template_selection retry rather than modifying templates or golden outputs.",
+        "produces": [
+          "attention_semantic_expansion_review",
+          "head_mapping_consistency_decision",
+          "attention_submodule_template_coverage_decision",
+          "template_selection.cross_layer_gate_handoff"
+        ],
+        "rationale": "All supplied current-stage deterministic checker results pass, attention submodule coverage is complete or explicitly not_required, and parameter bindings are sourced from SACG constraints rather than implicit defaults.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "sacg_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "human_boundary_check"
+        ],
+        "action_type": "handoff_guard",
+        "consumes": [
+          "candidate_stage_artifact.attention_semantics",
+          "constraint.model.decoder",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "template_selection.record_kv_cache_scope_guard",
+        "on_failure": "Treat any attempted KV-cache enablement or hidden cache allocation as a memory-layout/architecture change requiring explicit approval before downstream consumption.",
+        "produces": [
+          "template_selection.kv_cache_scope_guard",
+          "memory_runtime_plan.kv_cache_not_required_constraint"
+        ],
+        "rationale": "The supplied attention semantics explicitly mark KV-cache as not_required. This scope must be preserved for memory/runtime planning so later stages do not allocate or depend on cache state without approved architecture and memory-layout changes.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "code_generation_manifest_static_check",
+          "codegen_contract_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "codegen_contract_check",
+        "consumes": [
+          "attention_semantic_expansion_review",
+          "head_mapping_consistency_decision",
+          "attention_submodule_template_coverage_decision",
+          "candidate_stage_artifact.template_source_checks",
+          "candidate_stage_artifact.parameter_bindings"
+        ],
+        "id": "code_generation.preserve_attention_template_bindings",
+        "on_failure": "Stop code generation promotion, localize the mismatched template/source/parameter edge, and route to bounded_template_repair with repair_boundary_check; do not alter trusted template internals without approval.",
+        "produces": [
+          "code_generation.attention_binding_manifest",
+          "code_generation.attention_template_hash_manifest"
+        ],
+        "rationale": "The current approval depends on trusted template and embedded-submodule coverage. Code generation must preserve source/template IDs, parameter values, and artifact hashes for attention modules rather than generating free-form replacement RTL.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "code_generation_manifest_static_check",
+          "codegen_contract_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "numeric_compare",
+          "data_order_trace_check"
+        ],
+        "action_type": "downstream_verification_plan",
+        "consumes": [
+          "attention_semantic_expansion_review",
+          "head_mapping_consistency_decision",
+          "attention_submodule_template_coverage_decision",
+          "artifact.input.case_adapter",
+          "verification_artifact_contract",
+          "generated_attention_or_decoder_artifacts"
+        ],
+        "id": "verification.plan_attention_numeric_compare",
+        "on_failure": "Do not promote to multilayer or board verification. Apply the three-layer repair loop: localize first at attention/operator leaf modules, then the connected single-transformer-layer kernel, and only after those pass proceed toward board-accurate AXI/DDR wrapping.",
+        "produces": [
+          "verification.attention_leaf_numeric_compare_report",
+          "verification.single_layer_attention_numeric_compare_report",
+          "verification.attention_data_order_trace_report"
+        ],
+        "rationale": "numeric_compare is not part of the supplied template-selection evidence and must be executed only after generated artifacts, verification contracts, and golden/reference tensors exist. This validates the semantic binding at leaf and connected single-layer levels before any board-accurate promotion.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_leaf_functional",
+          "case_leaf_golden_compare",
+          "case_single_transformer_layer",
+          "case_single_layer_functional",
+          "case_single_layer_golden_compare",
+          "numeric_compare",
+          "data_order_trace_check"
+        ]
+      }
+    ],
+    "observations": [
+      "Reviewed only the supplied artifact summary and named constraints. The visible SACG memory/state summary contains no open retry requests, open backtrack requests, or active contamination barriers relevant to template_selection.",
+      "The candidate reports pass for operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, attention_semantic_expansion_check, and cross_layer_trace_check, with no errors or warnings listed.",
+      "Attention semantic coverage is complete for the current template-selection gate: QKV projection is covered in DecoderBlock.scala, RoPE is covered in DecoderBlock.scala, GQA head mapping is covered in QKVProjection.scala via kvGroupSize, softmax is covered by Softmax.scala/template_id=softmax, output projection is covered as an embedded Linear in DecoderBlock.scala, causal mask is covered by Mask.scala/template_id=mask, and KV-cache is explicitly scoped as not_required.",
+      "GQA parameter consistency is satisfied in the supplied bindings: num_q_heads=14, num_kv_heads=2, head_dim=64, hidden_size=896, 14*64=896, and 14/2 gives the recorded kvGroupSize=7 without a fractional group.",
+      "Sequence and positional parameters are bound from model/shape constraints: seq_len=16 from constraint.shape.model.target_max_seq_len and rope_theta=1000000.0 from constraint.model.decoder.position_encoding.rope_theta. RoPE theta is bound at the decoder block wrapper where RoPE coverage is reported.",
+      "Numeric and lane parameters are bound rather than inherited from implicit constructor defaults: attention elem_bits=16 from activation dtype, decoder residual stream output_bits=32 from accumulator dtype, and lanes=8 from design-space/memory/numeric constraints. Lanes=8 divides head_dim=64, seq_len=16, and hidden_size=896 in the supplied configuration.",
+      "Template source/interface checks report existing source files and matching required constructor metadata for DecoderBlock.scala, Attention.scala, Softmax.scala, Mask.scala, and other selected operator templates. Required adapters are empty and unsupported_bindings is empty.",
+      "The cross-layer trace records presence of numeric policy, board memory, board runtime, board deployment, and cross-layer input-consistency constraints, satisfying the current template-selection stage gate. VCS/Verilator, Vivado, board runtime, and final numeric accuracy evidence are not present and are not current-stage blockers under the supplied stage_gate_policy.",
+      "numeric_compare is not claimed as executed in the candidate template-selection evidence. It remains a downstream verification requirement after generated code, testbench/golden artifacts, and verification contracts exist."
+    ],
+    "proposed_actions": [
+      "Promote the attention_semantic_expansion_review, head_mapping_consistency_decision, and attention_submodule_template_coverage_decision to template_selection.cross_layer_gate_engineer with the reported checker evidence attached.",
+      "Carry KV-cache scope as an explicit boundary condition: current candidate is cacheless/not_required; any later autoregressive KV-cache enablement must reopen memory/runtime layout and approval rather than silently adding cache state.",
+      "During code generation, preserve embedded attention submodule coverage for QKVProjection, RoPE, output projection, softmax, and causal mask in the generated manifest so that trusted-template binding cannot drift into free-form RTL.",
+      "After code generation and verification artifact construction, run leaf and single-transformer-layer numeric_compare/golden checks for attention behavior, including QKV projection, RoPE, GQA grouping, causal mask ordering, softmax, and output projection."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.attention_semantics",
+        "candidate_stage_artifact.parameter_bindings",
+        "candidate_stage_artifact.selected_templates",
+        "candidate_stage_artifact.template_source_checks",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.cross_layer_trace",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.cross_layer.input_consistency",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "constraint.shape.model -> num_q_heads=14,num_kv_heads=2,head_dim=64,seq_len=16 bindings",
+        "constraint.model.decoder.position_encoding -> rope_theta=1000000.0 binding",
+        "constraint.numeric.policy.default_rules -> elem_bits=16,input_bits=32,output_bits=32 bindings",
+        "constraint.arch.design_space + constraint.memory.board + constraint.numeric.policy -> lanes=8 binding",
+        "DecoderBlock.scala -> embedded QKVProjection/RoPE/output projection coverage",
+        "QKVProjection.scala -> kvGroupSize=7 GQA mapping",
+        "Softmax.scala -> softmax attention_submodule template",
+        "Mask.scala -> causal_mask attention_submodule template",
+        "cross_layer_trace -> numeric_policy,memory_board,runtime_board,deployment_board,input_consistency present"
+      ],
+      "nodes": [
+        "qwen2_block",
+        "self_attention",
+        "qkv_projection",
+        "rope",
+        "gqa_head_mapping",
+        "softmax",
+        "output_projection",
+        "causal_mask",
+        "kv_cache_scope_not_required",
+        "attention_parameter_bindings",
+        "attention_selected_templates",
+        "template_source_checks",
+        "cross_layer_trace"
+      ]
+    },
+    "schema_version": "spatialaccagent.model_shape_attention_specialist.v0",
+    "stage": "template_selection",
+    "status": "ready",
+    "summary": "Attention-specific template binding is ready for cross-layer gate review. The supplied candidate artifact reports trusted or embedded coverage for QKV projection, RoPE, GQA head mapping, softmax, output projection, causal mask, and explicitly not-required KV-cache scope, with bound and internally consistent attention parameters. No current-stage blockers remain under the supplied stage_gate_policy; later numeric_compare is not claimed as executed and is carried as a downstream verification action."
+  },
+  "prompt_bytes": 54628,
+  "prompt_hash": "bd76a726d76ca0f915b70e750d53680f5376270fd20d6d8e716de76ed33a5d2c",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.model_shape_attention_specialist.v0\",\"agent\":\"model_shape_attention_specialist\",\"stage\":\"template_selection\",\"status\":\"ready\",\"summary\":\"Attention-specific template binding is ready for cross-layer gate review. The supplied candidate artifact reports trusted or embedded coverage for QKV projection, RoPE, GQA head mapping, softmax, output projection, causal mask, and explicitly not-required KV-cache scope, with bound and internally consistent attention parameters. No current-stage blockers remain under the supplied stage_gate_policy; later numeric_compare is not claimed as executed and is carried as a downstream verification action.\",\"sacg_focus\":{\"nodes\":[\"qwen2_block\",\"self_attention\",\"qkv_projection\",\"rope\",\"gqa_head_mapping\",\"softmax\",\"output_projection\",\"causal_mask\",\"kv_cache_scope_not_required\",\"attention_parameter_bindings\",\"attention_selected_templates\",\"template_source_checks\",\"cross_layer_trace\"],\"edges\":[\"constraint.shape.model -> num_q_heads=14,num_kv_heads=2,head_dim=64,seq_len=16 bindings\",\"constraint.model.decoder.position_encoding -> rope_theta=1000000.0 binding\",\"constraint.numeric.policy.default_rules -> elem_bits=16,input_bits=32,output_bits=32 bindings\",\"constraint.arch.design_space + constraint.memory.board + constraint.numeric.policy -> lanes=8 binding\",\"DecoderBlock.scala -> embedded QKVProjection/RoPE/output projection coverage\",\"QKVProjection.scala -> kvGroupSize=7 GQA mapping\",\"Softmax.scala -> softmax attention_submodule template\",\"Mask.scala -> causal_mask attention_submodule template\",\"cross_layer_trace -> numeric_policy,memory_board,runtime_board,deployment_board,input_consistency present\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.cross_layer.input_consistency\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\"],\"artifacts\":[\"candidate_stage_artifact.attention_semantics\",\"candidate_stage_artifact.parameter_bindings\",\"candidate_stage_artifact.selected_templates\",\"candidate_stage_artifact.template_source_checks\",\"candidate_stage_artifact.checker_results\",\"candidate_stage_artifact.cross_layer_trace\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\"]},\"observations\":[\"Reviewed only the supplied artifact summary and named constraints. The visible SACG memory/state summary contains no open retry requests, open backtrack requests, or active contamination barriers relevant to template_selection.\",\"The candidate reports pass for operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, attention_semantic_expansion_check, and cross_layer_trace_check, with no errors or warnings listed.\",\"Attention semantic coverage is complete for the current template-selection gate: QKV projection is covered in DecoderBlock.scala, RoPE is covered in DecoderBlock.scala, GQA head mapping is covered in QKVProjection.scala via kvGroupSize, softmax is covered by Softmax.scala/template_id=softmax, output projection is covered as an embedded Linear in DecoderBlock.scala, causal mask is covered by Mask.scala/template_id=mask, and KV-cache is explicitly scoped as not_required.\",\"GQA parameter consistency is satisfied in the supplied bindings: num_q_heads=14, num_kv_heads=2, head_dim=64, hidden_size=896, 14*64=896, and 14/2 gives the recorded kvGroupSize=7 without a fractional group.\",\"Sequence and positional parameters are bound from model/shape constraints: seq_len=16 from constraint.shape.model.target_max_seq_len and rope_theta=1000000.0 from constraint.model.decoder.position_encoding.rope_theta. RoPE theta is bound at the decoder block wrapper where RoPE coverage is reported.\",\"Numeric and lane parameters are bound rather than inherited from implicit constructor defaults: attention elem_bits=16 from activation dtype, decoder residual stream output_bits=32 from accumulator dtype, and lanes=8 from design-space/memory/numeric constraints. Lanes=8 divides head_dim=64, seq_len=16, and hidden_size=896 in the supplied configuration.\",\"Template source/interface checks report existing source files and matching required constructor metadata for DecoderBlock.scala, Attention.scala, Softmax.scala, Mask.scala, and other selected operator templates. Required adapters are empty and unsupported_bindings is empty.\",\"The cross-layer trace records presence of numeric policy, board memory, board runtime, board deployment, and cross-layer input-consistency constraints, satisfying the current template-selection stage gate. VCS/Verilator, Vivado, board runtime, and final numeric accuracy evidence are not present and are not current-stage blockers under the supplied stage_gate_policy.\",\"numeric_compare is not claimed as executed in the candidate template-selection evidence. It remains a downstream verification requirement after generated code, testbench/golden artifacts, and verification contracts exist.\"],\"risks\":[],\"proposed_actions\":[\"Promote the attention_semantic_expansion_review, head_mapping_consistency_decision, and attention_submodule_template_coverage_decision to template_selection.cross_layer_gate_engineer with the reported checker evidence attached.\",\"Carry KV-cache scope as an explicit boundary condition: current candidate is cacheless/not_required; any later autoregressive KV-cache enablement must reopen memory/runtime layout and approval rather than silently adding cache state.\",\"During code generation, preserve embedded attention submodule coverage for QKVProjection, RoPE, output projection, softmax, and causal mask in the generated manifest so that trusted-template binding cannot drift into free-form RTL.\",\"After code generation and verification artifact construction, run leaf and single-transformer-layer numeric_compare/golden checks for attention behavior, including QKV projection, RoPE, GQA grouping, causal mask ordering, softmax, and output projection.\"],\"executable_actions\":[{\"id\":\"template_selection.promote_attention_semantic_binding\",\"stage\":\"template_selection\",\"action_type\":\"stage_gate_promotion\",\"rationale\":\"All supplied current-stage deterministic checker results pass, attention submodule coverage is complete or explicitly not_required, and parameter bindings are sourced from SACG constraints rather than implicit defaults.\",\"consumes\":[\"candidate_stage_artifact\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.cross_layer.input_consistency\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\"],\"produces\":[\"attention_semantic_expansion_review\",\"head_mapping_consistency_decision\",\"attention_submodule_template_coverage_decision\",\"template_selection.cross_layer_gate_handoff\"],\"tool_roles\":[\"sacg_static_check\",\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\"],\"on_failure\":\"Block promotion to cross_layer_gate_engineer, record the failed constraint edge in SACG memory, and open a bounded template_selection retry rather than modifying templates or golden outputs.\",\"requires_approval\":false},{\"id\":\"template_selection.record_kv_cache_scope_guard\",\"stage\":\"template_selection\",\"action_type\":\"handoff_guard\",\"rationale\":\"The supplied attention semantics explicitly mark KV-cache as not_required. This scope must be preserved for memory/runtime planning so later stages do not allocate or depend on cache state without approved architecture and memory-layout changes.\",\"consumes\":[\"candidate_stage_artifact.attention_semantics\",\"constraint.model.decoder\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.cross_layer.input_consistency\"],\"produces\":[\"template_selection.kv_cache_scope_guard\",\"memory_runtime_plan.kv_cache_not_required_constraint\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"boundary_contract_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"boundary_contract_check\",\"human_boundary_check\"],\"on_failure\":\"Treat any attempted KV-cache enablement or hidden cache allocation as a memory-layout/architecture change requiring explicit approval before downstream consumption.\",\"requires_approval\":false},{\"id\":\"code_generation.preserve_attention_template_bindings\",\"stage\":\"code_generation\",\"action_type\":\"codegen_contract_check\",\"rationale\":\"The current approval depends on trusted template and embedded-submodule coverage. Code generation must preserve source/template IDs, parameter values, and artifact hashes for attention modules rather than generating free-form replacement RTL.\",\"consumes\":[\"attention_semantic_expansion_review\",\"head_mapping_consistency_decision\",\"attention_submodule_template_coverage_decision\",\"candidate_stage_artifact.template_source_checks\",\"candidate_stage_artifact.parameter_bindings\"],\"produces\":[\"code_generation.attention_binding_manifest\",\"code_generation.attention_template_hash_manifest\"],\"tool_roles\":[\"code_generation_manifest_static_check\",\"codegen_contract_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"code_generation_manifest_static_check\",\"codegen_contract_check\",\"artifact_hash_check\"],\"on_failure\":\"Stop code generation promotion, localize the mismatched template/source/parameter edge, and route to bounded_template_repair with repair_boundary_check; do not alter trusted template internals without approval.\",\"requires_approval\":false},{\"id\":\"verification.plan_attention_numeric_compare\",\"stage\":\"verification\",\"action_type\":\"downstream_verification_plan\",\"rationale\":\"numeric_compare is not part of the supplied template-selection evidence and must be executed only after generated artifacts, verification contracts, and golden/reference tensors exist. This validates the semantic binding at leaf and connected single-layer levels before any board-accurate promotion.\",\"consumes\":[\"attention_semantic_expansion_review\",\"head_mapping_consistency_decision\",\"attention_submodule_template_coverage_decision\",\"artifact.input.case_adapter\",\"verification_artifact_contract\",\"generated_attention_or_decoder_artifacts\"],\"produces\":[\"verification.attention_leaf_numeric_compare_report\",\"verification.single_layer_attention_numeric_compare_report\",\"verification.attention_data_order_trace_report\"],\"tool_roles\":[\"case_leaf_functional\",\"case_leaf_golden_compare\",\"case_single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"numeric_compare\",\"data_order_trace_check\"],\"acceptance_checkers\":[\"case_leaf_functional\",\"case_leaf_golden_compare\",\"case_single_transformer_layer\",\"case_single_layer_functional\",\"case_single_layer_golden_compare\",\"numeric_compare\",\"data_order_trace_check\"],\"on_failure\":\"Do not promote to multilayer or board verification. Apply the three-layer repair loop: localize first at attention/operator leaf modules, then the connected single-transformer-layer kernel, and only after those pass proceed toward board-accurate AXI/DDR wrapping.\",\"requires_approval\":false}],\"approval_required_for\":[\"Changing attention architecture parameters after promotion, including num_q_heads, num_kv_heads, head_dim, seq_len, rope_theta, GQA grouping, or lanes.\",\"Changing numeric policy or bound widths, including activation elem_bits, accumulator/input_bits, or decoder residual output_bits.\",\"Changing KV-cache scope from not_required to enabled, or introducing any KV-cache memory/runtime layout.\",\"Replacing trusted attention templates, modifying template internals, changing data order, or adding free-form RTL for QKV projection, RoPE, softmax, mask, output projection, or GQA mapping.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/model_shape_attention_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/model_shape_attention_specialist_result.json",
+  "retry_errors": [
+    "attempt 1: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032)>",
+    "attempt 2: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "template_selection.attention semantic engineer",
+  "used_fallback": false
+}

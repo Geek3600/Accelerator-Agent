@@ -1,0 +1,159 @@
+{
+  "agent": "model_shape_specialist",
+  "duration_sec": 163.80124072999752,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "model_shape_specialist",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "stage_gate_validation_and_promotion",
+        "consumes": [
+          "candidate_stage_artifact",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "state_summary.constraints"
+        ],
+        "id": "template_selection.finalize_operator_coverage_review",
+        "on_failure": "Do not promote to cross-layer gate. Localize the failed operator, parameter, source file, or SACG edge; if the gap is within approved template metadata/binding repair bounds route to bounded_template_repair, otherwise raise stage_backtrack_request rather than using free-form RTL.",
+        "produces": [
+          "operator_template_coverage_review",
+          "coverage_gap_or_pass_decision",
+          "SACG constraint references for every covered operator"
+        ],
+        "rationale": "Finalize the current candidate as a bounded operator-template coverage artifact by checking SACG references, selected template coverage, and template parameter/source binding using the registered acceptance checkers before cross-layer gate consumption.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_reference_check",
+          "template_coverage_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "handoff_package_generation",
+        "consumes": [
+          "operator_template_coverage_review",
+          "coverage_gap_or_pass_decision",
+          "candidate_stage_artifact.cross_layer_trace",
+          "candidate_stage_artifact.forbidden_edits"
+        ],
+        "id": "template_selection.handoff_coverage_to_cross_layer_gate",
+        "on_failure": "Keep the artifact in template_selection and regenerate the handoff package with missing SACG references or explicit blocker classification; do not rely on human memory or downstream inference to recover coverage evidence.",
+        "produces": [
+          "template_selection.cross_layer_gate_handoff",
+          "operator_coverage_sacg_focus"
+        ],
+        "rationale": "Package the ready coverage decision for template_selection.cross_layer_gate_engineer while preserving the no-free-form-RTL barrier and all model, shape, numeric, memory, runtime, deployment, and cross-layer references needed for the next gate.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_reference_check"
+        ]
+      }
+    ],
+    "observations": [
+      "SACG memory shows no open backtrack_requests, open retry_requests, active contamination_barriers, or recent contamination barriers relevant to this template_selection coverage review.",
+      "The visible operator_sequence contains 9 decoder operators: rms_norm_1, self_attention, residual_add_1, rms_norm_2, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, and residual_add_2. The artifact reports coverage.required_ops=9, coverage.covered_ops=9, coverage.has_block_wrapper=true, and missing_ops=[].",
+      "The block wrapper is explicitly covered by selected template qwen2_block -> decoder_block from DecoderBlock.scala with role=block_wrapper and status=ready in parameter_bindings.",
+      "Every top-level decoder operator is bound to a selected trusted template: rms_norm_1 -> norm, self_attention -> attention, residual_add_1 -> residual, rms_norm_2 -> norm, mlp_gate_proj -> ffn, mlp_up_proj -> ffn, activation_mul -> elementwise, mlp_down_proj -> ffn, and residual_add_2 -> residual.",
+      "Required attention semantic coverage is explicitly expanded rather than hidden inside an unreviewed free-form RTL assumption: qkv_projection is covered, RoPE is covered, GQA head mapping is covered with num_q_heads=14, num_kv_heads=2, group_size=7, softmax is covered, output_projection is covered, and causal_mask is covered. KV cache is recorded as not_required, not missing.",
+      "selected_templates also include attention submodule templates softmax -> softmax from Softmax.scala and causal_mask -> mask from Mask.scala, supporting the self_attention coverage requirement in the stage gate policy.",
+      "required_adapters=[] and unsupported_bindings=[], so this candidate does not rely on explicit adapters or unsupported/free-form bindings to close coverage gaps.",
+      "Parameter binding evidence reports no missing_params and no legality_errors for the block wrapper, all top-level decoder operators, and attention submodules. Bound sources reference model, shape, numeric, architecture, memory, and board-related SACG constraints rather than implicit constructor defaults.",
+      "Template source/interface evidence reports pass for DecoderBlock.scala, Norm.scala, Attention.scala, Residual.scala, FFN.scala, Elementwise.scala, Softmax.scala, and Mask.scala, with source files present and no metadata/constructor required-parameter mismatches reported.",
+      "Checker evidence in the candidate artifact reports pass for operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, attention_semantic_expansion_check, and cross_layer_trace_check with no errors or warnings.",
+      "The cross_layer_trace reports present=true for constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, constraint.deployment.board, and constraint.cross_layer.input_consistency, so template selection is tied to cross-layer facts beyond only model shape.",
+      "The artifact contains explicit forbidden_edits against closing missing template coverage with free-form RTL, relying on Chisel default constructor values when model/numeric/board values are available, or changing template internals, data order, memory layout, numeric policy, or board/runtime assumptions without approval.",
+      "Per stage_gate_policy, absent VCS/Verilator simulation, Vivado synthesis/implementation, generated accelerator code, runtime driver, board wrapper, full DDR/AXI integration, and later numeric/board bring-up evidence are not current-stage blockers and are not claimed as passed here."
+    ],
+    "proposed_actions": [
+      "Promote the operator_template_coverage_review to template_selection.cross_layer_gate_engineer with the per-operator SACG constraint references preserved.",
+      "Archive or rerun the canonical stage acceptance checks under the requested names sacg_static_check, template_coverage_check, and template_binding_static_check if the pipeline requires exact checker-name evidence rather than the candidate artifact's equivalent checker names.",
+      "Downstream code generation and verification stages must preserve the selected template source bindings, parameter sources, and forbidden-edits barrier; any later attempt to close coverage through free-form RTL should trigger bounded template repair or backtrack rather than promotion."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_protocols"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.template.library",
+        "constraint.cross_layer.input_consistency",
+        "constraint.numeric.policy",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "constraint.model.decoder -> operator_sequence",
+        "constraint.shape.model -> parameter_bindings",
+        "constraint.numeric.policy -> parameter_bindings",
+        "constraint.arch.design_space -> lanes_and_tile_bindings",
+        "constraint.template.library -> selected_templates",
+        "selected_templates -> template_source_checks",
+        "self_attention -> attention_semantics",
+        "cross_layer_trace -> constraint.cross_layer.input_consistency"
+      ],
+      "nodes": [
+        "qwen2_block",
+        "rms_norm_1",
+        "self_attention",
+        "residual_add_1",
+        "rms_norm_2",
+        "mlp_gate_proj",
+        "mlp_up_proj",
+        "activation_mul",
+        "mlp_down_proj",
+        "residual_add_2",
+        "softmax",
+        "causal_mask",
+        "qkv_projection",
+        "rope",
+        "gqa_head_mapping",
+        "output_projection"
+      ]
+    },
+    "schema_version": "spatialaccagent.operator_template_coverage_review.v0",
+    "stage": "template_selection",
+    "status": "ready",
+    "summary": "Coverage review is ready for cross-layer gate consumption: the candidate artifact covers the qwen2 block wrapper and all 9 decoder operators with trusted selected templates, expands required self-attention semantics, reports no missing_ops or required_adapters, and shows passing coverage, parameter binding, source/interface, attention semantic, and cross-layer trace checks. This is not a hardware or simulation pass claim."
+  },
+  "prompt_bytes": 54482,
+  "prompt_hash": "fc6f4a611e07e0d8a776c4d71dfe94595657898e475c5c5535255664778aaf70",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.operator_template_coverage_review.v0\",\"agent\":\"model_shape_specialist\",\"stage\":\"template_selection\",\"status\":\"ready\",\"summary\":\"Coverage review is ready for cross-layer gate consumption: the candidate artifact covers the qwen2 block wrapper and all 9 decoder operators with trusted selected templates, expands required self-attention semantics, reports no missing_ops or required_adapters, and shows passing coverage, parameter binding, source/interface, attention semantic, and cross-layer trace checks. This is not a hardware or simulation pass claim.\",\"sacg_focus\":{\"nodes\":[\"qwen2_block\",\"rms_norm_1\",\"self_attention\",\"residual_add_1\",\"rms_norm_2\",\"mlp_gate_proj\",\"mlp_up_proj\",\"activation_mul\",\"mlp_down_proj\",\"residual_add_2\",\"softmax\",\"causal_mask\",\"qkv_projection\",\"rope\",\"gqa_head_mapping\",\"output_projection\"],\"edges\":[\"constraint.model.decoder -> operator_sequence\",\"constraint.shape.model -> parameter_bindings\",\"constraint.numeric.policy -> parameter_bindings\",\"constraint.arch.design_space -> lanes_and_tile_bindings\",\"constraint.template.library -> selected_templates\",\"selected_templates -> template_source_checks\",\"self_attention -> attention_semantics\",\"cross_layer_trace -> constraint.cross_layer.input_consistency\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.template.library\",\"constraint.cross_layer.input_consistency\",\"constraint.numeric.policy\",\"constraint.arch.design_space\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\"],\"artifacts\":[\"candidate_stage_artifact\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\"]},\"observations\":[\"SACG memory shows no open backtrack_requests, open retry_requests, active contamination_barriers, or recent contamination barriers relevant to this template_selection coverage review.\",\"The visible operator_sequence contains 9 decoder operators: rms_norm_1, self_attention, residual_add_1, rms_norm_2, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, and residual_add_2. The artifact reports coverage.required_ops=9, coverage.covered_ops=9, coverage.has_block_wrapper=true, and missing_ops=[].\",\"The block wrapper is explicitly covered by selected template qwen2_block -> decoder_block from DecoderBlock.scala with role=block_wrapper and status=ready in parameter_bindings.\",\"Every top-level decoder operator is bound to a selected trusted template: rms_norm_1 -> norm, self_attention -> attention, residual_add_1 -> residual, rms_norm_2 -> norm, mlp_gate_proj -> ffn, mlp_up_proj -> ffn, activation_mul -> elementwise, mlp_down_proj -> ffn, and residual_add_2 -> residual.\",\"Required attention semantic coverage is explicitly expanded rather than hidden inside an unreviewed free-form RTL assumption: qkv_projection is covered, RoPE is covered, GQA head mapping is covered with num_q_heads=14, num_kv_heads=2, group_size=7, softmax is covered, output_projection is covered, and causal_mask is covered. KV cache is recorded as not_required, not missing.\",\"selected_templates also include attention submodule templates softmax -> softmax from Softmax.scala and causal_mask -> mask from Mask.scala, supporting the self_attention coverage requirement in the stage gate policy.\",\"required_adapters=[] and unsupported_bindings=[], so this candidate does not rely on explicit adapters or unsupported/free-form bindings to close coverage gaps.\",\"Parameter binding evidence reports no missing_params and no legality_errors for the block wrapper, all top-level decoder operators, and attention submodules. Bound sources reference model, shape, numeric, architecture, memory, and board-related SACG constraints rather than implicit constructor defaults.\",\"Template source/interface evidence reports pass for DecoderBlock.scala, Norm.scala, Attention.scala, Residual.scala, FFN.scala, Elementwise.scala, Softmax.scala, and Mask.scala, with source files present and no metadata/constructor required-parameter mismatches reported.\",\"Checker evidence in the candidate artifact reports pass for operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, attention_semantic_expansion_check, and cross_layer_trace_check with no errors or warnings.\",\"The cross_layer_trace reports present=true for constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, constraint.deployment.board, and constraint.cross_layer.input_consistency, so template selection is tied to cross-layer facts beyond only model shape.\",\"The artifact contains explicit forbidden_edits against closing missing template coverage with free-form RTL, relying on Chisel default constructor values when model/numeric/board values are available, or changing template internals, data order, memory layout, numeric policy, or board/runtime assumptions without approval.\",\"Per stage_gate_policy, absent VCS/Verilator simulation, Vivado synthesis/implementation, generated accelerator code, runtime driver, board wrapper, full DDR/AXI integration, and later numeric/board bring-up evidence are not current-stage blockers and are not claimed as passed here.\"],\"risks\":[],\"proposed_actions\":[\"Promote the operator_template_coverage_review to template_selection.cross_layer_gate_engineer with the per-operator SACG constraint references preserved.\",\"Archive or rerun the canonical stage acceptance checks under the requested names sacg_static_check, template_coverage_check, and template_binding_static_check if the pipeline requires exact checker-name evidence rather than the candidate artifact's equivalent checker names.\",\"Downstream code generation and verification stages must preserve the selected template source bindings, parameter sources, and forbidden-edits barrier; any later attempt to close coverage through free-form RTL should trigger bounded template repair or backtrack rather than promotion.\"],\"executable_actions\":[{\"id\":\"template_selection.finalize_operator_coverage_review\",\"stage\":\"template_selection\",\"action_type\":\"stage_gate_validation_and_promotion\",\"rationale\":\"Finalize the current candidate as a bounded operator-template coverage artifact by checking SACG references, selected template coverage, and template parameter/source binding using the registered acceptance checkers before cross-layer gate consumption.\",\"consumes\":[\"candidate_stage_artifact\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"state_summary.constraints\"],\"produces\":[\"operator_template_coverage_review\",\"coverage_gap_or_pass_decision\",\"SACG constraint references for every covered operator\"],\"tool_roles\":[\"sacg_static_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"template_coverage_check\",\"template_binding_static_check\",\"sacg_reference_check\"],\"on_failure\":\"Do not promote to cross-layer gate. Localize the failed operator, parameter, source file, or SACG edge; if the gap is within approved template metadata/binding repair bounds route to bounded_template_repair, otherwise raise stage_backtrack_request rather than using free-form RTL.\",\"requires_approval\":false},{\"id\":\"template_selection.handoff_coverage_to_cross_layer_gate\",\"stage\":\"template_selection\",\"action_type\":\"handoff_package_generation\",\"rationale\":\"Package the ready coverage decision for template_selection.cross_layer_gate_engineer while preserving the no-free-form-RTL barrier and all model, shape, numeric, memory, runtime, deployment, and cross-layer references needed for the next gate.\",\"consumes\":[\"operator_template_coverage_review\",\"coverage_gap_or_pass_decision\",\"candidate_stage_artifact.cross_layer_trace\",\"candidate_stage_artifact.forbidden_edits\"],\"produces\":[\"template_selection.cross_layer_gate_handoff\",\"operator_coverage_sacg_focus\"],\"tool_roles\":[\"team_aggregate\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"sacg_reference_check\",\"template_coverage_check\",\"template_binding_static_check\"],\"on_failure\":\"Keep the artifact in template_selection and regenerate the handoff package with missing SACG references or explicit blocker classification; do not rely on human memory or downstream inference to recover coverage evidence.\",\"requires_approval\":false}],\"approval_required_for\":[]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/model_shape_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/team/llm/model_shape_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "template_selection.operator coverage engineer",
+  "used_fallback": false
+}

@@ -1,0 +1,47 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "sacg_static_check",
+      "stage_retry_request_check",
+      "stage_backtrack_request_check",
+      "output_validity_check",
+      "parameter_binding_static_check"
+    ],
+    "action_type": "stage_gate_decision",
+    "consumes": [
+      "parameter_binding/parameter_binding_report.json candidate_retry_attempt_2",
+      "parameter_binding/retry_reconciliation_contract.json",
+      "parameter_binding/sacg_state.json candidate_retry_attempt_2",
+      "parameter_binding checker results from retry_attempt_2_with_reconciliation"
+    ],
+    "id": "parameter_binding.post_retry_stage_gate_decision",
+    "on_failure": "Keep code_generation blocked and preserve all candidate retry outputs as non-promoted diagnostics until a valid gate decision is produced.",
+    "produces": [
+      "flow_decision.promote_parameter_binding_or_block",
+      "updated sacg_memory with retry outcome",
+      "stage_retry_request or stage_backtrack_request if retry fails"
+    ],
+    "rationale": "After retry, the team needs an explicit gate decision that promotes only a passing candidate and blocks downstream code_generation on any remaining current-stage risk or checker failure.",
+    "requires_approval": false,
+    "stage": "parameter_binding",
+    "tool_roles": [
+      "team_aggregate",
+      "sacg_validate",
+      "stage_retry_request",
+      "stage_backtrack_request",
+      "output_validity_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 13,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/flow_events/013_retry.json",
+  "stage": "parameter_binding"
+}

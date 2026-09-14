@@ -1,0 +1,288 @@
+{
+  "agent": "numeric_template_specialist__template_parameter_engineer",
+  "duration_sec": 625.7269942910061,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "numeric_template_specialist__template_parameter_engineer",
+    "approval_required_for": [
+      "Any change to model structure, tensor shapes, selected pipeline stages, selected templates, or major template parameters beyond the checked Stage 4 binding",
+      "Any change to numeric semantics, including binding nearest_even rounding if artifact.input.numeric_policy does not already approve it",
+      "Stage 5 concrete memory address/layout binding and any later memory-layout change",
+      "Any architecture or pipeline repair that changes stream order, residual paths, tile legality assumptions, or Stage 3 FIFO authority"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "template_coverage_check"
+        ],
+        "action_type": "evidence_gate_static_review",
+        "consumes": [
+          "candidate_stage_artifact.parameter_binding",
+          "artifact.stage2.template_selection",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage3.pipeline_static_checks",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space"
+        ],
+        "id": "parameter_binding.run_formal_acceptance_suite",
+        "on_failure": "Block parameter-binding promotion; localize whether the failure is Stage 2 template coverage, Stage 3 pipeline contract mismatch, numeric policy mismatch, shape illegality, or design-space illegality, then route only the bounded failing portion to bounded_template_repair or pipeline_repair without changing golden outputs or loosening tolerance.",
+        "produces": [
+          "parameter_binding.template_parameter_audit",
+          "per_stage_binding_legality_notes",
+          "template_parameter_handoff_summary",
+          "artifact.stage4.parameter_binding_acceptance_report"
+        ],
+        "rationale": "The candidate is internally consistent, but the exact subtask acceptance checker records are not visible. Run the formal evidence gate against Stage 2 template selection, Stage 3 contracts, model shapes, numeric policy, template library, and design space before promotion.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "numeric_policy_check",
+          "parameter_binding_static_check",
+          "template_coverage_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "parameter_binding_static_check"
+        ],
+        "action_type": "numeric_policy_reconciliation",
+        "consumes": [
+          "candidate_stage_artifact.numeric_binding_plan",
+          "candidate_stage_artifact.stage_gate_policy",
+          "artifact.input.numeric_policy",
+          "constraint.numeric.policy"
+        ],
+        "id": "parameter_binding.reconcile_rounding_policy_source",
+        "on_failure": "Keep parameter binding ready-but-unpromoted for numeric semantics; if nearest_even is not already approved, raise a numeric-policy approval request instead of editing model semantics or changing tolerances.",
+        "produces": [
+          "artifact.stage4.numeric_rounding_policy_resolution"
+        ],
+        "rationale": "The supplied artifact records rounding=nearest_even while the stage gate says rounding remains unspecified unless later approved. The design team must cite the numeric policy source or request approval before downstream implementation treats rounding as a bound semantic.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "numeric_policy_check",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "code_generation_manifest_static_check",
+          "codegen_contract_check",
+          "stream_plan_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "handoff_contract_generation",
+        "consumes": [
+          "parameter_binding.template_parameter_audit",
+          "per_stage_binding_legality_notes",
+          "template_parameter_handoff_summary",
+          "candidate_stage_artifact.global_param_scope",
+          "candidate_stage_artifact.stream_contract_trace",
+          "artifact.stage3.pipeline_plan"
+        ],
+        "id": "codegen.freeze_template_parameter_handoff",
+        "on_failure": "Do not elaborate or compile generated hardware; return the manifest mismatch to parameter_binding or pipeline_repair with the violated SACG constraint and preserve the approved numeric and shape semantics.",
+        "produces": [
+          "artifact.stage5.codegen_parameter_manifest",
+          "artifact.stage5.template_binding_handoff_contract"
+        ],
+        "rationale": "Downstream code generation must consume the per-stage bound parameters exactly, including per-stage tile overrides, numeric cast points, stream order, and the rule that Stage 3 FIFO depths remain authoritative.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "code_generation_manifest_static_check",
+          "codegen_contract_check",
+          "stream_plan_check",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "deployment_board_check"
+        ],
+        "action_type": "memory_runtime_plan",
+        "consumes": [
+          "candidate_stage_artifact.bandwidth_estimate",
+          "candidate_stage_artifact.stream_contract_trace",
+          "artifact.stage3.pipeline_plan",
+          "artifact.input.target_board_profile",
+          "constraint.memory.board",
+          "constraint.runtime.board"
+        ],
+        "id": "memory_runtime.bind_addresses_from_transfer_counts",
+        "on_failure": "Block memory/runtime promotion; route only address-map, alignment, transfer-count, or board-profile issues to memory_runtime_repair. Do not reinterpret Stage 4 parameter bindings or alter tensor shapes to fit an address plan.",
+        "produces": [
+          "artifact.stage5.memory_address_map",
+          "artifact.stage5.runtime_transfer_plan",
+          "artifact.stage5.addr_alignment_nonoverlap_report"
+        ],
+        "rationale": "The Stage 4 bandwidth estimate provides static per-stage transfer counts and AXI packing facts, but concrete memory layout is a later-stage obligation requiring aligned, non-overlapping base addresses and transfer-count checks.",
+        "requires_approval": true,
+        "stage": "memory_runtime",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "transfer_count_check",
+          "deployment_board_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ],
+        "action_type": "verification_plan_static_review",
+        "consumes": [
+          "template_parameter_handoff_summary",
+          "artifact.stage5.codegen_parameter_manifest",
+          "artifact.stage5.runtime_transfer_plan",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "constraint.human.boundary"
+        ],
+        "id": "verification.plan_hierarchical_real_tool_evidence",
+        "on_failure": "Keep simulation, synthesis, implementation, and board claims blocked; repair the verification plan or tool-evidence contract before running higher-layer hardware checks.",
+        "produces": [
+          "artifact.stage6.hierarchical_verification_plan",
+          "artifact.stage6.required_real_tool_evidence_contract"
+        ],
+        "rationale": "The candidate explicitly states that resource and bandwidth estimates are not hardware evidence. Verification must require real tool outputs and enforce the leaf-module to single-layer to board-wrapped hierarchy before any hardware correctness claim.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "SACG memory reports no active contamination barriers, open backtrack requests, or open retry requests relevant to parameter binding; no retry reconciliation contract is present.",
+      "The state summary records Stage 2 template selection and Stage 3 pipeline artifacts as existing. Detailed Stage 2 rows are compacted out of the supplied slice, so this review treats exact Stage 2 derivation as a formal checker handoff rather than inferring a missing artifact.",
+      "The candidate binds 9 pipeline stages: two norm stages, one attention stage, two residual stages, three FFN projection stages, and one elementwise activation-multiply stage. All bindings have status ready and empty legality_errors.",
+      "Visible per-stage parameters are complete for the selected template types: norm stages include hidden_size=896, eps=1e-6, lanes=8, and 32-to-16 bit contracts; attention includes hidden_size=896, seq_len=16, num_q_heads=14, num_kv_heads=2, head_dim=64, lanes=8, and 16-to-32 bit contract; residuals preserve 32-bit input/output; FFN stages include hidden_size=896, intermediate_size=4864, tile_m=16, tile_k=128, tile_n=128, lanes=8, and stage-specific output widths; activation_mul uses hidden_size=4864 and 16-bit input/output.",
+      "Model-shape arithmetic is internally consistent in the visible candidate: 14 q heads times head_dim 64 equals hidden_size 896, FFN intermediate_size is 4864, token activation elements match seq_len 16 times width, and the selected tile overrides divide the corresponding dimensions according to the passing tile_override_legality_check.",
+      "Numeric binding preserves the stated mixed-precision structure: fp16 activation/weight datapaths, fp32 residual/accumulation-visible boundaries, 32-to-16 casts at RMSNorm inputs, 16-to-32 casts after attention and down projection, and 32-bit residual additions. No model structure or tensor shape change is proposed.",
+      "The candidate checker_results show pass for parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, tile_override_legality_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check, with zero errors and zero warnings.",
+      "The stream_contract_trace covers 13 data edges and preserves stream_order=[token,tile,lane,word]. The visible edge dtype contracts match producer output bits, edge element bits, and consumer input bits, including residual_skip edges and MLP branch/multiply joins.",
+      "Global parameter scope is explicitly constrained: per-stage tile_k/tile_m/tile_n overrides are authoritative, global tile defaults are default_only, Stage 3 buffer_plan owns edge FIFO depths, and Stage 4 fifo_depth is only a local template default.",
+      "AXI packing is consistent with the supplied board memory facts for this static stage: lanes=8 with 16-bit or 32-bit elements gives 128-bit or 256-bit datapaths, which pack into the 512-bit AXI data width with 64-byte alignment. The bandwidth estimate exposes static transfer counts only.",
+      "clock_target_mhz=0 is explicitly scoped as unknown board shell clock information and is not timing evidence. The bandwidth and resource estimates are symbolic first-order checks only and are not simulation, synthesis, implementation, timing, or board evidence.",
+      "A cross-layer numeric note requires evidence-gate reconciliation: numeric_binding_plan records rounding=nearest_even from constraint.numeric.policy.default_rules, while stage_gate_policy also says rounding remains unspecified unless later approved. The current artifact must not let code generation treat rounding as newly approved unless numeric_policy_check can cite the supplied numeric policy."
+    ],
+    "proposed_actions": [
+      "Run the formal parameter-binding evidence gate using sacg_static_check, parameter_binding_static_check, template_binding_static_check, template_coverage_check, and numeric_policy_check before promoting the candidate binding.",
+      "Emit a template-parameter handoff manifest that freezes per-stage parameters, numeric cast points, stream order, per-stage tile overrides, and global_param_scope for downstream code generation.",
+      "Require Stage 5 memory/runtime planning to bind concrete base addresses and verify non-overlap, 64-byte alignment, transfer counts, and board AXI compatibility from the static bandwidth estimate.",
+      "Require Stage 6+ verification planning to use real tool evidence and the three-layer loop: operator/leaf modules first, then connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapped system. Do not claim hardware pass from the Stage 4 estimates.",
+      "If numeric_policy_check cannot prove that nearest_even rounding is already approved, request numeric-policy approval rather than silently changing the candidate or loosening comparison tolerance."
+    ],
+    "risks": [
+      "Promotion evidence risk: the visible checker_results do not include the exact acceptance-checker records named for this subtask: sacg_static_check, parameter_binding_static_check, template_binding_static_check, and template_coverage_check. Final promotion should remain blocked until the evidence gate runs or cites those checker outputs.",
+      "Numeric semantics handoff risk: rounding=nearest_even must be reconciled against artifact.input.numeric_policy and the stage_gate_policy note before it is consumed as a bound implementation semantic. If not already approved by the numeric policy, changing or binding rounding requires approval.",
+      "Downstream consumption risk: code generation or memory planning could accidentally use global tile defaults or local fifo_depth in place of per-stage tile overrides and Stage 3 edge FIFO contracts. The handoff manifest must preserve global_param_scope.",
+      "Deployment evidence risk: total_aligned_bytes_per_layer=31202816 and per-stage AXI beat counts are static estimates only. Stage 5 must still assign aligned, non-overlapping addresses, and Stage 6+ must provide real simulation/synthesis/timing/board evidence before any hardware-pass claim."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage2.template_selection",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage3.pipeline_static_checks",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "candidate_stage_artifact.parameter_binding",
+        "candidate_stage_artifact.stream_contract_trace",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.bandwidth_estimate",
+        "candidate_stage_artifact.global_param_scope"
+      ],
+      "constraints": [
+        "constraint.parameter.binding",
+        "constraint.template.library",
+        "constraint.shape.model",
+        "constraint.arch.design_space",
+        "constraint.pipeline.structure",
+        "constraint.numeric.policy",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.buffering.pipeline",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output",
+        "template.norm",
+        "template.attention",
+        "template.residual",
+        "template.ffn",
+        "template.elementwise"
+      ]
+    },
+    "schema_version": "spatialaccagent.template_parameter_engineer_review.v0",
+    "stage": "parameter_binding",
+    "status": "ready_for_evidence_gate",
+    "summary": "The supplied candidate parameter binding covers all 9 selected pipeline stages with per-stage template parameters, no visible legality errors, and six passing internal consistency checks. No current-stage template-parameter completeness blocker is visible, but final promotion must be performed by the named evidence-gate checkers and must reconcile the numeric rounding note before downstream code generation consumes it. This is not hardware, timing, or board-pass evidence."
+  },
+  "prompt_bytes": 49235,
+  "prompt_hash": "b1d53ce7a6dee00d0cb87c737cf3b2da1e8fa5de49033c828e7b281eca55f827",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.template_parameter_engineer_review.v0\",\"agent\":\"numeric_template_specialist__template_parameter_engineer\",\"stage\":\"parameter_binding\",\"status\":\"ready_for_evidence_gate\",\"summary\":\"The supplied candidate parameter binding covers all 9 selected pipeline stages with per-stage template parameters, no visible legality errors, and six passing internal consistency checks. No current-stage template-parameter completeness blocker is visible, but final promotion must be performed by the named evidence-gate checkers and must reconcile the numeric rounding note before downstream code generation consumes it. This is not hardware, timing, or board-pass evidence.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\",\"template.norm\",\"template.attention\",\"template.residual\",\"template.ffn\",\"template.elementwise\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.parameter.binding\",\"constraint.template.library\",\"constraint.shape.model\",\"constraint.arch.design_space\",\"constraint.pipeline.structure\",\"constraint.numeric.policy\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.buffering.pipeline\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"artifact.stage3.pipeline_static_checks\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"candidate_stage_artifact.parameter_binding\",\"candidate_stage_artifact.stream_contract_trace\",\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.global_param_scope\"]},\"observations\":[\"SACG memory reports no active contamination barriers, open backtrack requests, or open retry requests relevant to parameter binding; no retry reconciliation contract is present.\",\"The state summary records Stage 2 template selection and Stage 3 pipeline artifacts as existing. Detailed Stage 2 rows are compacted out of the supplied slice, so this review treats exact Stage 2 derivation as a formal checker handoff rather than inferring a missing artifact.\",\"The candidate binds 9 pipeline stages: two norm stages, one attention stage, two residual stages, three FFN projection stages, and one elementwise activation-multiply stage. All bindings have status ready and empty legality_errors.\",\"Visible per-stage parameters are complete for the selected template types: norm stages include hidden_size=896, eps=1e-6, lanes=8, and 32-to-16 bit contracts; attention includes hidden_size=896, seq_len=16, num_q_heads=14, num_kv_heads=2, head_dim=64, lanes=8, and 16-to-32 bit contract; residuals preserve 32-bit input/output; FFN stages include hidden_size=896, intermediate_size=4864, tile_m=16, tile_k=128, tile_n=128, lanes=8, and stage-specific output widths; activation_mul uses hidden_size=4864 and 16-bit input/output.\",\"Model-shape arithmetic is internally consistent in the visible candidate: 14 q heads times head_dim 64 equals hidden_size 896, FFN intermediate_size is 4864, token activation elements match seq_len 16 times width, and the selected tile overrides divide the corresponding dimensions according to the passing tile_override_legality_check.\",\"Numeric binding preserves the stated mixed-precision structure: fp16 activation/weight datapaths, fp32 residual/accumulation-visible boundaries, 32-to-16 casts at RMSNorm inputs, 16-to-32 casts after attention and down projection, and 32-bit residual additions. No model structure or tensor shape change is proposed.\",\"The candidate checker_results show pass for parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, tile_override_legality_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check, with zero errors and zero warnings.\",\"The stream_contract_trace covers 13 data edges and preserves stream_order=[token,tile,lane,word]. The visible edge dtype contracts match producer output bits, edge element bits, and consumer input bits, including residual_skip edges and MLP branch/multiply joins.\",\"Global parameter scope is explicitly constrained: per-stage tile_k/tile_m/tile_n overrides are authoritative, global tile defaults are default_only, Stage 3 buffer_plan owns edge FIFO depths, and Stage 4 fifo_depth is only a local template default.\",\"AXI packing is consistent with the supplied board memory facts for this static stage: lanes=8 with 16-bit or 32-bit elements gives 128-bit or 256-bit datapaths, which pack into the 512-bit AXI data width with 64-byte alignment. The bandwidth estimate exposes static transfer counts only.\",\"clock_target_mhz=0 is explicitly scoped as unknown board shell clock information and is not timing evidence. The bandwidth and resource estimates are symbolic first-order checks only and are not simulation, synthesis, implementation, timing, or board evidence.\",\"A cross-layer numeric note requires evidence-gate reconciliation: numeric_binding_plan records rounding=nearest_even from constraint.numeric.policy.default_rules, while stage_gate_policy also says rounding remains unspecified unless later approved. The current artifact must not let code generation treat rounding as newly approved unless numeric_policy_check can cite the supplied numeric policy.\"],\"risks\":[\"Promotion evidence risk: the visible checker_results do not include the exact acceptance-checker records named for this subtask: sacg_static_check, parameter_binding_static_check, template_binding_static_check, and template_coverage_check. Final promotion should remain blocked until the evidence gate runs or cites those checker outputs.\",\"Numeric semantics handoff risk: rounding=nearest_even must be reconciled against artifact.input.numeric_policy and the stage_gate_policy note before it is consumed as a bound implementation semantic. If not already approved by the numeric policy, changing or binding rounding requires approval.\",\"Downstream consumption risk: code generation or memory planning could accidentally use global tile defaults or local fifo_depth in place of per-stage tile overrides and Stage 3 edge FIFO contracts. The handoff manifest must preserve global_param_scope.\",\"Deployment evidence risk: total_aligned_bytes_per_layer=31202816 and per-stage AXI beat counts are static estimates only. Stage 5 must still assign aligned, non-overlapping addresses, and Stage 6+ must provide real simulation/synthesis/timing/board evidence before any hardware-pass claim.\"],\"proposed_actions\":[\"Run the formal parameter-binding evidence gate using sacg_static_check, parameter_binding_static_check, template_binding_static_check, template_coverage_check, and numeric_policy_check before promoting the candidate binding.\",\"Emit a template-parameter handoff manifest that freezes per-stage parameters, numeric cast points, stream order, per-stage tile overrides, and global_param_scope for downstream code generation.\",\"Require Stage 5 memory/runtime planning to bind concrete base addresses and verify non-overlap, 64-byte alignment, transfer counts, and board AXI compatibility from the static bandwidth estimate.\",\"Require Stage 6+ verification planning to use real tool evidence and the three-layer loop: operator/leaf modules first, then connected single-transformer-layer kernel, then board-accurate AXI/DDR wrapped system. Do not claim hardware pass from the Stage 4 estimates.\",\"If numeric_policy_check cannot prove that nearest_even rounding is already approved, request numeric-policy approval rather than silently changing the candidate or loosening comparison tolerance.\"],\"executable_actions\":[{\"id\":\"parameter_binding.run_formal_acceptance_suite\",\"stage\":\"parameter_binding\",\"action_type\":\"evidence_gate_static_review\",\"rationale\":\"The candidate is internally consistent, but the exact subtask acceptance checker records are not visible. Run the formal evidence gate against Stage 2 template selection, Stage 3 contracts, model shapes, numeric policy, template library, and design space before promotion.\",\"consumes\":[\"candidate_stage_artifact.parameter_binding\",\"artifact.stage2.template_selection\",\"artifact.stage3.pipeline_plan\",\"artifact.stage3.pipeline_static_checks\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\"],\"produces\":[\"parameter_binding.template_parameter_audit\",\"per_stage_binding_legality_notes\",\"template_parameter_handoff_summary\",\"artifact.stage4.parameter_binding_acceptance_report\"],\"tool_roles\":[\"sacg_validate\",\"sacg_static_check\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"template_coverage_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"numeric_policy_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"template_coverage_check\"],\"on_failure\":\"Block parameter-binding promotion; localize whether the failure is Stage 2 template coverage, Stage 3 pipeline contract mismatch, numeric policy mismatch, shape illegality, or design-space illegality, then route only the bounded failing portion to bounded_template_repair or pipeline_repair without changing golden outputs or loosening tolerance.\",\"requires_approval\":false},{\"id\":\"parameter_binding.reconcile_rounding_policy_source\",\"stage\":\"parameter_binding\",\"action_type\":\"numeric_policy_reconciliation\",\"rationale\":\"The supplied artifact records rounding=nearest_even while the stage gate says rounding remains unspecified unless later approved. The design team must cite the numeric policy source or request approval before downstream implementation treats rounding as a bound semantic.\",\"consumes\":[\"candidate_stage_artifact.numeric_binding_plan\",\"candidate_stage_artifact.stage_gate_policy\",\"artifact.input.numeric_policy\",\"constraint.numeric.policy\"],\"produces\":[\"artifact.stage4.numeric_rounding_policy_resolution\"],\"tool_roles\":[\"numeric_policy_check\",\"parameter_binding_static_check\"],\"acceptance_checkers\":[\"numeric_policy_check\",\"parameter_binding_static_check\"],\"on_failure\":\"Keep parameter binding ready-but-unpromoted for numeric semantics; if nearest_even is not already approved, raise a numeric-policy approval request instead of editing model semantics or changing tolerances.\",\"requires_approval\":false},{\"id\":\"codegen.freeze_template_parameter_handoff\",\"stage\":\"code_generation\",\"action_type\":\"handoff_contract_generation\",\"rationale\":\"Downstream code generation must consume the per-stage bound parameters exactly, including per-stage tile overrides, numeric cast points, stream order, and the rule that Stage 3 FIFO depths remain authoritative.\",\"consumes\":[\"parameter_binding.template_parameter_audit\",\"per_stage_binding_legality_notes\",\"template_parameter_handoff_summary\",\"candidate_stage_artifact.global_param_scope\",\"candidate_stage_artifact.stream_contract_trace\",\"artifact.stage3.pipeline_plan\"],\"produces\":[\"artifact.stage5.codegen_parameter_manifest\",\"artifact.stage5.template_binding_handoff_contract\"],\"tool_roles\":[\"code_generation_manifest_static_check\",\"codegen_contract_check\",\"stream_plan_check\",\"parameter_binding_static_check\"],\"acceptance_checkers\":[\"code_generation_manifest_static_check\",\"codegen_contract_check\",\"stream_plan_check\",\"template_binding_static_check\"],\"on_failure\":\"Do not elaborate or compile generated hardware; return the manifest mismatch to parameter_binding or pipeline_repair with the violated SACG constraint and preserve the approved numeric and shape semantics.\",\"requires_approval\":false},{\"id\":\"memory_runtime.bind_addresses_from_transfer_counts\",\"stage\":\"memory_runtime\",\"action_type\":\"memory_runtime_plan\",\"rationale\":\"The Stage 4 bandwidth estimate provides static per-stage transfer counts and AXI packing facts, but concrete memory layout is a later-stage obligation requiring aligned, non-overlapping base addresses and transfer-count checks.\",\"consumes\":[\"candidate_stage_artifact.bandwidth_estimate\",\"candidate_stage_artifact.stream_contract_trace\",\"artifact.stage3.pipeline_plan\",\"artifact.input.target_board_profile\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"produces\":[\"artifact.stage5.memory_address_map\",\"artifact.stage5.runtime_transfer_plan\",\"artifact.stage5.addr_alignment_nonoverlap_report\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"deployment_board_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"addr_map_check\",\"transfer_count_check\",\"deployment_board_check\"],\"on_failure\":\"Block memory/runtime promotion; route only address-map, alignment, transfer-count, or board-profile issues to memory_runtime_repair. Do not reinterpret Stage 4 parameter bindings or alter tensor shapes to fit an address plan.\",\"requires_approval\":true},{\"id\":\"verification.plan_hierarchical_real_tool_evidence\",\"stage\":\"verification\",\"action_type\":\"verification_plan_static_review\",\"rationale\":\"The candidate explicitly states that resource and bandwidth estimates are not hardware evidence. Verification must require real tool outputs and enforce the leaf-module to single-layer to board-wrapped hierarchy before any hardware correctness claim.\",\"consumes\":[\"template_parameter_handoff_summary\",\"artifact.stage5.codegen_parameter_manifest\",\"artifact.stage5.runtime_transfer_plan\",\"artifact.input.tool_profile\",\"artifact.input.tool_protocols\",\"constraint.human.boundary\"],\"produces\":[\"artifact.stage6.hierarchical_verification_plan\",\"artifact.stage6.required_real_tool_evidence_contract\"],\"tool_roles\":[\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"tool_protocol_check\",\"human_boundary_check\"],\"acceptance_checkers\":[\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"required_real_tool_evidence_check\",\"tool_protocol_check\",\"human_boundary_check\"],\"on_failure\":\"Keep simulation, synthesis, implementation, and board claims blocked; repair the verification plan or tool-evidence contract before running higher-layer hardware checks.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any change to model structure, tensor shapes, selected pipeline stages, selected templates, or major template parameters beyond the checked Stage 4 binding\",\"Any change to numeric semantics, including binding nearest_even rounding if artifact.input.numeric_policy does not already approve it\",\"Stage 5 concrete memory address/layout binding and any later memory-layout change\",\"Any architecture or pipeline repair that changes stream order, residual paths, tile legality assumptions, or Stage 3 FIFO authority\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/numeric_template_specialist__template_parameter_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/llm/numeric_template_specialist__template_parameter_engineer_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 504: Gateway Time-out; response_body=<html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "parameter_binding.template parameter engineer",
+  "used_fallback": false
+}

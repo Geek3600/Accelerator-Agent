@@ -1,0 +1,45 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "failure_localization_check",
+      "causal_repair_context_check",
+      "stage_backtrack_request_check",
+      "sacg_memory_check",
+      "human_boundary_check"
+    ],
+    "action_type": "conditional_backtrack_request",
+    "consumes": [
+      "artifact.stage6.unresolved_risk_extraction_report",
+      "artifact.stage6.current_stage_risk_resolution_report",
+      "artifact.stage6.stage_gate_evidence"
+    ],
+    "id": "stage6.open_explicit_backtrack_request_if_cross_stage_change_needed",
+    "on_failure": "Stop the autonomous run to avoid artifact contamination; do not modify upstream artifacts, golden outputs, tolerances, or generated code without an accepted backtrack/approval record.",
+    "produces": [
+      "artifact.stage6.causal_repair_context_pack",
+      "sacg_memory.open_backtrack_request.stage6_to_required_upstream_stage",
+      "artifact.stage6.cross_stage_change_approval_packet"
+    ],
+    "rationale": "If Stage6 repair discovers that the verification failure can only be resolved by changing code generation, parameter binding, pipeline planning, memory/runtime ABI, numeric policy, golden reference, or implementation templates, that is outside bounded Stage6 authority and must become an explicit approved backtrack request.",
+    "requires_approval": true,
+    "stage": "verification_artifacts",
+    "tool_roles": [
+      "failure_slice_localization",
+      "causal_repair_context_pack",
+      "stage_backtrack_request",
+      "sacg_memory_update"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "stop",
+  "flow_event_index": 22,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/flow_events/022_stop.json",
+  "stage": "verification_artifacts"
+}

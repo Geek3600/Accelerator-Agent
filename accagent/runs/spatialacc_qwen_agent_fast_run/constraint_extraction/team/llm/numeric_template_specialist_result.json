@@ -1,0 +1,237 @@
+{
+  "agent": "numeric_template_specialist",
+  "duration_sec": 175.6429292920002,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "numeric_template_specialist",
+    "approval_required_for": [
+      "Changing numeric precision policy, quantization assumptions, rounding/saturation behavior, accumulator widths, or comparison tolerance beyond artifact.input.numeric_policy",
+      "Adding, removing, or semantically changing template library entries or template metadata beyond artifact.input.template_library and artifact.input.template_metadata",
+      "Changing architecture/design-space parameters, selected design point, or resource-risk assumptions beyond artifact.input.design_space",
+      "Changing memory layout, data order, transfer unit, runtime ABI, or board-resource assumptions that are bound to numeric/template/design-space facts"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "candidate_design_graph_summary"
+        ],
+        "id": "constraint_extraction.run_numeric_template_static_audit",
+        "on_failure": "Block handoff to constraint_graph_auditor for numeric/template approval, preserve the failing checker evidence, and route the gap list to bounded SACG binding repair without loosening numeric tolerance or bypassing templates.",
+        "produces": [
+          "artifact.review.constraint_extraction.numeric_template_findings",
+          "artifact.review.constraint_extraction.template_binding_gap_list",
+          "artifact.review.constraint_extraction.parameter_binding_patch_requests"
+        ],
+        "rationale": "The supplied summary shows relevant artifact and constraint classes but not checker-bound numeric/template/parameter evidence. Run the stage-required static checks before promotion.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check"
+        ],
+        "action_type": "bounded_sacg_binding_repair",
+        "consumes": [
+          "artifact.review.constraint_extraction.numeric_template_findings",
+          "artifact.review.constraint_extraction.template_binding_gap_list",
+          "artifact.review.constraint_extraction.parameter_binding_patch_requests",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space"
+        ],
+        "id": "constraint_extraction.apply_bounded_numeric_template_binding_patch",
+        "on_failure": "If a gap cannot be repaired by binding existing supplied facts, stop the patch, keep the candidate blocked, and escalate to the approval-gated semantic resolution action.",
+        "produces": [
+          "artifact.patch.constraint_extraction.numeric_template_binding_updates",
+          "candidate_design_graph_summary.binding_patch_candidate"
+        ],
+        "rationale": "If the audit finds facts present in supplied inputs but not explicitly bound in SACG, repair only those binding edges and boundary annotations; do not change numeric policy, template semantics, or design-space values in this action.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "bounded_template_repair",
+          "sacg_validate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "deployment_board_check",
+          "parameter_binding_static_check"
+        ],
+        "action_type": "cross_layer_consistency_precheck",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "candidate_design_graph_summary"
+        ],
+        "id": "constraint_extraction.emit_cross_layer_numeric_template_handoff",
+        "on_failure": "Classify failures as current-stage SACG binding blockers when required facts are absent; otherwise record them as later-stage handoff risks with explicit constraints and do not claim hardware pass.",
+        "produces": [
+          "artifact.review.constraint_extraction.cross_layer_numeric_template_consistency_notes",
+          "artifact.review.constraint_extraction.resource_risk_boundary_notes"
+        ],
+        "rationale": "Numeric/template choices must remain consistent with model/shape, data ordering, memory/runtime transfer assumptions, implementation resource risk, and board facts. The compact summary does not expose these bindings, so generate explicit handoff notes and current-stage gap markers.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "deployment_board_check",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "human_boundary_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "approval_gated_constraint_update",
+        "consumes": [
+          "artifact.review.constraint_extraction.template_binding_gap_list",
+          "artifact.review.constraint_extraction.parameter_binding_patch_requests",
+          "artifact.review.constraint_extraction.cross_layer_numeric_template_consistency_notes",
+          "artifact.input.human_agent_boundary"
+        ],
+        "id": "constraint_extraction.resolve_numeric_template_design_space_semantic_changes",
+        "on_failure": "Keep the original candidate blocked for downstream consumption; do not update policy, template coverage, or design-space facts until approval is recorded and all current-stage static checks pass after the update.",
+        "produces": [
+          "artifact.approval.constraint_extraction.numeric_template_design_space_boundary_decisions",
+          "artifact.patch.constraint_extraction.approved_policy_template_design_space_updates"
+        ],
+        "rationale": "Changes to numeric precision policy, template library semantics, architecture/design-space parameters, memory layout, or resource-risk assumptions are design decisions and require explicit approval rather than silent SACG repair.",
+        "requires_approval": true,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "architecture_review",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "Relevant input artifact classes are listed: artifact.input.numeric_policy, artifact.input.template_library, artifact.input.template_metadata, and artifact.input.design_space are present in the state summary.",
+      "Relevant constraint IDs are listed: constraint.numeric.policy, constraint.template.library, constraint.arch.design_space, and constraint.cross_layer.input_consistency are present in the state summary.",
+      "The candidate design graph summary reports 21 nodes, 16 constraints, 8 edges, 47 evidence fields, zero validation_errors, and no failed_invariants. This is useful structural evidence but is not equivalent to numeric_policy_check, template_coverage_check, template_binding_static_check, or parameter_binding_static_check pass evidence.",
+      "The visible prompt slice is compact and does not expose the actual numeric formats, quantization assumptions, rounding/saturation behavior, accumulator widths, comparison tolerances, template parameter domains, selected design-space point, or resource-risk thresholds. Because artifact classes exist, these are missing-detail concerns to be checked and handed off, not proof that the facts are absent.",
+      "No open retry requests, backtrack requests, or active contamination barriers relevant to this stage are visible in the supplied sacg_memory/state summary. No retry reconciliation contract or stage gate policy is supplied.",
+      "Current-stage approval should remain blocked for the numeric/template portion until checker evidence binds numeric policy, template coverage, design-space parameters, and resource-risk assumptions to SACG facts with explicit boundaries."
+    ],
+    "proposed_actions": [
+      "Run the numeric, template coverage, template binding, and parameter binding static checks over the candidate SACG and supplied input artifacts.",
+      "Produce artifact.review.constraint_extraction.numeric_template_findings, artifact.review.constraint_extraction.template_binding_gap_list, and artifact.review.constraint_extraction.parameter_binding_patch_requests as the bounded handoff to the constraint graph auditor.",
+      "If gaps are only missing SACG bindings to already supplied facts, create a bounded binding patch and rerun the same checkers before promotion.",
+      "If any gap requires changing numeric policy, adding/changing templates, changing design-space parameters, or altering memory/layout/runtime assumptions, require explicit approval before updating the SACG.",
+      "Record cross-layer handoff notes linking model/shape, numeric policy, template metadata, data order, memory/runtime, implementation resource risk, and board assumptions; keep hardware correctness unclaimed until later real tool evidence exists."
+    ],
+    "risks": [
+      "Numeric precision policy may be structurally present but not explicitly bounded to quantization formats, scale/zero-point or fixed-point interpretation, rounding, saturation, accumulator width, and allowed numeric comparison tolerance.",
+      "Template coverage may be present as a library artifact but unproven against all model/shape-required operations and tensor boundary cases; this risks later fallback to unapproved free-form RTL or unsupported operators.",
+      "Template metadata and design-space parameters may not have explicit legal ranges, selected values, provenance, or binding boundaries, risking invalid generated configurations.",
+      "Resource-risk assumptions may not be bound from design-space choices to board memory, runtime transfer units, implementation resource budgets, and timing-risk thresholds; this should be treated as a cross-layer handoff risk until checked.",
+      "Data order and transfer-unit assumptions are not visible in the numeric/template summary; if packing order, stream order, or memory layout is inconsistent with numeric formats and template ports, later functional comparison can fail despite structurally valid SACG nodes.",
+      "Zero validation errors in the compact candidate summary can hide omitted checker evidence; do not claim pass or promote downstream consumption without the named checker artifacts."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.model_config",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "candidate_design_graph_summary"
+      ],
+      "constraints": [
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.cross_layer.input_consistency",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "candidate summary reports 8 aggregate edges but does not expose edge IDs; verify artifact.input.numeric_policy -> constraint.numeric.policy",
+        "verify artifact.input.template_library -> constraint.template.library",
+        "verify artifact.input.template_metadata -> constraint.template.library",
+        "verify artifact.input.design_space -> constraint.arch.design_space",
+        "verify constraint.numeric.policy -> constraint.template.library binding boundaries",
+        "verify constraint.template.library -> constraint.arch.design_space parameter boundaries",
+        "verify numeric/template/design-space facts -> constraint.cross_layer.input_consistency",
+        "verify cross-layer references from model/shape facts to numeric/template parameter facts",
+        "verify cross-layer references from numeric/template/design-space facts to memory/runtime/board resource-risk assumptions"
+      ],
+      "nodes": [
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "candidate_design_graph_summary",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.cross_layer.input_consistency",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ]
+    },
+    "schema_version": "spatialaccagent.numeric_template_specialist.review.v0",
+    "stage": "constraint_extraction",
+    "status": "action_required_pending_static_checker_evidence",
+    "summary": "The supplied summary shows that numeric policy, template library, template metadata, design-space, and cross-layer consistency constraint classes are present in the candidate SACG, with no reported validation errors or failed invariants. However, only aggregate node/edge/evidence counts are visible; detailed numeric assumptions, template bindings, parameter ranges, and resource-risk boundaries are not shown. Therefore this stage cannot claim pass yet and should run the named static checkers, emit gap lists, and require approval for any semantic policy/template/design-space changes."
+  },
+  "prompt_bytes": 25480,
+  "prompt_hash": "c933a6f9be513f04741db19254bc67ec1961889747e3d04e2284662f09f272e9",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.numeric_template_specialist.review.v0\",\"agent\":\"numeric_template_specialist\",\"stage\":\"constraint_extraction\",\"status\":\"action_required_pending_static_checker_evidence\",\"summary\":\"The supplied summary shows that numeric policy, template library, template metadata, design-space, and cross-layer consistency constraint classes are present in the candidate SACG, with no reported validation errors or failed invariants. However, only aggregate node/edge/evidence counts are visible; detailed numeric assumptions, template bindings, parameter ranges, and resource-risk boundaries are not shown. Therefore this stage cannot claim pass yet and should run the named static checkers, emit gap lists, and require approval for any semantic policy/template/design-space changes.\",\"sacg_focus\":{\"nodes\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"candidate_design_graph_summary\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.cross_layer.input_consistency\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\"],\"edges\":[\"candidate summary reports 8 aggregate edges but does not expose edge IDs; verify artifact.input.numeric_policy -> constraint.numeric.policy\",\"verify artifact.input.template_library -> constraint.template.library\",\"verify artifact.input.template_metadata -> constraint.template.library\",\"verify artifact.input.design_space -> constraint.arch.design_space\",\"verify constraint.numeric.policy -> constraint.template.library binding boundaries\",\"verify constraint.template.library -> constraint.arch.design_space parameter boundaries\",\"verify numeric/template/design-space facts -> constraint.cross_layer.input_consistency\",\"verify cross-layer references from model/shape facts to numeric/template parameter facts\",\"verify cross-layer references from numeric/template/design-space facts to memory/runtime/board resource-risk assumptions\"],\"constraints\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.cross_layer.input_consistency\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\"],\"artifacts\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.model_config\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"candidate_design_graph_summary\"]},\"observations\":[\"Relevant input artifact classes are listed: artifact.input.numeric_policy, artifact.input.template_library, artifact.input.template_metadata, and artifact.input.design_space are present in the state summary.\",\"Relevant constraint IDs are listed: constraint.numeric.policy, constraint.template.library, constraint.arch.design_space, and constraint.cross_layer.input_consistency are present in the state summary.\",\"The candidate design graph summary reports 21 nodes, 16 constraints, 8 edges, 47 evidence fields, zero validation_errors, and no failed_invariants. This is useful structural evidence but is not equivalent to numeric_policy_check, template_coverage_check, template_binding_static_check, or parameter_binding_static_check pass evidence.\",\"The visible prompt slice is compact and does not expose the actual numeric formats, quantization assumptions, rounding/saturation behavior, accumulator widths, comparison tolerances, template parameter domains, selected design-space point, or resource-risk thresholds. Because artifact classes exist, these are missing-detail concerns to be checked and handed off, not proof that the facts are absent.\",\"No open retry requests, backtrack requests, or active contamination barriers relevant to this stage are visible in the supplied sacg_memory/state summary. No retry reconciliation contract or stage gate policy is supplied.\",\"Current-stage approval should remain blocked for the numeric/template portion until checker evidence binds numeric policy, template coverage, design-space parameters, and resource-risk assumptions to SACG facts with explicit boundaries.\"],\"risks\":[\"Numeric precision policy may be structurally present but not explicitly bounded to quantization formats, scale/zero-point or fixed-point interpretation, rounding, saturation, accumulator width, and allowed numeric comparison tolerance.\",\"Template coverage may be present as a library artifact but unproven against all model/shape-required operations and tensor boundary cases; this risks later fallback to unapproved free-form RTL or unsupported operators.\",\"Template metadata and design-space parameters may not have explicit legal ranges, selected values, provenance, or binding boundaries, risking invalid generated configurations.\",\"Resource-risk assumptions may not be bound from design-space choices to board memory, runtime transfer units, implementation resource budgets, and timing-risk thresholds; this should be treated as a cross-layer handoff risk until checked.\",\"Data order and transfer-unit assumptions are not visible in the numeric/template summary; if packing order, stream order, or memory layout is inconsistent with numeric formats and template ports, later functional comparison can fail despite structurally valid SACG nodes.\",\"Zero validation errors in the compact candidate summary can hide omitted checker evidence; do not claim pass or promote downstream consumption without the named checker artifacts.\"],\"proposed_actions\":[\"Run the numeric, template coverage, template binding, and parameter binding static checks over the candidate SACG and supplied input artifacts.\",\"Produce artifact.review.constraint_extraction.numeric_template_findings, artifact.review.constraint_extraction.template_binding_gap_list, and artifact.review.constraint_extraction.parameter_binding_patch_requests as the bounded handoff to the constraint graph auditor.\",\"If gaps are only missing SACG bindings to already supplied facts, create a bounded binding patch and rerun the same checkers before promotion.\",\"If any gap requires changing numeric policy, adding/changing templates, changing design-space parameters, or altering memory/layout/runtime assumptions, require explicit approval before updating the SACG.\",\"Record cross-layer handoff notes linking model/shape, numeric policy, template metadata, data order, memory/runtime, implementation resource risk, and board assumptions; keep hardware correctness unclaimed until later real tool evidence exists.\"],\"executable_actions\":[{\"id\":\"constraint_extraction.run_numeric_template_static_audit\",\"stage\":\"constraint_extraction\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"The supplied summary shows relevant artifact and constraint classes but not checker-bound numeric/template/parameter evidence. Run the stage-required static checks before promotion.\",\"consumes\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"candidate_design_graph_summary\"],\"produces\":[\"artifact.review.constraint_extraction.numeric_template_findings\",\"artifact.review.constraint_extraction.template_binding_gap_list\",\"artifact.review.constraint_extraction.parameter_binding_patch_requests\"],\"tool_roles\":[\"sacg_validate\",\"sacg_static_check\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"numeric_policy_check\",\"template_coverage_check\",\"template_binding_static_check\",\"parameter_binding_static_check\"],\"on_failure\":\"Block handoff to constraint_graph_auditor for numeric/template approval, preserve the failing checker evidence, and route the gap list to bounded SACG binding repair without loosening numeric tolerance or bypassing templates.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.apply_bounded_numeric_template_binding_patch\",\"stage\":\"constraint_extraction\",\"action_type\":\"bounded_sacg_binding_repair\",\"rationale\":\"If the audit finds facts present in supplied inputs but not explicitly bound in SACG, repair only those binding edges and boundary annotations; do not change numeric policy, template semantics, or design-space values in this action.\",\"consumes\":[\"artifact.review.constraint_extraction.numeric_template_findings\",\"artifact.review.constraint_extraction.template_binding_gap_list\",\"artifact.review.constraint_extraction.parameter_binding_patch_requests\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\"],\"produces\":[\"artifact.patch.constraint_extraction.numeric_template_binding_updates\",\"candidate_design_graph_summary.binding_patch_candidate\"],\"tool_roles\":[\"bounded_template_repair\",\"sacg_validate\"],\"acceptance_checkers\":[\"sacg_static_check\",\"numeric_policy_check\",\"template_coverage_check\",\"template_binding_static_check\",\"parameter_binding_static_check\"],\"on_failure\":\"If a gap cannot be repaired by binding existing supplied facts, stop the patch, keep the candidate blocked, and escalate to the approval-gated semantic resolution action.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.emit_cross_layer_numeric_template_handoff\",\"stage\":\"constraint_extraction\",\"action_type\":\"cross_layer_consistency_precheck\",\"rationale\":\"Numeric/template choices must remain consistent with model/shape, data ordering, memory/runtime transfer assumptions, implementation resource risk, and board facts. The compact summary does not expose these bindings, so generate explicit handoff notes and current-stage gap markers.\",\"consumes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"candidate_design_graph_summary\"],\"produces\":[\"artifact.review.constraint_extraction.cross_layer_numeric_template_consistency_notes\",\"artifact.review.constraint_extraction.resource_risk_boundary_notes\"],\"tool_roles\":[\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"deployment_board_check\",\"parameter_binding_static_check\"],\"acceptance_checkers\":[\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"deployment_board_check\",\"parameter_binding_static_check\"],\"on_failure\":\"Classify failures as current-stage SACG binding blockers when required facts are absent; otherwise record them as later-stage handoff risks with explicit constraints and do not claim hardware pass.\",\"requires_approval\":false},{\"id\":\"constraint_extraction.resolve_numeric_template_design_space_semantic_changes\",\"stage\":\"constraint_extraction\",\"action_type\":\"approval_gated_constraint_update\",\"rationale\":\"Changes to numeric precision policy, template library semantics, architecture/design-space parameters, memory layout, or resource-risk assumptions are design decisions and require explicit approval rather than silent SACG repair.\",\"consumes\":[\"artifact.review.constraint_extraction.template_binding_gap_list\",\"artifact.review.constraint_extraction.parameter_binding_patch_requests\",\"artifact.review.constraint_extraction.cross_layer_numeric_template_consistency_notes\",\"artifact.input.human_agent_boundary\"],\"produces\":[\"artifact.approval.constraint_extraction.numeric_template_design_space_boundary_decisions\",\"artifact.patch.constraint_extraction.approved_policy_template_design_space_updates\"],\"tool_roles\":[\"architecture_review\",\"human_boundary_check\"],\"acceptance_checkers\":[\"human_boundary_check\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"sacg_static_check\"],\"on_failure\":\"Keep the original candidate blocked for downstream consumption; do not update policy, template coverage, or design-space facts until approval is recorded and all current-stage static checks pass after the update.\",\"requires_approval\":true}],\"approval_required_for\":[\"Changing numeric precision policy, quantization assumptions, rounding/saturation behavior, accumulator widths, or comparison tolerance beyond artifact.input.numeric_policy\",\"Adding, removing, or semantically changing template library entries or template metadata beyond artifact.input.template_library and artifact.input.template_metadata\",\"Changing architecture/design-space parameters, selected design point, or resource-risk assumptions beyond artifact.input.design_space\",\"Changing memory layout, data order, transfer unit, runtime ABI, or board-resource assumptions that are bound to numeric/template/design-space facts\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/numeric_template_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/constraint_extraction/team/llm/numeric_template_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction.numeric policy and template binding engineer",
+  "used_fallback": false
+}

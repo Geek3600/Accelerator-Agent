@@ -1,0 +1,546 @@
+{
+  "_llm_provenance": {
+    "mode": "llm",
+    "sub_agent": "design_space_agent",
+    "used_fallback": false
+  },
+  "hard_constraints": [
+    "The design must fit the xcvu9p_CIV-flgb2104-2-i FPGA resources after synthesis and implementation.",
+    "The implemented design must meet timing on the target board shell clock c0_ddr4_s_axi_clk or the supplied allowed clock target once available.",
+    "Board output must be valid under the board pass flow using scripts/board/run_pyjm12_smoke.sh, required_control_protocol=xdma_raw_register_and_ddr, and output address 0x28092f1000.",
+    "The hardware must use the real board DDR4 AXI interface c0_ddr4_s_axi_* with 512-bit data width, 64-byte beats, 37-bit addresses, 4-bit IDs, one DDR channel, reset c0_ddr4_s_axi_rst_n, and calibration gate c0_init_calib_complete.",
+    "Do not replace the board interface with a 64-bit AXI path, non-DDR memory model, or smoke-only/checker-skipped flow for promotion.",
+    "Do not change model semantics: num_layers=24, hidden_size=896, intermediate_size=4864, seq_len=16, GQA with 14 query heads and 2 KV heads, head_dim=64, causal attention, RoPE theta=1000000.0, RMSNorm eps=1e-6, gated SiLU MLP, and the supplied decoder operator order must be preserved.",
+    "Do not change weight layout semantics: qkv remains separate_q_k_v, MLP remains gate_up_down, output projection remains dense, and norm remains weight_only.",
+    "All selected lane and tile sizes must divide the relevant model dimensions or use explicitly verified non-semantic padding/masking that preserves outputs.",
+    "Numeric widths, quantization, rounding, and tolerances are not supplied here; no elem_bits/input_bits/output_bits selection may be finalized until the numeric policy is provided.",
+    "Functional verification must run with real tools; fallback, dry-run, smoke-only, or checker-skipped evidence cannot promote a design.",
+    "Debug/repair must follow the three-layer loop: operator/leaf modules first, connected single-transformer-layer kernel second, and board-accurate AXI/DDR wrapped system third."
+  ],
+  "notes": [
+    "Initial preferred hardware candidates are conservative divisibility-safe settings centered on 32 lanes and 128-wide matrix tiles; they are not a semantic change and may be reduced if resource or timing reports require it.",
+    "The design space is intentionally marked incomplete because the supplied materials do not include numeric precision/quantization policy or board AXI clock frequency/resource counts.",
+    "Search parameters are hardware architecture choices only. Fixed model fields are included under fixed_model_binding to prevent downstream agents from treating them as searchable semantics.",
+    "All AXI/DDR choices are constrained to the supplied 512-bit c0_ddr4_s_axi_* board interface and runtime address map.",
+    "If numeric policy later selects elem_bits such that preferred lanes do not pack cleanly into 512-bit AXI beats, the lane candidates must be rematerialized under the stated lane*elem_bits packing constraint."
+  ],
+  "objectives": [
+    "Maximize tokens-per-second for target_max_seq_len=16 while preserving the exact Qwen2 decoder block semantics.",
+    "Maximize effective utilization of the 512-bit DDR4 AXI interface without violating the xdma_raw_register_and_ddr runtime protocol.",
+    "Minimize FPGA resource usage enough to fit xcvu9p_CIV-flgb2104-2-i with timing closure.",
+    "Prefer tile, lane, bank, and FIFO settings that divide model dimensions exactly and avoid padding-dependent semantic changes.",
+    "Keep the first implementation debuggable through operator/leaf, single-decoder-block, and board-accurate AXI/DDR verification layers."
+  ],
+  "schema_version": "spatialaccagent.design_space.v0",
+  "search_params": {
+    "axi_ddr": {
+      "addr_width_bits": 37,
+      "beat_bytes": 64,
+      "burst_length_candidates_beats": [
+        1,
+        2,
+        4,
+        8,
+        16
+      ],
+      "calibration_done_signal": "c0_init_calib_complete",
+      "channels": 1,
+      "clock": "c0_ddr4_s_axi_clk",
+      "constraints": [
+        "Use the single real DDR4 AXI channel; do not substitute a 64-bit or non-board AXI interface.",
+        "All memory traffic must respect the xdma_raw_register_and_ddr runtime address map.",
+        "Do not bypass DDR/AXI/runtime constraints."
+      ],
+      "data_width_bits": 512,
+      "id_width_bits": 4,
+      "interface_name": "c0_ddr4_s_axi_*",
+      "preferred_initial_burst_length_beats": 16,
+      "reset": "c0_ddr4_s_axi_rst_n"
+    },
+    "bank_counts": {
+      "activation_sram_banks": {
+        "candidates": [
+          2,
+          4,
+          8,
+          16
+        ],
+        "constraints": [
+          "Must support selected lane count without changing tensor layout.",
+          "Must fit FPGA BRAM/URAM resources."
+        ],
+        "preferred_initial": 8
+      },
+      "axi_read_outstanding": {
+        "candidates": [
+          1,
+          2,
+          4,
+          8
+        ],
+        "constraints": [
+          "AXI ID width is 4 bits; do not exceed IDs supported by the board shell and runtime."
+        ],
+        "preferred_initial": 4
+      },
+      "axi_write_outstanding": {
+        "candidates": [
+          1,
+          2,
+          4,
+          8
+        ],
+        "constraints": [
+          "AXI ID width is 4 bits; do not exceed IDs supported by the board shell and runtime."
+        ],
+        "preferred_initial": 2
+      },
+      "kv_cache_banks": {
+        "candidates": [
+          2,
+          4,
+          8
+        ],
+        "constraints": [
+          "Must preserve KV cache shape num_kv_heads*head_dim*seq_len = 2*64*16.",
+          "Must use board DDR/AXI-compatible address generation for external KV storage if spilled."
+        ],
+        "preferred_initial": 4
+      },
+      "weight_sram_banks": {
+        "candidates": [
+          4,
+          8,
+          16,
+          32
+        ],
+        "constraints": [
+          "Must support selected tile_n, tile_k, and lane count.",
+          "Must not require changing supplied weight_layout values."
+        ],
+        "preferred_initial": 16
+      }
+    },
+    "clocking": {
+      "clock_domain": "c0_ddr4_s_axi_clk",
+      "constraints": [
+        "Timing must close for the actual board shell clock once known.",
+        "Do not introduce additional asynchronous clocks unless CDC is explicitly generated and verified."
+      ],
+      "target_clock_mhz": {
+        "candidates": [],
+        "status": "blocked_until_board_axi_clock_or_allowed_timing_target_is_supplied",
+        "value": null
+      }
+    },
+    "fifo_depths": {
+      "attention_score_fifo_depth_entries": {
+        "candidates": [
+          16,
+          32,
+          64
+        ],
+        "constraints": [
+          "Must support seq_len 16 causal attention without dropping masked positions or reordering scores."
+        ],
+        "preferred_initial": 32
+      },
+      "axi_read_fifo_depth_beats": {
+        "candidates": [
+          16,
+          32,
+          64,
+          128
+        ],
+        "constraints": [
+          "One AXI beat is 64 bytes on the target board.",
+          "Must fit memory resources and preserve AXI protocol behavior."
+        ],
+        "preferred_initial": 64
+      },
+      "axi_write_fifo_depth_beats": {
+        "candidates": [
+          16,
+          32,
+          64,
+          128
+        ],
+        "constraints": [
+          "One AXI beat is 64 bytes on the target board.",
+          "Must fit memory resources and preserve AXI protocol behavior."
+        ],
+        "preferred_initial": 64
+      },
+      "stream_fifo_depth_entries": {
+        "candidates": [
+          4,
+          8,
+          16,
+          32
+        ],
+        "constraints": [
+          "Apply between norm, attention, residual, MLP, activation, and output stages.",
+          "Must be deep enough to avoid deadlock under valid/ready backpressure."
+        ],
+        "preferred_initial": 16
+      }
+    },
+    "fixed_model_binding": {
+      "causal": true,
+      "head_dim": 64,
+      "hidden_size": 896,
+      "intermediate_size": 4864,
+      "kv_hidden_size": 128,
+      "note": "These are fixed semantic bindings from the model config, not searchable design parameters.",
+      "num_kv_heads": 2,
+      "num_q_heads": 14,
+      "operator_sequence": [
+        "rms_norm_1",
+        "self_attention",
+        "residual_add_1",
+        "rms_norm_2",
+        "mlp_gate_proj",
+        "mlp_up_proj",
+        "activation_mul",
+        "mlp_down_proj",
+        "residual_add_2"
+      ],
+      "q_hidden_size": 896,
+      "rope_theta": 1000000.0,
+      "seq_len": 16
+    },
+    "implementation_sweep": {
+      "constraints": [
+        "Layer execution strategy may change hardware reuse/unroll only; it must not change num_layers=24 or decoder semantics.",
+        "Multi-block spatial unroll is allowed only if resource fit and timing closure are proven on xcvu9p_CIV-flgb2104-2-i."
+      ],
+      "double_buffering_candidates": [
+        false,
+        true
+      ],
+      "layer_execution_candidates": [
+        "single_decoder_block_reused_across_24_layers",
+        "multi_block_spatial_unroll_resource_permitting"
+      ],
+      "matmul_unroll_candidates": [
+        "lane_parallel_only",
+        "lane_parallel_plus_tile_n_2way"
+      ],
+      "pipeline_depth_candidates": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "preferred_initial_double_buffering": true,
+      "preferred_initial_layer_execution": "single_decoder_block_reused_across_24_layers",
+      "preferred_initial_matmul_unroll": "lane_parallel_only",
+      "preferred_initial_pipeline_depth": 2
+    },
+    "lanes": {
+      "attention_lanes": {
+        "candidates": [
+          8,
+          16,
+          32
+        ],
+        "constraints": [
+          "Must divide head_dim 64 and hidden_size 896.",
+          "Must preserve 14 query heads and 2 KV heads; do not change GQA grouping."
+        ],
+        "preferred_initial": 32
+      },
+      "global_lanes": {
+        "candidates": [
+          8,
+          16,
+          32
+        ],
+        "constraints": [
+          "Must divide hidden_size 896.",
+          "Must divide intermediate_size 4864.",
+          "Must divide head_dim 64.",
+          "For a selected elem_bits, lane vector width lanes*elem_bits must be compatible with the 512-bit AXI beat packing."
+        ],
+        "preferred_initial": 32
+      },
+      "mlp_lanes": {
+        "candidates": [
+          8,
+          16,
+          32
+        ],
+        "constraints": [
+          "Must divide hidden_size 896 and intermediate_size 4864."
+        ],
+        "preferred_initial": 32
+      },
+      "norm_residual_elementwise_lanes": {
+        "candidates": [
+          8,
+          16,
+          32
+        ],
+        "constraints": [
+          "Must divide hidden_size 896."
+        ],
+        "preferred_initial": 32
+      }
+    },
+    "numeric_widths": {
+      "constraint": "Do not choose or infer quantization/precision in design-space exploration; materialize width-dependent candidates only after the numeric policy is provided.",
+      "elem_bits": {
+        "candidates": [],
+        "status": "blocked_until_numeric_policy_is_supplied",
+        "value": null
+      },
+      "input_bits": {
+        "candidates": [],
+        "status": "blocked_until_numeric_policy_is_supplied",
+        "value": null
+      },
+      "output_bits": {
+        "candidates": [],
+        "status": "blocked_until_numeric_policy_is_supplied",
+        "value": null
+      }
+    },
+    "tile_sizes": {
+      "attention_scores": {
+        "constraints": [
+          "Must preserve num_q_heads=14, num_kv_heads=2, head_dim=64, causal=true, and seq_len=16."
+        ],
+        "kv_block_heads_candidates": [
+          1,
+          2
+        ],
+        "preferred_initial": {
+          "kv_block_heads": 1,
+          "query_block_heads": 2,
+          "seq_block": 16
+        },
+        "query_block_heads_candidates": [
+          1,
+          2,
+          7,
+          14
+        ],
+        "seq_block_candidates": [
+          1,
+          2,
+          4,
+          8,
+          16
+        ]
+      },
+      "ffn_down": {
+        "constraints": [
+          "tile_n must divide hidden_size 896.",
+          "tile_k must divide intermediate_size 4864."
+        ],
+        "preferred_initial": {
+          "tile_k": 128,
+          "tile_m": 16,
+          "tile_n": 128
+        },
+        "tile_k_candidates": [
+          64,
+          128
+        ],
+        "tile_m_candidates": [
+          1,
+          2,
+          4,
+          8,
+          16
+        ],
+        "tile_n_candidates": [
+          64,
+          128
+        ]
+      },
+      "ffn_gate_up": {
+        "constraints": [
+          "tile_n must divide intermediate_size 4864.",
+          "tile_k must divide hidden_size 896."
+        ],
+        "preferred_initial": {
+          "tile_k": 128,
+          "tile_m": 16,
+          "tile_n": 128
+        },
+        "tile_k_candidates": [
+          64,
+          128
+        ],
+        "tile_m_candidates": [
+          1,
+          2,
+          4,
+          8,
+          16
+        ],
+        "tile_n_candidates": [
+          64,
+          128,
+          256
+        ]
+      },
+      "out_projection": {
+        "constraints": [
+          "tile_n and tile_k must divide hidden_size 896."
+        ],
+        "preferred_initial": {
+          "tile_k": 128,
+          "tile_m": 16,
+          "tile_n": 128
+        },
+        "tile_k_candidates": [
+          64,
+          128
+        ],
+        "tile_m_candidates": [
+          1,
+          2,
+          4,
+          8,
+          16
+        ],
+        "tile_n_candidates": [
+          64,
+          128
+        ]
+      },
+      "qkv_projection": {
+        "constraints": [
+          "tile_n must divide q output width 896 and k/v output width 128 when reused across separate q, k, and v projections.",
+          "tile_k must divide input hidden_size 896."
+        ],
+        "preferred_initial": {
+          "tile_k": 128,
+          "tile_m": 16,
+          "tile_n": 128
+        },
+        "tile_k_candidates": [
+          64,
+          128
+        ],
+        "tile_m_candidates": [
+          1,
+          2,
+          4,
+          8,
+          16
+        ],
+        "tile_n_candidates": [
+          64,
+          128
+        ]
+      },
+      "seq_tile_m": {
+        "candidates": [
+          1,
+          2,
+          4,
+          8,
+          16
+        ],
+        "constraints": [
+          "Must divide target_max_seq_len 16.",
+          "Changing tile_m must not change causal masking or sequence length."
+        ],
+        "preferred_initial": 16
+      }
+    }
+  },
+  "sources": {
+    "model_config": {
+      "attention": {
+        "causal": true,
+        "head_dim": 64,
+        "kind": "gqa",
+        "num_kv_heads": 2,
+        "num_q_heads": 14,
+        "out_bias": false,
+        "position_encoding": {
+          "rope_theta": 1000000.0,
+          "type": "rope"
+        },
+        "qkv_bias": true
+      },
+      "hidden_size": 896,
+      "intermediate_size": 4864,
+      "mlp": {
+        "activation": "silu",
+        "down_bias": false,
+        "type": "gated",
+        "up_bias": false
+      },
+      "model_type": "qwen2",
+      "norm": {
+        "eps": 1e-06,
+        "has_bias": false,
+        "position": "pre",
+        "type": "rms_norm"
+      },
+      "num_layers": 24,
+      "target_max_seq_len": 16,
+      "weight_layout": {
+        "mlp": "gate_up_down",
+        "norm": "weight_only",
+        "out_proj": "dense",
+        "qkv": "separate_q_k_v"
+      }
+    },
+    "target_board_profile": {
+      "axi_addr_width_bits": 37,
+      "axi_clock": "c0_ddr4_s_axi_clk",
+      "axi_data_bytes": 64,
+      "axi_data_width_bits": 512,
+      "axi_id_width_bits": 4,
+      "axi_interface": "c0_ddr4_s_axi_*",
+      "axi_reset": "c0_ddr4_s_axi_rst_n",
+      "board_name": "mimic_computer_v6.0",
+      "board_smoke_command": "scripts/board/run_pyjm12_smoke.sh",
+      "calibration_done_signal": "c0_init_calib_complete",
+      "control_base": "0x3000000000",
+      "control_protocol": "xdma_raw_register_and_ddr",
+      "ddr_base": "0x2800000000",
+      "ddr_channels": 1,
+      "fpga_device": "VU9P",
+      "fpga_part": "xcvu9p_CIV-flgb2104-2-i",
+      "output_abs": "0x28092f1000",
+      "remote_host": "hyyuan@10.12.133.23"
+    },
+    "template_library": {
+      "covered_templates": [
+        "decoder_block",
+        "attention",
+        "ffn",
+        "linear",
+        "qkv_projection",
+        "kv_cache",
+        "norm",
+        "rope",
+        "softmax",
+        "activation",
+        "elementwise",
+        "residual",
+        "mask"
+      ],
+      "library_id": "spatialaccagent_chisel_templates_v0",
+      "required_hardware_params": [
+        "lanes",
+        "elem_bits",
+        "input_bits",
+        "output_bits",
+        "tile_m",
+        "tile_n",
+        "tile_k",
+        "seq_len",
+        "rope_theta"
+      ]
+    }
+  },
+  "status": "incomplete_requires_numeric_policy_and_board_clock"
+}

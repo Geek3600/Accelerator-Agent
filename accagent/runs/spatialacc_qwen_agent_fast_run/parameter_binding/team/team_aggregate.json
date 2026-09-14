@@ -1,0 +1,925 @@
+{
+  "approval_required_for": [
+    "Any Stage 5 memory layout, base-address, DDR partition, or runtime ABI assignment/change before promotion of memory/runtime artifacts",
+    "Any architecture or pipeline topology change beyond the checked Stage 3 pipeline structure",
+    "Any architecture, pipeline, major template, or board-integration change, and any attempt to treat symbolic estimates as synthesis, timing, resource, or board-pass evidence.",
+    "Any architecture, pipeline, numeric bit-width/cast policy, AXI packing, lane-count, or template change proposed to repair later transfer-count, liveness, protocol, or memory-layout failures.",
+    "Any board/app-shell target, shell clock, or deployment binding chosen from ambiguous evidence",
+    "Any change to Stage 3 edge FIFO buffer depths or FIFO ownership; Stage 4 fifo_depth must remain only a local template default unless explicitly reapproved.",
+    "Any change to Stage 3 stream order, edge dtype widths, residual/branch dataflow, or producer/consumer bit contracts.",
+    "Any change to accumulator dtype fp32, activation/weight dtype fp16, rounding=nearest_even, saturation=false, cast points, or residual_precision=32.",
+    "Any change to model architecture, operator order, tensor dimensions, hidden_size, intermediate_size, seq_len, head_dim, num_q_heads, or num_kv_heads.",
+    "Any change to model dimensions, head structure, tensor shapes, or operation semantics to make a DSE choice fit.",
+    "Any major template implementation change outside trusted template parameters and bounded glue code",
+    "Any memory layout or pipeline repair that would alter stream order, branch precision, residual precision, or transfer-unit interpretation.",
+    "Any numeric-policy change to dtype, cast points, rounding, saturation, residual precision, or comparison tolerance",
+    "Any numeric-policy change, including precision, cast points, rounding, saturation, residual precision, or RMSNorm epsilon.",
+    "Any rebinding of lanes, tile sizes, datapath widths, FIFO semantics, or global-versus-per-stage parameter precedence outside the checked design space.",
+    "Any replacement of selected trusted template families or addition of new template parameters that changes numeric/model semantics.",
+    "Concrete Stage 5 memory layout decisions such as base addresses, DDR channel mapping, or changes to transfer externalization policy.",
+    "Stage 5 concrete DDR base-address, non-overlap memory layout, or runtime ABI assignment decisions."
+  ],
+  "completed_subtasks": 4,
+  "decomposition_source": "llm",
+  "errors": [],
+  "event_log_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/parameter_binding/team/event_log.jsonl",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "parameter_binding_static_check",
+        "implementation_package_static",
+        "timing_resource_check",
+        "required_real_tool_evidence_check"
+      ],
+      "action_type": "sacg_constraint_review",
+      "consumes": [
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "candidate_stage_artifact.bindings",
+        "candidate_stage_artifact.bindings.resource_estimate",
+        "candidate_stage_artifact.bandwidth_estimate",
+        "candidate_stage_artifact.global_params",
+        "candidate_stage_artifact.global_param_scope",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.stage_gate_policy",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.stream_contract_trace"
+      ],
+      "id": "parameter_binding.dse.emit_legality_resource_audits",
+      "on_failure": "Block parameter_binding evidence-gate promotion; issue a bounded parameter-binding retry for any illegal lane/tile/bit-width/FIFO scope or for any unscoped claim of implementation, timing, or board evidence.",
+      "produces": [
+        "dse_parameter_legality_audit.json",
+        "symbolic_resource_risk_register.json",
+        "tile_lane_divisibility_report.json",
+        "later_stage_evidence_obligation_list.json"
+      ],
+      "rationale": "Materialize the DSE handoff artifacts from the candidate binding and bind each lane, tile, datapath, FIFO, resource, and bandwidth statement to the supplied design-space, numeric, board AXI, resource, and stage-gate constraints. The action must record implementation, timing, and real-tool evidence as not_run/later-stage when no real tool artifacts are supplied.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "sacg_validate",
+        "parameter_binding_static_check",
+        "implementation_package_static",
+        "timing_resource_check",
+        "required_real_tool_evidence_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "parameter_binding_static_check",
+        "sacg_memory_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "evidence_gate_handoff",
+      "consumes": [
+        "candidate_stage_artifact",
+        "dse_parameter_legality_audit.json",
+        "symbolic_resource_risk_register.json",
+        "tile_lane_divisibility_report.json",
+        "later_stage_evidence_obligation_list.json",
+        "sacg_memory_truth"
+      ],
+      "id": "parameter_binding.evidence_gate.consume_dse_audits",
+      "on_failure": "Do not promote the candidate artifact; create an explicit retry or trust-barrier record naming the failed SACG constraint and the contaminated artifact boundary.",
+      "produces": [
+        "artifact.stage4.parameter_binding_evidence_gate_audit",
+        "artifact.stage4.parameter_binding_promotion_decision"
+      ],
+      "rationale": "Let the evidence-gate auditor consume the DSE audit outputs without rewriting them, verify SACG linkage and trust barriers, and decide whether the current parameter_binding artifact can be promoted with later-stage obligations preserved.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "team_aggregate",
+        "sacg_validate",
+        "parameter_binding_static_check",
+        "stage_artifact_trust_barrier"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "codegen_contract_check",
+        "codegen_package_static_check",
+        "stream_plan_check",
+        "transfer_count_check"
+      ],
+      "action_type": "static_contract_enforcement",
+      "consumes": [
+        "artifact.stage2.template_selection",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage3.pipeline_static_checks",
+        "candidate_stage_artifact.bindings",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.stream_contract_trace",
+        "candidate_stage_artifact.global_param_scope",
+        "dse_parameter_legality_audit.json",
+        "tile_lane_divisibility_report.json"
+      ],
+      "id": "later_stage.codegen.preserve_parameter_scope",
+      "on_failure": "Localize the mismatch to template binding or codegen contract; request bounded template/codegen repair and do not change model dimensions, numeric policy, lanes, or tiles without approval.",
+      "produces": [
+        "artifact.stage5.codegen_parameter_scope_contract",
+        "artifact.stage5.codegen_manifest_with_bound_params"
+      ],
+      "rationale": "Prevent later generated code from silently changing DSE or numeric semantics by enforcing per-stage parameter precedence, checked tile overrides, local FIFO-default scope, stream bit widths, and numeric cast points.",
+      "requires_approval": false,
+      "stage": "code_generation",
+      "tool_roles": [
+        "codegen_contract_check",
+        "codegen_package_static_check",
+        "stream_plan_check",
+        "transfer_count_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "memory_runtime_plan_check",
+        "addr_map_check",
+        "transfer_count_check",
+        "deployment_board_check"
+      ],
+      "action_type": "memory_runtime_plan",
+      "consumes": [
+        "candidate_stage_artifact.bandwidth_estimate",
+        "candidate_stage_artifact.stream_contract_trace",
+        "artifact.input.target_board_profile",
+        "artifact.stage3.pipeline_plan",
+        "symbolic_resource_risk_register.json",
+        "later_stage_evidence_obligation_list.json"
+      ],
+      "id": "later_stage.memory_runtime.assign_addresses_and_reconcile_transfers",
+      "on_failure": "Keep runtime and backend promotion blocked; repair the memory/runtime plan within the existing parameter contract or request approved re-binding if the memory layout cannot satisfy constraints.",
+      "produces": [
+        "artifact.stage5.memory_runtime_plan",
+        "artifact.stage5.address_map",
+        "artifact.stage5.transfer_count_audit"
+      ],
+      "rationale": "Convert the symbolic bandwidth estimate into a concrete memory/runtime plan with base addresses, 64-byte alignment, non-overlap, AXI beat counts, and explicit treatment of multi-input residual and activation streams.",
+      "requires_approval": true,
+      "stage": "memory_runtime_planning",
+      "tool_roles": [
+        "memory_runtime_plan_check",
+        "addr_map_check",
+        "transfer_count_check",
+        "deployment_board_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "real_tool.case_vivado_synthesis",
+        "real_tool.case_vivado_synthesis_report_check",
+        "real_tool.case_vivado_implementation",
+        "real_tool.case_vivado_implementation_report_check",
+        "timing_resource_check",
+        "required_real_tool_evidence_check"
+      ],
+      "action_type": "real_tool_execution",
+      "consumes": [
+        "artifact.stage5.codegen_manifest_with_bound_params",
+        "artifact.stage5.memory_runtime_plan",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "symbolic_resource_risk_register.json",
+        "later_stage_evidence_obligation_list.json"
+      ],
+      "id": "later_stage.backend.collect_real_resource_timing_evidence",
+      "on_failure": "Use real tool output for contract-guided localization and bounded repair; do not claim timing/resource pass, do not loosen numeric tolerance, and do not skip verification layers before promotion.",
+      "produces": [
+        "backend_board/case_diagnostics/vivado_synthesis_report.json",
+        "backend_board/case_diagnostics/vivado_implementation_report.json",
+        "backend_board/case_diagnostics/timing_resource_evidence.json"
+      ],
+      "rationale": "After code generation and memory/runtime static gates pass, collect real Vivado synthesis, implementation, timing, and resource evidence so symbolic estimates are not mistaken for hardware feasibility.",
+      "requires_approval": false,
+      "stage": "backend_board",
+      "tool_roles": [
+        "case_vivado_synthesis",
+        "case_vivado_synthesis_report_check",
+        "case_vivado_implementation",
+        "case_vivado_implementation_report_check",
+        "timing_resource_check",
+        "required_real_tool_evidence_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "stream_plan_check",
+        "data_order_trace_check",
+        "transfer_count_check",
+        "memory_runtime_plan_check"
+      ],
+      "action_type": "sacg_constraint_review",
+      "consumes": [
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage3.pipeline_static_checks",
+        "candidate_stage_artifact.stream_contract_trace",
+        "candidate_stage_artifact.bandwidth_estimate",
+        "candidate_stage_artifact.bindings",
+        "candidate_stage_artifact.global_param_scope",
+        "artifact.input.target_board_profile"
+      ],
+      "id": "parameter_binding.materialize_stream_memory_contract_audits",
+      "on_failure": "Block parameter-binding aggregate promotion; localize the mismatch to dtype binding, stream order, AXI packing, transfer count, or FIFO authority, then route to bounded parameter-binding repair or Stage 3 backtrack without changing golden outputs or loosening tolerance.",
+      "produces": [
+        "stream_dtype_binding_trace.json",
+        "axi_packing_transfer_count_audit.json",
+        "fifo_authority_audit.json",
+        "memory_runtime_risk_notes.json"
+      ],
+      "rationale": "Generate the expected audit artifacts from the supplied Stage 3 contracts, bound parameters, board AXI facts, and symbolic transfer counts so downstream agents consume checker-bound evidence rather than natural-language conclusions.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "sacg_validate",
+        "parameter_binding_static_check",
+        "stream_plan_check",
+        "data_order_trace_check",
+        "transfer_count_check",
+        "memory_runtime_plan_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "memory_runtime_plan_check",
+        "addr_map_check",
+        "transfer_count_check"
+      ],
+      "action_type": "later_stage_memory_layout_elaboration",
+      "consumes": [
+        "axi_packing_transfer_count_audit.json",
+        "memory_runtime_risk_notes.json",
+        "candidate_stage_artifact.bandwidth_estimate",
+        "artifact.input.target_board_profile",
+        "artifact.stage3.pipeline_plan"
+      ],
+      "id": "memory_runtime.assign_checked_ddr_layout_from_symbolic_counts",
+      "on_failure": "Keep memory/runtime planning blocked; request bounded memory_runtime_repair or explicit architecture/memory-layout approval if non-overlap, address width, or 64-byte alignment cannot be satisfied without changing stream widths or order.",
+      "produces": [
+        "artifact.stage5.memory_runtime_plan",
+        "artifact.stage5.addr_map_alignment_audit",
+        "artifact.stage5.transfer_count_reconciliation"
+      ],
+      "rationale": "Concrete DDR base addresses and runtime layout are outside this role, but the later planner must preserve the verified 512-bit AXI packing, 64-byte alignment, transfer counts, and stream contracts when assigning memory regions.",
+      "requires_approval": true,
+      "stage": "memory_runtime_planning",
+      "tool_roles": [
+        "memory_runtime_plan_check",
+        "addr_map_check",
+        "transfer_count_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "data_order_trace_check",
+        "functional_sim",
+        "deadlock_watchdog",
+        "case_axi_protocol_check",
+        "failure_localization_check"
+      ],
+      "action_type": "hierarchical_real_tool_verification_plan",
+      "consumes": [
+        "stream_dtype_binding_trace.json",
+        "fifo_authority_audit.json",
+        "axi_packing_transfer_count_audit.json",
+        "artifact.stage5.memory_runtime_plan",
+        "artifact.stage6.verification_artifact_contract"
+      ],
+      "id": "verification.verify_stream_order_liveness_protocol_hierarchy",
+      "on_failure": "Do not promote to the next hierarchy layer; convert tool output into CCTG/contract-guided localization at the earliest causal boundary, apply bounded repair, and rerun the failed layer before any higher-layer or board claim.",
+      "produces": [
+        "verification/leaf_stream_order_liveness_reports",
+        "verification/single_layer_stream_order_liveness_report",
+        "verification/board_axi_ddr_protocol_report"
+      ],
+      "rationale": "Static Stage 4 evidence cannot prove runtime liveness, data-order preservation through RTL, or AXI protocol correctness; later verification must follow the required leaf-to-single-layer-to-board-wrapped hierarchy.",
+      "requires_approval": false,
+      "stage": "verification",
+      "tool_roles": [
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "case_stage_leaf_static",
+        "case_leaf_functional",
+        "case_single_transformer_layer",
+        "case_single_layer_functional",
+        "case_deadlock_axi_check",
+        "case_axi_protocol_check",
+        "failure_slice_localization"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "verification_action_audit_check",
+        "sacg_memory_check"
+      ],
+      "action_type": "team_handoff",
+      "consumes": [
+        "stream_dtype_binding_trace.json",
+        "axi_packing_transfer_count_audit.json",
+        "fifo_authority_audit.json",
+        "memory_runtime_risk_notes.json",
+        "candidate_stage_artifact.checker_results"
+      ],
+      "id": "parameter_binding.handoff_stream_memory_audit_to_peer_agents",
+      "on_failure": "Keep the team aggregate pending until the handoff packet cites the required artifacts, preserves checker status and caveats, and does not silently assume another specialist's authority.",
+      "produces": [
+        "parameter_binding.stream_memory_contract_handoff_packet"
+      ],
+      "rationale": "Make the stream/memory contract findings consumable by the DSE resource-risk engineer and evidence-gate auditor without transferring unverified memory-layout or hardware-pass claims.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "team_aggregate",
+        "verification_action_audit"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "numeric_policy_check",
+        "template_binding_static_check",
+        "parameter_binding_static_check"
+      ],
+      "action_type": "checker_grounded_audit_materialization",
+      "consumes": [
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.stage2.template_selection",
+        "artifact.stage3.pipeline_plan",
+        "candidate_stage_artifact.bindings",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.global_params",
+        "candidate_stage_artifact.global_param_scope",
+        "candidate_stage_artifact.checker_results"
+      ],
+      "id": "parameter_binding.materialize_template_numeric_audit",
+      "on_failure": "Block parameter_binding promotion and route only missing or illegal template parameters to bounded_template_repair; require approval before any repair changes model shape, operator order, template family, accumulator dtype, rounding policy, saturation, cast points, or residual precision.",
+      "produces": [
+        "template_numeric_binding_audit.json",
+        "per_stage_parameter_completeness_matrix.json",
+        "numeric_cast_contract_trace.json",
+        "binding_legality_findings.json"
+      ],
+      "rationale": "Produce the role-owned audit artifacts and bind the candidate per-stage parameters, numeric cast trace, global default scope, and checker evidence to the named SACG constraints before aggregate promotion.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "sacg_validate",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "parameter_binding_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "transfer_count_check"
+      ],
+      "action_type": "handoff_contract_validation",
+      "consumes": [
+        "candidate_stage_artifact.stream_contract_trace",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.bandwidth_estimate",
+        "artifact.stage3.pipeline_plan"
+      ],
+      "id": "parameter_binding.handoff_numeric_stream_contracts",
+      "on_failure": "Classify failures as stream/memory contract issues and return them to parameter_binding.stream_memory_contract_engineer; do not repair by changing numeric precision, cast points, stream order, or model semantics without approval.",
+      "produces": [
+        "stream_memory_numeric_handoff.json",
+        "transfer_width_branch_precision_findings.json"
+      ],
+      "rationale": "Ensure peer stream/memory planning consumes the same bit-width and cast contract, especially 32-bit residual skip paths, 16-bit MLP branch streams into activation_mul, and AXI packing assumptions, without changing numeric semantics.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "transfer_count_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "verification_action_audit_check",
+        "required_real_tool_evidence_check"
+      ],
+      "action_type": "evidence_gate_handoff",
+      "consumes": [
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.bandwidth_estimate",
+        "candidate_stage_artifact.bindings",
+        "candidate_stage_artifact.global_param_scope"
+      ],
+      "id": "parameter_binding.record_static_evidence_limits",
+      "on_failure": "Keep hardware-pass, timing-pass, and board-pass claims blocked until later stages provide required real tool evidence; do not loosen numeric tolerance or modify golden outputs to obtain a pass.",
+      "produces": [
+        "parameter_binding_static_evidence_limits.json",
+        "evidence_gate_numeric_binding_decision.json"
+      ],
+      "rationale": "Prevent downstream consumers from treating symbolic resource or bandwidth estimates, clock_target_mhz=0, or static checker passes as simulation, synthesis, timing, or board evidence.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "verification_action_audit",
+        "required_real_tool_evidence_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "parameter_binding_static_check",
+        "verification_artifact_contract_check",
+        "repair_boundary_check",
+        "human_boundary_check",
+        "stage_retry_request_check",
+        "stage_backtrack_request_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "verification_evidence_gate",
+      "consumes": [
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.checker_summary",
+        "candidate_stage_artifact.stage_gate_policy",
+        "candidate_stage_artifact.bindings",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.stream_contract_trace",
+        "candidate_stage_artifact.bandwidth_estimate",
+        "state_summary.sacg_memory_truth"
+      ],
+      "id": "parameter_binding.finalize_stage_gate_bundle",
+      "on_failure": "Block promotion; emit a bounded retry, backtrack, or trust-barrier recommendation naming the failed checker and violated constraints. Do not alter golden outputs, loosen tolerance, or claim hardware pass.",
+      "produces": [
+        "parameter_binding_stage_gate_decision.json",
+        "checker_evidence_matrix.json",
+        "cross_layer_consistency_closure_report.json",
+        "bounded_repair_routing_if_needed.json",
+        "sacg_memory_update_recommendation.json"
+      ],
+      "rationale": "The visible candidate satisfies current-stage criteria, but downstream consumption needs a materialized gate bundle and standard SACG/artifact-boundary checks rather than relying on prose evidence.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "sacg_validate",
+        "parameter_binding_static_check",
+        "verification_artifact_contract_check",
+        "repair_boundary_check",
+        "human_boundary_check",
+        "stage_retry_request",
+        "stage_backtrack_request",
+        "stage_artifact_trust_barrier"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "memory_runtime_plan_check",
+        "addr_map_check",
+        "transfer_count_check",
+        "code_generation_manifest_static_check",
+        "sacg_static_check"
+      ],
+      "action_type": "later_stage_handoff",
+      "consumes": [
+        "parameter_binding_stage_gate_decision.json",
+        "candidate_stage_artifact.bandwidth_estimate",
+        "candidate_stage_artifact.stream_contract_trace",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage3.pipeline_static_checks",
+        "artifact.input.target_board_profile"
+      ],
+      "id": "parameter_binding.handoff_stage5_memory_runtime_obligations",
+      "on_failure": "Keep memory/runtime handoff blocked; localize to address map, transfer count, memory schedule, or elaboration contract. Route to memory_runtime_repair, and require approval for any memory-layout or board-memory partition change.",
+      "produces": [
+        "memory_runtime_plan.json",
+        "addr_map.json",
+        "transfer_count_reconciliation.json",
+        "chisel_elaboration_manifest.json"
+      ],
+      "rationale": "The candidate exposes static transfer counts and board AXI facts only; Stage 5 must assign concrete memory layout, address ranges, non-overlap/alignment, and elaboration evidence before runtime use.",
+      "requires_approval": true,
+      "stage": "memory_runtime_planning",
+      "tool_roles": [
+        "memory_runtime_plan_check",
+        "addr_map_check",
+        "transfer_count_check",
+        "code_generation_manifest_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "codegen_contract_check",
+        "codegen_compile_gate_check",
+        "verification_plan_static_check",
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "data_order_trace_check",
+        "numeric_compare"
+      ],
+      "action_type": "later_stage_handoff",
+      "consumes": [
+        "parameter_binding_stage_gate_decision.json",
+        "candidate_stage_artifact.bindings",
+        "candidate_stage_artifact.numeric_binding_plan",
+        "candidate_stage_artifact.stream_contract_trace",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.numeric_policy",
+        "artifact.input.tool_protocols"
+      ],
+      "id": "parameter_binding.handoff_codegen_numeric_stream_obligations",
+      "on_failure": "Do not proceed to simulation, synthesis, or board steps; localize the failure to template binding, cast/rounding behavior, stream order, or generated-code contract. Numeric-policy or major template changes require approval.",
+      "produces": [
+        "code_generation_manifest.json",
+        "generated_chisel_parameter_manifest.json",
+        "verification_artifact_contract.json",
+        "numeric_data_order_obligation_trace.json"
+      ],
+      "rationale": "Generated implementation must preserve the checked parameter bindings, dtype casts, stream order, and numeric policy; current evidence is static and does not prove functional simulation or hardware correctness.",
+      "requires_approval": false,
+      "stage": "code_generation_verification",
+      "tool_roles": [
+        "codegen_contract_check",
+        "codegen_compile_gate",
+        "verification_plan_static_check",
+        "hierarchical_verification_plan_check",
+        "data_order_trace_check",
+        "numeric_compare"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "targeted_failed_checker_rerun",
+        "failure_localization_check",
+        "causal_repair_context_check",
+        "parameter_binding_static_check",
+        "template_binding_static_check",
+        "stream_plan_check",
+        "transfer_count_check",
+        "repair_boundary_check",
+        "stage_retry_request_check",
+        "stage_backtrack_request_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "bounded_repair_routing",
+      "consumes": [
+        "checker_evidence_matrix.json",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.stage_gate_policy",
+        "state_summary.sacg_memory_truth"
+      ],
+      "id": "parameter_binding.route_failed_binding_evidence",
+      "on_failure": "Keep parameter_binding unpromoted; create an active contamination barrier if evidence cannot be trusted, or a backtrack request if model, numeric, architecture, pipeline, memory layout, or template semantics would need to change.",
+      "produces": [
+        "bounded_repair_routing_if_needed.json",
+        "stage_retry_request_if_failed.json",
+        "stage_backtrack_request_if_semantic_change_needed.json",
+        "stage_artifact_trust_barrier_if_contaminated.json"
+      ],
+      "rationale": "No current failed checker is visible, but the gate must define a bounded route for any failed meta-checker or targeted rerun without unbounded repair or semantic redesign.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "targeted_failed_checker_rerun",
+        "failure_slice_localization",
+        "causal_repair_context_pack",
+        "parameter_binding_static_check",
+        "template_binding_static_check",
+        "stream_plan_check",
+        "transfer_count_check",
+        "bounded_template_repair",
+        "stage_retry_request",
+        "stage_backtrack_request",
+        "stage_artifact_trust_barrier"
+      ]
+    }
+  ],
+  "execution_groups": [
+    0,
+    1
+  ],
+  "llm_io_metrics": {
+    "executable_action_count": 16,
+    "max_duration_sec": 545.516513170005,
+    "max_prompt_bytes": 55376,
+    "result_count": 4,
+    "subtasks_without_executable_actions": [],
+    "total_duration_sec": 1331.020743703004,
+    "total_prompt_bytes": 220077
+  },
+  "observations": [
+    "The supplied state_summary reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests; no SACG-memory blocker is active for this review.",
+    "The candidate checker_summary reports six passed static checks with no errors or warnings: parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, tile_override_legality_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check. This audit treats those as current-stage static evidence only.",
+    "lanes=8 is consistently bound across all stages. For the visible tensor dimensions, 8 divides hidden_size=896, intermediate_size=4864, head_dim=64, and seq_len=16, so no supplied lane-divisibility conflict is visible.",
+    "Per-stage FFN tile overrides are authoritative and divide the corresponding dimensions: tile_m=16 divides seq_len=16; tile_k=128 divides hidden_size=896 for gate/up projections and intermediate_size=4864 for down projection; tile_n=128 divides intermediate_size=4864 for gate/up projections and hidden_size=896 for down projection. tile_override_legality_check reports pass.",
+    "Global tile_m=8, tile_n=24, and tile_k=8 are explicitly scoped as default_only in global_param_scope, with per-stage tile overrides taking precedence. This prevents the global defaults from silently changing the checked FFN tiling, provided later consumers preserve global_param_scope.",
+    "fifo_depth=16 is scoped as a local template default only. The candidate explicitly preserves Stage 3 edge buffer depths as authoritative, and fifo_contract_check reports pass.",
+    "Datapath widths are internally consistent with lanes and element width in the visible resource estimates: fp16 stages use datapath_bits=8*16=128 and fp32 residual stages use datapath_bits=8*32=256. Both widths pack cleanly into the 512-bit AXI data path according to stream_packing_axi_check.",
+    "The numeric binding plan preserves the visible fp16/fp32 policy: norm stages cast fp32 inputs to fp16 outputs, attention and down projection return fp32 for residual paths, residual adds remain fp32, and stream_contract_trace bit widths match per-stage input/output bits. No DSE parameter in the supplied summary requires changing model dimensions or numeric semantics.",
+    "Symbolic resource estimates are scoped as symbolic_first_order and used only for parameter-binding sanity. Visible counts match the bound shapes at first order: RMS/residual hidden tensors use 16*896=14336 elements, MLP intermediate tensors use 16*4864=77824 elements, FFN weights use 896*4864=4358144 elements, and attention weights use grouped-query dimensions for 1835008 elements.",
+    "The bandwidth estimate is scoped as symbolic_transfer_count_from_bound_params and not as board bandwidth or timing evidence. The board-side AXI facts are data_width_bits=512, data_bytes=64, alignment_bytes=64, and ddr_channels=1; per-stage aligned_bytes equal axi_beats*64 and total_aligned_bytes_per_layer is 31202816.",
+    "clock_target_mhz=0 is correctly scoped as unknown board shell clock and is not timing evidence. No synthesis, implementation, timing, or board feasibility claim is supported by the supplied current-stage evidence.",
+    "The supplied state summary reports failed_invariants=[], active_contamination_barrier_count=0, open_retry_request_count=0, and open_backtrack_request_count=0; no current SACG-memory blocker is visible for this review.",
+    "The candidate parameter_binding artifact has status=ready and checker_summary passed=6, failed=0, with no errors or warnings. Relevant supplied passes are edge_dtype_stream_contract_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check.",
+    "All 13 visible stream_contract_trace data edges retain stream_order=[token,tile,lane,word]. This review does not infer any order change from parameter binding; a standalone data_order_trace_check artifact should still be materialized for evidence-gate consumption.",
+    "Visible edge dtype widths match producer output bits, edge element_bits, and destination input_bits: 32-bit block/residual paths, 16-bit normalized/MLP branch paths, 16-bit activation_mul/down input, and 32-bit attention/down/residual/output paths are internally consistent in the supplied trace.",
+    "Bound lanes=8 with 16-bit elements gives 128-bit lane groups and with 32-bit elements gives 256-bit lane groups; both divide the supplied board AXI data width of 512 bits. The bandwidth estimate rows also satisfy aligned_bytes=axi_beats*64 under the 64-byte AXI beat/alignment assumption.",
+    "The symbolic transfer-count estimate totals 31,202,816 aligned bytes per layer and 487,544 64-byte AXI beats. The artifact explicitly states this is static transfer-count and AXI-packing sanity evidence only, not board bandwidth, timing, simulation, or runtime pass evidence.",
+    "FIFO authority is preserved in the supplied global_param_scope: Stage 4 fifo_depth=16 is only a local template default, while Stage 3 buffer_plan owns edge FIFO depths. The supplied fifo_contract_check passed with summary edge_buffers=13 and the same authority statement.",
+    "Concrete DDR base addresses, memory non-overlap, runtime ABI, real liveness/deadlock evidence, AXI protocol evidence, timing, and board runtime evidence are intentionally not claimed in this stage and must remain downstream obligations.",
+    "The supplied SACG memory truth summary shows zero active contamination barriers and zero open retry or backtrack requests relevant to this stage.",
+    "All 9 pipeline stages have selected template_ids and status=ready with empty per-binding legality_errors: norm for both RMSNorm stages, attention for self_attention, residual for both residual adds, ffn for gate/up/down projections, and elementwise for activation_mul.",
+    "Visible parameter completeness is consistent with the model shape summary: hidden_size=896, seq_len=16, attention head_dim=64, num_q_heads=14, num_kv_heads=2, and intermediate_size=4864. The attention relation num_q_heads * head_dim = 896 is satisfied, and the supplied checker_results report tile_override_legality_check pass.",
+    "Numeric binding records fp16 activations and weights, fp32 accumulator dtype, rounding=nearest_even, saturation=false, and policy_id=current_run_numeric_policy.md. Cast points are explicit: RMSNorm stages cast 32_to_16 at input, attention and mlp_down_proj cast 16_to_32 at output, residual stages remain 32-bit with residual_precision=32, and MLP gate/up/mul stages remain 16-bit.",
+    "The stream_contract_trace is bit-width consistent with the numeric cast trace: residual skip edges are 32-bit, norm-to-attention and norm-to-MLP branch edges are 16-bit, activation_mul consumes two 16-bit MLP branch streams, and block output is 32-bit.",
+    "Per-stage FFN tile overrides are authoritative over global defaults and divide the visible dimensions: tile_m=16 divides seq_len=16, tile_k=128 divides hidden_size=896 or intermediate_size=4864 as applicable, and tile_n=128 divides intermediate_size=4864 or hidden_size=896 as applicable.",
+    "lanes=8 with 16-bit and 32-bit datapaths produces 128-bit or 256-bit lane groups, which pack cleanly into the 512-bit board AXI data width according to the supplied stream_packing_axi_check pass.",
+    "global_param_scope correctly prevents semantic over-claiming: clock_target_mhz=0 is an unknown/sentinel rather than timing evidence, fifo_depth is only a local template default while Stage 3 edge buffers remain authoritative, and global tile parameters are defaults overridden by per-stage values.",
+    "Supplied checker_results pass 6 static checks with no warnings, including parameter_stage_numeric_contract_check, edge_dtype_stream_contract_check, tile_override_legality_check, stream_packing_axi_check, bandwidth_memory_estimate_check, and fifo_contract_check. These are static binding checks only and do not constitute simulation, synthesis, timing, or board evidence.",
+    "Stage-gate acceptance item 1 is satisfied by visible evidence: parameter_stage_numeric_contract_check passed with bindings=9 and edge_dtype_stream_contract_check passed with edges=13; per-stage input/output bit widths in the stream_contract_trace match the binding plan across model, shape, numeric, and data-order boundaries.",
+    "Stage-gate acceptance item 2 is satisfied by visible evidence: tile_override_legality_check passed and the candidate explicitly states per-stage tile_k/tile_m/tile_n overrides are authoritative while global tile parameters are defaults only.",
+    "Stage-gate acceptance item 3 is satisfied by visible evidence: stream_packing_axi_check passed for a 512-bit AXI interface; lanes and bound bit widths are therefore accepted for static AXI packing at this stage.",
+    "Stage-gate acceptance item 4 is satisfied by visible evidence: bandwidth_memory_estimate_check passed with total_aligned_bytes_per_layer=31202816, per-stage aligned byte and AXI beat counts are present, and the artifact states these are static transfer-count sanity checks only, not board bandwidth, timing, synthesis, or hardware-pass evidence.",
+    "Stage-gate acceptance item 5 is satisfied by visible evidence: fifo_contract_check passed and the artifact scopes Stage 4 fifo_depth as a local template default while Stage 3 edge buffer depths remain authoritative.",
+    "Numeric binding is statically closed for this stage: fp16 activations/weights, fp32 accumulation/residual paths, cast points, eps source, and policy_id=current_run_numeric_policy.md are recorded. This is contract evidence only; generated implementation and golden comparison must still preserve the rounding/cast behavior downstream.",
+    "Resource estimates are symbolic_first_order and explicitly scoped as parameter-binding sanity checks only. clock_target_mhz=0 is correctly treated as unknown board-shell timing rather than timing evidence.",
+    "state_summary.sacg_memory_truth is the authoritative blocker set for this review and reports active_contamination_barrier_count=0, open_retry_request_count=0, and open_backtrack_request_count=0; no current SACG-memory blocker prevents promotion.",
+    "No retry_reconciliation_contract is required for this current-stage review because the authoritative blocker set has no open same-stage retry/backtrack requests and no active contamination barriers.",
+    "Standalone specialist audit filenames were not separately expanded in the prompt slice; the visible evidence for those audit classes is carried by candidate_stage_artifact bindings, numeric_binding_plan, stream_contract_trace, bandwidth_estimate, legality_errors, resource_estimate fields, and checker_results. The gate package should materialize the evidence matrix so downstream agents do not rely on prose reconstruction."
+  ],
+  "parallel_execution": true,
+  "proposed_actions": [
+    "Handoff to parameter_binding.evidence_gate_auditor with a DSE legality audit, symbolic resource-risk register, tile/lane divisibility report, and later-stage evidence-obligation list.",
+    "Record implementation_package_static, timing_resource_check, and required_real_tool_evidence_check as not_run/later-stage obligations unless real implementation artifacts are actually present; do not convert symbolic estimates into hardware pass evidence.",
+    "Require code generation to consume per-stage params, numeric_binding_plan, stream_contract_trace, and global_param_scope so that global defaults cannot override checked stage-local tile, FIFO, or bit-width bindings.",
+    "Require Stage 5 memory/runtime planning to assign concrete base addresses, check 64-byte alignment and non-overlap, and reconcile transfer counts with multi-input stream semantics.",
+    "Require Stage 6+ real simulation, synthesis, implementation, timing/resource, and board evidence before any hardware feasibility or performance claim.",
+    "Materialize the four expected stream/memory audit artifacts and run the subtask-named acceptance checkers before evidence-gate aggregation.",
+    "Hand off the audit packet to parameter_binding.dse_resource_risk_engineer and parameter_binding.evidence_gate_auditor with the non-hardware-evidence caveat preserved.",
+    "In Stage 5, elaborate the memory/runtime plan from the symbolic transfer counts and board profile, assigning concrete DDR layout only through addr_map and memory_runtime checks.",
+    "In Stage 6+, verify data order, liveness/deadlock, and AXI/DDR behavior hierarchically: leaf modules first, then the connected single-transformer-layer kernel, then the board-accurate AXI/DDR wrapped system.",
+    "Materialize template_numeric_binding_audit.json, per_stage_parameter_completeness_matrix.json, numeric_cast_contract_trace.json, and binding_legality_findings.json from the candidate bindings and rerun the named acceptance checkers: sacg_static_check, numeric_policy_check, template_binding_static_check, and parameter_binding_static_check.",
+    "Hand off the numeric_cast_contract_trace and stream_contract_trace to parameter_binding.stream_memory_contract_engineer so residual 32-bit precision, activation_mul dual 16-bit streams, stream order, and AXI packing are preserved during memory/runtime planning.",
+    "Hand off the symbolic resource_estimate and bandwidth_estimate limitations to parameter_binding.dse_resource_risk_engineer and parameter_binding.evidence_gate_auditor so no timing, synthesis, simulation, or board pass is inferred from static parameter binding.",
+    "If any named acceptance checker fails, perform only bounded template-parameter repair within the selected trusted templates; require explicit approval for any change to model shape, operator order, selected template family, accumulator dtype, rounding, saturation, cast points, or residual precision.",
+    "Promote the parameter_binding candidate to the next stage after the stage_orchestrator materializes parameter_binding_stage_gate_decision.json, checker_evidence_matrix.json, cross_layer_consistency_closure_report.json, bounded_repair_routing_if_needed.json, and sacg_memory_update_recommendation.json, with the declared gate checkers attached.",
+    "Handoff candidate_stage_artifact.bandwidth_estimate and stream_contract_trace to later_stage.memory_runtime_planner for Stage 5 address-map assignment, non-overlap/alignment checks, transfer-count reconciliation, and Chisel elaboration; do not treat transfer counts as board bandwidth or timing evidence.",
+    "Handoff bindings, numeric_binding_plan, and stream_contract_trace to later_stage.codegen_engineer so generated templates preserve per-stage params, dtype casts, stream order token/tile/lane/word, and Stage 3 FIFO authority.",
+    "Record in SACG memory that parameter_binding passed on static checker evidence with no active retry, backtrack, or contamination blockers, and record memory/runtime, codegen, simulation, synthesis, timing, and board checks as later-stage obligations.",
+    "If any gate meta-checker or targeted rerun fails, block promotion and route only the failing evidence slice through bounded repair: numeric/parameter failures to current-stage rebinding under the approved numeric policy; stream/FIFO contradictions to Stage 3 contract backtrack if the Stage 3 contract is wrong; AXI/transfer-count issues to transfer-count or memory-runtime repair; semantic model, numeric-policy, architecture, pipeline, memory-layout, or major template changes require approval."
+  ],
+  "risks": [
+    "Later-stage resource risk: the large symbolic weight counts, especially 4358144 elements per FFN projection and 1835008 attention elements, may stress BRAM/URAM/DSP routing or external-memory bandwidth, but current evidence is only symbolic and cannot establish feasibility.",
+    "Later-stage timing risk: clock_target_mhz=0 leaves the board shell clock unknown; timing closure must remain blocked until real synthesis/implementation timing evidence is produced.",
+    "Later-stage scope-preservation risk: if code generation ignores global_param_scope and uses global tile or bit-width defaults as authoritative instead of per-stage params and stream contracts, it could silently alter legal tiling or numeric semantics.",
+    "Later-stage memory-planning risk: the static total of 31202816 aligned bytes per layer and single DDR channel require concrete base addresses, non-overlap, alignment, and transfer scheduling before any runtime or board claim.",
+    "Later-stage accounting risk: residual and activation_mul stages have multiple incoming streams in stream_contract_trace; memory/runtime planning must explicitly state which streams are external DDR transfers versus on-chip pipeline streams before interpreting per-stage transfer counts as runtime traffic.",
+    "Current-stage blocking risk: none identified from the supplied checker summary and stream/memory artifacts under the provided stage_gate_policy.",
+    "Later-stage evidence risk only: stream order and liveness are currently static contract assumptions; no functional simulation, deadlock watchdog, AXI protocol, timing, or board-runtime evidence is supplied or claimed.",
+    "Later-stage memory/runtime risk only: concrete DDR base addresses, non-overlap, address-range use, and runtime ABI are unassigned until Stage 5 and must preserve the 64-byte alignment, 37-bit address width, 512-bit AXI packing, and symbolic transfer counts.",
+    "Evidence packaging risk: the candidate includes passing checker_results, but the expected handoff artifacts and exact subtask acceptance checker names must be materialized before evidence-gate promotion.",
+    "Numeric implementation risk for downstream stages: code generation and verification must implement fp32 accumulation, nearest_even rounding, saturation=false, 32_to_16 and 16_to_32 cast points, and residual_precision=32 exactly; static binding evidence does not prove generated hardware behavior.",
+    "Stage-gate interpretation risk: if current_run_numeric_policy.md does not actually bind nearest_even rounding through constraint.numeric.policy.default_rules, treating nearest_even as fixed would change numeric semantics. The named numeric_policy_check must preserve the source citation.",
+    "Stream/memory handoff risk: activation_mul has two validated 16-bit input streams and residual paths remain 32-bit; downstream memory/runtime planning must not collapse branch accounting or alter stream order while assigning concrete storage and transfer schedules.",
+    "Resource and bandwidth estimates are symbolic first-order/static transfer counts only. They must not be consumed as timing closure, implementation utilization, achievable board bandwidth, or hardware pass evidence.",
+    "Later-stage memory/runtime risk: concrete memory base addresses, non-overlap, alignment, DDR image layout, and runtime ABI are not assigned or proven by this stage; static transfer counts must be reconciled in Stage 5 before runtime use.",
+    "Later-stage implementation/numeric risk: fp16/fp32 casts, residual precision, and rounding handling must be preserved by generated Chisel and golden-reference comparison; the current static pass is not functional correctness evidence.",
+    "Later-stage resource/timing/board risk: symbolic resource estimates, clock_target_mhz=0, and bandwidth estimates do not prove Vivado synthesis, implementation timing, AXI protocol compliance, DDR behavior, or board execution.",
+    "Handoff packaging risk: if downstream tools require standalone audit files rather than embedded candidate fields, verification_artifact_contract_check must require materialized checker_evidence_matrix.json and closure reports before consumption."
+  ],
+  "role_assignments": [
+    {
+      "agent": "template_numeric_contract_agent",
+      "role": "template and numeric contract engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "sacg_static_check",
+            "numeric_policy_check",
+            "template_binding_static_check",
+            "parameter_binding_static_check"
+          ],
+          "consumes": [
+            "artifact.input.model_config",
+            "artifact.input.numeric_policy",
+            "artifact.input.template_library",
+            "artifact.input.template_metadata",
+            "artifact.stage2.template_selection",
+            "artifact.stage3.pipeline_plan",
+            "candidate_stage_artifact.bindings",
+            "candidate_stage_artifact.numeric_binding_plan",
+            "candidate_stage_artifact.global_params"
+          ],
+          "downstream_consumers": [
+            "parameter_binding.stream_memory_contract_engineer",
+            "parameter_binding.dse_resource_risk_engineer",
+            "parameter_binding.evidence_gate_auditor"
+          ],
+          "produces": [
+            "template_numeric_binding_audit.json",
+            "per_stage_parameter_completeness_matrix.json",
+            "numeric_cast_contract_trace.json",
+            "binding_legality_findings.json"
+          ]
+        },
+        "decision_authority": [
+          "May accept or reject per-stage template parameter completeness and numeric contract consistency.",
+          "May require bounded template-parameter repair for missing or illegal parameters.",
+          "May not approve changes to model architecture, tensor dimensions, operator order, or numeric semantics."
+        ],
+        "mission": "Ensure template parameter binding is complete, legal, SACG-grounded, and numerically faithful for every pipeline stage.",
+        "out_of_scope": [
+          "Do not generate or rewrite RTL/Chisel templates.",
+          "Do not change model operator graph, shapes, head counts, or sequence length.",
+          "Do not claim simulation, synthesis, timing, or board pass evidence from static binding checks."
+        ],
+        "primary_responsibilities": [
+          "Check that required template parameters are present for norm, attention, residual, ffn, and elementwise stages.",
+          "Confirm per-stage overrides are authoritative over global defaults and that global defaults are not misused as semantic claims.",
+          "Trace input_bits, output_bits, elem_bits, cast points, accumulator dtype, residual precision, rounding, and saturation against the numeric policy.",
+          "Verify attention-specific parameters such as hidden_size, head_dim, num_q_heads, num_kv_heads, and seq_len against model shape constraints.",
+          "Identify only current-stage binding failures; classify later simulation/synthesis/timing obligations as downstream evidence requirements, not current failures."
+        ]
+      },
+      "subtask_id": "parameter_binding.template_numeric_contract_engineer"
+    },
+    {
+      "agent": "stream_memory_contract_agent",
+      "role": "stream and memory contract engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "sacg_static_check",
+            "stream_plan_check",
+            "data_order_trace_check",
+            "transfer_count_check",
+            "memory_runtime_plan_check"
+          ],
+          "consumes": [
+            "artifact.stage3.pipeline_plan",
+            "artifact.stage3.pipeline_static_checks",
+            "candidate_stage_artifact.stream_contract_trace",
+            "candidate_stage_artifact.bandwidth_estimate",
+            "candidate_stage_artifact.bindings",
+            "artifact.input.target_board_profile"
+          ],
+          "downstream_consumers": [
+            "parameter_binding.dse_resource_risk_engineer",
+            "parameter_binding.evidence_gate_auditor",
+            "later_stage.memory_runtime_planner"
+          ],
+          "produces": [
+            "stream_dtype_binding_trace.json",
+            "axi_packing_transfer_count_audit.json",
+            "fifo_authority_audit.json",
+            "memory_runtime_risk_notes.json"
+          ]
+        },
+        "decision_authority": [
+          "May accept or reject stream dtype and AXI packing consistency for this stage.",
+          "May flag transfer-count, liveness, or FIFO-authority risks for later memory/runtime planning.",
+          "May not assign concrete DDR base addresses or approve runtime ABI details in this stage."
+        ],
+        "mission": "Ensure parameter bindings are cross-layer consistent with stream order, edge dtype contracts, FIFO ownership, AXI packing, and static transfer-count evidence.",
+        "out_of_scope": [
+          "Do not assign concrete memory addresses or non-overlap maps.",
+          "Do not generate runtime drivers or board integration code.",
+          "Do not claim functional simulation, deadlock, AXI protocol, or board runtime evidence."
+        ],
+        "primary_responsibilities": [
+          "Compare bound input_bits and output_bits with every edge in stream_contract_trace.",
+          "Verify stream order remains token/tile/lane/word and is not changed by parameter binding.",
+          "Check that lanes and element widths pack cleanly into the 512-bit AXI interface and 64-byte alignment assumptions.",
+          "Confirm Stage 3 edge buffer depths remain authoritative and Stage 4 fifo_depth is only a local template default.",
+          "Audit bandwidth_estimate as symbolic transfer-count evidence only, with no board bandwidth, timing, or runtime pass claims."
+        ]
+      },
+      "subtask_id": "parameter_binding.stream_memory_contract_engineer"
+    },
+    {
+      "agent": "dse_resource_risk_agent",
+      "role": "DSE and resource-risk engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "sacg_static_check",
+            "parameter_binding_static_check",
+            "implementation_package_static",
+            "timing_resource_check",
+            "required_real_tool_evidence_check"
+          ],
+          "consumes": [
+            "artifact.input.design_space",
+            "artifact.input.target_board_profile",
+            "artifact.input.tool_profile",
+            "candidate_stage_artifact.bindings.resource_estimate",
+            "candidate_stage_artifact.bandwidth_estimate",
+            "candidate_stage_artifact.global_params",
+            "candidate_stage_artifact.stage_gate_policy",
+            "template_numeric_binding_audit.json",
+            "axi_packing_transfer_count_audit.json"
+          ],
+          "downstream_consumers": [
+            "parameter_binding.evidence_gate_auditor",
+            "later_stage.codegen_engineer",
+            "later_stage.backend_board_engineer"
+          ],
+          "produces": [
+            "dse_parameter_legality_audit.json",
+            "symbolic_resource_risk_register.json",
+            "tile_lane_divisibility_report.json",
+            "later_stage_evidence_obligation_list.json"
+          ]
+        },
+        "decision_authority": [
+          "May accept or reject DSE legality and resource-estimate scoping for this stage.",
+          "May require bounded re-binding if tile/lane choices violate template or design-space constraints.",
+          "May not assert synthesis, implementation, timing, or board feasibility without real tool evidence."
+        ],
+        "mission": "Validate that DSE and resource-related parameter choices are legal and honestly scoped as symbolic estimates rather than implementation evidence.",
+        "out_of_scope": [
+          "Do not tune parameters by changing model or numeric semantics.",
+          "Do not run or claim Vivado synthesis or implementation results in this stage.",
+          "Do not convert symbolic first-order estimates into hardware pass/fail evidence."
+        ],
+        "primary_responsibilities": [
+          "Check lane count, datapath width, tile_m, tile_n, and tile_k choices against design-space and tensor divisibility constraints.",
+          "Verify per-stage tile overrides divide the corresponding tensor dimensions and global tile values are defaults only.",
+          "Review symbolic compute_ops, weight_elements, activation_elements, and datapath_bits for internal consistency with bound shapes.",
+          "Classify resource, memory traffic, timing, and board risks as later-stage obligations when no current checker failure exists.",
+          "Ensure clock_target_mhz=0 is treated as unknown board shell clock, not timing evidence."
+        ]
+      },
+      "subtask_id": "parameter_binding.dse_resource_risk_engineer"
+    },
+    {
+      "agent": "parameter_binding_evidence_gate_agent",
+      "role": "checker evidence and repair-boundary auditor",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "sacg_static_check",
+            "verification_artifact_contract_check",
+            "repair_boundary_check",
+            "human_boundary_check",
+            "stage_retry_request_check",
+            "stage_backtrack_request_check",
+            "stage_artifact_trust_barrier_check"
+          ],
+          "consumes": [
+            "candidate_stage_artifact.checker_results",
+            "candidate_stage_artifact.checker_summary",
+            "candidate_stage_artifact.stage_gate_policy",
+            "template_numeric_binding_audit.json",
+            "stream_dtype_binding_trace.json",
+            "axi_packing_transfer_count_audit.json",
+            "dse_parameter_legality_audit.json",
+            "symbolic_resource_risk_register.json",
+            "state_summary.sacg_memory_truth"
+          ],
+          "downstream_consumers": [
+            "stage_orchestrator",
+            "later_stage.memory_runtime_planner",
+            "later_stage.codegen_engineer"
+          ],
+          "produces": [
+            "parameter_binding_stage_gate_decision.json",
+            "checker_evidence_matrix.json",
+            "cross_layer_consistency_closure_report.json",
+            "bounded_repair_routing_if_needed.json",
+            "sacg_memory_update_recommendation.json"
+          ]
+        },
+        "decision_authority": [
+          "May recommend stage promotion when all accepted checkers and specialist audits pass.",
+          "May block downstream handoff if checker evidence is missing, contradictory, or contaminated.",
+          "May create retry/backtrack/trust-barrier recommendations but not perform unbounded repair or semantic redesign."
+        ],
+        "mission": "Serve as the stage evidence gate that decides whether parameter binding can be promoted based on checker evidence and specialist audits.",
+        "out_of_scope": [
+          "Do not invent new checker results or accept unsupported pass claims.",
+          "Do not repair templates, change parameters, or alter numeric/model semantics directly.",
+          "Do not approve deployment, synthesis, timing, or board execution evidence for this static parameter-binding stage."
+        ],
+        "primary_responsibilities": [
+          "Aggregate outputs from template/numeric, stream/memory, and DSE/resource specialists.",
+          "Compare candidate checker_results against the stage_gate_policy current_stage_acceptance criteria.",
+          "Ensure later-stage obligations such as memory base addresses, elaboration, simulation, synthesis, timing, and board evidence are not misreported as current-stage passes.",
+          "Use state_summary.sacg_memory_truth to confirm no active contamination barrier, retry request, or backtrack request blocks promotion.",
+          "If failures exist, map each failure to violated SACG constraints and define bounded repair or backtrack boundaries."
+        ]
+      },
+      "subtask_id": "parameter_binding.evidence_gate_auditor"
+    }
+  ],
+  "schema_version": "spatialaccagent.team_aggregate.v0",
+  "split_reason": "The parameter_binding stage is not atomic: it binds template parameters, preserves model/numeric semantics, checks stream/AXI packing and transfer-count consistency, and classifies DSE/resource risks. SACG memory truth shows no active retry, backtrack, or contamination blocker, so the stage can be decomposed into independent chip-design specialists with a final checker-evidence gate. The split keeps work template-constrained and checker-verified without free-form RTL or semantic changes.",
+  "stage": "parameter_binding",
+  "status": "ready",
+  "subtask_count": 4,
+  "used_fallback_count": 0
+}

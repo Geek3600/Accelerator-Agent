@@ -1,0 +1,252 @@
+{
+  "agent": "data_memory_runtime_specialist__stream_and_liveness_engineer",
+  "duration_sec": 663.8878129720033,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "data_memory_runtime_specialist__stream_and_liveness_engineer",
+    "approval_required_for": [
+      "pipeline topology, edge ID, transfer_order, or branch/join contract changes beyond preserving the reviewed semantics",
+      "memory layout, base address, AXI beat-width, alignment, or transfer-count policy changes",
+      "numeric precision, rounding, saturation, or accumulator policy changes",
+      "major template changes or any replacement of trusted_queue_template/operator templates with unapproved free-form RTL"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "stream_plan_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "boundary_contract_check"
+        ],
+        "action_type": "cross_layer_rule_review",
+        "consumes": [
+          "candidate_stage_artifact.data_edges",
+          "candidate_stage_artifact.stream_edges",
+          "candidate_stage_artifact.branch_join_contracts",
+          "candidate_stage_artifact.buffer_plan",
+          "candidate_stage_artifact.flow_control",
+          "candidate_stage_artifact.memory_schedule",
+          "candidate_stage_artifact.checker_results",
+          "constraint.stream.order",
+          "constraint.beat.pipeline",
+          "constraint.liveness.pipeline",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "pipeline_planning.emit_stream_liveness_review_acceptance_bundle",
+        "on_failure": "Block pipeline_planning promotion; attach failed edge_id, buffer_id, checker name, and violated SACG constraint, then route to pipeline_repair or memory_runtime_repair without changing golden outputs or tolerances.",
+        "produces": [
+          "artifact.pipeline_planning.stream_liveness_review",
+          "edge-by-edge stream/beat audit table",
+          "branch/join and buffer liveness findings mapped to edge_id and buffer_id"
+        ],
+        "rationale": "Bind the supplied candidate stream, beat, branch/join, buffer, and liveness evidence to SACG constraints and produce the expected current-stage review artifacts before evidence-gate consumption.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "sacg_static_check",
+          "stream_plan_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "boundary_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "boundary_contract_check",
+          "stream_plan_check",
+          "data_order_trace_check"
+        ],
+        "action_type": "template_parameter_binding_handoff",
+        "consumes": [
+          "artifact.pipeline_planning.stream_liveness_review",
+          "candidate_stage_artifact.branch_join_contracts",
+          "candidate_stage_artifact.buffer_plan",
+          "candidate_stage_artifact.stream_edges",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection"
+        ],
+        "id": "template_binding.preserve_stream_join_and_residual_port_contracts",
+        "on_failure": "Block code generation; localize the mismatch to the affected edge_id or template port. If repair changes pipeline topology, edge order, residual duplication semantics, or template boundaries, request architecture/pipeline approval before rerun.",
+        "produces": [
+          "artifact.stage4.boundary_contracts.stream_port_bindings",
+          "artifact.stage4.parameter_binding_stream_constraints"
+        ],
+        "rationale": "Ensure the template-bound implementation preserves the reviewed stream order, transfer counts, join pairing keys, residual-skip semantics, and bounded FIFO choices without introducing free-form RTL changes.",
+        "requires_approval": false,
+        "stage": "template_binding",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "boundary_contract_generate",
+          "stream_plan_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "transfer_count_check",
+          "addr_map_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "memory_runtime_plan_verification",
+        "consumes": [
+          "artifact.pipeline_planning.stream_liveness_review",
+          "candidate_stage_artifact.memory_schedule",
+          "candidate_stage_artifact.data_edges",
+          "candidate_stage_artifact.stream_edges",
+          "constraint.memory.board",
+          "constraint.runtime.board"
+        ],
+        "id": "memory_runtime.verify_full_beat_transfer_plan",
+        "on_failure": "Block memory/runtime promotion; route count or alignment mismatches to memory_runtime_repair. Any memory-layout or base-address change requires explicit approval and a full rerun of transfer_count_check and addr_map_check.",
+        "produces": [
+          "artifact.stage5.memory_runtime_plan.checked_transfer_counts",
+          "artifact.stage5.addr_map_constraints"
+        ],
+        "rationale": "Carry the reviewed AXI beat counts, full-beat policy, activation buffer maxima, target sequence bound, and runtime transfer sequence into the memory/runtime plan before code generation and address-map finalization.",
+        "requires_approval": false,
+        "stage": "memory_runtime_planning",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "transfer_count_check",
+          "addr_map_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "case_stage_leaf_static",
+          "case_single_transformer_layer",
+          "case_pipeline_deadlock_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "case_deadlock_axi_check"
+        ],
+        "action_type": "hierarchical_verification_handoff",
+        "consumes": [
+          "artifact.stage4.boundary_contracts.stream_port_bindings",
+          "artifact.stage5.memory_runtime_plan.checked_transfer_counts",
+          "generated template-bound RTL/Chisel package",
+          "verification input and weight manifests"
+        ],
+        "id": "verification.run_hierarchical_stream_order_count_deadlock_checks",
+        "on_failure": "Do not promote to a higher layer. Localize the earliest causal boundary/module from tool output, package CCTG/contract-guided context, apply only bounded repair, and rerun the failed layer before proceeding.",
+        "produces": [
+          "verification/case_diagnostics/stream_order_count_deadlock_report.json",
+          "verification/case_diagnostics/failure_localization_context.json"
+        ],
+        "rationale": "Static pipeline-planning liveness is not hardware evidence; later verification must exercise stream order, transfer counts, boundary contracts, and deadlock watchdogs through the required leaf, single-layer, and board-accurate hierarchy.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "hierarchical_verification_plan_check",
+          "case_stage_leaf_static",
+          "case_single_transformer_layer",
+          "case_multilayer_pipeline",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "case_deadlock_axi_check"
+        ]
+      }
+    ],
+    "observations": [
+      "Supplied SACG memory has no active contamination_barriers, no open_backtrack_requests, and no open_retry_requests relevant to this stage; there is no same-stage trust barrier to reconcile before this review.",
+      "Visible checker_summary reports 10 passed, 0 failed, and 0 warnings. Relevant candidate checks pass: stream_data_edge_mirror_check edges=13, edge_stream_contract_check checked_edges=13, branch_join_contract_check splits=1 joins=3, buffer_contract_check buffers=13 with allowed depths 32/64, liveness_backpressure_check with an acyclic directed graph, memory_runtime_contract_check regions=6 axi_bits=512, and shape_numeric_contract_check elem_bits=16 accumulator_bits=32.",
+      "data_edges and stream_edges mirror edge-by-edge for all 13 supplied edge_id values, including block_input, residual_skip, MLP branch/join, and block_output boundary edges. Mirrored fields include src/dst stage and port, kind, tensor shape, element_bits, flow_control=ready_valid, transfer_order=[token,tile,lane,word], axi_beats, stream_beats_per_axi_beat, transfer_count_bytes, and valid_byte_policy=full_beats_only.",
+      "Transfer counts are consistent with the supplied shapes and 512-bit AXI beat assumption: seq_len 16 x width 896 x 32 bits = 57344 bytes = 896 AXI beats at 64 bytes/beat with stream_beats_per_axi_beat=2; seq_len 16 x width 896 x 16 bits = 28672 bytes = 448 AXI beats with stream_beats_per_axi_beat=4; seq_len 16 x width 4864 x 16 bits = 155648 bytes = 2432 AXI beats with stream_beats_per_axi_beat=4. All visible transfers are integral full beats.",
+      "Memory/runtime sizing is consistent with the edge transfer maxima in the supplied artifact: input_tokens and output_tokens are 57344 bytes, activation_ping and activation_pong are 155648 bytes, AXI alignment is 64 bytes, and the target_seq_len is 16 with runtime sequence length constrained to <= target_max_seq_len.",
+      "Join contracts for stage_02_residual_add_1, stage_06_activation_mul, and stage_08_residual_add_2 require all inputs valid before fire and pair by token/tile/lane/word. The MLP split at stage_03_rms_norm_2 duplicates atomically into per-output FIFOs, then permits independent branch dequeue under downstream ready.",
+      "Residual skip streams into stage_02_residual_add_1 and stage_08_residual_add_2 have matching tensor shape, element width, transfer order, and FIFO buffering relative to their paired main inputs. Their source-side duplication semantics are represented through named residual ports and buffers rather than listed as split_contracts; because branch_join_contract_check passed with no warnings, this is not a current-stage blocker, but Stage 4 boundary contracts should preserve the intended residual port behavior explicitly.",
+      "Every stream edge has a concrete bounded_ready_valid_fifo using trusted_queue_template with depth 32 or 64, and the liveness checker reports an acyclic directed graph. This addresses current-stage static deadlock risk under the provided flow_control rule, but it does not prove latency equality, timing closure, throughput, RTL deadlock freedom, AXI protocol correctness, or board-level liveness.",
+      "Cross-layer numeric/shape consistency is visible for the reviewed edges: hidden width 896 and intermediate width 4864 match the stream tensors; 16-bit activation/weight streams and 32-bit accumulator/residual streams align with stage numeric_contracts; the GQA attention contract q=14, kv=2, head_dim=64 is checker-backed. External KV-cache materialization remains a later memory-layout artifact and is not claimed complete here."
+    ],
+    "proposed_actions": [
+      "Handoff artifact.pipeline_planning.stream_liveness_review to pipeline_planning.evidence_gate_auditor with an edge-by-edge stream/beat audit table and branch/join plus buffer findings mapped to edge_id and buffer_id.",
+      "At evidence gate, record exact acceptance evidence for sacg_static_check, stream_plan_check, data_order_trace_check, transfer_count_check, boundary_contract_check, and deadlock_watchdog; if any exact checker is unavailable, record it as not_run and block promotion until an approved equivalent or planned checker is present.",
+      "During Stage 4 template binding, preserve all 13 edge IDs, tensor shapes, element widths, transfer_order token/tile/lane/word, ready_valid protocol, buffer depths, and join pairing keys. Bind residual skip source-port semantics explicitly or add an approved split-contract clarification if a template requires it.",
+      "During Stage 5 memory/runtime planning, carry forward 64-byte AXI alignment, full-beat transfer counts, target_seq_len<=16, activation buffer maxima, and XDMA/runtime transfer sequencing, then verify address maps and counts with memory_runtime_plan_check, addr_map_check, and transfer_count_check.",
+      "During Stage 6+ verification, enforce the three-layer repair loop if any stream/order/count/deadlock failure appears: first localize and repair operator/leaf modules, then the connected single-transformer-layer kernel, then the board-accurate AXI/DDR wrapped system; do not skip a failed layer or promote without rerun evidence."
+    ],
+    "risks": [
+      "No current-stage blocking stream, transfer-count, branch/join, or ready/valid liveness risk is visible from the supplied checker-backed candidate artifact.",
+      "Non-blocking later-stage risk per stage_gate_policy: static acyclic FIFO planning and symbolic latency metadata must not be consumed as RTL, timing, throughput, or hardware-pass evidence; later verification must run real order/count/deadlock and boundary checks before any hardware claim."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact",
+        "artifact.pipeline_planning.stream_liveness_review",
+        "edge-by-edge stream/beat audit table",
+        "branch/join and buffer liveness findings mapped to edge_id and buffer_id",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.target_board_profile",
+        "artifact.input.template_library",
+        "artifact.stage2.template_selection"
+      ],
+      "constraints": [
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.liveness.pipeline",
+        "constraint.cross_layer.input_consistency",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.template.library",
+        "constraint.model.decoder"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch",
+        "edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul",
+        "edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul",
+        "edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main",
+        "edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main",
+        "edge.data.stage_08_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_rms_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_rms_norm_2",
+        "stage_04_mlp_gate_proj",
+        "stage_05_mlp_up_proj",
+        "stage_06_activation_mul",
+        "stage_07_mlp_down_proj",
+        "stage_08_residual_add_2",
+        "block_output"
+      ]
+    },
+    "schema_version": "spatialaccagent.stream_liveness_review.v0",
+    "stage": "pipeline_planning",
+    "status": "ready_for_pipeline_planning_evidence_gate",
+    "summary": "Current pipeline-planning stream/liveness review finds no checker-backed current-stage blockers in the supplied artifact. data_edges and stream_edges mirror across 13 edges; transfer counts are integral under 512-bit AXI/full-beat assumptions; join contracts pair token/tile/lane/word; all visible edge buffers are bounded ready/valid FIFOs and the graph is statically acyclic. This is planning/static evidence only, not RTL, timing, throughput, or hardware liveness evidence."
+  },
+  "prompt_bytes": 64360,
+  "prompt_hash": "510df72bcb0db2f2e99ef28ac95d68cb464518bd03f000c268c5a9aa043326da",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.stream_liveness_review.v0\",\"agent\":\"data_memory_runtime_specialist__stream_and_liveness_engineer\",\"stage\":\"pipeline_planning\",\"status\":\"ready_for_pipeline_planning_evidence_gate\",\"summary\":\"Current pipeline-planning stream/liveness review finds no checker-backed current-stage blockers in the supplied artifact. data_edges and stream_edges mirror across 13 edges; transfer counts are integral under 512-bit AXI/full-beat assumptions; join contracts pair token/tile/lane/word; all visible edge buffers are bounded ready/valid FIFOs and the graph is statically acyclic. This is planning/static evidence only, not RTL, timing, throughput, or hardware liveness evidence.\",\"sacg_focus\":{\"nodes\":[\"block_input\",\"stage_00_rms_norm_1\",\"stage_01_self_attention\",\"stage_02_residual_add_1\",\"stage_03_rms_norm_2\",\"stage_04_mlp_gate_proj\",\"stage_05_mlp_up_proj\",\"stage_06_activation_mul\",\"stage_07_mlp_down_proj\",\"stage_08_residual_add_2\",\"block_output\"],\"edges\":[\"edge.data.block_input.to.stage_00_rms_norm_1.input\",\"edge.data.block_input.to.stage_02_residual_add_1.residual_skip\",\"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main\",\"edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main\",\"edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main\",\"edge.data.stage_02_residual_add_1.to.stage_08_residual_add_2.residual_skip\",\"edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch\",\"edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_proj.mlp_up_branch\",\"edge.data.stage_04_mlp_gate_proj.to.stage_06_activation_mul.mlp_gate_to_mul\",\"edge.data.stage_05_mlp_up_proj.to.stage_06_activation_mul.mlp_up_to_mul\",\"edge.data.stage_06_activation_mul.to.stage_07_mlp_down_proj.main\",\"edge.data.stage_07_mlp_down_proj.to.stage_08_residual_add_2.main\",\"edge.data.stage_08_residual_add_2.to.block_output.output\"],\"constraints\":[\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.liveness.pipeline\",\"constraint.cross_layer.input_consistency\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.template.library\",\"constraint.model.decoder\"],\"artifacts\":[\"candidate_stage_artifact\",\"artifact.pipeline_planning.stream_liveness_review\",\"edge-by-edge stream/beat audit table\",\"branch/join and buffer liveness findings mapped to edge_id and buffer_id\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.target_board_profile\",\"artifact.input.template_library\",\"artifact.stage2.template_selection\"]},\"observations\":[\"Supplied SACG memory has no active contamination_barriers, no open_backtrack_requests, and no open_retry_requests relevant to this stage; there is no same-stage trust barrier to reconcile before this review.\",\"Visible checker_summary reports 10 passed, 0 failed, and 0 warnings. Relevant candidate checks pass: stream_data_edge_mirror_check edges=13, edge_stream_contract_check checked_edges=13, branch_join_contract_check splits=1 joins=3, buffer_contract_check buffers=13 with allowed depths 32/64, liveness_backpressure_check with an acyclic directed graph, memory_runtime_contract_check regions=6 axi_bits=512, and shape_numeric_contract_check elem_bits=16 accumulator_bits=32.\",\"data_edges and stream_edges mirror edge-by-edge for all 13 supplied edge_id values, including block_input, residual_skip, MLP branch/join, and block_output boundary edges. Mirrored fields include src/dst stage and port, kind, tensor shape, element_bits, flow_control=ready_valid, transfer_order=[token,tile,lane,word], axi_beats, stream_beats_per_axi_beat, transfer_count_bytes, and valid_byte_policy=full_beats_only.\",\"Transfer counts are consistent with the supplied shapes and 512-bit AXI beat assumption: seq_len 16 x width 896 x 32 bits = 57344 bytes = 896 AXI beats at 64 bytes/beat with stream_beats_per_axi_beat=2; seq_len 16 x width 896 x 16 bits = 28672 bytes = 448 AXI beats with stream_beats_per_axi_beat=4; seq_len 16 x width 4864 x 16 bits = 155648 bytes = 2432 AXI beats with stream_beats_per_axi_beat=4. All visible transfers are integral full beats.\",\"Memory/runtime sizing is consistent with the edge transfer maxima in the supplied artifact: input_tokens and output_tokens are 57344 bytes, activation_ping and activation_pong are 155648 bytes, AXI alignment is 64 bytes, and the target_seq_len is 16 with runtime sequence length constrained to <= target_max_seq_len.\",\"Join contracts for stage_02_residual_add_1, stage_06_activation_mul, and stage_08_residual_add_2 require all inputs valid before fire and pair by token/tile/lane/word. The MLP split at stage_03_rms_norm_2 duplicates atomically into per-output FIFOs, then permits independent branch dequeue under downstream ready.\",\"Residual skip streams into stage_02_residual_add_1 and stage_08_residual_add_2 have matching tensor shape, element width, transfer order, and FIFO buffering relative to their paired main inputs. Their source-side duplication semantics are represented through named residual ports and buffers rather than listed as split_contracts; because branch_join_contract_check passed with no warnings, this is not a current-stage blocker, but Stage 4 boundary contracts should preserve the intended residual port behavior explicitly.\",\"Every stream edge has a concrete bounded_ready_valid_fifo using trusted_queue_template with depth 32 or 64, and the liveness checker reports an acyclic directed graph. This addresses current-stage static deadlock risk under the provided flow_control rule, but it does not prove latency equality, timing closure, throughput, RTL deadlock freedom, AXI protocol correctness, or board-level liveness.\",\"Cross-layer numeric/shape consistency is visible for the reviewed edges: hidden width 896 and intermediate width 4864 match the stream tensors; 16-bit activation/weight streams and 32-bit accumulator/residual streams align with stage numeric_contracts; the GQA attention contract q=14, kv=2, head_dim=64 is checker-backed. External KV-cache materialization remains a later memory-layout artifact and is not claimed complete here.\"],\"risks\":[\"No current-stage blocking stream, transfer-count, branch/join, or ready/valid liveness risk is visible from the supplied checker-backed candidate artifact.\",\"Non-blocking later-stage risk per stage_gate_policy: static acyclic FIFO planning and symbolic latency metadata must not be consumed as RTL, timing, throughput, or hardware-pass evidence; later verification must run real order/count/deadlock and boundary checks before any hardware claim.\"],\"proposed_actions\":[\"Handoff artifact.pipeline_planning.stream_liveness_review to pipeline_planning.evidence_gate_auditor with an edge-by-edge stream/beat audit table and branch/join plus buffer findings mapped to edge_id and buffer_id.\",\"At evidence gate, record exact acceptance evidence for sacg_static_check, stream_plan_check, data_order_trace_check, transfer_count_check, boundary_contract_check, and deadlock_watchdog; if any exact checker is unavailable, record it as not_run and block promotion until an approved equivalent or planned checker is present.\",\"During Stage 4 template binding, preserve all 13 edge IDs, tensor shapes, element widths, transfer_order token/tile/lane/word, ready_valid protocol, buffer depths, and join pairing keys. Bind residual skip source-port semantics explicitly or add an approved split-contract clarification if a template requires it.\",\"During Stage 5 memory/runtime planning, carry forward 64-byte AXI alignment, full-beat transfer counts, target_seq_len<=16, activation buffer maxima, and XDMA/runtime transfer sequencing, then verify address maps and counts with memory_runtime_plan_check, addr_map_check, and transfer_count_check.\",\"During Stage 6+ verification, enforce the three-layer repair loop if any stream/order/count/deadlock failure appears: first localize and repair operator/leaf modules, then the connected single-transformer-layer kernel, then the board-accurate AXI/DDR wrapped system; do not skip a failed layer or promote without rerun evidence.\"],\"executable_actions\":[{\"id\":\"pipeline_planning.emit_stream_liveness_review_acceptance_bundle\",\"stage\":\"pipeline_planning\",\"action_type\":\"cross_layer_rule_review\",\"rationale\":\"Bind the supplied candidate stream, beat, branch/join, buffer, and liveness evidence to SACG constraints and produce the expected current-stage review artifacts before evidence-gate consumption.\",\"consumes\":[\"candidate_stage_artifact.data_edges\",\"candidate_stage_artifact.stream_edges\",\"candidate_stage_artifact.branch_join_contracts\",\"candidate_stage_artifact.buffer_plan\",\"candidate_stage_artifact.flow_control\",\"candidate_stage_artifact.memory_schedule\",\"candidate_stage_artifact.checker_results\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.liveness.pipeline\",\"constraint.cross_layer.input_consistency\"],\"produces\":[\"artifact.pipeline_planning.stream_liveness_review\",\"edge-by-edge stream/beat audit table\",\"branch/join and buffer liveness findings mapped to edge_id and buffer_id\"],\"tool_roles\":[\"sacg_static_check\",\"stream_plan_check\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"boundary_contract_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"stream_plan_check\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"boundary_contract_check\"],\"on_failure\":\"Block pipeline_planning promotion; attach failed edge_id, buffer_id, checker name, and violated SACG constraint, then route to pipeline_repair or memory_runtime_repair without changing golden outputs or tolerances.\",\"requires_approval\":false},{\"id\":\"template_binding.preserve_stream_join_and_residual_port_contracts\",\"stage\":\"template_binding\",\"action_type\":\"template_parameter_binding_handoff\",\"rationale\":\"Ensure the template-bound implementation preserves the reviewed stream order, transfer counts, join pairing keys, residual-skip semantics, and bounded FIFO choices without introducing free-form RTL changes.\",\"consumes\":[\"artifact.pipeline_planning.stream_liveness_review\",\"candidate_stage_artifact.branch_join_contracts\",\"candidate_stage_artifact.buffer_plan\",\"candidate_stage_artifact.stream_edges\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\"],\"produces\":[\"artifact.stage4.boundary_contracts.stream_port_bindings\",\"artifact.stage4.parameter_binding_stream_constraints\"],\"tool_roles\":[\"parameter_binding_static_check\",\"boundary_contract_generate\",\"stream_plan_check\"],\"acceptance_checkers\":[\"parameter_binding_static_check\",\"boundary_contract_check\",\"stream_plan_check\",\"data_order_trace_check\"],\"on_failure\":\"Block code generation; localize the mismatch to the affected edge_id or template port. If repair changes pipeline topology, edge order, residual duplication semantics, or template boundaries, request architecture/pipeline approval before rerun.\",\"requires_approval\":false},{\"id\":\"memory_runtime.verify_full_beat_transfer_plan\",\"stage\":\"memory_runtime_planning\",\"action_type\":\"memory_runtime_plan_verification\",\"rationale\":\"Carry the reviewed AXI beat counts, full-beat policy, activation buffer maxima, target sequence bound, and runtime transfer sequence into the memory/runtime plan before code generation and address-map finalization.\",\"consumes\":[\"artifact.pipeline_planning.stream_liveness_review\",\"candidate_stage_artifact.memory_schedule\",\"candidate_stage_artifact.data_edges\",\"candidate_stage_artifact.stream_edges\",\"constraint.memory.board\",\"constraint.runtime.board\"],\"produces\":[\"artifact.stage5.memory_runtime_plan.checked_transfer_counts\",\"artifact.stage5.addr_map_constraints\"],\"tool_roles\":[\"memory_runtime_plan_check\",\"transfer_count_check\",\"addr_map_check\"],\"acceptance_checkers\":[\"memory_runtime_plan_check\",\"transfer_count_check\",\"addr_map_check\",\"boundary_contract_check\"],\"on_failure\":\"Block memory/runtime promotion; route count or alignment mismatches to memory_runtime_repair. Any memory-layout or base-address change requires explicit approval and a full rerun of transfer_count_check and addr_map_check.\",\"requires_approval\":false},{\"id\":\"verification.run_hierarchical_stream_order_count_deadlock_checks\",\"stage\":\"verification\",\"action_type\":\"hierarchical_verification_handoff\",\"rationale\":\"Static pipeline-planning liveness is not hardware evidence; later verification must exercise stream order, transfer counts, boundary contracts, and deadlock watchdogs through the required leaf, single-layer, and board-accurate hierarchy.\",\"consumes\":[\"artifact.stage4.boundary_contracts.stream_port_bindings\",\"artifact.stage5.memory_runtime_plan.checked_transfer_counts\",\"generated template-bound RTL/Chisel package\",\"verification input and weight manifests\"],\"produces\":[\"verification/case_diagnostics/stream_order_count_deadlock_report.json\",\"verification/case_diagnostics/failure_localization_context.json\"],\"tool_roles\":[\"hierarchical_verification_plan_check\",\"case_stage_leaf_static\",\"case_single_transformer_layer\",\"case_multilayer_pipeline\",\"deadlock_watchdog\",\"data_order_trace_check\",\"transfer_count_check\",\"case_deadlock_axi_check\"],\"acceptance_checkers\":[\"hierarchical_verification_plan_check\",\"case_stage_leaf_static\",\"case_single_transformer_layer\",\"case_pipeline_deadlock_check\",\"data_order_trace_check\",\"transfer_count_check\",\"deadlock_watchdog\",\"case_deadlock_axi_check\"],\"on_failure\":\"Do not promote to a higher layer. Localize the earliest causal boundary/module from tool output, package CCTG/contract-guided context, apply only bounded repair, and rerun the failed layer before proceeding.\",\"requires_approval\":false}],\"approval_required_for\":[\"pipeline topology, edge ID, transfer_order, or branch/join contract changes beyond preserving the reviewed semantics\",\"memory layout, base address, AXI beat-width, alignment, or transfer-count policy changes\",\"numeric precision, rounding, saturation, or accumulator policy changes\",\"major template changes or any replacement of trusted_queue_template/operator templates with unapproved free-form RTL\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/data_memory_runtime_specialist__stream_and_liveness_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/team/llm/data_memory_runtime_specialist__stream_and_liveness_engineer_result.json",
+  "retry_errors": [
+    "attempt 1: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)",
+    "attempt 2: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2658)"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "pipeline_planning.stream and liveness engineer",
+  "used_fallback": false
+}

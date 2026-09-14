@@ -1,0 +1,52 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "sacg_static_check",
+      "sacg_memory_check",
+      "verification_action_audit_check",
+      "stage_artifact_trust_barrier_check"
+    ],
+    "action_type": "stage_promotion_gate",
+    "consumes": [
+      "recent_stage_summary.checker_summary",
+      "recent_stage_summary.outputs.pipeline_plan",
+      "recent_stage_summary.outputs.pipeline_static_checks",
+      "recent_stage_summary.outputs.sacg_state",
+      "recent_stage_summary.design_team.action_normalization",
+      "recent_stage_summary.llm_agent",
+      "sacg_memory",
+      "flow_policy"
+    ],
+    "id": "flow.pipeline_planning_promote_checked_sacg_state",
+    "on_failure": "Block transition to parameter_binding. Keep the candidate pipeline plan and team action queue behind a stage_artifact_trust_barrier, localize the failing SACG/action-audit field, and do not consume unpromoted artifacts downstream. If the failure invalidates the checked Stage 3 contract rather than action metadata, open a stage_backtrack_request or stop because the pipeline_planning retry budget is already at 2 attempts.",
+    "produces": [
+      "artifact.flow.pipeline_planning_promotion_decision",
+      "artifact.pipeline_planning.promoted_pipeline_contract",
+      "artifact.pipeline_planning.normalized_handoff_queue",
+      "artifact.pipeline_planning.promotion_trust_manifest",
+      "sacg_memory.stage_outcome_record.pipeline_planning"
+    ],
+    "rationale": "The current stage passed with 10/10 checks, command return code 0, and no open SACG retry, backtrack, or contamination blockers. Promote only the checker-backed pipeline contract and normalized handoff lineage before any downstream consumption.",
+    "requires_approval": false,
+    "stage": "pipeline_planning",
+    "tool_roles": [
+      "sacg_validate",
+      "sacg_static_check",
+      "sacg_memory_update",
+      "verification_action_audit",
+      "stage_artifact_trust_barrier"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "proceed",
+  "flow_event_index": 12,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/012_proceed.json",
+  "stage": "pipeline_planning"
+}

@@ -1,0 +1,91 @@
+{
+  "decision": {
+    "approval_required_for": [
+      "Any adoption or change of numeric precision, quantization policy, tolerance policy, or approximation behavior.",
+      "Any architecture-level selection of pipeline stages, tile sizes, parallelism, memory layout, data packing, buffering policy, or scheduling policy derived from prepared inputs.",
+      "Any AXI/DDR access policy, memory-interface assumption, bandwidth allocation, or board-level deployment constraint that becomes part of the design.",
+      "Any major template, backend, toolchain, or code-generation strategy change based on these materials.",
+      "Any design-space pruning that removes viable architecture candidates or encodes an unapproved architecture decision."
+    ],
+    "decision": "run_tool",
+    "expected_evidence": [
+      "Executable stage log showing successful parsing of task_spec, model_config, board materials, quantization materials, and tool materials.",
+      "Manifest listing source paths, versions, timestamps or hashes for all prepared inputs.",
+      "Parsed model evidence including layer count, hidden size, intermediate size, vocabulary size, RoPE/config fields, norm semantics, Q head count, KV head count, and tensor-shape derivations.",
+      "Explicit evidence that GQA metadata is preserved and not normalized into MHA assumptions.",
+      "Numeric/quantization evidence showing imported policies, precisions, scales or calibration references, and whether they are candidates versus approved constraints.",
+      "Board evidence including resource limits, memory capacity/bandwidth assumptions, AXI/DDR interface parameters, clocks, and backend target constraints.",
+      "Template/design-space evidence showing candidate parameters and bounds without claiming final selection.",
+      "Evidence that no tests, golden outputs, tolerance settings, or checker files were modified.",
+      "Run-directory artifact inventory suitable for downstream checker stages."
+    ],
+    "reason": "The requested stage prepares and records model, numeric, template, design-space, board, quantization, and tool inputs. It is an input/evidence preparation stage and does not by itself delete tests, alter golden outputs, loosen tolerances, bypass checkers, or claim a design pass. It is safe to run, with later checker stages required to validate consistency and any architecture-level choices requiring recorded approval before adoption.",
+    "risks": [
+      "Input materials may be stale, incomplete, or inconsistent across task spec, model config, board, quantization, and tool directories.",
+      "Incorrect parsing could change model semantics or tensor shapes before later validation.",
+      "GQA-specific Q/KV head relationships could be lost and accidentally treated as MHA downstream.",
+      "Numeric or quantization materials may imply precision or tolerance changes that require approval before adoption.",
+      "Board/tool constraints may conflict with candidate templates, memory layout, bandwidth, or AXI/DDR assumptions.",
+      "Prepared design-space or template bounds may later influence tile size, parallelism, pipeline staging, memory layout, or data packing and therefore require human approval before final design use.",
+      "Input preparation does not satisfy checker-pass requirements; downstream checker evidence remains mandatory."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "prepared input manifest",
+        "parsed task specification",
+        "parsed model configuration summary",
+        "model shape and layer metadata",
+        "attention/GQA metadata",
+        "numeric and quantization material summary",
+        "board resource/interface summary",
+        "toolchain/backend material summary",
+        "template/design-space input summary",
+        "SACG seed or prepared_inputs_summary in run directory",
+        "input provenance and hash records"
+      ],
+      "constraints": [
+        "Preserve model semantics exactly from model_config and task_spec.",
+        "Do not treat grouped-query attention as multi-head attention; preserve distinct Q-head and KV-head counts.",
+        "Do not modify tests, golden outputs, tolerances, or checker behavior.",
+        "Do not claim design pass from input preparation alone; downstream checkers must validate all prepared artifacts.",
+        "Keep provenance, versions, and hashes for every imported material.",
+        "Board, AXI/DDR, memory capacity, clock, resource, and tool constraints must be captured without inventing unsupported capabilities.",
+        "Numeric and quantization inputs must be recorded as candidates or constraints, not silently adopted as unapproved semantic changes."
+      ],
+      "edges": [
+        "task_spec -> prepared_input_manifest",
+        "model_config -> model_semantics",
+        "model_config -> tensor_shapes",
+        "attention_topology -> GQA_constraints",
+        "numeric_quantization_materials -> numeric_policy_candidates",
+        "board_materials -> resource_and_interface_constraints",
+        "toolchain_materials -> backend_tool_constraints",
+        "template_materials -> template_and_design_space_candidates",
+        "prepared_inputs -> downstream_checkers"
+      ],
+      "nodes": [
+        "task_spec",
+        "model_config:qwen2_0_5b",
+        "model_semantics",
+        "attention_topology",
+        "GQA_Q_heads_KV_heads",
+        "tensor_shapes",
+        "numeric_quantization_materials",
+        "template_materials",
+        "design_space_inputs",
+        "board_materials",
+        "toolchain_materials",
+        "runtime_run_dir"
+      ]
+    },
+    "stage": "input_preparation",
+    "tool_command_allowed": true
+  },
+  "duration_sec": 40.774376794001,
+  "enforced": true,
+  "error": null,
+  "mode": "llm",
+  "request_path": "/tmp/spatialacc_qwen_agent_fast_run/agent/llm/01_input_preparation_request.json",
+  "schema_version": "spatialaccagent.pre_stage_safety_gate_decision.v0",
+  "stage": "input_preparation"
+}

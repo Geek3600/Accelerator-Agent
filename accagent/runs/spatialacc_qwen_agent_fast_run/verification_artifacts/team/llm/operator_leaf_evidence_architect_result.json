@@ -1,0 +1,433 @@
+{
+  "agent": "operator_leaf_evidence_architect",
+  "duration_sec": 266.8007817930047,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "operator_leaf_evidence_architect",
+    "approval_required_for": [
+      "Any numeric policy, tolerance, rounding, saturation, or golden-reference change beyond current_run_numeric_policy.md.",
+      "Any template selection change or major template rewrite outside bounded_template_repair authority.",
+      "Any change to the nine-stage decoder-block pipeline order, merge topology, ready/valid stream contract, or transfer-unit ordering.",
+      "Any memory layout, DDR image format, runtime ABI, or address-map change affecting real manifests or boundary traces.",
+      "Any backtrack from a leaf failure into Stage 3 pipeline planning, Stage 4 parameter binding, or Stage 5 code generation contracts."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "stream_plan_check",
+          "codegen_package_static_check"
+        ],
+        "action_type": "verification_gate_dag_refinement",
+        "consumes": [
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.codegen_contract_check",
+          "candidate_stage_artifact.hierarchical_verification.stage_agents",
+          "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract"
+        ],
+        "id": "op_leaf_001_materialize_gate_matrix",
+        "on_failure": "Block promotion to single_transformer_layer_kernel; report the missing or inconsistent stage/module/numeric/stream field to the repair_boundary_evidence_auditor without inferring omitted role-slice details.",
+        "produces": [
+          "operator_leaf_gate_matrix.json",
+          "leaf_evidence_path_requirements.json"
+        ],
+        "rationale": "Create the authoritative operator-leaf gate matrix from full artifacts, not from the compact role slice, so all nine stages preserve stage_id, op, template/kind, module_checks, numeric widths, ready/valid boundaries, transfer order, and required evidence gates.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "stream_plan_check",
+          "codegen_package_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "boundary_contract_check",
+          "data_order_trace_check",
+          "verification_artifact_contract_check"
+        ],
+        "action_type": "boundary_contract_materialization",
+        "consumes": [
+          "operator_leaf_gate_matrix.json",
+          "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding"
+        ],
+        "id": "op_leaf_002_materialize_boundary_contract_map",
+        "on_failure": "Keep case_leaf_functional and case_leaf_golden_compare blocked; emit the missing boundary, trace field, numeric policy, or data-order constraint in leaf_failure_to_constraint_map.json.",
+        "produces": [
+          "leaf_boundary_contract_map.json",
+          "leaf_boundary_trace_schema_requirements.json"
+        ],
+        "rationale": "Bind every leaf stage to case-adapter-independent boundary contracts and trace schemas before real functional simulation or golden comparison, using the supplied debug_closure_contract and SACG constraints.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "boundary_contract_generate",
+          "boundary_contract_check",
+          "data_order_trace_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_stage_leaf_static",
+          "template_coverage_check",
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "operator_leaf_gate_matrix.json",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.design_artifact_manifest",
+          "artifact.stage5.codegen_contract_check",
+          "artifact.stage5.codegen_package_static_check"
+        ],
+        "id": "op_leaf_003_run_leaf_static_module_coverage",
+        "on_failure": "Localize to the earliest missing, extra, or template-unbound module and stop before functional simulation; route the failure to bounded leaf repair or Stage 5 backtrack if generated package contracts are violated.",
+        "produces": [
+          "verification/operator_leaf/case_stage_leaf_static.json",
+          "operator_leaf_evidence_ledger.json"
+        ],
+        "rationale": "Verify that generated RTL/Chisel exposes the expected template-bound modules and stream boundaries for every operator leaf before simulation or layer merge.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_stage_leaf_static",
+          "template_coverage_check",
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_real_weight_artifacts",
+          "case_tb_scaffold",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "leaf_boundary_contract_map.json"
+        ],
+        "id": "op_leaf_004_materialize_real_leaf_test_artifacts",
+        "on_failure": "Block case_leaf_functional and case_leaf_golden_compare; classify missing real manifests, default weights, or non-hashable scaffold as verification artifact failures rather than hardware failures.",
+        "produces": [
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/operator_leaf/tb_scaffold_manifest.json",
+          "verification/operator_leaf/tb_scaffold_hashes.json"
+        ],
+        "rationale": "Materialize real input/weight manifests and a reproducible hashable testbench scaffold before leaf functional simulation, avoiding default-weight or smoke-only acceptance.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_weight_manifest_generate",
+          "case_real_weight_artifacts",
+          "case_tb_scaffold_generate",
+          "case_tb_scaffold",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_leaf_functional",
+          "real_tool.case_leaf_functional",
+          "functional_sim",
+          "data_order_trace_check",
+          "deadlock_watchdog",
+          "transfer_count_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "operator_leaf_gate_matrix.json",
+          "leaf_boundary_contract_map.json",
+          "verification/operator_leaf/case_stage_leaf_static.json",
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json",
+          "verification/operator_leaf/tb_scaffold_manifest.json",
+          "artifact.stage5.generated_code_package"
+        ],
+        "id": "op_leaf_005_run_real_leaf_functional_sim",
+        "on_failure": "Do not proceed to golden compare or layer merge; send simulator logs and boundary traces to failure_slice_localization with violated SACG constraints and earliest observed boundary failure.",
+        "produces": [
+          "verification/operator_leaf/case_leaf_functional.json",
+          "verification/operator_leaf/per_stage_functional_traces.json",
+          "verification/operator_leaf/leaf_liveness.json",
+          "operator_leaf_evidence_ledger.json"
+        ],
+        "rationale": "Run real simulator evidence for each of the nine operator leaf stages after static coverage, boundary contracts, real manifests, and scaffold are available.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_leaf_functional",
+          "case_vcs_functional_sim",
+          "case_vcs_evidence_analyzer",
+          "deadlock_watchdog",
+          "data_order_trace_check",
+          "transfer_count_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_leaf_golden_compare",
+          "real_tool.case_leaf_golden_compare",
+          "numeric_compare",
+          "data_order_trace_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "verification/operator_leaf/case_leaf_functional.json",
+          "verification/operator_leaf/per_stage_functional_traces.json",
+          "leaf_boundary_contract_map.json",
+          "artifact.input.numeric_policy",
+          "artifact.stage4.parameter_binding",
+          "verification/case_real_weights/input_manifest.json",
+          "verification/case_real_weights/packed_weight_manifest.json"
+        ],
+        "id": "op_leaf_006_run_leaf_golden_compare",
+        "on_failure": "Do not modify golden outputs or loosen tolerance; localize mismatch to numeric policy, cast point, data-order, or module boundary and invoke targeted replay.",
+        "produces": [
+          "verification/operator_leaf/case_leaf_golden_compare.json",
+          "verification/operator_leaf/per_stage_numeric_compare.json",
+          "operator_leaf_evidence_ledger.json"
+        ],
+        "rationale": "Compare every leaf stage against golden/reference boundary values using the declared numeric policy, cast points, and tolerance contract after real functional simulation has produced valid traces.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_leaf_golden_compare",
+          "numeric_compare",
+          "data_order_trace_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_replay_check",
+          "causal_repair_context_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "contract_guided_failure_slicing",
+        "consumes": [
+          "verification/operator_leaf/case_stage_leaf_static.json",
+          "verification/operator_leaf/case_leaf_functional.json",
+          "verification/operator_leaf/case_leaf_golden_compare.json",
+          "leaf_boundary_contract_map.json",
+          "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract",
+          "operator_leaf_gate_matrix.json"
+        ],
+        "id": "op_leaf_007_localize_leaf_failure_and_pack_repair_context",
+        "on_failure": "Block repair and merge; classify the gap as checker/golden-reference repair if localization cannot identify root_candidate_module, violated_contract, failure_signature, causal_path, targeted_replay_plan, and minimal_repair_context.",
+        "produces": [
+          "leaf_failure_to_constraint_map.json",
+          "verification/debug_closure/failure_localization.json",
+          "verification/debug_closure/targeted_replay_plan.json",
+          "verification/debug_closure/minimal_repair_context.json"
+        ],
+        "rationale": "Convert any static, boundary, functional, or golden failure into a compact causal repair slice rather than free-form RTL debugging, using boundary bisection and earliest-violation localization.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "failure_slice_localization",
+          "boundary_trace_rerun",
+          "targeted_replay",
+          "causal_repair_context_pack",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun",
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare"
+        ],
+        "action_type": "bounded_repair_loop",
+        "consumes": [
+          "verification/debug_closure/minimal_repair_context.json",
+          "leaf_failure_to_constraint_map.json",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage5.generated_code_package",
+          "operator_leaf_gate_matrix.json",
+          "leaf_boundary_contract_map.json"
+        ],
+        "id": "op_leaf_008_apply_bounded_operator_leaf_repair_and_rerun",
+        "on_failure": "Stop the leaf repair loop and request explicit approval/backtrack for any required numeric-policy, pipeline, memory-layout, template-selection, or major-template change; do not patch downstream symptoms.",
+        "produces": [
+          "verification/operator_leaf/bounded_repair_candidate.json",
+          "verification/operator_leaf/targeted_failed_checker_rerun.json",
+          "operator_leaf_evidence_ledger.json"
+        ],
+        "rationale": "Allow only template-bound operator-local repair using the packed causal context, then rerun the failed checker and dependent leaf gates before considering promotion.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "bounded_template_repair",
+          "repair_boundary_check",
+          "targeted_failed_checker_rerun",
+          "case_stage_leaf_static",
+          "boundary_contract_check",
+          "case_leaf_functional",
+          "case_leaf_golden_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_action_audit_check",
+          "required_real_tool_evidence_check",
+          "verification_artifact_contract_check",
+          "data_order_trace_check"
+        ],
+        "action_type": "evidence_handoff_gate",
+        "consumes": [
+          "operator_leaf_gate_matrix.json",
+          "leaf_boundary_contract_map.json",
+          "leaf_failure_to_constraint_map.json",
+          "operator_leaf_evidence_ledger.json",
+          "verification/operator_leaf/case_stage_leaf_static.json",
+          "verification/operator_leaf/case_leaf_functional.json",
+          "verification/operator_leaf/case_leaf_golden_compare.json"
+        ],
+        "id": "op_leaf_009_audit_leaf_closure_handoff",
+        "on_failure": "Keep single_transformer_layer_kernel promotion blocked and send the missing, failed, or not_run gate list to the repair_boundary_evidence_auditor.",
+        "produces": [
+          "verification/operator_leaf/operator_leaf_closure_handoff.json",
+          "handoff.to.verification_artifacts.single_layer_merge_planner",
+          "handoff.to.verification_artifacts.repair_boundary_evidence_auditor"
+        ],
+        "rationale": "Provide downstream merge planners and auditors with a single leaf evidence ledger that distinguishes pass, fail, and not_run evidence and blocks layer merge unless all required leaf gates pass for all nine stages.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_action_audit",
+          "required_real_tool_evidence_check",
+          "team_aggregate"
+        ]
+      }
+    ],
+    "observations": [
+      "The supplied sacg_memory_truth in the state summary reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests; no current SACG-memory blocker is asserted for this operator-leaf planning slice.",
+      "Upstream Stage 3 pipeline planning, Stage 4 parameter binding, and Stage 5 code generation/package/contract checks are reported ready or pass; this supports planning leaf gates but does not constitute leaf functional correctness evidence.",
+      "The candidate Stage 6 artifact declares the required three-layer repair loop: operator_leaf_modules, single_transformer_layer_kernel, and board_axi_ddr_wrapped_system. This role only owns the bottom operator-leaf layer and the promotion block before layer merge.",
+      "Presence summary confirms nine stage agents and nine parameter-binding stage IDs: stage_00_rms_norm_1, stage_01_self_attention, stage_02_residual_add_1, stage_03_rms_norm_2, stage_04_mlp_gate_proj, stage_05_mlp_up_proj, stage_06_activation_mul, stage_07_mlp_down_proj, and stage_08_residual_add_2. Detailed rows are role-sliced, so omitted module_checks for later stages must be recovered from the full artifacts rather than inferred from this compact prompt.",
+      "The refined operator-family grouping for the leaf matrix is: norm stages stage_00_rms_norm_1 and stage_03_rms_norm_2; attention stage stage_01_self_attention; residual stages stage_02_residual_add_1 and stage_08_residual_add_2; FFN stages stage_04_mlp_gate_proj, stage_05_mlp_up_proj, and stage_07_mlp_down_proj; elementwise stage stage_06_activation_mul.",
+      "Visible module coverage for early stages includes RMSNorm and VectorNorm for stage_00_rms_norm_1, QKVProjection, RoPE, AttentionGQA, and Linear_1 for stage_01_self_attention, and ResidualAdd and Queue for stage_02_residual_add_1. The full matrix generation must preserve the remaining module_checks from the complete stage_agents artifact.",
+      "Every leaf stage must carry the four bottom-layer required gates: case_stage_leaf_static, boundary_contract_check, case_leaf_functional, and case_leaf_golden_compare. Their current execution status is required_pending_execution, not pass.",
+      "The debug_closure_contract supplies 13 boundaries, case-adapter-independent trace fields, monitor points for valid/ready, tx/tile/logical index/lane mapping, latency windows, numeric policy/tolerance, and targeted replay fields. This is sufficient to define failure-slice artifacts but still requires checker/tool evidence before repair or merge.",
+      "The refined leaf sub-DAG should make real weight/input manifests and a hashable testbench scaffold prerequisites for real leaf functional simulation and golden comparison. The visible DAG places case_tb_scaffold after case_leaf_golden_compare, while the policy requires testbench_scaffold_before_functional_sim; downstream execution should consume the corrected dependency order.",
+      "Static data-order trace support is reported pass for current-stage planning, but real leaf simulation must still validate logical index, lane mapping, transfer counts, and ready/valid behavior under tool evidence."
+    ],
+    "proposed_actions": [
+      "Materialize operator_leaf_gate_matrix.json from the full Stage 3, Stage 4, Stage 5, and hierarchical stage_agents artifacts, covering all nine stage IDs with op, template/kind, module_checks, numeric widths, stream boundaries, transfer-unit order, and required evidence gates.",
+      "Normalize the operator-leaf sub-DAG so case_real_weight_artifacts and case_tb_scaffold are available before case_leaf_functional, and so case_leaf_golden_compare occurs only after real functional simulation and boundary trace evidence.",
+      "Generate leaf_boundary_contract_map.json using the debug_closure_contract, with per-stage boundary IDs, valid/ready contracts, logical index and lane mapping, latency windows, numeric policy/tolerance references, and trace paths.",
+      "Run case_stage_leaf_static for every leaf stage against the generated code package and template metadata; fail closed on missing, extra, or template-unbound modules.",
+      "Run case_leaf_functional with real manifests and a reproducible scaffold for each leaf stage, and record simulator evidence, liveness, transfer counts, and data-order traces in operator_leaf_evidence_ledger.json.",
+      "Run case_leaf_golden_compare for each leaf stage against the numeric policy and reference boundary values; do not accept smoke evidence, default weights, modified golden outputs, or loosened tolerances.",
+      "On any failed leaf gate, produce leaf_failure_to_constraint_map.json plus targeted replay and minimal repair context using boundary bisection and earliest-violation localization before invoking bounded template repair.",
+      "Hand off to verification_artifacts.single_layer_merge_planner only when operator_leaf_evidence_ledger.json shows pass evidence for all required leaf gates across all nine stages; otherwise hand off failure slices to verification_artifacts.repair_boundary_evidence_auditor."
+    ],
+    "risks": [
+      "Layer merge remains blocked until all nine leaf stages have real tool evidence for static coverage, boundary contracts, functional simulation, and golden comparison; pending downstream execution is not a current Stage 6 contract blocker but is a hard merge blocker.",
+      "If execution tools consume the visible empty required_evidence_gates or evidence_path_requirements arrays instead of the full verification_gate_dag and presence-backed artifacts, required operator-leaf gates could be skipped.",
+      "The visible case_tb_scaffold dependency order conflicts with the stated policy that scaffold must precede functional simulation; without normalization, simulation evidence could be non-reproducible or smoke-like.",
+      "The self_attention stage is a composite leaf containing QKV projection, RoPE, causal GQA attention, and output projection. If boundary contracts do not preserve submodule checks and data order, RoPE/GQA/order bugs could escape until layer merge.",
+      "Numeric comparison risk spans fp32 residual paths, fp16 activations/weights, 32_to_16 and 16_to_32 cast points, nearest_even rounding, and no saturation. Golden comparison must bind to current_run_numeric_policy.md and must not loosen tolerances or alter golden outputs.",
+      "Transfer/order risk spans lanes=8, hidden_size=896, intermediate_size=4864, seq_len=16, head_dim=64, num_q_heads=14, num_kv_heads=2, and GQA group size 7. Boundary traces must include tx_id, tile_id, logical_index, lane mapping, and transfer counts.",
+      "Any downstream failure must be localized to the earliest causal leaf boundary before repair. Free-form RTL patching, template rewrites outside bounded repair policy, or downstream symptom patching would violate the repair-loop contract.",
+      "Default generated weights, smoke-only liveness, or scaffold-only elaboration cannot be accepted as leaf functional correctness evidence."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.codegen_contract_check",
+        "candidate_stage_artifact.hierarchical_verification.stage_agents",
+        "candidate_stage_artifact.verification_artifact_contract.debug_closure_contract",
+        "operator_leaf_gate_matrix.json",
+        "leaf_boundary_contract_map.json",
+        "leaf_failure_to_constraint_map.json",
+        "operator_leaf_evidence_ledger.json"
+      ],
+      "constraints": [
+        "constraint.verification.plan",
+        "constraint.verification.hierarchy",
+        "constraint.verification.artifacts",
+        "constraint.pipeline.structure",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.parameter.binding",
+        "constraint.codegen.package",
+        "constraint.template.library",
+        "constraint.numeric.policy",
+        "constraint.human.boundary",
+        "constraint.flow_control.pipeline",
+        "constraint.liveness.pipeline"
+      ],
+      "edges": [
+        "artifact.stage3.pipeline_plan + artifact.stage4.parameter_binding + artifact.stage5.generated_code_package -> operator_leaf_gate_matrix.json",
+        "candidate_stage_artifact.hierarchical_verification.stage_agents + debug_closure_contract -> leaf_boundary_contract_map.json",
+        "case_real_weight_artifacts + case_tb_scaffold + boundary_contract_check + case_stage_leaf_static -> case_leaf_functional",
+        "case_leaf_functional + boundary_contract_check + constraint.numeric.policy -> case_leaf_golden_compare",
+        "case_leaf_golden_compare for all nine leaf stages -> single_transformer_layer_kernel_promotion_gate",
+        "failed leaf gate -> failure_slice_localization -> targeted_replay -> causal_repair_context_pack -> bounded_template_repair -> targeted_failed_checker_rerun"
+      ],
+      "nodes": [
+        "operator_leaf_modules",
+        "leaf_stage.stage_00_rms_norm_1",
+        "leaf_stage.stage_01_self_attention",
+        "leaf_stage.stage_02_residual_add_1",
+        "leaf_stage.stage_03_rms_norm_2",
+        "leaf_stage.stage_04_mlp_gate_proj",
+        "leaf_stage.stage_05_mlp_up_proj",
+        "leaf_stage.stage_06_activation_mul",
+        "leaf_stage.stage_07_mlp_down_proj",
+        "leaf_stage.stage_08_residual_add_2",
+        "case_real_weight_artifacts",
+        "case_tb_scaffold",
+        "boundary_contract_check",
+        "case_stage_leaf_static",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "leaf_failure_localization",
+        "single_transformer_layer_kernel_promotion_gate"
+      ]
+    },
+    "schema_version": "spatialaccagent.operator_leaf_evidence_architect.v0",
+    "stage": "verification_artifacts",
+    "status": "ready_for_handoff_leaf_gates_defined",
+    "summary": "Operator-leaf verification is not functionally passed yet, but the supplied Stage 6 contract is satisfiable and can be handed off with an explicit bottom-layer gate DAG: all nine generated stages must pass template/static coverage, boundary contract checks, real functional simulation using real manifests and scaffold, golden comparison, and targeted failure slicing before any single-transformer-layer merge."
+  },
+  "prompt_bytes": 76263,
+  "prompt_hash": "f7cf705fa357899fc2056527bef89bca10c60ca1cc809470e53f9911a5eb5958",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.operator_leaf_evidence_architect.v0\",\"agent\":\"operator_leaf_evidence_architect\",\"stage\":\"verification_artifacts\",\"status\":\"ready_for_handoff_leaf_gates_defined\",\"summary\":\"Operator-leaf verification is not functionally passed yet, but the supplied Stage 6 contract is satisfiable and can be handed off with an explicit bottom-layer gate DAG: all nine generated stages must pass template/static coverage, boundary contract checks, real functional simulation using real manifests and scaffold, golden comparison, and targeted failure slicing before any single-transformer-layer merge.\",\"sacg_focus\":{\"nodes\":[\"operator_leaf_modules\",\"leaf_stage.stage_00_rms_norm_1\",\"leaf_stage.stage_01_self_attention\",\"leaf_stage.stage_02_residual_add_1\",\"leaf_stage.stage_03_rms_norm_2\",\"leaf_stage.stage_04_mlp_gate_proj\",\"leaf_stage.stage_05_mlp_up_proj\",\"leaf_stage.stage_06_activation_mul\",\"leaf_stage.stage_07_mlp_down_proj\",\"leaf_stage.stage_08_residual_add_2\",\"case_real_weight_artifacts\",\"case_tb_scaffold\",\"boundary_contract_check\",\"case_stage_leaf_static\",\"case_leaf_functional\",\"case_leaf_golden_compare\",\"leaf_failure_localization\",\"single_transformer_layer_kernel_promotion_gate\"],\"edges\":[\"artifact.stage3.pipeline_plan + artifact.stage4.parameter_binding + artifact.stage5.generated_code_package -> operator_leaf_gate_matrix.json\",\"candidate_stage_artifact.hierarchical_verification.stage_agents + debug_closure_contract -> leaf_boundary_contract_map.json\",\"case_real_weight_artifacts + case_tb_scaffold + boundary_contract_check + case_stage_leaf_static -> case_leaf_functional\",\"case_leaf_functional + boundary_contract_check + constraint.numeric.policy -> case_leaf_golden_compare\",\"case_leaf_golden_compare for all nine leaf stages -> single_transformer_layer_kernel_promotion_gate\",\"failed leaf gate -> failure_slice_localization -> targeted_replay -> causal_repair_context_pack -> bounded_template_repair -> targeted_failed_checker_rerun\"],\"constraints\":[\"constraint.verification.plan\",\"constraint.verification.hierarchy\",\"constraint.verification.artifacts\",\"constraint.pipeline.structure\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.parameter.binding\",\"constraint.codegen.package\",\"constraint.template.library\",\"constraint.numeric.policy\",\"constraint.human.boundary\",\"constraint.flow_control.pipeline\",\"constraint.liveness.pipeline\"],\"artifacts\":[\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.codegen_contract_check\",\"candidate_stage_artifact.hierarchical_verification.stage_agents\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\",\"operator_leaf_gate_matrix.json\",\"leaf_boundary_contract_map.json\",\"leaf_failure_to_constraint_map.json\",\"operator_leaf_evidence_ledger.json\"]},\"observations\":[\"The supplied sacg_memory_truth in the state summary reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests; no current SACG-memory blocker is asserted for this operator-leaf planning slice.\",\"Upstream Stage 3 pipeline planning, Stage 4 parameter binding, and Stage 5 code generation/package/contract checks are reported ready or pass; this supports planning leaf gates but does not constitute leaf functional correctness evidence.\",\"The candidate Stage 6 artifact declares the required three-layer repair loop: operator_leaf_modules, single_transformer_layer_kernel, and board_axi_ddr_wrapped_system. This role only owns the bottom operator-leaf layer and the promotion block before layer merge.\",\"Presence summary confirms nine stage agents and nine parameter-binding stage IDs: stage_00_rms_norm_1, stage_01_self_attention, stage_02_residual_add_1, stage_03_rms_norm_2, stage_04_mlp_gate_proj, stage_05_mlp_up_proj, stage_06_activation_mul, stage_07_mlp_down_proj, and stage_08_residual_add_2. Detailed rows are role-sliced, so omitted module_checks for later stages must be recovered from the full artifacts rather than inferred from this compact prompt.\",\"The refined operator-family grouping for the leaf matrix is: norm stages stage_00_rms_norm_1 and stage_03_rms_norm_2; attention stage stage_01_self_attention; residual stages stage_02_residual_add_1 and stage_08_residual_add_2; FFN stages stage_04_mlp_gate_proj, stage_05_mlp_up_proj, and stage_07_mlp_down_proj; elementwise stage stage_06_activation_mul.\",\"Visible module coverage for early stages includes RMSNorm and VectorNorm for stage_00_rms_norm_1, QKVProjection, RoPE, AttentionGQA, and Linear_1 for stage_01_self_attention, and ResidualAdd and Queue for stage_02_residual_add_1. The full matrix generation must preserve the remaining module_checks from the complete stage_agents artifact.\",\"Every leaf stage must carry the four bottom-layer required gates: case_stage_leaf_static, boundary_contract_check, case_leaf_functional, and case_leaf_golden_compare. Their current execution status is required_pending_execution, not pass.\",\"The debug_closure_contract supplies 13 boundaries, case-adapter-independent trace fields, monitor points for valid/ready, tx/tile/logical index/lane mapping, latency windows, numeric policy/tolerance, and targeted replay fields. This is sufficient to define failure-slice artifacts but still requires checker/tool evidence before repair or merge.\",\"The refined leaf sub-DAG should make real weight/input manifests and a hashable testbench scaffold prerequisites for real leaf functional simulation and golden comparison. The visible DAG places case_tb_scaffold after case_leaf_golden_compare, while the policy requires testbench_scaffold_before_functional_sim; downstream execution should consume the corrected dependency order.\",\"Static data-order trace support is reported pass for current-stage planning, but real leaf simulation must still validate logical index, lane mapping, transfer counts, and ready/valid behavior under tool evidence.\"],\"risks\":[\"Layer merge remains blocked until all nine leaf stages have real tool evidence for static coverage, boundary contracts, functional simulation, and golden comparison; pending downstream execution is not a current Stage 6 contract blocker but is a hard merge blocker.\",\"If execution tools consume the visible empty required_evidence_gates or evidence_path_requirements arrays instead of the full verification_gate_dag and presence-backed artifacts, required operator-leaf gates could be skipped.\",\"The visible case_tb_scaffold dependency order conflicts with the stated policy that scaffold must precede functional simulation; without normalization, simulation evidence could be non-reproducible or smoke-like.\",\"The self_attention stage is a composite leaf containing QKV projection, RoPE, causal GQA attention, and output projection. If boundary contracts do not preserve submodule checks and data order, RoPE/GQA/order bugs could escape until layer merge.\",\"Numeric comparison risk spans fp32 residual paths, fp16 activations/weights, 32_to_16 and 16_to_32 cast points, nearest_even rounding, and no saturation. Golden comparison must bind to current_run_numeric_policy.md and must not loosen tolerances or alter golden outputs.\",\"Transfer/order risk spans lanes=8, hidden_size=896, intermediate_size=4864, seq_len=16, head_dim=64, num_q_heads=14, num_kv_heads=2, and GQA group size 7. Boundary traces must include tx_id, tile_id, logical_index, lane mapping, and transfer counts.\",\"Any downstream failure must be localized to the earliest causal leaf boundary before repair. Free-form RTL patching, template rewrites outside bounded repair policy, or downstream symptom patching would violate the repair-loop contract.\",\"Default generated weights, smoke-only liveness, or scaffold-only elaboration cannot be accepted as leaf functional correctness evidence.\"],\"proposed_actions\":[\"Materialize operator_leaf_gate_matrix.json from the full Stage 3, Stage 4, Stage 5, and hierarchical stage_agents artifacts, covering all nine stage IDs with op, template/kind, module_checks, numeric widths, stream boundaries, transfer-unit order, and required evidence gates.\",\"Normalize the operator-leaf sub-DAG so case_real_weight_artifacts and case_tb_scaffold are available before case_leaf_functional, and so case_leaf_golden_compare occurs only after real functional simulation and boundary trace evidence.\",\"Generate leaf_boundary_contract_map.json using the debug_closure_contract, with per-stage boundary IDs, valid/ready contracts, logical index and lane mapping, latency windows, numeric policy/tolerance references, and trace paths.\",\"Run case_stage_leaf_static for every leaf stage against the generated code package and template metadata; fail closed on missing, extra, or template-unbound modules.\",\"Run case_leaf_functional with real manifests and a reproducible scaffold for each leaf stage, and record simulator evidence, liveness, transfer counts, and data-order traces in operator_leaf_evidence_ledger.json.\",\"Run case_leaf_golden_compare for each leaf stage against the numeric policy and reference boundary values; do not accept smoke evidence, default weights, modified golden outputs, or loosened tolerances.\",\"On any failed leaf gate, produce leaf_failure_to_constraint_map.json plus targeted replay and minimal repair context using boundary bisection and earliest-violation localization before invoking bounded template repair.\",\"Hand off to verification_artifacts.single_layer_merge_planner only when operator_leaf_evidence_ledger.json shows pass evidence for all required leaf gates across all nine stages; otherwise hand off failure slices to verification_artifacts.repair_boundary_evidence_auditor.\"],\"executable_actions\":[{\"id\":\"op_leaf_001_materialize_gate_matrix\",\"stage\":\"verification_artifacts\",\"action_type\":\"verification_gate_dag_refinement\",\"rationale\":\"Create the authoritative operator-leaf gate matrix from full artifacts, not from the compact role slice, so all nine stages preserve stage_id, op, template/kind, module_checks, numeric widths, ready/valid boundaries, transfer order, and required evidence gates.\",\"consumes\":[\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.codegen_contract_check\",\"candidate_stage_artifact.hierarchical_verification.stage_agents\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\"],\"produces\":[\"operator_leaf_gate_matrix.json\",\"leaf_evidence_path_requirements.json\"],\"tool_roles\":[\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"stream_plan_check\",\"codegen_package_static_check\"],\"acceptance_checkers\":[\"hierarchical_verification_plan_check\",\"verification_artifact_contract_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"stream_plan_check\",\"codegen_package_static_check\"],\"on_failure\":\"Block promotion to single_transformer_layer_kernel; report the missing or inconsistent stage/module/numeric/stream field to the repair_boundary_evidence_auditor without inferring omitted role-slice details.\",\"requires_approval\":false},{\"id\":\"op_leaf_002_materialize_boundary_contract_map\",\"stage\":\"verification_artifacts\",\"action_type\":\"boundary_contract_materialization\",\"rationale\":\"Bind every leaf stage to case-adapter-independent boundary contracts and trace schemas before real functional simulation or golden comparison, using the supplied debug_closure_contract and SACG constraints.\",\"consumes\":[\"operator_leaf_gate_matrix.json\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\"],\"produces\":[\"leaf_boundary_contract_map.json\",\"leaf_boundary_trace_schema_requirements.json\"],\"tool_roles\":[\"boundary_contract_generate\",\"boundary_contract_check\",\"data_order_trace_check\"],\"acceptance_checkers\":[\"boundary_contract_check\",\"data_order_trace_check\",\"verification_artifact_contract_check\"],\"on_failure\":\"Keep case_leaf_functional and case_leaf_golden_compare blocked; emit the missing boundary, trace field, numeric policy, or data-order constraint in leaf_failure_to_constraint_map.json.\",\"requires_approval\":false},{\"id\":\"op_leaf_003_run_leaf_static_module_coverage\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Verify that generated RTL/Chisel exposes the expected template-bound modules and stream boundaries for every operator leaf before simulation or layer merge.\",\"consumes\":[\"operator_leaf_gate_matrix.json\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.design_artifact_manifest\",\"artifact.stage5.codegen_contract_check\",\"artifact.stage5.codegen_package_static_check\"],\"produces\":[\"verification/operator_leaf/case_stage_leaf_static.json\",\"operator_leaf_evidence_ledger.json\"],\"tool_roles\":[\"case_stage_leaf_static\",\"template_coverage_check\",\"code_generation_manifest_static_check\",\"codegen_package_static_check\"],\"acceptance_checkers\":[\"case_stage_leaf_static\",\"template_coverage_check\",\"code_generation_manifest_static_check\",\"codegen_package_static_check\"],\"on_failure\":\"Localize to the earliest missing, extra, or template-unbound module and stop before functional simulation; route the failure to bounded leaf repair or Stage 5 backtrack if generated package contracts are violated.\",\"requires_approval\":false},{\"id\":\"op_leaf_004_materialize_real_leaf_test_artifacts\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Materialize real input/weight manifests and a reproducible hashable testbench scaffold before leaf functional simulation, avoiding default-weight or smoke-only acceptance.\",\"consumes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.stage3.pipeline_plan\",\"artifact.stage4.parameter_binding\",\"artifact.stage5.generated_code_package\",\"artifact.stage5.memory_layout\",\"artifact.stage5.runtime_config\",\"leaf_boundary_contract_map.json\"],\"produces\":[\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/operator_leaf/tb_scaffold_manifest.json\",\"verification/operator_leaf/tb_scaffold_hashes.json\"],\"tool_roles\":[\"case_weight_manifest_generate\",\"case_real_weight_artifacts\",\"case_tb_scaffold_generate\",\"case_tb_scaffold\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"case_real_weight_artifacts\",\"case_tb_scaffold\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Block case_leaf_functional and case_leaf_golden_compare; classify missing real manifests, default weights, or non-hashable scaffold as verification artifact failures rather than hardware failures.\",\"requires_approval\":false},{\"id\":\"op_leaf_005_run_real_leaf_functional_sim\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Run real simulator evidence for each of the nine operator leaf stages after static coverage, boundary contracts, real manifests, and scaffold are available.\",\"consumes\":[\"operator_leaf_gate_matrix.json\",\"leaf_boundary_contract_map.json\",\"verification/operator_leaf/case_stage_leaf_static.json\",\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\",\"verification/operator_leaf/tb_scaffold_manifest.json\",\"artifact.stage5.generated_code_package\"],\"produces\":[\"verification/operator_leaf/case_leaf_functional.json\",\"verification/operator_leaf/per_stage_functional_traces.json\",\"verification/operator_leaf/leaf_liveness.json\",\"operator_leaf_evidence_ledger.json\"],\"tool_roles\":[\"case_leaf_functional\",\"case_vcs_functional_sim\",\"case_vcs_evidence_analyzer\",\"deadlock_watchdog\",\"data_order_trace_check\",\"transfer_count_check\"],\"acceptance_checkers\":[\"case_leaf_functional\",\"real_tool.case_leaf_functional\",\"functional_sim\",\"data_order_trace_check\",\"deadlock_watchdog\",\"transfer_count_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not proceed to golden compare or layer merge; send simulator logs and boundary traces to failure_slice_localization with violated SACG constraints and earliest observed boundary failure.\",\"requires_approval\":false},{\"id\":\"op_leaf_006_run_leaf_golden_compare\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"Compare every leaf stage against golden/reference boundary values using the declared numeric policy, cast points, and tolerance contract after real functional simulation has produced valid traces.\",\"consumes\":[\"verification/operator_leaf/case_leaf_functional.json\",\"verification/operator_leaf/per_stage_functional_traces.json\",\"leaf_boundary_contract_map.json\",\"artifact.input.numeric_policy\",\"artifact.stage4.parameter_binding\",\"verification/case_real_weights/input_manifest.json\",\"verification/case_real_weights/packed_weight_manifest.json\"],\"produces\":[\"verification/operator_leaf/case_leaf_golden_compare.json\",\"verification/operator_leaf/per_stage_numeric_compare.json\",\"operator_leaf_evidence_ledger.json\"],\"tool_roles\":[\"case_leaf_golden_compare\",\"numeric_compare\",\"data_order_trace_check\"],\"acceptance_checkers\":[\"case_leaf_golden_compare\",\"real_tool.case_leaf_golden_compare\",\"numeric_compare\",\"data_order_trace_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Do not modify golden outputs or loosen tolerance; localize mismatch to numeric policy, cast point, data-order, or module boundary and invoke targeted replay.\",\"requires_approval\":false},{\"id\":\"op_leaf_007_localize_leaf_failure_and_pack_repair_context\",\"stage\":\"verification\",\"action_type\":\"contract_guided_failure_slicing\",\"rationale\":\"Convert any static, boundary, functional, or golden failure into a compact causal repair slice rather than free-form RTL debugging, using boundary bisection and earliest-violation localization.\",\"consumes\":[\"verification/operator_leaf/case_stage_leaf_static.json\",\"verification/operator_leaf/case_leaf_functional.json\",\"verification/operator_leaf/case_leaf_golden_compare.json\",\"leaf_boundary_contract_map.json\",\"candidate_stage_artifact.verification_artifact_contract.debug_closure_contract\",\"operator_leaf_gate_matrix.json\"],\"produces\":[\"leaf_failure_to_constraint_map.json\",\"verification/debug_closure/failure_localization.json\",\"verification/debug_closure/targeted_replay_plan.json\",\"verification/debug_closure/minimal_repair_context.json\"],\"tool_roles\":[\"failure_slice_localization\",\"boundary_trace_rerun\",\"targeted_replay\",\"causal_repair_context_pack\",\"repair_boundary_check\"],\"acceptance_checkers\":[\"failure_localization_check\",\"targeted_replay_check\",\"causal_repair_context_check\",\"repair_boundary_check\"],\"on_failure\":\"Block repair and merge; classify the gap as checker/golden-reference repair if localization cannot identify root_candidate_module, violated_contract, failure_signature, causal_path, targeted_replay_plan, and minimal_repair_context.\",\"requires_approval\":false},{\"id\":\"op_leaf_008_apply_bounded_operator_leaf_repair_and_rerun\",\"stage\":\"verification\",\"action_type\":\"bounded_repair_loop\",\"rationale\":\"Allow only template-bound operator-local repair using the packed causal context, then rerun the failed checker and dependent leaf gates before considering promotion.\",\"consumes\":[\"verification/debug_closure/minimal_repair_context.json\",\"leaf_failure_to_constraint_map.json\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage5.generated_code_package\",\"operator_leaf_gate_matrix.json\",\"leaf_boundary_contract_map.json\"],\"produces\":[\"verification/operator_leaf/bounded_repair_candidate.json\",\"verification/operator_leaf/targeted_failed_checker_rerun.json\",\"operator_leaf_evidence_ledger.json\"],\"tool_roles\":[\"bounded_template_repair\",\"repair_boundary_check\",\"targeted_failed_checker_rerun\",\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\"],\"acceptance_checkers\":[\"repair_boundary_check\",\"targeted_failed_checker_rerun\",\"case_stage_leaf_static\",\"boundary_contract_check\",\"case_leaf_functional\",\"case_leaf_golden_compare\"],\"on_failure\":\"Stop the leaf repair loop and request explicit approval/backtrack for any required numeric-policy, pipeline, memory-layout, template-selection, or major-template change; do not patch downstream symptoms.\",\"requires_approval\":false},{\"id\":\"op_leaf_009_audit_leaf_closure_handoff\",\"stage\":\"verification_artifacts\",\"action_type\":\"evidence_handoff_gate\",\"rationale\":\"Provide downstream merge planners and auditors with a single leaf evidence ledger that distinguishes pass, fail, and not_run evidence and blocks layer merge unless all required leaf gates pass for all nine stages.\",\"consumes\":[\"operator_leaf_gate_matrix.json\",\"leaf_boundary_contract_map.json\",\"leaf_failure_to_constraint_map.json\",\"operator_leaf_evidence_ledger.json\",\"verification/operator_leaf/case_stage_leaf_static.json\",\"verification/operator_leaf/case_leaf_functional.json\",\"verification/operator_leaf/case_leaf_golden_compare.json\"],\"produces\":[\"verification/operator_leaf/operator_leaf_closure_handoff.json\",\"handoff.to.verification_artifacts.single_layer_merge_planner\",\"handoff.to.verification_artifacts.repair_boundary_evidence_auditor\"],\"tool_roles\":[\"verification_action_audit\",\"required_real_tool_evidence_check\",\"team_aggregate\"],\"acceptance_checkers\":[\"verification_action_audit_check\",\"required_real_tool_evidence_check\",\"verification_artifact_contract_check\",\"data_order_trace_check\"],\"on_failure\":\"Keep single_transformer_layer_kernel promotion blocked and send the missing, failed, or not_run gate list to the repair_boundary_evidence_auditor.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any numeric policy, tolerance, rounding, saturation, or golden-reference change beyond current_run_numeric_policy.md.\",\"Any template selection change or major template rewrite outside bounded_template_repair authority.\",\"Any change to the nine-stage decoder-block pipeline order, merge topology, ready/valid stream contract, or transfer-unit ordering.\",\"Any memory layout, DDR image format, runtime ABI, or address-map change affecting real manifests or boundary traces.\",\"Any backtrack from a leaf failure into Stage 3 pipeline planning, Stage 4 parameter binding, or Stage 5 code generation contracts.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/operator_leaf_evidence_architect_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/team/llm/operator_leaf_evidence_architect_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "verification_artifacts.operator leaf verification architect",
+  "used_fallback": false
+}

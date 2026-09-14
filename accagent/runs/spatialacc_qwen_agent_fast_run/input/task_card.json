@@ -1,0 +1,162 @@
+{
+  "_llm_provenance": {
+    "mode": "llm",
+    "sub_agent": "task_card_agent",
+    "used_fallback": false
+  },
+  "acceptance_policy": {
+    "bit_exact_numeric_match_required": false,
+    "board_validation_mode": "configurable_prefix_pipeline_liveness",
+    "board_validation_layer_count": 1,
+    "board_runtime_pass_requires_qwen_axi_ddr_wrapper_connected_and_checked": true,
+    "fallback_dry_run_smoke_only_or_checker_skipped_evidence_accepted": false,
+    "no_deadlock_required": true,
+    "numeric_golden_match_required": false,
+    "opt_full_sequence_verification_accepted_as_qwen_evidence": false,
+    "promotion_requires": [
+      "Complete 24-layer Qwen2-style accelerator generated from trusted Chisel templates without silently changing model semantics.",
+      "Elaborated SystemVerilog and real functional verification evidence using a real simulator selected by the toolchain team.",
+      "Real Vivado synthesis, implementation, and bitstream generation evidence on server 23 for the VU9P board part.",
+      "Board execution evidence from the Qwen AXI/DDR wrapped system, with no deadlock or timeout and a valid output accepted by the run's Qwen validity checker."
+    ],
+    "simulation_only_run_accepted": false,
+    "valid_output_required": true,
+    "valid_output_policy": {
+      "complete_target_model_layers_required": false,
+      "final_axi_ddr_writeback_required": true,
+      "known_payload_required": true,
+      "nonzero_payload_is_positive_witness_not_requirement": true,
+      "numeric_golden_metrics_diagnostic_only": true,
+      "token_pipeline_overlap_required": true
+    }
+  },
+  "debug_and_repair_policy": {
+    "repair_rule": "A failed layer must use real tool output, CCTG/contract-guided localization, bounded repair, and rerun until correct before promotion.",
+    "required_loop": [
+      "Layer 1: operator/leaf modules first.",
+      "Layer 2: connected single-transformer-layer kernel second.",
+      "Layer 3: board-accurate AXI/DDR wrapped system third."
+    ]
+  },
+  "design_goal": "Build a complete board-runnable spatial FPGA accelerator design package for a Qwen2-0.5B-style decoder-only LLM at target_max_seq_len 16, preserving the provided 24-layer Qwen2 semantics, generating Chisel/SystemVerilog from trusted templates, running real Vivado synthesis/implementation/bitstream generation on server 23 for the VU9P board part, and obtaining board-valid output evidence through a connected Qwen AXI/DDR wrapper.",
+  "human_inputs": [
+    "human_task_spec: Design a complete board-runnable spatial accelerator for a Qwen2-style decoder-only LLM.",
+    "human_task_spec: Target model source is Qwen2-0.5B style with 24 decoder layers, hidden_size 896, grouped-query attention with 14 query heads and 2 KV heads, head_dim 64, RoPE, RMSNorm, and gated SiLU MLP.",
+    "human_task_spec: First automation target uses target_max_seq_len 16 from the model_config.",
+    "human_task_spec: Framework must generate a Qwen spatial accelerator design package from trusted Chisel templates, elaborate SystemVerilog, run real Vivado synthesis/implementation/bitstream generation on server 23 for the VU9P board part, and record all tool evidence.",
+    "human_task_spec: Do not run OPT full-sequence verification as Qwen evidence, and do not claim board runtime pass until a Qwen AXI/DDR board wrapper is connected and checked.",
+    "hardware_model_facts: model_type qwen2; num_layers 24; hidden_size 896; target_max_seq_len 16; decoder block with pre RMSNorm, causal GQA attention, RoPE, and gated SiLU MLP.",
+    "hardware_model_facts provenance: _llm_provenance mode llm, sub_agent model_config_agent, used_fallback false."
+  ],
+  "model_facts": {
+    "_llm_provenance": {
+      "mode": "llm",
+      "sub_agent": "model_config_agent",
+      "used_fallback": false
+    },
+    "attention": {
+      "causal": true,
+      "head_dim": 64,
+      "kind": "gqa",
+      "num_kv_heads": 2,
+      "num_q_heads": 14,
+      "out_bias": false,
+      "position_encoding": {
+        "rope_theta": 1000000.0,
+        "type": "rope"
+      },
+      "qkv_bias": true
+    },
+    "block": {
+      "operator_sequence": [
+        "rms_norm_1",
+        "self_attention",
+        "residual_add_1",
+        "rms_norm_2",
+        "mlp_gate_proj",
+        "mlp_up_proj",
+        "activation_mul",
+        "mlp_down_proj",
+        "residual_add_2"
+      ],
+      "type": "decoder"
+    },
+    "hidden_size": 896,
+    "mlp": {
+      "activation": "silu",
+      "down_bias": false,
+      "intermediate_size": 4864,
+      "type": "gated",
+      "up_bias": false
+    },
+    "model_type": "qwen2",
+    "norm": {
+      "eps": 1e-06,
+      "has_bias": false,
+      "position": "pre",
+      "type": "rms_norm"
+    },
+    "num_layers": 24,
+    "target_max_seq_len": 16,
+    "weight_layout": {
+      "mlp": "gate_up_down",
+      "norm": "weight_only",
+      "out_proj": "dense",
+      "qkv": "separate_q_k_v"
+    }
+  },
+  "notes": [
+    "The current Layer-3 run is one complete Transformer block at validation layer index 0 through the exact AXI/DDR board wrapper; the immutable model/catalog authority remains the complete 24-layer target.",
+    "No bit-exact numeric matching was explicitly requested; acceptance is based on no-deadlock and valid-output evidence, with checker configuration recorded by the run.",
+    "For the scoped board validation workload, derive layer/token/beat counts from the board validation scope; require complete scoped runtime/weight flow, token overlap, final writeback, and valid known output. Golden numeric comparison is diagnostic only and must not gate board pass.",
+    "Precision, quantization, rounding mode, and numeric tolerances were not specified in the supplied materials and must not be invented silently.",
+    "Exact VU9P FPGA part number, DDR/AXI data width, board shell/runtime, clock targets, tokenizer/checkpoint identity, and host software details were not specified; keep these unknown until provided or generated with recorded assumptions.",
+    "OPT full-sequence verification must not be used or reported as Qwen evidence.",
+    "Board runtime pass cannot be claimed until the Qwen AXI/DDR board wrapper is connected, checked, and used for board-valid output evidence.",
+    "No material conflict was identified between human_task_spec and hardware_model_facts."
+  ],
+  "numeric_policy": {
+    "bit_exact_required": false,
+    "precision": null,
+    "quantization": null,
+    "rounding": null,
+    "tolerance": null
+  },
+  "platform_requirements": {
+    "axi_data_width": null,
+    "board_runtime_shell": null,
+    "ddr_interface_width": null,
+    "exact_fpga_part_number": null,
+    "fpga_board_part": "VU9P board part",
+    "qwen_axi_ddr_wrapper_required": true,
+    "server_id": 23
+  },
+  "required_outputs": [
+    "Generated Qwen spatial accelerator design package from trusted Chisel templates for the full 24-layer target at target_max_seq_len 16.",
+    "Elaborated SystemVerilog for the generated accelerator and its Qwen AXI/DDR board wrapper.",
+    "Configuration/model manifest preserving the Qwen2 model facts: GQA 14 query heads and 2 KV heads, head_dim 64, RoPE theta 1000000.0, RMSNorm eps 1e-6, gated SiLU MLP intermediate_size 4864, and the provided decoder operator order.",
+    "Real functional verification logs and pass/fail evidence for operator/leaf modules, connected single-transformer-layer kernel, and board-accurate AXI/DDR wrapped system.",
+    "Real Vivado synthesis, implementation, timing/utilization/report, and bitstream-generation logs from server 23 for the VU9P board part.",
+    "Bitstream artifact evidence, including generated artifact path/name and associated Vivado run evidence.",
+    "Board execution transcript/logs from the connected Qwen AXI/DDR wrapper showing no deadlock or timeout.",
+    "Board-valid output evidence for the Qwen run, with checker configuration and result recorded; OPT full-sequence results are not acceptable as Qwen evidence.",
+    "Failure localization and bounded repair records if any verification or implementation step fails before final promotion."
+  ],
+  "schema_version": "1.0",
+  "target_layers": 24,
+  "target_model": "qwen2-0.5b-style",
+  "target_seq_len": 16,
+  "toolchain_requirements": {
+    "bitstream_tool": "Vivado",
+    "codegen_source": "trusted Chisel templates",
+    "elaboration_output": "SystemVerilog",
+    "functional_verification_tool": "VCS or Verilator; exact selection not specified in supplied materials",
+    "implementation_steps": [
+      "synthesis",
+      "implementation",
+      "bitstream_generation"
+    ],
+    "real_tools_required": true,
+    "vivado_server_id": 23
+  }
+}

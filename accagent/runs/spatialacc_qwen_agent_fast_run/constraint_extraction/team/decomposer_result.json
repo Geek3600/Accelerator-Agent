@@ -1,0 +1,300 @@
+{
+  "duration_sec": 46.61524896699848,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "reason": "The constraint_extraction stage is not atomic: the candidate design graph must be audited across separable chip-design layers before it can serve as SACG shared state. Independent specialists can review model/shape semantics, numeric/template binding, memory/runtime/tool evidence, and human/verification boundaries in parallel, followed by a graph integrity auditor that gates promotion using checker evidence. No missing checker capability is apparent because the required static and evidence checks are present in the action grounding registry.",
+    "schema_version": "spatialaccagent.team_decomposition.v1",
+    "split_required": true,
+    "stage": "constraint_extraction",
+    "subtasks": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "sacg_reference_check",
+          "llm_semantic_extraction_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "constraint_extraction.model_shape_specialist",
+        "artifact_focus": [
+          "artifact.input.model_config",
+          "candidate_design_graph_summary",
+          "constraint.model.decoder",
+          "constraint.shape.model"
+        ],
+        "constraints": [
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "artifact.constraint_extraction.model_shape_review",
+          "model_shape_gap_report",
+          "sacg_node_edge_reference_findings"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "handoff_payload": [
+            "artifact.constraint_extraction.model_shape_review",
+            "violated_constraints",
+            "required_graph_repairs"
+          ],
+          "on_failure": "emit bounded constraint gap report identifying missing or inconsistent model/shape SACG nodes; block downstream template binding until corrected.",
+          "on_pass": "handoff model and shape review findings to constraint_extraction.constraint_graph_auditor for graph promotion decision.",
+          "requires_checker_pass": [
+            "sacg_static_check",
+            "model_config_check",
+            "sacg_reference_check"
+          ]
+        },
+        "handoff_to": [
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.model_shape_specialist",
+        "objective": "Audit that decoder semantics, operator order, residual paths, attention/head facts, hidden dimensions, sequence assumptions, and shape relationships from the model configuration are explicitly represented in the initial design graph and linked to cross-layer constraints.",
+        "parallel_group": 0,
+        "role": "model graph and shape engineer",
+        "title": "Review model semantics and shape constraints"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "constraint_extraction.numeric_template_specialist",
+        "artifact_focus": [
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "candidate_design_graph_summary"
+        ],
+        "constraints": [
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "artifact.constraint_extraction.numeric_template_review",
+          "numeric_policy_binding_findings",
+          "template_coverage_gap_report",
+          "parameter_binding_risk_notes"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "handoff_payload": [
+            "artifact.constraint_extraction.numeric_template_review",
+            "violated_constraints",
+            "template_binding_evidence",
+            "required_graph_repairs"
+          ],
+          "on_failure": "block promotion of the design graph until numeric/template ambiguity is represented as SACG constraints or bounded repair requests; do not permit free-form RTL assumptions.",
+          "on_pass": "handoff numeric policy, template coverage, and parameter binding evidence to constraint_extraction.constraint_graph_auditor.",
+          "requires_checker_pass": [
+            "numeric_policy_check",
+            "template_coverage_check",
+            "template_binding_static_check",
+            "parameter_binding_static_check"
+          ]
+        },
+        "handoff_to": [
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.numeric_template_specialist",
+        "objective": "Verify that numeric policy, quantization assumptions, trusted template library coverage, design-space parameters, and resource-risk assumptions are captured as template-constrained SACG facts rather than implicit implementation choices.",
+        "parallel_group": 0,
+        "role": "numeric policy and template binding engineer",
+        "title": "Review numeric policy and template constraints"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "tool_protocol_check",
+          "addr_map_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "constraint_extraction.data_memory_runtime_specialist",
+        "artifact_focus": [
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.field_evidence",
+          "candidate_design_graph_summary"
+        ],
+        "constraints": [
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.tool.profile",
+          "constraint.tool.protocols",
+          "constraint.deployment.board",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "artifact.constraint_extraction.data_memory_runtime_review",
+          "board_runtime_constraint_findings",
+          "tool_availability_evidence_map",
+          "stream_memory_risk_report"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "handoff_payload": [
+            "artifact.constraint_extraction.data_memory_runtime_review",
+            "violated_constraints",
+            "tool_evidence_status",
+            "required_graph_repairs"
+          ],
+          "on_failure": "block later code generation or backend claims where board/runtime/tool facts lack evidence; create bounded graph repair items for missing DDR, AXI, runtime ABI, or tool protocol constraints.",
+          "on_pass": "handoff board DDR/AXI/runtime/tool evidence mapping and stream-memory findings to constraint_extraction.constraint_graph_auditor.",
+          "requires_checker_pass": [
+            "memory_runtime_plan_check",
+            "stream_plan_check",
+            "tool_protocol_check",
+            "addr_map_check"
+          ]
+        },
+        "handoff_to": [
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.data_memory_runtime_specialist",
+        "objective": "Audit that stream order, transfer/liveness assumptions, DDR and AXI address mapping, board runtime ABI, deployment target, tool profile, tool availability, and tool protocols are represented in the initial design graph with cited evidence.",
+        "parallel_group": 0,
+        "role": "dataflow memory/runtime and tool-evidence engineer",
+        "title": "Review data, memory, runtime, and tool constraints"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "task_card_check",
+          "boundary_contract_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "constraint_extraction.verification_boundary_specialist",
+        "artifact_focus": [
+          "artifact.input.task_card",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary",
+          "candidate_design_graph_summary",
+          "validation_errors"
+        ],
+        "constraints": [
+          "constraint.task.goal",
+          "constraint.case.adapter",
+          "constraint.human.boundary",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "artifact.constraint_extraction.verification_boundary_review",
+          "task_case_adapter_alignment_report",
+          "human_boundary_and_repair_gate_report"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "handoff_payload": [
+            "artifact.constraint_extraction.verification_boundary_review",
+            "violated_constraints",
+            "approval_required_items",
+            "required_graph_repairs"
+          ],
+          "on_failure": "block graph promotion if human approval boundaries, case adapter expectations, or repair limits are absent or inconsistent; require bounded SACG repair before downstream stages.",
+          "on_pass": "handoff task, case-adapter, verification, human-boundary, and repair-boundary findings to constraint_extraction.constraint_graph_auditor.",
+          "requires_checker_pass": [
+            "task_card_check",
+            "boundary_contract_check",
+            "human_boundary_check",
+            "repair_boundary_check"
+          ]
+        },
+        "handoff_to": [
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.verification_boundary_specialist",
+        "objective": "Check that the task goal, verification case adapter, human-agent boundary, approval requirements, and repair boundaries are explicit in the graph so later failures can be localized to violated SACG constraints.",
+        "parallel_group": 0,
+        "role": "verification and repair-boundary engineer",
+        "title": "Review verification, case adapter, and human boundaries"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "stage_artifact_trust_barrier_check",
+          "llm_io_quality_check",
+          "output_validity_check"
+        ],
+        "action_type": "evidence_gate",
+        "agent": "constraint_extraction.constraint_graph_auditor",
+        "artifact_focus": [
+          "candidate_design_graph_summary",
+          "prepared_inputs_manifest",
+          "validation_errors",
+          "artifact.constraint_extraction.model_shape_review",
+          "artifact.constraint_extraction.numeric_template_review",
+          "artifact.constraint_extraction.data_memory_runtime_review",
+          "artifact.constraint_extraction.verification_boundary_review"
+        ],
+        "constraints": [
+          "constraint.source.materials",
+          "constraint.source.evidence",
+          "constraint.cross_layer.input_consistency",
+          "constraint.human.boundary"
+        ],
+        "expected_artifacts": [
+          "artifact.constraint_extraction.audited_design_graph_closure",
+          "constraint_extraction_promotion_decision",
+          "cross_layer_consistency_gap_list",
+          "sacg_memory_update_recommendations"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "handoff_payload": [
+            "artifact.constraint_extraction.audited_design_graph_closure",
+            "promotion_decision",
+            "repair_requests",
+            "trust_barriers"
+          ],
+          "on_failure": "return bounded graph repair requests to the failing parallel-group-0 specialist areas and prevent consumption of the candidate graph as trusted shared state.",
+          "on_pass": "promote the audited initial design graph as SACG shared state for subsequent architecture/template planning stages.",
+          "requires_checker_pass": [
+            "sacg_static_check",
+            "sacg_reference_check",
+            "stage_artifact_trust_barrier_check",
+            "output_validity_check"
+          ],
+          "requires_upstream_artifacts": [
+            "artifact.constraint_extraction.model_shape_review",
+            "artifact.constraint_extraction.numeric_template_review",
+            "artifact.constraint_extraction.data_memory_runtime_review",
+            "artifact.constraint_extraction.verification_boundary_review"
+          ]
+        },
+        "handoff_to": [
+          "architecture_planning",
+          "sacg_memory_update"
+        ],
+        "id": "constraint_extraction.constraint_graph_auditor",
+        "objective": "Integrate specialist reviews and decide whether the initial design graph is a checker-supported, cross-layer-consistent SACG state suitable for downstream chip-design-team stages, or whether bounded graph repairs are required.",
+        "parallel_group": 1,
+        "role": "constraint graph integrity auditor",
+        "title": "Gate audited design graph promotion"
+      }
+    ]
+  },
+  "prompt_hash": "3404596a56b72a1a2dff93f64840a5ee3fd9eb19b27e95d3337754b73cf95555",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"reason\":\"The constraint_extraction stage is not atomic: the candidate design graph must be audited across separable chip-design layers before it can serve as SACG shared state. Independent specialists can review model/shape semantics, numeric/template binding, memory/runtime/tool evidence, and human/verification boundaries in parallel, followed by a graph integrity auditor that gates promotion using checker evidence. No missing checker capability is apparent because the required static and evidence checks are present in the action grounding registry.\",\"schema_version\":\"spatialaccagent.team_decomposition.v1\",\"split_required\":true,\"stage\":\"constraint_extraction\",\"subtasks\":[{\"acceptance_checkers\":[\"sacg_static_check\",\"model_config_check\",\"sacg_reference_check\",\"llm_semantic_extraction_check\"],\"action_type\":\"sacg_constraint_review\",\"agent\":\"constraint_extraction.model_shape_specialist\",\"artifact_focus\":[\"artifact.input.model_config\",\"candidate_design_graph_summary\",\"constraint.model.decoder\",\"constraint.shape.model\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.cross_layer.input_consistency\"],\"expected_artifacts\":[\"artifact.constraint_extraction.model_shape_review\",\"model_shape_gap_report\",\"sacg_node_edge_reference_findings\"],\"handoff_required\":true,\"handoff_rule\":{\"on_pass\":\"handoff model and shape review findings to constraint_extraction.constraint_graph_auditor for graph promotion decision.\",\"on_failure\":\"emit bounded constraint gap report identifying missing or inconsistent model/shape SACG nodes; block downstream template binding until corrected.\",\"requires_checker_pass\":[\"sacg_static_check\",\"model_config_check\",\"sacg_reference_check\"],\"handoff_payload\":[\"artifact.constraint_extraction.model_shape_review\",\"violated_constraints\",\"required_graph_repairs\"]},\"handoff_to\":[\"constraint_extraction.constraint_graph_auditor\"],\"id\":\"constraint_extraction.model_shape_specialist\",\"objective\":\"Audit that decoder semantics, operator order, residual paths, attention/head facts, hidden dimensions, sequence assumptions, and shape relationships from the model configuration are explicitly represented in the initial design graph and linked to cross-layer constraints.\",\"parallel_group\":0,\"role\":\"model graph and shape engineer\",\"title\":\"Review model semantics and shape constraints\"},{\"acceptance_checkers\":[\"sacg_static_check\",\"numeric_policy_check\",\"template_coverage_check\",\"template_binding_static_check\",\"parameter_binding_static_check\"],\"action_type\":\"sacg_constraint_review\",\"agent\":\"constraint_extraction.numeric_template_specialist\",\"artifact_focus\":[\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"candidate_design_graph_summary\"],\"constraints\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.cross_layer.input_consistency\"],\"expected_artifacts\":[\"artifact.constraint_extraction.numeric_template_review\",\"numeric_policy_binding_findings\",\"template_coverage_gap_report\",\"parameter_binding_risk_notes\"],\"handoff_required\":true,\"handoff_rule\":{\"on_pass\":\"handoff numeric policy, template coverage, and parameter binding evidence to constraint_extraction.constraint_graph_auditor.\",\"on_failure\":\"block promotion of the design graph until numeric/template ambiguity is represented as SACG constraints or bounded repair requests; do not permit free-form RTL assumptions.\",\"requires_checker_pass\":[\"numeric_policy_check\",\"template_coverage_check\",\"template_binding_static_check\",\"parameter_binding_static_check\"],\"handoff_payload\":[\"artifact.constraint_extraction.numeric_template_review\",\"violated_constraints\",\"template_binding_evidence\",\"required_graph_repairs\"]},\"handoff_to\":[\"constraint_extraction.constraint_graph_auditor\"],\"id\":\"constraint_extraction.numeric_template_specialist\",\"objective\":\"Verify that numeric policy, quantization assumptions, trusted template library coverage, design-space parameters, and resource-risk assumptions are captured as template-constrained SACG facts rather than implicit implementation choices.\",\"parallel_group\":0,\"role\":\"numeric policy and template binding engineer\",\"title\":\"Review numeric policy and template constraints\"},{\"acceptance_checkers\":[\"sacg_static_check\",\"memory_runtime_plan_check\",\"stream_plan_check\",\"tool_protocol_check\",\"addr_map_check\",\"required_real_tool_evidence_check\"],\"action_type\":\"sacg_constraint_review\",\"agent\":\"constraint_extraction.data_memory_runtime_specialist\",\"artifact_focus\":[\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.field_evidence\",\"candidate_design_graph_summary\"],\"constraints\":[\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.tool.profile\",\"constraint.tool.protocols\",\"constraint.deployment.board\",\"constraint.cross_layer.input_consistency\"],\"expected_artifacts\":[\"artifact.constraint_extraction.data_memory_runtime_review\",\"board_runtime_constraint_findings\",\"tool_availability_evidence_map\",\"stream_memory_risk_report\"],\"handoff_required\":true,\"handoff_rule\":{\"on_pass\":\"handoff board DDR/AXI/runtime/tool evidence mapping and stream-memory findings to constraint_extraction.constraint_graph_auditor.\",\"on_failure\":\"block later code generation or backend claims where board/runtime/tool facts lack evidence; create bounded graph repair items for missing DDR, AXI, runtime ABI, or tool protocol constraints.\",\"requires_checker_pass\":[\"memory_runtime_plan_check\",\"stream_plan_check\",\"tool_protocol_check\",\"addr_map_check\"],\"handoff_payload\":[\"artifact.constraint_extraction.data_memory_runtime_review\",\"violated_constraints\",\"tool_evidence_status\",\"required_graph_repairs\"]},\"handoff_to\":[\"constraint_extraction.constraint_graph_auditor\"],\"id\":\"constraint_extraction.data_memory_runtime_specialist\",\"objective\":\"Audit that stream order, transfer/liveness assumptions, DDR and AXI address mapping, board runtime ABI, deployment target, tool profile, tool availability, and tool protocols are represented in the initial design graph with cited evidence.\",\"parallel_group\":0,\"role\":\"dataflow memory/runtime and tool-evidence engineer\",\"title\":\"Review data, memory, runtime, and tool constraints\"},{\"acceptance_checkers\":[\"sacg_static_check\",\"task_card_check\",\"boundary_contract_check\",\"human_boundary_check\",\"repair_boundary_check\",\"verification_plan_static_check\"],\"action_type\":\"sacg_constraint_review\",\"agent\":\"constraint_extraction.verification_boundary_specialist\",\"artifact_focus\":[\"artifact.input.task_card\",\"artifact.input.case_adapter\",\"artifact.input.human_agent_boundary\",\"candidate_design_graph_summary\",\"validation_errors\"],\"constraints\":[\"constraint.task.goal\",\"constraint.case.adapter\",\"constraint.human.boundary\",\"constraint.cross_layer.input_consistency\"],\"expected_artifacts\":[\"artifact.constraint_extraction.verification_boundary_review\",\"task_case_adapter_alignment_report\",\"human_boundary_and_repair_gate_report\"],\"handoff_required\":true,\"handoff_rule\":{\"on_pass\":\"handoff task, case-adapter, verification, human-boundary, and repair-boundary findings to constraint_extraction.constraint_graph_auditor.\",\"on_failure\":\"block graph promotion if human approval boundaries, case adapter expectations, or repair limits are absent or inconsistent; require bounded SACG repair before downstream stages.\",\"requires_checker_pass\":[\"task_card_check\",\"boundary_contract_check\",\"human_boundary_check\",\"repair_boundary_check\"],\"handoff_payload\":[\"artifact.constraint_extraction.verification_boundary_review\",\"violated_constraints\",\"approval_required_items\",\"required_graph_repairs\"]},\"handoff_to\":[\"constraint_extraction.constraint_graph_auditor\"],\"id\":\"constraint_extraction.verification_boundary_specialist\",\"objective\":\"Check that the task goal, verification case adapter, human-agent boundary, approval requirements, and repair boundaries are explicit in the graph so later failures can be localized to violated SACG constraints.\",\"parallel_group\":0,\"role\":\"verification and repair-boundary engineer\",\"title\":\"Review verification, case adapter, and human boundaries\"},{\"acceptance_checkers\":[\"sacg_static_check\",\"sacg_reference_check\",\"stage_artifact_trust_barrier_check\",\"llm_io_quality_check\",\"output_validity_check\"],\"action_type\":\"evidence_gate\",\"agent\":\"constraint_extraction.constraint_graph_auditor\",\"artifact_focus\":[\"candidate_design_graph_summary\",\"prepared_inputs_manifest\",\"validation_errors\",\"artifact.constraint_extraction.model_shape_review\",\"artifact.constraint_extraction.numeric_template_review\",\"artifact.constraint_extraction.data_memory_runtime_review\",\"artifact.constraint_extraction.verification_boundary_review\"],\"constraints\":[\"constraint.source.materials\",\"constraint.source.evidence\",\"constraint.cross_layer.input_consistency\",\"constraint.human.boundary\"],\"expected_artifacts\":[\"artifact.constraint_extraction.audited_design_graph_closure\",\"constraint_extraction_promotion_decision\",\"cross_layer_consistency_gap_list\",\"sacg_memory_update_recommendations\"],\"handoff_required\":true,\"handoff_rule\":{\"on_pass\":\"promote the audited initial design graph as SACG shared state for subsequent architecture/template planning stages.\",\"on_failure\":\"return bounded graph repair requests to the failing parallel-group-0 specialist areas and prevent consumption of the candidate graph as trusted shared state.\",\"requires_upstream_artifacts\":[\"artifact.constraint_extraction.model_shape_review\",\"artifact.constraint_extraction.numeric_template_review\",\"artifact.constraint_extraction.data_memory_runtime_review\",\"artifact.constraint_extraction.verification_boundary_review\"],\"requires_checker_pass\":[\"sacg_static_check\",\"sacg_reference_check\",\"stage_artifact_trust_barrier_check\",\"output_validity_check\"],\"handoff_payload\":[\"artifact.constraint_extraction.audited_design_graph_closure\",\"promotion_decision\",\"repair_requests\",\"trust_barriers\"]},\"handoff_to\":[\"architecture_planning\",\"sacg_memory_update\"],\"id\":\"constraint_extraction.constraint_graph_auditor\",\"objective\":\"Integrate specialist reviews and decide whether the initial design graph is a checker-supported, cross-layer-consistent SACG state suitable for downstream chip-design-team stages, or whether bounded graph repairs are required.\",\"parallel_group\":1,\"role\":\"constraint graph integrity auditor\",\"title\":\"Gate audited design graph promotion\"}]}",
+  "schema_version": "spatialaccagent.team_decomposer_record.v0",
+  "used_fallback": false
+}

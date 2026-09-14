@@ -1,0 +1,78 @@
+{
+  "decision": {
+    "approval_required_for": [
+      "Any later selection or modification of numeric/quantization policy, precision, accumulation, rounding, saturation, or tolerance settings derived from the prepared materials.",
+      "Any later pipeline stage, tile size, parallelism, memory layout, data packing, AXI/DDR access pattern, or design-space pruning decision derived from these inputs.",
+      "Any later major template/backend change or tool-flow configuration change that alters architecture-level implementation choices."
+    ],
+    "decision": "run_tool",
+    "expected_evidence": [
+      "Prepared input manifest in the run directory with source paths, hashes or provenance for task spec, model config, board materials, quantization materials, and tool materials.",
+      "Normalized model/SACG seed artifacts preserving Qwen2 semantics, including hidden sizes, layer counts, head counts, KV-head/GQA metadata, RoPE/config parameters, vocabulary/config metadata, and no conversion of GQA into MHA.",
+      "Numeric and quantization input summary showing candidate policies and provenance only, with no loosened tolerance, changed golden outputs, or semantic changes.",
+      "Board and backend constraint summary covering FPGA/resource limits, memory/DDR/AXI constraints, toolchain/backend versions, and deployment assumptions.",
+      "Template and design-space inventory identifying candidate templates, knobs, and constraints without claiming a design pass.",
+      "Stage log showing the tool only prepared/recorded inputs and did not delete tests, modify golden outputs, bypass checkers, or claim final validation."
+    ],
+    "reason": "input_preparation is an evidence-collection/setup stage that creates candidate input artifacts for later checker stages. It is safe to run because it should not implement architecture changes, alter model semantics, delete tests, change golden outputs, loosen tolerances, or claim a design pass. Future architecture-affecting choices surfaced by these inputs must be approved and checked later.",
+    "risks": [
+      "No prior SACG summary is provided, so the stage must establish provenance and initial SACG nodes/edges carefully.",
+      "Qwen2 attention metadata may include GQA; losing KV-head information would create a cross-layer semantic error by treating GQA as MHA.",
+      "Quantization materials may imply numeric policies that affect accuracy and require later approval/checker evidence before adoption.",
+      "Board/tool/template materials may encode memory layout, AXI/DDR, pipeline, tiling, or parallelism assumptions that require later human approval if selected.",
+      "Stale or mismatched model, board, quantization, or tool materials could propagate inconsistent constraints into later design stages."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "prepared input manifest",
+        "normalized model configuration artifact",
+        "quantization/numeric materials summary",
+        "board constraints summary",
+        "toolchain/backend materials summary",
+        "template and design-space inventory",
+        "stage execution log"
+      ],
+      "constraints": [
+        "Preserve model semantics and Qwen2 configuration exactly.",
+        "Do not treat GQA as MHA; preserve query-head and KV-head relationships.",
+        "Do not delete tests, modify golden outputs, loosen tolerances, or bypass checkers.",
+        "Record numeric policy candidates with provenance; do not adopt unapproved precision/tolerance changes as final.",
+        "Record board resource, memory, DDR/AXI, clock, and deployment constraints for later checker validation.",
+        "Record toolchain/backend versions and template assumptions for reproducibility."
+      ],
+      "edges": [
+        "task_spec -> requirements/SACG seed",
+        "model_source -> normalized_model_config",
+        "normalized_model_config -> model_semantics_constraints",
+        "attention_head_config -> GQA_semantics_constraint",
+        "quantization_materials -> numeric_policy_candidates",
+        "board_materials -> resource_memory_AXI_constraints",
+        "tool_materials -> backend_tool_constraints",
+        "template/design_space_inputs -> candidate_implementation_knobs",
+        "all_prepared_inputs -> provenance_manifest"
+      ],
+      "nodes": [
+        "TaskSpec",
+        "ModelConfig_Qwen2",
+        "AttentionConfig_GQA",
+        "NumericPolicyCandidates",
+        "QuantizationMaterials",
+        "BoardConstraints",
+        "DDR_AXI_MemoryConstraints",
+        "ToolchainBackendConstraints",
+        "TemplateInventory",
+        "DesignSpaceInputs",
+        "InputProvenanceManifest"
+      ]
+    },
+    "stage": "input_preparation",
+    "tool_command_allowed": true
+  },
+  "duration_sec": 33.061592883999765,
+  "enforced": true,
+  "error": null,
+  "mode": "llm",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/llm/02_input_preparation_request.json",
+  "schema_version": "spatialaccagent.pre_stage_safety_gate_decision.v0",
+  "stage": "input_preparation"
+}

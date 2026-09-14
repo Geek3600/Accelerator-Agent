@@ -1,0 +1,149 @@
+{
+  "agent": "flow_controller_agent",
+  "duration_sec": 473.12197928700334,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "flow_controller_agent",
+    "approval_required_for": [
+      "changing the locked LLM model gpt-5.5 or endpoint to work around transport failures",
+      "any architecture, pipeline, memory layout, numeric policy, or major template change introduced outside a validated pipeline_planning retry"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "stage_artifact_trust_barrier_check",
+          "sacg_memory_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "artifact_trust_barrier",
+        "consumes": [
+          "recent_stage_summary",
+          "command_log:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/20_pipeline_planning.json",
+          "stale_output:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json",
+          "sacg_memory",
+          "flow_policy"
+        ],
+        "id": "pipeline_planning.quarantine_attempt1_failed_outputs",
+        "on_failure": "Stop before retry or downstream progress because the system cannot prove that failed pipeline planning artifacts are quarantined.",
+        "produces": [
+          "updated_sacg_memory.failure_lesson.pipeline_planning_attempt1_llm_transport_failure",
+          "updated_sacg_memory.contamination_barrier.unpromoted_pipeline_planning_attempt1"
+        ],
+        "rationale": "The stage command failed before promotion and an incomplete stale pipeline_planning_report.json exists. A downstream-consumption barrier is needed so later stages cannot treat failed or partial artifacts as validated inputs; this barrier is not an independent blocker for a fresh same-stage retry that supersedes it after all current-stage checks pass.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "stage_artifact_trust_barrier",
+          "sacg_memory_update",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "llm_io_quality_check",
+          "sacg_static_check",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "verification_plan_static_check",
+          "sacg_reference_check",
+          "tool_protocol_check"
+        ],
+        "action_type": "retry_current_stage",
+        "consumes": [
+          "source_sacg_state:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+          "command:/home/remote/miniconda3/bin/python3 -m accagent.framework.stage_pipeline --sacg-state /home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+          "llm_policy",
+          "updated_sacg_memory.contamination_barrier.unpromoted_pipeline_planning_attempt1",
+          "recent_stage_summary"
+        ],
+        "id": "pipeline_planning.retry_attempt2_after_llm_preflight",
+        "on_failure": "Do not promote any retry artifacts. Update SACG memory with the second LLM transport failure and keep parameter_binding/code_generation/verification_artifacts/backend_board blocked; because bounded_attempts_per_stage would be exhausted, stop for LLM service recovery or approved model/endpoint override rather than backtracking or fabricating planning decisions.",
+        "produces": [
+          "pipeline_planning/team/llm/*_result.json fresh successful specialist records",
+          "pipeline_planning/llm/pipeline_architect_agent_result.json fresh successful architect record",
+          "pipeline_planning/pipeline_planning_report.json promoted only after successful command and checks",
+          "updated promoted SACG state for parameter_binding"
+        ],
+        "rationale": "The first attempt failed due required LLM transport errors, not a checked design inconsistency. The flow policy permits one more attempt, and LLM planning is mandatory; retry must produce fresh successful agent outputs and a promoted pipeline planning report before downstream stages can run.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "llm_io_quality_check",
+          "architecture_review",
+          "team_aggregate",
+          "sacg_validate"
+        ]
+      }
+    ],
+    "observations": [
+      "The latest stage result is failed: command_returncode=2 and stage_passed=false.",
+      "The stdout tail shows required LLM roles failed after retries with SSL DECRYPTION_FAILED_OR_BAD_RECORD_MAC and remote connection closure errors, including the memory dataflow engineer, verification evidence gate auditor, and pipeline architect agent.",
+      "The failed_output_policy states the existing pipeline_planning_report.json was not promoted; stale_output_ignored=true and stale_output_status=incomplete.",
+      "SACG memory currently reports no active_contamination_barriers, no open_backtrack_requests, and no open_retry_requests, so there is no prior memory request that requires backtracking or blocks a same-stage retry.",
+      "Because LLM planning is mandatory under llm_policy.enforce=true, no fallback or partial LLM diagnostic artifact can be treated as a valid pipeline planning decision.",
+      "The failure evidence is infrastructure/transport-related, not a validated architecture, numeric, stream, memory, runtime, or template inconsistency; therefore backtracking to template_selection is not justified by the supplied evidence.",
+      "The bounded attempt policy allows one more same-stage attempt because attempt_count=1 and bounded_attempts_per_stage=2."
+    ],
+    "proposed_actions": [
+      "Record a downstream-consumption trust barrier for the failed attempt artifacts, including the stale incomplete pipeline_planning_report.json and partial LLM result logs.",
+      "Run an LLM I/O readiness check and retry pipeline_planning once using the supplied template_selection SACG state and locked LLM policy.",
+      "Promote the retry output only if the stage command returns success and the pipeline planning static, stream, memory/runtime, boundary, verification, SACG reference, and tool-protocol checks pass.",
+      "If the retry also fails, do not backtrack on design grounds; stop the autonomous flow, preserve the failure lesson and contamination barrier in SACG memory, and require LLM service recovery or approved model/endpoint override before further agentic planning."
+    ],
+    "risks": [
+      "Artifact contamination risk if the stale incomplete pipeline_planning_report.json or partial LLM result files are consumed by parameter_binding, code_generation, verification_artifacts, or backend_board.",
+      "Recurring LLM transport instability may exhaust the bounded retry limit, in which case the design team must stop for service/infrastructure recovery rather than synthesize decisions from incomplete artifacts.",
+      "Cross-layer consistency cannot yet be established for model shape, numeric policy, data order, stream plan, memory/runtime plan, boundary contracts, or verification obligations; downstream stages would be ungrounded without a promoted pipeline planning report.",
+      "Changing the locked LLM model or endpoint to work around transport failures would be a policy-sensitive recovery action and must not be done implicitly."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/20_pipeline_planning.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json"
+      ],
+      "constraints": [
+        "llm_is_required=true",
+        "bounded_attempts_per_stage=2",
+        "do_not_use_failed_artifacts_as_validated_downstream_inputs=true",
+        "honor_backtrack_requests_before_downstream_progress=true",
+        "fallback LLM records are diagnostics only and must not be consumed as successful decisions"
+      ],
+      "edges": [
+        "template_selection.sacg_state -> pipeline_planning",
+        "pipeline_planning_report -> parameter_binding is blocked until a fresh promoted report passes checks",
+        "pipeline_planning stream/memory/runtime/boundary/verification contracts -> downstream code_generation and verification_artifacts"
+      ],
+      "nodes": [
+        "template_selection.sacg_state",
+        "pipeline_planning",
+        "llm_policy",
+        "sacg_memory",
+        "parameter_binding"
+      ]
+    },
+    "schema_version": "spatialaccagent.flow_controller_agent.v1",
+    "stage": "pipeline_planning",
+    "status": "retry_current_stage",
+    "summary": "Do not proceed downstream. The current pipeline_planning attempt failed with returncode 2 because required LLM calls repeatedly hit SSL/remote-connection errors; no valid pipeline planning report was promoted and the stale incomplete report must remain untrusted. SACG memory has no open backtrack requests, retry requests, or active contamination barriers. Since attempt_count is 1 and the bounded stage limit is 2, the bounded next decision is to quarantine the failed attempt artifacts and retry the current stage once after LLM I/O readiness is checked."
+  },
+  "prompt_bytes": 23835,
+  "prompt_hash": "ea251c28f9e83a5289ced8e3be3d7ed9f327b7dbffee5c6a08596ea8781f9b77",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.flow_controller_agent.v1\",\"agent\":\"flow_controller_agent\",\"stage\":\"pipeline_planning\",\"status\":\"retry_current_stage\",\"summary\":\"Do not proceed downstream. The current pipeline_planning attempt failed with returncode 2 because required LLM calls repeatedly hit SSL/remote-connection errors; no valid pipeline planning report was promoted and the stale incomplete report must remain untrusted. SACG memory has no open backtrack requests, retry requests, or active contamination barriers. Since attempt_count is 1 and the bounded stage limit is 2, the bounded next decision is to quarantine the failed attempt artifacts and retry the current stage once after LLM I/O readiness is checked.\",\"sacg_focus\":{\"nodes\":[\"template_selection.sacg_state\",\"pipeline_planning\",\"llm_policy\",\"sacg_memory\",\"parameter_binding\"],\"edges\":[\"template_selection.sacg_state -> pipeline_planning\",\"pipeline_planning_report -> parameter_binding is blocked until a fresh promoted report passes checks\",\"pipeline_planning stream/memory/runtime/boundary/verification contracts -> downstream code_generation and verification_artifacts\"],\"constraints\":[\"llm_is_required=true\",\"bounded_attempts_per_stage=2\",\"do_not_use_failed_artifacts_as_validated_downstream_inputs=true\",\"honor_backtrack_requests_before_downstream_progress=true\",\"fallback LLM records are diagnostics only and must not be consumed as successful decisions\"],\"artifacts\":[\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/20_pipeline_planning.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json\",\"/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json\"]},\"observations\":[\"The latest stage result is failed: command_returncode=2 and stage_passed=false.\",\"The stdout tail shows required LLM roles failed after retries with SSL DECRYPTION_FAILED_OR_BAD_RECORD_MAC and remote connection closure errors, including the memory dataflow engineer, verification evidence gate auditor, and pipeline architect agent.\",\"The failed_output_policy states the existing pipeline_planning_report.json was not promoted; stale_output_ignored=true and stale_output_status=incomplete.\",\"SACG memory currently reports no active_contamination_barriers, no open_backtrack_requests, and no open_retry_requests, so there is no prior memory request that requires backtracking or blocks a same-stage retry.\",\"Because LLM planning is mandatory under llm_policy.enforce=true, no fallback or partial LLM diagnostic artifact can be treated as a valid pipeline planning decision.\",\"The failure evidence is infrastructure/transport-related, not a validated architecture, numeric, stream, memory, runtime, or template inconsistency; therefore backtracking to template_selection is not justified by the supplied evidence.\",\"The bounded attempt policy allows one more same-stage attempt because attempt_count=1 and bounded_attempts_per_stage=2.\"],\"risks\":[\"Artifact contamination risk if the stale incomplete pipeline_planning_report.json or partial LLM result files are consumed by parameter_binding, code_generation, verification_artifacts, or backend_board.\",\"Recurring LLM transport instability may exhaust the bounded retry limit, in which case the design team must stop for service/infrastructure recovery rather than synthesize decisions from incomplete artifacts.\",\"Cross-layer consistency cannot yet be established for model shape, numeric policy, data order, stream plan, memory/runtime plan, boundary contracts, or verification obligations; downstream stages would be ungrounded without a promoted pipeline planning report.\",\"Changing the locked LLM model or endpoint to work around transport failures would be a policy-sensitive recovery action and must not be done implicitly.\"],\"proposed_actions\":[\"Record a downstream-consumption trust barrier for the failed attempt artifacts, including the stale incomplete pipeline_planning_report.json and partial LLM result logs.\",\"Run an LLM I/O readiness check and retry pipeline_planning once using the supplied template_selection SACG state and locked LLM policy.\",\"Promote the retry output only if the stage command returns success and the pipeline planning static, stream, memory/runtime, boundary, verification, SACG reference, and tool-protocol checks pass.\",\"If the retry also fails, do not backtrack on design grounds; stop the autonomous flow, preserve the failure lesson and contamination barrier in SACG memory, and require LLM service recovery or approved model/endpoint override before further agentic planning.\"],\"executable_actions\":[{\"id\":\"pipeline_planning.quarantine_attempt1_failed_outputs\",\"stage\":\"pipeline_planning\",\"action_type\":\"artifact_trust_barrier\",\"rationale\":\"The stage command failed before promotion and an incomplete stale pipeline_planning_report.json exists. A downstream-consumption barrier is needed so later stages cannot treat failed or partial artifacts as validated inputs; this barrier is not an independent blocker for a fresh same-stage retry that supersedes it after all current-stage checks pass.\",\"consumes\":[\"recent_stage_summary\",\"command_log:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/20_pipeline_planning.json\",\"stale_output:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json\",\"sacg_memory\",\"flow_policy\"],\"produces\":[\"updated_sacg_memory.failure_lesson.pipeline_planning_attempt1_llm_transport_failure\",\"updated_sacg_memory.contamination_barrier.unpromoted_pipeline_planning_attempt1\"],\"tool_roles\":[\"stage_artifact_trust_barrier\",\"sacg_memory_update\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"stage_artifact_trust_barrier_check\",\"sacg_memory_check\",\"artifact_hash_check\"],\"on_failure\":\"Stop before retry or downstream progress because the system cannot prove that failed pipeline planning artifacts are quarantined.\",\"requires_approval\":false},{\"id\":\"pipeline_planning.retry_attempt2_after_llm_preflight\",\"stage\":\"pipeline_planning\",\"action_type\":\"retry_current_stage\",\"rationale\":\"The first attempt failed due required LLM transport errors, not a checked design inconsistency. The flow policy permits one more attempt, and LLM planning is mandatory; retry must produce fresh successful agent outputs and a promoted pipeline planning report before downstream stages can run.\",\"consumes\":[\"source_sacg_state:/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json\",\"command:/home/remote/miniconda3/bin/python3 -m accagent.framework.stage_pipeline --sacg-state /home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json\",\"llm_policy\",\"updated_sacg_memory.contamination_barrier.unpromoted_pipeline_planning_attempt1\",\"recent_stage_summary\"],\"produces\":[\"pipeline_planning/team/llm/*_result.json fresh successful specialist records\",\"pipeline_planning/llm/pipeline_architect_agent_result.json fresh successful architect record\",\"pipeline_planning/pipeline_planning_report.json promoted only after successful command and checks\",\"updated promoted SACG state for parameter_binding\"],\"tool_roles\":[\"llm_io_quality_check\",\"architecture_review\",\"team_aggregate\",\"sacg_validate\"],\"acceptance_checkers\":[\"llm_io_quality_check\",\"sacg_static_check\",\"task_card_check\",\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"stream_plan_check\",\"memory_runtime_plan_check\",\"boundary_contract_check\",\"verification_plan_static_check\",\"sacg_reference_check\",\"tool_protocol_check\"],\"on_failure\":\"Do not promote any retry artifacts. Update SACG memory with the second LLM transport failure and keep parameter_binding/code_generation/verification_artifacts/backend_board blocked; because bounded_attempts_per_stage would be exhausted, stop for LLM service recovery or approved model/endpoint override rather than backtracking or fabricating planning decisions.\",\"requires_approval\":false}],\"approval_required_for\":[\"changing the locked LLM model gpt-5.5 or endpoint to work around transport failures\",\"any architecture, pipeline, memory layout, numeric policy, or major template change introduced outside a validated pipeline_planning retry\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/001_pipeline_planning/llm/flow_controller_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/flow_controller/001_pipeline_planning/llm/flow_controller_agent_result.json",
+  "retry_errors": [
+    "attempt 1: Remote end closed connection without response",
+    "attempt 2: Remote end closed connection without response"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "flow_orchestration",
+  "used_fallback": false
+}

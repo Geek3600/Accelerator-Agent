@@ -1,0 +1,234 @@
+{
+  "agent": "model_shape_specialist",
+  "duration_sec": 191.3971986589986,
+  "error": null,
+  "mode": "llm",
+  "output": {
+    "agent": "model_shape_specialist",
+    "approval_required_for": [
+      "Supplying or changing task_card/model_config semantics for model goal, decoder topology, tensor dimensions, attention/head mapping, sequence length, operator ordering, or residual path after the checker gap list is emitted.",
+      "Selecting one interpretation among conflicting model-shape facts from task_card, model_config, or case_adapter.",
+      "Any downstream architecture, pipeline, memory layout, numeric policy, or template-library change proposed to compensate for model-shape gaps."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "llm_semantic_extraction_check",
+          "no_static_keyword_semantic_matching_check",
+          "task_card_check",
+          "model_config_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.case_adapter",
+          "constraint.task.goal",
+          "constraint.model.decoder",
+          "constraint.shape.model"
+        ],
+        "id": "input_prep.extract_and_check_model_shape_facts",
+        "on_failure": "Block SACG extraction for model-shape constraints, emit a source-linked gap list for each missing or ambiguous fact, and do not substitute guessed decoder or tensor semantics.",
+        "produces": [
+          "artifact.input_audit.model_shape_report",
+          "artifact.input_audit.model_shape_gap_list",
+          "artifact.input_audit.model_shape_sacg_seed_requirements"
+        ],
+        "rationale": "The visible summary proves artifact existence but not semantic sufficiency. This action extracts and checks model-goal, decoder-block, tensor-shape, attention/head, sequence-length, operator-ordering, and residual-path facts without relying on static keyword matching or project-name inference.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "llm_semantic_extraction",
+          "no_static_keyword_semantic_matching",
+          "task_card_check",
+          "model_config_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "sacg_static_validation",
+        "consumes": [
+          "artifact.input_audit.model_shape_report",
+          "artifact.input_audit.model_shape_sacg_seed_requirements",
+          "constraint.task.goal",
+          "constraint.model.decoder",
+          "constraint.shape.model"
+        ],
+        "id": "input_prep.validate_sacg_seed_graph_for_model_shape",
+        "on_failure": "Return violations to the model_shape_gap_list and keep partial or conflicting seed nodes out of the promoted SACG.",
+        "produces": [
+          "artifact.input_audit.model_shape_sacg_validation",
+          "artifact.sacg.seed.model_shape_nodes_edges"
+        ],
+        "rationale": "The SACG currently has no nodes or edges; extracted model-shape facts must be converted into checked seed requirements before downstream stages can reference them.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stage_backtrack_request_check",
+          "stage_artifact_trust_barrier_check",
+          "human_boundary_check"
+        ],
+        "action_type": "bounded_backtrack_request",
+        "consumes": [
+          "artifact.input_audit.model_shape_gap_list",
+          "artifact.input.human_agent_boundary",
+          "artifact.input.task_card",
+          "artifact.input.model_config"
+        ],
+        "id": "input_prep.issue_model_shape_backtrack_if_gaps_block_seed",
+        "on_failure": "Keep downstream SACG extraction, parameter binding, template selection, and code generation blocked until the backtrack request or approved clarification is recorded.",
+        "produces": [
+          "artifact.stage0.backtrack_request.model_shape_inputs",
+          "artifact.stage0.trust_barrier.model_shape_downstream_block"
+        ],
+        "rationale": "If the checked gap list shows missing or conflicting source facts, the system needs source artifact repair or human clarification; inventing architecture, shape, or operator semantics is not allowed.",
+        "requires_approval": true,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "stage_backtrack_request",
+          "stage_artifact_trust_barrier",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "memory_runtime_plan_check",
+          "tool_protocol_check",
+          "sacg_static_check"
+        ],
+        "action_type": "cross_layer_evidence_gate",
+        "consumes": [
+          "artifact.input_audit.model_shape_report",
+          "artifact.input_audit.model_shape_sacg_validation",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "input_prep.cross_layer_model_shape_evidence_gate_handoff",
+        "on_failure": "Route the inconsistency to the responsible input owner or backtrack action and do not proceed to parameter binding, code generation, or backend planning.",
+        "produces": [
+          "artifact.input_audit.cross_layer_model_shape_handoff",
+          "artifact.input_audit.cross_layer_model_shape_risk_register"
+        ],
+        "rationale": "Once model-shape facts pass the current checks, they must be compared against numeric policy, template coverage, memory/runtime expectations, and tool protocols to prevent cross-layer inconsistency.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "team_aggregate",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "memory_runtime_plan_check",
+          "tool_protocol_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check"
+        ],
+        "action_type": "sacg_memory_update",
+        "consumes": [
+          "artifact.input_audit.model_shape_report",
+          "artifact.input_audit.model_shape_gap_list",
+          "artifact.input_audit.model_shape_sacg_validation"
+        ],
+        "id": "input_prep.record_model_shape_audit_memory",
+        "on_failure": "Do not let downstream stages rely on out-of-band memory of this audit; rerun memory update before handoff.",
+        "produces": [
+          "artifact.sacg_memory.model_shape_intake_entry"
+        ],
+        "rationale": "The design memory must preserve that no model-shape pass was claimed from the compact summary and must record any approved facts, gaps, barriers, or backtrack decisions for downstream agents.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "State summary lists artifact.input.task_card, artifact.input.model_config, and artifact.input.case_adapter as available inputs, but the candidate_stage_artifact is a compact summary and does not expose the detailed rows needed to audit semantic sufficiency directly.",
+      "The visible candidate_stage_artifact shows prepared_inputs.inputs has 16 inputs while only a subset of keys is displayed; omitted details are treated as uninspected rather than proof that task_card or model_config fields are absent.",
+      "No visible task_card_check, model_config_check, sacg_static_check, llm_semantic_extraction_check, or no_static_keyword_semantic_matching_check result is bound to the model-shape constraints, and no explicit not_run record is shown.",
+      "The SACG state currently reports 0 nodes and 0 edges, so any listed sacg_focus nodes and edges are candidate seed targets, not approved extracted graph content.",
+      "No open retry requests, open backtrack requests, or active contamination barriers are visible in state_summary.sacg_memory; the additional sacg_memory input is empty, so there is no current memory blocker to reconcile for this stage.",
+      "No retry_reconciliation_contract or stage_gate_policy is visible; current-stage blocking is therefore classified from the subtask acceptance checkers and evidence rule.",
+      "The run directory or project naming must not be used as semantic evidence for model family, decoder topology, or Qwen/OPT-specific behavior; only checked task_card, model_config, and case_adapter facts may seed SACG.",
+      "LLM policy is enforced for agentic review, so semantic extraction must use the LLM-backed path and must be checked against static keyword-only matching."
+    ],
+    "proposed_actions": [
+      "Run bounded LLM semantic extraction plus task_card_check and model_config_check on task_card, model_config, and case_adapter to produce the model-shape report, gap list, and SACG seed requirements.",
+      "Validate the produced model-shape seed requirements with sacg_static_check and sacg_reference_check before any downstream SACG extraction consumes them.",
+      "If any required model-goal, decoder, shape, attention/head, sequence-length, operator-ordering, or residual-path fact is missing or conflicting after checks, issue a bounded stage backtrack or clarification request instead of filling values from project names or assumptions.",
+      "After model-shape checks pass, hand the verified facts to the cross-layer evidence gate for numeric, template, memory/runtime, tool, and board consistency review.",
+      "Record the outcome in SACG memory so downstream agents see whether the model-shape facts are approved, gapped, or blocked."
+    ],
+    "risks": [
+      "Current-stage blocker: accepting the compact artifact summary as sufficient would invent missing model semantics and violate the evidence rule for constraint.task.goal, constraint.model.decoder, and constraint.shape.model.",
+      "Current-stage blocker: decoder-block facts such as block composition, repetition/count, operator order, and residual connections are not visible in the supplied summary, so checker-bound extraction is required before SACG promotion.",
+      "Current-stage blocker: tensor shape facts, attention/head mapping, and sequence-length bounds are not visible in the supplied summary, so parameter binding and template matching cannot be trusted yet.",
+      "Cross-layer risk: ambiguous model shapes can propagate into numeric policy, tolerance selection, data-order layout, packed weight format, stream transfer counts, memory address maps, runtime ABI, and verification golden references.",
+      "Cross-layer risk: if operator ordering or residual-path semantics are wrong, later leaf-module simulations may pass isolated arithmetic while the connected decoder layer computes the wrong transform.",
+      "Cross-layer risk: if sequence length or tensor layout is not bound before board and memory planning, DDR image generation, AXI transfer counts, resource estimates, and runtime bitstream assumptions can diverge.",
+      "Template risk: case_adapter and template coverage may depend on case-specific model fields that are not visible here; using generic assumptions could select an unsupported or semantically incompatible template path."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.task_card",
+        "artifact.input.model_config",
+        "artifact.input.case_adapter",
+        "artifact.input_audit.model_shape_report",
+        "artifact.input_audit.model_shape_gap_list",
+        "artifact.input_audit.model_shape_sacg_seed_requirements"
+      ],
+      "constraints": [
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model"
+      ],
+      "edges": [
+        "candidate.edge.task_card_defines_constraint.task.goal",
+        "candidate.edge.model_config_defines_constraint.model.decoder",
+        "candidate.edge.model_config_defines_constraint.shape.model",
+        "candidate.edge.case_adapter_binds_case_specific_model_fields",
+        "candidate.edge.model_shape_seed_requirements_to_sacg_nodes_edges"
+      ],
+      "nodes": [
+        "candidate.model_goal",
+        "candidate.decoder_block_contract",
+        "candidate.tensor_shape_contract",
+        "candidate.attention_head_mapping",
+        "candidate.sequence_length_bound",
+        "candidate.operator_ordering_contract",
+        "candidate.residual_path_contract",
+        "candidate.case_adapter_model_binding"
+      ]
+    },
+    "schema_version": "spatialaccagent.input_audit.model_shape.v0",
+    "stage": "input_preparation",
+    "status": "blocked_pending_checker_bound_model_shape_evidence",
+    "summary": "The input inventory records task_card, model_config, and case_adapter, but the visible artifact summary does not expose decoder, tensor-shape, attention/head, sequence-length, operator-ordering, residual-path, or model-goal details, and no checker outcomes are shown. SACG extraction should not consume inferred model semantics until bounded extraction and static checks produce a model-shape report, gap list, and SACG seed requirements."
+  },
+  "prompt_bytes": 24811,
+  "prompt_hash": "5e9798ecc329f02114e89173601a6e9c91391b1fee619ecbb560f2e28aaad7ec",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.input_audit.model_shape.v0\",\"agent\":\"model_shape_specialist\",\"stage\":\"input_preparation\",\"status\":\"blocked_pending_checker_bound_model_shape_evidence\",\"summary\":\"The input inventory records task_card, model_config, and case_adapter, but the visible artifact summary does not expose decoder, tensor-shape, attention/head, sequence-length, operator-ordering, residual-path, or model-goal details, and no checker outcomes are shown. SACG extraction should not consume inferred model semantics until bounded extraction and static checks produce a model-shape report, gap list, and SACG seed requirements.\",\"sacg_focus\":{\"nodes\":[\"candidate.model_goal\",\"candidate.decoder_block_contract\",\"candidate.tensor_shape_contract\",\"candidate.attention_head_mapping\",\"candidate.sequence_length_bound\",\"candidate.operator_ordering_contract\",\"candidate.residual_path_contract\",\"candidate.case_adapter_model_binding\"],\"edges\":[\"candidate.edge.task_card_defines_constraint.task.goal\",\"candidate.edge.model_config_defines_constraint.model.decoder\",\"candidate.edge.model_config_defines_constraint.shape.model\",\"candidate.edge.case_adapter_binds_case_specific_model_fields\",\"candidate.edge.model_shape_seed_requirements_to_sacg_nodes_edges\"],\"constraints\":[\"constraint.task.goal\",\"constraint.model.decoder\",\"constraint.shape.model\"],\"artifacts\":[\"artifact.input.task_card\",\"artifact.input.model_config\",\"artifact.input.case_adapter\",\"artifact.input_audit.model_shape_report\",\"artifact.input_audit.model_shape_gap_list\",\"artifact.input_audit.model_shape_sacg_seed_requirements\"]},\"observations\":[\"State summary lists artifact.input.task_card, artifact.input.model_config, and artifact.input.case_adapter as available inputs, but the candidate_stage_artifact is a compact summary and does not expose the detailed rows needed to audit semantic sufficiency directly.\",\"The visible candidate_stage_artifact shows prepared_inputs.inputs has 16 inputs while only a subset of keys is displayed; omitted details are treated as uninspected rather than proof that task_card or model_config fields are absent.\",\"No visible task_card_check, model_config_check, sacg_static_check, llm_semantic_extraction_check, or no_static_keyword_semantic_matching_check result is bound to the model-shape constraints, and no explicit not_run record is shown.\",\"The SACG state currently reports 0 nodes and 0 edges, so any listed sacg_focus nodes and edges are candidate seed targets, not approved extracted graph content.\",\"No open retry requests, open backtrack requests, or active contamination barriers are visible in state_summary.sacg_memory; the additional sacg_memory input is empty, so there is no current memory blocker to reconcile for this stage.\",\"No retry_reconciliation_contract or stage_gate_policy is visible; current-stage blocking is therefore classified from the subtask acceptance checkers and evidence rule.\",\"The run directory or project naming must not be used as semantic evidence for model family, decoder topology, or Qwen/OPT-specific behavior; only checked task_card, model_config, and case_adapter facts may seed SACG.\",\"LLM policy is enforced for agentic review, so semantic extraction must use the LLM-backed path and must be checked against static keyword-only matching.\"],\"risks\":[\"Current-stage blocker: accepting the compact artifact summary as sufficient would invent missing model semantics and violate the evidence rule for constraint.task.goal, constraint.model.decoder, and constraint.shape.model.\",\"Current-stage blocker: decoder-block facts such as block composition, repetition/count, operator order, and residual connections are not visible in the supplied summary, so checker-bound extraction is required before SACG promotion.\",\"Current-stage blocker: tensor shape facts, attention/head mapping, and sequence-length bounds are not visible in the supplied summary, so parameter binding and template matching cannot be trusted yet.\",\"Cross-layer risk: ambiguous model shapes can propagate into numeric policy, tolerance selection, data-order layout, packed weight format, stream transfer counts, memory address maps, runtime ABI, and verification golden references.\",\"Cross-layer risk: if operator ordering or residual-path semantics are wrong, later leaf-module simulations may pass isolated arithmetic while the connected decoder layer computes the wrong transform.\",\"Cross-layer risk: if sequence length or tensor layout is not bound before board and memory planning, DDR image generation, AXI transfer counts, resource estimates, and runtime bitstream assumptions can diverge.\",\"Template risk: case_adapter and template coverage may depend on case-specific model fields that are not visible here; using generic assumptions could select an unsupported or semantically incompatible template path.\"],\"proposed_actions\":[\"Run bounded LLM semantic extraction plus task_card_check and model_config_check on task_card, model_config, and case_adapter to produce the model-shape report, gap list, and SACG seed requirements.\",\"Validate the produced model-shape seed requirements with sacg_static_check and sacg_reference_check before any downstream SACG extraction consumes them.\",\"If any required model-goal, decoder, shape, attention/head, sequence-length, operator-ordering, or residual-path fact is missing or conflicting after checks, issue a bounded stage backtrack or clarification request instead of filling values from project names or assumptions.\",\"After model-shape checks pass, hand the verified facts to the cross-layer evidence gate for numeric, template, memory/runtime, tool, and board consistency review.\",\"Record the outcome in SACG memory so downstream agents see whether the model-shape facts are approved, gapped, or blocked.\"],\"executable_actions\":[{\"id\":\"input_prep.extract_and_check_model_shape_facts\",\"stage\":\"input_preparation\",\"action_type\":\"sacg_constraint_review\",\"rationale\":\"The visible summary proves artifact existence but not semantic sufficiency. This action extracts and checks model-goal, decoder-block, tensor-shape, attention/head, sequence-length, operator-ordering, and residual-path facts without relying on static keyword matching or project-name inference.\",\"consumes\":[\"artifact.input.task_card\",\"artifact.input.model_config\",\"artifact.input.case_adapter\",\"constraint.task.goal\",\"constraint.model.decoder\",\"constraint.shape.model\"],\"produces\":[\"artifact.input_audit.model_shape_report\",\"artifact.input_audit.model_shape_gap_list\",\"artifact.input_audit.model_shape_sacg_seed_requirements\"],\"tool_roles\":[\"llm_semantic_extraction\",\"no_static_keyword_semantic_matching\",\"task_card_check\",\"model_config_check\"],\"acceptance_checkers\":[\"llm_semantic_extraction_check\",\"no_static_keyword_semantic_matching_check\",\"task_card_check\",\"model_config_check\"],\"on_failure\":\"Block SACG extraction for model-shape constraints, emit a source-linked gap list for each missing or ambiguous fact, and do not substitute guessed decoder or tensor semantics.\",\"requires_approval\":false},{\"id\":\"input_prep.validate_sacg_seed_graph_for_model_shape\",\"stage\":\"input_preparation\",\"action_type\":\"sacg_static_validation\",\"rationale\":\"The SACG currently has no nodes or edges; extracted model-shape facts must be converted into checked seed requirements before downstream stages can reference them.\",\"consumes\":[\"artifact.input_audit.model_shape_report\",\"artifact.input_audit.model_shape_sacg_seed_requirements\",\"constraint.task.goal\",\"constraint.model.decoder\",\"constraint.shape.model\"],\"produces\":[\"artifact.input_audit.model_shape_sacg_validation\",\"artifact.sacg.seed.model_shape_nodes_edges\"],\"tool_roles\":[\"sacg_validate\",\"sacg_static_check\",\"sacg_reference_check\"],\"acceptance_checkers\":[\"sacg_static_check\",\"sacg_reference_check\"],\"on_failure\":\"Return violations to the model_shape_gap_list and keep partial or conflicting seed nodes out of the promoted SACG.\",\"requires_approval\":false},{\"id\":\"input_prep.issue_model_shape_backtrack_if_gaps_block_seed\",\"stage\":\"input_preparation\",\"action_type\":\"bounded_backtrack_request\",\"rationale\":\"If the checked gap list shows missing or conflicting source facts, the system needs source artifact repair or human clarification; inventing architecture, shape, or operator semantics is not allowed.\",\"consumes\":[\"artifact.input_audit.model_shape_gap_list\",\"artifact.input.human_agent_boundary\",\"artifact.input.task_card\",\"artifact.input.model_config\"],\"produces\":[\"artifact.stage0.backtrack_request.model_shape_inputs\",\"artifact.stage0.trust_barrier.model_shape_downstream_block\"],\"tool_roles\":[\"stage_backtrack_request\",\"stage_artifact_trust_barrier\",\"human_boundary_check\"],\"acceptance_checkers\":[\"stage_backtrack_request_check\",\"stage_artifact_trust_barrier_check\",\"human_boundary_check\"],\"on_failure\":\"Keep downstream SACG extraction, parameter binding, template selection, and code generation blocked until the backtrack request or approved clarification is recorded.\",\"requires_approval\":true},{\"id\":\"input_prep.cross_layer_model_shape_evidence_gate_handoff\",\"stage\":\"input_preparation\",\"action_type\":\"cross_layer_evidence_gate\",\"rationale\":\"Once model-shape facts pass the current checks, they must be compared against numeric policy, template coverage, memory/runtime expectations, and tool protocols to prevent cross-layer inconsistency.\",\"consumes\":[\"artifact.input_audit.model_shape_report\",\"artifact.input_audit.model_shape_sacg_validation\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_protocols\"],\"produces\":[\"artifact.input_audit.cross_layer_model_shape_handoff\",\"artifact.input_audit.cross_layer_model_shape_risk_register\"],\"tool_roles\":[\"team_aggregate\",\"numeric_policy_check\",\"template_coverage_check\",\"memory_runtime_plan_check\",\"tool_protocol_check\"],\"acceptance_checkers\":[\"numeric_policy_check\",\"template_coverage_check\",\"memory_runtime_plan_check\",\"tool_protocol_check\",\"sacg_static_check\"],\"on_failure\":\"Route the inconsistency to the responsible input owner or backtrack action and do not proceed to parameter binding, code generation, or backend planning.\",\"requires_approval\":false},{\"id\":\"input_prep.record_model_shape_audit_memory\",\"stage\":\"input_preparation\",\"action_type\":\"sacg_memory_update\",\"rationale\":\"The design memory must preserve that no model-shape pass was claimed from the compact summary and must record any approved facts, gaps, barriers, or backtrack decisions for downstream agents.\",\"consumes\":[\"artifact.input_audit.model_shape_report\",\"artifact.input_audit.model_shape_gap_list\",\"artifact.input_audit.model_shape_sacg_validation\"],\"produces\":[\"artifact.sacg_memory.model_shape_intake_entry\"],\"tool_roles\":[\"sacg_memory_update\"],\"acceptance_checkers\":[\"sacg_memory_check\"],\"on_failure\":\"Do not let downstream stages rely on out-of-band memory of this audit; rerun memory update before handoff.\",\"requires_approval\":false}],\"approval_required_for\":[\"Supplying or changing task_card/model_config semantics for model goal, decoder topology, tensor dimensions, attention/head mapping, sequence length, operator ordering, or residual path after the checker gap list is emitted.\",\"Selecting one interpretation among conflicting model-shape facts from task_card, model_config, or case_adapter.\",\"Any downstream architecture, pipeline, memory layout, numeric policy, or template-library change proposed to compensate for model-shape gaps.\"]}",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/team/llm/model_shape_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/input/team/llm/model_shape_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.model and shape intake engineer",
+  "used_fallback": false
+}

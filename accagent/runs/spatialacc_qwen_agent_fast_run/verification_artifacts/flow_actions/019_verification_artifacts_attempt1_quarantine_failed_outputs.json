@@ -1,0 +1,41 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "stage_artifact_trust_barrier_check",
+      "output_validity_check",
+      "sacg_memory_check"
+    ],
+    "action_type": "artifact_trust_boundary",
+    "consumes": [
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/36_verification_artifacts.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/verification_artifacts_report.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json"
+    ],
+    "id": "verification_artifacts.attempt1_quarantine_failed_outputs",
+    "on_failure": "Stop before any downstream stage and require trust-boundary repair; do not consume the stale verification_artifacts report.",
+    "produces": [
+      "artifact.stage6.verification_artifacts_attempt1_invalidated_record",
+      "artifact.stage6.failed_output_trust_boundary_note"
+    ],
+    "rationale": "The stage command failed and the framework explicitly did not promote the verification_artifacts report; recording the failed-output boundary prevents downstream consumption of stale or partial artifacts without inventing a new SACG blocker.",
+    "requires_approval": false,
+    "stage": "verification_artifacts",
+    "tool_roles": [
+      "stage_artifact_trust_barrier",
+      "output_validity_check",
+      "sacg_memory_update"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 19,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/code_generation/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/verification_artifacts/flow_events/019_retry.json",
+  "stage": "verification_artifacts"
+}

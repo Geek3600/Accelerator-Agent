@@ -1,0 +1,50 @@
+{
+  "model_type": "gpt2",
+  "num_layers": 12,
+  "hidden_size": 768,
+  "target_max_seq_len": 16,
+  "block": {
+    "type": "decoder",
+    "operator_sequence": [
+      "layer_norm_1",
+      "self_attention",
+      "residual_add_1",
+      "layer_norm_2",
+      "mlp_fc",
+      "activation",
+      "mlp_proj",
+      "residual_add_2"
+    ]
+  },
+  "attention": {
+    "kind": "mha",
+    "num_q_heads": 12,
+    "num_kv_heads": 12,
+    "head_dim": 64,
+    "causal": true,
+    "position_encoding": {
+      "type": "learned_absolute"
+    },
+    "qkv_bias": true,
+    "out_bias": true
+  },
+  "norm": {
+    "type": "layer_norm",
+    "position": "pre",
+    "eps": 1e-05,
+    "has_bias": true
+  },
+  "mlp": {
+    "type": "dense",
+    "intermediate_size": 3072,
+    "activation": "gelu_new",
+    "up_bias": true,
+    "down_bias": true
+  },
+  "weight_layout": {
+    "qkv": "fused_qkv",
+    "out_proj": "dense",
+    "mlp": "c_fc_c_proj",
+    "norm": "weight_bias"
+  }
+}

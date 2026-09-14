@@ -1,0 +1,40 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "stage_artifact_trust_barrier_check",
+      "sacg_memory_check"
+    ],
+    "action_type": "artifact_trust_barrier",
+    "consumes": [
+      "recent_stage_summary",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/logs/24_pipeline_planning.json",
+      "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/pipeline_planning_report.json",
+      "sacg_memory"
+    ],
+    "id": "pipeline_planning.quarantine_failed_attempt_1",
+    "on_failure": "Stop before retry or downstream consumption to avoid artifact contamination.",
+    "produces": [
+      "sacg_memory.stage_artifact_trust_barrier.pipeline_planning_attempt_1",
+      "retry_input_manifest.pipeline_planning_attempt_2"
+    ],
+    "rationale": "The command failed with returncode 1 and the existing pipeline_planning_report is stale, incomplete, and explicitly not promoted. A trust barrier prevents downstream contamination while allowing same-stage diagnostic use of logs.",
+    "requires_approval": false,
+    "stage": "pipeline_planning",
+    "tool_roles": [
+      "stage_artifact_trust_barrier",
+      "sacg_memory_update"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 6,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/template_selection/sacg_state.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/pipeline_planning/flow_events/006_retry.json",
+  "stage": "pipeline_planning"
+}

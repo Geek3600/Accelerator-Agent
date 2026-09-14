@@ -1,0 +1,113 @@
+{
+  "decision": {
+    "approval_required_for": [
+      "Binding or changing tile sizes for any pipeline stage.",
+      "Binding or changing parallelism, unroll factors, PE counts, or stage replication.",
+      "Binding or changing memory layout, buffering depth, data packing, stream width, or beat alignment.",
+      "Binding or changing AXI/DDR access patterns, burst scheduling, memory schedule, or runtime transfer policy.",
+      "Any numeric-policy specialization including data type, accumulator width, rounding, saturation, quantization, or tolerance-related behavior.",
+      "Any major template specialization or template-parameter choice that changes architecture-level behavior."
+    ],
+    "decision": "run_tool",
+    "expected_evidence": [
+      "A parameter-binding artifact must be produced and attached to the SACG, mapping each pipeline stage to explicit design-space parameters such as tile sizes, unroll/parallelism factors, buffering depths, stream widths, packing choices, and memory/runtime assumptions where applicable.",
+      "The produced bindings must reference the originating design-space, template-selection, pipeline-plan, model-shape, numeric-policy, target-board, and tool-profile artifacts rather than introducing untraced constants.",
+      "A later parameter/static checker must verify model-order preservation, no GQA-to-MHA semantic collapse, shape consistency, numeric-policy consistency, stream/beat alignment, buffer capacity, flow-control/liveness, memory schedule feasibility, and board/tool limits.",
+      "Evidence must show the existing pipeline_plan_static_check pass remains applicable or is superseded by a new checker result after parameters are bound.",
+      "Any architectural binding that affects tile size, parallelism, memory layout, data packing, AXI/DDR access, numeric policy, or major template specialization must be recorded for human approval before downstream implementation is considered accepted."
+    ],
+    "reason": "The parameter_binding stage is a deterministic planning/binding step that consumes the existing SACG state and prior pipeline plan/static-check artifacts to create candidate parameter-to-stage bindings. It is not requesting deletion of tests, golden-output edits, tolerance loosening, checker bypass, or model-semantics changes. Future checker and approval evidence will still be required before any bound tile sizes, parallelism, buffering, memory layout, data packing, or runtime/AXI choices are treated as accepted design decisions.",
+    "risks": [
+      "Parameter binding can silently turn abstract pipeline stages into architecture-level decisions that affect tile size, parallelism, memory layout, data packing, buffering, AXI/DDR behavior, and runtime scheduling.",
+      "Cross-layer mismatch risk between model shapes, Qwen2 attention/GQA semantics, stream ordering, beat alignment, and selected template parameters.",
+      "Board and tool-resource risk if chosen parameters exceed memory bandwidth, BRAM/URAM/DSP capacity, timing feasibility, or supported tool protocols.",
+      "Numeric risk if bindings imply data width, accumulation, quantization, rounding, or tolerance behavior not permitted by the numeric policy.",
+      "Liveness/deadlock risk if buffer depths and flow-control bindings are inconsistent across residual, branch, and join stages."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.design_space",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary",
+        "artifact.stage2.template_selection",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage3.pipeline_static_checks"
+      ],
+      "constraints": [
+        "constraint.arch.design_space",
+        "constraint.pipeline.structure",
+        "constraint.shape.model",
+        "constraint.model.decoder",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.buffering.pipeline",
+        "constraint.flow_control.pipeline",
+        "constraint.memory_schedule.pipeline",
+        "constraint.liveness.pipeline",
+        "constraint.cross_layer.input_consistency",
+        "constraint.human.boundary"
+      ],
+      "edges": [
+        "edge.model_order.00",
+        "edge.model_order.01",
+        "edge.model_order.02",
+        "edge.model_order.03",
+        "edge.model_order.04",
+        "edge.model_order.05",
+        "edge.model_order.06",
+        "edge.model_order.07",
+        "edge.data.block_input.to.stage_00_rms_norm_1.input",
+        "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_rms_norm_2.main",
+        "edge.data.stage_03_rms_norm_2.to.stage_04_mlp_gate_proj.mlp_gate_branch",
+        "edge.data.stage_03_rms_norm_2.to.stage_05_mlp_up_branch"
+      ],
+      "nodes": [
+        "node.design_space",
+        "node.template_library",
+        "node.numeric_policy",
+        "node.target_board",
+        "node.tool_profile",
+        "node.tool_protocols",
+        "node.case_adapter",
+        "node.human_boundary",
+        "node.model",
+        "node.model_op.00_rms_norm_1",
+        "node.model_op.01_self_attention",
+        "node.model_op.02_residual_add_1",
+        "node.model_op.03_rms_norm_2",
+        "node.model_op.04_mlp_gate_proj",
+        "node.model_op.05_mlp_up_proj",
+        "node.model_op.06_activation_mul",
+        "node.model_op.07_mlp_down_proj",
+        "node.model_op.08_residual_add_2"
+      ]
+    },
+    "stage": "parameter_binding",
+    "tool_command_allowed": true
+  },
+  "duration_sec": 70.76326517898997,
+  "enforced": true,
+  "error": null,
+  "mode": "llm",
+  "prompt_hash": "0fa5056dbb13b2712b80714af5c1b0d3550ce3021009fd2c77a460591d49f4ba",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/agent/llm/08_parameter_binding_request.json",
+  "schema_version": "spatialaccagent.pre_stage_safety_gate_decision.v0",
+  "stage": "parameter_binding"
+}

@@ -1,0 +1,393 @@
+{
+  "agent": "repair_agent",
+  "duration_sec": 400.8850125989993,
+  "error": null,
+  "http_transport": "curl_direct_http1",
+  "live_transaction_id": "81d24647d9914896bd903d3e9060e195",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_live_transaction.json",
+  "max_output_tokens": 65536,
+  "mode": "llm",
+  "model": "gpt-5.6-sol",
+  "output": {
+    "agent": "repair_agent",
+    "approval_required_for": [
+      "Conditional bounded approval is required only if the passed board-discovery materials cannot uniquely identify the exact user-supplied wrapper/export hashes and an authorized Vivado-derived simulator command; the team must not guess target names, source paths, or executables."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "case_real_weight_artifacts",
+          "case_target_model_reference",
+          "case_semantic_testbench",
+          "numeric_policy_check",
+          "case_tb_scaffold",
+          "case_board_interface_discovery",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "verification_capability_repair",
+        "consumes": [
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.llm_action_audit",
+          "current case-adapter target checkpoint",
+          "immutable current input stimulus provenance or deterministic stimulus seed/provenance",
+          "current resolved numeric comparison policy, including frozen framework defaults only when initially absent",
+          "passed case_board_interface_discovery identity document and exact user-supplied wrapper/export source hashes",
+          "current board memory-map/runtime ABI contract",
+          "current DUT loader and integration source set"
+        ],
+        "id": "repair.build_hash_bound_multilayer_board_semantic_candidate",
+        "on_failure": "Keep the verification-capability gap and all SACG barriers active; do not run VCS, alter tolerance, use random or DUT-derived expected outputs, substitute a wrapper, or patch lower-layer RTL. If the discovery material cannot uniquely bind wrapper/export hashes and an authorized simulator command, emit a bounded approval request rather than guessing.",
+        "produces": [
+          "verification/real_weights/complete_target_checkpoint_tensor_catalog.json",
+          "verification/real_weights/transformer_block_dut_required_tensor_subset.json",
+          "verification/model_reference/multilayer_transformer_block_reference_manifest.json",
+          "verification/model_reference/multilayer_expected_boundary_outputs.json",
+          "verification/semantic_testbench/board_multilayer_semantic_testbench_manifest.json",
+          "verification/semantic_testbench/board_multilayer_dut_weight_binding_requirements.json",
+          "generated/memory/board_multilayer_dut_weight_binding_manifest.json",
+          "verification/board_simulation/board_tb.sv",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/board_simulation/vcs_compile_plan.json"
+        ],
+        "rationale": "Repair the known capability gap before any hardware diagnosis: create a complete target-checkpoint catalog, a Transformer-block DUT-required subset for every selected target layer, an immutable target-model reference, a loader-to-DUT binding contract, and the missing exact-wrapper board testbench/compile-plan closure. This is a bounded board integration harness repair, not a core RTL, architecture, numeric-policy, or model-tail change.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "bounded_template_repair",
+          "case_weight_manifest_generate",
+          "case_target_model_reference",
+          "case_semantic_testbench",
+          "case_tb_scaffold_generate",
+          "case_board_interface_discovery",
+          "functional_sim_contract_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_multilayer_pipeline",
+          "required_real_tool_evidence_check",
+          "verification_artifact_contract_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "targeted_failed_checker_rerun",
+        "consumes": [
+          "verification/real_weights/complete_target_checkpoint_tensor_catalog.json",
+          "verification/real_weights/transformer_block_dut_required_tensor_subset.json",
+          "verification/semantic_testbench/board_multilayer_dut_weight_binding_requirements.json",
+          "generated/memory/board_multilayer_dut_weight_binding_manifest.json",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/board_simulation/vcs_compile_plan.json",
+          "artifact.stage6.verification_artifact_contract"
+        ],
+        "id": "verification.rerun_multilayer_pipeline_binding_gate",
+        "on_failure": "Return only to repair.build_hash_bound_multilayer_board_semantic_candidate with the reported missing tensor, loader binding, or source-hash detail. Do not run dependency-skipped VCS/AXI tools, claim DUT consumption, reopen lower layers, or promote.",
+        "produces": [
+          "verification/real_tools/case_multilayer_pipeline_retry.json",
+          "verification/qwen_hierarchy/multilayer_pipeline.json",
+          "verification/case_diagnostics/multilayer_pipeline_binding_closure.json"
+        ],
+        "rationale": "Validate the repaired all-target-layer binding and harness source closure before attempting dependent AXI/DDR or simulator gates. This gate validates requirements and source closure only; actual DUT weight consumption remains to be proven by the later real simulation.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_multilayer_pipeline",
+          "targeted_failed_checker_rerun",
+          "real_tool_evidence_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_axi_ddr_interface",
+          "case_board_interface_discovery",
+          "tool_protocol_check",
+          "artifact_hash_check"
+        ],
+        "action_type": "board_integration_contract_validation",
+        "consumes": [
+          "verification/qwen_hierarchy/multilayer_pipeline.json",
+          "verification/board_simulation/board_tb.sv",
+          "verification/board_simulation/board_simulation_manifest.json",
+          "verification/board_simulation/vcs_compile_plan.json",
+          "passed case_board_interface_discovery identity document and exact source hashes",
+          "artifact.stage6.verification_artifact_contract"
+        ],
+        "id": "verification.validate_exact_board_axi_ddr_simulation_readiness",
+        "on_failure": "Treat this as a current-layer board harness/compile-authority failure. Return to the bounded harness repair; do not replace the user wrapper, guess Vivado contexts or executables, run VCS against an unbound compile plan, or reopen certified lower layers.",
+        "produces": [
+          "verification/real_tools/case_axi_ddr_interface_retry.json",
+          "verification/qwen_hierarchy/axi_ddr_interface.json",
+          "verification/board_simulation/exact_source_compile_authority_binding.json"
+        ],
+        "rationale": "Once multilayer binding passes, validate that the candidate uses the exact discovered wrapper/export identity and a tool-profile-authorized Vivado-derived VCS compile plan before real simulation. This resolves the reported readiness, source_identity, compile_authority, authority_refs, and executable-binding deficiencies without changing the wrapper contract.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_axi_ddr_interface",
+          "case_board_interface_discovery",
+          "tool_protocol_check",
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "real_tool.case_vcs_functional_sim",
+          "real_tool.case_deadlock_axi_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare",
+          "failure_localization_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "verification/qwen_hierarchy/multilayer_pipeline.json with pass status",
+          "verification/qwen_hierarchy/axi_ddr_interface.json with pass status",
+          "verification/model_reference/multilayer_transformer_block_reference_manifest.json",
+          "verification/model_reference/multilayer_expected_boundary_outputs.json",
+          "generated/memory/board_multilayer_dut_weight_binding_manifest.json",
+          "verification/board_simulation/board_tb.sv",
+          "verification/board_simulation/exact_source_compile_authority_binding.json",
+          "immutable checkpoint, stimulus, numeric policy, testbench, and wrapper source hashes"
+        ],
+        "id": "verification.run_exact_wrapper_vcs_and_collect_current_trace",
+        "on_failure": "If execution produces a trace, invoke repair.localize_current_board_trace before any code patch. If the simulator cannot execute because a contract artifact is absent, return to repair.build_hash_bound_multilayer_board_semantic_candidate. Do not characterize a dependency failure as RTL evidence and do not relax numeric policy.",
+        "produces": [
+          "verification/vcs/case_board_vcs_functional.json",
+          "verification/vcs/case_board_vcs_functional.log",
+          "verification/debug_closure/boundary_trace.json",
+          "verification/debug_closure/dut_weight_consumption_trace.json",
+          "verification/case_diagnostics/vcs_functional_diagnosis.json",
+          "verification/board_simulation/rtl_output.memh",
+          "verification/board_simulation/numeric_compare_report.json",
+          "verification/board_simulation/data_order_and_transfer_trace.json"
+        ],
+        "rationale": "After prerequisite gates pass, execute the real board simulation on the immutable checkpoint/stimulus/reference and collect the current board boundary, consumption, order, liveness, and numeric evidence. The trace must distinguish AXI/prefetch progress from output or lifecycle-frontier progress and preserve elastic kernel timing semantics.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_vcs_functional_sim",
+          "case_vcs_evidence_analyzer",
+          "case_deadlock_axi_check",
+          "data_order_trace_check",
+          "transfer_count_check",
+          "numeric_compare"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "causal_repair_context_check",
+          "targeted_replay_check",
+          "repair_boundary_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "causal_trace_localization",
+        "consumes": [
+          "verification/debug_closure/boundary_trace.json",
+          "verification/debug_closure/dut_weight_consumption_trace.json",
+          "verification/case_diagnostics/vcs_functional_diagnosis.json",
+          "verification/board_simulation/numeric_compare_report.json",
+          "verification/board_simulation/data_order_and_transfer_trace.json",
+          "artifact.stage7.operator_leaf_promotion_certificate",
+          "artifact.stage7.single_layer_promotion_certificate",
+          "hierarchical_learning_context kernel timing knowledge and certificate hashes",
+          "current board candidate source/hash manifest"
+        ],
+        "id": "repair.localize_current_board_trace_and_guard_lower_certificates",
+        "on_failure": "If the trace is incomplete or not hash-bound, rerun only the current board trace with the required monitors; do not patch RTL. If no direct lower-layer contradiction is present, retain lower certificates and issue only a bounded board wrapper/loader/harness/runtime repair context. If a direct contradiction is present, record the named invariant and request only the challenged lower-layer replay before rerunning this board layer.",
+        "produces": [
+          "verification/debug_closure/current_board_causal_repair_context.json",
+          "verification/debug_closure/current_board_boundary_localization.json",
+          "verification/debug_closure/targeted_replay_request.json",
+          "sacg/current_board_lower_layer_challenge_or_reuse_record.json"
+        ],
+        "rationale": "Use only fresh current-layer trace evidence to identify the earliest violated board contract. A lower-layer challenge is authorized only when the trace is hash-bound to the current candidate and explicitly contradicts a named live lower-layer invariant with direct core start, ingress, egress, named causal-boundary, and certificate evidence.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "failure_slice_localization",
+          "causal_repair_context_pack",
+          "boundary_trace_rerun",
+          "targeted_replay",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_multilayer_pipeline",
+          "case_axi_ddr_interface",
+          "functional_sim",
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_board_semantic_evidence",
+          "real_weight_semantic_evidence_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "current_layer_regression_rerun",
+        "consumes": [
+          "verification/qwen_hierarchy/multilayer_pipeline.json with pass status",
+          "verification/qwen_hierarchy/axi_ddr_interface.json with pass status",
+          "verification/vcs/case_board_vcs_functional.json",
+          "verification/debug_closure/boundary_trace.json",
+          "verification/debug_closure/dut_weight_consumption_trace.json",
+          "verification/board_simulation/numeric_compare_report.json",
+          "verification/board_simulation/data_order_and_transfer_trace.json",
+          "verification/model_reference/multilayer_transformer_block_reference_manifest.json",
+          "generated/memory/board_multilayer_dut_weight_binding_manifest.json"
+        ],
+        "id": "verification.complete_board_gate_chain_and_assemble_semantic_evidence",
+        "on_failure": "For an executed liveness, value, order, protocol, or consumption failure, return to repair.localize_current_board_trace_and_guard_lower_certificates and repair only the earliest localized current-layer slice. For a missing or unbound artifact, return to repair.build_hash_bound_multilayer_board_semantic_candidate. Do not promote to synthesis, implementation, bitstream, runtime ABI release, or board runtime.",
+        "produces": [
+          "verification/real_tools/case_multilayer_functional_retry.json",
+          "verification/real_tools/case_pipeline_deadlock_check_retry.json",
+          "verification/real_tools/case_axi_protocol_check_retry.json",
+          "verification/real_tools/case_ddr_image_roundtrip_retry.json",
+          "verification/semantic_evidence/board_axi_ddr.json",
+          "verification/stage7_board_axi_ddr_candidate_verification_result.json"
+        ],
+        "rationale": "Only after real simulation and its prerequisite contract evidence are available, run the remaining required board-layer gates in dependency order and assemble semantic evidence showing exact-wrapper execution, complete bound-weight consumption, target-model comparison, AXI/DDR protocol behavior, data order, and liveness. This is the required same-layer rerun; it is not backend promotion.",
+        "requires_approval": false,
+        "stage": "verification",
+        "tool_roles": [
+          "case_multilayer_functional",
+          "case_pipeline_deadlock_check",
+          "case_axi_protocol_check",
+          "case_ddr_image_roundtrip",
+          "case_board_semantic_evidence",
+          "targeted_failed_checker_rerun",
+          "required_real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "stage_retry_request_check",
+          "stage_artifact_trust_barrier_check",
+          "artifact_hash_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "sacg_candidate_handoff",
+        "consumes": [
+          "verification/stage7_board_axi_ddr_candidate_verification_result.json",
+          "verification/semantic_evidence/board_axi_ddr.json",
+          "all current board real-tool reports and source hashes",
+          "sacg_memory_truth.active_contamination_barriers",
+          "sacg_memory_truth.open_retry_requests",
+          "artifact.stage6.verification_artifact_contract",
+          "artifact.stage6.llm_action_audit"
+        ],
+        "id": "repair.record_candidate_for_sacg_retry_reconciliation",
+        "on_failure": "Retain all ten active barriers and all four open retry requests as downstream blockers, keep the candidate unpromoted, and return to the failed current-layer action. Do not consume rejected artifacts as validated inputs or claim retry reconciliation without a full passing content-addressed candidate.",
+        "produces": [
+          "sacg/board_axi_ddr_candidate_identity_and_gate_matrix.json",
+          "sacg/board_axi_ddr_retry_reconciliation_handoff.json",
+          "sacg/board_axi_ddr_trust_barrier_status_update.json"
+        ],
+        "rationale": "Preserve the authoritative active-barrier and retry history while recording a content-addressed candidate for the owning verification/promotion flow. Same-scope retries and contaminated artifacts remain downstream-consumption blockers unless the full candidate passes every required board gate and is subsequently reconciled; this action does not itself claim promotion or silently clear barriers.",
+        "requires_approval": false,
+        "stage": "repair",
+        "tool_roles": [
+          "sacg_memory_update",
+          "stage_retry_request",
+          "stage_artifact_trust_barrier",
+          "artifact_hash_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The directly executed current-layer checker real_tool.case_multilayer_pipeline failed on multilayer_real_weight_binding and multilayer_harness_sources. A weight file or binding manifest alone will not establish DUT consumption; executed loader-to-DUT evidence is still required.",
+      "The current functional_sim failure is a precondition/dependency failure caused in part by missing verification/board_simulation/board_tb.sv. VCS, evidence analysis, AXI/deadlock diagnostics, and downstream board classifiers are not_run, so no RTL root cause, AXI failure, deadlock, numeric mismatch, or output-frontier stall is established.",
+      "case_board_interface_discovery is reported pass in the current hierarchy, but the repaired board harness must bind the exact discovered user-project wrapper/export source hashes and an authorized Vivado-derived compile plan. A simplified wrapper or guessed tool command is prohibited.",
+      "Certified operator-leaf and connected single-layer evidence is live and reusable. The connected kernel certificate requires elastic variable-latency token-pipeline boundary order and cross-token overlap, not same-cycle completion across unequal-latency stages. No current hash-bound board trace contradicts either lower-layer certificate.",
+      "The current diagnostic closure classifies this as a verification_semantic_capability_contract gap and explicitly requires semantic harness/loader repair before hardware boundary tracing. The historical VCS analyzer result is not executable for this attempt because it lacks a current source-bound applicability binding.",
+      "sacg_memory_truth authoritatively reports 10 active same-scope contamination barriers and four open same-scope retry requests (retry_request.0136, retry_request.0140, retry_request.0141, retry_request.0142); no same-scope backtrack request is open. Rejected artifacts remain usable only as debugging inputs, not validated design inputs.",
+      "The conditional review router selected no specialist split. The invalid prior repair-execution feedback cannot be used as successful repair evidence."
+    ],
+    "proposed_actions": [
+      "Build a bounded, hash-bound board semantic verification candidate that repairs only the multilayer loader/harness, testbench contract, and required instrumentation; preserve the DUT scope, checkpoint, stimulus, target reference, numeric policy, and exact board-wrapper sources.",
+      "Rerun case_multilayer_pipeline before attempting VCS. If static binding or harness closure still fails, iterate only the verification-capability repair and do not infer hardware behavior.",
+      "After the static board gates pass, run the exact-wrapper VCS simulation and collect a current CCTG boundary trace, consumption trace, order/numeric evidence, and diagnosis. Localize any executed failure to the earliest board causal boundary.",
+      "Run remaining board gates only after their prerequisites pass. Reopen a lower layer only if a fresh trace directly contradicts a named lower-layer certificate invariant; otherwise repair only the localized board wrapper, loader, harness, runtime, or instrumentation slice.",
+      "Keep all active SACG barriers and retries as downstream-consumption blockers until a new content-addressed Stage7 candidate passes every required board gate and is reconciled by the owning SACG/promotion flow."
+    ],
+    "risks": [
+      "Model/numeric risk: a multilayer test could falsely pass if expected outputs are not produced by target-model inference on the identical immutable checkpoint and stimulus, if resolved tolerances are changed during repair, or if Transformer-block boundary outputs are confused with embedding, final norm, LM-head/logits, or sampling work outside the DUT.",
+      "Shape/data-order/memory/runtime risk: every selected target layer requires a complete tensor catalog, tensor hashes, layer ordering, loader address/order mapping, transfer counts, and observed DUT consumption; an all-layer manifest without executed consumption traces is insufficient.",
+      "Board/implementation risk: the testbench, wrapper, source identity, Vivado export contexts, and simulator commands must remain hash-bound to the exact user sample project. Any ambiguity in this mapping must be escalated rather than resolved by guessing.",
+      "Current-layer liveness risk remains unmeasured. Independent AXI or prefetch activity would not prove kernel egress or lifecycle-frontier progress; any future frontier symptom must be localized from a current trace before an RTL repair is proposed.",
+      "The active contamination barriers and open retry requests block downstream consumption and promotion until a content-addressed candidate completes the full current-layer gate chain and SACG reconciliation is performed."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.llm_action_audit",
+        "artifact.stage7.verification_result",
+        "artifact.stage7.real_tool_results",
+        "artifact.stage7.debug_closure",
+        "artifact.stage8.repair_plan",
+        "artifact.stage8.repair_execution_report",
+        "verification/qwen_hierarchy/multilayer_pipeline.json",
+        "verification/board_simulation/board_tb.sv",
+        "verification/certificates/operator_leaf_promotion_certificate.json",
+        "verification/certificates/single_layer_promotion_certificate.json"
+      ],
+      "constraints": [
+        "constraint.verification.functional_scope",
+        "constraint.verification.plan",
+        "constraint.tool.protocols",
+        "constraint.case.adapter",
+        "immutable checkpoint/stimulus/target-reference/numeric-policy/testbench-wrapper hashes",
+        "Transformer-block-only DUT scope",
+        "no lower-layer reopen without a current trace that contradicts a named certified invariant",
+        "active SACG artifacts are planning/debug evidence only until a new candidate passes and is reconciled"
+      ],
+      "edges": [
+        "complete_target_checkpoint_tensor_catalog -> transformer_block_required_tensor_subset -> multilayer_loader_binding -> DUT_consumption_trace",
+        "exact_sample_project_wrapper_source_hashes -> board_tb.sv -> Vivado-authorized_VCS_compile_plan -> board_simulation",
+        "case_multilayer_pipeline_pass -> case_axi_ddr_interface_pass -> VCS_boundary_trace -> dependent_board_gate_reruns",
+        "current_hash_bound_board_trace -> causal_localization -> bounded_current_layer_repair_or_explicit_lower_layer_challenge"
+      ],
+      "nodes": [
+        "board_axi_ddr_wrapped_system",
+        "case_multilayer_pipeline",
+        "case_axi_ddr_interface",
+        "case_vcs_functional_sim",
+        "functional_sim",
+        "single_transformer_layer_kernel",
+        "operator_leaf_modules"
+      ]
+    },
+    "schema_version": "spatialaccagent.repair_agent_decision.v1",
+    "stage": "repair",
+    "status": "needs_repair",
+    "summary": "Fail closed at the board_axi_ddr_wrapped_system layer. The earliest executed failure is a verification-capability failure in case_multilayer_pipeline: complete Transformer-block tensor-to-loader-to-DUT binding and hash-verified multilayer harness sources are absent; board_tb.sv is also absent. functional_sim is dependency-unsatisfied aggregate status, not executed RTL, AXI, DDR, numeric, or liveness evidence. Repair the current board-scope loader/harness and immutable semantic contract first, then rerun the board gate chain and obtain a current boundary trace if simulation executes. Do not reopen certified leaf or connected-kernel layers and do not promote to backend or board runtime."
+  },
+  "prompt_bytes": 201340,
+  "prompt_hash": "fcd25dab8726b0cdb125ac28e40a26020228d9842dc6fd8d6e728ebc5d1fda33",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.repair_agent_decision.v1\",\"agent\":\"repair_agent\",\"stage\":\"repair\",\"status\":\"needs_repair\",\"summary\":\"Fail closed at the board_axi_ddr_wrapped_system layer. The earliest executed failure is a verification-capability failure in case_multilayer_pipeline: complete Transformer-block tensor-to-loader-to-DUT binding and hash-verified multilayer harness sources are absent; board_tb.sv is also absent. functional_sim is dependency-unsatisfied aggregate status, not executed RTL, AXI, DDR, numeric, or liveness evidence. Repair the current board-scope loader/harness and immutable semantic contract first, then rerun the board gate chain and obtain a current boundary trace if simulation executes. Do not reopen certified leaf or connected-kernel layers and do not promote to backend or board runtime.\",\"sacg_focus\":{\"nodes\":[\"board_axi_ddr_wrapped_system\",\"case_multilayer_pipeline\",\"case_axi_ddr_interface\",\"case_vcs_functional_sim\",\"functional_sim\",\"single_transformer_layer_kernel\",\"operator_leaf_modules\"],\"edges\":[\"complete_target_checkpoint_tensor_catalog -> transformer_block_required_tensor_subset -> multilayer_loader_binding -> DUT_consumption_trace\",\"exact_sample_project_wrapper_source_hashes -> board_tb.sv -> Vivado-authorized_VCS_compile_plan -> board_simulation\",\"case_multilayer_pipeline_pass -> case_axi_ddr_interface_pass -> VCS_boundary_trace -> dependent_board_gate_reruns\",\"current_hash_bound_board_trace -> causal_localization -> bounded_current_layer_repair_or_explicit_lower_layer_challenge\"],\"constraints\":[\"constraint.verification.functional_scope\",\"constraint.verification.plan\",\"constraint.tool.protocols\",\"constraint.case.adapter\",\"immutable checkpoint/stimulus/target-reference/numeric-policy/testbench-wrapper hashes\",\"Transformer-block-only DUT scope\",\"no lower-layer reopen without a current trace that contradicts a named certified invariant\",\"active SACG artifacts are planning/debug evidence only until a new candidate passes and is reconciled\"],\"artifacts\":[\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"artifact.stage7.verification_result\",\"artifact.stage7.real_tool_results\",\"artifact.stage7.debug_closure\",\"artifact.stage8.repair_plan\",\"artifact.stage8.repair_execution_report\",\"verification/qwen_hierarchy/multilayer_pipeline.json\",\"verification/board_simulation/board_tb.sv\",\"verification/certificates/operator_leaf_promotion_certificate.json\",\"verification/certificates/single_layer_promotion_certificate.json\"]},\"observations\":[\"The directly executed current-layer checker real_tool.case_multilayer_pipeline failed on multilayer_real_weight_binding and multilayer_harness_sources. A weight file or binding manifest alone will not establish DUT consumption; executed loader-to-DUT evidence is still required.\",\"The current functional_sim failure is a precondition/dependency failure caused in part by missing verification/board_simulation/board_tb.sv. VCS, evidence analysis, AXI/deadlock diagnostics, and downstream board classifiers are not_run, so no RTL root cause, AXI failure, deadlock, numeric mismatch, or output-frontier stall is established.\",\"case_board_interface_discovery is reported pass in the current hierarchy, but the repaired board harness must bind the exact discovered user-project wrapper/export source hashes and an authorized Vivado-derived compile plan. A simplified wrapper or guessed tool command is prohibited.\",\"Certified operator-leaf and connected single-layer evidence is live and reusable. The connected kernel certificate requires elastic variable-latency token-pipeline boundary order and cross-token overlap, not same-cycle completion across unequal-latency stages. No current hash-bound board trace contradicts either lower-layer certificate.\",\"The current diagnostic closure classifies this as a verification_semantic_capability_contract gap and explicitly requires semantic harness/loader repair before hardware boundary tracing. The historical VCS analyzer result is not executable for this attempt because it lacks a current source-bound applicability binding.\",\"sacg_memory_truth authoritatively reports 10 active same-scope contamination barriers and four open same-scope retry requests (retry_request.0136, retry_request.0140, retry_request.0141, retry_request.0142); no same-scope backtrack request is open. Rejected artifacts remain usable only as debugging inputs, not validated design inputs.\",\"The conditional review router selected no specialist split. The invalid prior repair-execution feedback cannot be used as successful repair evidence.\"],\"risks\":[\"Model/numeric risk: a multilayer test could falsely pass if expected outputs are not produced by target-model inference on the identical immutable checkpoint and stimulus, if resolved tolerances are changed during repair, or if Transformer-block boundary outputs are confused with embedding, final norm, LM-head/logits, or sampling work outside the DUT.\",\"Shape/data-order/memory/runtime risk: every selected target layer requires a complete tensor catalog, tensor hashes, layer ordering, loader address/order mapping, transfer counts, and observed DUT consumption; an all-layer manifest without executed consumption traces is insufficient.\",\"Board/implementation risk: the testbench, wrapper, source identity, Vivado export contexts, and simulator commands must remain hash-bound to the exact user sample project. Any ambiguity in this mapping must be escalated rather than resolved by guessing.\",\"Current-layer liveness risk remains unmeasured. Independent AXI or prefetch activity would not prove kernel egress or lifecycle-frontier progress; any future frontier symptom must be localized from a current trace before an RTL repair is proposed.\",\"The active contamination barriers and open retry requests block downstream consumption and promotion until a content-addressed candidate completes the full current-layer gate chain and SACG reconciliation is performed.\"],\"proposed_actions\":[\"Build a bounded, hash-bound board semantic verification candidate that repairs only the multilayer loader/harness, testbench contract, and required instrumentation; preserve the DUT scope, checkpoint, stimulus, target reference, numeric policy, and exact board-wrapper sources.\",\"Rerun case_multilayer_pipeline before attempting VCS. If static binding or harness closure still fails, iterate only the verification-capability repair and do not infer hardware behavior.\",\"After the static board gates pass, run the exact-wrapper VCS simulation and collect a current CCTG boundary trace, consumption trace, order/numeric evidence, and diagnosis. Localize any executed failure to the earliest board causal boundary.\",\"Run remaining board gates only after their prerequisites pass. Reopen a lower layer only if a fresh trace directly contradicts a named lower-layer certificate invariant; otherwise repair only the localized board wrapper, loader, harness, runtime, or instrumentation slice.\",\"Keep all active SACG barriers and retries as downstream-consumption blockers until a new content-addressed Stage7 candidate passes every required board gate and is reconciled by the owning SACG/promotion flow.\"],\"executable_actions\":[{\"id\":\"repair.build_hash_bound_multilayer_board_semantic_candidate\",\"stage\":\"repair\",\"action_type\":\"verification_capability_repair\",\"rationale\":\"Repair the known capability gap before any hardware diagnosis: create a complete target-checkpoint catalog, a Transformer-block DUT-required subset for every selected target layer, an immutable target-model reference, a loader-to-DUT binding contract, and the missing exact-wrapper board testbench/compile-plan closure. This is a bounded board integration harness repair, not a core RTL, architecture, numeric-policy, or model-tail change.\",\"consumes\":[\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\",\"current case-adapter target checkpoint\",\"immutable current input stimulus provenance or deterministic stimulus seed/provenance\",\"current resolved numeric comparison policy, including frozen framework defaults only when initially absent\",\"passed case_board_interface_discovery identity document and exact user-supplied wrapper/export source hashes\",\"current board memory-map/runtime ABI contract\",\"current DUT loader and integration source set\"],\"produces\":[\"verification/real_weights/complete_target_checkpoint_tensor_catalog.json\",\"verification/real_weights/transformer_block_dut_required_tensor_subset.json\",\"verification/model_reference/multilayer_transformer_block_reference_manifest.json\",\"verification/model_reference/multilayer_expected_boundary_outputs.json\",\"verification/semantic_testbench/board_multilayer_semantic_testbench_manifest.json\",\"verification/semantic_testbench/board_multilayer_dut_weight_binding_requirements.json\",\"generated/memory/board_multilayer_dut_weight_binding_manifest.json\",\"verification/board_simulation/board_tb.sv\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/board_simulation/vcs_compile_plan.json\"],\"tool_roles\":[\"bounded_template_repair\",\"case_weight_manifest_generate\",\"case_target_model_reference\",\"case_semantic_testbench\",\"case_tb_scaffold_generate\",\"case_board_interface_discovery\",\"functional_sim_contract_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"case_real_weight_artifacts\",\"case_target_model_reference\",\"case_semantic_testbench\",\"numeric_policy_check\",\"case_tb_scaffold\",\"case_board_interface_discovery\",\"verification_artifact_contract_check\",\"tool_protocol_check\",\"artifact_hash_check\"],\"on_failure\":\"Keep the verification-capability gap and all SACG barriers active; do not run VCS, alter tolerance, use random or DUT-derived expected outputs, substitute a wrapper, or patch lower-layer RTL. If the discovery material cannot uniquely bind wrapper/export hashes and an authorized simulator command, emit a bounded approval request rather than guessing.\",\"requires_approval\":false},{\"id\":\"verification.rerun_multilayer_pipeline_binding_gate\",\"stage\":\"verification\",\"action_type\":\"targeted_failed_checker_rerun\",\"rationale\":\"Validate the repaired all-target-layer binding and harness source closure before attempting dependent AXI/DDR or simulator gates. This gate validates requirements and source closure only; actual DUT weight consumption remains to be proven by the later real simulation.\",\"consumes\":[\"verification/real_weights/complete_target_checkpoint_tensor_catalog.json\",\"verification/real_weights/transformer_block_dut_required_tensor_subset.json\",\"verification/semantic_testbench/board_multilayer_dut_weight_binding_requirements.json\",\"generated/memory/board_multilayer_dut_weight_binding_manifest.json\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/board_simulation/vcs_compile_plan.json\",\"artifact.stage6.verification_artifact_contract\"],\"produces\":[\"verification/real_tools/case_multilayer_pipeline_retry.json\",\"verification/qwen_hierarchy/multilayer_pipeline.json\",\"verification/case_diagnostics/multilayer_pipeline_binding_closure.json\"],\"tool_roles\":[\"case_multilayer_pipeline\",\"targeted_failed_checker_rerun\",\"real_tool_evidence_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"case_multilayer_pipeline\",\"required_real_tool_evidence_check\",\"verification_artifact_contract_check\",\"artifact_hash_check\"],\"on_failure\":\"Return only to repair.build_hash_bound_multilayer_board_semantic_candidate with the reported missing tensor, loader binding, or source-hash detail. Do not run dependency-skipped VCS/AXI tools, claim DUT consumption, reopen lower layers, or promote.\",\"requires_approval\":false},{\"id\":\"verification.validate_exact_board_axi_ddr_simulation_readiness\",\"stage\":\"verification\",\"action_type\":\"board_integration_contract_validation\",\"rationale\":\"Once multilayer binding passes, validate that the candidate uses the exact discovered wrapper/export identity and a tool-profile-authorized Vivado-derived VCS compile plan before real simulation. This resolves the reported readiness, source_identity, compile_authority, authority_refs, and executable-binding deficiencies without changing the wrapper contract.\",\"consumes\":[\"verification/qwen_hierarchy/multilayer_pipeline.json\",\"verification/board_simulation/board_tb.sv\",\"verification/board_simulation/board_simulation_manifest.json\",\"verification/board_simulation/vcs_compile_plan.json\",\"passed case_board_interface_discovery identity document and exact source hashes\",\"artifact.stage6.verification_artifact_contract\"],\"produces\":[\"verification/real_tools/case_axi_ddr_interface_retry.json\",\"verification/qwen_hierarchy/axi_ddr_interface.json\",\"verification/board_simulation/exact_source_compile_authority_binding.json\"],\"tool_roles\":[\"case_axi_ddr_interface\",\"case_board_interface_discovery\",\"tool_protocol_check\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"case_axi_ddr_interface\",\"case_board_interface_discovery\",\"tool_protocol_check\",\"artifact_hash_check\"],\"on_failure\":\"Treat this as a current-layer board harness/compile-authority failure. Return to the bounded harness repair; do not replace the user wrapper, guess Vivado contexts or executables, run VCS against an unbound compile plan, or reopen certified lower layers.\",\"requires_approval\":false},{\"id\":\"verification.run_exact_wrapper_vcs_and_collect_current_trace\",\"stage\":\"verification\",\"action_type\":\"real_tool_execution\",\"rationale\":\"After prerequisite gates pass, execute the real board simulation on the immutable checkpoint/stimulus/reference and collect the current board boundary, consumption, order, liveness, and numeric evidence. The trace must distinguish AXI/prefetch progress from output or lifecycle-frontier progress and preserve elastic kernel timing semantics.\",\"consumes\":[\"verification/qwen_hierarchy/multilayer_pipeline.json with pass status\",\"verification/qwen_hierarchy/axi_ddr_interface.json with pass status\",\"verification/model_reference/multilayer_transformer_block_reference_manifest.json\",\"verification/model_reference/multilayer_expected_boundary_outputs.json\",\"generated/memory/board_multilayer_dut_weight_binding_manifest.json\",\"verification/board_simulation/board_tb.sv\",\"verification/board_simulation/exact_source_compile_authority_binding.json\",\"immutable checkpoint, stimulus, numeric policy, testbench, and wrapper source hashes\"],\"produces\":[\"verification/vcs/case_board_vcs_functional.json\",\"verification/vcs/case_board_vcs_functional.log\",\"verification/debug_closure/boundary_trace.json\",\"verification/debug_closure/dut_weight_consumption_trace.json\",\"verification/case_diagnostics/vcs_functional_diagnosis.json\",\"verification/board_simulation/rtl_output.memh\",\"verification/board_simulation/numeric_compare_report.json\",\"verification/board_simulation/data_order_and_transfer_trace.json\"],\"tool_roles\":[\"case_vcs_functional_sim\",\"case_vcs_evidence_analyzer\",\"case_deadlock_axi_check\",\"data_order_trace_check\",\"transfer_count_check\",\"numeric_compare\"],\"acceptance_checkers\":[\"real_tool.case_vcs_functional_sim\",\"real_tool.case_deadlock_axi_check\",\"data_order_trace_check\",\"transfer_count_check\",\"numeric_compare\",\"failure_localization_check\"],\"on_failure\":\"If execution produces a trace, invoke repair.localize_current_board_trace before any code patch. If the simulator cannot execute because a contract artifact is absent, return to repair.build_hash_bound_multilayer_board_semantic_candidate. Do not characterize a dependency failure as RTL evidence and do not relax numeric policy.\",\"requires_approval\":false},{\"id\":\"repair.localize_current_board_trace_and_guard_lower_certificates\",\"stage\":\"repair\",\"action_type\":\"causal_trace_localization\",\"rationale\":\"Use only fresh current-layer trace evidence to identify the earliest violated board contract. A lower-layer challenge is authorized only when the trace is hash-bound to the current candidate and explicitly contradicts a named live lower-layer invariant with direct core start, ingress, egress, named causal-boundary, and certificate evidence.\",\"consumes\":[\"verification/debug_closure/boundary_trace.json\",\"verification/debug_closure/dut_weight_consumption_trace.json\",\"verification/case_diagnostics/vcs_functional_diagnosis.json\",\"verification/board_simulation/numeric_compare_report.json\",\"verification/board_simulation/data_order_and_transfer_trace.json\",\"artifact.stage7.operator_leaf_promotion_certificate\",\"artifact.stage7.single_layer_promotion_certificate\",\"hierarchical_learning_context kernel timing knowledge and certificate hashes\",\"current board candidate source/hash manifest\"],\"produces\":[\"verification/debug_closure/current_board_causal_repair_context.json\",\"verification/debug_closure/current_board_boundary_localization.json\",\"verification/debug_closure/targeted_replay_request.json\",\"sacg/current_board_lower_layer_challenge_or_reuse_record.json\"],\"tool_roles\":[\"failure_slice_localization\",\"causal_repair_context_pack\",\"boundary_trace_rerun\",\"targeted_replay\",\"sacg_memory_update\"],\"acceptance_checkers\":[\"failure_localization_check\",\"causal_repair_context_check\",\"targeted_replay_check\",\"repair_boundary_check\",\"sacg_memory_check\"],\"on_failure\":\"If the trace is incomplete or not hash-bound, rerun only the current board trace with the required monitors; do not patch RTL. If no direct lower-layer contradiction is present, retain lower certificates and issue only a bounded board wrapper/loader/harness/runtime repair context. If a direct contradiction is present, record the named invariant and request only the challenged lower-layer replay before rerunning this board layer.\",\"requires_approval\":false},{\"id\":\"verification.complete_board_gate_chain_and_assemble_semantic_evidence\",\"stage\":\"verification\",\"action_type\":\"current_layer_regression_rerun\",\"rationale\":\"Only after real simulation and its prerequisite contract evidence are available, run the remaining required board-layer gates in dependency order and assemble semantic evidence showing exact-wrapper execution, complete bound-weight consumption, target-model comparison, AXI/DDR protocol behavior, data order, and liveness. This is the required same-layer rerun; it is not backend promotion.\",\"consumes\":[\"verification/qwen_hierarchy/multilayer_pipeline.json with pass status\",\"verification/qwen_hierarchy/axi_ddr_interface.json with pass status\",\"verification/vcs/case_board_vcs_functional.json\",\"verification/debug_closure/boundary_trace.json\",\"verification/debug_closure/dut_weight_consumption_trace.json\",\"verification/board_simulation/numeric_compare_report.json\",\"verification/board_simulation/data_order_and_transfer_trace.json\",\"verification/model_reference/multilayer_transformer_block_reference_manifest.json\",\"generated/memory/board_multilayer_dut_weight_binding_manifest.json\"],\"produces\":[\"verification/real_tools/case_multilayer_functional_retry.json\",\"verification/real_tools/case_pipeline_deadlock_check_retry.json\",\"verification/real_tools/case_axi_protocol_check_retry.json\",\"verification/real_tools/case_ddr_image_roundtrip_retry.json\",\"verification/semantic_evidence/board_axi_ddr.json\",\"verification/stage7_board_axi_ddr_candidate_verification_result.json\"],\"tool_roles\":[\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_board_semantic_evidence\",\"targeted_failed_checker_rerun\",\"required_real_tool_evidence_check\"],\"acceptance_checkers\":[\"case_multilayer_pipeline\",\"case_axi_ddr_interface\",\"functional_sim\",\"case_multilayer_functional\",\"case_pipeline_deadlock_check\",\"case_axi_protocol_check\",\"case_ddr_image_roundtrip\",\"case_board_semantic_evidence\",\"real_weight_semantic_evidence_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"For an executed liveness, value, order, protocol, or consumption failure, return to repair.localize_current_board_trace_and_guard_lower_certificates and repair only the earliest localized current-layer slice. For a missing or unbound artifact, return to repair.build_hash_bound_multilayer_board_semantic_candidate. Do not promote to synthesis, implementation, bitstream, runtime ABI release, or board runtime.\",\"requires_approval\":false},{\"id\":\"repair.record_candidate_for_sacg_retry_reconciliation\",\"stage\":\"repair\",\"action_type\":\"sacg_candidate_handoff\",\"rationale\":\"Preserve the authoritative active-barrier and retry history while recording a content-addressed candidate for the owning verification/promotion flow. Same-scope retries and contaminated artifacts remain downstream-consumption blockers unless the full candidate passes every required board gate and is subsequently reconciled; this action does not itself claim promotion or silently clear barriers.\",\"consumes\":[\"verification/stage7_board_axi_ddr_candidate_verification_result.json\",\"verification/semantic_evidence/board_axi_ddr.json\",\"all current board real-tool reports and source hashes\",\"sacg_memory_truth.active_contamination_barriers\",\"sacg_memory_truth.open_retry_requests\",\"artifact.stage6.verification_artifact_contract\",\"artifact.stage6.llm_action_audit\"],\"produces\":[\"sacg/board_axi_ddr_candidate_identity_and_gate_matrix.json\",\"sacg/board_axi_ddr_retry_reconciliation_handoff.json\",\"sacg/board_axi_ddr_trust_barrier_status_update.json\"],\"tool_roles\":[\"sacg_memory_update\",\"stage_retry_request\",\"stage_artifact_trust_barrier\",\"artifact_hash_check\"],\"acceptance_checkers\":[\"sacg_memory_check\",\"stage_retry_request_check\",\"stage_artifact_trust_barrier_check\",\"artifact_hash_check\",\"required_real_tool_evidence_check\"],\"on_failure\":\"Retain all ten active barriers and all four open retry requests as downstream blockers, keep the candidate unpromoted, and return to the failed current-layer action. Do not consume rejected artifacts as validated inputs or claim retry reconciliation without a full passing content-addressed candidate.\",\"requires_approval\":false}],\"approval_required_for\":[\"Conditional bounded approval is required only if the passed board-discovery materials cannot uniquely identify the exact user-supplied wrapper/export hashes and an authorized Vivado-derived simulator command; the team must not guess target names, source paths, or executables.\"]}",
+  "reasoning_effort": "xhigh",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/repair_agent_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 502: curl direct HTTP/1.1 response 502; response_body={\"error\":{\"message\":\"Upstream request failed\",\"type\":\"upstream_error\"}}"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "repair",
+  "stream": false,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/spatialacc_qwen_agent_fast_run/repair/llm/history/repair_agent_result.9202f1d8371954a0.a29cbf0772f30e8f.fcd25dab8726b0cd.snapshot.json",
+    "replaced_prompt_hash": "998d5ac0d812e4f2e4d72d934a8231e874c6b3a13538aedea19d270b94db0332",
+    "replaced_result_sha256": "9202f1d8371954a0e94616c1de6d3605662d0b05d14d48526c3847216e001d2b",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "9202f1d8371954a0.a29cbf0772f30e8f.fcd25dab8726b0cd"
+  },
+  "transport": "responses_json",
+  "used_fallback": false
+}
