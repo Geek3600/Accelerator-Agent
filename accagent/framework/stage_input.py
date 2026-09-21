@@ -81,6 +81,58 @@ TEXT_SUFFIXES = {
 }
 
 
+SENSITIVE_FIELD_MARKERS = (
+    "password",
+    "passphrase",
+    "secret",
+    "credential",
+    "private_key",
+    "private-key",
+    "api_key",
+    "api-key",
+    "access_key",
+    "access-key",
+    "authorization",
+)
+SENSITIVE_TEXT_PATTERNS = (
+    re.compile(
+        r"(?im)^(?=[^\n]*(?:password(?!less\b)|passphrase|secret|credential|private[ _-]?key|api[ _-]?key|access[ _-]?key|authorization))[^\n]*$"
+    ),
+    re.compile(r"(?im)^.*(?:密码|口令|密钥|令牌).*$"),
+)
+
+
+def is_sensitive_field(name: object) -> bool:
+    value = str(name or "").strip().lower().replace("passwordless", "")
+    return any(marker in value for marker in SENSITIVE_FIELD_MARKERS)
+
+
+def redact_sensitive_text(text: str) -> str:
+    """Keep Stage-0 prompts and records free of credentials from user materials."""
+
+    redacted = text
+    for pattern in SENSITIVE_TEXT_PATTERNS:
+        redacted = pattern.sub("[REDACTED SENSITIVE MATERIAL]", redacted)
+    return redacted
+
+
+def sanitize_llm_payload(value: Any) -> Any:
+    """Drop credential-shaped fields before persisting or reusing LLM artifacts."""
+
+    if isinstance(value, list):
+        return [item for item in (sanitize_llm_payload(item) for item in value) if item is not None]
+    if not isinstance(value, dict):
+        return value
+    if is_sensitive_field(value.get("field")):
+        return None
+    return {
+        str(key): sanitized
+        for key, item in value.items()
+        if not is_sensitive_field(key)
+        if (sanitized := sanitize_llm_payload(item)) is not None
+    }
+
+
 STAGE0_SYSTEM = """You are a SpatialAccAgent input-preparation specialist.
 
 You are part of a chip-design team building spatial FPGA accelerators for
@@ -646,6 +698,8 @@ def llm_json(name: str, prompt: str, schema: dict[str, Any], candidate: dict[str
     """Ask the configured LLM for JSON. Stage 0 does not run without LLM."""
 
     log_dir.mkdir(parents=True, exist_ok=True)
+    prompt = redact_sensitive_text(prompt)
+    candidate = sanitize_llm_payload(candidate)
     req_path = log_dir / f"{name}_request.md"
     out_path = log_dir / f"{name}_result.json"
     req_path.write_text(prompt, encoding="utf-8")
@@ -655,7 +709,7 @@ def llm_json(name: str, prompt: str, schema: dict[str, Any], candidate: dict[str
     cached = cached_llm_output(out_path, current_prompt_hash)
     if cached is not None:
         print(f"[stage0:llm] reuse cached {name}: {out_path}", file=sys.stderr, flush=True)
-        return cached | {"_llm_provenance": {"sub_agent": name, "mode": mode, "used_fallback": False}}
+        return sanitize_llm_payload(cached) | {"_llm_provenance": {"sub_agent": name, "mode": mode, "used_fallback": False}}
 
     record: dict[str, Any] = {
         "schema_version": "spatialaccagent.stage0_llm_record.v1",
@@ -778,7 +832,7 @@ def llm_json(name: str, prompt: str, schema: dict[str, Any], candidate: dict[str
             retry_errors = [f"full prompt failed: {first_exc}", *compact_retry_errors]
         if retry_errors:
             record["retry_errors"] = retry_errors
-        record["raw_text"] = raw_text
+        record["raw_text"] = redact_sensitive_text(raw_text)
         try:
             output = parse_json_object(raw_text)
             validate_schema(output, schema, name)
@@ -812,9 +866,10 @@ def llm_json(name: str, prompt: str, schema: dict[str, Any], candidate: dict[str
             repair_text, repair_retry_errors = post_llm_json(repair_req, llm_timeout_sec(), f"{name}_repair_json", llm.stream)
             if repair_retry_errors:
                 record["repair_retry_errors"] = repair_retry_errors
-            record["repair_raw_text"] = repair_text
+            record["repair_raw_text"] = redact_sensitive_text(repair_text)
             output = parse_json_object(repair_text)
             validate_schema(output, schema, name)
+        output = sanitize_llm_payload(output)
         record["used_fallback"] = False
         record["duration_sec"] = time.monotonic() - started
         record["output"] = output
