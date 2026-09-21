@@ -18,7 +18,7 @@ import urllib.request
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from accagent.framework.agent_common import compact_json
 from accagent.framework.case_adapter import adapter_tool, build_case_adapter
@@ -49,6 +49,7 @@ from accagent.framework.stage_llm import (
     llm_transient_attempts,
     llm_transient_retry_unbounded,
     retry_sleep_seconds,
+    stream_transport_fallback_error,
     transient_llm_error,
 )
 
@@ -669,13 +670,71 @@ def allow_lossy_compact_retry() -> bool:
     return os.environ.get("SPATIALACC_STAGE0_ALLOW_LOSSY_COMPACT_RETRY", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def post_llm_json(req: urllib.request.Request, timeout_sec: int, label: str, stream: bool) -> tuple[str, list[str]]:
+def stage0_llm_request(
+    endpoint: str,
+    key: str,
+    model: str,
+    prompt: str,
+    schema_name: str,
+    schema: dict[str, Any],
+    *,
+    store: bool,
+    reasoning_effort: str | None,
+    text_verbosity: str | None,
+    max_output_tokens: int | None,
+    stream: bool,
+) -> urllib.request.Request:
+    """Build a Stage-0 request for one concrete Responses transport."""
+
+    payload = response_payload(
+        model,
+        STAGE0_SYSTEM,
+        prompt,
+        schema_name,
+        schema,
+        strict=False,
+        store=store,
+        reasoning_effort=reasoning_effort,
+        text_verbosity=text_verbosity,
+        max_output_tokens=max_output_tokens,
+        stream=stream,
+    )
+    return urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream" if stream else "application/json",
+            "Connection": "close",
+        },
+        method="POST",
+    )
+
+
+def post_llm_json(
+    request_or_factory: urllib.request.Request | Callable[[bool], urllib.request.Request],
+    timeout_sec: int,
+    label: str,
+    stream: bool,
+) -> tuple[str, list[str]]:
+    """Retry one Stage-0 request and switch SSE/JSON after a transport fault."""
+
     errors: list[str] = []
     max_attempts = None if llm_transient_retry_unbounded() else llm_transient_attempts()
     attempt = 1
+    current_stream = stream
+
+    def request_for_transport(use_stream: bool) -> urllib.request.Request:
+        if callable(request_or_factory):
+            return request_or_factory(use_stream)
+        return request_or_factory
+
     while True:
         try:
-            return read_response_text(req, timeout_sec, stream), errors
+            return read_response_text(
+                request_for_transport(current_stream), timeout_sec, current_stream
+            ), errors
         except Exception as exc:
             errors.append(f"attempt {attempt}: {exc}")
             if not transient_llm_error(exc):
@@ -690,6 +749,14 @@ def post_llm_json(req: urllib.request.Request, timeout_sec: int, label: str, str
                 file=sys.stderr,
                 flush=True,
             )
+            if stream_transport_fallback_error(exc):
+                current_stream = not current_stream
+                transport = "responses_sse_stream" if current_stream else "responses_json"
+                print(
+                    f"[stage0:llm] switching {label} retry transport to {transport}",
+                    file=sys.stderr,
+                    flush=True,
+                )
             time.sleep(delay)
             attempt += 1
 
@@ -763,33 +830,29 @@ def llm_json(name: str, prompt: str, schema: dict[str, Any], candidate: dict[str
     started = time.monotonic()
     print(f"[stage0:llm] start {name}", file=sys.stderr, flush=True)
     print(f"[stage0:llm] prompt {req_path}", file=sys.stderr, flush=True)
-    payload = response_payload(
-        model,
-        STAGE0_SYSTEM,
-        prompt,
-        f"{name}_json",
-        schema,
-        strict=False,
-        store=llm.store,
-        reasoning_effort=llm.reasoning_effort,
-        text_verbosity=llm.text_verbosity,
-        max_output_tokens=llm.max_output_tokens,
-        stream=llm.stream,
-    )
-    req = urllib.request.Request(
-        endpoint,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream" if llm.stream else "application/json",
-            "Connection": "close",
-        },
-        method="POST",
-    )
+    def request_for(prompt_text: str, request_schema_name: str) -> Callable[[bool], urllib.request.Request]:
+        return lambda use_stream: stage0_llm_request(
+            endpoint,
+            key,
+            model,
+            prompt_text,
+            request_schema_name,
+            schema,
+            store=llm.store,
+            reasoning_effort=llm.reasoning_effort,
+            text_verbosity=llm.text_verbosity,
+            max_output_tokens=llm.max_output_tokens,
+            stream=use_stream,
+        )
+
     try:
         try:
-            raw_text, retry_errors = post_llm_json(req, llm_timeout_sec(), f"{name}_json", llm.stream)
+            raw_text, retry_errors = post_llm_json(
+                request_for(prompt, f"{name}_json"),
+                llm_timeout_sec(),
+                f"{name}_json",
+                llm.stream,
+            )
         except Exception as first_exc:
             if not transient_llm_error(first_exc) or not allow_lossy_compact_retry():
                 raise
@@ -799,32 +862,8 @@ def llm_json(name: str, prompt: str, schema: dict[str, Any], candidate: dict[str
             record["compact_retry_request_path"] = str(compact_prompt_path)
             record["compact_retry_after_error"] = str(first_exc)
             record["compact_retry_prompt_bytes"] = len(compact_prompt.encode("utf-8"))
-            compact_payload = response_payload(
-                model,
-                STAGE0_SYSTEM,
-                compact_prompt,
-                f"{name}_compact_retry_json",
-                schema,
-                strict=False,
-                store=llm.store,
-                reasoning_effort=llm.reasoning_effort,
-                text_verbosity=llm.text_verbosity,
-                max_output_tokens=llm.max_output_tokens,
-                stream=llm.stream,
-            )
-            compact_req = urllib.request.Request(
-                endpoint,
-                data=json.dumps(compact_payload).encode("utf-8"),
-                headers={
-                    "Authorization": f"Bearer {key}",
-                    "Content-Type": "application/json",
-                    "Accept": "text/event-stream" if llm.stream else "application/json",
-                    "Connection": "close",
-                },
-                method="POST",
-            )
             raw_text, compact_retry_errors = post_llm_json(
-                compact_req,
+                request_for(compact_prompt, f"{name}_compact_retry_json"),
                 llm_timeout_sec(),
                 f"{name}_compact_retry_json",
                 llm.stream,
@@ -839,31 +878,12 @@ def llm_json(name: str, prompt: str, schema: dict[str, Any], candidate: dict[str
         except Exception as parse_exc:
             record["parse_error"] = str(parse_exc)
             fix_prompt = repair_prompt(name, prompt, raw_text, str(parse_exc), schema)
-            repair_payload = response_payload(
-                model,
-                STAGE0_SYSTEM,
-                fix_prompt,
+            repair_text, repair_retry_errors = post_llm_json(
+                request_for(fix_prompt, f"{name}_repair_json"),
+                llm_timeout_sec(),
                 f"{name}_repair_json",
-                schema,
-                strict=False,
-                store=llm.store,
-                reasoning_effort=llm.reasoning_effort,
-                text_verbosity=llm.text_verbosity,
-                max_output_tokens=llm.max_output_tokens,
-                stream=llm.stream,
+                llm.stream,
             )
-            repair_req = urllib.request.Request(
-                endpoint,
-                data=json.dumps(repair_payload).encode("utf-8"),
-                headers={
-                    "Authorization": f"Bearer {key}",
-                    "Content-Type": "application/json",
-                    "Accept": "text/event-stream" if llm.stream else "application/json",
-                    "Connection": "close",
-                },
-                method="POST",
-            )
-            repair_text, repair_retry_errors = post_llm_json(repair_req, llm_timeout_sec(), f"{name}_repair_json", llm.stream)
             if repair_retry_errors:
                 record["repair_retry_errors"] = repair_retry_errors
             record["repair_raw_text"] = redact_sensitive_text(repair_text)

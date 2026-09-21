@@ -1502,13 +1502,16 @@ def stream_transport_fallback_error(exc: Exception) -> bool:
     if isinstance(exc, ResponseDecodeError):
         return True
     if isinstance(exc, urllib.error.HTTPError):
-        return exc.code in {408, 500, 502, 503, 504}
+        return exc.code in {408, 426, 500, 502, 503, 504}
     text = str(exc).lower()
     fallback_terms = [
         "bad gateway",
         "http error 502",
         "http error 503",
         "http error 504",
+        "http error 426",
+        "upgrade required",
+        "websocket upgrade required",
         "response.failed",
         "streaming llm response returned no output text",
         "remote end closed",

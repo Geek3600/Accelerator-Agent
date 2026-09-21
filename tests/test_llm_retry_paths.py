@@ -110,6 +110,41 @@ class LlmRetryPathTests(unittest.TestCase):
         )
 
         self.assertTrue(stage_llm.transient_llm_error(error))
+        self.assertTrue(stage_llm.stream_transport_fallback_error(error))
+
+    def test_stage0_websocket_upgrade_switches_retry_to_json(self) -> None:
+        error = urllib.error.HTTPError(
+            "https://example.invalid/v1/responses",
+            426,
+            'Upgrade Required; response_body={"error":{"message":"WebSocket upgrade required (Upgrade: websocket)"}}',
+            None,
+            None,
+        )
+        stream_modes: list[bool] = []
+
+        def request_factory(use_stream: bool) -> object:
+            return {"stream": use_stream}
+
+        def fake_read(request: object, timeout_sec: int, stream: bool) -> str:
+            del request, timeout_sec
+            stream_modes.append(stream)
+            if len(stream_modes) == 1:
+                raise error
+            return '{"ok":true}'
+
+        with (
+            patch.dict(os.environ, {"SPATIALACC_LLM_TRANSIENT_RETRY_UNBOUNDED": "1"}),
+            patch.object(stage_input, "read_response_text", side_effect=fake_read),
+            patch.object(stage_input, "retry_sleep_seconds", return_value=0.0),
+            patch.object(stage_input.time, "sleep"),
+        ):
+            text, errors = stage_input.post_llm_json(
+                request_factory, 1, "test", True
+            )
+
+        self.assertEqual(text, '{"ok":true}')
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(stream_modes, [True, False])
 
     def test_checkpoint_specialist_uses_a_lower_lossless_compaction_threshold(self) -> None:
         with patch.dict(os.environ, {}, clear=False):
