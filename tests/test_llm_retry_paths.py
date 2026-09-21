@@ -100,6 +100,17 @@ class LlmRetryPathTests(unittest.TestCase):
             self.assertEqual(stage_llm.retry_sleep_seconds(capacity, 1), 123.0)
         self.assertFalse(stage_llm.transient_llm_error(denied))
 
+    def test_websocket_upgrade_transport_error_is_transient(self) -> None:
+        error = urllib.error.HTTPError(
+            "https://example.invalid/v1/responses",
+            426,
+            'Upgrade Required; response_body={"error":{"message":"WebSocket upgrade required (Upgrade: websocket)"}}',
+            None,
+            None,
+        )
+
+        self.assertTrue(stage_llm.transient_llm_error(error))
+
     def test_checkpoint_specialist_uses_a_lower_lossless_compaction_threshold(self) -> None:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop(

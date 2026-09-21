@@ -1438,7 +1438,7 @@ def transient_llm_error(exc: Exception) -> bool:
             return True
         if provider_capacity_error(exc):
             return True
-        return exc.code in {408, 409, 425, 429, 500, 502, 503, 504}
+        return exc.code in {408, 409, 425, 426, 429, 500, 502, 503, 504}
     if isinstance(exc, (TimeoutError, socket.timeout, ssl.SSLError, urllib.error.URLError)):
         return True
     text = str(exc).lower()
@@ -1458,6 +1458,9 @@ def transient_llm_error(exc: Exception) -> bool:
         "http error 502",
         "http error 503",
         "http error 504",
+        "http error 426",
+        "upgrade required",
+        "websocket upgrade required",
         "remote end closed",
         "connection reset",
         "connection aborted",
