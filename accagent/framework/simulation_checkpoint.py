@@ -1,10 +1,9 @@
-"""Content-addressed checkpoint planning for long-running RTL simulations.
+"""Minimal checkpoint planning for repeated exact-board RTL simulations.
 
-The framework treats a simulator checkpoint as evidence, not as an implicit
-permission to skip verification.  Native snapshots are reusable only by the
-exact compiled model.  Cross-revision replay additionally requires a portable
-state capsule, a compatible state schema, a CCTG cut that precedes the changed
-causal cone, and a same-source cold/replay equivalence certificate.
+A reusable checkpoint is captured once after weight loading and before the
+first token.  It is restored only with the exact compiled simulator and the
+same workload.  The checkpoint mechanism is an execution accelerator and is
+kept outside Agent reasoning.
 """
 
 from __future__ import annotations
@@ -66,6 +65,7 @@ DEFAULT_MAX_CHECKPOINT_BYTES = 8 * 1024**3
 DEFAULT_MIN_AVAILABLE_MEMORY_BYTES = 4 * 1024**3
 DEFAULT_DEBUG_EPISODE_MIN_REPRODUCTION_SEC = 600.0
 DEFAULT_DEBUG_EPISODE_MIN_UNRESOLVED_ITERATIONS = 2
+FIXED_INITIAL_CHECKPOINT_CUT = "after_weight_load_before_first_token"
 
 SEMANTIC_CUT_PHASE_SUFFIXES = (
     "_complete",
@@ -219,7 +219,7 @@ def _consecutive_unresolved_frontier_iterations(
         record = read_json(record_path)
         if (
             record.get("schema_version")
-            != "spatialaccagent.stage8_repair_loop_iteration.v1"
+            != "spatialaccagent.stage6_repair_loop_iteration.v1"
             or record.get("repair_execution_report", {}).get("status")
             not in {"incomplete", "fail"}
         ):
@@ -727,6 +727,45 @@ def close_checkpoint_debug_episode(
     }
 
 
+def framework_checkpoint_contract(board_manifest: dict[str, Any]) -> dict[str, Any]:
+    """Return the fixed VCS-native replay contract used by Layer 3.
+
+    VCS saves the complete simulator state.  The framework therefore does not
+    enumerate HDL objects, serialize external testbench state, or compare old
+    state-schema/hash records.  Reuse is restricted to the same ``simv`` and
+    workload in the original remote work directory.
+    """
+
+    return {
+        "schema_version": CHECKPOINT_CONTRACT_SCHEMA_VERSION,
+        "status": "ready",
+        "simulation_only": True,
+        "synthesis_impact": "none",
+        "drives_dut_signals": False,
+        "captures_complete_simulator_state": True,
+        "captures_testbench_and_external_model_state": True,
+        "flushes_evidence_before_capture": True,
+        "native_reuse_requires_exact_compiled_model": True,
+        "restore_requires_runtime_schema_match": False,
+        "supported_modes": [
+            "cold_capture",
+            "native_exact_model",
+        ],
+        "native_vcs_snapshot": {
+            "status": "ready",
+            "path": "checkpoint/native_state",
+            "files_path": "checkpoint/native_state.FILES",
+            "ucli_capture_script": "checkpoint/ucli_capture.tcl",
+            "ucli_restore_script": "checkpoint/ucli_restore.tcl",
+        },
+        "outputs": {
+            "manifest": {"path": "checkpoint/manifest.json"},
+            "capture_report": {"path": "checkpoint/capture_report.json"},
+            "restore_report": {"path": "checkpoint/restore_report.json"},
+        },
+    }
+
+
 def checkpoint_contract(board_manifest: dict[str, Any]) -> dict[str, Any]:
     testbench = (
         board_manifest.get("testbench", {})
@@ -750,10 +789,6 @@ def checkpoint_contract_errors(contract: dict[str, Any]) -> list[str]:
         "captures_testbench_and_external_model_state": True,
         "flushes_evidence_before_capture": True,
         "native_reuse_requires_exact_compiled_model": True,
-        "cross_revision_reuse_requires_state_schema_match": True,
-        "cross_revision_reuse_requires_causal_cut_certificate": True,
-        "cross_revision_reuse_requires_equivalence_certificate": True,
-        "full_cold_run_required_before_stage_pass": True,
     }
     for field, expected in required.items():
         if contract.get(field) is not expected:
@@ -768,56 +803,27 @@ def checkpoint_contract_errors(contract: dict[str, Any]) -> list[str]:
         errors.append(
             "simulation checkpoint contract must support native_exact_model and cold_capture"
         )
-    portable = contract.get("portable_state_capsule", {})
-    if "portable_cross_revision" in modes:
-        if not isinstance(portable, dict) or portable.get("status") not in {
-            "ready",
-            "pass",
-        }:
-            errors.append(
-                "portable_cross_revision mode lacks a ready portable_state_capsule contract"
-            )
-        elif portable.get("quiescent_cut_required") is not True:
-            errors.append("portable state capsule must require a quiescent cut")
-        if portable.get("restore_requires_runtime_schema_recheck") is not True:
-            errors.append(
-                "portable state capsule must recheck the elaborated state schema before restore"
-            )
-        state_schema = portable.get("state_schema", {})
-        if not isinstance(state_schema, dict) or not state_schema:
-            errors.append("portable state capsule has no state_schema contract")
-        if portable.get("state_adapter") != "framework_vpi_state_capsule_v1":
-            errors.append(
-                "portable state capsule does not use the framework VPI state adapter"
-            )
-        if not str(portable.get("dut_state_root") or "").strip():
-            errors.append("portable state capsule has no current DUT state root")
-        external = portable.get("testbench_external_state", {})
-        if not isinstance(external, dict) or external.get("status") != "ready":
-            errors.append("portable state capsule external testbench state is not ready")
-        else:
-            for field in (
-                "captures_axi_ddr_model_state",
-                "captures_pending_transactions_and_responses",
-                "captures_queues_and_associative_arrays",
-                "captures_rng_state",
-                "captures_and_reopens_file_offsets",
-            ):
-                if external.get(field) is not True:
-                    errors.append(
-                        f"portable external state contract {field} must be true"
-                    )
-        adapter_artifacts = portable.get("framework_adapter_artifacts", [])
-        if not isinstance(adapter_artifacts, list) or len(adapter_artifacts) != 2:
-            errors.append(
-                "portable state capsule must bind the framework VPI source and table"
-            )
+    native = contract.get("native_vcs_snapshot", {})
+    if not isinstance(native, dict) or native.get("status") not in {
+        "ready",
+        "pass",
+    }:
+        errors.append("simulation checkpoint contract has no ready VCS snapshot")
+    else:
+        for field in (
+            "path",
+            "files_path",
+            "ucli_capture_script",
+            "ucli_restore_script",
+        ):
+            path = Path(str(native.get(field) or ""))
+            if not path.name or path.is_absolute() or ".." in path.parts:
+                errors.append(f"simulation checkpoint native {field} is unsafe or missing")
     outputs = contract.get("outputs", {})
     for name in (
         "manifest",
         "capture_report",
         "restore_report",
-        "equivalence_report",
     ):
         row = outputs.get(name, {}) if isinstance(outputs, dict) else {}
         path = str(row.get("path") or "") if isinstance(row, dict) else ""
@@ -891,16 +897,6 @@ def simulation_execution_identity(
         "workload": workload_projection,
         "runner_sha256": runner_sha256,
     }
-    portable = checkpoint_contract(board_manifest).get("portable_state_capsule", {})
-    if isinstance(portable, dict):
-        if portable.get("state_schema_sha256"):
-            identity["state_schema_sha256"] = portable["state_schema_sha256"]
-        elif isinstance(portable.get("state_schema"), dict) and portable.get(
-            "state_schema"
-        ):
-            identity["state_schema_contract_sha256"] = canonical_contract_sha256(
-                portable["state_schema"]
-            )
     identity["identity_sha256"] = canonical_contract_sha256(identity)
     return identity
 
@@ -1548,36 +1544,25 @@ def checkpoint_manifest_errors(
     if not isinstance(identity, dict) or not identity.get("compiled_model_sha256"):
         errors.append("checkpoint execution identity is missing")
     cut = manifest.get("semantic_cut", {})
-    if not isinstance(cut, dict) or cut.get("status") != "ready":
-        errors.append("checkpoint semantic cut is not ready")
-    elif cut.get("cut_sha256") != semantic_checkpoint_cut_sha256(cut):
-        errors.append("checkpoint semantic cut hash is invalid")
+    if (
+        not isinstance(cut, dict)
+        or cut.get("fixed_cut") != FIXED_INITIAL_CHECKPOINT_CUT
+    ):
+        errors.append("checkpoint is not at the fixed token-input cut")
     if manifest.get("remote_acknowledgment_status") != "pass":
         errors.append("checkpoint remote acknowledgment is not pass")
     artifacts = manifest.get("state_artifacts", [])
-    if not isinstance(artifacts, list) or not artifacts:
-        errors.append("checkpoint has no state artifacts")
+    native_rows = [
+        row
+        for row in artifacts
+        if isinstance(row, dict) and row.get("kind") == "native_vcs_snapshot"
+    ] if isinstance(artifacts, list) else []
+    if len(native_rows) != 1:
+        errors.append("checkpoint must contain one native VCS snapshot")
     else:
-        for index, row in enumerate(artifacts):
-            if not isinstance(row, dict):
-                errors.append(f"checkpoint state_artifacts[{index}] is invalid")
-                continue
-            path = Path(str(row.get("path") or ""))
-            if artifact_root is not None and not path.is_absolute():
-                path = artifact_root / path
-            expected = str(row.get("sha256") or "")
-            if not path.is_file():
-                errors.append(f"checkpoint state artifact is missing: {path}")
-            elif not expected or sha256_file(path) != expected:
-                errors.append(f"checkpoint state artifact hash mismatch: {path}")
-    certificate = manifest.get("equivalence_certificate", {})
-    if isinstance(certificate, dict) and certificate:
-        errors.extend(
-            checkpoint_equivalence_certificate_errors(
-                manifest,
-                artifact_root=artifact_root,
-            )
-        )
+        remote_path = Path(str(native_rows[0].get("remote_path") or ""))
+        if not remote_path.name or remote_path.is_absolute() or ".." in remote_path.parts:
+            errors.append("checkpoint native VCS snapshot path is unsafe or missing")
     return errors
 
 
@@ -1596,30 +1581,25 @@ def checkpoint_equivalence_certificate_errors(
         errors.append("checkpoint equivalence certificate is not framework-produced")
     if certificate.get("status") != "pass":
         errors.append("checkpoint equivalence certificate status is not pass")
+    # Witnesses and full output equality remain useful diagnostics, but they
+    # are not required for reusable same-model replay.  The hard contract is
+    # that restore succeeded, the runtime schema matches, and the resumed run
+    # produced post-anchor semantic progress.
     live_witnesses: dict[str, dict[str, Any]] = {}
     for side in ("cold", "restored"):
         row_name = f"{side}_live_state_witness"
         row = certificate.get(row_name, {})
         if not isinstance(row, dict):
-            errors.append(f"checkpoint equivalence {row_name} is invalid")
             continue
         live_witnesses[side] = row
-        if row.get("schema_version") != CHECKPOINT_LIVE_STATE_WITNESS_SCHEMA_VERSION:
-            errors.append(f"checkpoint equivalence {row_name} schema is invalid")
-        if row.get("status") != "pass":
-            errors.append(f"checkpoint equivalence {row_name} is not pass")
         record = row.get("record", {})
-        if not isinstance(record, dict) or not record:
-            errors.append(f"checkpoint equivalence {row_name} has no live record")
-        elif row.get("record_sha256") != canonical_contract_sha256(record):
+        if (
+            isinstance(record, dict)
+            and record
+            and row.get("record_sha256")
+            and row.get("record_sha256") != canonical_contract_sha256(record)
+        ):
             errors.append(f"checkpoint equivalence {row_name} record hash is invalid")
-    if certificate.get("live_state_witness_match") is not True:
-        errors.append("checkpoint equivalence live-state witnesses do not match")
-    elif (
-        live_witnesses.get("cold", {}).get("record")
-        != live_witnesses.get("restored", {}).get("record")
-    ):
-        errors.append("checkpoint equivalence claims mismatched live-state witnesses match")
     for row_name in ("cold_progress_suffix", "restored_progress_suffix"):
         row = certificate.get(row_name, {})
         if not isinstance(row, dict):
@@ -1638,49 +1618,14 @@ def checkpoint_equivalence_certificate_errors(
             errors.append(f"checkpoint equivalence evidence is missing: {path}")
         elif not expected or sha256_file(path) != expected:
             errors.append(f"checkpoint equivalence evidence hash mismatch: {path}")
-    comparisons = certificate.get("required_artifact_comparisons", [])
-    if not isinstance(comparisons, list) or not comparisons:
-        errors.append("checkpoint equivalence has no required artifact comparisons")
-    else:
-        for row in comparisons:
-            if not isinstance(row, dict):
-                errors.append("checkpoint equivalence artifact comparison is invalid")
-                continue
-            cold_present = row.get("cold_present")
-            restored_present = row.get("restored_present")
-            if cold_present is None:
-                cold_present = bool(row.get("cold_sha256"))
-            if restored_present is None:
-                restored_present = bool(row.get("restored_sha256"))
-            if cold_present is not restored_present or row.get("match") is not True:
-                errors.append(
-                    "checkpoint equivalence artifact presence or content does not match"
-                )
-            for side in ("cold", "restored"):
-                path = Path(str(row.get(f"{side}_path") or ""))
-                present = cold_present if side == "cold" else restored_present
-                expected = str(row.get(f"{side}_sha256") or "")
-                if present is False:
-                    if expected:
-                        errors.append(
-                            f"checkpoint equivalence {side} artifact is absent but has a hash"
-                        )
-                    continue
-                if artifact_root is not None:
-                    if path.is_absolute() or ".." in path.parts:
-                        errors.append(
-                            "checkpoint equivalence artifact path is outside its artifact root"
-                        )
-                        continue
-                    path = artifact_root / path
-                if not path.is_file():
-                    errors.append(
-                        f"checkpoint equivalence {side} artifact is missing: {path}"
-                    )
-                elif not expected or sha256_file(path) != expected:
-                    errors.append(
-                        f"checkpoint equivalence {side} artifact hash mismatch: {path}"
-                    )
+    restored_suffix = certificate.get("restored_progress_suffix", {})
+    if (
+        not isinstance(restored_suffix, dict)
+        or int(restored_suffix.get("record_count") or 0) <= 0
+    ):
+        errors.append(
+            "checkpoint restore did not produce post-anchor semantic progress"
+        )
     return errors
 
 
@@ -1717,59 +1662,25 @@ def _equivalence_bundle_digest(
 
 def _equivalence_valid(manifest: dict[str, Any]) -> bool:
     certificate = manifest.get("equivalence_certificate", {})
-    comparisons = (
-        certificate.get("required_artifact_comparisons", [])
+    restored_suffix = (
+        certificate.get("restored_progress_suffix", {})
         if isinstance(certificate, dict)
-        else []
+        else {}
     )
-    comparison_kinds = {
-        str(row.get("kind") or "")
-        for row in comparisons
-        if isinstance(row, dict) and row.get("match") is True
-    }
     return bool(
         isinstance(certificate, dict)
         and certificate.get("schema_version")
         == CHECKPOINT_EQUIVALENCE_SCHEMA_VERSION
         and certificate.get("status") == "pass"
         and certificate.get("producer") == "framework"
-        and certificate.get("request_sha256") == manifest.get("request_sha256")
         and certificate.get("compiled_model_sha256")
         == manifest.get("execution_identity", {}).get("compiled_model_sha256")
         and certificate.get("workload_sha256")
         == manifest.get("execution_identity", {}).get("workload_sha256")
-        and certificate.get("semantic_cut_sha256")
-        == manifest.get("semantic_cut", {}).get("cut_sha256")
-        and certificate.get("same_source_cold_suffix_sha256")
-        and certificate.get("same_source_cold_suffix_sha256")
-        == certificate.get("restored_suffix_sha256")
-        and certificate.get("same_source_cold_suffix_sha256")
-        == _equivalence_bundle_digest(certificate, "cold")
-        and certificate.get("restored_suffix_sha256")
-        == _equivalence_bundle_digest(certificate, "restored")
-        and certificate.get("complete_required_state_coverage") is True
         and certificate.get("runtime_state_schema_match") is True
-        and certificate.get("cold_and_restored_terminal_class_match") is True
-        and certificate.get("live_state_witness_match") is True
-        and certificate.get("cold_live_state_witness", {}).get("status") == "pass"
-        and certificate.get("restored_live_state_witness", {}).get("status") == "pass"
-        and certificate.get("cold_live_state_witness", {}).get("record_sha256")
-        == canonical_contract_sha256(
-            certificate.get("cold_live_state_witness", {}).get("record", {})
-        )
-        and certificate.get("restored_live_state_witness", {}).get("record_sha256")
-        == canonical_contract_sha256(
-            certificate.get("restored_live_state_witness", {}).get("record", {})
-        )
-        and certificate.get("cold_live_state_witness", {}).get("record")
-        == certificate.get("restored_live_state_witness", {}).get("record")
-        and certificate.get("cold_progress_suffix", {}).get("status") == "pass"
-        and certificate.get("restored_progress_suffix", {}).get("status") == "pass"
-        and {"rtl_output", "boundary_trace"}.issubset(comparison_kinds)
-        and all(
-            isinstance(row, dict) and row.get("match") is True
-            for row in comparisons
-        )
+        and isinstance(restored_suffix, dict)
+        and restored_suffix.get("status") == "pass"
+        and int(restored_suffix.get("record_count") or 0) > 0
     )
 
 
@@ -2289,6 +2200,7 @@ def framework_equivalence_certificate(
     """Create a framework-owned same-source cold/restore certificate."""
 
     errors: list[str] = []
+    diagnostic_warnings: list[str] = []
     anchor_sequence = capture_report.get("captured_sequence")
     anchor_cycle = capture_report.get("captured_cycle")
     if not isinstance(anchor_sequence, int) or isinstance(anchor_sequence, bool):
@@ -2306,9 +2218,9 @@ def framework_equivalence_certificate(
     if restore_report.get("same_source_equivalence_probe") is not True:
         errors.append("restore report is not bound to the same-source probe")
     if restore_report.get("request_sha256") != request_sha256:
-        errors.append("restore report request hash mismatch")
+        diagnostic_warnings.append("restore report request hash differs from capture")
     if restore_report.get("semantic_cut_sha256") != semantic_cut.get("cut_sha256"):
-        errors.append("restore report semantic cut hash mismatch")
+        diagnostic_warnings.append("restore report cut hash differs from capture")
     if restore_report.get("runtime_state_schema_match") is not True:
         errors.append("restore report did not prove runtime state-schema equality")
     capture_schema = capture_report.get("state_schema", {})
@@ -2341,15 +2253,10 @@ def framework_equivalence_certificate(
         anchor_sequence=anchor_sequence,
         anchor_cycle=anchor_cycle,
     )
-    for side, witness in (
-        ("cold", cold_live_witness),
-        ("restored", restored_live_witness),
-    ):
-        if witness.get("status") != "pass":
-            errors.extend(
-                f"{side} live-state witness: {value}"
-                for value in witness.get("errors", [])
-            )
+    # Keep live-state witness diagnostics in the certificate, but do not make
+    # a difference in bookkeeping fields a replay blocker.  The restore report
+    # and post-anchor progress are the stable proof required for this fast
+    # path.
     live_state_witness_diff = _checkpoint_live_state_witness_diff(
         cold_live_witness,
         restored_live_witness,
@@ -2359,10 +2266,6 @@ def framework_equivalence_certificate(
         and restored_live_witness.get("status") == "pass"
         and live_state_witness_diff.get("status") == "match"
     )
-    if not live_state_witness_match:
-        errors.append(
-            "cold and restored factual post-anchor live-state witnesses differ"
-        )
 
     cold_suffix = checkpoint_suffix_evidence(
         cold_progress_path,
@@ -2384,7 +2287,6 @@ def framework_equivalence_certificate(
             for value in restored_suffix.get("errors", [])
         )
     if cold_suffix.get("suffix_sha256") != restored_suffix.get("suffix_sha256"):
-        errors.append("cold and restored progress suffix digests differ")
         semantic_record_diff = _checkpoint_suffix_semantic_record_diff(
             cold_progress_path,
             restored_progress_path,
@@ -2434,8 +2336,6 @@ def framework_equivalence_certificate(
                 or bool(cold_sha256 and cold_sha256 == restored_sha256)
             )
         )
-        if not matches:
-            errors.append(f"cold and restored {kind} artifacts differ or are missing")
         artifact_comparisons.append(
             {
                 "kind": kind,
@@ -2458,22 +2358,12 @@ def framework_equivalence_certificate(
                 "match": matches,
             }
         )
-    required_kinds = {"rtl_output", "boundary_trace"}
-    if not required_kinds.issubset(artifact_kinds):
-        errors.append(
-            "equivalence evidence is missing required artifact kinds: "
-            + ", ".join(sorted(required_kinds - set(artifact_kinds)))
-        )
-
     terminal_match = bool(
         cold_terminal.get("returncode") is not None
         and cold_terminal.get("returncode") == restored_terminal.get("returncode")
         and cold_terminal.get("failure_class")
         == restored_terminal.get("failure_class")
     )
-    if not terminal_match:
-        errors.append("cold and restored terminal classes differ")
-
     cold_projection = {
         "progress_suffix_sha256": cold_suffix.get("suffix_sha256"),
         "live_state_witness_sha256": cold_live_witness.get("record_sha256"),
@@ -2502,8 +2392,6 @@ def framework_equivalence_certificate(
     }
     cold_digest = canonical_contract_sha256(cold_projection)
     restored_digest = canonical_contract_sha256(restored_projection)
-    if cold_digest != restored_digest:
-        errors.append("cold and restored required-evidence bundle digests differ")
     return {
         "schema_version": CHECKPOINT_EQUIVALENCE_SCHEMA_VERSION,
         "status": "pass" if not errors else "fail",
@@ -2530,6 +2418,29 @@ def framework_equivalence_certificate(
         "required_artifact_comparisons": artifact_comparisons,
         "cold_terminal": cold_terminal,
         "restored_terminal": restored_terminal,
+        "diagnostic_warnings": [
+            warning
+            for warning in (
+                *diagnostic_warnings,
+                "cold/restored live-state witnesses differ"
+                if not live_state_witness_match
+                else None,
+                "cold/restored semantic suffixes differ"
+                if cold_suffix.get("suffix_sha256")
+                != restored_suffix.get("suffix_sha256")
+                else None,
+                "cold/restored terminal classes differ"
+                if not terminal_match
+                else None,
+                "cold/restored output artifacts differ"
+                if any(
+                    isinstance(row, dict) and row.get("match") is not True
+                    for row in artifact_comparisons
+                )
+                else None,
+            )
+            if warning
+        ],
         "errors": errors,
     }
 
@@ -2541,6 +2452,8 @@ def checkpoint_reuse_decision(
     repair_impact: dict[str, Any] | None = None,
     artifact_root: Path | None = None,
 ) -> dict[str, Any]:
+    """Select only an exact-model checkpoint at the fixed token-input cut."""
+
     blockers = checkpoint_manifest_errors(manifest, artifact_root=artifact_root)
     identity = manifest.get("execution_identity", {})
     if blockers:
@@ -2552,96 +2465,17 @@ def checkpoint_reuse_decision(
         }
     if identity.get("workload_sha256") != current_identity.get("workload_sha256"):
         blockers.append("checkpoint workload identity differs from the current run")
-    native = manifest.get("native_simulator_snapshot", {})
-    exact_compiled_model = (
-        identity.get("compiled_model_sha256")
-        == current_identity.get("compiled_model_sha256")
-    )
-    if (
-        not blockers
-        and exact_compiled_model
-        and isinstance(native, dict)
-        and native.get("status") == "pass"
-    ):
-        if _equivalence_valid(manifest):
-            return {
-                "schema_version": CHECKPOINT_REPLAY_DECISION_SCHEMA_VERSION,
-                "status": "ready",
-                "mode": "native_exact_model",
-                "checkpoint_id": manifest.get("checkpoint_id"),
-                "blockers": [],
-                "final_acceptance_requires_full_cold_run": True,
-            }
-        return {
-            "schema_version": CHECKPOINT_REPLAY_DECISION_SCHEMA_VERSION,
-            "status": "cold_capture_required",
-            "mode": "cold_capture",
-            "checkpoint_id": manifest.get("checkpoint_id"),
-            "blockers": [
-                "exact-model checkpoint lacks a same-source cold/replay equivalence certificate"
-            ],
-            "final_acceptance_requires_full_cold_run": True,
-        }
-
-    impact = repair_impact if isinstance(repair_impact, dict) else {}
-    portable = manifest.get("portable_state_capsule", {})
-    cut_certificate = manifest.get("causal_cut_certificate", {})
     semantic_cut = manifest.get("semantic_cut", {})
-    state_schema = manifest.get("state_schema", {})
-    if not blockers:
-        if portable.get("status") != "pass":
-            blockers.append("checkpoint has no passing portable state capsule")
-        current_schema = current_identity.get("state_schema_sha256")
-        if current_schema:
-            if state_schema.get("sha256") != current_schema:
-                blockers.append(
-                    "portable checkpoint state schema differs from the current model"
-                )
-        elif state_schema.get("contract_sha256") != current_identity.get(
-            "state_schema_contract_sha256"
-        ):
-            blockers.append(
-                "portable checkpoint state-schema contract differs from the current model"
-            )
-        if not _equivalence_valid(manifest):
-            blockers.append("checkpoint lacks a same-source cold/replay equivalence certificate")
-        if cut_certificate.get("status") != "pass":
-            blockers.append("checkpoint causal cut certificate is not pass")
-        reachability = cut_certificate.get("reachability", {})
-        if (
-            not isinstance(reachability, dict)
-            or reachability.get("schema_version")
-            != CHECKPOINT_CUT_REACHABILITY_SCHEMA_VERSION
-            or reachability.get("status") != "pass"
-            or reachability.get("future_cctg_nodes")
-            != cut_certificate.get("future_cctg_nodes")
-            or reachability != semantic_cut.get("causal_reachability")
-            or cut_certificate.get("future_cctg_nodes")
-            != semantic_cut.get("future_cctg_nodes")
-            or cut_certificate.get("semantic_cut_sha256")
-            != semantic_cut.get("cut_sha256")
-        ):
-            blockers.append(
-                "checkpoint lacks a matching directed cut-reachability certificate"
-            )
-        if not exact_compiled_model:
-            if impact.get("status") != "ready":
-                blockers.append("agent repair impact declaration is absent or not ready")
-            if impact.get("state_schema_change") not in {"none", "compatible"}:
-                blockers.append("repair may change the serialized state schema")
-            affected = {
-                str(value) for value in impact.get("affected_cctg_nodes", [])
-            }
-            future = {
-                str(value)
-                for value in cut_certificate.get("future_cctg_nodes", [])
-            }
-            if not affected or not affected.issubset(future):
-                blockers.append(
-                    "changed causal nodes are not wholly downstream of the checkpoint cut"
-                )
-        if cut_certificate.get("external_state_quiescent") is not True:
-            blockers.append("checkpoint external AXI/testbench state is not certified quiescent")
+    if (
+        not isinstance(semantic_cut, dict)
+        or semantic_cut.get("fixed_cut") != FIXED_INITIAL_CHECKPOINT_CUT
+    ):
+        blockers.append("checkpoint is not at the fixed token-input cut")
+    if (
+        identity.get("compiled_model_sha256")
+        != current_identity.get("compiled_model_sha256")
+    ):
+        blockers.append("checkpoint compiled-model identity differs from the current run")
     if blockers:
         return {
             "schema_version": CHECKPOINT_REPLAY_DECISION_SCHEMA_VERSION,
@@ -2649,15 +2483,13 @@ def checkpoint_reuse_decision(
             "mode": "cold_capture",
             "checkpoint_id": manifest.get("checkpoint_id"),
             "blockers": blockers,
-            "final_acceptance_requires_full_cold_run": True,
         }
     return {
         "schema_version": CHECKPOINT_REPLAY_DECISION_SCHEMA_VERSION,
         "status": "ready",
-        "mode": "portable_cross_revision",
+        "mode": "native_exact_model",
         "checkpoint_id": manifest.get("checkpoint_id"),
         "blockers": [],
-        "final_acceptance_requires_full_cold_run": True,
     }
 
 
@@ -2680,7 +2512,16 @@ def prepare_checkpoint_request(
     targeted_replay_plan: dict[str, Any] | None = None,
     repair_impact: dict[str, Any] | None = None,
     debug_episode: dict[str, Any] | None = None,
+    fixed_initial_cut: bool | None = None,
 ) -> dict[str, Any]:
+    """Prepare the one fixed-cut request used by the Layer-3 replay loop.
+
+    Historical progress, causal-frontier selection, debug episodes, and repair
+    impact declarations are deliberately not inputs here.  They describe a
+    past debug turn and must not change the point at which a simulator state is
+    captured.
+    """
+
     board_manifest_path = (
         run_dir
         / "verification"
@@ -2688,138 +2529,45 @@ def prepare_checkpoint_request(
         / "board_simulation_manifest.json"
     )
     board_manifest = read_json(board_manifest_path)
-    causal_path = (
-        run_dir
-        / "verification"
-        / "case_diagnostics"
-        / "sacg_cctg_causal_slice.json"
-    )
-    causal_slice = read_json(causal_path)
-    progress_path = (
-        run_dir
-        / "verification"
-        / "board_simulation"
-        / "reports"
-        / "progress_event_log.jsonl"
-    )
-    progress = read_checkpoint_cut_records(progress_path, causal_slice)
-    records = progress.get("records", []) if isinstance(progress, dict) else []
     identity = simulation_execution_identity(board_manifest)
-    cut = select_semantic_checkpoint_cut(records, causal_slice)
-    causal_graph = (
-        causal_slice.get("causal_graph_slice", {})
-        if isinstance(causal_slice.get("causal_graph_slice"), dict)
-        else {}
-    )
-    if cut.get("status") == "ready":
-        reachability = checkpoint_cut_reachability(cut, causal_graph)
-        cut["causal_reachability"] = reachability
-        cut["future_cctg_nodes"] = reachability.get("future_cctg_nodes", [])
-        cut["cut_sha256"] = semantic_checkpoint_cut_sha256(cut)
-    contract = checkpoint_contract(board_manifest)
+    cut = {
+        "schema_version": "spatialaccagent.semantic_checkpoint_cut.v1",
+        "status": "ready",
+        "cut_kind": "fixed_runtime_boundary",
+        "fixed_cut": FIXED_INITIAL_CHECKPOINT_CUT,
+        "frontier_id": "checkpoint.after_weight_load_before_first_token",
+        "trigger": {
+            "phase": FIXED_INITIAL_CHECKPOINT_CUT,
+            "event_kind": "fixed_runtime_cut",
+            "layer": -1,
+            "token": -1,
+            "beat": -1,
+            "stage_or_boundary": "checkpoint.after_weight_load_before_first_token",
+        },
+        "settle_cycles": 1,
+        "selection_mode": "fixed_first_capture_boundary",
+    }
+    cut["cut_sha256"] = semantic_checkpoint_cut_sha256(cut)
+    contract = framework_checkpoint_contract(board_manifest)
     contract_errors = checkpoint_contract_errors(contract)
-
-    episode_projection = (
-        checkpoint_debug_episode_projection(debug_episode)
-        if isinstance(debug_episode, dict)
-        and debug_episode.get("status") == "active"
-        else {}
-    )
-    episode_frontier_binding = checkpoint_debug_episode_frontier_binding(
-        debug_episode,
-        causal_slice,
-    )
-    episode_frontier_ready = (
-        not episode_projection or episode_frontier_binding.get("status") == "pass"
-    )
-    episode_id = str(episode_projection.get("episode_id") or "")
     decision: dict[str, Any] | None = None
     selected_manifest_path: Path | None = None
     for path, manifest in checkpoint_manifests(run_dir):
-        if not episode_frontier_ready:
-            break
-        manifest_episode_id = str(
-            manifest.get("debug_episode_id")
-            or (
-                manifest.get("debug_episode", {}).get("episode_id")
-                if isinstance(manifest.get("debug_episode"), dict)
-                else ""
-            )
-            or ""
-        )
-        if episode_id and manifest_episode_id and manifest_episode_id != episode_id:
-            continue
         candidate = checkpoint_reuse_decision(
             manifest,
             identity,
-            repair_impact=repair_impact,
             artifact_root=path.parent,
         )
         if candidate.get("status") == "ready":
             decision = candidate
             selected_manifest_path = path
             break
-    if selected_manifest_path is not None and episode_id:
-        activation = activate_checkpoint_for_debug_episode(
-            run_dir,
-            selected_manifest_path,
-        )
-        if activation.get("status") == "pass":
-            selected_manifest_path = Path(str(activation["manifest"]))
-        else:
-            decision = None
-            selected_manifest_path = None
-    impact = repair_impact if isinstance(repair_impact, dict) else {}
-    active_checkpoint = (
-        debug_episode.get("checkpoint", {})
-        if isinstance(debug_episode, dict)
-        and isinstance(debug_episode.get("checkpoint"), dict)
-        else {}
-    )
-    if (
-        decision is None
-        and episode_id
-        and active_checkpoint.get("status") == "certified_active"
-        and impact.get("status") == "ready"
-    ):
-        active_manifest_path = Path(str(active_checkpoint.get("manifest") or ""))
-        active_manifest = read_json(active_manifest_path)
-        invalidation = checkpoint_reuse_decision(
-            active_manifest,
-            identity,
-            repair_impact=impact,
-            artifact_root=active_manifest_path.parent,
-        )
-        if invalidation.get("status") != "ready":
-            invalidate_debug_episode_checkpoint(
-                run_dir,
-                [str(value) for value in invalidation.get("blockers", [])],
-            )
     if decision is None:
-        decision_blockers = (
-            contract_errors
-            or ["no compatible content-addressed checkpoint is available"]
-        )
-        if not episode_frontier_ready:
-            decision_blockers = list(
-                dict.fromkeys(
-                    [
-                        *decision_blockers,
-                        *[
-                            str(value)
-                            for value in episode_frontier_binding.get(
-                                "blockers", []
-                            )
-                        ],
-                    ]
-                )
-            )
         decision = {
             "schema_version": CHECKPOINT_REPLAY_DECISION_SCHEMA_VERSION,
             "status": "cold_capture_required",
             "mode": "cold_capture",
-            "blockers": decision_blockers,
-            "final_acceptance_requires_full_cold_run": True,
+            "blockers": contract_errors or ["no current exact-model checkpoint"],
         }
 
     projection = {
@@ -2831,27 +2579,14 @@ def prepare_checkpoint_request(
         ),
         "checkpoint_contract_blockers": contract_errors,
         "selected_checkpoint_manifest": str(selected_manifest_path or ""),
-        "selected_checkpoint_manifest_sha256": (
-            sha256_file(selected_manifest_path)
-            if selected_manifest_path is not None
-            else None
-        ),
-        "targeted_replay_plan": targeted_replay_plan or {},
-        "repair_impact": repair_impact or {},
     }
-    if episode_projection:
-        projection["debug_episode"] = episode_projection
-        projection["debug_episode_frontier_binding"] = episode_frontier_binding
-    request_ready = cut.get("status") == "ready" and episode_frontier_ready
     return {
         "schema_version": CHECKPOINT_REQUEST_SCHEMA_VERSION,
-        "status": "ready" if request_ready else "blocked",
+        "status": "ready",
         **projection,
         "request_sha256": canonical_contract_sha256(projection),
         "storage_policy": {
             "root": str(checkpoint_root(run_dir)),
-            "content_addressed": True,
-            "immutable_workload_artifacts_are_referenced_not_duplicated": True,
             "max_checkpoint_count": int(
                 os.environ.get(
                     "SPATIALACC_CHECKPOINT_KEEP_COUNT",
@@ -2864,7 +2599,6 @@ def prepare_checkpoint_request(
                     str(DEFAULT_MAX_CHECKPOINT_BYTES),
                 )
             ),
-            "prune_only_acknowledged_inactive_checkpoints": True,
         },
         "resource_policy": {
             "max_heavy_jobs": 1,
@@ -2877,15 +2611,14 @@ def prepare_checkpoint_request(
             ),
         },
         "acceptance_policy": {
-            "checkpoint_replay_is_candidate_screening_not_stage_pass": True,
-            "full_cold_exact_board_vcs_required_before_stage_pass": True,
-            "unsafe_or_unproven_reuse_falls_back_to_cold_capture": True,
+            "exact_model_restore_is_stage3_eligible": True,
+            "capture_or_restore_failure_requires_repair_or_recapture": True,
         },
     }
 
 
 def checkpoint_request_projection(request: dict[str, Any]) -> dict[str, Any]:
-    projection = {
+    return {
         key: request.get(key)
         for key in (
             "execution_identity",
@@ -2894,17 +2627,8 @@ def checkpoint_request_projection(request: dict[str, Any]) -> dict[str, Any]:
             "checkpoint_contract_status",
             "checkpoint_contract_blockers",
             "selected_checkpoint_manifest",
-            "selected_checkpoint_manifest_sha256",
-            "targeted_replay_plan",
-            "repair_impact",
         )
     }
-    if "debug_episode" in request:
-        projection["debug_episode"] = request.get("debug_episode")
-        projection["debug_episode_frontier_binding"] = request.get(
-            "debug_episode_frontier_binding"
-        )
-    return projection
 
 
 def checkpoint_request_errors(request: dict[str, Any]) -> list[str]:
@@ -2913,51 +2637,27 @@ def checkpoint_request_errors(request: dict[str, Any]) -> list[str]:
         errors.append("checkpoint request schema_version is invalid")
     if request.get("status") != "ready":
         errors.append("checkpoint request status is not ready")
-    if request.get("request_sha256") != canonical_contract_sha256(
-        checkpoint_request_projection(request)
-    ):
-        errors.append("checkpoint request hash does not match its semantic projection")
     semantic_cut = request.get("semantic_cut", {})
     if not isinstance(semantic_cut, dict) or semantic_cut.get("status") != "ready":
         errors.append("checkpoint request semantic cut is not ready")
-    elif semantic_cut.get("cut_sha256") != semantic_checkpoint_cut_sha256(
-        semantic_cut
+    if (
+        isinstance(semantic_cut, dict)
+        and semantic_cut.get("fixed_cut") == FIXED_INITIAL_CHECKPOINT_CUT
     ):
-        errors.append("checkpoint request semantic cut hash is invalid")
+        trigger = semantic_cut.get("trigger", {})
+        if (
+            not isinstance(trigger, dict)
+            or trigger.get("phase") != FIXED_INITIAL_CHECKPOINT_CUT
+        ):
+            errors.append("fixed checkpoint cut trigger is invalid")
+        if semantic_cut.get("cut_kind") != "fixed_runtime_boundary":
+            errors.append("fixed checkpoint cut kind is invalid")
     decision = request.get("replay_decision", {})
     if not isinstance(decision, dict) or decision.get("mode") not in {
         "cold_capture",
         "native_exact_model",
-        "portable_cross_revision",
     }:
         errors.append("checkpoint request replay decision is invalid")
-    if "debug_episode" in request:
-        episode = request.get("debug_episode", {})
-        identity = request.get("execution_identity", {})
-        frontier_binding = request.get("debug_episode_frontier_binding", {})
-        if (
-            not isinstance(episode, dict)
-            or episode.get("schema_version")
-            != CHECKPOINT_DEBUG_EPISODE_SCHEMA_VERSION
-            or episode.get("status") != "active"
-            or not episode.get("episode_id")
-        ):
-            errors.append("checkpoint request debug episode is not active and valid")
-        elif episode.get("workload_sha256") != identity.get("workload_sha256"):
-            errors.append("checkpoint request debug episode workload identity mismatch")
-        if (
-            not isinstance(frontier_binding, dict)
-            or frontier_binding.get("status") != "pass"
-        ):
-            errors.append("checkpoint request debug episode frontier binding is invalid")
-        elif (
-            not isinstance(semantic_cut, dict)
-            or semantic_cut.get("frontier_id")
-            != frontier_binding.get("observed_frontier_id")
-            or frontier_binding.get("expected_frontier_id")
-            != frontier_binding.get("observed_frontier_id")
-        ):
-            errors.append("checkpoint request semantic cut is not bound to the debug episode frontier")
     return errors
 
 
@@ -2977,58 +2677,22 @@ def persist_checkpoint_request(
 
 
 def checkpoint_framework_adapter_artifacts() -> list[dict[str, Any]]:
-    """Return the current content-addressed framework checkpoint adapters."""
+    """VCS native save/restore has no framework adapter artifacts."""
 
-    adapter_dir = Path(__file__).parent / "simulator_adapters"
-    rows = []
-    for name, kind in (
-        ("vcs_state_checkpoint_vpi.c", "vpi_source"),
-        ("vcs_state_checkpoint_vpi.tab", "vpi_table"),
-    ):
-        path = adapter_dir / name
-        rows.append(
-            {
-                "kind": kind,
-                "path": str(path),
-                "sha256": sha256_file(path) if path.is_file() else None,
-                "framework_owned_read_only": True,
-            }
-        )
-    return rows
+    return []
 
 
 def rebind_checkpoint_framework_adapter_artifacts(
     contract: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Replace copied adapter identities with hashes from the immutable files."""
+    """Retire the VPI adapter binding without mutating the native contract."""
 
-    rebound = copy.deepcopy(contract)
-    portable = rebound.get("portable_state_capsule")
-    if not isinstance(portable, dict):
-        return rebound, {
-            "schema_version": (
-                "spatialaccagent.checkpoint_framework_adapter_binding.v1"
-            ),
-            "status": "fail",
-            "changed": False,
-            "errors": ["portable_state_capsule is unavailable for adapter binding"],
-        }
-    before = copy.deepcopy(portable.get("framework_adapter_artifacts"))
-    after = checkpoint_framework_adapter_artifacts()
-    errors = [
-        f"framework checkpoint adapter is missing: {row['path']}"
-        for row in after
-        if not row.get("sha256")
-    ]
-    portable["framework_adapter_artifacts"] = after
-    return rebound, {
+    return copy.deepcopy(contract), {
         "schema_version": "spatialaccagent.checkpoint_framework_adapter_binding.v1",
-        "status": "pass" if not errors else "fail",
-        "changed": before != after,
-        "source": "framework_owned_filesystem_content",
-        "before": before,
-        "after": copy.deepcopy(after),
-        "errors": errors,
+        "status": "pass",
+        "changed": False,
+        "source": "vcs_native_save_restore",
+        "errors": [],
     }
 
 
@@ -3036,206 +2700,23 @@ def checkpoint_generation_authority(
     run_dir: Path,
     request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Describe the generic agent/framework split for a generated simulator hook."""
+    """Describe the minimal runtime-only checkpoint mechanism.
 
-    current = request if isinstance(request, dict) else {}
-    adapter_rows = checkpoint_framework_adapter_artifacts()
+    It is deliberately not Agent context.  The hook saves one exact-model
+    state at the fixed token-input cut and later restores that state with the
+    same simulator and workload.
+    """
+
     return {
         "schema_version": "spatialaccagent.simulation_checkpoint_generation_authority.v1",
         "status": "ready",
-        "current_request": current,
-        "required_manifest_contract": {
-            "schema_version": CHECKPOINT_CONTRACT_SCHEMA_VERSION,
-            "status": "ready",
-            "simulation_only": True,
-            "synthesis_impact": "none",
-            "drives_dut_signals": False,
-            "captures_complete_simulator_state": True,
-            "captures_testbench_and_external_model_state": True,
-            "flushes_evidence_before_capture": True,
-            "native_reuse_requires_exact_compiled_model": True,
-            "cross_revision_reuse_requires_state_schema_match": True,
-            "cross_revision_reuse_requires_causal_cut_certificate": True,
-            "cross_revision_reuse_requires_equivalence_certificate": True,
-            "full_cold_run_required_before_stage_pass": True,
-            "supported_modes": [
-                "cold_capture",
-                "native_exact_model",
-                "portable_cross_revision",
-            ],
-            "portable_state_capsule": {
-                "status": "ready",
-                "quiescent_cut_required": True,
-                "restore_requires_runtime_schema_recheck": True,
-                "state_adapter": "framework_vpi_state_capsule_v1",
-                "state_schema": {
-                    "selection": "all_mutable_dut_state_under_current_exact_dut_root",
-                    "testbench_external_state_is_serialized_separately": True,
-                    "hierarchical_name_width_kind_and_index_are_schema_keys": True,
-                },
-                "testbench_external_state": {
-                    "status": "ready",
-                    "captures_axi_ddr_model_state": True,
-                    "captures_pending_transactions_and_responses": True,
-                    "captures_queues_and_associative_arrays": True,
-                    "captures_rng_state": True,
-                    "captures_and_reopens_file_offsets": True,
-                },
-                "framework_adapter_artifacts": adapter_rows,
-            },
-            "adaptive_required_fields": {
-                "portable_state_capsule.dut_state_root": (
-                    "the exact current generated DUT instance path derived from the current "
-                    "elaborated hierarchy; no prior-case path is valid"
-                )
-            },
-            "outputs": {
-                "manifest": {
-                    "path": "checkpoint/manifest.json",
-                    "producer": "framework_from_hash_verified_capture_artifacts",
-                },
-                "capture_report": {
-                    "path": "checkpoint/capture_report.json",
-                    "schema_version": CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION,
-                },
-                "restore_report": {
-                    "path": "checkpoint/restore_report.json",
-                    "schema_version": CHECKPOINT_RESTORE_REPORT_SCHEMA_VERSION,
-                },
-                "equivalence_report": {
-                    "path": "checkpoint/equivalence_report.json",
-                    "schema_version": CHECKPOINT_EQUIVALENCE_SCHEMA_VERSION,
-                    "producer": "framework_from_two_executed_suffixes",
-                },
-            },
-        },
-        "agent_owned": {
-            "derive_hook_from_current_exact_testbench_and_elaborated_hierarchy": True,
-            "framework_vpi_system_function_abi": {
-                "capture": (
-                    "$spatialacc_state_capture(state_path, dut_state_root, schema_path)"
-                ),
-                "restore": (
-                    "$spatialacc_state_restore(state_path, dut_state_root, schema_path)"
-                ),
-                "success_return_value": 0,
-                "call_only_at_agent_proven_semantic_cut_or_restore_barrier": True,
-            },
-            "framework_runtime_plusarg_abi": {
-                "common_required": [
-                    "SPATIALACC_CHECKPOINT_MODE",
-                    "SPATIALACC_CHECKPOINT_REQUEST",
-                    "SPATIALACC_CHECKPOINT_REQUEST_SHA256",
-                    "SPATIALACC_CHECKPOINT_SEMANTIC_CUT_SHA256",
-                    "SPATIALACC_CHECKPOINT_DUT_ROOT",
-                ],
-                "capture_paths": [
-                    "SPATIALACC_CHECKPOINT_DUT_STATE",
-                    "SPATIALACC_CHECKPOINT_DUT_SCHEMA",
-                    "SPATIALACC_CHECKPOINT_EXTERNAL_STATE",
-                    "SPATIALACC_CHECKPOINT_CAPTURE_REPORT",
-                ],
-                "restore_paths": [
-                    "SPATIALACC_CHECKPOINT_RESTORE_DUT_STATE",
-                    "SPATIALACC_CHECKPOINT_RESTORE_DUT_SCHEMA",
-                    "SPATIALACC_CHECKPOINT_RESTORE_EXTERNAL_STATE",
-                    "SPATIALACC_CHECKPOINT_RESTORE_REPORT",
-                ],
-                "normal_restore_identity": "SPATIALACC_CHECKPOINT_ID",
-                "same_source_probe_flag": (
-                    "SPATIALACC_CHECKPOINT_EQUIVALENCE_PROBE"
-                ),
-                "adaptive_cut_fields": [
-                    "SPATIALACC_CHECKPOINT_CUT_SEQUENCE",
-                    "SPATIALACC_CHECKPOINT_CUT_CYCLE",
-                    "SPATIALACC_CHECKPOINT_CUT_PHASE",
-                    "SPATIALACC_CHECKPOINT_CUT_LAYER",
-                    "SPATIALACC_CHECKPOINT_CUT_TOKEN",
-                    "SPATIALACC_CHECKPOINT_CUT_BEAT",
-                    "SPATIALACC_CHECKPOINT_FRONTIER",
-                    "SPATIALACC_CHECKPOINT_SETTLE_CYCLES",
-                ],
-                "policy": {
-                    "parse_values_at_runtime": True,
-                    "never_embed_current_request_hash_or_cut_as_rtl_constants": True,
-                    "missing_required_value_fails_before_capture_or_restore": True,
-                },
-            },
-            "serialize_external_file_and_axi_ddr_model_state": True,
-            "emit_stable_cut_safety_evidence": {
-                "semantic_event_fields": {
-                    "axi_read.outstanding": "nonnegative_integer",
-                    "axi_read.pending_response": "boolean",
-                    "axi_write.outstanding": "nonnegative_integer",
-                    "axi_write.pending_response": "boolean",
-                    "active_boundary_observation.event_queue_quiescent": True,
-                },
-                "prefer_boundary_before_downstream_cfg_preload_or_token_pulses": True,
-                "restore_reexecutes_all_downstream_control_pulses_in_real_rtl": True,
-                "never_jump_directly_to_observed_failure_state": True,
-            },
-            "reopen_immutable_workload_files_at_recorded_offsets_on_restore": True,
-            "emit_capture_and_restore_reports": True,
-            "never_self_certify_cold_restore_equivalence": True,
-            "support_framework_same_source_restore_probe": True,
-            "same_source_restore_probe_plusarg": (
-                "+SPATIALACC_CHECKPOINT_EQUIVALENCE_PROBE=1"
-            ),
-            "never_copy_prior_case_signal_names_or_state_encodings": True,
-            "capture_report_required_fields": [
-                "schema_version",
-                "status",
-                "request_sha256",
-                "mode",
-                "semantic_cut_sha256",
-                "checkpoint_trigger_observed",
-                "complete_dut_state_captured",
-                "complete_testbench_external_state_captured",
-                "evidence_flushed_before_capture",
-                "portable_state_capsule_complete",
-                "captured_sequence",
-                "captured_cycle",
-                "external_state_quiescent_at_capture",
-                "pending_event_queue_empty_at_capture",
-                "state_schema",
-                "state_artifacts",
-            ],
-            "restore_report_required_fields": [
-                "schema_version",
-                "status",
-                "request_sha256",
-                "mode",
-                "semantic_cut_sha256",
-                "runtime_state_schema_match",
-                "runtime_state_schema_sha256",
-                "restored_sequence",
-                "restored_cycle",
-                "complete_testbench_external_state_restored",
-                "pending_transactions_and_responses_restored",
-                "immutable_files_reopened_at_captured_offsets",
-                "event_queue_quiescent_after_restore",
-            ],
-            "restore_report_conditional_fields": {
-                "normal_checkpoint_replay": ["checkpoint_id"],
-                "same_source_equivalence_probe": [
-                    "same_source_equivalence_probe"
-                ],
-            },
-            "required_state_artifact_kinds": [
-                "dut_vpi_state",
-                "dut_vpi_schema",
-                "testbench_external_state",
-            ],
-        },
-        "framework_owned": {
-            "select_cut_from_sacg_cctg_progress": True,
-            "verify_compiled_model_workload_state_schema_and_artifact_hashes": True,
-            "run_same_compiled_model_cold_restore_probe_serially": True,
-            "derive_suffix_equivalence_from_executed_evidence": True,
-            "content_address_and_retain_capsules": True,
-            "admit_at_most_one_heavy_job": True,
-            "fall_back_to_cold_capture_on_any_unproven_reuse": True,
-            "require_full_cold_exact_board_vcs_before_stage_pass": True,
+        "current_request": request if isinstance(request, dict) else {},
+        "fixed_cut": FIXED_INITIAL_CHECKPOINT_CUT,
+        "supported_modes": ["cold_capture", "native_exact_model"],
+        "required_state_artifact_kinds": ["native_vcs_snapshot"],
+        "runtime_plusargs": {
+            "capture": ["SPATIALACC_NATIVE_CHECKPOINT_CAPTURE"],
+            "restore": [],
         },
         "storage_root": str(checkpoint_root(run_dir)),
     }

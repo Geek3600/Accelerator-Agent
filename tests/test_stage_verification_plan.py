@@ -6,21 +6,21 @@ from unittest.mock import patch
 
 from accagent.framework.stage_verification import (
     check_case_functional_sim_preconditions,
-    build_stage7_gate_execution_plan,
+    build_stage6_gate_execution_plan,
     gate_tool_roles,
     reusable_exact_board_identity_evidence,
-    reusable_stage7_certificate_evidence,
+    reusable_stage6_certificate_evidence,
     reusable_dependency_tool_role_evidence,
     reusable_provider_gate_for_role,
-    stage7_selector_blockers,
-    stage7_selected_gate_names,
+    stage6_selector_blockers,
+    stage6_selected_gate_names,
 )
 from accagent.framework.stage_verification_plan import (
     build_hierarchical_verification_plan,
     build_verification_gate_dag,
-    stage6_gate_tool_roles,
+    stage5_gate_tool_roles,
     stage_worker_errors,
-    write_stage6_refinement_artifacts,
+    write_stage5_refinement_artifacts,
 )
 
 
@@ -51,7 +51,7 @@ class ThirdLayerProducerOrderTest(TestCase):
                 "accagent.framework.stage_verification.stage6_verification_contract",
                 return_value=contract,
             ), patch(
-                "accagent.framework.stage_verification.stage7_selector_contract",
+                "accagent.framework.stage_verification.stage6_selector_contract",
                 return_value=selector,
             ), patch(
                 "accagent.framework.stage_verification.case_adapter_for_state",
@@ -63,10 +63,10 @@ class ThirdLayerProducerOrderTest(TestCase):
                 "accagent.framework.stage_verification.artifact_path",
                 return_value=tool_protocols,
             ), patch(
-                "accagent.framework.stage_verification.stage7_selected_gate_names",
+                "accagent.framework.stage_verification.stage6_selected_gate_names",
                 return_value=["custom_board_discovery", "functional_sim"],
             ), patch(
-                "accagent.framework.stage_verification.reusable_stage7_certificate_evidence",
+                "accagent.framework.stage_verification.reusable_stage6_certificate_evidence",
                 return_value={"gates": [], "certificates": [], "rejected_certificates": []},
             ), patch(
                 "accagent.framework.stage_verification.lower_layer_certificate_scaffold_bridge",
@@ -78,10 +78,10 @@ class ThirdLayerProducerOrderTest(TestCase):
                 "accagent.framework.stage_verification.gate_tool_roles",
                 return_value=[],
             ), patch(
-                "accagent.framework.stage_verification.stage7_selector_blockers",
+                "accagent.framework.stage_verification.stage6_selector_blockers",
                 return_value=[],
             ):
-                plan = build_stage7_gate_execution_plan({}, run_dir)
+                plan = build_stage6_gate_execution_plan({}, run_dir)
 
         self.assertEqual(plan["selected_gates"], ["functional_sim"])
         self.assertEqual(plan["reused_certified_gates"][0]["name"], "custom_board_discovery")
@@ -111,7 +111,7 @@ class ThirdLayerProducerOrderTest(TestCase):
             state = {
                 "artifacts": [
                     {
-                        "id": "artifact.stage7.operator_leaf_promotion_certificate",
+                        "id": "artifact.stage6.operator_leaf_promotion_certificate",
                         "path": str(certificate_path),
                         "trust_status": "validated",
                     }
@@ -119,7 +119,7 @@ class ThirdLayerProducerOrderTest(TestCase):
             }
             selector = {
                 "operator_leaf_promotion_certificate": {
-                    "required_artifact": "artifact.stage7.operator_leaf_promotion_certificate",
+                    "required_artifact": "artifact.stage6.operator_leaf_promotion_certificate",
                     "required_gates": ["case_leaf_functional"],
                     "blocks_until_present": ["case_board_interface_discovery"],
                     "evidence_contract": {"version": "current"},
@@ -139,13 +139,13 @@ class ThirdLayerProducerOrderTest(TestCase):
                 "accagent.framework.stage_verification.stage6_gate_dependency_map",
                 return_value={},
             ):
-                evidence = reusable_stage7_certificate_evidence(
+                evidence = reusable_stage6_certificate_evidence(
                     state,
                     selector,
                     ["case_board_interface_discovery"],
                     nodes,
                 )
-                blockers = stage7_selector_blockers(
+                blockers = stage6_selector_blockers(
                     state,
                     ["case_board_interface_discovery"],
                     selector,
@@ -233,7 +233,7 @@ class ThirdLayerProducerOrderTest(TestCase):
         leaf_nodes = [node for node in dag["nodes"] if node["name"].startswith("leaf_stage.")]
         self.assertGreater(len(leaf_nodes), 0)
         self.assertTrue(all(node["tool_roles"] == ["stage_leaf_static"] for node in leaf_nodes))
-        self.assertEqual(stage6_gate_tool_roles({}, "case_stage_leaf_static"), ["stage_leaf_static"])
+        self.assertEqual(stage5_gate_tool_roles({}, "case_stage_leaf_static"), ["stage_leaf_static"])
         self.assertEqual(gate_tool_roles({}, "leaf_stage.stage_generic"), ["stage_leaf_static"])
         self.assertEqual(gate_tool_roles({}, "case_stage_leaf_static"), ["stage_leaf_static"])
 
@@ -248,12 +248,8 @@ class ThirdLayerProducerOrderTest(TestCase):
             "case_semantic_testbench",
         )
         self.assertEqual(
-            reusable_provider_gate_for_role(
-                adapter,
-                "case_single_layer_golden_compare",
-                "single_layer_golden_reference_builder",
-            ),
-            "case_target_model_reference",
+            gate_tool_roles(adapter, "case_single_layer_golden_compare"),
+            ["single_layer_golden_compare"],
         )
         self.assertEqual(gate_tool_roles(adapter, "case_multilayer_pipeline"), ["multilayer_pipeline"])
         self.assertIsNone(
@@ -265,7 +261,7 @@ class ThirdLayerProducerOrderTest(TestCase):
             "case_semantic_testbench": {
                 "name": "case_semantic_testbench",
                 "evidence_source": "promotion_certificate",
-                "certificate_artifact": "artifact.stage7.operator_leaf_promotion_certificate",
+                "certificate_artifact": "artifact.stage6.operator_leaf_promotion_certificate",
                 "certificate_path": "/tmp/operator_leaf_promotion_certificate.json",
             }
         }
@@ -280,7 +276,7 @@ class ThirdLayerProducerOrderTest(TestCase):
         self.assertEqual(reused["provider_gate"], "case_semantic_testbench")
         self.assertEqual(
             reused["certificate_artifact"],
-            "artifact.stage7.operator_leaf_promotion_certificate",
+            "artifact.stage6.operator_leaf_promotion_certificate",
         )
         self.assertIsNone(
             reusable_dependency_tool_role_evidence(
@@ -317,6 +313,7 @@ class ThirdLayerProducerOrderTest(TestCase):
             "axi_protocol_check",
             "ddr_image_roundtrip",
             "board_semantic_aggregate",
+            "board_bringup",
         ]
 
         self.assertEqual(dag["policy"]["layer3_board_axi_ddr_wrapper_closure"], expected_order)
@@ -343,7 +340,7 @@ class ThirdLayerProducerOrderTest(TestCase):
 
         self.assertEqual([gate for gate in gate_order if gate in expected_gates], expected_gates)
         self.assertEqual(
-            stage6_gate_tool_roles({}, "case_axi_ddr_interface"),
+            stage5_gate_tool_roles({}, "case_axi_ddr_interface"),
             ["axi_ddr_interface"],
         )
 
@@ -353,10 +350,10 @@ class ThirdLayerProducerOrderTest(TestCase):
 
         contract = {"verification_gate_dag": dag}
         selector = {"gates": dag["nodes"]}
-        with patch.dict("os.environ", {"SPATIALACC_STAGE7_GATE_SCOPE": "board_axi_ddr_closure"}):
-            selected = stage7_selected_gate_names(contract, selector)
+        with patch.dict("os.environ", {"SPATIALACC_STAGE6_GATE_SCOPE": "board_axi_ddr_closure"}):
+            selected = stage6_selected_gate_names(contract, selector)
 
-        self.assertEqual(selected[-1], "case_board_semantic_evidence")
+        self.assertEqual(selected[-1], "case_board_bringup_ready")
         self.assertIn("functional_sim", selected)
         self.assertIn("case_multilayer_functional", selected)
         self.assertIn("case_pipeline_deadlock_check", selected)
@@ -369,10 +366,10 @@ class ThirdLayerProducerOrderTest(TestCase):
 
         contract = {"verification_gate_dag": dag}
         selector = {"gates": dag["nodes"]}
-        with patch.dict("os.environ", {"SPATIALACC_STAGE7_GATE_SCOPE": "operator_leaf_closure"}):
-            operator_selected = stage7_selected_gate_names(contract, selector)
-        with patch.dict("os.environ", {"SPATIALACC_STAGE7_GATE_SCOPE": "single_layer_closure"}):
-            single_selected = stage7_selected_gate_names(contract, selector)
+        with patch.dict("os.environ", {"SPATIALACC_STAGE6_GATE_SCOPE": "operator_leaf_closure"}):
+            operator_selected = stage6_selected_gate_names(contract, selector)
+        with patch.dict("os.environ", {"SPATIALACC_STAGE6_GATE_SCOPE": "single_layer_closure"}):
+            single_selected = stage6_selected_gate_names(contract, selector)
 
         self.assertEqual(operator_selected[-1], "case_operator_leaf_semantic_evidence")
         self.assertEqual(single_selected[-1], "case_single_layer_semantic_evidence")
@@ -391,31 +388,20 @@ class ThirdLayerProducerOrderTest(TestCase):
         )
         self.assertIn("vivado_synthesis_report_check", nodes["case_vivado_synthesis"]["tool_roles"])
         self.assertIn("vivado_implementation_report_check", nodes["case_vivado_implementation"]["tool_roles"])
-        self.assertTrue(
-            {
-                "case_multilayer_pipeline",
-                "case_board_interface_discovery",
-                "case_axi_ddr_interface",
-                "functional_sim",
-                "case_multilayer_functional",
-                "case_pipeline_deadlock_check",
-                "case_axi_protocol_check",
-                "case_ddr_image_roundtrip",
-                "case_board_semantic_evidence",
-            }.issubset(set(nodes["case_vivado_synthesis"]["depends_on"]))
-        )
+        self.assertIn("case_board_bringup_ready", nodes["case_vivado_synthesis"]["depends_on"])
+        self.assertNotIn("case_board_semantic_evidence", nodes["case_vivado_synthesis"]["depends_on"])
 
-    def test_specific_stage6_refinement_actions_require_real_materialization(self) -> None:
+    def test_stage5_refinement_actions_require_real_materialization(self) -> None:
         actions = [
-            {"id": "stage6.semantic", "stage": "verification_artifacts", "action_type": "cross_layer_semantic_gate_refinement"},
-            {"id": "stage6.board", "stage": "verification_artifacts", "action_type": "board_functional_gate_dag_refinement"},
-            {"id": "stage6.backend", "stage": "verification_artifacts", "action_type": "downstream_tool_gate_hardening"},
-            {"id": "stage6.repair", "stage": "verification_artifacts", "action_type": "repair_boundary_contract_review"},
-            {"id": "stage6.selector", "stage": "verification_artifacts", "action_type": "stage7_gate_selector_contract_refinement"},
-            {"id": "stage6.promote", "stage": "verification_artifacts", "action_type": "verification_contract_promotion"},
+            {"id": "stage5.semantic", "stage": "verification_artifacts", "action_type": "cross_layer_semantic_gate_refinement"},
+            {"id": "stage5.board", "stage": "verification_artifacts", "action_type": "board_functional_gate_dag_refinement"},
+            {"id": "stage5.backend", "stage": "verification_artifacts", "action_type": "downstream_tool_gate_hardening"},
+            {"id": "stage5.repair", "stage": "verification_artifacts", "action_type": "repair_boundary_contract_review"},
+            {"id": "stage5.selector", "stage": "verification_artifacts", "action_type": "stage6_gate_selector_contract_refinement"},
+            {"id": "stage5.promote", "stage": "verification_artifacts", "action_type": "verification_contract_promotion"},
         ]
         planner_output = {
-            "status": "refinement_required_before_stage7_third_layer",
+            "status": "refinement_required_before_stage6_third_layer",
             "risks": ["Current Stage6 contract risk is covered by the materialized refinement artifacts."],
             "executable_actions": actions,
         }
@@ -430,7 +416,7 @@ class ThirdLayerProducerOrderTest(TestCase):
                 ],
                 "debug_closure_contract": {},
             }
-            materialization = write_stage6_refinement_artifacts(
+            materialization = write_stage5_refinement_artifacts(
                 out_dir,
                 {},
                 {},
@@ -445,7 +431,7 @@ class ThirdLayerProducerOrderTest(TestCase):
 
     def test_current_planner_refinement_types_mutate_and_validate_canonical_dag(self) -> None:
         planner_output = {
-            "status": "refinement_required_before_stage7_consumption",
+            "status": "refinement_required_before_stage6_consumption",
             "risks": [
                 "A policy-only requirement needs explicit certificate inputs.",
                 "The single-layer alias needs an explicit one-to-one binding.",
@@ -453,17 +439,17 @@ class ThirdLayerProducerOrderTest(TestCase):
             ],
             "executable_actions": [
                 {
-                    "id": "stage6.materialize_semantic_lineage_and_stage7_selector",
+                    "id": "stage5.materialize_semantic_lineage_and_stage6_selector",
                     "stage": "verification_artifacts",
                     "action_type": "verification_gate_dag_refinement",
                 },
                 {
-                    "id": "stage6.materialize_exact_board_backend_runtime_lineage",
+                    "id": "stage5.materialize_exact_board_backend_runtime_lineage",
                     "stage": "verification_artifacts",
                     "action_type": "board_and_backend_gate_dag_refinement",
                 },
                 {
-                    "id": "stage6.validate_and_promote_refined_contract",
+                    "id": "stage5.validate_and_promote_refined_contract",
                     "stage": "verification_artifacts",
                     "action_type": "stage_contract_validation",
                 },
@@ -479,7 +465,7 @@ class ThirdLayerProducerOrderTest(TestCase):
                 ],
                 "debug_closure_contract": {},
             }
-            materialization = write_stage6_refinement_artifacts(
+            materialization = write_stage5_refinement_artifacts(
                 out_dir,
                 {},
                 {},
@@ -508,25 +494,25 @@ class ThirdLayerProducerOrderTest(TestCase):
             self.assertEqual(materialization["status"], "ready")
             self.assertEqual(stage_worker_errors(planner_output, {}, materialization), [])
             coverage = json.loads(
-                Path(materialization["artifacts"]["stage6_action_materialization_coverage"]).read_text(
+                Path(materialization["artifacts"]["stage5_action_materialization_coverage"]).read_text(
                     encoding="utf-8"
                 )
             )
             self.assertEqual(coverage["status"], "ready")
             self.assertTrue(all(row["status"] == "pass" for row in coverage["actions"]))
 
-    def test_unknown_stage6_refinement_action_cannot_be_claimed_materialized(self) -> None:
+    def test_unknown_stage5_refinement_action_cannot_be_claimed_materialized(self) -> None:
         planner_output = {
-            "status": "refinement_required_before_stage7",
+            "status": "refinement_required_before_stage6",
             "risks": [],
             "executable_actions": [
-                {"id": "stage6.unknown", "stage": "verification_artifacts", "action_type": "unknown_contract_change"}
+                {"id": "stage5.unknown", "stage": "verification_artifacts", "action_type": "unknown_contract_change"}
             ],
         }
         with TemporaryDirectory() as temp_dir:
             out_dir = Path(temp_dir) / "verification_artifacts"
             dag = build_verification_gate_dag({}, Path(temp_dir))
-            materialization = write_stage6_refinement_artifacts(
+            materialization = write_stage5_refinement_artifacts(
                 out_dir,
                 {},
                 {},

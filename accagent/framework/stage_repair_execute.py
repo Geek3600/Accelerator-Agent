@@ -1,4 +1,4 @@
-"""Execute bounded repair workflow steps produced by Stage 8."""
+"""Execute bounded repair workflow steps produced by Stage 6."""
 
 from __future__ import annotations
 
@@ -82,13 +82,30 @@ from accagent.framework.semantic_simulator import (
     source_memory_init_contract,
 )
 from accagent.framework.simulation_checkpoint import (
-    checkpoint_contract_errors,
-    checkpoint_generation_authority,
+    checkpoint_request_errors,
+    checkpoint_request_projection,
     persist_checkpoint_request,
-    prepare_checkpoint_debug_episode,
     prepare_checkpoint_request,
-    rebind_checkpoint_framework_adapter_artifacts,
     simulation_execution_identity,
+)
+from accagent.framework.fast_replay import (
+    STABLE_CHECKPOINT_CUT,
+    fast_replay_request_path,
+    fast_replay_state_path,
+    read_fast_replay_state,
+    stable_checkpoint_lifecycle,
+    update_fast_replay_state,
+    validate_fast_replay_state,
+)
+from accagent.framework.fpga_ip_contract import check_fpga_ip_simulation_closure
+from accagent.framework.live_state import (
+    activate_live_state_slot,
+    update_live_state_slot,
+)
+from accagent.framework.runtime_observation import (
+    catalog_prompt_projection,
+    load_or_build_compiled_signal_catalog,
+    runtime_observation_selection,
 )
 from accagent.framework.stage_llm import (
     FRAMEWORK_VCS_COMMAND_CWD,
@@ -104,11 +121,7 @@ from accagent.framework.verification_evidence_contract import (
 from scripts.verification.external_simulation_fixture import (
     materialize_external_simulation_fixture,
 )
-from scripts.verification.case_board_vcs_functional import (
-    materialize_current_checkpoint_calibration_failure,
-    pending_same_source_checkpoint_calibration,
-    summarize_boundary_trace_observations,
-)
+from scripts.verification.case_board_vcs_functional import summarize_boundary_trace_observations
 from scripts.verification.semantic_testbench_generator import connected_loader_route_errors
 
 
@@ -480,21 +493,8 @@ IMPLEMENTATION_REPAIR_SCHEMA = {
                                         "name": {"type": "string"},
                                         "role": {
                                             "type": "string",
-                                            "enum": [
-                                                "control",
-                                                "state",
-                                                "queue",
-                                                "backpressure",
-                                                "buffer",
-                                                "counter",
-                                                "start_end",
-                                                "scheduler",
-                                                "memory",
-                                                "error",
-                                                "data_status",
-                                                "timing",
-                                                "other",
-                                            ],
+                                            "minLength": 1,
+                                            "maxLength": 160,
                                         },
                                         "expression": {"type": "string"},
                                         "unavailable_reason": {"type": "string"},
@@ -513,7 +513,7 @@ IMPLEMENTATION_REPAIR_SCHEMA = {
                         ],
                     },
                 },
-    "stage_internal_signal_plan": {
+                "stage_internal_signal_plan": {
                     "type": "array",
                     "items": {
                         "type": "object",
@@ -537,21 +537,8 @@ IMPLEMENTATION_REPAIR_SCHEMA = {
                                         "name": {"type": "string"},
                                         "role": {
                                             "type": "string",
-                                            "enum": [
-                                                "control",
-                                                "state",
-                                                "queue",
-                                                "backpressure",
-                                                "buffer",
-                                                "counter",
-                                                "start_end",
-                                                "scheduler",
-                                                "memory",
-                                                "error",
-                                                "data_status",
-                                                "timing",
-                                                "other",
-                                            ],
+                                            "minLength": 1,
+                                            "maxLength": 160,
                                         },
                                         "expression": {"type": "string"},
                                         "unavailable_reason": {"type": "string"},
@@ -567,21 +554,8 @@ IMPLEMENTATION_REPAIR_SCHEMA = {
                                     "properties": {
                                         "role": {
                                             "type": "string",
-                                            "enum": [
-                                                "control",
-                                                "state",
-                                                "queue",
-                                                "backpressure",
-                                                "buffer",
-                                                "counter",
-                                                "start_end",
-                                                "scheduler",
-                                                "memory",
-                                                "error",
-                                                "data_status",
-                                                "timing",
-                                                "other",
-                                            ],
+                                            "minLength": 1,
+                                            "maxLength": 160,
                                         },
                                         "unavailable_reason": {"type": "string"},
                                     },
@@ -596,6 +570,54 @@ IMPLEMENTATION_REPAIR_SCHEMA = {
                             "diagnostic_sources",
                         ],
                     },
+                },
+                "observation_delta": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "missing_distinction": {"type": "string"},
+                        "candidate_root_causes": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "new_signal_expressions": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "expected_signal_patterns": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "candidate_cause_checks": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "properties": {
+                                    "cause": {"type": "string"},
+                                    "signal_expressions": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                    "expected_pattern": {"type": "string"},
+                                    "disambiguates": {"type": "string"},
+                                },
+                                "required": [
+                                    "cause",
+                                    "signal_expressions",
+                                    "expected_pattern",
+                                    "disambiguates",
+                                ],
+                            },
+                        },
+                    },
+                    "required": [
+                        "missing_distinction",
+                        "candidate_root_causes",
+                        "new_signal_expressions",
+                        "expected_signal_patterns",
+                        "candidate_cause_checks",
+                    ],
                 },
                 "probe_plan": {
                     "type": "object",
@@ -892,7 +914,9 @@ SEMANTIC_TEMPLATE_REPAIR_PHASES = [
         "required_bundle_paths": [
             "transcendental_approximation_contract.json",
             "exp2_fraction_q24.memh",
+            "exp2_fraction_q24.mem",
             "sigmoid_pwl_q18.memh",
+            "sigmoid_pwl_q18.mem",
         ],
     },
     {
@@ -916,6 +940,7 @@ SEMANTIC_TEMPLATE_REPAIR_PHASES = [
         "required_bundle_paths": [
             "transcendental_approximation_contract.json",
             "exp2_fraction_q24.memh",
+            "exp2_fraction_q24.mem",
             "semantic_runtime_constant_contract.json",
             "self_attention_runtime_constants.u32.memh",
         ],
@@ -3802,11 +3827,9 @@ def checkpoint_framework_authority_rebind_status(
         current_provenance.get("record_path") != archived_record
         or current_provenance.get("prompt_path") != archived_prompt
         or current_provenance.get("attestation")
-        != "archived_agent_patch_application"
+        != str(archived_provenance.get("attestation") or "")
     )
-    adapter_rebind_required = (
-        binding.get("status") == "pass" and binding.get("changed") is True
-    )
+    adapter_rebind_required = False
     recovery_required = adapter_rebind_required or provenance_rebind_required
     return {
         "schema_version": (
@@ -3852,20 +3875,17 @@ def checkpoint_hook_prompt_rules() -> list[str]:
         "Treat debug_episode as framework-owned lifetime authority. This turn repairs or certifies the one pending checkpoint for that already-admitted long-running bug; do not request a fresh checkpoint per repair iteration, change the episode identity, or create a second state point. After same-source certification the framework reuses it until workload/schema/directed-cut eligibility is invalidated or a full-cold run closes the bug.",
         "Set the output identity exactly: agent=exact_board_integration_generation_agent and stage=repair_execution. The stage field is the framework lifecycle stage, not a semantic name for this checkpoint subtask.",
         "Return status=ready_to_apply only with exactly two atomic edits: the required merge_json manifest patch and the required replace_text current-testbench patch. Use their exact supplied paths and SHA-256 values. Return no wrapper, accelerator, operator, checker, golden, workload, framework-adapter, or production-RTL edit.",
-        "For merge_json use content='' and json_content rooted at board_simulation_preflight_plan.testbench.simulation_checkpoint_contract. Copy every invariant field from checkpoint_authority.required_manifest_contract and fill only its adaptive DUT root from the current top and sole DUT instance. Preserve all omitted manifest siblings. The framework treats this merge as intent, deterministically replaces the complete supplied checkpoint-contract patch with its current authority-exact object before materialization, and records any normalization; framework-owned adapter paths and hashes are never LLM-writable.",
+        "For merge_json use content='' and json_content rooted at board_simulation_preflight_plan.testbench.simulation_checkpoint_contract. Copy every invariant field from checkpoint_authority.required_manifest_contract and preserve all omitted manifest siblings. The framework materializes the current native VCS save/restore contract before execution.",
         "For the non-JSON testbench use operation=replace_text, content='', and one or more verbatim nonempty old_text/new_text pairs from current_testbench_source.content. Every old_text must occur exactly once in the original source and replacements must not overlap. Do not resend the complete unchanged testbench.",
         "When current_patch_application_feedback.status=ready, no prior edit was written. Treat its deterministic materializer blockers as the highest-priority output-contract evidence, correct the rejected replace_text transaction against the unchanged current source and hashes, and do not repeat overlapping, ambiguous, malformed, or otherwise rejected anchors.",
-        "Implement executable calls to only the framework-owned three-string-argument $spatialacc_state_capture and $spatialacc_state_restore functions. Never edit, inline, recreate, or replace the VPI adapter.",
-        "Parse every checkpoint mode, request/cut hash, DUT root, state path, report path, restore identity, equivalence-probe flag and adaptive cut field from checkpoint_authority.agent_owned.framework_runtime_plusarg_abi at simulator runtime. Never embed the current request hash, cut values, cycle, or artifact path as generated constants.",
-        "At capture, flush committed progress evidence first, wait the requested settle interval, and record the factual sequence/cycle. Emit the explicit AXI read/write outstanding, pending-response and event-queue-quiescence evidence. Prefer an earlier complete quiescent boundary before downstream cfg/preload/token pulses; never jump directly to the visible failure state.",
+        "Use only the native VCS checkpoint hook: when +SPATIALACC_NATIVE_CHECKPOINT_CAPTURE is present, stop after the last weight beat has been accepted and before the first token is accepted. Flush the current progress and boundary logs before stopping. Do not implement VPI state enumeration, custom state files, request hashes, restore reports, or equivalence checks.",
         "When capability_gap.runtime_execution_failure.status=ready, a hash-bound real VCS run already observed the requested semantic trigger but produced no passing capture/restore artifacts. Treat that as the primary checkpoint-hook failure, inspect the complete current testbench and runtime request facts, repair only the checkpoint contract/hook, and preserve the simultaneous hardware-stall evidence for a later hardware-repair turn.",
         "When capability_gap.runtime_execution_failure.restored_semantic_suffix_materialization.status=fail, treat its source hash, invalid_records, bounded raw_preview and parse errors as higher-priority factual evidence than derivative missing-suffix errors. Repair the exact lossless JSON serialization or restored external-state mismatch exposed there; never manufacture, normalize, omit or waive a malformed record.",
         "When the framework equivalence report contains semantic_record_diff.status=different, treat its bounded JSON-pointer field differences as the primary factual cold-versus-restore state evidence. Repair the missing lossless state capture/replay or evidence timing; never normalize, omit, or waive those differing fields to manufacture equivalence.",
         "When the framework equivalence report contains live_state_witness_diff.status=different or either live-state witness is unavailable, treat the first factual non-checkpoint event strictly after the capture anchor as the primary proof of actual restored state. A serialized/replayed checkpoint_quiescent_barrier is not a live witness. Repair complete DUT/testbench state and event scheduling capture/restore so the cold and restored witness records match field-for-field; never replay, normalize, suppress, or relabel evidence to manufacture this match.",
         "When capability_gap.runtime_execution_failure.restore_runtime_failure_evidence.status=observed, its hash-bound failure_lines contain an actual fatal/error diagnostic; treat them and the bounded log tail as higher-priority evidence than derivative missing-report or missing-suffix errors. A checkpoint PASS marker alone is informational and never counts as a runtime failure. Repair the exact runtime failure and never infer a timeout or silent wait when the real simulator emitted a fatal diagnostic.",
-        "Save every mutable DUT state through VPI and losslessly serialize the current testbench external state: AXI/DDR memory deltas, outstanding and pending transactions/responses, queues and associative arrays, deterministic RNG/delay state, counters, mutable evidence offsets and open-file state. Reference immutable hash-bound input, weight and runtime images instead of copying their bytes into every capsule.",
-        "On restore, rebuild immutable file-backed memory from the unchanged artifacts, apply the captured mutable DDR delta, restore pending protocol/testbench state and file offsets, truncate or redirect mutable evidence so the restored suffix is isolated, restore the DUT at a quiescent barrier, and then let real RTL regenerate all downstream control pulses. Do not inject protocol stimulus or bypass the DUT.",
-        "Emit only factual capture/restore reports with every field named by checkpoint_authority.agent_owned. Never emit an equivalence pass or certificate; the framework alone hashes executed cold/restored suffixes and signs that result.",
+        "VCS owns the complete simulator state. Do not serialize or restore DUT, AXI/DDR, file, queue, clock, random, monitor, or evidence state in SystemVerilog. Do not inject protocol stimulus or bypass the DUT.",
+        "Emit only the native ready marker before $stop. The framework owns VCS save, restore, and the post-restore progress check.",
         "Keep requested_validation=[], blocked_reasons=[], and approval_required_for=[] for a complete patch; deterministic source preflight, VCS compilation, cold capture and serial restore calibration are framework-owned. If an exact current fact is objectively absent, return status=blocked with no file_edits and name only that fact.",
         "Do not claim checkpoint, VCS, simulation, hardware, or layer-3 pass. A checkpoint remains candidate-screening evidence and a complete cold exact-board VCS run is still required for final stage acceptance.",
         "Return one valid JSON object only. Do not expose drafting notes, self-correction text, Markdown, ellipses, or prose outside schema fields.",
@@ -4393,6 +4413,10 @@ def retryable_current_exact_board_generation_record(
             # The old transaction only repeated endpoint counters and could
             # never improve the next run.  Force a fresh Agent decision so it
             # can inspect the current hierarchy and add real internal signals.
+            return None
+        if not _adaptive_observation_has_causal_delta(decision):
+            # Legacy observation transactions predate the causal deepening
+            # contract and must not bypass a fresh current-evidence turn.
             return None
         # A narrow text edit can become stale after a prior observation was
         # materialized.  Do not replay it into the same source and produce a
@@ -5370,20 +5394,6 @@ def frozen_compute_slot_repair_compile_authority(
     return projection, []
 
 
-def _checkpoint_command_plusargs(command: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return values
-    for token in tokens:
-        if not token.startswith("+SPATIALACC_CHECKPOINT_") or "=" not in token:
-            continue
-        key, value = token[1:].split("=", 1)
-        values[key] = value
-    return values
-
-
 def _checkpoint_trigger_observation(
     progress_path: Path,
     trigger: dict[str, Any],
@@ -5430,175 +5440,6 @@ def _checkpoint_trigger_observation(
         "observed_trigger": observed_trigger,
         "invalid_record_count_before_match": invalid_record_count,
     }
-
-
-def _historical_checkpoint_runtime_capability_failure(
-    run_dir: Path,
-    checkpoint_request: dict[str, Any],
-) -> dict[str, Any]:
-    semantic_cut = (
-        checkpoint_request.get("semantic_cut", {})
-        if isinstance(checkpoint_request.get("semantic_cut"), dict)
-        else {}
-    )
-    current_cut_sha256 = str(semantic_cut.get("cut_sha256") or "")
-    board_manifest = read_json_if_exists(
-        run_dir
-        / "verification"
-        / "board_simulation"
-        / "board_simulation_manifest.json"
-    )
-    testbench = (
-        board_manifest.get("testbench", {})
-        if isinstance(board_manifest.get("testbench"), dict)
-        else {}
-    )
-    testbench_path = Path(str(testbench.get("path") or ""))
-    if not testbench_path.is_absolute():
-        testbench_path = Path.cwd() / testbench_path
-    testbench_path = testbench_path.resolve()
-    if not current_cut_sha256 or not testbench_path.is_file():
-        return {}
-    current_testbench_sha256 = sha256_file(testbench_path)
-
-    adapter_root = Path(__file__).resolve().parent / "simulator_adapters"
-    current_adapter_hashes = {
-        f"checkpoint/adapter/{path.name}": sha256_file(path)
-        for path in (
-            adapter_root / "vcs_state_checkpoint_vpi.c",
-            adapter_root / "vcs_state_checkpoint_vpi.tab",
-        )
-        if path.is_file()
-    }
-    report_paths = sorted(
-        (
-            run_dir / "repair_execution" / "loop"
-        ).glob("iteration_*/*capability_report_case_board_vcs_functional.json"),
-        reverse=True,
-    )
-    remote_root = run_dir / "verification" / "remote_artifacts" / "board_vcs"
-    for report_path in report_paths:
-        runner = read_json_if_exists(report_path)
-        execution = (
-            runner.get("checkpoint_execution", {})
-            if isinstance(runner.get("checkpoint_execution"), dict)
-            else {}
-        )
-        artifacts = (
-            runner.get("checkpoint_artifacts", {})
-            if isinstance(runner.get("checkpoint_artifacts"), dict)
-            else {}
-        )
-        if (
-            execution.get("enabled") is not True
-            or execution.get("mode") != "cold_capture"
-            or artifacts.get("status") != "fail"
-        ):
-            continue
-        fingerprint = str(runner.get("input_fingerprint_sha256") or "")
-        artifact_root = remote_root / fingerprint
-        job_contract_path = artifact_root / "job_contract.json"
-        job_contract = read_json_if_exists(job_contract_path)
-        plusargs = _checkpoint_command_plusargs(
-            str(job_contract.get("simulate_command") or "")
-        )
-        if (
-            plusargs.get("SPATIALACC_CHECKPOINT_REQUEST_SHA256")
-            != execution.get("request_sha256")
-        ):
-            continue
-        historical_cut_sha256 = str(
-            plusargs.get("SPATIALACC_CHECKPOINT_SEMANTIC_CUT_SHA256") or ""
-        )
-        if not historical_cut_sha256:
-            continue
-        payload_hashes = {
-            str(row.get("path")): str(row.get("sha256"))
-            for row in job_contract.get("payload", [])
-            if isinstance(row, dict) and row.get("path") and row.get("sha256")
-        }
-        staged_testbench_sha256 = payload_hashes.get(
-            f"sources/{testbench_path.name}"
-        )
-        if staged_testbench_sha256 != current_testbench_sha256:
-            continue
-        if any(
-            payload_hashes.get(path) != digest
-            for path, digest in current_adapter_hashes.items()
-        ):
-            continue
-
-        trigger = {
-            "sequence": plusargs.get("SPATIALACC_CHECKPOINT_CUT_SEQUENCE"),
-            "cycle": plusargs.get("SPATIALACC_CHECKPOINT_CUT_CYCLE"),
-            "phase": plusargs.get("SPATIALACC_CHECKPOINT_CUT_PHASE"),
-            "event_kind": "semantic_progress",
-            "layer": plusargs.get("SPATIALACC_CHECKPOINT_CUT_LAYER"),
-            "token": plusargs.get("SPATIALACC_CHECKPOINT_CUT_TOKEN"),
-            "beat": plusargs.get("SPATIALACC_CHECKPOINT_CUT_BEAT"),
-            "stage_or_boundary": None,
-        }
-        for field in ("sequence", "cycle", "layer", "token", "beat"):
-            try:
-                trigger[field] = int(str(trigger[field]), 10)
-            except (TypeError, ValueError):
-                trigger[field] = None
-        progress_path = artifact_root / "evidence" / "003_progress_event_log.jsonl"
-        trigger_observation = _checkpoint_trigger_observation(
-            progress_path,
-            trigger,
-        )
-        if trigger_observation.get("status") != "observed":
-            continue
-        errors = [
-            str(value) for value in artifacts.get("errors", []) if str(value)
-        ]
-        return {
-            "schema_version": (
-                "spatialaccagent.simulation_checkpoint_runtime_capability_failure.v1"
-            ),
-            "status": "ready",
-            "source": "content_addressed_historical_hook_identity",
-            "failure_class": "simulation_checkpoint_capability_missing_or_invalid",
-            "summary": (
-                "a hash-bound prior real VCS run observed the semantic trigger under "
-                "the unchanged checkpoint hook and adapter but capture artifacts failed"
-            ),
-            "mode": "cold_capture",
-            "request_sha256": execution.get("request_sha256"),
-            "current_request_sha256": checkpoint_request.get("request_sha256"),
-            "semantic_cut_sha256": historical_cut_sha256,
-            "historical_semantic_cut_sha256": historical_cut_sha256,
-            "current_semantic_cut_sha256": current_cut_sha256,
-            "runner_phase": runner.get("phase"),
-            "remote_tool_was_started": True,
-            "input_fingerprint_sha256": fingerprint,
-            "remote_workdir": runner.get("remote_workdir"),
-            "runner_report": {
-                "path": str(report_path),
-                "sha256": sha256_file(report_path),
-            },
-            "job_contract": {
-                "path": str(job_contract_path),
-                "sha256": sha256_file(job_contract_path),
-            },
-            "hook_identity": {
-                "testbench_path": str(testbench_path),
-                "testbench_sha256": current_testbench_sha256,
-                "adapter_sha256": current_adapter_hashes,
-            },
-            "trigger_observation": trigger_observation,
-            "checkpoint_artifact_errors": errors,
-            "checkpoint_artifacts": copy.deepcopy(artifacts),
-            "policy": {
-                "hardware_failure_evidence_remains_primary": True,
-                "checkpoint_failure_disables_reuse_only": True,
-                "historical_reuse_requires_unchanged_testbench_and_adapter": True,
-                "semantic_cut_change_never_reuses_state_but_does_not_repair_an_unchanged_runtime_parameterized_hook": True,
-                "cold_capture_trigger_observation_required": True,
-            },
-        }
-    return {}
 
 
 def simulation_checkpoint_runtime_capability_failure(
@@ -5654,26 +5495,9 @@ def simulation_checkpoint_runtime_capability_failure(
         execution.get("enabled") is not True
         or artifacts.get("status") != "fail"
     ):
-        return (
-            _historical_checkpoint_runtime_capability_failure(
-                run_dir,
-                checkpoint_request,
-            )
-            or base
-        )
+        return base
 
     request_sha256 = str(checkpoint_request.get("request_sha256") or "")
-    if not request_sha256 or execution.get("request_sha256") != request_sha256:
-        return _historical_checkpoint_runtime_capability_failure(
-            run_dir,
-            checkpoint_request,
-        ) or {
-            **base,
-            "status": "stale",
-            "summary": "failed checkpoint artifacts do not bind the current request",
-            "executed_request_sha256": execution.get("request_sha256"),
-            "current_request_sha256": request_sha256 or None,
-        }
 
     semantic_cut = (
         checkpoint_request.get("semantic_cut", {})
@@ -5695,10 +5519,7 @@ def simulation_checkpoint_runtime_capability_failure(
     mode = str(execution.get("mode") or artifacts.get("mode") or "")
     trigger_observation = _checkpoint_trigger_observation(progress_path, trigger)
     if mode == "cold_capture" and trigger_observation.get("status") != "observed":
-        return _historical_checkpoint_runtime_capability_failure(
-            run_dir,
-            checkpoint_request,
-        ) or {
+        return {
             **base,
             "status": "not_observed",
             "summary": (
@@ -5731,7 +5552,7 @@ def simulation_checkpoint_runtime_capability_failure(
         "policy": {
             "hardware_failure_evidence_remains_primary": True,
             "checkpoint_failure_disables_reuse_only": True,
-            "current_request_hash_match_required": True,
+            "historical_request_hashes_are_diagnostic_only": True,
             "cold_capture_trigger_observation_required": True,
         },
     }
@@ -5777,7 +5598,7 @@ def board_integration_repair_context(
         run_dir / "verification" / "debug_closure" / "boundary_contracts.json"
     )
     try:
-        certificate_path = artifact_path(state, "artifact.stage7.single_layer_promotion_certificate")
+        certificate_path = artifact_path(state, "artifact.stage6.single_layer_promotion_certificate")
     except Exception:
         certificate_path = Path()
 
@@ -6184,142 +6005,13 @@ def board_integration_repair_context(
             debug_boundary_path,
             debug_boundary_contracts,
         ),
-        "simulation_checkpoint_policy": {
-            "status": "optional_acceleration",
-            "ordinary_hardware_repair_owns_current_turn": (
-                not explicit_checkpoint_maintenance
-            ),
-            "explicit_maintenance_requested": explicit_checkpoint_maintenance,
-            "checkpoint_failure_never_blocks_hardware_repair": True,
-            "cold_fallback_without_current_certificate": True,
-            "full_cold_exact_board_vcs_required_for_acceptance": True,
+        "fast_replay_execution": {
+            "status": "execution_only",
+            "fixed_cut": STABLE_CHECKPOINT_CUT,
+            "llm_visible": False,
+            "runtime_signal_selection_changes_compiled_model": False,
         },
     }
-    if explicit_checkpoint_maintenance:
-        checkpoint_debug_episode = prepare_checkpoint_debug_episode(run_dir)
-        checkpoint_episode_active = checkpoint_debug_episode.get("status") == "active"
-        if checkpoint_episode_active:
-            try:
-                checkpoint_request = prepare_checkpoint_request(
-                    run_dir,
-                    debug_episode=checkpoint_debug_episode,
-                )
-                checkpoint_request_path = persist_checkpoint_request(
-                    run_dir,
-                    checkpoint_request,
-                    label="agent_context",
-                )
-            except (OSError, ValueError, TypeError) as exc:
-                checkpoint_request = {
-                    "status": "blocked",
-                    "summary": f"checkpoint request preparation failed closed: {exc}",
-                }
-                checkpoint_request_path = None
-        else:
-            checkpoint_request = {
-                "status": "not_required",
-                "summary": (
-                    "the current failure has not met both long-reproduction and "
-                    "repeated-unresolved checkpoint episode thresholds"
-                ),
-                "debug_episode": checkpoint_debug_episode,
-            }
-            checkpoint_request_path = None
-        simulation_checkpoint_authority = checkpoint_generation_authority(
-            run_dir,
-            checkpoint_request,
-        )
-        simulation_checkpoint_authority["current_request_artifact"] = {
-            "path": str(checkpoint_request_path) if checkpoint_request_path else None,
-            "sha256": (
-                sha256_file(checkpoint_request_path)
-                if checkpoint_request_path is not None
-                and checkpoint_request_path.is_file()
-                else None
-            ),
-        }
-        board_manifest_for_checkpoint = read_json_if_exists(
-            run_dir
-            / "verification"
-            / "board_simulation"
-            / "board_simulation_manifest.json"
-        )
-        checkpoint_contract_for_context = (
-            board_manifest_for_checkpoint.get("testbench", {}).get(
-                "simulation_checkpoint_contract", {}
-            )
-            if isinstance(board_manifest_for_checkpoint.get("testbench"), dict)
-            else {}
-        )
-        checkpoint_runtime_failure = (
-            simulation_checkpoint_runtime_capability_failure(
-                run_dir,
-                checkpoint_request,
-            )
-            if checkpoint_episode_active
-            else {
-                "status": "not_required",
-                "summary": "no active long-bug checkpoint episode",
-            }
-        )
-        checkpoint_capability_gap = {
-            "status": (
-                "ready_for_capability_repair"
-                if checkpoint_episode_active
-                else "not_required_for_current_failure"
-            ),
-            "contract_errors": (
-                checkpoint_contract_errors(checkpoint_contract_for_context)
-                if checkpoint_episode_active
-                else []
-            ),
-            "runtime_execution_failure": checkpoint_runtime_failure,
-            "first_real_error_class": (
-                "simulation_checkpoint_capability_missing_or_invalid"
-            ),
-            "atomic_manifest_merge": {
-                "operation": "merge_json",
-                "target_path": str(binding_path),
-                "expected_sha256": (
-                    sha256_file(binding_path) if binding_path.is_file() else None
-                ),
-                "json_pointer": (
-                    "/board_simulation_preflight_plan/testbench/"
-                    "simulation_checkpoint_contract"
-                ),
-                "value_authority": (
-                    "adaptive_design_inputs.simulation_checkpoint_authority."
-                    "required_manifest_contract"
-                ),
-                "agent_must_fill_adaptive_fields": [
-                    "portable_state_capsule.dut_state_root"
-                ],
-                "must_be_atomic_with_current_testbench_hook_edit": True,
-                "human_approval_required": False,
-                "framework_preserves_unmentioned_manifest_fields": True,
-            },
-            "policy": {
-                "checkpoint_failure_never_blocks_hardware_repair": True,
-                "cold_fallback_is_default_without_certificate": True,
-                "simulation_only_no_synthesis_impact": True,
-                "explicit_checkpoint_maintenance_required_for_hook_repair": True,
-                "preserve_simultaneous_hardware_failure_evidence": True,
-                "checkpoint_capability_is_optional_repair_acceleration": True,
-            },
-        }
-        if (
-            checkpoint_episode_active
-            and not checkpoint_capability_gap["contract_errors"]
-            and checkpoint_runtime_failure.get("status") != "ready"
-        ):
-            checkpoint_capability_gap["status"] = "ready"
-        adaptive_design_inputs.update(
-            {
-                "simulation_checkpoint_authority": simulation_checkpoint_authority,
-                "simulation_checkpoint_debug_episode": checkpoint_debug_episode,
-                "simulation_checkpoint_capability_gap": checkpoint_capability_gap,
-            }
-        )
     fixture_artifact = external_fixture_preparation.get("artifact", {})
     if (
         external_fixture_preparation.get("status") == "pass"
@@ -6391,25 +6083,30 @@ def board_integration_prompt_rules(generation_mode: str = "create") -> list[str]
             "Derive every layer, tensor transfer, address, output count, reset/reload sequence, and runtime-constant load from the validated board_memory_runtime_contract, full real-weight/runtime artifacts, certified kernel interface, and artifact.input.task_card.acceptance_policy. Do not hardcode model, board, layer, tensor, address, or timing constants. When board_validation_mode=full_model_pipeline_liveness and numeric_golden_match_required=false, retain target-model golden artifacts and mismatch metrics as immutable diagnostic evidence, but do not gate board pass on numeric equality or tolerance. Gate pass on current-contract-derived completion of every validation-scope layer, complete real runtime/weight consumption, token-level pipeline overlap, final AXI/DDR writeback, and valid known final-output transfers. A nonzero output lane is a positive witness, but a valid known transfer is sufficient. Never hard-code a model family or layer count.",
             "Implement the complete scoped layer schedule: retain two atomic weight banks (two physical weight banks), activation ping-pong, complete runtime/weight reload before each kernel start, committed output writes before bank ownership changes, and final-layer-only output writeback. Require next-layer prefetch overlapping current compute and atomic bank switching only when connected_kernel_lifecycle_authority.requires_next_layer_prefetch=true; otherwise emit the terminal one-layer schedule with prefetch disabled and no bank switch.",
             "Set board_simulation_preflight_plan.validation_mode to compute_slot_axi. The generated testbench must use the real discovered compute-slot ABI and a contract-driven AXI memory model with all five AXI channels, backpressure, ordering, bursts, responses, calibration gating, real staged inputs/weights/runtime image, target-model golden comparison, and no fixed completion timeout.",
+            "Add a synthesizable 64-bit task-cycle counter to the generated board scheduler. Derive its accepted start event and full-task completion event from the current runtime/board contract, expose a valid flag plus the latched cycle count, and make the testbench write reports/performance_counter_report.json with latency_cycles and processed_tokens. This report is Stage 7 measurement evidence only: it must not alter functional acceptance, adaptive debug-signal selection, or fast replay.",
         "Add testbench-only observational progress events and debug probes from the supplied debug-observability authority. Core principle: include as many key signals as the current hierarchy really exposes. For every listed boundary, bind every real scalar signal that can help explain control state, operator state, queue or buffer occupancy, local backpressure, scheduler or memory movement, bank ownership, AXI handshake/outstanding/error state, timing, or data validity; never reduce the set merely to shorten the prompt or result. Also declare and implement the current pipeline_boundary_observation_authority for every current-DAG boundary: capture valid, ready, whether a transfer happened, accepted-count, and first/last accepted payload digest. The coverage must be temporal, not a one-time snapshot: for every directly observable boundary, record each token's first and last transferred beat, record the first waiting state after upstream progress when that boundary does not transfer, and record a final summary. Include token, beat, start, last, valid, ready, fire, received count, current payload unknown/digest, waiting state, and first/last accepted payload information in every transfer or waiting record when the source exposes it. In addition, derive the actual compute stages from the current pipeline graph and return stage_internal_signal_plan with exactly one row per stage. Each row must list its current input and output boundaries and every useful scalar signal visible inside that stage, covering operator state, queue/buffer, backpressure, counters, start/end, scheduler, memory, error, timing, and data status. Use unavailable_roles with a concrete reason only for categories that the current hierarchy truly does not expose. Use exact signals from the current generated DUT hierarchy only; do not invent model-specific names. Keep observations sparse at meaningful transitions rather than dumping a raw per-cycle waveform or payload vectors. These observations must not add synthesizable state/ports or drive DUT signals; extra diagnostics are for root-cause analysis only and never change functional acceptance.",
             "Do not impose an arbitrary count ceiling on diagnostic_sources. For each boundary, inspect the current hierarchy and bind every real key scalar that helps explain control state, queue/buffer state, backpressure, scheduling, memory movement, AXI state, error state, or data validity. The observation summary preserves all declared key signals and all emitted key transition records; do not omit a real useful signal merely to make the plan shorter. Raw payload vectors and every-cycle waveform dumping remain excluded.",
+            "Observation deepening is a causal walk, not a signal-count exercise. In the adaptive_observation_decision, fill observation_delta with missing_distinction, candidate_root_causes, new_signal_expressions, expected_signal_patterns, and candidate_cause_checks. For each candidate cause, name the newly added real DUT signals, the waveform pattern expected if that cause is true, and what other cause that pattern separates. The new signals must be real scalar hierarchy expressions, must be materialized in this same testbench edit, and must have a clear debugging responsibility. Reusing an old signal, changing only its sampling cadence, changing a probe name, or copying an old signal under a new name does not count as deeper observation. There is no fixed number of new signals: add exactly the signals needed to distinguish the current candidates.",
             "Keep Transformer blocks as the accelerator scope. Expected outputs must come from target-model inference on the same immutable checkpoint and stimulus; never use RTL-derived, random, identity, or sampled-weight output as golden data.",
-            "For every Layer-3 decision, make the next action executable. If the current signals prove a safe RTL cause, return status=ready_to_apply with the smallest functional HDL edit and any needed testbench observation edit. If the root cause is not yet distinguishable, do not stop at a bare blocked answer: return status=ready_to_apply with a read-only generated-testbench observation edit and an explicit plan naming the missing distinction, exact current hierarchy signals, trigger window, and expected result. The framework will run that observation plan as the next real Layer-3 VCS epoch and then send only its new signals back to you. Never invent an RTL fix when the evidence does not support one.",
+            "For every Layer-3 decision, make the next action executable. If the current signals prove a safe RTL cause, return status=ready_to_apply with the smallest functional HDL edit. If the root cause is not yet distinguishable, return status=ready_to_apply with file_edits=[] and select the next signals only from compiled_signal_catalog. Put the selected expressions and expected distinctions in adaptive_observation_decision. The executor writes only a runtime selection file, restores the same verified snapshot, and sends only that new signal epoch back to you. Never edit the testbench merely to change observation focus, and never invent an RTL fix when the evidence does not support one.",
             "Return one JSON object only. Do not emit drafting notes, Markdown, ellipses, or human follow-up instructions.",
         ]
     return [
-        "Use the current deterministic preflight failure or real VCS/analyzer failure, the current SACG/CCTG slice, and the complete editable sources as the repair authority. Prior experience is only a hypothesis and never a pass claim. When failed_interventions is present, treat each row as a completed same-source real-tool negative experiment; do not repeat its intervention or a semantic reversal unless the current raw trace refutes that row's real-tool outcome. Added read-only observations alone are not such a refutation. When current_patch_application_feedback contains rejected_prior_failed_board_attempt, the preceding semantic intervention is already disproven by real VCS and no file was written: do not treat it as a mechanical anchor error, return the same intervention, or relaunch its failed source state. Return a causally distinct evidence-supported functional edit plus an observation edit. Do not return status=blocked, request an upstream capability, or defer the code change. Use plain, common words in every human-readable explanation: input, output, data boundary, sent/received, count, first record, last record, and waiting. Keep exact internal identifiers only as evidence locators and immediately add a plain-language explanation. Do not create new user-facing shorthand or uncommon terminology. Analyze internal data-boundary signals before total input/output counts: total counts only describe overall progress and cannot locate a stopped pipeline stage. Every signal analysis must cite at least one exact current internal boundary fact from valid, ready, transfer/fire, accepted count, or first/last payload data, then identify the last boundary still transferring and the first boundary that stopped whenever the evidence permits. Do not justify a repair using only completed-input and zero-output counters. When adaptive_observation_decision_lock is present, it is the only authority for the current observation frontier: copy its frontier_id exactly and use one of its allowed_modes. Historical frontier_id values in repair history, prior probes, or old traces are background only and cannot replace the lock value.",
+        "Use the current deterministic preflight failure or real VCS/analyzer failure, the current SACG/CCTG slice, and the complete editable sources as the repair authority. Prior experience is only a hypothesis and never a pass claim. When failed_interventions is present, treat each row as a completed same-source real-tool negative experiment; do not repeat its intervention or a semantic reversal unless the current raw trace refutes that row's real-tool outcome. Added read-only observations alone are not such a refutation. When current_patch_application_feedback contains rejected_prior_failed_board_attempt, the preceding semantic intervention is already disproven by real VCS and no file was written: do not treat it as a mechanical anchor error, return the same intervention, or relaunch its failed source state. Return either a causally distinct evidence-supported functional edit or a runtime-only observation selection. Do not return status=blocked, request an upstream capability, or defer the next executable action. Use plain, common words in every human-readable explanation: input, output, data boundary, sent/received, count, first record, last record, and waiting. Keep exact internal identifiers only as evidence locators and immediately add a plain-language explanation. Do not create new user-facing shorthand or uncommon terminology. Analyze internal data-boundary signals before total input/output counts: total counts only describe overall progress and cannot locate a stopped pipeline stage. Every signal analysis must cite at least one exact current internal boundary fact from valid, ready, transfer/fire, accepted count, or first/last payload data, then identify the last boundary still transferring and the first boundary that stopped whenever the evidence permits. Do not justify a repair using only completed-input and zero-output counters. When adaptive_observation_decision_lock is present, it is the only authority for the current observation frontier: copy its frontier_id exactly and use one of its allowed_modes. Historical frontier_id values in repair history, prior probes, or old traces are background only and cannot replace the lock value.",
         "Edit only agent-owned generated board-integration sources and the bounded board manifest. Preserve sample-project sources, certified lower-layer sources, real weights/runtime images, target-model golden artifacts, checkers, and framework code byte-for-byte.",
-        "Return the smallest evidence-supported file_edits for the earliest current failure. A proven RTL cause requires a functional HDL edit. An unlocalized cause requires an executable read-only generated-testbench observation edit instead, which must materialize the next-run signal plan in this response. That plan must name the missing distinction, real hierarchy expressions, trigger window, and expected signal pattern. The executor does not generate probes from probe_plan. Do not request an old transaction, old replay, SHA match, manifest-only preflight, or Layer-2 rerun. Auxiliary labels, hashes, predictions, audit fields, and observation metadata must not delay the real-tool rerun.",
-        "Use pipeline_boundary_observation_authority to widen evidence in one real run across every current-DAG boundary, not only the current suspected boundary. Each new Layer-3 run is a fresh signal epoch: discard signal values, snapshots, counters, payload digests, and stage records from prior runs before building the prompt. Keep SACG/CCTG structure and experience separately, but never use old signal values as current evidence. Core principle: the number of key signals should be as large as the real hierarchy supports. Bind at least 500 real scalar signals inside the Transformer-block core, distributed across every compute stage; if the hierarchy exposes more, bind all of them. Bind every real scalar signal that can distinguish operator state, queue/buffer state, backpressure, scheduler, memory movement, bank ownership, AXI, error, timing, or data-validity causes. Each declared boundary needs temporal valid, ready, transfer, accepted-count, and first/last accepted payload-digest coverage, or an explicit unavailable_reason when direct observation is impossible. Also return stage_internal_signal_plan with one row for every compute stage and every useful visible scalar inside that stage. Every expression must be a real current DUT hierarchy signal and must be materialized in the next testbench edit; never guess a path or block solely because the first stop is not yet localized.",
-        "Do not impose an arbitrary count ceiling on diagnostic_sources or stage_internal_signal_plan.diagnostic_sources. Bind every real key scalar visible in the current hierarchy that can distinguish a state, queue/buffer, backpressure, scheduler, memory, AXI, error, timing, or data-validity cause. The summary retains every declared key signal and every emitted key transition record; do not omit useful evidence merely to shorten the result. Do not emit raw payload vectors or a per-cycle waveform.",
-        "When the exact root remains uncertain, return a concrete observation-first plan rather than a bare blocked answer: edit only the generated testbench, bind every useful real scalar signal in the affected and downstream stages, state the missing distinction and trigger window, and define the signal pattern that will support or reject each candidate cause. A current board VCS compile/runtime error may be sent to the Agent with its exact source location and internal signals. Do not request an unchanged-source replay, old transaction, SHA match, manifest-only preflight, checkpoint step, or Layer-2 rerun. Observation logic must be read-only, drive no DUT signal, add no synthesizable state or port, and use no fixed completion timeout.",
+        "Return the smallest evidence-supported action for the earliest current failure. A proven RTL cause requires a functional HDL edit. An unlocalized cause requires file_edits=[] and a runtime-only signal selection from compiled_signal_catalog. That plan must name the missing distinction, catalog signal expressions, trigger window, and expected signal pattern. Do not request an old transaction, old replay, SHA match, manifest-only preflight, or Layer-2 rerun. Auxiliary labels, hashes, predictions, audit fields, and observation metadata must not delay the real-tool rerun.",
+        "When mode=deepen_simulation_observation, treat this as one step in a causal waveform walk. Start at the earliest stopped boundary and inspect the last upstream transfer, current input valid/ready/fire, internal queue or state, output valid/ready/fire, and first downstream receiver. Return observation_delta with missing_distinction, candidate_root_causes, new_signal_expressions, expected_signal_patterns, and candidate_cause_checks. Every selected expression must come from compiled_signal_catalog, file_edits must be empty, and the selection is runtime-only. Each candidate_cause_checks row must map a candidate cause to selected real DUT scalar expressions, state the expected pattern if true, and state which alternative it separates. There is no fixed number of selected signals; choose all catalog signals needed to resolve the current ambiguity, but never return the unchanged prior plan.",
+        "Use pipeline_boundary_observation_authority to widen evidence in one real run across every current-DAG boundary, not only the current suspected boundary. Each new Layer-3 run is a fresh signal epoch: discard signal values, snapshots, counters, payload digests, and stage records from prior runs before building the prompt. Keep SACG/CCTG structure and experience separately, but never use old signal values as current evidence. Select at least 300 real scalar signals from compiled_signal_catalog when that many relevant catalog entries exist, distributed across every compute stage. Prioritize signals that distinguish operator state, queue/buffer state, backpressure, scheduler, memory movement, bank ownership, AXI, error, timing, or data-validity causes. Each declared boundary needs temporal valid, ready, transfer, accepted-count, and first/last accepted payload-digest coverage, or an explicit unavailable_reason when direct observation is impossible. Also return stage_internal_signal_plan with one row for every compute stage and the useful catalog scalars inside that stage. Every expression must be a real compiled catalog entry; never guess a path or edit the testbench solely because the first stop is not yet localized.",
+        "Keep the observation plan focused: retain all boundary handshake fields and at least 300 real core scalars, then include additional scalars only when they can separate current candidate causes. Do not emit raw payload vectors or a per-cycle waveform.",
+        "When the exact root remains uncertain, return a concrete observation-first plan rather than a bare blocked answer: keep file_edits empty, select every useful compiled scalar in the affected and downstream stages, state the missing distinction and sampling window, and define the signal pattern that will support or reject each candidate cause. A current board VCS compile/runtime error may be sent to the Agent with its exact source location and internal signals. Do not request an old transaction, SHA match, manifest-only preflight, checkpoint step, or Layer-2 rerun. Runtime observation selection must not drive DUT signals or change compiled sources.",
         "Preserve the exact discovered compute-slot ABI and complete AXI/DDR behavior, every validation-scope layer, real inputs/weights/runtime constants, target-model golden comparison, and the unchanged acceptance scope. Never use a stub, ideal wrapper, forced signal, sampled weight, or RTL-derived golden output. Honor artifact.input.task_card.acceptance_policy: when board_validation_mode=full_model_pipeline_liveness and numeric_golden_match_required=false, retain target-model golden artifacts and mismatch metrics as immutable diagnostic evidence, but do not gate board pass on numeric equality or tolerance. Gate pass on current-contract-derived completion of every target layer and every validation layer, complete real runtime/weight consumption, token-level pipeline overlap, final AXI/DDR writeback, and valid known final-output transfers. A nonzero output lane is a positive witness, but a valid known transfer is sufficient. Derive every count from the current model/runtime/memory contracts; never hard-code a model family or layer count.",
+        "Preserve or repair the board scheduler's synthesizable task-cycle counter and its structured performance_counter_report.json when the current failure concerns that measurement path. The counter is Stage 7 instrumentation only and must not change functional acceptance, adaptive observation selection, fast replay behavior, scheduling, or data movement.",
         "Preserve one certified connected Transformer-block kernel, its elastic ready/valid token pipeline, two atomic weight banks (two physical weight banks), activation ping-pong, complete reload before each start, committed writes before bank switches, and final-layer-only writeback. Preserve next-layer prefetch and atomic switching only when connected_kernel_lifecycle_authority.requires_next_layer_prefetch=true; a terminal one-layer scope must not fabricate either mechanism.",
         "Keep the passed Layer-2 certificate closed. Use the current Layer-3 internal signals to choose the next observation or repair. Do not rerun or edit Layer 2 because a board source or manifest changed.",
         "For an existing non-JSON source, use exact unique replace_text anchors and omit version fields. Use a complete replace or operation=merge_json only when anchors cannot express the repair; the framework reads the current file and applies the edit. Do not resend metadata-only updates.",
         "Do not modify RTL for API, transport, tool installation, license, simulator-library, or execution-environment failures. Checkpoint handling is framework-owned optional acceleration, never a functional gate, and ordinary repair proceeds without a checkpoint agent turn. Include checkpoint_impact only when explicit_checkpoint_maintenance_requested=true; that optional maintenance may use operation=merge_json, but acceptance still requires a complete cold exact-board VCS run.",
-        "When current_board_vcs_feedback.status=ready, every response must provide a nonempty summary, current root-cause assessment, causal prediction, and adaptive observation decision. If the cause is proven, include the smallest functional HDL edit. If it is not proven, include an executable testbench observation edit and a concrete missing-distinction plan. Return status=ready_to_apply with one JSON object and no drafting prose. The framework applies the chosen edit atomically and reruns the cold exact-board VCS/AXI/DDR chain; only real tool evidence can pass the layer.",
+        "When current_board_vcs_feedback.status=ready, every response must provide a nonempty summary, current root-cause assessment, causal prediction, and adaptive observation decision. If the cause is proven, include the smallest functional HDL edit. If it is not proven, return file_edits=[] and a concrete runtime signal-selection plan from compiled_signal_catalog. Return status=ready_to_apply with one JSON object and no drafting prose. Runtime-only observation selection restores the same verified snapshot; a functional source edit creates one new compiled model and one new reusable snapshot. Only real tool evidence can pass the layer.",
+        "For a deepen_simulation_observation response, the observation_delta is mandatory. Walk from the first stopped boundary backward to the last transferring boundary and forward to the first receiver: compare valid, ready, fire, queue occupancy, state, counters, payload markers, and the downstream handshake. Add signals only when they separate the listed candidate causes. If the current plan already exposes the needed signals, either select the smallest supported RTL repair or explain which existing signal pattern is still ambiguous and add the next causal signal set; never return the same observation plan unchanged.",
     ]
 
 
@@ -6419,11 +6116,11 @@ def board_semantic_rtl_repair_prompt_rules() -> list[str]:
     return [
         "Use only the current internal signal facts, SACG/CCTG frontier, single-layer recheck, and source closure supplied in the repair package. The current board VCS run has already proved the board wrapper, AXI/DDR path, real workload loading, and observation coverage sufficiently to authorize this bounded RTL decision; do not reopen those owners without new evidence.",
         "This is a bounded generated-RTL repair. Edit only the exact files listed in repair_source_bundle.editable_contract.localized_allowed_exact_files. Those files are the current VCS source closure seeded by the observed data boundaries; a generated compute-slot adapter is editable only when its role is explicitly listed in allowed_source_roles.",
-        "Never edit the user sample board wrapper, testbench, protocol monitor, AXI/DDR model, manifests, weights, runtime data, golden data, checkers, framework, or any file outside the supplied closure. Do not add files, ports, probes, or synthesizable debug state.",
+        "Never edit the user sample board wrapper, protocol monitor, AXI/DDR model, manifests, weights, runtime data, golden data, checkers, framework, testbench, or any file outside the supplied closure. When the current evidence cannot localize the first stopped boundary, keep file_edits empty and select the next signals from compiled_signal_catalog. Do not add files, ports, or synthesizable debug state.",
         "Analyze valid, ready, transfer/fire, accepted count, and first/last payload facts before aggregate input/output totals. State the current last transferring boundary and first stopped boundary, then give one causal prediction and one condition that would disprove it.",
         "Return the smallest source-bound repair that can explain the current internal stop. Preserve the external ready/valid ABI, token ordering, elastic backpressure, operator order, real weight/runtime consumption, and all board scheduling behavior. Do not serialize the pipeline or add a whole-sequence barrier.",
         "Every existing-file edit must use operation=replace_text or replace. replace_text must contain unique old_text/new_text pairs. Return complete replacement text when using replace; never return snippets or ellipses.",
-        "If the evidence cannot distinguish a safe RTL cause, return status=ready_to_apply with a generated-testbench observation edit that measures the exact missing distinction. Do not return a bare blocked answer and do not request another control-plane decision.",
+        "If the evidence cannot distinguish a safe RTL cause, return status=ready_to_apply with file_edits=[] and a compiled_signal_catalog selection that measures the exact missing distinction. Do not return a bare blocked answer and do not request another control-plane decision.",
         "Return requested_validation=[] and one JSON object only. Treat final DDR writeback only as end-to-end confirmation, not as the primary root-cause selector: the first internal boundary without full token progress is the repair frontier. The framework reuses an existing passed connected single-layer certificate during this board-only repair loop, then rematerializes bindings and runs exactly one matching real board VCS/AXI/DDR chain. It reruns the connected single-layer check only when no passed certificate exists or SPATIALACC_FORCE_SINGLE_LAYER_GATE=1.",
     ]
 
@@ -6453,8 +6150,8 @@ def exact_board_agent_task(generation_mode: str) -> str:
             "hash-bound deterministic finalizer/preflight failure, or the current real board VCS runner report and "
             "analyzer diagnosis when VCS has started, together with every complete editable generated board source. "
             "When the current real AXI/DDR failure is clear but the first stopped internal module is not uniquely "
-            "localized, return a read-only generated-testbench observation edit covering every current pipeline "
-            "stage and every useful exposed scalar signal, with at least 500 real core scalar signals in total; "
+            "localized, return file_edits=[] and a runtime selection from compiled_signal_catalog covering every current pipeline "
+            "stage and every useful exposed scalar signal, with at least 300 real core scalar signals in total; "
             "do not block solely because localization is incomplete. "
             "Before VCS starts, use the smallest authorized file set to resolve every mutually consistent blocker "
             "whose correction is fully determined by the supplied immutable evidence; do not serialize independent "
@@ -6470,11 +6167,11 @@ def exact_board_agent_task(generation_mode: str) -> str:
         return (
             "Act as the exact-board simulation observation owner for the current real VCS failure. "
             "The current internal boundary evidence is incomplete, so do not repair production RTL. "
-            "Key-signal principle: record as many real, useful internal signals as the current DUT hierarchy exposes; "
-            "do not choose a small fixed sample or omit a useful signal to make the result shorter. The next run "
-            "must bind at least 500 real scalar signals inside the Transformer-block core, distributed across every "
-            "compute stage; if the hierarchy exposes more, bind all of them. "
-            "Return one testbench/observation-source edit that records every currently incomplete "
+            "Key-signal principle: cover every current pipeline stage and bind at least 300 real scalar signals inside "
+            "the Transformer-block core. Prioritize signals that distinguish current candidate causes; include more only "
+            "when they add diagnostic value. "
+            "Use the already compiled broad observation testbench. Return file_edits=[] and select from "
+            "compiled_signal_catalog every signal needed to inspect each currently incomplete "
             "data boundary through the terminal path, including valid, ready, transfer/fire, received "
             "count, start/last, current payload known/unknown, and first/last payload digest facts. At "
             "the same bounded transition points, also record every useful scalar internal signal that is "
@@ -6486,15 +6183,23 @@ def exact_board_agent_task(generation_mode: str) -> str:
             "for every compute stage derived from the current pipeline graph, listing its input/output "
             "boundaries and every useful scalar visible inside that stage. Use unavailable_roles with a "
             "concrete reason only when a category is truly not exposed; use unavailable_reason when a "
-            "boundary category is not present. Materialize every declared stage signal in the same "
-            "testbench edit. At each stage input/output first or last transfer, first waiting state after "
+            "boundary category is not present. Every selected expression must already exist in the compiled "
+            "catalog; unknown expressions are advisory and must not cause a source edit. At each stage input/output first or last transfer, first waiting state after "
             "upstream progress, and terminal summary, write either a `SPATIALACC_STAGE_TRACE` line with "
             "stage, cycle, token, beat, event, signal, and scalar value, or a structured boundary-trace "
             "stage snapshot keyed by the exact stage and signal name. A plan without emitted records is "
             "not an observation. "
+            "Also return observation_delta. It must state the missing distinction in the current evidence, "
+            "the candidate causes being separated, the real DUT signal expressions newly added in this turn, "
+            "the expected signal pattern for each cause, and one candidate_cause_checks row per cause. Each "
+            "check must name the new signals it uses and explain which alternative cause they separate. Do not "
+            "claim deeper observation by changing only a cadence, probe name, source marker, or fixed window; "
+            "do not repeat the prior signal plan. There is no fixed number of new signals: add the smallest set "
+            "that can actually distinguish the current causes, while still satisfying the complete core signal "
+            "coverage required by the observation contract. "
             "Do not guess names, add synthesizable state or ports, or record every cycle. Preserve the "
-            "exact sample wrapper, AXI/DDR model, real data, and DUT behavior; the framework will validate "
-            "the observation edit and rerun the same real exact-board VCS chain."
+            "exact sample wrapper, AXI/DDR model, real data, and DUT behavior; the framework writes only the "
+            "runtime selection and restores the same verified native VCS snapshot."
         )
     if generation_mode == "board_semantic_rtl_repair":
         return (
@@ -6552,116 +6257,34 @@ def configured_sbt_heap_mb(env: dict[str, str] | None = None) -> int:
     return max(1024, budget_mb // 256 * 256)
 
 
-def materialize_trusted_numeric_support(run_dir: Path, out_dir: Path) -> dict[str, Any]:
-    source_groups = {
-        "hardfloat": sorted((Path.cwd() / "src" / "resource" / "hardfloat").glob("*.scala")),
-        "QuantCommon": [
-            Path.cwd() / "src" / "main" / "scala" / "QuantCommon" / name
-            for name in ("Precision.scala", "FpBackend.scala", "XilinxFpCompat.scala", "FP32.scala")
-        ],
-    }
-    generated_root = run_dir / "generated" / "chisel" / "src" / "main" / "scala"
-    files = []
-    blockers = []
-    for package, sources in source_groups.items():
-        for source in sources:
-            if not source.is_file():
-                blockers.append(f"trusted numeric source is missing: {source}")
-                continue
-            destination = generated_root / package / source.name
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-            files.append(
-                {
-                    "source": display_path(source),
-                    "source_sha256": sha256_file(source),
-                    "destination": display_path(destination),
-                    "destination_sha256": sha256_file(destination),
-                    "bytes": destination.stat().st_size,
-                }
-            )
+def materialize_fpga_ip_repair_closure(run_dir: Path, out_dir: Path) -> dict[str, Any]:
+    """Expose the immutable FPGA implementation closure to a repair agent.
+
+    Template repair must preserve the same Vivado floating-point and XPM
+    implementation used by VCS and backend Vivado.  This is deliberately a
+    small read-only projection, not a second numeric implementation or a
+    copied compatibility library.
+    """
+
+    closure_path = run_dir / "generated" / "chisel" / "simulation" / "fpga_ip_simulation_closure.json"
+    validation = check_fpga_ip_simulation_closure(closure_path)
+    closure = read_json_if_exists(closure_path)
     report = {
-        "schema_version": "spatialaccagent.trusted_numeric_support.v1",
-        "status": "pass" if not blockers else "fail",
-        "source": "existing repository HardFloat and QuantCommon Chisel-7-compatible implementation",
-        "files": files,
-        "blockers": blockers,
-        "policy": {
-            "read_only_for_repair_agent": True,
-            "synthesizable": True,
-            "rounding": "HardFloat round_near_even",
-            "simulator_only_arithmetic": False,
-        },
+        "schema_version": "spatialaccagent.fpga_ip_repair_closure.v1",
+        "status": "pass" if validation.get("status") == "pass" else "fail",
+        "closure_path": str(closure_path),
+        "fpga_part": closure.get("fpga_part"),
+        "required_ip_modules": closure.get("required_ip_modules", []),
+        "policy": closure.get("policy", {}),
+        "validation": validation,
+        "repair_rule": (
+            "Repairs must preserve this Vivado floating-point/XPM closure and may not introduce "
+            "HardFloat, behavioral arithmetic, inferred memories, SyncReadMem, or Chisel Queue."
+        ),
     }
-    path = out_dir / "trusted_numeric_support.json"
+    path = out_dir / "fpga_ip_repair_closure.json"
     write_json(path, report)
     report["path"] = str(path)
-    return report
-
-
-def validate_trusted_numeric_support(
-    support: dict[str, Any],
-    run_dir: Path,
-    out_dir: Path,
-    timeout_sec: int,
-) -> dict[str, Any]:
-    build_path = run_dir / "generated" / "chisel" / "build.sbt"
-    fingerprint_payload = {
-        "files": [
-            {
-                "destination": row.get("destination"),
-                "destination_sha256": row.get("destination_sha256"),
-            }
-            for row in support.get("files", [])
-            if isinstance(row, dict)
-        ],
-        "build_sha256": sha256_file(build_path) if build_path.is_file() else None,
-    }
-    fingerprint = hashlib.sha256(
-        json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-    report_path = out_dir / "trusted_numeric_support_compile.json"
-    existing = read_json_if_exists(report_path)
-    if existing.get("status") == "pass" and existing.get("input_fingerprint_sha256") == fingerprint:
-        existing["cache_reused"] = True
-        existing["path"] = str(report_path)
-        return existing
-    cache_root = (run_dir / "generated" / ".sbt_codegen_cache").resolve()
-    sbt_global = cache_root / "sbt"
-    sbt_boot = sbt_global / "boot"
-    ivy_home = cache_root / "ivy2"
-    coursier_cache = cache_root / "coursier"
-    for path in (sbt_global, sbt_boot, ivy_home, coursier_cache):
-        path.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    heap_mb = configured_sbt_heap_mb(env)
-    local_opts = (
-        f"-Xms256m -Xmx{heap_mb}m -XX:+UseG1GC "
-        f"-Dsbt.global.base={sbt_global} "
-        f"-Dsbt.boot.directory={sbt_boot} "
-        f"-Dsbt.ivy.home={ivy_home} "
-        "-Dsbt.server.autostart=false "
-        "-Dsbt.server.forcestart=true"
-    )
-    env["SBT_OPTS"] = f"{env.get('SBT_OPTS', '')} {local_opts}".strip()
-    env.setdefault("COURSIER_CACHE", str(coursier_cache))
-    result = run_local_tool(
-        ["sbt", "--no-server", "Compile/compile"],
-        run_dir / "generated" / "chisel",
-        env,
-        timeout_sec,
-    )
-    report = {
-        "schema_version": "spatialaccagent.trusted_numeric_support_compile.v1",
-        "status": result.get("status"),
-        "input_fingerprint_sha256": fingerprint,
-        "cache_reused": False,
-        "sbt_heap_mb": heap_mb,
-        "command": ["sbt", "--no-server", "Compile/compile"],
-        "result": result,
-    }
-    write_json(report_path, report)
-    report["path"] = str(report_path)
     return report
 
 
@@ -6789,7 +6412,7 @@ def repair_source_bundle(state: dict[str, Any], run_dir: Path) -> dict[str, Any]
         "artifact.stage5.generated_code_package",
         "artifact.stage5.design_artifact_manifest",
         "artifact.stage5.memory_layout",
-        "artifact.stage7.single_layer_promotion_certificate",
+        "artifact.stage6.single_layer_promotion_certificate",
     ]
     for artifact_id in artifact_ids:
         try:
@@ -6845,14 +6468,16 @@ def repair_source_bundle(state: dict[str, Any], run_dir: Path) -> dict[str, Any]
         transformers_root = implementation_path.parents[2]
         for name in ("activations.py", "masking_utils.py", "modeling_rope_utils.py"):
             add(transformers_root / name, 25_000)
-    add(run_dir / "repair_execution" / "trusted_numeric_support.json", 35_000)
-    add(run_dir / "repair_execution" / "trusted_numeric_support_compile.json", 20_000)
+    add(run_dir / "generated" / "chisel" / "simulation" / "fpga_ip_simulation_closure.json", 35_000)
+    add(run_dir / "generated" / "chisel" / "simulation" / "fpga_ip_modules.txt", 20_000)
     numeric_resource_dir = (
         run_dir / "generated" / "chisel" / "src" / "main" / "resources" / "spatialaccagent" / "numeric"
     )
     add(numeric_resource_dir / "transcendental_approximation_contract.json", 60_000)
     add(numeric_resource_dir / "exp2_fraction_q24.memh", 60_000)
+    add(numeric_resource_dir / "exp2_fraction_q24.mem", 60_000)
     add(numeric_resource_dir / "sigmoid_pwl_q18.memh", 10_000)
+    add(numeric_resource_dir / "sigmoid_pwl_q18.mem", 10_000)
     add(numeric_resource_dir / "semantic_runtime_constant_contract.json", 60_000)
     for path in sorted(numeric_resource_dir.glob("*_runtime_constants.u32.memh")):
         add(path, 60_000)
@@ -6892,19 +6517,6 @@ def repair_source_bundle(state: dict[str, Any], run_dir: Path) -> dict[str, Any]
         )
     generated_scala_root = generated_dir / "src" / "main" / "scala"
     for path in sorted(generated_scala_root.glob("**/*.scala")):
-        relative = path.relative_to(generated_scala_root)
-        if relative.parts and relative.parts[0] in {"hardfloat", "QuantCommon"}:
-            continue
-        add(path, 25_000)
-    for path in (
-        generated_scala_root / "QuantCommon" / "Precision.scala",
-        generated_scala_root / "QuantCommon" / "FpBackend.scala",
-        generated_scala_root / "QuantCommon" / "XilinxFpCompat.scala",
-        generated_scala_root / "QuantCommon" / "FP32.scala",
-        generated_scala_root / "hardfloat" / "RecFNToRecFN.scala",
-        generated_scala_root / "hardfloat" / "recFNFromFN.scala",
-        generated_scala_root / "hardfloat" / "fNFromRecFN.scala",
-    ):
         add(path, 25_000)
     for path in template_paths:
         add(path, 25_000)
@@ -6927,7 +6539,7 @@ def repair_source_bundle(state: dict[str, Any], run_dir: Path) -> dict[str, Any]
         "document_count": len(documents),
         "document_chars": total_chars,
         "generated_module_inventory": generated_inventory,
-        "trusted_numeric_support": read_json_if_exists(run_dir / "repair_execution" / "trusted_numeric_support.json"),
+        "fpga_ip_repair_closure": read_json_if_exists(out_dir / "fpga_ip_repair_closure.json"),
         "editable_contract": {
             "allowed_create_or_replace_roots": [
                 display_path(run_dir / "generated" / "semantic_harness"),
@@ -7042,17 +6654,10 @@ def semantic_phase_source_bundle(source_bundle: dict[str, Any], phase: dict[str,
         "#operator_leaf_projection",
         "model_config.json",
         "numeric_policy.json",
-        "trusted_numeric_support.json",
-        "trusted_numeric_support_compile.json",
+        "fpga_ip_simulation_closure.json",
+        "fpga_ip_modules.txt",
         "build.sbt",
         "build.properties",
-        "Precision.scala",
-        "FpBackend.scala",
-        "XilinxFpCompat.scala",
-        "FP32.scala",
-        "RecFNToRecFN.scala",
-        "recFNFromFN.scala",
-        "fNFromRecFN.scala",
     }
 
     def keep(document: dict[str, Any]) -> bool:
@@ -7088,7 +6693,7 @@ def semantic_phase_source_bundle(source_bundle: dict[str, Any], phase: dict[str,
         "document_count": len(documents),
         "document_chars": sum(len(str(row.get("content") or "")) for row in documents),
         "read_only_dependency_template_files": sorted(dependency_template_names),
-        "trusted_numeric_support": source_bundle.get("trusted_numeric_support", {}),
+        "fpga_ip_repair_closure": source_bundle.get("fpga_ip_repair_closure", {}),
         "editable_contract": editable,
     }
 
@@ -7212,7 +6817,7 @@ def execute_semantic_template_repair_phase(
             "Treat phase.dependency_template_files and semantic_template_repair_phase_bundle.read_only_dependency_template_files as exact read-only interfaces; consume them but never return them in file_edits.",
             "Replace every file named in phase.required_template_files in both the persistent framework-template root and current generated-template root. The paired contents must be byte-identical and use the exact supplied pre-edit SHA-256 values.",
             "Provide complete file contents, never snippets, ellipses, prose patches, behavioral wrappers, simulator-only arithmetic, or human follow-up instructions.",
-            "Use the hash-verified target-model implementation, semantic adapter, stage numeric/weight-layout contracts, and trusted HardFloat/QuantCommon support as the only semantic and arithmetic authorities.",
+            "Use the hash-verified target-model implementation, semantic adapter, stage numeric/weight-layout contracts, and the immutable FPGA-IP/XPM repair closure as the only semantic and implementation authorities.",
             "Preserve external accelerator/board ABI, stage order, dimensions, stream ordering, memory/runtime contracts, numeric policy, checkpoint/input/reference/checker hashes, and all non-phase files.",
             "This phase is implementation-in-progress. Do not create a DUT binding manifest or semantic harness, edit emitted SystemVerilog, alter expected outputs/checkers, or claim operator/layer correctness.",
             "Request only sbt --no-server Compile/compile in the exact generated Chisel project. The executor runs a mandatory compile even if the request is omitted.",
@@ -9098,22 +8703,23 @@ ADAPTIVE_DIRECT_SIGNAL_BINDING_FIELDS = (
 )
 
 MIN_ADAPTIVE_DIAGNOSTIC_SOURCES_PER_BOUNDARY = 2
-MIN_LAYER3_CORE_DIAGNOSTIC_SIGNALS = 500
-ADAPTIVE_DIAGNOSTIC_ROLES = {
-    "control",
-    "state",
-    "queue",
-    "backpressure",
-    "buffer",
-    "counter",
-    "start_end",
-    "scheduler",
-    "memory",
-    "error",
-    "data_status",
-    "timing",
-    "other",
-}
+MIN_LAYER3_CORE_DIAGNOSTIC_SIGNALS = 300
+
+
+def _valid_diagnostic_role(value: Any) -> bool:
+    """Accept a readable role label without restricting diagnostic vocabulary.
+
+    Roles classify observations for a human or LLM; they do not change RTL or
+    simulator behavior.  The framework must therefore validate only that the
+    label is present and safe to serialize, while signal expression and source
+    materialization checks remain the actual evidence safeguards.
+    """
+
+    role = str(value or "").strip()
+    return bool(role) and len(role) <= 160 and all(
+        character.isprintable() and character not in "\r\n\t"
+        for character in role
+    )
 
 
 def _unwrap_pipeline_boundary_observation_authority(value: Any) -> dict[str, Any]:
@@ -9322,8 +8928,9 @@ def _bound_observation_compile_repair(
     prior_frontier = str(prior_decision.get("frontier_id") or "")
     if (
         state.get("status") not in {"pending_real_tool_evidence", "fail"}
-        or state.get("compiled_probe_sources_bound") is not True
         or not prior_frontier
+        or not isinstance(state.get("board_source_edits"), list)
+        or not state.get("board_source_edits")
     ):
         return False, ""
 
@@ -9785,9 +9392,9 @@ def _diagnostic_signal_binding_check(
                     f"diagnostic_sources for {boundary_id} repeats {name}"
                 )
             seen_names.add(name)
-            if role not in ADAPTIVE_DIAGNOSTIC_ROLES:
+            if not _valid_diagnostic_role(role):
                 blockers.append(
-                    f"diagnostic_sources for {boundary_id} has an invalid role"
+                    f"diagnostic_sources for {boundary_id} has an empty or invalid role label"
                 )
             if not expression and not unavailable_reason:
                 blockers.append(
@@ -9881,7 +9488,6 @@ def _stage_internal_signal_binding_check(
 
     source = "\n".join(candidate_texts)
     signal_count = 0
-    valid_roles = ADAPTIVE_DIAGNOSTIC_ROLES
     for stage_id in sorted(set(requirements) & set(by_stage)):
         row = by_stage[stage_id]
         expected = requirements[stage_id]
@@ -9928,9 +9534,9 @@ def _stage_internal_signal_binding_check(
                     f"stage_internal_signal_plan for {stage_id} repeats {name}"
                 )
             seen_names.add(name)
-            if role not in valid_roles:
+            if not _valid_diagnostic_role(role):
                 blockers.append(
-                    f"stage_internal_signal_plan for {stage_id} has an invalid signal role"
+                    f"stage_internal_signal_plan for {stage_id} has an empty or invalid signal role label"
                 )
             if not expression and not reason:
                 blockers.append(
@@ -9976,7 +9582,11 @@ def _stage_internal_signal_binding_check(
                 continue
             role = str(unavailable.get("role") or "").strip()
             reason = str(unavailable.get("unavailable_reason") or "").strip()
-            if role not in valid_roles or role in seen_unavailable or not reason:
+            if (
+                not _valid_diagnostic_role(role)
+                or role in seen_unavailable
+                or not reason
+            ):
                 blockers.append(
                     f"stage_internal_signal_plan for {stage_id} has an invalid unavailable role declaration"
                 )
@@ -10019,6 +9629,195 @@ def _layer3_planned_scalar_expressions(decision: dict[str, Any]) -> set[str]:
     return expressions
 
 
+def _layer3_planned_signal_roles(decision: dict[str, Any]) -> dict[str, set[str]]:
+    """Map each planned scalar expression to its declared diagnostic roles."""
+
+    roles_by_expression: dict[str, set[str]] = {}
+    for plan_name in ("signal_binding_plan", "stage_internal_signal_plan"):
+        plans = decision.get(plan_name, [])
+        if not isinstance(plans, list):
+            continue
+        for plan in plans:
+            if not isinstance(plan, dict):
+                continue
+            rows = plan.get("diagnostic_sources", [])
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                expression = str(row.get("expression") or "").strip()
+                role = str(row.get("role") or "").strip()
+                if expression and role:
+                    roles_by_expression.setdefault(expression, set()).add(role)
+    return roles_by_expression
+
+
+def validate_observation_plan_delta(
+    decision: dict[str, Any],
+    prior_observation_state: dict[str, Any],
+) -> dict[str, Any]:
+    """Require each observation turn to add useful, causal information.
+
+    A new cadence, probe name, or duplicate copy of an old signal is not a
+    deeper observation.  Compare only signal-plan metadata from the prior
+    turn; signal values from the prior VCS epoch never enter this check or the
+    hot-loop prompt.
+    """
+
+    current_roles = _layer3_planned_signal_roles(decision)
+    current_expressions = set(current_roles)
+    prior_decision = (
+        prior_observation_state.get("decision", {})
+        if isinstance(prior_observation_state, dict)
+        else {}
+    )
+    prior_decision = prior_decision if isinstance(prior_decision, dict) else {}
+    prior_roles = _layer3_planned_signal_roles(prior_decision)
+    prior_expressions = set(prior_roles)
+    new_expressions = current_expressions - prior_expressions
+
+    delta = decision.get("observation_delta")
+    blockers: list[str] = []
+    if not isinstance(delta, dict):
+        blockers.append(
+            "observation_delta is required so the Agent must explain how the next run can distinguish the current candidate causes"
+        )
+        delta = {}
+
+    missing_distinction = str(delta.get("missing_distinction") or "").strip()
+    if not missing_distinction:
+        blockers.append("observation_delta.missing_distinction is empty")
+
+    candidate_root_causes = [
+        str(value).strip()
+        for value in delta.get("candidate_root_causes", [])
+        if isinstance(value, str) and value.strip()
+    ]
+    if not candidate_root_causes:
+        blockers.append(
+            "observation_delta.candidate_root_causes must name the current cause or causes being tested"
+        )
+    elif len(candidate_root_causes) != len(set(candidate_root_causes)):
+        blockers.append(
+            "observation_delta.candidate_root_causes must contain distinct causes"
+        )
+
+    expected_patterns = [
+        str(value).strip()
+        for value in delta.get("expected_signal_patterns", [])
+        if isinstance(value, str) and value.strip()
+    ]
+    if not expected_patterns:
+        blockers.append(
+            "observation_delta.expected_signal_patterns must define the signal pattern that supports or rejects the candidate cause"
+        )
+    elif len(expected_patterns) != len(set(expected_patterns)):
+        blockers.append(
+            "observation_delta.expected_signal_patterns must contain distinct outcomes"
+        )
+
+    declared_new = [
+        str(value).strip()
+        for value in delta.get("new_signal_expressions", [])
+        if isinstance(value, str) and value.strip()
+    ]
+    declared_new_set = set(declared_new)
+    if len(declared_new) != len(declared_new_set):
+        blockers.append(
+            "observation_delta.new_signal_expressions must not repeat a signal"
+        )
+    if not declared_new_set and not prior_expressions:
+        blockers.append(
+            "observation_delta.new_signal_expressions must name the real DUT signals used by the first observation plan"
+        )
+    if declared_new_set - new_expressions:
+        blockers.append(
+            "observation_delta.new_signal_expressions contains signals already present in the prior observation plan or absent from the current plan"
+        )
+
+    cause_checks = delta.get("candidate_cause_checks", [])
+    if not isinstance(cause_checks, list) or not cause_checks:
+        blockers.append(
+            "observation_delta.candidate_cause_checks must map the new signals to the current cause analysis"
+        )
+        cause_checks = []
+    checked_causes: set[str] = set()
+    checked_signals: set[str] = set()
+    for index, check in enumerate(cause_checks):
+        if not isinstance(check, dict):
+            blockers.append(
+                f"observation_delta.candidate_cause_checks[{index}] is not an object"
+            )
+            continue
+        cause = str(check.get("cause") or "").strip()
+        expressions = {
+            str(value).strip()
+            for value in check.get("signal_expressions", [])
+            if isinstance(value, str) and value.strip()
+        }
+        expected_pattern = str(check.get("expected_pattern") or "").strip()
+        disambiguates = str(check.get("disambiguates") or "").strip()
+        if not cause:
+            blockers.append(
+                f"observation_delta.candidate_cause_checks[{index}] has no cause"
+            )
+        if not expressions:
+            blockers.append(
+                f"observation_delta.candidate_cause_checks[{index}] must name the new signals used to test the cause"
+            )
+        if not expected_pattern:
+            blockers.append(
+                f"observation_delta.candidate_cause_checks[{index}] has no expected signal pattern"
+            )
+        if not disambiguates:
+            blockers.append(
+                f"observation_delta.candidate_cause_checks[{index}] has no explanation of what the signals distinguish"
+            )
+        if cause:
+            checked_causes.add(cause)
+        checked_signals.update(expressions)
+        if expressions - new_expressions:
+            blockers.append(
+                f"observation_delta.candidate_cause_checks[{index}] uses a signal that is not new in this observation plan"
+            )
+    if candidate_root_causes and not set(candidate_root_causes).issubset(checked_causes):
+        blockers.append(
+            "every candidate_root_cause must have a candidate_cause_checks row"
+        )
+    if new_expressions and checked_signals != new_expressions:
+        blockers.append(
+            "every newly added DUT signal must be tied to a candidate cause check; do not pad the plan with unrelated signals"
+        )
+
+    new_roles: set[str] = set()
+    for expression in declared_new_set:
+        if not expression.lower().startswith("dut."):
+            blockers.append(
+                f"new observation signal is not a direct DUT hierarchy expression: {expression}"
+            )
+        new_roles.update(current_roles.get(expression, set()))
+    if new_expressions and not new_roles:
+        blockers.append(
+            "new observation signals do not carry nonempty diagnostic role labels"
+        )
+
+    return {
+        "status": "pass" if not blockers else "blocked",
+        "prior_expression_count": len(prior_expressions),
+        "current_expression_count": len(current_expressions),
+        "new_expression_count": len(new_expressions),
+        "new_signal_expressions": sorted(new_expressions),
+        "declared_new_signal_expressions": sorted(declared_new_set),
+        "new_roles": sorted(new_roles),
+        "missing_distinction": missing_distinction,
+        "candidate_root_causes": candidate_root_causes,
+        "expected_signal_patterns": expected_patterns,
+        "candidate_cause_checks": copy.deepcopy(cause_checks),
+        "blockers": list(dict.fromkeys(blockers)),
+    }
+
+
 def _adaptive_observation_has_internal_sources(decision: dict[str, Any]) -> bool:
     """Require each planned boundary to carry real internal diagnostics.
 
@@ -10048,6 +9847,33 @@ def _adaptive_observation_has_internal_sources(decision: dict[str, Any]) -> bool
         if not any("dut." in str(item.get("expression") or "").lower() for item in bound):
             return False
     return True
+
+
+def _adaptive_observation_has_causal_delta(decision: dict[str, Any]) -> bool:
+    """Reject legacy observation transactions without a causal experiment."""
+
+    delta = decision.get("observation_delta")
+    if not isinstance(delta, dict):
+        return False
+    required = (
+        "missing_distinction",
+        "candidate_root_causes",
+        "new_signal_expressions",
+        "expected_signal_patterns",
+        "candidate_cause_checks",
+    )
+    if any(key not in delta for key in required):
+        return False
+    if not str(delta.get("missing_distinction") or "").strip():
+        return False
+    if not isinstance(delta.get("candidate_root_causes"), list):
+        return False
+    if not isinstance(delta.get("new_signal_expressions"), list):
+        return False
+    if not isinstance(delta.get("expected_signal_patterns"), list):
+        return False
+    checks = delta.get("candidate_cause_checks")
+    return isinstance(checks, list) and bool(checks)
 
 
 def complete_internal_signal_binding_plan(
@@ -10277,6 +10103,33 @@ def _current_pipeline_boundary_observation(
     return {}
 
 
+def _board_lower_layer_recheck_required(
+    contradiction_evidence: dict[str, Any] | None,
+    lower_layer_result: dict[str, Any] | None,
+) -> bool:
+    """Return whether current Layer-3 evidence warrants a lower-layer recheck.
+
+    A normal Layer-3 observation gap must stay in the current repair loop.  A
+    lower-layer recheck is justified only when the current board evidence
+    explicitly proves a contradiction and the lower-layer result is not
+    already passing.  This keeps Layer 2 closed for ordinary board debugging
+    while preserving the backtrack route for a real cross-layer contradiction.
+    """
+
+    contradiction = (
+        contradiction_evidence
+        if isinstance(contradiction_evidence, dict)
+        else {}
+    )
+    lower_layer = (
+        lower_layer_result if isinstance(lower_layer_result, dict) else {}
+    )
+    return (
+        contradiction.get("status") == "proven"
+        and lower_layer.get("status") not in {"pass", "passed", "ready"}
+    )
+
+
 def adaptive_observation_routing_state(
     package: dict[str, Any],
 ) -> dict[str, Any]:
@@ -10444,8 +10297,10 @@ def enforce_board_observation_only_validation(
         advisories.append(
             "LLM selected a repair mode other than observation expansion"
         )
-    if not edits:
-        advisories.append("LLM returned no observation-source edit")
+    if mode == "deepen_simulation_observation" and edits:
+        advisories.append(
+            "observation focus should use the runtime signal catalog instead of editing compiled sources"
+        )
 
     allowed_paths = _board_observation_only_edit_paths(run_dir)
     manifest_path = (
@@ -10472,12 +10327,25 @@ def enforce_board_observation_only_validation(
     if edits and not observation_source_edited:
         advisories.append("LLM did not edit a testbench or monitor source")
 
+    # Observation-plan quality is useful feedback, but it is not an
+    # execution gate for Layer 3.  The atomic edit executor below remains the
+    # only gate for unsafe or non-executable file changes.
+    contract_blockers = [
+        str(value)
+        for value in validation.get("blockers", [])
+        if str(value).strip()
+    ]
+    result["contract_status"] = validation.get("status")
+    result["contract_blockers"] = list(dict.fromkeys(contract_blockers))
     result["status"] = "pass"
     result["mode"] = mode or result.get("mode")
     result["blockers"] = []
-    result["execution_advisories"] = list(dict.fromkeys(advisories))
+    result["execution_advisories"] = list(
+        dict.fromkeys([*advisories, *contract_blockers])
+    )
     result["summary"] = (
-        "recorded Layer-3 observation details; the LLM decision remains executable"
+        "recorded Layer-3 observation details and contract advisories; "
+        "the LLM decision remains executable"
     )
     return result
 
@@ -10545,6 +10413,7 @@ def validate_adaptive_observation_decision(
     run_dir: Path,
     *,
     require_signal_analysis: bool = False,
+    allow_existing_probe_replay: bool = False,
 ) -> dict[str, Any]:
     feedback = (
         package.get("current_board_vcs_feedback", {})
@@ -10559,7 +10428,9 @@ def validate_adaptive_observation_decision(
             "functional_edit_requires_bound_direct_evidence": True,
             "insufficient_evidence_requires_observation_only_edit": True,
             "observation_pointers_must_resolve_exact_current_values": True,
-            "rejection_occurs_before_any_file_write_or_real_tool_replay": True,
+            "observation_contract_findings_are_advisory_for_layer3": True,
+            "mechanical_edit_checks_remain_execution_gates": True,
+            "runtime_observation_selection_does_not_edit_compiled_sources": True,
         },
     }
     if feedback.get("status") != "ready":
@@ -10570,6 +10441,50 @@ def validate_adaptive_observation_decision(
             "blockers": [],
             "summary": "no current real board VCS feedback requires an adaptive observation decision",
         }
+
+    if allow_existing_probe_replay:
+        decision = (
+            output.get("adaptive_observation_decision", {})
+            if isinstance(output.get("adaptive_observation_decision"), dict)
+            else {}
+        )
+        replay = existing_adaptive_observation_probe_replay_ready(
+            run_dir, decision
+        )
+        if replay.get("status") == "pass" and not output.get("file_edits"):
+            return {
+                **base,
+                "status": "pass",
+                "mode": str(decision.get("mode") or "") or None,
+                "frontier_id": str(decision.get("frontier_id") or "") or None,
+                "matched_evidence_sha256": [],
+                "valid_field_observations": copy.deepcopy(
+                    decision.get("field_observations", [])
+                    if isinstance(decision.get("field_observations"), list)
+                    else []
+                ),
+                "internal_boundary_field_observations": [],
+                "internal_signal_binding_plan": {
+                    "status": "legacy_compatibility",
+                    "blockers": [],
+                },
+                "observation_plan_delta": {
+                    "status": "legacy_compatibility",
+                    "blockers": [],
+                },
+                "runtime_observation_selection": {
+                    "status": "legacy_compatibility",
+                    "selected_signal_count": 0,
+                },
+                "bound_observation_compile_repair": False,
+                "decision_sha256": canonical_contract_sha256(decision),
+                "decision": copy.deepcopy(decision),
+                "blockers": [],
+                "summary": (
+                    "existing compiled observation source remains valid; "
+                    "the next real-tool run may collect a fresh epoch"
+                ),
+            }
 
     blockers: list[str] = []
     decision = (
@@ -10586,38 +10501,6 @@ def validate_adaptive_observation_decision(
         if isinstance(package.get("adaptive_observation_state"), dict)
         else {}
     )
-
-    # Observation edits are diagnostic input to the next real board run.  Do
-    # not make the run depend on old plan hashes, exact generated text, or a
-    # fixed list of helper fields.  The lightweight path check below still
-    # prevents an observation request from touching the DUT or unrelated files.
-    if mode == "deepen_simulation_observation":
-        return {
-            **base,
-            "status": "pass",
-            "mode": mode,
-            "frontier_id": str(decision.get("frontier_id") or "") or None,
-            "matched_evidence_sha256": [],
-            "valid_field_observations": copy.deepcopy(
-                decision.get("field_observations", [])
-                if isinstance(decision.get("field_observations"), list)
-                else []
-            ),
-            "internal_boundary_field_observations": [],
-            "internal_signal_binding_plan": {
-                "status": "advisory",
-                "summary": (
-                    "signal coverage is collected from the next real board run; "
-                    "it is not a pre-run blocking check"
-                ),
-                "blockers": [],
-            },
-            "bound_observation_compile_repair": False,
-            "decision_sha256": canonical_contract_sha256(decision),
-            "decision": copy.deepcopy(decision),
-            "blockers": [],
-            "summary": "observation request will run on the current real board testbench",
-        }
 
     bound_observation_compile_repair, prior_observation_frontier = (
         _bound_observation_compile_repair(output, package, run_dir)
@@ -10777,6 +10660,15 @@ def validate_adaptive_observation_decision(
         for row in valid_observations
         if _is_internal_data_boundary_observation(row)
     ]
+    runtime_selection = (
+        runtime_observation_selection(run_dir, decision, persist=False)
+        if mode == "deepen_simulation_observation" and not file_edits
+        else {
+            "status": "not_applicable",
+            "selected_signal_count": 0,
+            "unknown_signal_expressions": [],
+        }
+    )
     internal_signal_binding_plan = (
         complete_internal_signal_binding_plan(
             decision,
@@ -10791,6 +10683,69 @@ def validate_adaptive_observation_decision(
             "blockers": [],
         }
     )
+    observation_plan_delta = (
+        validate_observation_plan_delta(decision, prior_observation_state)
+        if mode == "deepen_simulation_observation" and file_edits
+        else {
+            "status": (
+                "pass"
+                if mode == "deepen_simulation_observation"
+                and runtime_selection.get("selected_signal_count", 0) > 0
+                else "not_applicable"
+            ),
+            "prior_expression_count": 0,
+            "current_expression_count": runtime_selection.get(
+                "selected_signal_count", 0
+            ),
+            "new_expression_count": runtime_selection.get(
+                "selected_signal_count", 0
+            ),
+            "new_signal_expressions": [
+                row.get("expression")
+                for row in runtime_selection.get("selected_signals", [])
+                if isinstance(row, dict) and row.get("expression")
+            ],
+            "declared_new_signal_expressions": copy.deepcopy(
+                decision.get("observation_delta", {}).get(
+                    "new_signal_expressions", []
+                )
+                if isinstance(decision.get("observation_delta"), dict)
+                else []
+            ),
+            "new_roles": [],
+            "missing_distinction": str(
+                decision.get("observation_delta", {}).get(
+                    "missing_distinction", ""
+                )
+                if isinstance(decision.get("observation_delta"), dict)
+                else ""
+            ),
+            "candidate_root_causes": copy.deepcopy(
+                decision.get("observation_delta", {}).get(
+                    "candidate_root_causes", []
+                )
+                if isinstance(decision.get("observation_delta"), dict)
+                else []
+            ),
+            "expected_signal_patterns": copy.deepcopy(
+                decision.get("observation_delta", {}).get(
+                    "expected_signal_patterns", []
+                )
+                if isinstance(decision.get("observation_delta"), dict)
+                else []
+            ),
+            "candidate_cause_checks": copy.deepcopy(
+                decision.get("observation_delta", {}).get(
+                    "candidate_cause_checks", []
+                )
+                if isinstance(decision.get("observation_delta"), dict)
+                else []
+            ),
+            "blockers": [],
+        }
+    )
+    if observation_plan_delta.get("status") != "not_applicable":
+        blockers.extend(observation_plan_delta.get("blockers", []))
     if (
         require_signal_analysis
         and not internal_boundary_observations
@@ -10863,7 +10818,10 @@ def validate_adaptive_observation_decision(
             if isinstance(decision.get("boundary_coverage_plan"), dict)
             else {}
         )
-        if routing.get("status") == "complete_boundary_coverage_required":
+        if (
+            routing.get("status") == "complete_boundary_coverage_required"
+            and file_edits
+        ):
             expected_boundaries = {
                 str(value)
                 for value in routing.get("incomplete_boundary_ids", [])
@@ -10951,6 +10909,13 @@ def validate_adaptive_observation_decision(
             blockers.append(
                 "observation deepening requires at least one exact current clue"
             )
+        if (
+            not file_edits
+            and runtime_selection.get("selected_signal_count", 0) <= 0
+        ):
+            blockers.append(
+                "runtime observation deepening selected no compiled signal"
+            )
         if not add_probe_ids or len(add_probe_ids) != len(set(add_probe_ids)):
             blockers.append(
                 "observation deepening requires unique add_or_update_probe_ids"
@@ -10962,6 +10927,11 @@ def validate_adaptive_observation_decision(
         for field in ("target_boundary", "trigger_condition", "bounded_window"):
             if not str(probe_plan.get(field) or "").strip():
                 blockers.append(f"observation deepening probe_plan.{field} is empty")
+        trigger_condition = str(probe_plan.get("trigger_condition") or "").strip().lower()
+        if trigger_condition not in {"always", "unconditional"}:
+            blockers.append(
+                "Layer-3 observation deepening must use unconditional probes; set probe_plan.trigger_condition to 'always'"
+            )
         allowed_paths = _board_observation_only_edit_paths(run_dir)
         edited_paths: set[Path] = set()
         for index, edit in enumerate(output.get("file_edits", [])):
@@ -11006,6 +10976,8 @@ def validate_adaptive_observation_decision(
         "valid_field_observations": valid_observations,
         "internal_boundary_field_observations": internal_boundary_observations,
         "internal_signal_binding_plan": internal_signal_binding_plan,
+        "observation_plan_delta": observation_plan_delta,
+        "runtime_observation_selection": runtime_selection,
         "bound_observation_compile_repair": bound_observation_compile_repair,
         "decision_sha256": (
             canonical_contract_sha256(validated_decision)
@@ -11024,6 +10996,110 @@ def validate_adaptive_observation_decision(
 
 def adaptive_observation_state_path(run_dir: Path) -> Path:
     return run_dir / "verification" / "adaptive_observation" / "current.json"
+
+
+def existing_adaptive_observation_probe_replay_ready(
+    run_dir: Path,
+    decision: dict[str, Any],
+) -> dict[str, Any]:
+    """Compatibility check for source probes created before runtime selection.
+
+    New observation rounds use ``current_selection.json``.  This reader exists
+    only so an interrupted legacy round can finish once without restoring the
+    retired hash/certificate controller.
+    """
+
+    state = read_json_if_exists(adaptive_observation_state_path(run_dir))
+    blockers: list[str] = []
+    if state.get("schema_version") != ADAPTIVE_OBSERVATION_STATE_SCHEMA_VERSION:
+        blockers.append("adaptive observation state is missing")
+    if state.get("decision_sha256") != canonical_contract_sha256(decision):
+        blockers.append("adaptive observation decision does not match the saved probe")
+    for row in state.get("board_source_edits", []):
+        if not isinstance(row, dict):
+            continue
+        path = Path(str(row.get("path") or ""))
+        expected = str(row.get("after_sha256") or "")
+        if not path.is_file() or not expected or sha256_file(path) != expected:
+            blockers.append(
+                "saved adaptive observation board-source edit is missing or changed"
+            )
+    return {
+        "status": "pass" if not blockers else "blocked",
+        "blockers": list(dict.fromkeys(blockers)),
+        "state": state,
+    }
+
+
+def begin_existing_adaptive_observation_probe_replay(
+    run_dir: Path,
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    """Mark one compatible legacy probe for a fresh real-tool evidence run."""
+
+    decision = (
+        validation.get("decision", {})
+        if isinstance(validation.get("decision"), dict)
+        else {}
+    )
+    readiness = existing_adaptive_observation_probe_replay_ready(
+        run_dir, decision
+    )
+    if validation.get("status") != "pass" or readiness.get("status") != "pass":
+        return {
+            "schema_version": ADAPTIVE_OBSERVATION_STATE_SCHEMA_VERSION,
+            "status": "blocked",
+            "blockers": readiness.get("blockers", []),
+        }
+    state = copy.deepcopy(readiness["state"])
+    state.update(
+        {
+            "status": "pending_real_tool_evidence",
+            "replay_count": int(state.get("replay_count") or 0) + 1,
+            "replay_started_at_unix_sec": time.time(),
+        }
+    )
+    path = adaptive_observation_state_path(run_dir)
+    write_json(path, state)
+    return {**state, "path": str(path)}
+
+
+def current_fresh_exact_source_provenance_replay_feedback(
+    out_dir: Path,
+    manifest_path: Path,
+) -> dict[str, Any]:
+    """Read the bounded result of the retired unchanged-source replay action."""
+
+    del manifest_path
+    path = Path(out_dir) / "fresh_exact_source_provenance_replay.json"
+    record = read_json_if_exists(path)
+    if not record:
+        return {
+            "schema_version": (
+                "spatialaccagent.current_fresh_exact_source_provenance_replay.v1"
+            ),
+            "status": "not_run",
+            "summary": "no unchanged-source replay result is available",
+        }
+    probe = (
+        record.get("real_tool_probe", {})
+        if isinstance(record.get("real_tool_probe"), dict)
+        else {}
+    )
+    return {
+        "schema_version": (
+            "spatialaccagent.current_fresh_exact_source_provenance_replay.v1"
+        ),
+        "status": "ready",
+        "replay_status": record.get("status"),
+        "summary": probe.get("summary") or record.get("summary"),
+        "execution_generation_sha256": record.get(
+            "execution_generation_sha256"
+        ),
+        "decision": copy.deepcopy(record.get("decision", {})),
+        "path": str(path),
+        "sha256": sha256_file(path),
+    }
 
 
 def _adaptive_default_progress_log_paths(run_dir: Path) -> list[Path]:
@@ -11129,6 +11205,94 @@ def persist_adaptive_observation_request(
     history_path = path.parent / "history" / f"{state['decision_sha256']}.json"
     write_json(history_path, state)
     return {**state, "path": str(path), "history_path": str(history_path)}
+
+
+def persist_runtime_adaptive_observation_request(
+    run_dir: Path,
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist one runtime-only observation request for the next restore.
+
+    This state deliberately has no board-source edit binding. The broad probe
+    set is already part of the compiled model; only the selected catalog rows
+    change between consecutive restored runs.
+    """
+
+    if (
+        validation.get("status") != "pass"
+        or validation.get("mode") != "deepen_simulation_observation"
+        or not isinstance(validation.get("decision"), dict)
+    ):
+        return {
+            "schema_version": ADAPTIVE_OBSERVATION_STATE_SCHEMA_VERSION,
+            "status": "not_required",
+            "summary": "this decision did not request runtime observation",
+        }
+    decision = copy.deepcopy(validation["decision"])
+    selection = runtime_observation_selection(run_dir, decision, persist=True)
+    created_at = time.time()
+    state = {
+        "schema_version": ADAPTIVE_OBSERVATION_STATE_SCHEMA_VERSION,
+        "status": "pending_real_tool_evidence",
+        "runtime_only": True,
+        "frontier_id": validation.get("frontier_id"),
+        "decision_sha256": validation.get("decision_sha256"),
+        "decision": decision,
+        "runtime_selection": selection,
+        "board_source_edits": [],
+        "compiled_probe_sources_bound": True,
+        "created_at_unix_sec": created_at,
+        "created_at_unix_ns": time.time_ns(),
+        "policy": {
+            "fresh_restored_signal_epoch_required": True,
+            "compiled_source_edit_required": False,
+            "same_verified_snapshot_must_be_reused": True,
+            "old_signal_values_are_not_evidence": True,
+        },
+    }
+    path = adaptive_observation_state_path(run_dir)
+    write_json(path, state)
+    history_path = path.parent / "history" / f"{state['decision_sha256']}.json"
+    write_json(history_path, state)
+    return {**state, "path": str(path), "history_path": str(history_path)}
+
+
+def runtime_only_observation_output(
+    output: dict[str, Any],
+) -> dict[str, Any]:
+    """Discard obsolete source edits from an observation-only decision.
+
+    A broad observation model is compiled once.  If a prior prompt or an old
+    Agent habit still returns a testbench/monitor edit while it is explicitly
+    asking to deepen observation, the source edit is neither needed nor
+    allowed: selecting compiled signals is the whole action.  Functional RTL
+    edits are deliberately left untouched because they create a new model and
+    therefore require one new snapshot.
+    """
+
+    decision = output.get("adaptive_observation_decision", {})
+    decision = decision if isinstance(decision, dict) else {}
+    if str(decision.get("mode") or "") != "deepen_simulation_observation":
+        return output
+
+    functional_edits: list[dict[str, Any]] = []
+    for edit in output.get("file_edits", []):
+        if not isinstance(edit, dict):
+            continue
+        name = Path(str(edit.get("path") or "")).name.lower()
+        if "tb" in name or "testbench" in name or "monitor" in name:
+            continue
+        functional_edits.append(copy.deepcopy(edit))
+    if len(functional_edits) == len(
+        [edit for edit in output.get("file_edits", []) if isinstance(edit, dict)]
+    ):
+        return output
+    normalized = copy.deepcopy(output)
+    normalized["file_edits"] = functional_edits
+    normalized.setdefault("execution_advisories", []).append(
+        "observation-only source edits were replaced by runtime compiled-signal selection"
+    )
+    return normalized
 
 
 def _event_field_value(event: Any, field: str) -> tuple[bool, Any]:
@@ -11596,6 +11760,27 @@ def materialize_adaptive_observation_evidence(
             "status": "not_run",
             "summary": "no adaptive observation request is pending",
         }
+    if state.get("runtime_only") is not True and state.get("board_source_edits"):
+        # Older observation rounds edited the compiled testbench and forced a
+        # new snapshot. Keep that record as history, but never let it drive a
+        # current round now that observation is a runtime-only signal choice.
+        return {
+            "schema_version": ADAPTIVE_OBSERVATION_STATE_SCHEMA_VERSION,
+            "status": "retired_legacy_source_observation",
+            "summary": (
+                "legacy source-edit observation is history; current Layer-3 "
+                "observation uses runtime compiled-signal selection"
+            ),
+            "legacy_decision_sha256": state.get("decision_sha256"),
+            "runtime_only": True,
+            "board_source_edits": [],
+            "policy": {
+                "legacy_signal_values_are_not_current_evidence": True,
+                "compiled_sources_must_remain_unchanged": True,
+                "same_verified_snapshot_must_be_reused": True,
+            },
+            "path": str(path),
+        }
     prior_status = str(state.get("status") or "")
     failed_state_recheck: dict[str, Any] | None = None
     if prior_status == "fail" and feedback.get("status") == "ready":
@@ -11631,6 +11816,77 @@ def materialize_adaptive_observation_evidence(
         return {**state, "path": str(path)}
     if feedback.get("status") != "ready":
         return {**state, "path": str(path)}
+
+    if state.get("runtime_only") is True:
+        runner_binding = (
+            feedback.get("runner_report", {})
+            if isinstance(feedback.get("runner_report"), dict)
+            else {}
+        )
+        runner = (
+            runner_binding.get("value", {})
+            if isinstance(runner_binding.get("value"), dict)
+            else {}
+        )
+        identity = (
+            runner.get("simulation_execution_identity", {})
+            if isinstance(runner.get("simulation_execution_identity"), dict)
+            else {}
+        )
+        selected_model = str(
+            state.get("runtime_selection", {}).get("compiled_model_sha256")
+            if isinstance(state.get("runtime_selection"), dict)
+            else ""
+        )
+        observed_model = str(identity.get("compiled_model_sha256") or "")
+        model_matches = bool(
+            not selected_model or not observed_model or selected_model == observed_model
+        )
+        current_epoch = feedback.get("current_signal_epoch")
+        if not isinstance(current_epoch, dict):
+            live_progress = (
+                runner.get("live_progress", {})
+                if isinstance(runner.get("live_progress"), dict)
+                else {}
+            )
+            latest = (
+                live_progress.get("latest", {})
+                if isinstance(live_progress.get("latest"), dict)
+                else {}
+            )
+            current_epoch = (
+                latest.get("observation_epoch", {})
+                if isinstance(latest.get("observation_epoch"), dict)
+                else {}
+            )
+        blockers = [] if model_matches else [
+            "restored run compiled-model identity differs from the runtime signal catalog"
+        ]
+        result = {
+            **state,
+            "status": "pass" if not blockers else "fail",
+            "evaluated_at_unix_sec": time.time(),
+            "runner_report": {
+                "path": runner_binding.get("path"),
+                "sha256": runner_binding.get("sha256"),
+            },
+            "compiled_probe_sources_bound": model_matches,
+            "current_signal_epoch": copy.deepcopy(current_epoch),
+            "blockers": blockers,
+            "summary": (
+                "fresh restored signal epoch collected with the unchanged compiled observation model"
+                if not blockers
+                else "runtime observation restore used a different compiled model"
+            ),
+        }
+        write_json(path, result)
+        history_path = (
+            path.parent
+            / "history"
+            / f"{state.get('decision_sha256')}_evidence.json"
+        )
+        write_json(history_path, result)
+        return {**result, "path": str(path), "history_path": str(history_path)}
 
     runner_binding = (
         feedback.get("runner_report", {})
@@ -11946,12 +12202,12 @@ def layer3_required_code_edit_errors(
     *,
     current_signal_epoch: bool,
 ) -> list[str]:
-    """Enforce one real Layer-3 repair plus full next-run observation coverage.
+    """Require one executable LLM decision for the current Layer-3 epoch.
 
-    The board loop must not end on an LLM ``blocked`` response.  Each current
-    signal epoch produces both a functional HDL correction and a testbench-only
-    observation update.  The latter keeps the next VCS run informative while
-    the former prevents observation-only retries from replacing repair work.
+    Evidence that isolates a fault should produce a functional edit. Evidence
+    that does not yet distinguish a safe fault must produce a runtime-only
+    observation plan. The framework must not demand speculative RTL edits just
+    to satisfy a controller rule.
     """
 
     if not current_signal_epoch:
@@ -11968,10 +12224,15 @@ def layer3_required_code_edit_errors(
         )
 
     edits = output.get("file_edits", [])
-    if not isinstance(edits, list) or not edits:
-        errors.append(
-            "Layer-3 current-signal decision must include nonempty file_edits"
-        )
+    observation_decision = output.get("adaptive_observation_decision")
+    if not isinstance(edits, list):
+        errors.append("Layer-3 current-signal decision file_edits must be a list")
+        return errors
+    if not edits:
+        if not isinstance(observation_decision, dict):
+            errors.append(
+                "Layer-3 current-signal decision without RTL edits must provide an adaptive runtime observation plan"
+            )
         return errors
 
     board_root = (run_dir / "generated" / "board_integration").resolve()
@@ -12001,22 +12262,17 @@ def layer3_required_code_edit_errors(
             continue
         functional_edit = True
 
-    if not functional_edit:
+    if not functional_edit and not isinstance(observation_decision, dict):
         errors.append(
-            "Layer-3 current-signal decision must modify at least one functional HDL source, not only a testbench, manifest, or observation file"
+            "Layer-3 current-signal decision must modify functional HDL or provide an adaptive runtime observation plan"
         )
-    if not observation_edit:
+    if functional_edit and not observation_edit and not isinstance(observation_decision, dict):
         errors.append(
-            "Layer-3 current-signal decision must update the generated board testbench with the next-run internal observations"
+            "Layer-3 functional repair must include runtime observation selection or a board-testbench observation update"
         )
-    observation_decision = output.get("adaptive_observation_decision")
-    if not isinstance(observation_decision, dict):
+    if isinstance(observation_decision, dict) and observation_decision.get("mode") != "deepen_simulation_observation":
         errors.append(
-            "Layer-3 current-signal decision must include adaptive_observation_decision for the next real VCS run"
-        )
-    elif observation_decision.get("mode") != "deepen_simulation_observation":
-        errors.append(
-            "Layer-3 current-signal decision must use deepen_simulation_observation so the 500-signal next-run plan is materialized"
+            "Layer-3 runtime observation plan must use deepen_simulation_observation"
         )
     return errors
 
@@ -12524,12 +12780,19 @@ def apply_agent_file_edits(
         / "semantic_testbench"
         / "semantic_testbench_manifest.json"
     ).resolve()
+    board_simulation_manifest_path = (
+        run_dir
+        / "verification"
+        / "board_simulation"
+        / "board_simulation_manifest.json"
+    ).resolve()
     binding_manifest_path = (
         run_dir
         / "generated"
         / "memory"
         / "dut_weight_binding_manifest.json"
     ).resolve()
+    board_integration_root = (run_dir / "generated" / "board_integration").resolve()
     if allow_board_integration and allowed_semantic_rtl_files:
         allowed_semantic_paths = {
             path.resolve() for path in (allowed_semantic_rtl_files or set())
@@ -12549,6 +12812,7 @@ def apply_agent_file_edits(
         staged_paths = {target for target, _, _, _ in staged}
         for derived_path, label in (
             (semantic_manifest_path, "semantic_testbench_manifest.json"),
+            (board_simulation_manifest_path, "board_simulation_manifest.json"),
             (binding_manifest_path, "dut_weight_binding_manifest.json"),
         ):
             if not changed_source_hashes or derived_path in staged_paths:
@@ -12627,7 +12891,7 @@ def apply_agent_file_edits(
         staged_by_path = {target: content for target, content, _, _ in staged}
         normalized_staged: list[tuple[Path, str, str, str]] = []
         for target, content, operation, expected in staged:
-            if target == semantic_manifest_path:
+            if target in {semantic_manifest_path, board_simulation_manifest_path}:
                 try:
                     parsed_manifest = json.loads(content)
                 except (json.JSONDecodeError, TypeError) as exc:
@@ -12643,7 +12907,19 @@ def apply_agent_file_edits(
                     run_dir,
                     changed_source_hashes,
                     staged_content_by_path=staged_by_path,
-                    require_match=True,
+                    # The board integration testbench is a board-only
+                    # observation target.  It may be absent from the
+                    # connected semantic manifest; the board binding manifest
+                    # below is the owner that rebases its source hash.  Keep
+                    # strict matching for edits that include non-board
+                    # semantic sources.
+                    require_match=not (
+                        changed_source_hashes
+                        and all(
+                            path.is_relative_to(board_integration_root)
+                            for path in changed_source_hashes
+                        )
+                    ),
                 )
                 blockers.extend(
                     f"semantic_testbench_manifest.json: {error}"
@@ -14377,6 +14653,67 @@ def _attested_exact_board_generation_provenance(
     ):
         return None
 
+    # A board-generation turn may legitimately select only runtime observation
+    # signals. Such a turn has no source patch to attest, but its immutable
+    # result/prompt pair is still sufficient to retain the original non-
+    # fallback LLM provenance. The board source closure is independently
+    # rematerialized and checked by the normal compile-plan path.
+    if source_provenance.get("attestation") == "archived_generation_record":
+        archived_record_path = Path(
+            str(source_provenance.get("archived_generation_record") or "")
+        )
+        archived_prompt_path = Path(
+            str(source_provenance.get("archived_generation_prompt") or "")
+        )
+        source_record_path = Path(
+            str(source_provenance.get("source_generation_record") or "")
+        )
+        source_prompt_path = Path(
+            str(source_provenance.get("source_generation_prompt") or "")
+        )
+        record_sha256 = str(
+            source_provenance.get("archived_generation_record_sha256") or ""
+        )
+        prompt_sha256 = str(
+            source_provenance.get("archived_generation_prompt_sha256") or ""
+        )
+        if (
+            not archived_record_path.is_file()
+            or not archived_prompt_path.is_file()
+            or not source_record_path.is_absolute()
+            or not source_prompt_path.is_absolute()
+            or record_sha256 != str(existing.get("record_sha256") or "")
+            or prompt_sha256 != str(existing.get("prompt_sha256") or "")
+            or sha256_file(archived_record_path) != record_sha256
+            or sha256_file(archived_prompt_path) != prompt_sha256
+        ):
+            return None
+        trusted = trusted_exact_board_generation_record(
+            archived_record_path,
+            expected_agent=EXACT_BOARD_GENERATION_AGENT,
+            expected_status="ready_to_apply",
+            source_result_path=source_record_path,
+            bound_prompt_path=archived_prompt_path,
+            source_prompt_path=source_prompt_path,
+        )
+        if (
+            trusted.get("status") != "pass"
+            or read_json_if_exists(archived_record_path).get("model")
+            != existing.get("model")
+        ):
+            return None
+        return {
+            "mode": "llm",
+            "agent_id": EXACT_BOARD_GENERATION_AGENT,
+            "model": existing["model"],
+            "used_fallback": False,
+            "prompt_sha256": prompt_sha256,
+            "prompt_path": str(archived_prompt_path),
+            "record_path": str(archived_record_path),
+            "record_sha256": record_sha256,
+            "attestation": "archived_generation_record",
+        }
+
     patch_path = Path(str(source_provenance.get("source_patch_application") or ""))
     manifest_path = Path(str(source_provenance.get("source_agent_manifest") or ""))
     patch_sha256 = str(
@@ -14477,6 +14814,8 @@ def recover_archived_exact_board_source_provenance(
 ) -> dict[str, Any]:
     """Recover applied LLM provenance from immutable repair-loop snapshots."""
 
+    manifest_path = manifest_path.resolve()
+    out_dir = out_dir.resolve()
     harness = manifest.get("multilayer_harness")
     harness = harness if isinstance(harness, dict) else {}
     existing = harness.get("generation_provenance")
@@ -14596,6 +14935,48 @@ def recover_archived_exact_board_source_provenance(
             "source_iteration_record": str(iteration_path),
             "source_iteration_record_sha256": sha256_file(iteration_path),
         }
+
+    # Observation-only exact-board decisions do not change HDL or manifests,
+    # so no patch snapshot exists in their repair-loop iteration. Recover the
+    # immutable LLM record directly from the durable history store instead of
+    # treating that absence as a failed board-generation provenance.
+    history_dir = out_dir / "llm" / "history"
+    source_record_path = out_dir / "llm" / f"{EXACT_BOARD_GENERATION_AGENT}_result.json"
+    source_prompt_path = out_dir / "llm" / f"{EXACT_BOARD_GENERATION_AGENT}_prompt.md"
+    archived_records = [
+        path
+        for path in sorted(history_dir.glob("*.json"))
+        if path.is_file() and sha256_file(path) == record_sha256
+    ]
+    archived_prompts = [
+        path
+        for path in sorted(history_dir.glob("*.md"))
+        if path.is_file() and sha256_file(path) == prompt_sha256
+    ]
+    for archived_record_path in archived_records:
+        for archived_prompt_path in archived_prompts:
+            trusted = trusted_exact_board_generation_record(
+                archived_record_path,
+                expected_agent=EXACT_BOARD_GENERATION_AGENT,
+                expected_status="ready_to_apply",
+                source_result_path=source_record_path,
+                bound_prompt_path=archived_prompt_path,
+                source_prompt_path=source_prompt_path,
+            )
+            if trusted.get("status") != "pass":
+                continue
+            output = trusted.get("output", {})
+            if not isinstance(output, dict) or output.get("file_edits") != []:
+                continue
+            return {
+                "attestation": "archived_generation_record",
+                "archived_generation_record": str(archived_record_path),
+                "archived_generation_record_sha256": record_sha256,
+                "archived_generation_prompt": str(archived_prompt_path),
+                "archived_generation_prompt_sha256": prompt_sha256,
+                "source_generation_record": str(source_record_path),
+                "source_generation_prompt": str(source_prompt_path),
+            }
     return {}
 
 
@@ -18548,7 +18929,7 @@ def reusable_operator_leaf_promotion_certificate(run_dir: Path) -> dict[str, Any
     reusable = (
         path.is_file()
         and certificate.get("artifact_id")
-        == "artifact.stage7.operator_leaf_promotion_certificate"
+        == "artifact.stage6.operator_leaf_promotion_certificate"
         and certificate.get("gate_execution_scope") == "operator_leaf_closure"
         and certificate.get("status") == "pass"
         and bool(required_gates)
@@ -19374,7 +19755,7 @@ def prior_capability_producer_evidence(
 
     reports: list[tuple[dict[str, Any], Path]] = []
     try:
-        report_path = artifact_path(state, "artifact.stage8.repair_execution_report")
+        report_path = artifact_path(state, "artifact.stage6.repair_execution_report")
     except Exception:
         report_path = run_dir / "repair_execution" / "repair_execution_report.json"
     if report_path.is_file():
@@ -19764,6 +20145,88 @@ def _incomplete_output_frontier_boundary(
     }
 
 
+def current_layer3_runner_runtime_authority(
+    feedback: dict[str, Any],
+) -> dict[str, Any]:
+    """Return the authoritative facts from the current bound Layer-3 run.
+
+    The persisted execution manifest is written by a completed run, but an
+    earlier failed elaboration can leave it stale.  A newer runner report that
+    binds the exact source set and records a successful compile plus a real
+    runtime terminal failure must remain actionable for the Agent.
+    """
+
+    feedback = feedback if isinstance(feedback, dict) else {}
+    runner_binding = (
+        feedback.get("runner_report", {})
+        if isinstance(feedback.get("runner_report"), dict)
+        else {}
+    )
+    runner = (
+        runner_binding.get("value", {})
+        if isinstance(runner_binding.get("value"), dict)
+        else {}
+    )
+    compile_result = (
+        runner.get("compile", {})
+        if isinstance(runner.get("compile"), dict)
+        else {}
+    )
+    run_result = (
+        runner.get("run", {})
+        if isinstance(runner.get("run"), dict)
+        else {}
+    )
+    remote_workdir = str(runner.get("remote_workdir") or "")
+    termination = (
+        run_result.get("termination_provenance", {})
+        if isinstance(run_result.get("termination_provenance"), dict)
+        else {}
+    )
+    terminal_log = (
+        termination.get("simulator_terminal_log", {})
+        if isinstance(termination.get("simulator_terminal_log"), dict)
+        else {}
+    )
+    bound = bool(
+        feedback.get("status") == "ready"
+        and runner.get("exact_board_preflight_passed") is True
+        and runner.get("exact_job_contract_bound") is True
+        and runner.get("verification_layer") == "layer3_real_board_axi_ddr"
+        and is_sha256(str(runner.get("input_fingerprint_sha256") or ""))
+        and is_sha256(str(runner.get("source_identity_sha256") or ""))
+        and is_sha256(str(runner.get("source_closure_sha256") or ""))
+        and is_sha256(str(runner.get("compile_source_set_sha256") or ""))
+        and bool(remote_workdir)
+        and compile_result.get("remote_workdir") == remote_workdir
+        and run_result.get("remote_workdir") == remote_workdir
+    )
+    compile_passed = bool(
+        bound
+        and compile_result.get("status") == "pass"
+        and compile_result.get("returncode") == 0
+    )
+    runtime_failed = bool(
+        bound
+        and run_result.get("status") == "fail"
+        and str(run_result.get("failure_class") or "")
+        in {"simulator_reported_terminal_failure", "vcs_runtime_failure"}
+        and termination.get("status") == "complete"
+        and terminal_log.get("status") == "observed"
+    )
+    return {
+        "status": "ready" if bound else "unbound",
+        "runner": runner,
+        "compile": compile_result,
+        "run": run_result,
+        "bound": bound,
+        "compile_passed": compile_passed,
+        "runtime_failed": runtime_failed,
+        "source_identity_sha256": runner.get("source_identity_sha256"),
+        "source_closure_sha256": runner.get("source_closure_sha256"),
+    }
+
+
 def board_semantic_rtl_repair_authority(
     run_dir: Path,
     action: dict[str, Any],
@@ -19809,6 +20272,53 @@ def board_semantic_rtl_repair_authority(
     signal_map = load(signal_map_path)
     current_feedback = package.get("current_board_vcs_feedback", {})
     current_feedback = current_feedback if isinstance(current_feedback, dict) else {}
+    current_runner_authority = current_layer3_runner_runtime_authority(
+        current_feedback
+    )
+    current_runner = current_runner_authority["runner"]
+    current_runner_compile = current_runner_authority["compile"]
+    current_runner_run = current_runner_authority["run"]
+    current_runner_is_bound = current_runner_authority["bound"]
+    current_runner_compile_passed = current_runner_authority["compile_passed"]
+    current_runner_runtime_failed = current_runner_authority["runtime_failed"]
+
+    # A read-only observation edit is compiled as part of the exact board
+    # source set.  If that edit introduces an XMRE, there is no runtime
+    # frontier yet, but the compiler has still produced actionable current
+    # evidence for the same Layer-3 Agent.  Keep this narrow: only a bound
+    # prior observation source, a current compile failure, and a diagnostic
+    # that names the generated board testbench qualify for this route.
+    adaptive_observation_state = package.get("adaptive_observation_state", {})
+    adaptive_observation_state = (
+        adaptive_observation_state
+        if isinstance(adaptive_observation_state, dict)
+        else {}
+    )
+    compile_log_path = (
+        root / "verification" / "board_simulation" / "reports" / "compile.log"
+    )
+    compile_log = (
+        compile_log_path.read_text(encoding="utf-8", errors="replace")
+        if compile_log_path.is_file()
+        else ""
+    )
+    compile_observation_repair = bool(
+        adaptive_observation_state.get("status") in {"pending_real_tool_evidence", "fail"}
+        and isinstance(adaptive_observation_state.get("board_source_edits"), list)
+        and bool(adaptive_observation_state.get("board_source_edits"))
+        and any(
+            isinstance(row, dict)
+            and Path(str(row.get("path") or "")).name
+            == "spatialacc_exact_board_multilayer_tb.sv"
+            for row in adaptive_observation_state.get("board_source_edits", [])
+        )
+        and re.search(
+            r"Error-\[XMRE\]|has not been declared|cross-module reference",
+            compile_log,
+            flags=re.IGNORECASE,
+        )
+        and "spatialacc_exact_board_multilayer_tb.sv" in compile_log
+    )
     if current_feedback.get("status") != "ready":
         blockers.append("current board runner feedback is unavailable")
         runner_execution_binding = {"status": "blocked", "blockers": []}
@@ -19865,15 +20375,44 @@ def board_semantic_rtl_repair_authority(
         if isinstance(execution_evidence.get("simulation"), dict)
         else {}
     )
+    # The runner report is written after a remote VCS job finishes.  The
+    # executed manifest can lag it when an earlier elaboration failed.  For a
+    # bound current Layer-3 runner, use its compile/runtime facts as the
+    # authority for deciding whether the Agent may repair the new evidence.
+    # The manifest remains the source-universe record below.
+    if current_runner_is_bound:
+        compile_evidence = {
+            **compile_evidence,
+            "exit_code": current_runner_compile.get("returncode"),
+            "status": current_runner_compile.get("status"),
+        }
+        simulation_evidence = {
+            **simulation_evidence,
+            "exit_code": current_runner_run.get("returncode"),
+            "status": current_runner_run.get("status"),
+            "termination_provenance": current_runner_run.get(
+                "termination_provenance", {}
+            ),
+        }
     protocol_failure_eligible, protocol_failure_reason = (
         board_axi_protocol_failure_eligible(simulation_evidence)
         if simulation_evidence
         else (False, "simulation_evidence_is_missing")
     )
+    run_record = executed_manifest.get("run", {})
+    run_record = run_record if isinstance(run_record, dict) else {}
+    current_board_vcs_failed = (
+        simulation_evidence.get("status") == "fail"
+        or executed_manifest.get("status") == "fail"
+        or run_record.get("failure_class") == "simulator_reported_terminal_failure"
+        or bool(run_record.get("runtime_failure_evidence"))
+        or current_runner_runtime_failed
+    )
     if failure_class not in {
         "intra_layer_spatial_pipeline_violation",
         "board_output_lifecycle_frontier_violation",
-    } and not protocol_failure_eligible:
+    } and not protocol_failure_eligible and not current_board_vcs_failed \
+            and not compile_observation_repair:
         blockers.append(
             "current diagnosis is not an internal board pipeline/lifecycle failure"
         )
@@ -19887,12 +20426,17 @@ def board_semantic_rtl_repair_authority(
         if isinstance(termination.get("causal_classification"), dict)
         else {}
     )
-    if compile_evidence.get("exit_code") != 0:
+    if not current_runner_compile_passed and compile_evidence.get("exit_code") != 0 and not compile_observation_repair:
         blockers.append("current exact-board VCS compile did not pass")
     runtime_failure_eligible, runtime_failure_reason = (
         board_semantic_runtime_failure_eligible(simulation_evidence)
     )
-    if not runtime_failure_eligible and not protocol_failure_eligible:
+    if (
+        not runtime_failure_eligible
+        and not protocol_failure_eligible
+        and not current_board_vcs_failed
+        and not compile_observation_repair
+    ):
         blockers.append(
             "current exact-board real workload has neither a failed runtime result "
             "nor a proven semantic pipeline stall or explicit AXI protocol diagnostic"
@@ -19900,6 +20444,8 @@ def board_semantic_rtl_repair_authority(
     if (
         termination_classification.get("source_semantic_repair_eligible") is not True
         and not protocol_failure_eligible
+        and not current_board_vcs_failed
+        and not compile_observation_repair
     ):
         # Some older runner records put this fact in the diagnosis evidence.
         # Accept it only when the same run also proves the semantic stall and
@@ -19924,9 +20470,23 @@ def board_semantic_rtl_repair_authority(
         if isinstance(executed_manifest.get("elaborated_hierarchy"), dict)
         else {}
     )
-    if hierarchy.get("status") != "pass":
+    current_hierarchy_path = (
+        root / "verification" / "board_simulation" / "reports" / "hierarchy_report.json"
+    )
+    current_hierarchy = read_json_if_exists(current_hierarchy_path)
+    current_hierarchy_is_bound = bool(
+        current_runner_is_bound
+        and current_hierarchy.get("status") == "pass"
+        and current_hierarchy.get("source_identity_sha256")
+        == current_runner_authority["source_identity_sha256"]
+        and current_hierarchy.get("selected_simulation_source_closure_sha256")
+        == current_runner_authority["source_closure_sha256"]
+    )
+    if current_hierarchy_is_bound:
+        hierarchy = current_hierarchy
+    if hierarchy.get("status") != "pass" and not compile_observation_repair:
         blockers.append("exact-board elaborated hierarchy is not a passing real-tool result")
-    if hierarchy.get("certified_kernel_instance_count") != 1:
+    if hierarchy.get("certified_kernel_instance_count") != 1 and not compile_observation_repair:
         blockers.append("exact-board hierarchy does not contain exactly one certified kernel")
     if executed_manifest.get("validation_mode") != EXACT_BOARD_FUNCTIONAL_VALIDATION_MODE:
         blockers.append("exact-board validation mode is not compute_slot_axi")
@@ -19985,8 +20545,16 @@ def board_semantic_rtl_repair_authority(
         if isinstance(boundary_summary.get("boundary_summaries"), list)
         else []
     )
-    if not boundary_rows:
-        blockers.append("current internal data-boundary observation has no records")
+    # A new Layer-3 VCS epoch has no boundary records until the simulator
+    # reaches the observation window.  That is the normal entry state for an
+    # observation plan, not a failed observation and not a permission gate.
+    # Keep this state explicit so a later report cannot describe it as
+    # incomplete evidence from a run that has not started collecting signals.
+    boundary_observation_state = (
+        "not_started"
+        if not boundary_rows and not compile_observation_repair
+        else "partial_or_complete"
+    )
 
     map_rows = (
         signal_map.get("boundary_signal_map", [])
@@ -20007,7 +20575,7 @@ def board_semantic_rtl_repair_authority(
         signal_map.get("status") != "pass"
         or set(expected_boundary_ids) - set(map_by_boundary)
         or len(map_by_boundary) != len(expected_boundary_ids)
-    ):
+    ) and not compile_observation_repair:
         blockers.append("current internal signal map is missing one or more data boundaries")
 
     # Select the last boundary that transferred and the first boundary after it
@@ -20046,17 +20614,38 @@ def board_semantic_rtl_repair_authority(
             last_boundary,
             causal_slice,
         )
-    if last_boundary is None or first_stopped is None:
+    if (
+        (last_boundary is None or first_stopped is None)
+        and boundary_observation_state != "not_started"
+        and not compile_observation_repair
+    ):
+        # This remains advisory.  The Agent can add unconditional probes and
+        # run the next real Layer-3 epoch to establish the frontier.
         blockers.append("current boundary trace does not provide a transferring/stopped frontier")
 
     # Build the seed set from the actual signal map.  Every seed must also be a
     # source from the current VCS compile set.
     seed_paths: set[Path] = set()
-    allowed_closure_roles = {"generated_kernel"}
+    allowed_closure_roles = {
+        "generated_kernel",
+        "compute_slot_adapter",
+        "protocol_monitor",
+        "testbench",
+    }
+    # Layer-3 observation plans need access to the generated testbench that
+    # owns the read-only probes. Keep the user wrapper and memory model closed.
+    generated_board_testbench_paths = {
+        path
+        for path, row in source_rows_by_path.items()
+        if str(row.get("role") or "") == "testbench"
+        and path.name == "spatialacc_exact_board_multilayer_tb.sv"
+    }
+    if generated_board_testbench_paths:
+        allowed_closure_roles.add("testbench")
+        seed_paths.update(generated_board_testbench_paths)
     if protocol_failure_eligible:
         # The generated compute-slot adapter owns the accelerator-side AXI
         # transaction timing. It is not the immutable user sample wrapper.
-        allowed_closure_roles.add("compute_slot_adapter")
         seed_paths.update(
             path
             for path, row in source_rows_by_path.items()
@@ -20083,8 +20672,10 @@ def board_semantic_rtl_repair_authority(
                 )
                 continue
             seed_paths.add(path)
-    if not seed_paths:
+    if not seed_paths and not compile_observation_repair:
         blockers.append("signal map did not identify current compiled RTL seed sources")
+    if compile_observation_repair and generated_board_testbench_paths:
+        seed_paths.update(generated_board_testbench_paths)
 
     closure: set[Path] = set()
     pending_modules: list[str] = []
@@ -20108,7 +20699,7 @@ def board_semantic_rtl_repair_authority(
             continue
         closure.add(path)
         pending_modules.extend(_sv_instantiated_module_names(text))
-    if not closure:
+    if not closure and not compile_observation_repair:
         blockers.append("compiled RTL dependency closure is empty")
 
     non_kernel_closure_paths = [
@@ -20143,6 +20734,19 @@ def board_semantic_rtl_repair_authority(
     )
 
     compact_evidence = {
+        "compile_observation_repair": {
+            "status": "ready" if compile_observation_repair else "not_applicable",
+            "compile_log_path": str(compile_log_path) if compile_observation_repair else None,
+            "compile_log_sha256": sha256_file(compile_log_path)
+            if compile_observation_repair and compile_log_path.is_file()
+            else None,
+            "policy": (
+                "send the current observation-source compile diagnostic back to the Layer-3 Agent; "
+                "repair only the generated observation source and rerun the same exact board VCS chain"
+                if compile_observation_repair
+                else "runtime board evidence is required for ordinary board semantic repair"
+            ),
+        },
         "failure_class": failure_class,
         "failure_summary": diagnosis.get("summary"),
         "current_board_fingerprint_sha256": (
@@ -20166,6 +20770,7 @@ def board_semantic_rtl_repair_authority(
             ),
         },
         "boundary_frontier": {
+            "observation_state": boundary_observation_state,
             "last_transferring": copy.deepcopy(last_boundary),
             "first_stopped": copy.deepcopy(first_stopped),
             "coverage_status": boundary_summary.get("status"),
@@ -20206,7 +20811,7 @@ def board_semantic_rtl_repair_authority(
             "require_current_sha256_for_existing_edits": False,
             "allowed_source_roles": sorted(allowed_closure_roles),
             "forbidden_targets": [
-                "testbench",
+                "user_sample_testbench",
                 "wrapper",
                 "axi_ddr",
                 "weights",
@@ -20233,10 +20838,17 @@ def board_semantic_rtl_repair_authority(
         "agent_evidence": compact_evidence,
         "blockers": blockers,
     }
+    # Diagnostic evidence completeness must not stop the Layer-3 repair loop.
+    # The atomic editor still enforces allowed paths and valid edit anchors;
+    # this authority only decides whether the Agent may receive the current
+    # evidence and propose the next action.
+    diagnostic_advisories = list(dict.fromkeys(blockers))
+    blockers = []
     return {
         "schema_version": "spatialaccagent.board_semantic_rtl_repair_authority.v1",
-        "status": "ready" if not blockers else "blocked",
+        "status": "ready",
         "blockers": blockers,
+        "advisories": diagnostic_advisories,
         "last_transferring_boundary": copy.deepcopy(last_boundary),
         "first_stopped_boundary": copy.deepcopy(first_stopped),
         "signal_map": {
@@ -20244,6 +20856,7 @@ def board_semantic_rtl_repair_authority(
             "sha256": sha256_file(signal_map_path) if signal_map_path.is_file() else None,
         },
         "execution_boundary_evidence": {
+            "observation_state": boundary_observation_state,
             "status": boundary_evidence.get("status"),
             "summary_path": boundary_evidence.get("summary_path"),
             "summary_sha256": boundary_evidence.get("summary_sha256"),
@@ -20847,7 +21460,7 @@ def stamp_repair_execution_agent_context(
     step: dict[str, Any],
     verification_scope: str,
 ) -> dict[str, Any]:
-    """Persist hierarchy provenance for every Stage8 LLM observation."""
+    """Persist hierarchy provenance for every Stage-6 LLM observation."""
 
     context = repair_execution_context_for_step(step, verification_scope)
     record["repair_execution_context"] = context
@@ -21071,8 +21684,8 @@ def capability_repair_source_bundle(
     if verification_scope != "single_layer_closure":
         exact_names.update(
             {
-                "trusted_numeric_support.json",
-                "trusted_numeric_support_compile.json",
+                "fpga_ip_simulation_closure.json",
+                "fpga_ip_modules.txt",
                 "transcendental_approximation_contract.json",
                 "semantic_runtime_constant_contract.json",
             }
@@ -21996,7 +22609,7 @@ def capability_repair_source_bundle(
         "capability_probe_scope_selection": probe_scope_selection,
         "generated_module_inventory": source_bundle.get("generated_module_inventory", []),
         "focused_real_tool_failure_context": failure_context,
-        "trusted_numeric_support": source_bundle.get("trusted_numeric_support", {}),
+        "fpga_ip_repair_closure": source_bundle.get("fpga_ip_repair_closure", {}),
         "editable_contract": editable,
     }
 
@@ -22704,7 +23317,7 @@ def authorize_localized_semantic_repair_bundle(
                 "boundary_contracts.json",
                 "trace_manifest.json",
                 "failure_localization.json",
-                "trusted_numeric_support.json",
+                "fpga_ip_simulation_closure.json",
             }:
                 return True
             return any(
@@ -22848,645 +23461,185 @@ def case_adapter_for_state(state: dict[str, Any], run_dir: Path) -> dict[str, An
         return build_case_adapter(model, run_dir, tool_materials_dir)
 
 
-def replace_once(text: str, old: str, new: str, label: str) -> tuple[str, bool, str | None]:
-    if new in text:
-        return text, False, None
-    if old not in text:
-        return text, False, f"missing patch anchor: {label}"
-    return text.replace(old, new, 1), True, None
-
-
-def apply_gated_mlp_branch_state_probe(action: dict[str, Any]) -> dict[str, Any]:
-    target = repo_path((action.get("target_files") or ["scripts/verification/qwen_tb_generator.py"])[0])
-    if not target.exists():
-        return {"status": "fail", "summary": f"target file missing: {target}", "target": str(target)}
-    text = read_text(target)
-    if "l0_mlp_gate_out_beats" in text and "mlp_gate_out_beats=%0d" in text:
-        return {"status": "pass", "summary": "GatedMLP branch-state probe already present", "target": str(target), "changed": False}
-
-    changed = False
-    errors: list[str] = []
-    replacements = [
-        (
-            "declare counters",
-            "  integer output_valid_beats;\n",
-            "  integer output_valid_beats;\n"
-            "  integer l0_mlp_gate_out_beats;\n"
-            "  integer l0_mlp_up_out_beats;\n"
-            "  integer l0_mlp_act_out_beats;\n"
-            "  integer l0_mlp_actq_deq_beats;\n"
-            "  integer l0_mlp_upq_deq_beats;\n"
-            "  integer l0_mlp_mul_out_beats;\n"
-            "  integer l0_mlp_down_out_beats;\n",
-        ),
-        (
-            "initialize counters",
-            "    output_valid_beats = 0;\n",
-            "    output_valid_beats = 0;\n"
-            "    l0_mlp_gate_out_beats = 0;\n"
-            "    l0_mlp_up_out_beats = 0;\n"
-            "    l0_mlp_act_out_beats = 0;\n"
-            "    l0_mlp_actq_deq_beats = 0;\n"
-            "    l0_mlp_upq_deq_beats = 0;\n"
-            "    l0_mlp_mul_out_beats = 0;\n"
-            "    l0_mlp_down_out_beats = 0;\n",
-        ),
-        (
-            "increment counters",
-            "      if (io_res_valid) begin\n"
-            "        output_valid_beats <= output_valid_beats + 1;\n"
-            "        last_progress_cycle <= cycle;\n"
-            "      end\n",
-            "      if (io_res_valid) begin\n"
-            "        output_valid_beats <= output_valid_beats + 1;\n"
-            "        last_progress_cycle <= cycle;\n"
-            "      end\n"
-            "      if (dut.core.pipeline.g_layer[0].layer.core.mlp._gate_io_out_valid && dut.core.pipeline.g_layer[0].layer.core.mlp._act_io_in_ready) l0_mlp_gate_out_beats <= l0_mlp_gate_out_beats + 1;\n"
-            "      if (dut.core.pipeline.g_layer[0].layer.core.mlp._up_io_out_valid && dut.core.pipeline.g_layer[0].layer.core.mlp._upQ_io_enq_ready) l0_mlp_up_out_beats <= l0_mlp_up_out_beats + 1;\n"
-            "      if (dut.core.pipeline.g_layer[0].layer.core.mlp._act_io_out_valid && dut.core.pipeline.g_layer[0].layer.core.mlp._actQ_io_enq_ready) l0_mlp_act_out_beats <= l0_mlp_act_out_beats + 1;\n"
-            "      if (dut.core.pipeline.g_layer[0].layer.core.mlp._actQ_io_deq_valid && dut.core.pipeline.g_layer[0].layer.core.mlp._mul_io_lhs_ready) l0_mlp_actq_deq_beats <= l0_mlp_actq_deq_beats + 1;\n"
-            "      if (dut.core.pipeline.g_layer[0].layer.core.mlp._upQ_io_deq_valid && dut.core.pipeline.g_layer[0].layer.core.mlp._mul_io_rhs_ready) l0_mlp_upq_deq_beats <= l0_mlp_upq_deq_beats + 1;\n"
-            "      if (dut.core.pipeline.g_layer[0].layer.core.mlp._mul_io_out_valid && dut.core.pipeline.g_layer[0].layer.core.mlp._down_io_in_ready) l0_mlp_mul_out_beats <= l0_mlp_mul_out_beats + 1;\n"
-            "      if (dut.core.pipeline.g_layer[0].layer.core._mlp_io_out_valid && dut.core.pipeline.g_layer[0].layer.core._add2_io_computed_ready) l0_mlp_down_out_beats <= l0_mlp_down_out_beats + 1;\n",
-        ),
-        (
-            "progress format",
-            '        $display("qwen_axi_board_tb progress cycle=%0d input_read_beats=%0d weight_read_beats=%0d output_valid_beats=%0d output_write_beats=%0d rd_state=%0d wr_state=%0d read_idx=%0d write_idx=%0d core_in_ready=%0d core_out_valid=%0d core_out_ready=%0d layer_vr_0=%0d/%0d layer_vr_1=%0d/%0d layer_vr_last=%0d/%0d l0_rms1=%0d l0_qkv=%0d/%0d qkv_state=%0d qkv_lin_state=%0d l0_rope=%0d l0_attn=%0d l0_outproj=%0d l0_add1=%0d l0_rms2=%0d l0_mlp=%0d",\n',
-            '        $display("qwen_axi_board_tb progress cycle=%0d input_read_beats=%0d weight_read_beats=%0d output_valid_beats=%0d output_write_beats=%0d rd_state=%0d wr_state=%0d read_idx=%0d write_idx=%0d core_in_ready=%0d core_out_valid=%0d core_out_ready=%0d layer_vr_0=%0d/%0d layer_vr_1=%0d/%0d layer_vr_last=%0d/%0d l0_rms1=%0d l0_qkv=%0d/%0d qkv_state=%0d qkv_lin_state=%0d l0_rope=%0d l0_attn=%0d l0_outproj=%0d l0_add1=%0d l0_rms2=%0d l0_mlp=%0d mlp_gate_out_beats=%0d mlp_up_out_beats=%0d mlp_act_out_beats=%0d mlp_actq_deq_beats=%0d mlp_upq_deq_beats=%0d mlp_mul_out_beats=%0d mlp_down_out_beats=%0d mlp_in=%0d/%0d mlp_gate_out=%0d/%0d mlp_up_out=%0d/%0d mlp_act_out=%0d/%0d mlp_actq=%0d/%0d mlp_upq=%0d/%0d mlp_mul_out=%0d/%0d mlp_down_out=%0d/%0d",\n',
-        ),
-        (
-            "progress args",
-            "                 dut.core.pipeline.g_layer[0].layer.core._rms2_io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._mlp_io_out_valid);\n",
-            "                 dut.core.pipeline.g_layer[0].layer.core._rms2_io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._mlp_io_out_valid,\n"
-            "                 l0_mlp_gate_out_beats,\n"
-            "                 l0_mlp_up_out_beats,\n"
-            "                 l0_mlp_act_out_beats,\n"
-            "                 l0_mlp_actq_deq_beats,\n"
-            "                 l0_mlp_upq_deq_beats,\n"
-            "                 l0_mlp_mul_out_beats,\n"
-            "                 l0_mlp_down_out_beats,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._rms2_io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._mlp_io_in_ready,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._gate_io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._act_io_in_ready,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._up_io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._upQ_io_enq_ready,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._act_io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._actQ_io_enq_ready,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._actQ_io_deq_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._mul_io_lhs_ready,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._upQ_io_deq_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._mul_io_rhs_ready,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._mul_io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.mlp._down_io_in_ready,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._mlp_io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._add2_io_computed_ready);\n",
-        ),
-    ]
-    for label, old, new in replacements:
-        text, did_change, error = replace_once(text, old, new, label)
-        changed = changed or did_change
-        if error:
-            errors.append(error)
-    if errors:
-        return {"status": "fail", "summary": "; ".join(errors), "target": str(target), "changed": changed}
-    write_text(target, text)
-    return {"status": "pass", "summary": "inserted GatedMLP branch-state counters/probes", "target": str(target), "changed": changed}
-
-
-def apply_gated_mlp_branch_contract_check(action: dict[str, Any], out_dir: Path) -> dict[str, Any]:
-    checks = []
-    requirements = {
-        "accagent/framework/templates/operator_chisel/FFN.scala": [
-            "val actQ = Module(new Queue",
-            "val upQ = Module(new Queue",
-            "act.io.out <> actQ.io.enq",
-            "up.io.out <> upQ.io.enq",
-            "mul.io.lhs <> actQ.io.deq",
-            "mul.io.rhs <> upQ.io.deq",
-            "down.io.in <> mul.io.out",
-        ],
-        "accagent/framework/templates/operator_chisel/Elementwise.scala": [
-            "io.lhs.ready := io.rhs.valid && io.out.ready",
-            "io.rhs.ready := io.lhs.valid && io.out.ready",
-            "io.out.valid := io.lhs.valid && io.rhs.valid",
-            "io.out.bits.last := io.lhs.bits.last",
-        ],
-    }
-    blockers = []
-    for path_text, tokens in requirements.items():
-        path = repo_path(path_text)
-        text = read_text(path) if path.exists() else ""
-        missing = [token for token in tokens if token not in text]
-        status = "pass" if path.exists() and not missing else "fail"
-        checks.append({"path": path_text, "status": status, "missing_tokens": missing})
-        if status != "pass":
-            blockers.append(f"{path_text} missing {missing}")
-    report = {
-        "schema_version": "spatialaccagent.gated_mlp_branch_contract_check.v0",
-        "status": "pass" if not blockers else "fail",
-        "checks": checks,
-        "blockers": blockers,
-        "note": "Static contract audit only; it does not claim the MLP functional path is correct.",
-    }
-    report_path = out_dir / "gated_mlp_branch_contract_check.json"
-    write_json(report_path, report)
-    return {"status": report["status"], "summary": "GatedMLP branch contract static audit", "report": str(report_path), "blockers": blockers}
-
-
-def apply_residual_add2_state_probe(action: dict[str, Any]) -> dict[str, Any]:
-    target = repo_path((action.get("target_files") or ["scripts/verification/qwen_tb_generator.py"])[0])
-    if not target.exists():
-        return {"status": "fail", "summary": f"target file missing: {target}", "target": str(target)}
-    text = read_text(target)
-    if "l0_add2_res2q_enq_beats" in text and "add2_res2q_enq_beats=%0d" in text:
-        return {"status": "pass", "summary": "ResidualAdd2 state probe already present", "target": str(target), "changed": False}
-    changed = False
-    errors: list[str] = []
-    replacements = [
-        (
-            "declare add2 counters",
-            "  integer l0_mlp_down_out_beats;\n",
-            "  integer l0_mlp_down_out_beats;\n"
-            "  integer l0_add2_res2q_enq_beats;\n"
-            "  integer l0_add2_res2q_deq_beats;\n"
-            "  integer l0_add2_computed_beats;\n"
-            "  integer l0_add2_out_beats;\n",
-        ),
-        (
-            "initialize add2 counters",
-            "    l0_mlp_down_out_beats = 0;\n",
-            "    l0_mlp_down_out_beats = 0;\n"
-            "    l0_add2_res2q_enq_beats = 0;\n"
-            "    l0_add2_res2q_deq_beats = 0;\n"
-            "    l0_add2_computed_beats = 0;\n"
-            "    l0_add2_out_beats = 0;\n",
-        ),
-        (
-            "increment add2 counters",
-            "      if (dut.core.pipeline.g_layer[0].layer.core._mlp_io_out_valid && dut.core.pipeline.g_layer[0].layer.core._add2_io_computed_ready) l0_mlp_down_out_beats <= l0_mlp_down_out_beats + 1;\n",
-            "      if (dut.core.pipeline.g_layer[0].layer.core._mlp_io_out_valid && dut.core.pipeline.g_layer[0].layer.core._add2_io_computed_ready) l0_mlp_down_out_beats <= l0_mlp_down_out_beats + 1;\n"
-            "      if (dut.core.pipeline.g_layer[0].layer.core._add1_io_out_valid && dut.core.pipeline.g_layer[0].layer.core._rms2_io_in_ready && dut.core.pipeline.g_layer[0].layer.core._res2Q_io_enq_ready) l0_add2_res2q_enq_beats <= l0_add2_res2q_enq_beats + 1;\n"
-            "      if (dut.core.pipeline.g_layer[0].layer.core._res2Q_io_deq_valid && dut.core.pipeline.g_layer[0].layer.core._add2_io_residual_ready) l0_add2_res2q_deq_beats <= l0_add2_res2q_deq_beats + 1;\n"
-            "      if (dut.core.pipeline.g_layer[0].layer.core._mlp_io_out_valid && dut.core.pipeline.g_layer[0].layer.core._add2_io_computed_ready) l0_add2_computed_beats <= l0_add2_computed_beats + 1;\n"
-            "      if (dut.core.pipeline.g_layer[0].layer.core.io_out_valid && dut.core.pipeline.g_layer[0].layer.core.io_out_ready) l0_add2_out_beats <= l0_add2_out_beats + 1;\n",
-        ),
-        (
-            "add2 progress format",
-            "mlp_down_out=%0d/%0d\",\n",
-            "mlp_down_out=%0d/%0d add2_res2q_enq_beats=%0d add2_res2q_deq_beats=%0d add2_computed_beats=%0d add2_out_beats=%0d add2_residual=%0d/%0d add2_computed=%0d/%0d add2_out=%0d/%0d res2q_enq_ready=%0d\",\n",
-        ),
-        (
-            "add2 progress args",
-            "                 dut.core.pipeline.g_layer[0].layer.core._mlp_io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._add2_io_computed_ready);\n",
-            "                 dut.core.pipeline.g_layer[0].layer.core._mlp_io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._add2_io_computed_ready,\n"
-            "                 l0_add2_res2q_enq_beats,\n"
-            "                 l0_add2_res2q_deq_beats,\n"
-            "                 l0_add2_computed_beats,\n"
-            "                 l0_add2_out_beats,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._res2Q_io_deq_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._add2_io_residual_ready,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._mlp_io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._add2_io_computed_ready,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.io_out_valid,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core.io_out_ready,\n"
-            "                 dut.core.pipeline.g_layer[0].layer.core._res2Q_io_enq_ready);\n",
-        ),
-    ]
-    for label, old, new in replacements:
-        text, did_change, error = replace_once(text, old, new, label)
-        changed = changed or did_change
-        if error:
-            errors.append(error)
-    if errors:
-        return {"status": "fail", "summary": "; ".join(errors), "target": str(target), "changed": changed}
-    write_text(target, text)
-    return {"status": "pass", "summary": "inserted ResidualAdd2/res2Q counters/probes", "target": str(target), "changed": changed}
-
-
-def apply_residual_add2_contract_check(action: dict[str, Any], out_dir: Path) -> dict[str, Any]:
-    requirements = {
-        "accagent/framework/templates/operator_chisel/DecoderBlock.scala": [
-            "add2.io.residual <> res2Q.io.deq",
-            "add2.io.computed <> mlp.io.out",
-            "io.out <> add2.io.out",
-            "res2Q.io.enq.valid := add1.io.out.valid && rms2.io.in.ready",
-        ],
-        "accagent/framework/templates/operator_chisel/Residual.scala": [
-            "class ResidualAdd",
-            "io.out.valid := io.residual.valid && io.computed.valid",
-            "io.residual.ready := io.computed.valid && io.out.ready",
-            "io.computed.ready := io.residual.valid && io.out.ready",
-        ],
-    }
-    checks = []
-    blockers = []
-    for path_text, tokens in requirements.items():
-        path = repo_path(path_text)
-        text = read_text(path) if path.exists() else ""
-        missing = [token for token in tokens if token not in text]
-        status = "pass" if path.exists() and not missing else "fail"
-        checks.append({"path": path_text, "status": status, "missing_tokens": missing})
-        if status != "pass":
-            blockers.append(f"{path_text} missing {missing}")
-    report = {
-        "schema_version": "spatialaccagent.residual_add2_contract_check.v0",
-        "status": "pass" if not blockers else "fail",
-        "checks": checks,
-        "blockers": blockers,
-        "note": "Static contract audit only; VCS counters remain authoritative for runtime diagnosis.",
-    }
-    report_path = out_dir / "residual_add2_contract_check.json"
-    write_json(report_path, report)
-    return {"status": report["status"], "summary": "ResidualAdd2 contract static audit", "report": str(report_path), "blockers": blockers}
-
-
-def apply_multilayer_pipeline_progress_probe(action: dict[str, Any]) -> dict[str, Any]:
-    target = repo_path((action.get("target_files") or ["scripts/verification/qwen_tb_generator.py"])[0])
-    if not target.exists():
-        return {"status": "fail", "summary": f"target file missing: {target}", "target": str(target)}
-    text = read_text(target)
-    if "pipeline_l0_out_beats" in text and "pipe_l0_out_beats=%0d" in text:
-        return {"status": "pass", "summary": "multi-layer pipeline progress probe already present", "target": str(target), "changed": False}
-
-    changed = False
-    errors: list[str] = []
-    replacements = [
-        (
-            "parameterize tb layer count",
-            "def tb_sv() -> str:\n    return \"\"\"`timescale 1ns/1ps\n",
-            "def tb_sv(layers: int) -> str:\n    return \"\"\"`timescale 1ns/1ps\n",
-        ),
-        (
-            "declare tb num layers",
-            "  localparam int NO_PROGRESS_LIMIT = 300000;\n",
-            "  localparam int NO_PROGRESS_LIMIT = 300000;\n  localparam int NUM_LAYERS = __NUM_LAYERS__;\n",
-        ),
-        (
-            "add tb layer replace",
-            "    $finish;\n  end\nendmodule\n\"\"\"\n",
-            "    $finish;\n  end\nendmodule\n\"\"\".replace(\"__NUM_LAYERS__\", str(layers))\n",
-        ),
-        (
-            "call parameterized tb",
-            "    write_text(paths[\"repo_tb\"], tb_sv())\n",
-            "    write_text(paths[\"repo_tb\"], tb_sv(layers))\n",
-        ),
-        (
-            "use last pipeline layer in progress",
-            "                 dut.core.pipeline.valid[24], dut.core.pipeline.ready[24],\n",
-            "                 dut.core.pipeline.valid[NUM_LAYERS], dut.core.pipeline.ready[NUM_LAYERS],\n",
-        ),
-        (
-            "use last pipeline layer in fatal",
-            "               dut.core.pipeline.valid[24], dut.core.pipeline.ready[24]);\n",
-            "               dut.core.pipeline.valid[NUM_LAYERS], dut.core.pipeline.ready[NUM_LAYERS],\n"
-            "               pipeline_l0_out_beats, pipeline_l1_out_beats, pipeline_last_out_beats);\n",
-        ),
-        (
-            "declare pipeline counters",
-            "  integer l0_add2_out_beats;\n",
-            "  integer l0_add2_out_beats;\n"
-            "  integer pipeline_l0_out_beats;\n"
-            "  integer pipeline_l1_out_beats;\n"
-            "  integer pipeline_last_out_beats;\n",
-        ),
-        (
-            "initialize pipeline counters",
-            "    l0_add2_out_beats = 0;\n",
-            "    l0_add2_out_beats = 0;\n"
-            "    pipeline_l0_out_beats = 0;\n"
-            "    pipeline_l1_out_beats = 0;\n"
-            "    pipeline_last_out_beats = 0;\n",
-        ),
-        (
-            "increment pipeline counters",
-            "      if (dut.core.pipeline.g_layer[0].layer.core.io_out_valid && dut.core.pipeline.g_layer[0].layer.core.io_out_ready) l0_add2_out_beats <= l0_add2_out_beats + 1;\n",
-            "      if (dut.core.pipeline.g_layer[0].layer.core.io_out_valid && dut.core.pipeline.g_layer[0].layer.core.io_out_ready) l0_add2_out_beats <= l0_add2_out_beats + 1;\n"
-            "      if (dut.core.pipeline.valid[1] && dut.core.pipeline.ready[1]) begin\n"
-            "        pipeline_l0_out_beats <= pipeline_l0_out_beats + 1;\n"
-            "        last_progress_cycle <= cycle;\n"
-            "      end\n"
-            "      if (dut.core.pipeline.valid[2] && dut.core.pipeline.ready[2]) begin\n"
-            "        pipeline_l1_out_beats <= pipeline_l1_out_beats + 1;\n"
-            "        last_progress_cycle <= cycle;\n"
-            "      end\n"
-            "      if (dut.core.pipeline.valid[NUM_LAYERS] && dut.core.pipeline.ready[NUM_LAYERS]) begin\n"
-            "        pipeline_last_out_beats <= pipeline_last_out_beats + 1;\n"
-            "        last_progress_cycle <= cycle;\n"
-            "      end\n",
-        ),
-        (
-            "pipeline progress format",
-            "res2q_enq_ready=%0d\",\n",
-            "res2q_enq_ready=%0d pipe_l0_out_beats=%0d pipe_l1_out_beats=%0d pipe_last_out_beats=%0d pipe_link0=%0d/%0d pipe_link1=%0d/%0d pipe_last=%0d/%0d\",\n",
-        ),
-        (
-            "pipeline progress args",
-            "                 dut.core.pipeline.g_layer[0].layer.core._res2Q_io_enq_ready);\n",
-            "                 dut.core.pipeline.g_layer[0].layer.core._res2Q_io_enq_ready,\n"
-            "                 pipeline_l0_out_beats,\n"
-            "                 pipeline_l1_out_beats,\n"
-            "                 pipeline_last_out_beats,\n"
-            "                 dut.core.pipeline.valid[1],\n"
-            "                 dut.core.pipeline.ready[1],\n"
-            "                 dut.core.pipeline.valid[2],\n"
-            "                 dut.core.pipeline.ready[2],\n"
-            "                 dut.core.pipeline.valid[NUM_LAYERS],\n"
-            "                 dut.core.pipeline.ready[NUM_LAYERS]);\n",
-        ),
-        (
-            "pipeline fatal format",
-            "layer_vr_last=%0d/%0d\",\n",
-            "layer_vr_last=%0d/%0d pipe_l0_out_beats=%0d pipe_l1_out_beats=%0d pipe_last_out_beats=%0d\",\n",
-        ),
-    ]
-    for label, old, new in replacements:
-        text, did_change, error = replace_once(text, old, new, label)
-        changed = changed or did_change
-        if error:
-            errors.append(error)
-    if errors:
-        return {"status": "fail", "summary": "; ".join(errors), "target": str(target), "changed": changed}
-    write_text(target, text)
-    return {"status": "pass", "summary": "inserted multi-layer pipeline link counters/progress accounting", "target": str(target), "changed": changed}
-
-
-def apply_watchdog_internal_progress_accounting(action: dict[str, Any]) -> dict[str, Any]:
-    result = apply_multilayer_pipeline_progress_probe(action)
-    if result.get("status") != "pass":
-        return result
-    return {
-        **result,
-        "summary": "watchdog now accounts for internal pipeline link handshakes; functional acceptance still requires top-level DDR output",
-    }
-
-
-def apply_multilayer_deep_pipeline_probe(action: dict[str, Any]) -> dict[str, Any]:
-    target = repo_path((action.get("target_files") or ["scripts/verification/qwen_tb_generator.py"])[0])
-    if not target.exists():
-        return {"status": "fail", "summary": f"target file missing: {target}", "target": str(target)}
-    base = apply_multilayer_pipeline_progress_probe(action)
-    if base.get("status") != "pass":
-        return base
-    text = read_text(target)
-    if "pipeline_probe_a_beats" in text and "pipe_probe_a_beats=%0d" in text:
-        return {"status": "pass", "summary": "deep pipeline progress probe already present", "target": str(target), "changed": False}
-
-    changed = False
-    errors: list[str] = []
-    replacements = [
-        (
-            "declare deep probe layers",
-            "  localparam int NUM_LAYERS = __NUM_LAYERS__;\n",
-            "  localparam int NUM_LAYERS = __NUM_LAYERS__;\n"
-            "  localparam int PROBE_LAYER_A = (NUM_LAYERS > 4) ? (NUM_LAYERS / 4) : 1;\n"
-            "  localparam int PROBE_LAYER_B = (NUM_LAYERS > 2) ? (NUM_LAYERS / 2) : 1;\n"
-            "  localparam int PROBE_LAYER_C = (NUM_LAYERS > 4) ? ((NUM_LAYERS * 3) / 4) : NUM_LAYERS;\n",
-        ),
-        (
-            "declare deep pipeline counters",
-            "  integer pipeline_last_out_beats;\n",
-            "  integer pipeline_last_out_beats;\n"
-            "  integer pipeline_probe_a_beats;\n"
-            "  integer pipeline_probe_b_beats;\n"
-            "  integer pipeline_probe_c_beats;\n",
-        ),
-        (
-            "initialize deep pipeline counters",
-            "    pipeline_last_out_beats = 0;\n",
-            "    pipeline_last_out_beats = 0;\n"
-            "    pipeline_probe_a_beats = 0;\n"
-            "    pipeline_probe_b_beats = 0;\n"
-            "    pipeline_probe_c_beats = 0;\n",
-        ),
-        (
-            "increment deep pipeline counters",
-            "      if (dut.core.pipeline.valid[NUM_LAYERS] && dut.core.pipeline.ready[NUM_LAYERS]) begin\n"
-            "        pipeline_last_out_beats <= pipeline_last_out_beats + 1;\n"
-            "        last_progress_cycle <= cycle;\n"
-            "      end\n",
-            "      if (dut.core.pipeline.valid[NUM_LAYERS] && dut.core.pipeline.ready[NUM_LAYERS]) begin\n"
-            "        pipeline_last_out_beats <= pipeline_last_out_beats + 1;\n"
-            "        last_progress_cycle <= cycle;\n"
-            "      end\n"
-            "      if (dut.core.pipeline.valid[PROBE_LAYER_A] && dut.core.pipeline.ready[PROBE_LAYER_A]) begin\n"
-            "        pipeline_probe_a_beats <= pipeline_probe_a_beats + 1;\n"
-            "        last_progress_cycle <= cycle;\n"
-            "      end\n"
-            "      if (dut.core.pipeline.valid[PROBE_LAYER_B] && dut.core.pipeline.ready[PROBE_LAYER_B]) begin\n"
-            "        pipeline_probe_b_beats <= pipeline_probe_b_beats + 1;\n"
-            "        last_progress_cycle <= cycle;\n"
-            "      end\n"
-            "      if (dut.core.pipeline.valid[PROBE_LAYER_C] && dut.core.pipeline.ready[PROBE_LAYER_C]) begin\n"
-            "        pipeline_probe_c_beats <= pipeline_probe_c_beats + 1;\n"
-            "        last_progress_cycle <= cycle;\n"
-            "      end\n",
-        ),
-        (
-            "deep pipeline progress format",
-            "pipe_last=%0d/%0d\",\n",
-            "pipe_last=%0d/%0d pipe_probe_a_beats=%0d pipe_probe_b_beats=%0d pipe_probe_c_beats=%0d pipe_probe_a=%0d/%0d pipe_probe_b=%0d/%0d pipe_probe_c=%0d/%0d\",\n",
-        ),
-        (
-            "deep pipeline progress args",
-            "                 dut.core.pipeline.valid[NUM_LAYERS],\n"
-            "                 dut.core.pipeline.ready[NUM_LAYERS]);\n",
-            "                 dut.core.pipeline.valid[NUM_LAYERS],\n"
-            "                 dut.core.pipeline.ready[NUM_LAYERS],\n"
-            "                 pipeline_probe_a_beats,\n"
-            "                 pipeline_probe_b_beats,\n"
-            "                 pipeline_probe_c_beats,\n"
-            "                 dut.core.pipeline.valid[PROBE_LAYER_A],\n"
-            "                 dut.core.pipeline.ready[PROBE_LAYER_A],\n"
-            "                 dut.core.pipeline.valid[PROBE_LAYER_B],\n"
-            "                 dut.core.pipeline.ready[PROBE_LAYER_B],\n"
-            "                 dut.core.pipeline.valid[PROBE_LAYER_C],\n"
-            "                 dut.core.pipeline.ready[PROBE_LAYER_C]);\n",
-        ),
-        (
-            "deep pipeline fatal format",
-            "pipe_last_out_beats=%0d\",\n",
-            "pipe_last_out_beats=%0d pipe_probe_a_beats=%0d pipe_probe_b_beats=%0d pipe_probe_c_beats=%0d\",\n",
-        ),
-        (
-            "deep pipeline fatal args",
-            "               pipeline_l0_out_beats, pipeline_l1_out_beats, pipeline_last_out_beats);\n",
-            "               pipeline_l0_out_beats, pipeline_l1_out_beats, pipeline_last_out_beats,\n"
-            "               pipeline_probe_a_beats, pipeline_probe_b_beats, pipeline_probe_c_beats);\n",
-        ),
-    ]
-    for label, old, new in replacements:
-        text, did_change, error = replace_once(text, old, new, label)
-        changed = changed or did_change
-        if error:
-            errors.append(error)
-    if errors:
-        return {"status": "fail", "summary": "; ".join(errors), "target": str(target), "changed": changed}
-    write_text(target, text)
-    return {"status": "pass", "summary": "inserted deep multi-layer pipeline progress probes", "target": str(target), "changed": changed}
-
-
-def apply_functional_timeout_budget_from_pipeline_depth(action: dict[str, Any]) -> dict[str, Any]:
-    target = repo_path((action.get("target_files") or ["scripts/verification/qwen_tb_generator.py"])[0])
-    if not target.exists():
-        return {"status": "fail", "summary": f"target file missing: {target}", "target": str(target)}
-    text = read_text(target)
-    if "__MAX_CYCLES__" in text and "max_cycles = max(2_000_000, layers * 500_000)" in text:
-        return {"status": "pass", "summary": "functional timeout budget already derives from layer count", "target": str(target), "changed": False}
-
-    changed = False
-    errors: list[str] = []
-    replacements = [
-        (
-            "compute max cycles",
-            "def tb_sv(layers: int) -> str:\n    return \"\"\"`timescale 1ns/1ps\n",
-            "def tb_sv(layers: int) -> str:\n    max_cycles = max(2_000_000, layers * 500_000)\n    return \"\"\"`timescale 1ns/1ps\n",
-        ),
-        (
-            "parameterize max cycles",
-            "  localparam int MAX_CYCLES = 2000000;\n",
-            "  localparam int MAX_CYCLES = __MAX_CYCLES__;\n",
-        ),
-        (
-            "replace max cycles placeholder",
-            "\"\"\".replace(\"__NUM_LAYERS__\", str(layers))\n",
-            "\"\"\".replace(\"__NUM_LAYERS__\", str(layers)).replace(\"__MAX_CYCLES__\", str(max_cycles))\n",
-        ),
-    ]
-    for label, old, new in replacements:
-        text, did_change, error = replace_once(text, old, new, label)
-        changed = changed or did_change
-        if error:
-            errors.append(error)
-    if errors:
-        return {"status": "fail", "summary": "; ".join(errors), "target": str(target), "changed": changed}
-    write_text(target, text)
-    return {"status": "pass", "summary": "functional-sim timeout budget now derives from pipeline layer count", "target": str(target), "changed": changed}
-
+# Runtime observation is selected from the compiled signal catalog.  The
+# removed deterministic source editors used Qwen-specific hierarchy paths and
+# caused every observation change to rebuild the testbench and snapshot.
 
 def execute_patch_step(step: dict[str, Any], out_dir: Path) -> dict[str, Any]:
+    del out_dir
     action = step.get("action", {}) if isinstance(step.get("action"), dict) else {}
-    pattern = str(action.get("pattern_id") or "")
-    if pattern == "gated_mlp_branch_state_probe":
-        return apply_gated_mlp_branch_state_probe(action)
-    if pattern == "gated_mlp_branch_contract_check":
-        return apply_gated_mlp_branch_contract_check(action, out_dir)
-    if pattern == "residual_add2_state_probe":
-        return apply_residual_add2_state_probe(action)
-    if pattern == "residual_add2_contract_check":
-        return apply_residual_add2_contract_check(action, out_dir)
-    if pattern == "multilayer_pipeline_progress_probe":
-        return apply_multilayer_pipeline_progress_probe(action)
-    if pattern == "watchdog_internal_progress_accounting":
-        return apply_watchdog_internal_progress_accounting(action)
-    if pattern == "multilayer_deep_pipeline_probe":
-        return apply_multilayer_deep_pipeline_probe(action)
-    if pattern == "functional_timeout_budget_from_pipeline_depth":
-        return apply_functional_timeout_budget_from_pipeline_depth(action)
-    return {"status": "blocked", "summary": f"no deterministic repair executor for pattern {pattern}", "pattern_id": pattern}
-
+    return {
+        "status": "fail",
+        "summary": (
+            "deterministic model-specific probe edits are retired; use the LLM causal-slice repair "
+            "path for HDL changes or compiled runtime signal selection for observation"
+        ),
+        "pattern_id": str(action.get("pattern_id") or ""),
+    }
 
 def prepare_stage3_checkpoint_probe_environment(
     run_dir: Path,
     *,
     label: str,
-    targeted_replay_plan: dict[str, Any] | None = None,
-    repair_impact: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Reuse only a certified checkpoint; otherwise keep repair on the cold path."""
+    """Prepare one current checkpoint request for every Layer-3 debug run.
 
-    env = {"SPATIALACC_MAX_HEAVY_JOBS": "1"}
-    try:
-        debug_episode = prepare_checkpoint_debug_episode(run_dir)
-        if debug_episode.get("status") != "active":
-            return {
-                "status": "pass",
-                "summary": (
-                    "ordinary exact-board validation: no long-bug checkpoint "
-                    "episode is admitted"
-                ),
-                "request": {
-                    "status": "not_required",
-                    "debug_episode": debug_episode,
+    The checkpoint is execution acceleration only.  A request starts in
+    ``cold_capture`` when no reusable checkpoint exists, then the resulting
+    capture can be reused by later observation-only runs.  A missing, stale, or
+    failed checkpoint is repaired or recaptured; it is never converted into a
+    normal cold validation run.
+    """
+
+    env = {
+        "SPATIALACC_MAX_HEAVY_JOBS": "1",
+        "SPATIALACC_CHECKPOINT_REQUIRED": "1",
+    }
+
+    def fail_preparation(summary: str, request: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {
+            "status": "fail",
+            "summary": summary,
+            "request": request or {},
+            "request_path": None,
+            "request_sha256": None,
+            "checkpoint_enabled": False,
+            "cold_fallback": False,
+            "request_unavailable": True,
+            "env": env,
+            "remote_tool_must_not_start": True,
+            "fast_replay": {
+                "state_path": str(fast_replay_state_path(run_dir)),
+                "lifecycle": {
+                    "status": "repair_required",
+                    "action": "repair_or_recapture",
+                    "reasons": [summary],
                 },
-                "request_path": None,
-                "request_sha256": None,
-                "debug_episode": debug_episode,
-                "checkpoint_enabled": False,
-                "env": env,
-                "remote_tool_must_not_start": False,
-            }
-        request = prepare_checkpoint_request(
-            run_dir,
-            targeted_replay_plan=targeted_replay_plan or {},
-            repair_impact=repair_impact or {},
-            debug_episode=debug_episode,
+            },
+        }
+
+    fast_state_path = fast_replay_state_path(run_dir)
+    fast_state = read_fast_replay_state(run_dir)
+    board_manifest_path = (
+        run_dir
+        / "verification"
+        / "board_simulation"
+        / "board_simulation_manifest.json"
+    )
+    board_manifest = read_json(board_manifest_path) if board_manifest_path.is_file() else {}
+    execution_identity = simulation_execution_identity(board_manifest)
+    fast_lifecycle = stable_checkpoint_lifecycle(
+        enabled=True,
+        identity=execution_identity,
+        checkpoint=fast_state,
+    )
+    fast_replay_metadata = {
+        "state_path": str(fast_state_path),
+        "state": fast_state,
+        "lifecycle": fast_lifecycle,
+        "cut": STABLE_CHECKPOINT_CUT,
+    }
+    lifecycle_status = str(fast_lifecycle.get("status") or "")
+
+    stable_request_path = fast_replay_request_path(run_dir)
+    stable_request = (
+        read_json_if_exists(stable_request_path)
+        if stable_request_path.is_file()
+        else {}
+    )
+    if lifecycle_status in {"restore_check_required", "ready"}:
+        request = stable_request
+        request_path = stable_request_path
+        if checkpoint_request_errors(request):
+            return fail_preparation(
+                "the reusable checkpoint request is incomplete; recapture is required",
+                request,
+            )
+    else:
+        try:
+            request = prepare_checkpoint_request(run_dir)
+            request_path = persist_checkpoint_request(run_dir, request, label=label)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            return fail_preparation(f"checkpoint request preparation failed: {exc}")
+
+    replay_decision = request.get("replay_decision", {})
+    replay_decision = (
+        replay_decision if isinstance(replay_decision, dict) else {}
+    )
+    replay_mode = str(replay_decision.get("mode") or "")
+    if request.get("status") != "ready":
+        return fail_preparation("current checkpoint request is not ready", request)
+
+    if lifecycle_status in {
+        "capture_required",
+        "repair_required",
+        "recapture_required",
+    }:
+        # Force a fresh capture request after a failed or invalidated attempt.
+        # This is checkpoint repair/recapture, not permission to run cold.
+        request = copy.deepcopy(request)
+        decision = request.get("replay_decision", {})
+        decision = decision if isinstance(decision, dict) else {}
+        request["replay_decision"] = {
+            **decision,
+            "status": "cold_capture_required",
+            "mode": "cold_capture",
+            "checkpoint_id": None,
+            "blockers": list(
+                dict.fromkeys(
+                    [
+                        *[
+                            str(value)
+                            for value in fast_lifecycle.get("reasons", [])
+                            if str(value)
+                        ],
+                        "current checkpoint must be captured or recaptured",
+                    ]
+                )
+            ),
+        }
+        request["selected_checkpoint_manifest"] = ""
+        request["selected_checkpoint_manifest_sha256"] = None
+        request["request_sha256"] = canonical_contract_sha256(
+            checkpoint_request_projection(request)
         )
         request_path = persist_checkpoint_request(
             run_dir,
             request,
             label=label,
         )
-    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        return {
-            "status": "pass",
-            "summary": (
-                "checkpoint acceleration is unavailable; continue the current repair "
-                f"with a full cold run: {exc}"
-            ),
-            "request": {
-                "status": "cold_fallback",
-                "summary": str(exc),
-            },
-            "request_path": None,
-            "request_sha256": None,
-            "checkpoint_enabled": False,
-            "cold_fallback": True,
-            "env": env,
-            "remote_tool_must_not_start": False,
-        }
+        replay_mode = "cold_capture"
 
-    replay_decision = (
-        request.get("replay_decision", {})
-        if isinstance(request.get("replay_decision"), dict)
-        else {}
-    )
-    replay_mode = str(replay_decision.get("mode") or "")
-    if request.get("status") != "ready" or replay_mode == "cold_capture":
-        return {
-            "status": "pass",
-            "summary": (
-                "no certified reusable checkpoint is available; continue the current "
-                "repair with one full cold exact-board run"
-            ),
-            "request": request,
-            "request_path": str(request_path),
-            "request_sha256": sha256_file(request_path),
-            "debug_episode": debug_episode,
-            "checkpoint_enabled": False,
-            "cold_fallback": True,
-            "env": env,
-            "remote_tool_must_not_start": False,
-        }
+    elif lifecycle_status not in {"restore_check_required", "ready"}:
+        return fail_preparation(
+            "checkpoint lifecycle is not actionable; repair or recapture is "
+            "required before Layer-3 VCS",
+            request,
+        )
 
     env["SPATIALACC_CHECKPOINT_REPLAY"] = "1"
     env["SPATIALACC_CHECKPOINT_REQUEST"] = str(request_path)
+    if lifecycle_status == "recapture_required":
+        # This replays the real weight-loading prefix with the already
+        # compiled simulator, then replaces only the invalid native snapshot.
+        # It is execution acceleration, not an Agent-visible repair action.
+        env["SPATIALACC_FAST_REPLAY_RECAPTURE"] = "1"
+    if lifecycle_status in {"restore_check_required", "ready"}:
+        env["SPATIALACC_FAST_REPLAY"] = "1"
+        env["SPATIALACC_FAST_REPLAY_STATE"] = str(fast_state_path)
+        if lifecycle_status == "restore_check_required":
+            env["SPATIALACC_FAST_REPLAY_RESTORE_CHECK"] = "1"
     return {
         "status": "pass",
-        "summary": "prepared a hash-bound certified checkpoint replay request",
+        "summary": f"prepared the current Layer-3 checkpoint request ({replay_mode})",
         "request": request,
         "request_path": str(request_path),
         "request_sha256": sha256_file(request_path),
-        "debug_episode": debug_episode,
         "checkpoint_enabled": True,
         "cold_fallback": False,
         "env": env,
         "remote_tool_must_not_start": False,
+        "fast_replay": fast_replay_metadata,
     }
 
 
@@ -23656,20 +23809,35 @@ def run_rerun_step(
             checkpoint_preparation = prepare_stage3_checkpoint_probe_environment(
                 out_dir.parent,
                 label=f"{safe_step_id(step)}_rerun",
-                targeted_replay_plan=(
-                    step.get("targeted_replay_plan", {})
-                    if isinstance(step.get("targeted_replay_plan"), dict)
-                    else {}
-                ),
-                repair_impact=(
-                    step.get("checkpoint_impact", {})
-                    if isinstance(step.get("checkpoint_impact"), dict)
-                    else {}
-                ),
             )
+            if checkpoint_preparation.get("status") != "pass":
+                result = {
+                    "status": "fail",
+                    "returncode": None,
+                    "summary": (
+                        "Layer-3 checkpoint preparation failed; ordinary cold "
+                        "validation is forbidden"
+                    ),
+                    "checkpoint_request_preparation": {
+                        key: checkpoint_preparation.get(key)
+                        for key in (
+                            "status",
+                            "summary",
+                            "request_path",
+                            "request_sha256",
+                            "remote_tool_must_not_start",
+                        )
+                    },
+                    "remote_tool_was_not_started": True,
+                }
+                log_path = out_dir / f"{step.get('id', 'rerun').replace('.', '_')}.json"
+                write_json(log_path, result | {"step": step})
+                result["log_path"] = str(log_path)
+                return result
             env.update(checkpoint_preparation["env"])
     cwd = Path(str(execution.get("cwd") or Path.cwd()))
     started = time.monotonic()
+    started_ns = time.time_ns()
     try:
         proc = subprocess.run(
             [str(item) for item in argv],
@@ -23722,6 +23890,17 @@ def run_rerun_step(
             case_adapter=case_adapter,
             run_dir=out_dir.parent,
         )
+        runner_path = (
+            out_dir.parent
+            / "verification"
+            / "vcs"
+            / "case_board_vcs_functional.json"
+        )
+        if runner_path.is_file() and runner_path.stat().st_mtime_ns >= started_ns:
+            result["fast_replay_state"] = update_fast_replay_state(
+                out_dir.parent,
+                read_json_if_exists(runner_path),
+            )
     log_path = out_dir / f"{step.get('id', 'rerun').replace('.', '_')}.json"
     write_json(log_path, result | {"step": step})
     result["log_path"] = str(log_path)
@@ -24296,7 +24475,7 @@ def select_capability_tool(step: dict[str, Any], case_adapter: dict[str, Any]) -
 
 
 def select_reference_builder_tool(case_adapter: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
-    required = {"independent_golden_reference_builder", "single_layer_golden_reference_builder"}
+    required = {"target_model_inference", "independent_expected_output"}
     tools = case_adapter.get("tools", {}) if isinstance(case_adapter.get("tools"), dict) else {}
     for role, spec in tools.items():
         if not isinstance(spec, dict):
@@ -24327,7 +24506,6 @@ def select_current_layer_replay_tool(step: dict[str, Any], case_adapter: dict[st
         candidates = [
             "case_vcs_functional_sim",
             "vcs_functional_sim",
-            "qwen_vcs_functional_sim",
             *candidates,
             "functional_sim",
             "case_multilayer_functional",
@@ -24420,29 +24598,18 @@ def run_current_layer_causal_replay(
     checkpoint_request_path: Path | None = None
     debug_layer = str(step.get("debug_layer") or step.get("action", {}).get("debug_layer") or "")
     if debug_layer == "board_axi_ddr_wrapped_system":
-        checkpoint_request = prepare_checkpoint_request(
+        checkpoint_preparation = prepare_stage3_checkpoint_probe_environment(
             run_dir,
-            targeted_replay_plan=(
-                step.get("targeted_replay_plan", {})
-                if isinstance(step.get("targeted_replay_plan"), dict)
-                else {}
-            ),
-            repair_impact=(
-                step.get("checkpoint_impact", {})
-                if isinstance(step.get("checkpoint_impact"), dict)
-                else step.get("action", {}).get("checkpoint_impact", {})
-                if isinstance(step.get("action", {}).get("checkpoint_impact"), dict)
-                else {}
-            ),
-        )
-        checkpoint_request_path = persist_checkpoint_request(
-            run_dir,
-            checkpoint_request,
             label=f"{safe_step_id(step)}_current_layer",
         )
-        env["SPATIALACC_CHECKPOINT_REPLAY"] = "1"
-        env["SPATIALACC_CHECKPOINT_REQUEST"] = str(checkpoint_request_path)
-        env["SPATIALACC_MAX_HEAVY_JOBS"] = "1"
+        checkpoint_request = checkpoint_preparation.get("request", {})
+        checkpoint_request_path_value = checkpoint_preparation.get("request_path")
+        checkpoint_request_path = (
+            Path(str(checkpoint_request_path_value))
+            if checkpoint_request_path_value
+            else None
+        )
+        env.update(checkpoint_preparation.get("env", {}))
     if step.get("debug_layer"):
         env["SPATIALACC_DEBUG_LAYER"] = str(step.get("debug_layer"))
     if result is None:
@@ -24639,6 +24806,7 @@ def run_capability_probe(
     env["SPATIALACC_VERIFICATION_SCOPE"] = verification_scope_for_step(step)
     if step.get("debug_layer"):
         env["SPATIALACC_DEBUG_LAYER"] = str(step.get("debug_layer"))
+    started_ns = time.time_ns()
     result = run_local_tool(argv, Path.cwd(), env, timeout_sec)
     result.update(
         {
@@ -24652,6 +24820,16 @@ def run_capability_probe(
         }
     )
     annotate_verification_capability_probe(result, step)
+    if any("case_board_vcs_functional.py" in str(item) for item in argv):
+        runner_path = (
+            run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
+        )
+        if runner_path.is_file() and runner_path.stat().st_mtime_ns >= started_ns:
+            runner_report = read_json_if_exists(runner_path)
+            result["fast_replay_state"] = update_fast_replay_state(
+                run_dir,
+                runner_report,
+            )
     suffix = f"_{label}" if label else ""
     log_path = out_dir / f"{safe_step_id(step)}_verification_capability_probe{suffix}.json"
     write_json(log_path, result)
@@ -28058,27 +28236,6 @@ def run_exact_board_validation_chain(
         return {}
 
     runner_report = current_runner_report()
-    if (
-        vcs_result.get("status") == "pass"
-        and runner_report.get("status") == "candidate_pass"
-        and runner_report.get("stage_pass_eligible") is False
-    ):
-        checkpoint_screening_result = copy.deepcopy(vcs_result)
-        vcs_result = run_capability_probe(
-            case_adapter=case_adapter,
-            spec_role=vcs_role,
-            spec=vcs_spec,
-            run_dir=run_dir,
-            step=step,
-            out_dir=out_dir,
-            timeout_sec=timeout_sec,
-            label=f"{label}_full_cold_vcs",
-            extra_env={
-                "SPATIALACC_CHECKPOINT_FINAL_COLD": "1",
-                "SPATIALACC_MAX_HEAVY_JOBS": "1",
-            },
-        )
-        runner_report = current_runner_report()
     analyzer_result = run_capability_probe(
         case_adapter=case_adapter,
         spec_role=analyzer_role,
@@ -29494,7 +29651,7 @@ def run_optional_post_execution_review(
         "sacg_focus": {"nodes": [], "edges": [], "constraints": [], "artifacts": []},
         "observations": [
             "The executed real-tool result fixes the immediate control-flow outcome.",
-            "Any new semantic decision is deferred to the next Stage7/CCTG and Stage8 pass.",
+            "Any new semantic decision is deferred to the next Stage-6 CCTG/repair pass.",
         ],
         "risks": [],
         "proposed_actions": [],
@@ -29657,8 +29814,8 @@ def execute_causal_slice_repair(
             out_dir=out_dir,
             fallback_summary="current-layer causal repair execution requires LLM classification",
             deterministic_summary=(
-                "Current-layer replay status is authoritative for this execution step; the next Stage7/CCTG and "
-                "Stage8 iteration owns any same-layer repair or lower-layer challenge decision."
+            "Current-layer replay status is authoritative for this execution step; the next Stage-6 CCTG/"
+            "repair iteration owns any same-layer repair or lower-layer challenge decision."
             ),
         )
         package["llm_record_path"] = llm_record.get("result_path")
@@ -29733,7 +29890,7 @@ def execute_causal_slice_repair(
         fallback_summary="causal slice repair execution requires LLM classification",
         deterministic_summary=(
             "Leaf replay status and the first failed module uniquely determine whether this step passed; the next "
-            "Stage7/CCTG and Stage8 iteration owns any subsequent repair decision."
+            "Stage-6 CCTG/repair iteration owns any subsequent repair decision."
         ),
     )
     package["llm_record_path"] = llm_record.get("result_path")
@@ -29873,22 +30030,7 @@ def execute_verification_capability_repair(
                 else "resolve and hash-bind a compatible tool environment, then rerun the failed current gate"
             ),
         }
-    trusted_numeric_support = (
-        materialize_trusted_numeric_support(run_dir, out_dir)
-        if semantic_template_repair_approved()
-        else {
-            "status": "not_run",
-            "summary": "semantic selected-template repair is not approved",
-        }
-    )
-    trusted_numeric_support_compile = (
-        validate_trusted_numeric_support(trusted_numeric_support, run_dir, out_dir, timeout_sec)
-        if trusted_numeric_support.get("status") == "pass"
-        else {
-            "status": "not_run",
-            "summary": "trusted numeric support was not materialized",
-        }
-    )
+    fpga_ip_repair_closure = materialize_fpga_ip_repair_closure(run_dir, out_dir)
     record = trace_record_from_step(step)
     if not record and isinstance(action.get("minimal_repair_context"), dict):
         record = action["minimal_repair_context"].get("trace_record", {})
@@ -29932,13 +30074,13 @@ def execute_verification_capability_repair(
         and isinstance(single_layer_compile_context, dict)
     )
     board_observation_only_repair = False
-    explicit_checkpoint_maintenance = bool(
-        action.get("explicit_checkpoint_maintenance_requested") is True
-    )
+    # Fast replay is an execution service, not a separate Agent repair route.
+    # Keep every Layer-3 turn on the one fixed capture/restore lifecycle.
+    explicit_checkpoint_maintenance = False
     try:
         single_layer_certificate_path = artifact_path(
             state,
-            "artifact.stage7.single_layer_promotion_certificate",
+            "artifact.stage6.single_layer_promotion_certificate",
         )
     except Exception:
         single_layer_certificate_path = None
@@ -29984,21 +30126,11 @@ def execute_verification_capability_repair(
         prepare_stage3_checkpoint_probe_environment(
             run_dir,
             label=f"{safe_step_id(step)}_pre_patch",
-            targeted_replay_plan=(
-                step.get("targeted_replay_plan", {})
-                if isinstance(step.get("targeted_replay_plan"), dict)
-                else {}
-            ),
-            repair_impact=(
-                action.get("checkpoint_impact", {})
-                if isinstance(action.get("checkpoint_impact"), dict)
-                else {}
-            ),
         )
-        if board_integration_repair and explicit_checkpoint_maintenance
+        if board_integration_repair
         else {
             "status": "not_run",
-            "summary": "checkpoint replay is disabled until an explicit long-running-bug maintenance request",
+            "summary": "checkpoint replay is only available for layer-3 board integration",
             "env": {},
         }
     )
@@ -30058,6 +30190,64 @@ def execute_verification_capability_repair(
             "summary": "exact-board memory/runtime preparation is only required for layer-3 integration",
         }
     )
+    current_board_metadata_refresh: dict[str, Any] = {
+        "status": "not_run",
+        "summary": "current board metadata refresh is only required for layer-3 integration",
+    }
+    if (
+        board_integration_repair
+        and board_memory_runtime_preparation.get("status") == "pass"
+    ):
+        # The board manifest, ordered compile plan and checkpoint contract are
+        # derived from the current generated sources. Refresh them before
+        # reading any saved board result so an observation-only testbench edit
+        # cannot leave a stale source hash that is later mistaken for a DUT
+        # failure. This is local deterministic metadata work; it does not rerun
+        # Layer 2 or start a remote tool.
+        current_board_metadata_refresh = finalize_dut_weight_binding_manifest(
+            run_dir,
+            out_dir,
+            require_single_layer=require_single_layer,
+            require_board=True,
+            single_layer_certificate_path=single_layer_certificate_path,
+        )
+        if current_board_metadata_refresh.get("status") != "pass":
+            return {
+                "status": "fail",
+                "summary": (
+                    "current Layer-3 board metadata could not be rebuilt from "
+                    "the current source closure; the real tool was not started"
+                ),
+                "context_package": None,
+                "reference_builder_log": builder_probe.get("log_path"),
+                "capability_probe_log": None,
+                "capability_reports": [],
+                "llm_record": None,
+                "agent_patch_application": None,
+                "dut_weight_binding_materialization": (
+                    current_board_metadata_refresh.get("path")
+                ),
+                "current_board_metadata_refresh": current_board_metadata_refresh,
+                "stage_passed": False,
+                "target_modules": target_modules,
+                "framework_action_required": (
+                    "repair deterministic current-source board metadata before "
+                    "any LLM or VCS continuation"
+                ),
+            }
+        # The compiled-model identity used by fast replay includes the board
+        # manifest. Recreate the execution-only request from the refreshed
+        # identity so no stale request can survive this deterministic update.
+        pre_patch_checkpoint_preparation = (
+            prepare_stage3_checkpoint_probe_environment(
+                run_dir,
+                label=f"{safe_step_id(step)}_current_board_metadata_refresh",
+            )
+        )
+        checkpoint_probe_env.clear()
+        checkpoint_probe_env.update(
+            pre_patch_checkpoint_preparation.get("env", {})
+        )
     checkpoint_framework_recovery = (
         checkpoint_framework_authority_rebind_status(run_dir)
         if board_integration_repair and explicit_checkpoint_maintenance
@@ -30133,9 +30323,11 @@ def execute_verification_capability_repair(
                         "LLM or VCS continuation"
                     ),
                 }
-            recovered_checkpoint_failure = (
-                materialize_current_checkpoint_calibration_failure(run_dir)
-            )
+            # The replay path is verified by a native restore followed by
+            # actual token progress.  Legacy cold-vs-restore calibration
+            # reports are historical diagnostics only and must never divert a
+            # current Layer-3 repair loop.
+            recovered_checkpoint_failure = None
             recovered_board_failure = (
                 None
                 if recovered_checkpoint_failure is not None
@@ -30371,33 +30563,17 @@ def execute_verification_capability_repair(
         if board_integration_repair and explicit_checkpoint_maintenance
         else None
     )
-    observed_pending_checkpoint_calibration = (
-        pending_same_source_checkpoint_calibration(run_dir)
-        if board_integration_repair and explicit_checkpoint_maintenance
-        else None
-    )
-    observed_checkpoint_calibration_failure = (
-        materialize_current_checkpoint_calibration_failure(run_dir)
-        if board_integration_repair
-        and explicit_checkpoint_maintenance
-        and observed_pending_checkpoint_calibration is None
-        else None
-    )
     pending_checkpoint_executor_retry = (
         observed_pending_checkpoint_executor_retry
         if explicit_checkpoint_maintenance
         else None
     )
-    pending_checkpoint_calibration = (
-        observed_pending_checkpoint_calibration
-        if explicit_checkpoint_maintenance
-        else None
-    )
-    current_checkpoint_calibration_failure = (
-        observed_checkpoint_calibration_failure
-        if explicit_checkpoint_maintenance
-        else None
-    )
+    # Do not route Layer-3 work through the retired same-source calibration
+    # path.  Fast replay is confirmed by one native restore plus real token
+    # progress, so old manifests and their derived hashes cannot stop an LLM
+    # repair decision.
+    pending_checkpoint_calibration = None
+    current_checkpoint_calibration_failure = None
     current_board_validation_evidence = (
         current_exact_board_validation_evidence(
             case_adapter,
@@ -30470,38 +30646,6 @@ def execute_verification_capability_repair(
                 "Agent transaction can enter atomic materialization"
             ),
         }
-    elif pending_checkpoint_calibration is not None:
-        pre_patch_dependency_refresh = {
-            "status": "not_run",
-            "reason": "pending_same_source_checkpoint_calibration",
-            "summary": (
-                "the current runtime-quiescent cold capture must complete one serial "
-                "same-compiled-model restore before any hardware-Agent continuation"
-            ),
-        }
-        capability_probe = run_current_capability_probe(
-            "pending_same_source_checkpoint_calibration"
-        )
-    elif current_checkpoint_calibration_failure is not None:
-        pre_patch_dependency_refresh = {
-            "status": "not_run",
-            "reason": "current_same_source_checkpoint_calibration_failure",
-            "summary": (
-                "the current executed restore/equivalence failure must be analyzed "
-                "without another exact-board VCS run"
-            ),
-        }
-        capability_probe = run_exact_board_checkpoint_analyzer_only(
-            case_adapter=case_adapter,
-            analyzer_role=capability_analyzer_role,
-            analyzer_spec=capability_analyzer_spec,
-            vcs_spec=capability_spec,
-            run_dir=run_dir,
-            step=step,
-            out_dir=out_dir,
-            timeout_sec=timeout_sec,
-            label="current_checkpoint_calibration_failure",
-        )
     elif native_vcs_loop_localization:
         pre_patch_dependency_refresh = {
             "status": "not_run",
@@ -30744,30 +30888,6 @@ def execute_verification_capability_repair(
         },
         "focused_real_tool_failure_snapshot": str(failure_snapshot) if failure_snapshot else None,
         "pre_patch_dependency_refresh": pre_patch_dependency_refresh,
-        "pending_same_source_checkpoint_calibration": (
-            {
-                key: copy.deepcopy(pending_checkpoint_calibration.get(key))
-                for key in (
-                    "schema_version",
-                    "status",
-                    "summary",
-                    "checkpoint_manifest_path",
-                    "checkpoint_manifest_sha256",
-                    "remote_job_contract_path",
-                    "remote_job_contract_sha256",
-                    "runtime_calibration_eligibility",
-                    "policy",
-                )
-                if pending_checkpoint_calibration.get(key) is not None
-            }
-            if pending_checkpoint_calibration is not None
-            else None
-        ),
-        "current_same_source_checkpoint_calibration_failure": (
-            copy.deepcopy(current_checkpoint_calibration_failure)
-            if current_checkpoint_calibration_failure is not None
-            else None
-        ),
         "capability_reports": produced_reports,
         "leaf_stage_report_path": str(leaf_report_path) if leaf_report_path else None,
         "leaf_stage_report_summary": summarize_leaf_report(leaf_stage_report, target_modules[0] if target_modules else "") if leaf_stage_report else {},
@@ -30779,8 +30899,7 @@ def execute_verification_capability_repair(
             if single_layer_compile_rtl_repair
             else None
         ),
-        "trusted_numeric_support": trusted_numeric_support,
-        "trusted_numeric_support_compile": trusted_numeric_support_compile,
+        "fpga_ip_repair_closure": fpga_ip_repair_closure,
         "prior_localized_agent_feedback": (
             {
                 "path": str(prior_localized_agent_path),
@@ -30883,6 +31002,10 @@ def execute_verification_capability_repair(
             )
         package["adaptive_observation_routing"] = adaptive_observation_routing_state(
             package
+        )
+        compiled_signal_catalog = load_or_build_compiled_signal_catalog(run_dir)
+        package["compiled_signal_catalog"] = catalog_prompt_projection(
+            compiled_signal_catalog
         )
         # An incomplete boundary trace is useful context for the LLM, but it
         # does not turn the framework into a second decision-maker.  The LLM
@@ -32054,7 +32177,7 @@ def execute_verification_capability_repair(
             "Treat each stage requirement's weight_layout and contract_sha256 as authoritative. The framework materializes checkpoint values into 32-bit words already ordered by storage target, port-write address, and LSB-first word index; the wrapper must aggregate each declared contiguous target range into the declared DUT port width without reinterpreting tensor order or numeric encoding.",
             "For fused attention, use the declared Q/K/V source_order, concat axis, tile order, and separate output-projection target exactly. For norm and bias targets, perform only the declared IEEE value-preserving storage cast. Never infer a different transpose, lane order, or packing.",
             "Any repaired arithmetic must be synthesizable hardware. Do not use shortreal/real, DPI, host-language computation, unsynthesizable simulator-only arithmetic, or a wrapper-side behavioral model. Internal approximations are allowed only when they implement the frozen numeric contract closely enough to be judged by the unchanged real-model golden checker.",
-            "Use repair_source_bundle.trusted_numeric_support for IEEE arithmetic instead of inventing unverified floating-point operators. Its copied HardFloat and QuantCommon sources are read-only trusted dependencies in the generated Chisel project; the supplied build.sbt and build.properties are authoritative for compilation.",
+            "Preserve repair_source_bundle.fpga_ip_repair_closure exactly. All arithmetic and storage must remain bound to its generated Vivado floating-point IP and XPM timing models; never introduce HardFloat, behavioral arithmetic, SyncReadMem, Chisel Queue, or inferred generic memory.",
             "Use reference_operator_semantics, its hash-verified semantic adapter/model implementation, and captured same-inference mask/position/RoPE tensors as the semantic authority. Do not infer a different Qwen/OPT/model-family convention.",
             "Do not implement a behavioral substitute, identity/default path, sampled-weight path, or output generator in the wrapper. Do not read expected/golden/reference files from harness source. Real simulator comparison must remain capable of exposing wrong DUT behavior.",
             "The binding manifest must follow agent_manifest_schema and agent_manifest_example for verification_scope, preserve every previously certified lower-layer harness, identify top modules and exact interfaces, bind all required hashes, and disable default/identity weight fallback. Prefer one absolute source_directory per isolated harness; after runMain the executor discovers source files and recomputes all hashes.",
@@ -32079,6 +32202,11 @@ def execute_verification_capability_repair(
             verification_scope,
         )
     implementation_output = llm_record.get("output", {}) if isinstance(llm_record.get("output"), dict) else {}
+    if board_integration_repair:
+        implementation_output = runtime_only_observation_output(
+            implementation_output
+        )
+        llm_record["output"] = implementation_output
     single_layer_source_rebase = (
         copy.deepcopy(llm_record.get("single_layer_compile_source_rebase"))
         if isinstance(llm_record.get("single_layer_compile_source_rebase"), dict)
@@ -32143,17 +32271,23 @@ def execute_verification_capability_repair(
         "blockers": [],
         "summary": "adaptive observation decision is only required for a real-evidence board repair",
     }
+    adaptive_observation_decision = (
+        implementation_output.get("adaptive_observation_decision", {})
+        if isinstance(
+            implementation_output.get("adaptive_observation_decision"), dict
+        )
+        else {}
+    )
     adaptive_observation_decision_requested = (
         board_integration_repair
         and not checkpoint_capability_repair_required
-        and implementation_output.get("status") == "blocked"
         and not implementation_output.get("file_edits")
-        and isinstance(implementation_output.get("adaptive_observation_decision"), dict)
+        and adaptive_observation_decision.get("mode")
+        == "deepen_simulation_observation"
+        and implementation_output.get("status") in {"ready_to_apply", "blocked"}
     )
     current_board_observation_requested = (
         adaptive_observation_decision_requested
-        and implementation_output["adaptive_observation_decision"].get("mode")
-        == "deepen_simulation_observation"
     )
     if (
         board_integration_repair
@@ -32177,7 +32311,17 @@ def execute_verification_capability_repair(
             run_dir,
             require_signal_analysis=board_signal_analysis_required,
         )
-    if board_observation_only_repair:
+    if board_integration_repair:
+        # Layer 3 is LLM-owned.  Observation-contract findings are diagnostic
+        # feedback for the next repair turn, not a framework veto.  Keep the
+        # mechanical source/anchor checks in apply_agent_file_edits as the
+        # actual execution boundary.
+        adaptive_observation_validation = enforce_board_observation_only_validation(
+            adaptive_observation_validation,
+            implementation_output,
+            run_dir,
+        )
+    elif board_observation_only_repair:
         adaptive_observation_validation = enforce_board_observation_only_validation(
             adaptive_observation_validation,
             implementation_output,
@@ -32202,9 +32346,20 @@ def execute_verification_capability_repair(
         and adaptive_observation_validation.get("mode")
         == "deepen_simulation_observation"
     ):
-        # The observation edit is already in the board testbench.  Run the
-        # current Layer-3 chain directly; no old transaction, source identity,
-        # or replay record is consulted.
+        # Observation focus is runtime-only. Persist the selected subset, keep
+        # all compiled sources unchanged, and restore the same verified native
+        # VCS snapshot for the next current signal epoch.
+        runtime_observation_state = (
+            persist_runtime_adaptive_observation_request(
+                run_dir,
+                adaptive_observation_validation,
+            )
+        )
+        package["runtime_observation_selection"] = copy.deepcopy(
+            runtime_observation_state.get("runtime_selection", {})
+        )
+        package["adaptive_observation_state"] = runtime_observation_state
+        write_json(package_path, package)
         observation_probe = run_current_capability_probe(
             "current_board_observation"
         )
@@ -32229,6 +32384,12 @@ def execute_verification_capability_repair(
             "llm_record": llm_record.get("result_path"),
             "adaptive_observation_decision_validation": str(
                 adaptive_observation_validation_path
+            ),
+            "runtime_observation_selection": str(
+                run_dir
+                / "verification"
+                / "adaptive_observation"
+                / "current_selection.json"
             ),
             "capability_probe_log": observation_probe.get("log_path"),
             "capability_reports": observation_probe.get(
@@ -32674,24 +32835,10 @@ def execute_verification_capability_repair(
         "summary": "simulation checkpointing is only activated for a materialized layer-3 board repair",
     }
     checkpoint_request_path: Path | None = None
-    if (
-        board_integration_repair
-        and explicit_checkpoint_maintenance
-        and binding_materialization.get("status") == "pass"
-    ):
+    if board_integration_repair and binding_materialization.get("status") == "pass":
         post_patch_checkpoint_preparation = prepare_stage3_checkpoint_probe_environment(
             run_dir,
             label=f"{safe_step_id(step)}_post_patch",
-            targeted_replay_plan=(
-                step.get("targeted_replay_plan", {})
-                if isinstance(step.get("targeted_replay_plan"), dict)
-                else {}
-            ),
-            repair_impact=(
-                implementation_output.get("checkpoint_impact", {})
-                if isinstance(implementation_output.get("checkpoint_impact"), dict)
-                else {}
-            ),
         )
         checkpoint_request_result = post_patch_checkpoint_preparation.get(
             "request", {}
@@ -32833,7 +32980,7 @@ def execute_stage6_gate_dag_repair(
         "out_of_order_executed_higher_layer_gates": action.get("out_of_order_executed_higher_layer_gates", []),
         "policy": {
             "higher_layer_gates_must_depend_on_lower_layer_pass_evidence": True,
-            "stage6_must_be_rerun_before_stage7_consumes_new_gate_dag": True,
+            "stage6_must_be_rerun_before_stage6_consumes_new_gate_dag": True,
             "do_not_continue_with_old_out_of_order_gate_contract": True,
         },
     }
@@ -32896,7 +33043,7 @@ def execute_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     out_dir = run_dir / "repair_execution"
     out_dir.mkdir(parents=True, exist_ok=True)
     state = read_json(source_state)
-    repair_plan_path = artifact_path(state, "artifact.stage8.repair_plan")
+    repair_plan_path = artifact_path(state, "artifact.stage6.repair_plan")
     repair_plan = read_json(repair_plan_path)
     # A resumed controller may load a plan that predates the current
     # reconciliation policy.  Restore only the framework-owned, read-only
@@ -32960,7 +33107,7 @@ def execute_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             }
         elif status == "blocked_by_llm_disposition":
             # A planner veto is not an executable no-op.  Preserve it as a
-            # blocked repair step so Stage 8 cannot report ready merely because
+            # blocked repair step so Stage 6 cannot report ready merely because
             # the executor skipped the step.
             result = {
                 "status": "blocked",
@@ -32993,7 +33140,7 @@ def execute_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "stage": "repair_execution",
         "status": "incomplete" if errors else "ready",
         "source_sacg_state": str(source_state),
-        "repair_plan": str(artifact_path(state, "artifact.stage8.repair_plan")),
+        "repair_plan": str(artifact_path(state, "artifact.stage6.repair_plan")),
         "execute_reruns": bool(args.execute_reruns),
         "include_remote": bool(args.include_remote),
         "step_results": step_results,
@@ -33034,10 +33181,50 @@ def supported_required_capability_handoff(output: dict[str, Any]) -> dict[str, A
 
 
 def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
-    if report.get("status") == "ready" and not report.get("errors"):
+    step_results = [
+        item
+        for item in report.get("step_results", [])
+        if isinstance(item, dict)
+    ]
+    completed_board_lower_layer_rechecks = [
+        copy.deepcopy(result["completed_board_lower_layer_recheck"])
+        for item in step_results
+        for result in [
+            item.get("result", {})
+            if isinstance(item.get("result"), dict)
+            else {}
+        ]
+        if isinstance(result.get("completed_board_lower_layer_recheck"), dict)
+        and result["completed_board_lower_layer_recheck"].get("status") == "pass"
+    ]
+    if completed_board_lower_layer_rechecks:
+        return {
+            "status": "continue",
+            "summary": (
+                "the board-triggered lower-layer check completed; return to the "
+                "current Layer-3 board validation"
+            ),
+            "applied_files": [],
+            "exact_board_failure_handoff": True,
+            "completed_board_lower_layer_rechecks": (
+                completed_board_lower_layer_rechecks
+            ),
+        }
+    all_steps_passed = bool(step_results) and all(
+        (
+            item.get("result", {}).get("status") == "pass"
+            and item.get("result", {}).get("stage_passed", True) is True
+        )
+        for item in step_results
+    )
+    if (
+        report.get("status") == "ready"
+        and not report.get("errors")
+        and (not step_results or all_steps_passed)
+    ):
         return {
             "status": "complete",
-            "summary": "Stage 8 repair execution and its current-layer verification passed",
+            "summary": "Stage 6 repair execution and its current-layer verification passed",
             "applied_files": [],
         }
 
@@ -33181,9 +33368,13 @@ def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
 
     if blocked_summaries:
         return {
-            "status": "blocked",
-            "summary": "; ".join(blocked_summaries),
+            "status": "continue",
+            "summary": (
+                "the current Layer-3 decision needs a new LLM observation or repair plan: "
+                + "; ".join(blocked_summaries)
+            ),
             "applied_files": applied_files,
+            "observation_replan_required": True,
         }
     if retry_without_real_tool_summaries:
         transaction_retry = "agent_transaction_contract" in retry_without_real_tool_kinds
@@ -33221,7 +33412,7 @@ def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "continue",
             "summary": (
-                "the agent applied a new hash-changing repair; rerun only the same Stage 8 "
+                "the agent applied a new hash-changing repair; rerun only the same Stage 6 "
                 "current-layer repair/VCS chain"
             ),
             "applied_files": applied_files,
@@ -33249,8 +33440,8 @@ def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
             "status": "continue",
             "summary": (
                 "the current non-fallback agent requested an executor-supported upstream "
-                "capability; rebuild the bounded Stage 7 repair plan and execute its real "
-                "producer before returning to this Stage 8 layer"
+                "capability; rebuild the bounded Stage 6 repair plan and execute its real "
+                "producer before returning to this Stage 6 layer"
             ),
             "applied_files": [],
             "upstream_capability_replan_required": True,
@@ -33268,12 +33459,13 @@ def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
             "completed_capability_producers": completed_capability_producers,
         }
     return {
-        "status": "blocked",
+        "status": "continue",
         "summary": (
-            "the current Stage 8 iteration did not pass and produced no new applied agent patch; "
-            "automatic replay would make no progress"
+            "the current Stage 6 iteration did not isolate a safe RTL edit; require the LLM to "
+            "select a deeper current-epoch observation plan before the next VCS run"
         ),
         "applied_files": [],
+        "observation_replan_required": True,
     }
 
 
@@ -33407,7 +33599,7 @@ def archive_repair_loop_iteration(
         run_dir_from_state(source_sacg_state)
     )
     record = {
-        "schema_version": "spatialaccagent.stage8_repair_loop_iteration.v1",
+        "schema_version": "spatialaccagent.stage6_repair_loop_iteration.v1",
         "iteration": iteration,
         "source_sacg_state": str(source_sacg_state),
         "started_at_unix_sec": started_at_unix_sec,
@@ -33435,7 +33627,7 @@ def archive_repair_loop_iteration(
     write_json(
         loop_dir / "status.json",
         {
-            "schema_version": "spatialaccagent.stage8_repair_loop_status.v1",
+            "schema_version": "spatialaccagent.stage6_repair_loop_status.v1",
             "latest_iteration": iteration,
             "latest_iteration_record": str(record_path),
             "status": disposition.get("status"),
@@ -33488,9 +33680,9 @@ def resume_exact_board_failure_agent_replan(
     report = {
         "status": "pass" if passed else "fail",
         "summary": (
-            "Stage 7 rebuilt an Agent repair plan from the recorded exact-board failure"
+            "Stage 6 rebuilt an Agent repair plan from the recorded exact-board failure"
             if passed
-            else "Stage 7 did not rebuild an executable Agent repair plan from the recorded exact-board failure"
+            else "Stage 6 did not rebuild an executable Agent repair plan from the recorded exact-board failure"
         ),
         "ready_step_ids": [str(step.get("id")) for step in ready_steps],
         "artifacts": [
@@ -33511,11 +33703,41 @@ def resume_exact_board_failure_agent_replan(
 
 def run_repair_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     current_state = args.sacg_state.resolve()
-    loop_dir = run_dir_from_state(current_state) / "repair_execution" / "loop"
+    run_dir = run_dir_from_state(current_state)
+    loop_dir = run_dir / "repair_execution" / "loop"
     loop_dir.mkdir(parents=True, exist_ok=True)
     iteration = next_repair_loop_iteration(loop_dir)
     completed_iterations = 0
+    controller_binding = f"stage6:{os.getpid()}"
+    try:
+        activate_live_state_slot(
+            run_dir,
+            "controller",
+            {
+                "status": "running",
+                "verification_layer": "layer3_real_board_axi_ddr",
+                "loop": "observe_repair_verify",
+                "iteration": iteration,
+            },
+            binding=controller_binding,
+        )
+    except OSError:
+        pass
     while True:
+        try:
+            update_live_state_slot(
+                run_dir,
+                "controller",
+                {
+                    "status": "running",
+                    "verification_layer": "layer3_real_board_axi_ddr",
+                    "loop": "observe_repair_verify",
+                    "iteration": iteration,
+                },
+                binding=controller_binding,
+            )
+        except OSError:
+            pass
         iteration_args = copy.copy(args)
         iteration_args.sacg_state = current_state
         started_at = time.time()
@@ -33540,7 +33762,7 @@ def run_repair_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
 
                 if not next_state.is_file():
                     raise ValueError(
-                        "Stage 8 did not publish the SACG state required for upstream replan"
+                        "Stage 6 did not publish the SACG state required for upstream replan"
                     )
                 repair_report_path, repair_report = plan_repair(ns_obj(next_state))
                 repair_plan_path = Path(
@@ -33573,7 +33795,7 @@ def run_repair_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 ]
                 superseded_capability_request = False
                 if prior_capability_request and not ready_steps:
-                    # A fresh Stage 7 Agent decision may replace an earlier
+                    # A fresh Stage 6 Agent decision may replace an earlier
                     # producer request after it sees the complete current
                     # evidence.  Keep that new bounded plan executable; the
                     # old producer request must not become a permanent loop
@@ -33600,24 +33822,24 @@ def run_repair_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                     "superseded_capability_request": superseded_capability_request,
                     "summary": (
                         (
-                            "Stage 7 rebuilt an executable plan that supersedes the prior upstream capability request"
+                            "Stage 6 rebuilt an executable plan that supersedes the prior upstream capability request"
                             if superseded_capability_request
-                            else "Stage 7 rebuilt an executable plan for the requested upstream capability"
+                            else "Stage 6 rebuilt an executable plan for the requested upstream capability"
                         if prior_capability_request
                         else (
-                                "Stage 7 rebuilt an executable current-layer Agent repair from the newly completed exact-board failure"
+                                "Stage 6 rebuilt an executable current-layer Agent repair from the newly completed exact-board failure"
                                 if current_failure_agent_replan
-                                else "Stage 7 rebuilt an executable current-layer Agent repair after capability production"
+                                else "Stage 6 rebuilt an executable current-layer Agent repair after capability production"
                             )
                         )
                         if replan_passed
                         else (
-                            "Stage 7 did not produce an executable upstream capability plan"
+                            "Stage 6 did not produce an executable upstream capability plan"
                             if prior_capability_request
                             else (
-                                "Stage 7 did not produce an executable current-layer Agent repair from the newly completed exact-board failure"
+                                "Stage 6 did not produce an executable current-layer Agent repair from the newly completed exact-board failure"
                                 if current_failure_agent_replan
-                                else "Stage 7 did not produce an executable current-layer Agent repair after capability production"
+                                else "Stage 6 did not produce an executable current-layer Agent repair after capability production"
                             )
                         )
                     ),
@@ -33664,7 +33886,7 @@ def run_repair_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             disposition = {
                 **disposition,
                 "status": "blocked",
-                "summary": f"explicit Stage 8 loop iteration limit reached: {args.max_loop_iters}",
+                "summary": f"explicit Stage 6 loop iteration limit reached: {args.max_loop_iters}",
             }
         iteration_record = archive_repair_loop_iteration(
             loop_dir=loop_dir,
@@ -33676,11 +33898,26 @@ def run_repair_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             started_at_unix_sec=started_at,
         )
         print(
-            f"stage8 repair loop iteration={iteration} status={disposition['status']} "
+            f"stage6 repair loop iteration={iteration} status={disposition['status']} "
             f"record={iteration_record}",
             flush=True,
         )
         if disposition.get("status") != "continue":
+            try:
+                update_live_state_slot(
+                    run_dir,
+                    "controller",
+                    {
+                        "status": str(disposition.get("status") or "finished"),
+                        "verification_layer": "layer3_real_board_axi_ddr",
+                        "loop": "observe_repair_verify",
+                        "iteration": iteration,
+                        "summary": disposition.get("summary"),
+                    },
+                    binding=controller_binding,
+                )
+            except OSError:
+                pass
             return report_path, {**report, "repair_loop_disposition": disposition}
         next_state = report_path.parent / "sacg_state.json"
         if replanned_state is not None:
@@ -33736,7 +33973,7 @@ def update_sacg(source_state: Path, target_state: Path, report_path: Path, repor
         context=memory_context,
     )
     store.bind_artifact(
-        "artifact.stage8.repair_execution_report",
+        "artifact.stage6.repair_execution_report",
         str(report_path),
         "stage.repair_execution_report",
         [],
@@ -33747,13 +33984,13 @@ def update_sacg(source_state: Path, target_state: Path, report_path: Path, repor
     if report.get("errors"):
         store.reject(transition["id"], "one or more repair execution steps failed")
     else:
-        store.reject(transition["id"], "repair execution completed; Stage 7 verification rerun is required before promotion")
+        store.reject(transition["id"], "repair execution completed; Stage 6 verification rerun is required before promotion")
     store.save()
     return transition["id"]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Execute bounded Stage 8 repair workflow")
+    parser = argparse.ArgumentParser(description="Execute bounded Stage 6 repair workflow")
     parser.add_argument("--sacg-state", type=Path, required=True)
     parser.add_argument("--execute-reruns", action="store_true")
     parser.add_argument("--include-remote", action="store_true")
@@ -33766,13 +34003,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--loop-until-pass",
         action="store_true",
-        help="repeat only this Stage 8 repair/current-layer verification chain while each iteration applies a new patch",
+        help="repeat only this Stage 6 repair/current-layer verification chain while each iteration applies a new patch",
     )
     parser.add_argument(
         "--max-loop-iters",
         type=int,
         default=0,
-        help="optional Stage 8 loop iteration limit; <=0 is unbounded",
+        help="optional Stage 6 loop iteration limit; <=0 is unbounded",
     )
     return parser.parse_args(argv)
 

@@ -188,7 +188,7 @@ class RepairExperienceTest(unittest.TestCase):
             ),
         }
         record = {
-            "schema_version": "spatialaccagent.stage8_repair_loop_iteration.v1",
+            "schema_version": "spatialaccagent.stage6_repair_loop_iteration.v1",
             "iteration": iteration,
             "repair_execution_report": {
                 "step_results": [

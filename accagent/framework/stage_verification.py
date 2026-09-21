@@ -66,25 +66,26 @@ SINGLE_LAYER_TOUCHED_CONSTRAINTS = [
     "constraint.tool.protocols",
 ]
 
-STAGE7_RECONCILED_ARTIFACTS = [
-    "artifact.stage7.verification_result",
-    "artifact.stage7.real_tool_results",
-    "artifact.stage7.debug_closure",
-    "artifact.stage7.operator_leaf_promotion_certificate",
-    "artifact.stage7.single_layer_promotion_certificate",
-    "artifact.stage7.multilayer_pipeline_promotion_certificate",
-    "artifact.stage7.board_axi_ddr_promotion_certificate",
-    "artifact.stage8.repair_plan",
-    "artifact.stage8.repair_execution_report",
+STAGE6_RECONCILED_ARTIFACTS = [
+    "artifact.stage6.verification_result",
+    "artifact.stage6.real_tool_results",
+    "artifact.stage6.debug_closure",
+    "artifact.stage6.operator_leaf_promotion_certificate",
+    "artifact.stage6.single_layer_promotion_certificate",
+    "artifact.stage6.multilayer_pipeline_promotion_certificate",
+    "artifact.stage6.board_axi_ddr_promotion_certificate",
+    "artifact.stage6.board_bringup_certificate",
+    "artifact.stage6.repair_plan",
+    "artifact.stage6.repair_execution_report",
 ]
 
 BOARD_AXI_DDR_CLOSURE_SCOPES = {
     "board_axi_ddr",
     "board_axi_ddr_closure",
-    "stage7_board_axi_ddr",
+    "stage6_board_axi_ddr",
     "functional",
     "functional_sim",
-    "stage7_functional",
+    "stage6_functional",
 }
 
 SELECTOR_CERTIFICATE_LEVELS = {
@@ -102,11 +103,13 @@ SELECTOR_CERTIFICATE_SCOPES = {
 }
 
 STABLE_PROMOTION_CERTIFICATE_NAMES = {
-    "artifact.stage7.operator_leaf_promotion_certificate": "operator_leaf_promotion_certificate.json",
-    "artifact.stage7.single_layer_promotion_certificate": "single_layer_promotion_certificate.json",
-    "artifact.stage7.multilayer_pipeline_promotion_certificate": "multilayer_pipeline_promotion_certificate.json",
-    "artifact.stage7.board_axi_ddr_promotion_certificate": "board_axi_ddr_promotion_certificate.json",
+    "artifact.stage6.operator_leaf_promotion_certificate": "operator_leaf_promotion_certificate.json",
+    "artifact.stage6.single_layer_promotion_certificate": "single_layer_promotion_certificate.json",
+    "artifact.stage6.multilayer_pipeline_promotion_certificate": "multilayer_pipeline_promotion_certificate.json",
+    "artifact.stage6.board_axi_ddr_promotion_certificate": "board_axi_ddr_promotion_certificate.json",
 }
+
+BOARD_BRINGUP_CERTIFICATE_SCHEMA_VERSION = "spatialaccagent.stage6_board_bringup_certificate.v1"
 
 
 def empty(value: Any) -> bool:
@@ -259,7 +262,7 @@ def check_code_generation_manifest(state: dict[str, Any]) -> tuple[str, str]:
 
 def check_backend_package(state: dict[str, Any]) -> tuple[str, str]:
     try:
-        plan = read_json(artifact_path(state, "artifact.stage9.backend_board_plan"))
+        plan = read_json(artifact_path(state, "artifact.stage7.backend_board_plan"))
     except KeyError:
         return "pass", "backend package is checked after backend_board stage"
     package = plan.get("backend_package", {})
@@ -267,10 +270,9 @@ def check_backend_package(state: dict[str, Any]) -> tuple[str, str]:
     if not root.exists():
         return "fail", f"backend package root missing: {root}"
     required = [
-        root / "scripts" / "vivado_synth.tcl",
-        root / "scripts" / "vivado_impl.tcl",
-        root / "scripts" / "board_smoke.sh",
         root / "constraints" / "backend_handoff.json",
+        root / "constraints" / "board_shell_contract.json",
+        root / "constraints" / "app_shell_integration_contract.json",
     ]
     missing = [str(path) for path in required if not path.exists()]
     if missing:
@@ -422,11 +424,11 @@ def check_human_boundary(state: dict[str, Any]) -> tuple[str, str]:
 
 
 def verification_execution_scope() -> str:
-    return os.environ.get("SPATIALACC_VERIFICATION_EXECUTION_SCOPE", stage7_gate_scope()).strip().lower() or stage7_gate_scope()
+    return os.environ.get("SPATIALACC_VERIFICATION_EXECUTION_SCOPE", stage6_gate_scope()).strip().lower() or stage6_gate_scope()
 
 
-def stage7_gate_scope() -> str:
-    return os.environ.get("SPATIALACC_STAGE7_GATE_SCOPE", "single_layer_closure").strip().lower() or "single_layer_closure"
+def stage6_gate_scope() -> str:
+    return os.environ.get("SPATIALACC_STAGE6_GATE_SCOPE", "single_layer_closure").strip().lower() or "single_layer_closure"
 
 
 def check_stage6_action_audit(state: dict[str, Any]) -> tuple[str, str]:
@@ -443,17 +445,17 @@ def stage6_verification_contract(state: dict[str, Any]) -> dict[str, Any]:
     return read_json(artifact_path(state, "artifact.stage6.verification_artifact_contract"))
 
 
-def stage7_selector_contract(state: dict[str, Any]) -> dict[str, Any]:
+def stage6_selector_contract(state: dict[str, Any]) -> dict[str, Any]:
     try:
-        data = read_json(artifact_path(state, "artifact.stage6.stage7_gate_selector_contract"))
+        data = read_json(artifact_path(state, "artifact.stage5.stage6_gate_selector_contract"))
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
 
 
-def stage7_selector_contract_path(state: dict[str, Any]) -> str | None:
+def stage6_selector_contract_path(state: dict[str, Any]) -> str | None:
     try:
-        return str(artifact_path(state, "artifact.stage6.stage7_gate_selector_contract"))
+        return str(artifact_path(state, "artifact.stage5.stage6_gate_selector_contract"))
     except Exception:
         return None
 
@@ -471,7 +473,7 @@ def selector_certificate_reused_at_scope_entry(selector_key: str) -> bool:
     return bool(scope and scope in debug_loop_reused_scopes())
 
 
-def stage7_artifact_ready(state: dict[str, Any], artifact_id: str) -> bool:
+def stage6_artifact_ready(state: dict[str, Any], artifact_id: str) -> bool:
     try:
         path = artifact_path(state, artifact_id)
     except Exception:
@@ -484,7 +486,7 @@ def stage7_artifact_ready(state: dict[str, Any], artifact_id: str) -> bool:
     return False
 
 
-def stage7_selected_gate_names(contract: dict[str, Any], selector: dict[str, Any] | None = None) -> list[str]:
+def stage6_selected_gate_names(contract: dict[str, Any], selector: dict[str, Any] | None = None) -> list[str]:
     selector = selector or {}
     dag = contract.get("verification_gate_dag", {}) if isinstance(contract.get("verification_gate_dag"), dict) else {}
     selector_nodes = selector.get("gates", []) if isinstance(selector.get("gates"), list) else []
@@ -495,7 +497,7 @@ def stage7_selected_gate_names(contract: dict[str, Any], selector: dict[str, Any
         for node in nodes
         if isinstance(node, dict) and node.get("name")
     }
-    scope = stage7_gate_scope()
+    scope = stage6_gate_scope()
     if scope in {"all", "*"}:
         return names
     if scope in {"static", "static_gates"}:
@@ -507,17 +509,17 @@ def stage7_selected_gate_names(contract: dict[str, Any], selector: dict[str, Any
         "leaf": "operator_leaf_semantic_aggregate",
         "single_layer": "single_layer_semantic_aggregate",
         "single_layer_closure": "single_layer_semantic_aggregate",
-        "stage7_single_layer": "single_layer_semantic_aggregate",
+        "stage6_single_layer": "single_layer_semantic_aggregate",
         "multilayer": "multilayer_deadlock_liveness",
         "multilayer_closure": "multilayer_deadlock_liveness",
-        "axi_ddr": "board_semantic_aggregate",
-        "axi_ddr_closure": "board_semantic_aggregate",
-        "board_axi_ddr": "board_semantic_aggregate",
-        "board_axi_ddr_closure": "board_semantic_aggregate",
-        "stage7_board_axi_ddr": "board_semantic_aggregate",
-        "functional": "board_semantic_aggregate",
-        "functional_sim": "board_semantic_aggregate",
-        "stage7_functional": "board_semantic_aggregate",
+        "axi_ddr": "board_bringup",
+        "axi_ddr_closure": "board_bringup",
+        "board_axi_ddr": "board_bringup",
+        "board_axi_ddr_closure": "board_bringup",
+        "stage6_board_axi_ddr": "board_bringup",
+        "functional": "board_bringup",
+        "functional_sim": "board_bringup",
+        "stage6_functional": "board_bringup",
     }
     if scope in stop_phase_by_scope:
         stop_phase = stop_phase_by_scope[scope]
@@ -537,12 +539,12 @@ def stage7_selected_gate_names(contract: dict[str, Any], selector: dict[str, Any
     return names
 
 
-def stage7_selector_blockers(state: dict[str, Any], selected_gates: list[str], selector: dict[str, Any]) -> list[str]:
+def stage6_selector_blockers(state: dict[str, Any], selected_gates: list[str], selector: dict[str, Any]) -> list[str]:
     if not selector:
-        return ["Stage7 selector contract is missing; rerun Stage6 verification_artifacts before Stage7"]
+        return ["Stage6 selector contract is missing; rerun Stage5 verification_artifacts before Stage6"]
     selected = set(selected_gates)
     blockers: list[str] = []
-    scope = stage7_gate_scope()
+    scope = stage6_gate_scope()
     for key in [
         "operator_leaf_promotion_certificate",
         "single_layer_promotion_certificate",
@@ -560,8 +562,8 @@ def stage7_selector_blockers(state: dict[str, Any], selected_gates: list[str], s
             continue
         artifact_id = str(cert.get("required_artifact") or "")
         certificate_ready = False
-        if artifact_id and stage7_artifact_ready(state, artifact_id):
-            candidate = stage7_promotion_certificate_payload(state, artifact_id)
+        if artifact_id and stage6_artifact_ready(state, artifact_id):
+            candidate = stage6_promotion_certificate_payload(state, artifact_id)
             if candidate:
                 _, payload = candidate
                 required_gates = [str(gate) for gate in cert.get("required_gates", []) if str(gate)]
@@ -597,7 +599,7 @@ def selected_gate_dependency_closure(
     return closure
 
 
-def stage7_promotion_certificate_payload(state: dict[str, Any], artifact_id: str) -> tuple[Path, dict[str, Any]] | None:
+def stage6_promotion_certificate_payload(state: dict[str, Any], artifact_id: str) -> tuple[Path, dict[str, Any]] | None:
     try:
         path = artifact_path(state, artifact_id)
     except Exception:
@@ -640,7 +642,7 @@ def gate_dependency_closure_from_map(deps: dict[str, set[str]], roots: list[str]
     return closure
 
 
-def reusable_stage7_certificate_evidence(
+def reusable_stage6_certificate_evidence(
     state: dict[str, Any],
     selector: dict[str, Any],
     raw_selected_gates: list[str],
@@ -648,7 +650,7 @@ def reusable_stage7_certificate_evidence(
 ) -> dict[str, Any]:
     """Return lower-layer gate evidence satisfied by validated certificates.
 
-    Stage6 owns the certificate contract.  Stage7 only interprets the generic
+    Stage6 owns the certificate contract. It interprets the generic
     selector fields: a validated `required_artifact` can satisfy the certificate
     `required_gates` when the current selected gates intersect
     `blocks_until_present`.
@@ -664,12 +666,12 @@ def reusable_stage7_certificate_evidence(
         if not isinstance(value, dict):
             continue
         artifact_id = str(value.get("required_artifact") or "")
-        if not artifact_id.startswith("artifact.stage7.") or "promotion_certificate" not in artifact_id:
+        if not artifact_id.startswith("artifact.stage6.") or "promotion_certificate" not in artifact_id:
             continue
         blocked = {str(gate) for gate in value.get("blocks_until_present", []) if str(gate)}
         if selected and not (selected & blocked):
             continue
-        cert = stage7_promotion_certificate_payload(state, artifact_id)
+        cert = stage6_promotion_certificate_payload(state, artifact_id)
         if not cert:
             continue
         path, payload = cert
@@ -752,6 +754,221 @@ def reusable_exact_board_identity_evidence(
         "identity_validation_schema": validation.get("schema_version"),
         "phase": "board_interface_discovery",
     }
+
+
+def _walk_json_objects(value: Any) -> list[dict[str, Any]]:
+    """Return nested JSON objects for bounded evidence extraction."""
+
+    rows: list[dict[str, Any]] = []
+    pending = [value]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, dict):
+            rows.append(current)
+            pending.extend(current.values())
+        elif isinstance(current, list):
+            pending.extend(current)
+    return rows
+
+
+def build_board_bringup_readiness(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
+    """Evaluate the minimum real-board evidence needed for implementation.
+
+    This is intentionally narrower than strict AXI/DDR functional closure.  It
+    proves that the current generated design can be handed to Vivado through
+    the real board shell after a real weight-load and VCS execution.  Output
+    and writeback failures are reported as diagnostics, never treated as pass
+    evidence or silently discarded.
+    """
+
+    case_adapter = case_adapter_for_state(state, run_dir)
+    paths = case_adapter.get("paths", {}) if isinstance(case_adapter.get("paths"), dict) else {}
+    checks: list[dict[str, Any]] = []
+    blockers: list[str] = []
+
+    def check(name: str, passed: bool, summary: str, **evidence: Any) -> None:
+        checks.append({"name": name, "status": "pass" if passed else "fail", "summary": summary, **evidence})
+        if not passed:
+            blockers.append(f"{name}: {summary}")
+
+    lower_certificate_path: Path | None = None
+    lower_certificate: dict[str, Any] = {}
+    try:
+        lower_certificate_path = artifact_path(
+            state, "artifact.stage6.single_layer_promotion_certificate"
+        )
+    except Exception:
+        candidate = run_dir / "verification" / "certificates" / "single_layer_promotion_certificate.json"
+        lower_certificate_path = candidate if candidate.is_file() else None
+    if lower_certificate_path is not None and lower_certificate_path.is_file():
+        try:
+            lower_certificate = read_json(lower_certificate_path)
+            required_gates = [
+                str(row.get("name"))
+                for row in lower_certificate.get("required_gates", [])
+                if isinstance(row, dict) and row.get("name")
+            ]
+            certificate_errors = certificate_contract_errors(
+                lower_certificate,
+                "single_layer_functional",
+                required_gates,
+                verify_live_files=False,
+            )
+            check(
+                "single_layer_certificate",
+                not certificate_errors,
+                "validated passed single-layer certificate" if not certificate_errors else "; ".join(certificate_errors[:4]),
+                path=str(lower_certificate_path),
+            )
+        except Exception as exc:
+            check("single_layer_certificate", False, f"unreadable single-layer certificate: {exc}")
+    else:
+        check("single_layer_certificate", False, "passed single-layer certificate is missing")
+
+    identity_path = resolve_case_path(
+        run_dir,
+        paths.get("board_source_identity")
+        or run_dir / "verification" / "board_interface" / "board_source_identity.json",
+    )
+    try:
+        from accagent.framework.board_acceptance_contract import validate_exact_board_identity
+
+        identity_validation = validate_exact_board_identity(identity_path)
+        check(
+            "exact_board_identity",
+            identity_validation.get("status") == "pass",
+            "exact board identity validated" if identity_validation.get("status") == "pass" else "; ".join(str(item) for item in identity_validation.get("blockers", [])[:4]),
+            path=str(identity_path),
+        )
+    except Exception as exc:
+        check("exact_board_identity", False, f"exact board identity validation failed: {exc}", path=str(identity_path))
+
+    binding_path = resolve_case_path(
+        run_dir,
+        paths.get("dut_weight_binding_manifest")
+        or run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json",
+    )
+    binding: dict[str, Any] = {}
+    try:
+        binding = read_json(binding_path)
+        preflight = binding.get("board_simulation_preflight_plan", {})
+        preflight = preflight if isinstance(preflight, dict) else {}
+        artifacts = preflight.get("artifacts", {}) if isinstance(preflight.get("artifacts"), dict) else {}
+        required_images = {"input", "weight_image", "runtime_image"}
+        images_present = required_images.issubset(artifacts)
+        binding_ready = (
+            binding.get("status") == "pass"
+            and binding.get("dut_consumes_bound_weights") is True
+            and binding.get("default_or_identity_weight_fallback_disabled") is True
+            and images_present
+        )
+        check(
+            "current_board_workload_binding",
+            binding_ready,
+            "current real input, weight, and runtime images are bound to the DUT" if binding_ready else "DUT weight/workload binding is incomplete",
+            path=str(binding_path),
+        )
+    except Exception as exc:
+        check("current_board_workload_binding", False, f"unreadable DUT weight binding: {exc}", path=str(binding_path))
+
+    runner_path = run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
+    diagnosis_path = run_dir / "verification" / "case_diagnostics" / "vcs_functional_diagnosis.json"
+    runner: dict[str, Any] = {}
+    diagnosis: dict[str, Any] = {}
+    try:
+        runner = read_json(runner_path)
+        execution_identity = runner.get("simulation_execution_identity", {})
+        execution_identity = execution_identity if isinstance(execution_identity, dict) else {}
+        compile_status = (runner.get("compile") or {}).get("status") if isinstance(runner.get("compile"), dict) else None
+        run = runner.get("run", {}) if isinstance(runner.get("run"), dict) else {}
+        provenance_ready = (
+            str(runner.get("verification_layer") or "").startswith("layer3")
+            and runner.get("validation_mode") == "compute_slot_axi"
+            and compile_status == "pass"
+            and bool(execution_identity.get("identity_sha256"))
+            and bool(run.get("remote_workdir"))
+        )
+        check(
+            "exact_board_vcs_execution",
+            provenance_ready,
+            "real Layer-3 exact-board VCS execution provenance is present" if provenance_ready else "real Layer-3 exact-board VCS execution provenance is incomplete",
+            path=str(runner_path),
+        )
+    except Exception as exc:
+        check("exact_board_vcs_execution", False, f"unreadable board VCS runner report: {exc}", path=str(runner_path))
+
+    try:
+        diagnosis = read_json(diagnosis_path)
+        nested = _walk_json_objects(diagnosis.get("failure_evidence", {}))
+        runtime_complete = any(
+            isinstance(row.get("runtime_load_progress"), dict)
+            and int(row["runtime_load_progress"].get("target_words") or 0) > 0
+            and int(row["runtime_load_progress"].get("accepted_words") or 0)
+            >= int(row["runtime_load_progress"].get("target_words") or 0)
+            and "runtime_load_complete" in str(row.get("phase") or "")
+            for row in nested
+        )
+        weight_complete = any(
+            int(row.get("weight_load_complete_cycle") or 0) > 0
+            and int(row.get("weight_accept_count") or 0) > 0
+            for row in nested
+        )
+        check(
+            "complete_real_weight_load",
+            runtime_complete and weight_complete,
+            "real runtime and weight loading completed before token execution" if runtime_complete and weight_complete else "real runtime/weight-load completion evidence is incomplete",
+            path=str(diagnosis_path),
+        )
+    except Exception as exc:
+        check("complete_real_weight_load", False, f"unreadable VCS diagnosis: {exc}", path=str(diagnosis_path))
+
+    output_diagnostics = {
+        "runner_status": runner.get("status"),
+        "runner_failure_class": (runner.get("run") or {}).get("failure_class") if isinstance(runner.get("run"), dict) else None,
+        "diagnosis_status": diagnosis.get("status"),
+        "diagnosis_failure_class": diagnosis.get("failure_class"),
+    }
+    return {
+        "schema_version": "spatialaccagent.stage6_board_bringup_readiness.v1",
+        "status": "pass" if not blockers else "fail",
+        "board_bringup_ready": not blockers,
+        "checks": checks,
+        "blockers": blockers,
+        "strict_output_diagnostics": output_diagnostics,
+        "policy": {
+            "requires_passed_single_layer_certificate": True,
+            "requires_validated_exact_board_identity": True,
+            "requires_current_real_workload_weight_binding": True,
+            "requires_complete_real_weight_loading": True,
+            "requires_real_exact_board_vcs_execution": True,
+            "does_not_claim_final_output_or_ddr_writeback_correctness": True,
+            "allows_vivado_synthesis_and_implementation_only": True,
+        },
+    }
+
+
+def write_board_bringup_certificate(
+    run_dir: Path, readiness: dict[str, Any]
+) -> Path:
+    """Persist the board-bringup evidence without promoting strict output pass."""
+
+    path = run_dir / "verification" / "certificates" / "board_bringup_certificate.json"
+    certificate = {
+        "schema_version": BOARD_BRINGUP_CERTIFICATE_SCHEMA_VERSION,
+        "artifact_id": "artifact.stage6.board_bringup_certificate",
+        "status": readiness.get("status"),
+        "board_bringup_ready": readiness.get("board_bringup_ready") is True,
+        "readiness": readiness,
+        "claim": "board bring-up / implementation closure readiness",
+        "does_not_claim": [
+            "complete transformer-block output correctness",
+            "final DDR writeback correctness",
+            "bitstream generation",
+            "physical-board runtime success",
+        ],
+    }
+    write_json(path, certificate)
+    return path
 
 
 def _stable_json_sha256(value: dict[str, Any]) -> str:
@@ -849,7 +1066,7 @@ def lower_layer_certificate_scaffold_bridge(
         else {}
     )
     artifact_id = str(lower_selector.get("required_artifact") or "")
-    lower_pair = stage7_promotion_certificate_payload(state, artifact_id) if artifact_id else None
+    lower_pair = stage6_promotion_certificate_payload(state, artifact_id) if artifact_id else None
     if lower_pair is None:
         result.update(
             {
@@ -1049,7 +1266,7 @@ def lower_layer_certificate_scaffold_bridge(
         "name": "lower_layer_certificate_scaffold_bridge",
         "status": "pass",
         "gate": scaffold_gate,
-        "scope": stage7_gate_scope(),
+        "scope": stage6_gate_scope(),
         "bridge_fingerprint_sha256": bridge_fingerprint,
         "inputs": bridge_inputs,
         "policy": {
@@ -1150,10 +1367,7 @@ def gate_tool_roles(case_adapter: dict[str, Any], gate: str) -> list[str]:
     if gate == gate_name(case_adapter, "single_layer_functional"):
         return ["single_layer_functional_sim"]
     if gate == gate_name(case_adapter, "single_layer_golden_compare"):
-        return [
-            *include_if_present("single_layer_golden_reference_builder"),
-            "single_layer_golden_compare",
-        ]
+        return ["single_layer_golden_compare"]
     if gate == gate_name(case_adapter, "single_layer_semantic_evidence"):
         return ["single_layer_semantic_evidence"]
     if gate == gate_name(case_adapter, "multilayer_pipeline"):
@@ -1200,11 +1414,6 @@ def reusable_provider_gate_for_role(
         gate_name(case_adapter, "multilayer_pipeline"),
     }:
         return gate_name(case_adapter, "semantic_testbench")
-    if (
-        role == "single_layer_golden_reference_builder"
-        and consumer_gate == gate_name(case_adapter, "single_layer_golden_compare")
-    ):
-        return gate_name(case_adapter, "target_model_reference")
     return None
 
 
@@ -1330,9 +1539,9 @@ def adapter_tool_runner_spec(
     }
 
 
-def build_stage7_gate_execution_plan(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
+def build_stage6_gate_execution_plan(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     contract = stage6_verification_contract(state)
-    selector = stage7_selector_contract(state)
+    selector = stage6_selector_contract(state)
     case_adapter = case_adapter_for_state(state, run_dir)
     debug_paths = write_debug_closure_artifacts(state, run_dir, run_dir / "verification" / "debug_closure")
     tool_protocols = read_json(artifact_path(state, "artifact.input.tool_protocols"))
@@ -1341,8 +1550,8 @@ def build_stage7_gate_execution_plan(state: dict[str, Any], run_dir: Path) -> di
     selector_nodes = selector.get("gates", []) if isinstance(selector.get("gates"), list) else []
     dag_nodes = dag.get("nodes", []) if isinstance(dag.get("nodes"), list) else []
     nodes = selector_nodes or dag_nodes
-    raw_selected_gates = stage7_selected_gate_names(contract, selector)
-    reusable_evidence = reusable_stage7_certificate_evidence(state, selector, raw_selected_gates, nodes)
+    raw_selected_gates = stage6_selected_gate_names(contract, selector)
+    reusable_evidence = reusable_stage6_certificate_evidence(state, selector, raw_selected_gates, nodes)
     reusable_gate_evidence = {
         str(row.get("name")): row
         for row in reusable_evidence.get("gates", [])
@@ -1442,12 +1651,12 @@ def build_stage7_gate_execution_plan(state: dict[str, Any], run_dir: Path) -> di
         for step in steps
         if step.get("missing_tool_roles")
     ]
-    blockers.extend(stage7_selector_blockers(state, selected_gates, selector))
-    selector_path = stage7_selector_contract_path(state)
+    blockers.extend(stage6_selector_blockers(state, selected_gates, selector))
+    selector_path = stage6_selector_contract_path(state)
     return {
-        "schema_version": "spatialaccagent.stage7_gate_execution_plan.v0",
+        "schema_version": "spatialaccagent.stage6_gate_execution_plan.v0",
         "status": "pass" if not blockers else "fail",
-        "scope": stage7_gate_scope(),
+        "scope": stage6_gate_scope(),
         "source_contract": str(artifact_path(state, "artifact.stage6.verification_artifact_contract")),
         "selector_contract": selector_path,
         "debug_closure": debug_paths,
@@ -1461,10 +1670,10 @@ def build_stage7_gate_execution_plan(state: dict[str, Any], run_dir: Path) -> di
         "blockers": blockers,
         "policy": {
             "stage6_selector_contract_required": True,
-            "stage7_default_stops_after_single_layer_closure": True,
+            "stage6_default_stops_after_single_layer_closure": True,
             "debug_loop_target_scope_order": ["operator_leaf_closure", "single_layer_closure", "board_axi_ddr_closure"],
             "board_axi_ddr_closure_executes_multilayer_and_axi_ddr_subgates_in_one_third_layer_repair_loop": True,
-            "runtime_bitstream_and_board_runtime_are_stage9_gates_unless_explicit_scope_all": True,
+            "runtime_bitstream_and_board_runtime_are_stage7_gates_unless_explicit_scope_all": True,
             "tool_execution_is_driven_by_stage6_gate_dag_and_case_adapter_roles": True,
             "selected_higher_layer_gate_still_requires_all_declared_dag_dependencies_to_pass": True,
             "failed_layer_enters_repair_loop_before_any_higher_layer_execution": True,
@@ -1973,7 +2182,7 @@ def check_debug_closure_artifacts(results: dict[str, Any]) -> tuple[str, str]:
     return "pass", f"debug_closure={status}, root_candidate={localization.get('root_candidate_module')}"
 
 
-def stage7_llm_record_errors(record: dict[str, Any], prefix: str = "evidence_classifier_agent") -> list[str]:
+def stage6_llm_record_errors(record: dict[str, Any], prefix: str = "evidence_classifier_agent") -> list[str]:
     errors: list[str] = []
     if record.get("used_fallback"):
         errors.append(f"{prefix}: used fallback output")
@@ -1989,24 +2198,24 @@ def stage7_llm_record_errors(record: dict[str, Any], prefix: str = "evidence_cla
 def current_scope_required_promotion_artifact(scope: str) -> str | None:
     value = (scope or "").strip().lower()
     if value in {"operator_leaf", "operator_leaf_closure", "leaf"}:
-        return "artifact.stage7.operator_leaf_promotion_certificate"
-    if value in {"single_layer", "single_layer_closure", "stage7_single_layer"}:
-        return "artifact.stage7.single_layer_promotion_certificate"
+        return "artifact.stage6.operator_leaf_promotion_certificate"
+    if value in {"single_layer", "single_layer_closure", "stage6_single_layer"}:
+        return "artifact.stage6.single_layer_promotion_certificate"
     if value in {"multilayer", "multilayer_closure"}:
-        return "artifact.stage7.multilayer_pipeline_promotion_certificate"
+        return "artifact.stage6.multilayer_pipeline_promotion_certificate"
     if value in {
         "board_axi_ddr",
         "board_axi_ddr_closure",
-        "stage7_board_axi_ddr",
+        "stage6_board_axi_ddr",
         "functional",
         "functional_sim",
-        "stage7_functional",
+        "stage6_functional",
     }:
-        return "artifact.stage7.board_axi_ddr_promotion_certificate"
+        return "artifact.stage6.board_axi_ddr_promotion_certificate"
     return None
 
 
-def stage7_candidate_has_current_scope_pass(results: dict[str, Any]) -> bool:
+def stage6_candidate_has_current_scope_pass(results: dict[str, Any]) -> bool:
     hard_results = [
         item
         for item in results.get("results", [])
@@ -2038,7 +2247,7 @@ def _matching_reconciliation_context(
     )
 
 
-def stage7_retry_reconciliation_contract(
+def stage6_retry_reconciliation_contract(
     state: dict[str, Any],
     results: dict[str, Any],
 ) -> dict[str, Any]:
@@ -2072,8 +2281,8 @@ def stage7_retry_reconciliation_contract(
     )
     certificate_path = Path(str(certificates.get(required_artifact) or ""))
     base = {
-        "schema_version": "spatialaccagent.stage7_retry_reconciliation_contract.v1",
-        "target_stage": "stage7.verification",
+        "schema_version": "spatialaccagent.stage6_retry_reconciliation_contract.v1",
+        "target_stage": "stage6.verification",
         "verification_scope": verification_scope,
         "debug_layer": debug_layer,
         "current_candidate": {
@@ -2094,7 +2303,7 @@ def stage7_retry_reconciliation_contract(
             "does_not_override_current_real_tool_failure": True,
         },
     }
-    if not stage7_candidate_has_current_scope_pass(results):
+    if not stage6_candidate_has_current_scope_pass(results):
         return {
             **base,
             "status": "not_ready",
@@ -2106,7 +2315,7 @@ def stage7_retry_reconciliation_contract(
         for row in state.get("transitions", [])
         if isinstance(row, dict)
     }
-    reconciliation_artifacts = set(STAGE7_RECONCILED_ARTIFACTS)
+    reconciliation_artifacts = set(STAGE6_RECONCILED_ARTIFACTS)
     memory = state.get("memory", {}) if isinstance(state.get("memory"), dict) else {}
     barrier_ids: list[str] = []
     predecessor_transitions: set[str] = set()
@@ -2142,7 +2351,7 @@ def stage7_retry_reconciliation_contract(
         ):
             excluded += 1
             continue
-        if str(request.get("target_stage") or "") != "stage7.verification":
+        if str(request.get("target_stage") or "") != "stage6.verification":
             excluded += 1
             continue
         retry_ids.append(str(request.get("id") or ""))
@@ -2165,7 +2374,7 @@ def stage7_retry_reconciliation_contract(
     }
 
 
-def stage7_reconciliation_contract_errors(
+def stage6_reconciliation_contract_errors(
     state: dict[str, Any],
     contract: dict[str, Any],
     *,
@@ -2174,7 +2383,7 @@ def stage7_reconciliation_contract_errors(
 ) -> list[str]:
     if contract.get("status") != "ready":
         return ["SACG reconciliation contract is not ready"]
-    if contract.get("target_stage") != "stage7.verification":
+    if contract.get("target_stage") != "stage6.verification":
         return ["SACG reconciliation contract has an invalid target stage"]
     if contract.get("verification_scope") != verification_scope or contract.get("debug_layer") != debug_layer:
         return ["SACG reconciliation contract does not match the current hierarchy scope"]
@@ -2219,7 +2428,7 @@ def stage7_reconciliation_contract_errors(
         if (
             not row
             or row.get("status") != "open"
-            or row.get("target_stage") != "stage7.verification"
+            or row.get("target_stage") != "stage6.verification"
             or not _matching_reconciliation_context(
                 row,
                 verification_scope=verification_scope,
@@ -2230,7 +2439,7 @@ def stage7_reconciliation_contract_errors(
     return errors
 
 
-def stage7_allows_structured_reconciliation(results: dict[str, Any], status: str, summary: str) -> bool:
+def stage6_allows_structured_reconciliation(results: dict[str, Any], status: str, summary: str) -> bool:
     text = f"{status} {summary}".lower()
     if "reconciliation" not in text and "trust-barrier" not in text and "trust barrier" not in text:
         return False
@@ -2241,10 +2450,10 @@ def stage7_allows_structured_reconciliation(results: dict[str, Any], status: str
         if isinstance(results.get("retry_reconciliation_contract"), dict)
         else {}
     )
-    return stage7_candidate_has_current_scope_pass(results) and contract.get("status") == "ready"
+    return stage6_candidate_has_current_scope_pass(results) and contract.get("status") == "ready"
 
 
-def stage7_agent_decision_blockers(
+def stage6_agent_decision_blockers(
     record: dict[str, Any],
     prefix: str = "evidence_classifier_agent",
     results: dict[str, Any] | None = None,
@@ -2257,7 +2466,7 @@ def stage7_agent_decision_blockers(
     pass_terms = ("pass", "ready", "approved")
     if any(term in status for term in blocking_terms):
         summary = str(output.get("summary") or "LLM decision requires bounded reconciliation before promotion")
-        if results is not None and stage7_allows_structured_reconciliation(results, status, summary):
+        if results is not None and stage6_allows_structured_reconciliation(results, status, summary):
             results.setdefault("sacg_reconciliation", {})
             results["sacg_reconciliation"] = {
                 "status": "ready",
@@ -2279,14 +2488,14 @@ def stage7_agent_decision_blockers(
     return []
 
 
-def append_stage7_agent_gate_checks(
+def append_stage6_agent_gate_checks(
     results: dict[str, Any],
     design_team_summary: dict[str, Any],
     llm_record: dict[str, Any],
 ) -> list[str]:
     team_errors = team_failure_errors(design_team_summary, prefix="verification.design_team")
-    llm_errors = stage7_llm_record_errors(llm_record, prefix="verification.evidence_classifier")
-    decision_blockers = [] if llm_errors else stage7_agent_decision_blockers(llm_record, prefix="verification.evidence_classifier", results=results)
+    llm_errors = stage6_llm_record_errors(llm_record, prefix="verification.evidence_classifier")
+    decision_blockers = [] if llm_errors else stage6_agent_decision_blockers(llm_record, prefix="verification.evidence_classifier", results=results)
     retry_contract = (
         results.get("retry_reconciliation_contract", {})
         if isinstance(results.get("retry_reconciliation_contract"), dict)
@@ -2373,7 +2582,7 @@ def verification_specialist_trigger(results: dict[str, Any]) -> str | None:
     return None
 
 
-def exact_failed_stage7_route(results: dict[str, Any]) -> bool:
+def exact_failed_stage6_route(results: dict[str, Any]) -> bool:
     if validation_llm_team_mode() != "conditional" or results.get("status") != "fail":
         return False
     loop = (
@@ -2398,7 +2607,7 @@ def exact_failed_stage7_route(results: dict[str, Any]) -> bool:
     )
 
 
-def deterministic_failed_stage7_record(results: dict[str, Any], out_dir: Path) -> dict[str, Any]:
+def deterministic_failed_stage6_record(results: dict[str, Any], out_dir: Path) -> dict[str, Any]:
     loop = results.get("hierarchical_repair_loop", {})
     output = {
         "schema_version": "spatialaccagent.stage_worker_output.v0",
@@ -2414,7 +2623,7 @@ def deterministic_failed_stage7_record(results: dict[str, Any], out_dir: Path) -
             "nodes": [],
             "edges": [],
             "constraints": TOUCHED_CONSTRAINTS,
-            "artifacts": ["artifact.stage7.verification_result"],
+            "artifacts": ["artifact.stage6.verification_result"],
         },
         "observations": [
             f"failure_kind={loop.get('failure_kind')}",
@@ -2422,7 +2631,7 @@ def deterministic_failed_stage7_record(results: dict[str, Any], out_dir: Path) -
             f"violated_contract={loop.get('violated_contract')}",
         ],
         "risks": ["The current verification layer remains blocked until the same real-tool gate passes."],
-        "proposed_actions": ["Build the bounded Stage8 repair action directly from the persisted CCTG slice."],
+        "proposed_actions": ["Build the bounded Stage-6 repair action directly from the persisted CCTG slice."],
         "executable_actions": [],
         "approval_required_for": [],
     }
@@ -2504,7 +2713,7 @@ def run_verification_review_team(
         out_dir=out_dir,
         fallback_summary="Targeted verification ambiguity review was unavailable.",
     )
-    errors = stage7_llm_record_errors(specialist, prefix="verification.targeted_specialist")
+    errors = stage6_llm_record_errors(specialist, prefix="verification.targeted_specialist")
     output = specialist.get("output", {}) if isinstance(specialist.get("output"), dict) else {}
     summary = {
         "schema_version": "spatialaccagent.conditional_review_summary.v0",
@@ -2527,7 +2736,7 @@ def run_verification_review_team(
     }
 
 
-def stage7_current_scope_required_checkers(results: dict[str, Any]) -> list[str]:
+def stage6_current_scope_required_checkers(results: dict[str, Any]) -> list[str]:
     required: list[str] = []
     seen: set[str] = set()
     for item in results.get("results", []):
@@ -2760,7 +2969,7 @@ def build_hierarchical_maturity_report(
         "levels": levels,
         "blockers": blockers,
         "policy": {
-            "stage9_must_not_run_backend_tools_unless_backend_ready": True,
+            "stage7_must_not_run_backend_tools_unless_backend_ready": True,
             "static_leaf_checks_are_not_functional_correctness": True,
             "contract_guided_debug_closure_required_for_repair": True,
             "later_levels_are_pending_not_fail_for_current_scope": True,
@@ -3084,11 +3293,11 @@ def higher_scope_semantic_artifact_for_promotion(
     """
 
     excluded_directories = {
-        "artifact.stage7.operator_leaf_promotion_certificate": {
+        "artifact.stage6.operator_leaf_promotion_certificate": {
             "single_layer",
             "board",
         },
-        "artifact.stage7.single_layer_promotion_certificate": {"board"},
+        "artifact.stage6.single_layer_promotion_certificate": {"board"},
     }.get(str(current_promotion_artifact_id or ""), set())
     if not excluded_directories or not path_text:
         return False
@@ -3278,7 +3487,7 @@ def build_promotion_evidence_binding(
     return binding, errors
 
 
-def write_stage7_promotion_certificates(
+def write_stage6_promotion_certificates(
     state: dict[str, Any],
     run_dir: Path,
     gate_summary: dict[str, Any],
@@ -3290,7 +3499,7 @@ def write_stage7_promotion_certificates(
     environment_groups, environment_blockers, _ = python_environment_group_fingerprints(tool_results)
     if maturity.get("status") != "pass" or not all_checks_pass or environment_blockers:
         return {}, list(environment_blockers)
-    selector = stage7_selector_contract(state)
+    selector = stage6_selector_contract(state)
     statuses = gate_status_map(gate_summary)
     cert_dir = run_dir / "verification" / "certificates"
     cert_dir.mkdir(parents=True, exist_ok=True)
@@ -3302,25 +3511,25 @@ def write_stage7_promotion_certificates(
     specs = [
         (
             "operator_leaf_promotion_certificate",
-            "artifact.stage7.operator_leaf_promotion_certificate",
+            "artifact.stage6.operator_leaf_promotion_certificate",
             "operator_leaf_functional",
             candidate_dir / "operator_leaf_promotion_certificate.json",
         ),
         (
             "single_layer_promotion_certificate",
-            "artifact.stage7.single_layer_promotion_certificate",
+            "artifact.stage6.single_layer_promotion_certificate",
             "single_layer_functional",
             candidate_dir / "single_layer_promotion_certificate.json",
         ),
         (
             "multilayer_promotion_certificate",
-            "artifact.stage7.multilayer_pipeline_promotion_certificate",
+            "artifact.stage6.multilayer_pipeline_promotion_certificate",
             "multilayer_pipeline_functional",
             candidate_dir / "multilayer_pipeline_promotion_certificate.json",
         ),
         (
             "board_axi_ddr_promotion_certificate",
-            "artifact.stage7.board_axi_ddr_promotion_certificate",
+            "artifact.stage6.board_axi_ddr_promotion_certificate",
             "axi_ddr_functional",
             candidate_dir / "board_axi_ddr_promotion_certificate.json",
         ),
@@ -3367,7 +3576,7 @@ def write_stage7_promotion_certificates(
             "status": "pass",
             "artifact_id": artifact_id,
             "level_id": level_id,
-            "gate_execution_scope": stage7_gate_scope(),
+            "gate_execution_scope": stage6_gate_scope(),
             "required_gates": gate_rows,
             "evidence_contract": evidence_contract_for_level(level_id),
             "evidence_contract_fingerprint": certificate_contract_fingerprint(level_id, required_gates),
@@ -3407,7 +3616,7 @@ def write_stage7_promotion_certificates(
             }
         write_json(path, payload)
         written[artifact_id] = str(path)
-    required_artifact = current_scope_required_promotion_artifact(stage7_gate_scope())
+    required_artifact = current_scope_required_promotion_artifact(stage6_gate_scope())
     if required_artifact and required_artifact not in written and not binding_errors:
         binding_errors.append(
             f"current scope did not produce required content-addressed certificate {required_artifact}"
@@ -3503,7 +3712,7 @@ def check_scope_semantic_evidence(
 
 
 def build_results(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
-    gate_execution_plan = build_stage7_gate_execution_plan(state, run_dir)
+    gate_execution_plan = build_stage6_gate_execution_plan(state, run_dir)
     checks = [
         ("sacg_reference_check", lambda: ("pass", "SACG references are valid") if not validate_references(state) else ("fail", "; ".join(validate_references(state)))),
         ("task_card_check", lambda: check_task_card(state)),
@@ -3529,7 +3738,7 @@ def build_results(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     if gate_execution_plan.get("status") != "pass":
         results.append(
             {
-                "checker": "stage7_gate_execution_plan_check",
+                "checker": "stage6_gate_execution_plan_check",
                 "status": "fail",
                 "summary": "; ".join(gate_execution_plan.get("blockers", [])) or "Stage7 gate execution plan is invalid",
             }
@@ -3537,7 +3746,7 @@ def build_results(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     else:
         results.append(
             {
-                "checker": "stage7_gate_execution_plan_check",
+                "checker": "stage6_gate_execution_plan_check",
                 "status": "pass",
                 "summary": f"selected_gates={gate_execution_plan.get('selected_gates', [])}",
             }
@@ -3549,7 +3758,7 @@ def build_results(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     status, summary = check_case_vcs_repair_diagnosis(state, run_dir, gate_execution_plan)
     results.append({"checker": "case_vcs_repair_diagnosis_check", "status": status, "summary": summary})
     status, summary = check_selected_gate_tool_execution(gate_execution_plan, tool_results)
-    results.append({"checker": "stage7_selected_gate_tool_execution_check", "status": status, "summary": summary})
+    results.append({"checker": "stage6_selected_gate_tool_execution_check", "status": status, "summary": summary})
     status, summary = check_real_tool_log_consistency(tool_results)
     results.append({"checker": "real_tool_log_consistency_check", "status": status, "summary": summary})
     status, summary = check_python_environment_contract(tool_results)
@@ -3582,19 +3791,25 @@ def build_results(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
             ),
         }
     )
+    board_bringup_readiness = build_board_bringup_readiness(state, run_dir)
+    board_bringup_certificate = write_board_bringup_certificate(
+        run_dir, board_bringup_readiness
+    )
     payload = {
         "schema_version": "spatialaccagent.verification_result.v0",
         "stage": "verification",
         "status": "pass" if all(item["status"] == "pass" for item in hard_results) else "fail",
         "scope": "static_checks_and_real_tool_evidence",
         "execution_scope": verification_execution_scope(),
-        "gate_execution_scope": stage7_gate_scope(),
+        "gate_execution_scope": stage6_gate_scope(),
         "gate_execution_plan": gate_execution_plan,
         "results": results,
         "hierarchical_gate_summary": gate_summary,
         "hierarchical_maturity": maturity,
+        "board_bringup_readiness": board_bringup_readiness,
+        "board_bringup_certificate": str(board_bringup_certificate),
     }
-    promotion_certificates, promotion_certificate_errors = write_stage7_promotion_certificates(
+    promotion_certificates, promotion_certificate_errors = write_stage6_promotion_certificates(
         state,
         run_dir,
         gate_summary,
@@ -3632,7 +3847,7 @@ def build_results(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
         verification_result=payload,
         debug_localization=debug_localization,
     )
-    payload["retry_reconciliation_contract"] = stage7_retry_reconciliation_contract(
+    payload["retry_reconciliation_contract"] = stage6_retry_reconciliation_contract(
         state,
         payload,
     )
@@ -3666,7 +3881,7 @@ def build_results(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     return payload
 
 
-def stage7_retry_source_fingerprint(
+def stage6_retry_source_fingerprint(
     results: dict[str, Any],
     run_dir: Path,
     *,
@@ -3706,7 +3921,7 @@ def stage7_retry_source_fingerprint(
         if isinstance(row, dict) and row.get("status") == "fail"
     ]
     payload = {
-        "schema_version": "spatialaccagent.stage7_retry_source_fingerprint.v1",
+        "schema_version": "spatialaccagent.stage6_retry_source_fingerprint.v1",
         "execution_scope": execution_scope,
         "debug_layer": debug_layer,
         "failed_checkers": sorted(set(failed)),
@@ -3745,14 +3960,14 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
         verification_scope=execution_scope,
         debug_layer=current_layer.get("id"),
         failed_gates=repair_loop.get("failed_current_layer_gates", []),
-        source_fingerprint_sha256=stage7_retry_source_fingerprint(
+        source_fingerprint_sha256=stage6_retry_source_fingerprint(
             results,
             run_dir_from_state(source_state),
             execution_scope=execution_scope,
             debug_layer=str(current_layer.get("id") or ""),
         ),
     )
-    touched_constraints = SINGLE_LAYER_TOUCHED_CONSTRAINTS if execution_scope in {"single_layer", "single_layer_closure", "stage7_single_layer"} else TOUCHED_CONSTRAINTS
+    touched_constraints = SINGLE_LAYER_TOUCHED_CONSTRAINTS if execution_scope in {"single_layer", "single_layer_closure", "stage6_single_layer"} else TOUCHED_CONSTRAINTS
     if execution_scope in BOARD_AXI_DDR_CLOSURE_SCOPES:
         functional_constraint = "constraint.verification.functional_scope"
         add_constraint(
@@ -3761,10 +3976,10 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
             "verification",
             [],
             [],
-            ["artifact.stage7.verification_result"],
+            ["artifact.stage6.verification_result"],
             {
                 "scope": execution_scope,
-                "meaning": "Scoped Stage 7 board AXI/DDR wrapped-system closure with real functional simulation evidence; backend, bitstream, and board-runtime gates remain later-stage obligations.",
+                "meaning": "Scoped Stage 6 board AXI/DDR wrapped-system closure with real functional simulation evidence; backend, bitstream, and board-runtime gates remain later-stage obligations.",
             },
         )
         touched_constraints = [functional_constraint]
@@ -3776,9 +3991,9 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
         note=f"Ran framework-level verification checks for scope={execution_scope}.",
         context=memory_context,
     )
-    transition["required_checkers"] = stage7_current_scope_required_checkers(results)
+    transition["required_checkers"] = stage6_current_scope_required_checkers(results)
     store.bind_artifact(
-        "artifact.stage7.verification_result",
+        "artifact.stage6.verification_result",
         str(result_path),
         "stage.verification_result",
         [],
@@ -3789,7 +4004,7 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
     tool_logs = sorted((result_path.parent / "real_tools").glob("*.json"))
     if tool_logs:
         store.bind_artifact(
-            "artifact.stage7.real_tool_results",
+            "artifact.stage6.real_tool_results",
             str(result_path.parent / "real_tools"),
             "stage.real_tool_results",
             [],
@@ -3800,7 +4015,7 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
     debug_closure = results.get("debug_closure", {}) if isinstance(results.get("debug_closure"), dict) else {}
     if debug_closure.get("failure_localization"):
         store.bind_artifact(
-            "artifact.stage7.debug_closure",
+            "artifact.stage6.debug_closure",
             str(Path(str(debug_closure["failure_localization"])).parent),
             "stage.debug_closure",
             [],
@@ -3819,7 +4034,20 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
             touched_constraints,
             transition["id"],
         )
-    def stage7_checker_constraints(checker: str) -> list[str]:
+    board_bringup_certificate = Path(
+        str(results.get("board_bringup_certificate") or "")
+    )
+    if board_bringup_certificate.is_file():
+        store.bind_artifact(
+            "artifact.stage6.board_bringup_certificate",
+            str(board_bringup_certificate),
+            "stage.board_bringup_certificate",
+            [],
+            [],
+            touched_constraints,
+            transition["id"],
+        )
+    def stage6_checker_constraints(checker: str) -> list[str]:
         if execution_scope in BOARD_AXI_DDR_CLOSURE_SCOPES:
             return touched_constraints
         if checker == "case_functional_sim_precondition_check":
@@ -3828,7 +4056,7 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
             return ["constraint.verification.hierarchy", "constraint.tool.protocols"]
         if checker == "required_real_tool_evidence_check":
             return ["constraint.verification.hierarchy", "constraint.tool.protocols", "constraint.deployment.board"]
-        if checker == "stage7_gate_execution_plan_check":
+        if checker == "stage6_gate_execution_plan_check":
             return ["constraint.verification.hierarchy", "constraint.tool.protocols"]
         if checker == "verification_action_audit_check":
             return ["constraint.verification.plan", "constraint.verification.hierarchy"]
@@ -3850,7 +4078,7 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
         checker = item.get("checker")
         if not checker or checker in invariant_map:
             continue
-        constraints = [cid for cid in stage7_checker_constraints(str(checker)) if cid in existing_constraint_ids]
+        constraints = [cid for cid in stage6_checker_constraints(str(checker)) if cid in existing_constraint_ids]
         if not constraints:
             constraints = [cid for cid in touched_constraints if cid in existing_constraint_ids]
         invariant_id = f"invariant.{checker}"
@@ -3866,7 +4094,7 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
                 status=item["status"],
                 invariant=invariant,
                 constraints=[cid for inv in store.state["invariants"] if inv["id"] == invariant for cid in inv.get("constraints", [])],
-                artifacts=["artifact.stage7.verification_result"],
+                artifacts=["artifact.stage6.verification_result"],
                 log_path=str(result_path),
                 transition_id=transition["id"],
                 summary=item["summary"],
@@ -3884,7 +4112,7 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
                     if isinstance(reconciliation.get("contract"), dict)
                     else {}
                 )
-                contract_errors = stage7_reconciliation_contract_errors(
+                contract_errors = stage6_reconciliation_contract_errors(
                     store.state,
                     contract,
                     verification_scope=execution_scope,
@@ -3910,14 +4138,14 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
                 contract = reconciliation["contract"]
                 store.reconcile_retry_and_barriers(
                     transition["id"],
-                    target_stage="stage7.verification",
-                    superseded_artifacts=STAGE7_RECONCILED_ARTIFACTS,
+                    target_stage="stage6.verification",
+                    superseded_artifacts=STAGE6_RECONCILED_ARTIFACTS,
                     retry_request_ids=contract.get("eligible_retry_request_ids", []),
                     contamination_barrier_ids=contract.get(
                         "eligible_contamination_barrier_ids", []
                     ),
                     reason=(
-                        f"current Stage7 {execution_scope} candidate passed real tools and produced "
+                        f"current Stage6 {execution_scope} candidate passed real tools and produced "
                         "a content-addressed promotion certificate"
                     ),
                 )
@@ -3938,7 +4166,7 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
                     status="fail",
                     invariant=invariant,
                     constraints=[cid for inv in store.state["invariants"] if inv["id"] == invariant for cid in inv.get("constraints", [])],
-                    artifacts=["artifact.stage7.verification_result"],
+                    artifacts=["artifact.stage6.verification_result"],
                     log_path=str(result_path),
                     transition_id=transition["id"],
                     summary=summary,
@@ -3949,41 +4177,41 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
         failed = [item for item in results.get("results", []) if item.get("status") == "fail"]
         summaries = [f"{item.get('checker')}: {item.get('summary')}" for item in failed[:8]]
         store.record_failure_lesson(
-            stage="stage7.verification",
+            stage="stage6.verification",
             failure_class="verification_real_tool_or_gate",
-            summary="; ".join(summaries) or "Stage7 verification failed",
+            summary="; ".join(summaries) or "Stage6 verification failed",
             violated_constraints=touched_constraints,
-            artifacts=["artifact.stage7.verification_result"],
-            recommended_action="Use contract-guided debug closure first: localize the failing transaction to a boundary/root-candidate slice, then let Stage8 repair only that causal slice or backtrack to Stage6 if gate/tool contracts are incomplete.",
-            retry_scope="stage7_or_stage6_backtrack",
+            artifacts=["artifact.stage6.verification_result"],
+            recommended_action="Use contract-guided debug closure first: localize the failing transaction to a boundary/root-candidate slice, then repair only that causal slice or backtrack to Stage5 if the verification contract is incomplete.",
+            retry_scope="stage6_or_stage6_backtrack",
             context=memory_context,
         )
         store.record_retry_request(
-            stage="stage7.verification",
-            reason="Stage7 verification result did not pass all selected real-tool/checker gates",
-            target_stage="stage7.verification",
+            stage="stage6.verification",
+            reason="Stage6 verification result did not pass all selected real-tool/checker gates",
+            target_stage="stage6.verification",
             required_inputs=["artifact.stage6.verification_artifact_contract", "artifact.stage6.llm_action_audit"],
-            blocked_artifacts=["artifact.stage7.verification_result"],
+            blocked_artifacts=["artifact.stage6.verification_result"],
             context=memory_context,
         )
         gate_plan = results.get("gate_execution_plan", {}) if isinstance(results.get("gate_execution_plan"), dict) else {}
         if gate_plan.get("status") != "pass":
             store.record_backtrack_request(
-                stage="stage7.verification",
+                stage="stage6.verification",
                 target_stage="stage6.verification_artifacts",
-                reason="Stage7 could not execute the selected gates because the Stage6 gate execution contract is incomplete",
+                reason="Stage6 could not execute the selected gates because the Stage5 verification contract is incomplete",
                 missing_or_invalid_contracts=gate_plan.get("blockers", []),
-                evidence=["artifact.stage7.verification_result", "artifact.stage6.verification_artifact_contract"],
+                evidence=["artifact.stage6.verification_result", "artifact.stage6.verification_artifact_contract"],
                 context=memory_context,
             )
     store.record_stage_outcome(
-        stage="stage7.verification",
+        stage="stage6.verification",
         status="ready" if results["status"] == "pass" else "needs_repair",
         transition_id=transition["id"],
-        summary=f"Stage7 execution_scope={execution_scope} status={results.get('status')}",
+        summary=f"Stage6 execution_scope={execution_scope} status={results.get('status')}",
         errors=[f"{item.get('checker')}: {item.get('summary')}" for item in results.get("results", []) if item.get("status") == "fail"],
-        artifacts=["artifact.stage7.verification_result"],
-        next_actions=[] if results["status"] == "pass" else ["run stage8.repair or backtrack to stage6 when gate DAG/tool protocol is incomplete"],
+        artifacts=["artifact.stage6.verification_result"],
+        next_actions=[] if results["status"] == "pass" else ["run the Stage6 repair loop or backtrack to Stage5 when the gate DAG/tool protocol is incomplete"],
         retryable=results["status"] != "pass",
         context=memory_context,
     )
@@ -4002,7 +4230,7 @@ def run_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     source_data = read_json(source_state)
     results = build_results(source_data, run_dir)
     write_json(result_path, results)
-    deterministic_failure_route = exact_failed_stage7_route(results)
+    deterministic_failure_route = exact_failed_stage6_route(results)
     team_error = None
     if deterministic_failure_route:
         design_team_summary = {
@@ -4033,7 +4261,7 @@ def run_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
 
     llm_error = None
     if deterministic_failure_route:
-        llm = deterministic_failed_stage7_record(results, out_dir)
+        llm = deterministic_failed_stage6_record(results, out_dir)
     else:
         try:
             llm = run_stage_agent(
@@ -4068,7 +4296,7 @@ def run_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 "stage": "verification",
                 "status": "unavailable",
                 "summary": "LLM evidence classifier unavailable; Stage7 must remain blocked until an LLM review succeeds.",
-                "sacg_focus": {"nodes": [], "edges": [], "constraints": TOUCHED_CONSTRAINTS, "artifacts": ["artifact.stage7.verification_result"]},
+                "sacg_focus": {"nodes": [], "edges": [], "constraints": TOUCHED_CONSTRAINTS, "artifacts": ["artifact.stage6.verification_result"]},
                 "observations": [f"LLM classifier failed: {llm_error}"],
                 "risks": ["LLM classifier outage blocks Stage7 promotion; deterministic tool logs alone are not an agentic design decision."],
                 "proposed_actions": ["Rerun Stage7 with the configured LLM provider available, preserving the same Stage6 gate/action contract."],
@@ -4087,7 +4315,7 @@ def run_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             }
             if not existing_llm:
                 write_json(llm_path, llm)
-    agent_gate_errors = append_stage7_agent_gate_checks(results, design_team_summary, llm)
+    agent_gate_errors = append_stage6_agent_gate_checks(results, design_team_summary, llm)
     write_json(result_path, results)
     transition_id = update_sacg(source_state, state_path, result_path, results)
     write_json(result_path, results)

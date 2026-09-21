@@ -247,7 +247,7 @@ def completed_board_lower_layer_recheck(
 def exact_board_identity_contract_passed(run_dir: Path) -> bool:
     """Return whether the current exact-board identity is reusable.
 
-    Stage 8 may carry an older capability-refresh request in SACG state even
+    Stage 6 may carry an older capability-refresh request in SACG state even
     after the discovery producer has completed.  Reusing the persisted,
     checker-visible identity avoids launching the same Vivado discovery again;
     any missing or malformed identity remains fail-closed.
@@ -300,13 +300,13 @@ def prior_repair_execution_artifact(state: dict[str, Any]) -> dict[str, Any] | N
     matches = [
         row
         for row in state.get("artifacts", [])
-        if isinstance(row, dict) and row.get("id") == "artifact.stage8.repair_execution_report"
+        if isinstance(row, dict) and row.get("id") == "artifact.stage6.repair_execution_report"
     ]
     if not matches:
         return None
     if len(matches) != 1:
         return {
-            "id": "artifact.stage8.repair_execution_report",
+            "id": "artifact.stage6.repair_execution_report",
             "_artifact_error": "source SACG contains duplicate repair execution report artifacts",
         }
     return matches[0]
@@ -357,7 +357,7 @@ def normalized_repair_execution_context(value: Any) -> dict[str, Any]:
 
 
 def repair_execution_agent_context(record: dict[str, Any]) -> dict[str, Any]:
-    """Return a validated hierarchy identity from a persisted Stage8 LLM record."""
+    """Return a validated hierarchy identity from a persisted Stage-6 LLM record."""
 
     for field in ("repair_execution_context", "capability_repair_context"):
         context = normalized_repair_execution_context(record.get(field))
@@ -470,7 +470,7 @@ def scope_prior_repair_execution_feedback(
     feedback: dict[str, Any],
     expected_debug_layer: str | None,
 ) -> dict[str, Any]:
-    """Reuse prior Stage8 results only when their producer layer matches exactly."""
+    """Reuse prior Stage-6 results only when their producer layer matches exactly."""
 
     if (
         not expected_debug_layer
@@ -496,7 +496,7 @@ def scope_prior_repair_execution_feedback(
         "selected_record_count": len(matching),
         "excluded_unbound_or_other_layer_record_count": len(records) - len(matching),
         "policy": (
-            "Only prior Stage8 LLM records with an explicit matching debug layer "
+            "Only prior Stage-6 LLM records with an explicit matching debug layer "
             "are reusable. Historical unbound or other-layer records remain on disk "
             "but are not repair-planning evidence."
         ),
@@ -787,7 +787,7 @@ def required_capability_repair_actions(
             and debug_layer == "single_transformer_layer_connected_kernel"
         ):
             # A board-level Agent may request the certified connected-kernel
-            # CCTG result that resolves a cross-layer contradiction.  Stage 8
+            # CCTG result that resolves a cross-layer contradiction.  Stage 6
             # first reuses an already-completed fresh execution when its raw
             # logs can be safely rematerialized; otherwise the same executor
             # performs exactly one fresh real VCS replay.
@@ -874,7 +874,7 @@ def prior_repair_execution_feedback(
     *,
     expected_debug_layer: str | None = None,
 ) -> dict[str, Any] | None:
-    """Load only the current SACG-bound Stage8 report and its exact LLM records."""
+    """Load only the current SACG-bound Stage-6 report and its exact LLM records."""
 
     artifact = prior_repair_execution_artifact(state)
     if artifact is None:
@@ -1228,7 +1228,7 @@ def rematerialized_lower_layer_capability_evidence(run_dir: Path) -> list[dict[s
     """Project current passing lower-layer evidence into the next board plan.
 
     A completed direct replay can be reclassified after an evidence-decoder fix.
-    Its original Stage-8 report remains historically failed, so planner inputs
+    Its original Stage-6 report remains historically failed, so planner inputs
     must validate the refreshed package itself instead of trusting that stale
     aggregate status. This is read-only and accepts only hash-bound evidence.
     """
@@ -1792,7 +1792,7 @@ def build_repair_workflow(
                         "debug_trace_rerun requires a tool that can generate boundary trace or "
                         "failure-localization evidence for the current debug layer"
                     ),
-                    "policy": "backtrack_to_stage6_tool_contract_before_retrying_stage7_or_patching_rtl",
+                    "policy": "backtrack_to_stage6_tool_contract_before_retrying_stage6_or_patching_rtl",
                 }
                 blockers.append(f"{step['id']} tool {normalized_tool} lacks boundary_trace capability")
             elif argv and script_exists:
@@ -1896,7 +1896,7 @@ def build_repair_workflow(
             "do_not_apply_unbounded_code_changes": True,
             "do_not_rerun_smoke_as_acceptance": True,
             "regression_reruns_must_use_case_tool_protocols": True,
-            "repair_output_must_return_to_stage7": True,
+            "repair_output_must_return_to_stage6": True,
             "same_debug_layer_must_rerun_until_functionally_correct_before_promotion": True,
             "cctg_boundary_trace_or_localization_required_before_code_repair": True,
             "lower_layer_pass_evidence_is_reusable_not_absolute": True,
@@ -1942,7 +1942,7 @@ def load_debug_closure_localization(state: dict[str, Any], run_dir: Path) -> dic
         run_dir / "verification" / "debug_closure" / "failure_localization.json",
     ]
     try:
-        verification = read_json(artifact_path(state, "artifact.stage7.verification_result"))
+        verification = read_json(artifact_path(state, "artifact.stage6.verification_result"))
         debug_paths = verification.get("debug_closure", {}) if isinstance(verification.get("debug_closure"), dict) else {}
         if debug_paths.get("failure_localization"):
             candidates.insert(0, Path(str(debug_paths["failure_localization"])))
@@ -2851,7 +2851,7 @@ def build_repair_actions(
 
 
 def build_repair_plan(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
-    verification = read_json(artifact_path(state, "artifact.stage7.verification_result"))
+    verification = read_json(artifact_path(state, "artifact.stage6.verification_result"))
     case_adapter = case_adapter_for_state(state, run_dir)
     verification = enrich_verification_with_tool_reports(verification, run_dir, case_adapter)
     failures = [item for item in verification.get("results", []) if item.get("status") == "fail"]
@@ -3233,7 +3233,7 @@ def deterministic_localized_repair_record(
                 "nodes": [target["debug_layer"]],
                 "edges": [],
                 "constraints": TOUCHED_CONSTRAINTS,
-                "artifacts": ["artifact.stage8.repair_plan"],
+                "artifacts": ["artifact.stage6.repair_plan"],
             },
             "observations": [
                 "current board proof is authoritative for repair routing",
@@ -3290,7 +3290,7 @@ def deterministic_localized_repair_record(
                 ],
                 "edges": [],
                 "constraints": TOUCHED_CONSTRAINTS,
-                "artifacts": ["artifact.stage8.repair_plan"],
+                "artifacts": ["artifact.stage6.repair_plan"],
             },
             "observations": [
                 f"repair_kind={action.get('repair_kind')}",
@@ -3340,7 +3340,7 @@ def deterministic_localized_repair_record(
             "nodes": [],
             "edges": [],
             "constraints": TOUCHED_CONSTRAINTS,
-            "artifacts": ["artifact.stage8.repair_plan"],
+            "artifacts": ["artifact.stage6.repair_plan"],
         },
         "observations": [
             f"evidence_type={trace.get('evidence_type')}",
@@ -3717,7 +3717,7 @@ def restore_persisted_read_only_capability_steps(
 ) -> bool:
     """Recover only stale planner vetoes for framework-owned read-only steps.
 
-    Stage-8 may be resumed from a persisted repair plan rather than regenerated
+    Stage-6 may be resumed from a persisted repair plan rather than regenerated
     after a controller restart.  Reapply the same narrow policy used during
     reconciliation so a historical approval label cannot indefinitely prevent
     a preserved-evidence producer from running.  This never restores a source
@@ -3829,7 +3829,7 @@ def update_sacg(source_state: Path, target_state: Path, repair_path: Path, repai
         context=memory_context,
     )
     store.bind_artifact(
-        "artifact.stage8.repair_plan",
+        "artifact.stage6.repair_plan",
         str(repair_path),
         "stage.repair_plan",
         [],
@@ -3852,7 +3852,7 @@ def update_sacg(source_state: Path, target_state: Path, repair_path: Path, repai
                 status="pass",
                 invariant=invariant["id"],
                 constraints=invariant.get("constraints", []),
-                artifacts=["artifact.stage8.repair_plan"],
+                artifacts=["artifact.stage6.repair_plan"],
                 log_path=str(repair_path),
                 transition_id=transition["id"],
                 summary="verification result has no failed checks; no bounded repair action is required",
@@ -3865,31 +3865,31 @@ def update_sacg(source_state: Path, target_state: Path, repair_path: Path, repai
             for item in repair_plan.get("failures", [])[:8]
         ]
         store.record_failure_lesson(
-            stage="stage8.repair",
+            stage="stage6.repair",
             failure_class="bounded_repair_required",
-            summary="; ".join(failures) or "Stage8 found repair actions are required",
+            summary="; ".join(failures) or "Stage6 found repair actions are required",
             violated_constraints=touched_constraints,
-            artifacts=["artifact.stage8.repair_plan"],
-            recommended_action="Execute or approve the bounded repair workflow, then rerun Stage7. Do not continue to backend/board closure with unresolved verification failures.",
-            retry_scope="repair_then_stage7_rerun",
+            artifacts=["artifact.stage6.repair_plan"],
+            recommended_action="Execute the bounded repair workflow, then rerun Stage6. Do not continue to backend/board closure with unresolved verification failures.",
+            retry_scope="repair_then_stage6_rerun",
             context=memory_context,
         )
         store.record_retry_request(
-            stage="stage8.repair",
+            stage="stage6.repair",
             reason="Bounded repair actions must be completed before verification can be promoted",
-            target_stage="stage7.verification",
-            required_inputs=["artifact.stage8.repair_plan"],
-            blocked_artifacts=["artifact.stage8.repair_plan"],
+            target_stage="stage6.verification",
+            required_inputs=["artifact.stage6.repair_plan"],
+            blocked_artifacts=["artifact.stage6.repair_plan"],
             context=memory_context,
         )
     store.record_stage_outcome(
-        stage="stage8.repair",
+        stage="stage6.repair",
         status=repair_plan["status"],
         transition_id=transition["id"],
         summary=f"repair_status={repair_plan.get('status')} workflow_status={(repair_plan.get('repair_workflow') or {}).get('status')}",
         errors=[f"{item.get('checker')}: {item.get('summary')}" for item in repair_plan.get("failures", [])],
-        artifacts=["artifact.stage8.repair_plan"],
-        next_actions=[] if repair_plan["status"] == "ready" else ["complete bounded repair workflow and rerun Stage7"],
+        artifacts=["artifact.stage6.repair_plan"],
+        next_actions=[] if repair_plan["status"] == "ready" else ["complete bounded repair workflow and rerun Stage6"],
         retryable=repair_plan["status"] != "ready",
         context=memory_context,
     )
@@ -3980,7 +3980,7 @@ def plan_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 "stage": "repair",
                 "status": "unavailable",
                 "summary": "LLM repair reviewer unavailable; deterministic repair plan remains authoritative.",
-                "sacg_focus": {"nodes": [], "edges": [], "constraints": TOUCHED_CONSTRAINTS, "artifacts": ["artifact.stage8.repair_plan"]},
+                "sacg_focus": {"nodes": [], "edges": [], "constraints": TOUCHED_CONSTRAINTS, "artifacts": ["artifact.stage6.repair_plan"]},
                 "observations": [f"LLM repair reviewer failed: {llm_error}"],
                 "risks": ["LLM outage must not remove deterministic repair actions."],
                 "proposed_actions": [],

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 from typing import Any
 
@@ -149,41 +150,247 @@ def bindings_by_op(selection: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return result
 
 
-def stage_shapes(op: str, shape: dict[str, Any], binding: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    seq_len = shape.get("target_max_seq_len")
-    hidden = shape.get("hidden_size")
-    intermediate = shape.get("intermediate_size")
-    if op in {"mlp_gate_proj", "mlp_up_proj"}:
-        return {"seq_len": seq_len, "width": hidden}, {"seq_len": seq_len, "width": intermediate}
-    if op == "activation_mul":
-        return {"seq_len": seq_len, "width": intermediate}, {"seq_len": seq_len, "width": intermediate}
-    if op == "mlp_down_proj":
-        return {"seq_len": seq_len, "width": intermediate}, {"seq_len": seq_len, "width": hidden}
-    return {"seq_len": seq_len, "width": hidden}, {"seq_len": seq_len, "width": hidden}
+SEMANTIC_BOUNDARIES = {"block_input", "block_output"}
+NUMERIC_STREAM_ROLES = {"activation", "accumulator"}
+TENSOR_WIDTH_ROLES = {"hidden": "hidden_size", "intermediate": "intermediate_size"}
+SCALA_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+IMPLEMENTATION_PARAM_SOURCES = {
+    "hidden_size",
+    "intermediate_size",
+    "num_q_heads",
+    "num_kv_heads",
+    "head_dim",
+    "lanes",
+    "compute_array_rows",
+    "compute_array_cols",
+    "batch_size",
+    "max_seq_len",
+    "input_bits",
+    "elem_bits",
+    "output_bits",
+}
 
 
-def symbolic_latency(op: str, shape: dict[str, Any], binding: dict[str, Any]) -> dict[str, Any]:
+def validate_implementation_contract(contract: Any, adapter_path: Path | str) -> dict[str, Any]:
+    """Validate the model-owned binding from semantic plan to trusted Chisel."""
+
+    prefix = f"{adapter_path}: implementation_contract"
+    if not isinstance(contract, dict):
+        raise PipelinePlanningError(f"{prefix} must be an object")
+
+    top_class = str(contract.get("top_class") or "")
+    if not SCALA_IDENTIFIER.fullmatch(top_class):
+        raise PipelinePlanningError(f"{prefix}.top_class must be a Scala identifier")
+    if not isinstance(contract.get("requires_position_input"), bool):
+        raise PipelinePlanningError(f"{prefix}.requires_position_input must be boolean")
+
+    def port_names(field: str) -> list[str]:
+        values = contract.get(field)
+        if not isinstance(values, list):
+            raise PipelinePlanningError(f"{prefix}.{field} must be a list")
+        names = [str(value or "") for value in values]
+        invalid = [name for name in names if not SCALA_IDENTIFIER.fullmatch(name)]
+        if invalid:
+            raise PipelinePlanningError(f"{prefix}.{field} has invalid port name(s): {invalid}")
+        if len(set(names)) != len(names):
+            raise PipelinePlanningError(f"{prefix}.{field} must not repeat ports")
+        return names
+
+    loader_ports = port_names("loader_ports")
+    disabled_weight_ports = port_names("disabled_weight_ports")
+    overlap = sorted(set(loader_ports) & set(disabled_weight_ports))
+    if overlap:
+        raise PipelinePlanningError(f"{prefix} ports cannot be both connected and disabled: {overlap}")
+
+    params = contract.get("params")
+    if not isinstance(params, dict):
+        raise PipelinePlanningError(f"{prefix}.params must be an object")
+    param_class = str(params.get("class") or "")
+    if not SCALA_IDENTIFIER.fullmatch(param_class):
+        raise PipelinePlanningError(f"{prefix}.params.class must be a Scala identifier")
+    bindings = params.get("bindings")
+    if not isinstance(bindings, dict) or not bindings:
+        raise PipelinePlanningError(f"{prefix}.params.bindings must be a non-empty object")
+    normalized_bindings: dict[str, str] = {}
+    for parameter, source in bindings.items():
+        parameter_name = str(parameter or "")
+        source_name = str(source or "")
+        if not SCALA_IDENTIFIER.fullmatch(parameter_name):
+            raise PipelinePlanningError(f"{prefix}.params.bindings has invalid parameter name {parameter!r}")
+        if source_name not in IMPLEMENTATION_PARAM_SOURCES:
+            raise PipelinePlanningError(
+                f"{prefix}.params.bindings.{parameter_name} uses unsupported source {source_name!r}"
+            )
+        normalized_bindings[parameter_name] = source_name
+
+    return {
+        "top_class": top_class,
+        "requires_position_input": contract["requires_position_input"],
+        "loader_ports": loader_ports,
+        "disabled_weight_ports": disabled_weight_ports,
+        "params": {"class": param_class, "bindings": normalized_bindings},
+    }
+
+
+def pipeline_dataflow_for_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Load the model-owned pipeline contract without inferring topology.
+
+    The model semantic adapter is the only authority for Stage 3 graph shape.
+    A missing or malformed declaration is a configuration error, rather than an
+    opportunity to silently substitute a Qwen/LLaMA-style dataflow.
+    """
+
+    try:
+        case_adapter = read_json(artifact_path(state, "artifact.input.case_adapter"))
+    except Exception as exc:
+        raise PipelinePlanningError(f"cannot load current case adapter: {exc}") from exc
+    semantic = case_adapter.get("model_semantic_adapter")
+    if not isinstance(semantic, dict) or not semantic.get("path"):
+        raise PipelinePlanningError("case adapter is missing model_semantic_adapter.path")
+    adapter_path = Path(str(semantic["path"]))
+    if not adapter_path.is_file():
+        adapter_path = Path.cwd() / adapter_path
+    if not adapter_path.is_file():
+        raise PipelinePlanningError(f"model semantic adapter is missing: {adapter_path}")
+    try:
+        adapter = read_json(adapter_path)
+    except Exception as exc:
+        raise PipelinePlanningError(f"cannot read model semantic adapter {adapter_path}: {exc}") from exc
+    dataflow = adapter.get("pipeline_dataflow")
+    if not isinstance(dataflow, dict):
+        raise PipelinePlanningError(f"{adapter_path}: missing pipeline_dataflow contract")
+    stage_metadata = dataflow.get("stage_metadata")
+    edges = dataflow.get("edges")
+    boundary_numeric = dataflow.get("boundary_numeric")
+    storage_terms = dataflow.get("weight_storage_terms")
+    if not isinstance(stage_metadata, dict) or not stage_metadata:
+        raise PipelinePlanningError(f"{adapter_path}: pipeline_dataflow.stage_metadata must be a non-empty object")
+    if not isinstance(edges, list) or not edges:
+        raise PipelinePlanningError(f"{adapter_path}: pipeline_dataflow.edges must be a non-empty list")
+    if not isinstance(boundary_numeric, dict):
+        raise PipelinePlanningError(f"{adapter_path}: pipeline_dataflow.boundary_numeric must be an object")
+    if not isinstance(storage_terms, list) or not storage_terms:
+        raise PipelinePlanningError(f"{adapter_path}: pipeline_dataflow.weight_storage_terms must be a non-empty list")
+
+    model = constraint_facts(state, "constraint.model.decoder")
+    declared_ops = [str(op) for op in model.get("operator_sequence", [])]
+    duplicate_ops = sorted({op for op in declared_ops if declared_ops.count(op) > 1})
+    if duplicate_ops:
+        raise PipelinePlanningError(
+            "Stage 3 requires unique semantic operator identifiers; duplicate operator names need explicit instance ids: "
+            f"{duplicate_ops}"
+        )
+    missing_metadata = [op for op in declared_ops if not isinstance(stage_metadata.get(op), dict)]
+    extra_metadata = sorted(set(stage_metadata) - set(declared_ops))
+    if missing_metadata or extra_metadata:
+        raise PipelinePlanningError(
+            f"{adapter_path}: pipeline_dataflow stage metadata mismatch: missing={missing_metadata}, extra={extra_metadata}"
+        )
+    for op in declared_ops:
+        metadata = stage_metadata[op]
+        shape_spec = metadata.get("shape")
+        numeric_spec = metadata.get("numeric")
+        if not isinstance(shape_spec, dict) or set(shape_spec) != {"input", "output"}:
+            raise PipelinePlanningError(f"{adapter_path}: {op} requires shape.input and shape.output roles")
+        if any(shape_spec.get(key) not in TENSOR_WIDTH_ROLES for key in ("input", "output")):
+            raise PipelinePlanningError(f"{adapter_path}: {op} uses an unsupported tensor-width role: {shape_spec}")
+        if not isinstance(numeric_spec, dict) or set(numeric_spec) != {"input", "internal", "output"}:
+            raise PipelinePlanningError(f"{adapter_path}: {op} requires numeric input/internal/output roles")
+        if any(numeric_spec.get(key) not in NUMERIC_STREAM_ROLES for key in ("input", "internal", "output")):
+            raise PipelinePlanningError(f"{adapter_path}: {op} uses an unsupported numeric role: {numeric_spec}")
+        if not metadata.get("latency_kind"):
+            raise PipelinePlanningError(f"{adapter_path}: {op} is missing latency_kind")
+    seen_storage_terms: set[str] = set()
+    for term in storage_terms:
+        if not isinstance(term, dict):
+            raise PipelinePlanningError(f"{adapter_path}: every weight_storage_terms entry must be an object")
+        term_id = str(term.get("id") or "")
+        owner = str(term.get("stage") or "")
+        physical_role = str(term.get("physical_role") or "")
+        if not term_id or term_id in seen_storage_terms:
+            raise PipelinePlanningError(f"{adapter_path}: weight storage term ids must be unique and non-empty")
+        if owner not in declared_ops:
+            raise PipelinePlanningError(
+                f"{adapter_path}: weight storage term {term_id!r} has unknown stage owner {owner!r}"
+            )
+        if physical_role != "weight" and not physical_role.startswith("weight_"):
+            raise PipelinePlanningError(
+                f"{adapter_path}: weight storage term {term_id!r} has invalid physical_role {physical_role!r}"
+            )
+        seen_storage_terms.add(term_id)
+    if any(boundary_numeric.get(key) not in NUMERIC_STREAM_ROLES for key in ("input", "output")):
+        raise PipelinePlanningError(f"{adapter_path}: boundary_numeric must use activation or accumulator roles")
+
+    known_nodes = set(declared_ops) | SEMANTIC_BOUNDARIES
+    seen_edges: set[tuple[str, str, str, str, str]] = set()
+    connected_ops: set[str] = set()
+    for edge in edges:
+        if not isinstance(edge, dict):
+            raise PipelinePlanningError(f"{adapter_path}: every pipeline edge must be an object")
+        src = str(edge.get("source") or "")
+        dst = str(edge.get("destination") or "")
+        if src not in known_nodes or dst not in known_nodes:
+            raise PipelinePlanningError(f"{adapter_path}: edge has unknown endpoint {src!r}->{dst!r}")
+        if src == "block_output" or dst == "block_input":
+            raise PipelinePlanningError(f"{adapter_path}: invalid boundary direction {src!r}->{dst!r}")
+        key = (src, dst, str(edge.get("kind") or "main"), str(edge.get("source_port") or "out"), str(edge.get("destination_port") or "in"))
+        if key in seen_edges:
+            raise PipelinePlanningError(f"{adapter_path}: duplicate pipeline edge {key}")
+        seen_edges.add(key)
+        connected_ops.update({src, dst} & set(declared_ops))
+    missing_connected = sorted(set(declared_ops) - connected_ops)
+    if missing_connected:
+        raise PipelinePlanningError(f"{adapter_path}: declared operators are disconnected from pipeline_dataflow: {missing_connected}")
+    return {
+        "adapter_path": str(adapter_path),
+        "schema_version": dataflow.get("schema_version"),
+        "boundary_numeric": boundary_numeric,
+        "stage_metadata": stage_metadata,
+        "edges": edges,
+        "weight_storage_terms": storage_terms,
+        "implementation_contract": validate_implementation_contract(
+            adapter.get("implementation_contract"), adapter_path
+        ),
+    }
+
+
+def shape_for_role(role: str, shape: dict[str, Any]) -> dict[str, Any]:
+    key = TENSOR_WIDTH_ROLES.get(role)
+    if key is None:
+        raise PipelinePlanningError(f"unsupported tensor-width role: {role}")
+    return {"seq_len": shape.get("target_max_seq_len"), "width": shape.get(key)}
+
+
+def stage_shapes(metadata: dict[str, Any], shape: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    shape_spec = metadata.get("shape", {}) if isinstance(metadata.get("shape"), dict) else {}
+    return shape_for_role(str(shape_spec.get("input")), shape), shape_for_role(str(shape_spec.get("output")), shape)
+
+
+def symbolic_latency(metadata: dict[str, Any], shape: dict[str, Any], binding: dict[str, Any]) -> dict[str, Any]:
     seq_len = int(shape.get("target_max_seq_len") or 1)
     hidden = int(shape.get("hidden_size") or 1)
     intermediate = int(shape.get("intermediate_size") or hidden)
     lanes = int(bound_value(binding, "lanes", 1) or 1)
     head_dim = int(shape.get("head_dim") or 1)
     q_heads = int(shape.get("num_q_heads") or 1)
-    if op == "self_attention":
+    latency_kind = str(metadata.get("latency_kind"))
+    if latency_kind == "self_attention":
         stream_width = hidden
         cycles = (seq_len * hidden + seq_len * seq_len * q_heads * head_dim) // max(lanes, 1)
-    elif op in {"mlp_gate_proj", "mlp_up_proj"}:
+    elif latency_kind == "linear_hidden_to_intermediate":
         stream_width = intermediate
         cycles = seq_len * hidden * intermediate // max(lanes, 1)
-    elif op == "mlp_down_proj":
+    elif latency_kind == "linear_intermediate_to_hidden":
         stream_width = hidden
         cycles = seq_len * intermediate * hidden // max(lanes, 1)
-    elif op == "activation_mul":
+    elif latency_kind == "pointwise_intermediate":
         stream_width = intermediate
         cycles = seq_len * intermediate // max(lanes, 1)
-    else:
+    elif latency_kind == "pointwise_hidden":
         stream_width = hidden
         cycles = seq_len * hidden // max(lanes, 1)
+    else:
+        raise PipelinePlanningError(f"unsupported semantic latency_kind: {latency_kind}")
     return {
         "estimate_kind": "symbolic_first_order",
         "used_for": "planning estimate only; not timing, throughput, or hardware pass evidence",
@@ -194,6 +401,7 @@ def symbolic_latency(op: str, shape: dict[str, Any], binding: dict[str, Any]) ->
             "intermediate_size": intermediate,
             "stream_width": stream_width,
             "lanes": lanes,
+            "latency_kind": latency_kind,
         },
     }
 
@@ -224,47 +432,43 @@ def stage_id_by_op(stages: list[dict[str, Any]]) -> dict[str, str]:
     return {stage["op"]: stage["stage_id"] for stage in stages}
 
 
-def build_data_edges(stages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def build_data_edges(stages: list[dict[str, Any]], declared_edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_op = stage_id_by_op(stages)
-    required = [
-        "rms_norm_1",
-        "self_attention",
-        "residual_add_1",
-        "rms_norm_2",
-        "mlp_gate_proj",
-        "mlp_up_proj",
-        "activation_mul",
-        "mlp_down_proj",
-        "residual_add_2",
-    ]
-    if all(op in by_op for op in required):
-        return [
-            make_edge("block_input", by_op["rms_norm_1"], kind="input"),
-            make_edge("block_input", by_op["residual_add_1"], kind="residual_skip", src_port="residual", dst_port="skip"),
-            make_edge(by_op["rms_norm_1"], by_op["self_attention"]),
-            make_edge(by_op["self_attention"], by_op["residual_add_1"], dst_port="main"),
-            make_edge(by_op["residual_add_1"], by_op["rms_norm_2"]),
-            make_edge(by_op["residual_add_1"], by_op["residual_add_2"], kind="residual_skip", src_port="residual", dst_port="skip"),
-            make_edge(by_op["rms_norm_2"], by_op["mlp_gate_proj"], kind="mlp_gate_branch"),
-            make_edge(by_op["rms_norm_2"], by_op["mlp_up_proj"], kind="mlp_up_branch"),
-            make_edge(by_op["mlp_gate_proj"], by_op["activation_mul"], kind="mlp_gate_to_mul", dst_port="lhs"),
-            make_edge(by_op["mlp_up_proj"], by_op["activation_mul"], kind="mlp_up_to_mul", dst_port="rhs"),
-            make_edge(by_op["activation_mul"], by_op["mlp_down_proj"]),
-            make_edge(by_op["mlp_down_proj"], by_op["residual_add_2"], dst_port="main"),
-            make_edge(by_op["residual_add_2"], "block_output", kind="output"),
-        ]
-    edges = []
-    for index in range(len(stages) - 1):
-        edges.append(make_edge(stages[index]["stage_id"], stages[index + 1]["stage_id"]))
+    def endpoint(name: str) -> str:
+        if name in SEMANTIC_BOUNDARIES:
+            return name
+        if name not in by_op:
+            raise PipelinePlanningError(f"pipeline_dataflow references unselected operator: {name}")
+        return by_op[name]
+
+    edges: list[dict[str, Any]] = []
+    for declared in declared_edges:
+        edges.append(
+            make_edge(
+                endpoint(str(declared.get("source"))),
+                endpoint(str(declared.get("destination"))),
+                kind=str(declared.get("kind") or "main"),
+                src_port=str(declared.get("source_port") or "out"),
+                dst_port=str(declared.get("destination_port") or "in"),
+                order=declared.get("transfer_order") if isinstance(declared.get("transfer_order"), list) else None,
+            )
+        )
     return edges
 
 
 def build_buffer_plan(edges: list[dict[str, Any]], design_space: dict[str, Any]) -> list[dict[str, Any]]:
     default_depth = selected_fifo_depth(design_space, 32)
+    fanout = {str(edge.get("src_stage")): 0 for edge in edges}
+    fanin = {str(edge.get("dst_stage")): 0 for edge in edges}
+    for edge in edges:
+        fanout[str(edge.get("src_stage"))] += 1
+        fanin[str(edge.get("dst_stage"))] += 1
     buffers = []
     for edge in edges:
-        kind = edge.get("kind")
-        depth = max(default_depth, 64) if kind in {"residual_skip", "mlp_gate_branch", "mlp_up_branch"} else default_depth
+        src = str(edge.get("src_stage"))
+        dst = str(edge.get("dst_stage"))
+        is_branch_edge = fanout[src] > 1 or fanin[dst] > 1
+        depth = max(default_depth, 64) if is_branch_edge else default_depth
         buffers.append(
             {
                 "edge_id": edge["edge_id"],
@@ -273,7 +477,7 @@ def build_buffer_plan(edges: list[dict[str, Any]], design_space: dict[str, Any])
                 "implementation": "trusted_queue_template",
                 "resource_class": "on_chip_fifo",
                 "depth": depth,
-                "purpose": "preserve branch token order under backpressure" if kind != "main" else "decouple adjacent pipeline stages",
+                "purpose": "preserve branch token order under backpressure" if is_branch_edge else "decouple adjacent pipeline stages",
                 "correctness_note": "depth is a bounded elasticity/resource choice; correctness relies on ready/valid backpressure, not on latency equalization",
             }
         )
@@ -304,22 +508,22 @@ def board_axi_contract(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def stage_numeric_contract(op: str, policy: dict[str, Any]) -> dict[str, Any]:
+def numeric_bits_for_role(role: str, policy: dict[str, Any]) -> int:
+    if role == "activation":
+        return scalar(policy.get("activation_bits"), 16)
+    if role == "accumulator":
+        return scalar(policy.get("accumulator_bits"), 32)
+    raise PipelinePlanningError(f"unsupported numeric stream role: {role}")
+
+
+def stage_numeric_contract(metadata: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
     elem_bits = scalar(policy.get("activation_bits"), 16)
     acc_bits = scalar(policy.get("accumulator_bits"), 32)
     weight_bits = scalar(policy.get("weight_bits"), elem_bits)
-    if op in {"rms_norm_1", "rms_norm_2"}:
-        input_bits, output_bits, internal_bits = acc_bits, elem_bits, acc_bits
-    elif op in {"residual_add_1", "residual_add_2"}:
-        input_bits, output_bits, internal_bits = acc_bits, acc_bits, acc_bits
-    elif op == "mlp_down_proj":
-        input_bits, output_bits, internal_bits = elem_bits, acc_bits, elem_bits
-    elif op == "self_attention":
-        input_bits, output_bits, internal_bits = elem_bits, acc_bits, elem_bits
-    elif op in {"mlp_gate_proj", "mlp_up_proj", "activation_mul"}:
-        input_bits, output_bits, internal_bits = elem_bits, elem_bits, elem_bits
-    else:
-        input_bits, output_bits, internal_bits = elem_bits, elem_bits, elem_bits
+    numeric = metadata.get("numeric", {}) if isinstance(metadata.get("numeric"), dict) else {}
+    input_bits = numeric_bits_for_role(str(numeric.get("input")), policy)
+    internal_bits = numeric_bits_for_role(str(numeric.get("internal")), policy)
+    output_bits = numeric_bits_for_role(str(numeric.get("output")), policy)
     return {
         "input_bits": input_bits,
         "internal_elem_bits": internal_bits,
@@ -331,22 +535,24 @@ def stage_numeric_contract(op: str, policy: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def stage_contracts(stages: list[dict[str, Any]], state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def stage_contracts(
+    stages: list[dict[str, Any]], state: dict[str, Any], boundary_numeric: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
     policy = numeric_bit_policy(state)
     contracts: dict[str, dict[str, Any]] = {
         "block_input": {
-            "output_bits": scalar(policy.get("accumulator_bits"), 32),
+            "output_bits": numeric_bits_for_role(str(boundary_numeric.get("input")), policy),
             "output_shape": stages[0]["input_shape"] if stages else {},
             "role": "pipeline_boundary_input",
         },
         "block_output": {
-            "input_bits": scalar(policy.get("accumulator_bits"), 32),
+            "input_bits": numeric_bits_for_role(str(boundary_numeric.get("output")), policy),
             "input_shape": stages[-1]["output_shape"] if stages else {},
             "role": "pipeline_boundary_output",
         },
     }
     for stage in stages:
-        numeric_contract = stage_numeric_contract(str(stage.get("op")), policy)
+        numeric_contract = stage_numeric_contract(stage.get("semantic_metadata", {}), policy)
         stage["numeric_contract"] = numeric_contract
         numeric_contract["lanes"] = bound_value(stage, "lanes", None)
         contracts[stage["stage_id"]] = {
@@ -411,47 +617,36 @@ def enrich_edges_with_contracts(
     return enriched
 
 
-def branch_join_contracts(stages: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
-    by_op = stage_id_by_op(stages)
+def branch_join_contracts(edges: list[dict[str, Any]]) -> dict[str, Any]:
+    """Derive stream fanout/fanin obligations from the declared semantic DAG."""
 
-    def edge_ids(src: str | None = None, dst: str | None = None) -> list[str]:
-        return [
-            edge["edge_id"]
-            for edge in edges
-            if (src is None or edge.get("src_stage") == src) and (dst is None or edge.get("dst_stage") == dst)
-        ]
-
-    return {
-        "split_contracts": [
-            {
-                "node": by_op.get("rms_norm_2"),
-                "output_edges": edge_ids(by_op.get("rms_norm_2")),
-                "duplicator": "ready_valid_broadcast_with_per_output_fifo",
-                "source_accept_rule": "source beat is accepted only when all branch FIFOs can enqueue the same token/tile/lane/word",
-                "branch_dequeue_rule": "after duplication each branch observes its own downstream ready",
-            }
-        ],
-        "join_contracts": [
-            {
-                "node": by_op.get("residual_add_1"),
-                "input_edges": edge_ids(dst=by_op.get("residual_add_1")),
-                "fire_rule": "all required inputs valid before fire",
-                "pairing_key": ["token", "tile", "lane", "word"],
-            },
-            {
-                "node": by_op.get("activation_mul"),
-                "input_edges": edge_ids(dst=by_op.get("activation_mul")),
-                "fire_rule": "all required inputs valid before fire",
-                "pairing_key": ["token", "tile", "lane", "word"],
-            },
-            {
-                "node": by_op.get("residual_add_2"),
-                "input_edges": edge_ids(dst=by_op.get("residual_add_2")),
-                "fire_rule": "all required inputs valid before fire",
-                "pairing_key": ["token", "tile", "lane", "word"],
-            },
-        ],
-    }
+    by_source: dict[str, list[dict[str, Any]]] = {}
+    by_destination: dict[str, list[dict[str, Any]]] = {}
+    for edge in edges:
+        by_source.setdefault(str(edge.get("src_stage")), []).append(edge)
+        by_destination.setdefault(str(edge.get("dst_stage")), []).append(edge)
+    split_contracts = [
+        {
+            "node": source,
+            "output_edges": [str(edge["edge_id"]) for edge in source_edges],
+            "duplicator": "ready_valid_broadcast_with_per_output_fifo",
+            "source_accept_rule": "source beat is accepted only when all branch FIFOs can enqueue the same token/tile/lane/word",
+            "branch_dequeue_rule": "after duplication each branch observes its own downstream ready",
+        }
+        for source, source_edges in by_source.items()
+        if len(source_edges) > 1
+    ]
+    join_contracts = [
+        {
+            "node": destination,
+            "input_edges": [str(edge["edge_id"]) for edge in destination_edges],
+            "fire_rule": "all required inputs valid before fire",
+            "pairing_key": ["token", "tile", "lane", "word"],
+        }
+        for destination, destination_edges in by_destination.items()
+        if len(destination_edges) > 1
+    ]
+    return {"split_contracts": split_contracts, "join_contracts": join_contracts}
 
 
 def attention_contract(state: dict[str, Any]) -> dict[str, Any]:
@@ -460,7 +655,7 @@ def attention_contract(state: dict[str, Any]) -> dict[str, Any]:
     q_heads = scalar(shape.get("num_q_heads"), scalar(model.get("num_q_heads"), 1))
     kv_heads = scalar(shape.get("num_kv_heads"), scalar(model.get("num_kv_heads"), q_heads))
     return {
-        "attention_kind": model.get("attention_kind", "gqa"),
+        "attention_kind": model.get("attention_kind"),
         "num_q_heads": q_heads,
         "num_kv_heads": kv_heads,
         "head_dim": scalar(shape.get("head_dim"), scalar(model.get("head_dim"), 1)),
@@ -468,7 +663,7 @@ def attention_contract(state: dict[str, Any]) -> dict[str, Any]:
         "seq_len_bound": shape.get("target_max_seq_len"),
         "causal": True,
         "position_encoding": model.get("position_encoding", {}),
-        "stage_boundary": "logical self_attention stage covers QKV projection, RoPE, causal GQA attention, and output projection for decoder-block planning",
+        "stage_boundary": "logical self_attention stage covers model-declared QKV projection, positional encoding, causal attention, and output projection",
         "kv_storage_policy": "bounded by target_max_seq_len inside the generated block; external KV-cache materialization requires a later memory-layout artifact",
     }
 
@@ -525,7 +720,72 @@ def default_runtime_targets(runtime: dict[str, Any]) -> tuple[list[dict[str, Any
     return h2c_targets, c2h_targets
 
 
-def build_memory_schedule(state: dict[str, Any], model: dict[str, Any], shape: dict[str, Any]) -> dict[str, Any]:
+def storage_term_elements(term: dict[str, Any], shape: dict[str, Any]) -> int:
+    factors = term.get("factors")
+    if not isinstance(factors, list) or not factors:
+        raise PipelinePlanningError(f"weight storage term {term.get('id')!r} must declare non-empty factors")
+    product = 1
+    for factor in factors:
+        if isinstance(factor, bool):
+            raise PipelinePlanningError(f"weight storage term {term.get('id')!r} has invalid boolean factor")
+        if isinstance(factor, int):
+            value = factor
+        elif isinstance(factor, str):
+            value = shape.get(factor)
+        else:
+            value = None
+        if not isinstance(value, int) or value <= 0:
+            raise PipelinePlanningError(
+                f"weight storage term {term.get('id')!r} has unresolved positive factor {factor!r}"
+            )
+        product *= value
+    return product
+
+
+def weight_storage_layout(
+    storage_terms: list[dict[str, Any]], shape: dict[str, Any], numeric: dict[str, Any]
+) -> list[dict[str, Any]]:
+    bit_roles = {
+        "weight": scalar(numeric.get("weight_bits"), 16),
+        "activation": scalar(numeric.get("activation_bits"), 16),
+        "accumulator": scalar(numeric.get("accumulator_bits"), 32),
+    }
+    layout: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for term in storage_terms:
+        if not isinstance(term, dict):
+            raise PipelinePlanningError("weight_storage_terms entries must be objects")
+        term_id = str(term.get("id") or "")
+        dtype_role = str(term.get("dtype_role") or "")
+        if not term_id or term_id in seen:
+            raise PipelinePlanningError(f"weight storage term ids must be unique and non-empty: {term_id!r}")
+        if dtype_role not in bit_roles:
+            raise PipelinePlanningError(f"weight storage term {term_id!r} has unsupported dtype_role={dtype_role!r}")
+        seen.add(term_id)
+        elements = storage_term_elements(term, shape)
+        element_bits = bit_roles[dtype_role]
+        layout.append(
+            {
+                "id": term_id,
+                "stage": term.get("stage"),
+                "physical_role": term.get("physical_role"),
+                "dtype_role": dtype_role,
+                "factors": term["factors"],
+                "elements": elements,
+                "element_bits": element_bits,
+                "bytes": bytes_for_elements(elements, element_bits),
+            }
+        )
+    return layout
+
+
+def build_memory_schedule(
+    state: dict[str, Any],
+    model: dict[str, Any],
+    shape: dict[str, Any],
+    stages: list[dict[str, Any]],
+    semantic_dataflow: dict[str, Any],
+) -> dict[str, Any]:
     memory = constraint_facts(state, "constraint.memory.board")
     runtime = constraint_facts(state, "constraint.runtime.board")
     numeric = numeric_bit_policy(state)
@@ -533,23 +793,29 @@ def build_memory_schedule(state: dict[str, Any], model: dict[str, Any], shape: d
     num_layers = model.get("num_layers")
     seq_len = scalar(shape.get("target_max_seq_len"), 1)
     hidden = scalar(shape.get("hidden_size"), 1)
-    intermediate = scalar(shape.get("intermediate_size"), hidden)
-    q_heads = scalar(shape.get("num_q_heads"), 1)
-    kv_heads = scalar(shape.get("num_kv_heads"), q_heads)
-    head_dim = scalar(shape.get("head_dim"), max(1, hidden // max(1, q_heads)))
-    elem_bits = scalar(numeric.get("activation_bits"), 16)
-    acc_bits = scalar(numeric.get("accumulator_bits"), 32)
-    weight_bits = scalar(numeric.get("weight_bits"), elem_bits)
     alignment = scalar(axi.get("alignment_bytes"), scalar(axi.get("data_bytes"), 64))
-    activation_elements = seq_len * hidden
-    intermediate_elements = seq_len * intermediate
-    qkv_weight_elements = hidden * ((q_heads + 2 * kv_heads) * head_dim)
-    out_proj_weight_elements = hidden * hidden
-    ffn_weight_elements = hidden * intermediate * 2 + intermediate * hidden
-    norm_elements = hidden * 2
-    per_layer_weight_bytes = (
-        bytes_for_elements(qkv_weight_elements + out_proj_weight_elements + ffn_weight_elements, weight_bits)
-        + bytes_for_elements(norm_elements, acc_bits)
+    numeric = numeric_bit_policy(state)
+    weights = weight_storage_layout(semantic_dataflow["weight_storage_terms"], shape, numeric)
+    per_layer_weight_bytes = sum(scalar(term.get("bytes"), 0) for term in weights)
+    input_stage = stages[0] if stages else {}
+    output_stage = stages[-1] if stages else {}
+    input_shape = input_stage.get("input_shape", {}) if isinstance(input_stage.get("input_shape"), dict) else {}
+    output_shape = output_stage.get("output_shape", {}) if isinstance(output_stage.get("output_shape"), dict) else {}
+    input_bits = scalar((input_stage.get("numeric_contract") or {}).get("input_bits"), 32)
+    output_bits = scalar((output_stage.get("numeric_contract") or {}).get("output_bits"), 32)
+    input_elements = tensor_elements(input_shape) if input_shape else seq_len * hidden
+    output_elements = tensor_elements(output_shape) if output_shape else seq_len * hidden
+    activation_buffer_bytes = max(
+        [
+            bytes_for_elements(tensor_elements(tensor), bits)
+            for stage in stages
+            for tensor, bits in (
+                (stage.get("input_shape", {}), scalar((stage.get("numeric_contract") or {}).get("input_bits"), input_bits)),
+                (stage.get("output_shape", {}), scalar((stage.get("numeric_contract") or {}).get("output_bits"), output_bits)),
+            )
+            if isinstance(tensor, dict)
+        ]
+        or [max(bytes_for_elements(input_elements, input_bits), bytes_for_elements(output_elements, output_bits))]
     )
     device_templates = derived_xdma_device_templates(runtime)
     h2c_targets, c2h_targets = default_runtime_targets(runtime)
@@ -557,35 +823,35 @@ def build_memory_schedule(state: dict[str, Any], model: dict[str, Any], shape: d
         {
             "name": "input_tokens",
             "role": "activation_input",
-            "size_bytes_formula": "seq_len * hidden_size * block_input_bits / 8",
-            "size_bytes": align_up(bytes_for_elements(activation_elements, acc_bits), alignment),
+            "size_bytes_formula": "semantic block-input tensor elements * declared block-input bits / 8",
+            "size_bytes": align_up(bytes_for_elements(input_elements, input_bits), alignment),
             "alignment_bytes": alignment,
         },
         {
             "name": "output_tokens",
             "role": "activation_output",
-            "size_bytes_formula": "seq_len * hidden_size * block_output_bits / 8",
-            "size_bytes": align_up(bytes_for_elements(activation_elements, acc_bits), alignment),
+            "size_bytes_formula": "semantic block-output tensor elements * declared block-output bits / 8",
+            "size_bytes": align_up(bytes_for_elements(output_elements, output_bits), alignment),
             "alignment_bytes": alignment,
         },
         {
             "name": "activation_ping",
             "role": "activation_buffer",
-            "size_bytes_formula": "max(seq_len * hidden_size * block_bits, seq_len * intermediate_size * elem_bits) / 8",
-            "size_bytes": align_up(max(bytes_for_elements(activation_elements, acc_bits), bytes_for_elements(intermediate_elements, elem_bits)), alignment),
+            "size_bytes_formula": "max(declared semantic stage input/output tensor bytes)",
+            "size_bytes": align_up(activation_buffer_bytes, alignment),
             "alignment_bytes": alignment,
         },
         {
             "name": "activation_pong",
             "role": "activation_buffer",
             "size_bytes_formula": "same as activation_ping",
-            "size_bytes": align_up(max(bytes_for_elements(activation_elements, acc_bits), bytes_for_elements(intermediate_elements, elem_bits)), alignment),
+            "size_bytes": align_up(activation_buffer_bytes, alignment),
             "alignment_bytes": alignment,
         },
         {
             "name": "weight_buffer_a",
             "role": "weight_buffer",
-            "size_bytes_formula": "per_layer(qkv + out_proj + gate + up + down + norms)",
+            "size_bytes_formula": "sum(model-semantic weight_storage_terms)",
             "size_bytes": align_up(per_layer_weight_bytes, alignment),
             "alignment_bytes": alignment,
         },
@@ -611,6 +877,7 @@ def build_memory_schedule(state: dict[str, Any], model: dict[str, Any], shape: d
         "activation_buffers": ["activation_ping", "activation_pong"],
         "required_regions": required_regions,
         "per_layer_weight_bytes": align_up(per_layer_weight_bytes, alignment),
+        "weight_storage_terms": weights,
         "board_axi": axi,
         "board_memory_refs": {
             "memory_system": memory.get("memory_system", {}),
@@ -679,6 +946,50 @@ def check_stream_data_edge_mirror(plan: dict[str, Any]) -> dict[str, Any]:
     return pass_row("stream_data_edge_mirror_check", f"edges={len(data_ids)}")
 
 
+def check_semantic_dataflow_contract(plan: dict[str, Any]) -> dict[str, Any]:
+    semantic = plan.get("semantic_dataflow", {}) if isinstance(plan.get("semantic_dataflow"), dict) else {}
+    declared = semantic.get("declared_edges", []) if isinstance(semantic.get("declared_edges"), list) else []
+    stage_by_op = {str(stage.get("op")): str(stage.get("stage_id")) for stage in plan.get("stages", [])}
+
+    def endpoint(name: Any) -> str:
+        text = str(name)
+        return text if text in SEMANTIC_BOUNDARIES else stage_by_op.get(text, "")
+
+    expected = {
+        (
+            endpoint(edge.get("source")),
+            endpoint(edge.get("destination")),
+            str(edge.get("kind") or "main"),
+            str(edge.get("source_port") or "out"),
+            str(edge.get("destination_port") or "in"),
+        )
+        for edge in declared
+        if isinstance(edge, dict)
+    }
+    actual = {
+        (
+            str(edge.get("src_stage")),
+            str(edge.get("dst_stage")),
+            str(edge.get("kind") or "main"),
+            str(edge.get("src_port") or "out"),
+            str(edge.get("dst_port") or "in"),
+        )
+        for edge in plan.get("data_edges", [])
+    }
+    errors = []
+    if not semantic.get("adapter_path"):
+        errors.append("semantic_dataflow.adapter_path is missing")
+    if not declared:
+        errors.append("semantic_dataflow.declared_edges is empty")
+    if "" in {value for edge in expected for value in edge[:2]}:
+        errors.append("semantic_dataflow references an operator without a generated stage")
+    if expected != actual:
+        errors.append(f"generated graph diverges from semantic adapter: missing={sorted(expected - actual)}, extra={sorted(actual - expected)}")
+    if errors:
+        return fail_row("semantic_dataflow_contract_check", errors)
+    return pass_row("semantic_dataflow_contract_check", f"adapter_graph_edges={len(actual)}")
+
+
 def check_edge_contracts(plan: dict[str, Any]) -> dict[str, Any]:
     errors = []
     warnings = []
@@ -705,39 +1016,42 @@ def check_edge_contracts(plan: dict[str, Any]) -> dict[str, Any]:
 
 def check_shape_numeric_contracts(plan: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     policy = numeric_bit_policy(state)
-    elem_bits = scalar(policy.get("activation_bits"), 16)
-    acc_bits = scalar(policy.get("accumulator_bits"), 32)
+    shape = constraint_facts(state, "constraint.shape.model")
+    semantic = plan.get("semantic_dataflow", {}) if isinstance(plan.get("semantic_dataflow"), dict) else {}
+    metadata_by_op = semantic.get("stage_metadata", {}) if isinstance(semantic.get("stage_metadata"), dict) else {}
     errors = []
-    stage_by_op = {str(stage.get("op")): stage for stage in plan.get("stages", [])}
-    expected_bits = {
-        "rms_norm_1": (acc_bits, elem_bits),
-        "self_attention": (elem_bits, acc_bits),
-        "residual_add_1": (acc_bits, acc_bits),
-        "rms_norm_2": (acc_bits, elem_bits),
-        "mlp_gate_proj": (elem_bits, elem_bits),
-        "mlp_up_proj": (elem_bits, elem_bits),
-        "activation_mul": (elem_bits, elem_bits),
-        "mlp_down_proj": (elem_bits, acc_bits),
-        "residual_add_2": (acc_bits, acc_bits),
-    }
-    for op, (input_bits, output_bits) in expected_bits.items():
-        stage = stage_by_op.get(op)
-        if not stage:
-            errors.append(f"missing stage for {op}")
+    for stage in plan.get("stages", []):
+        op = str(stage.get("op"))
+        metadata = metadata_by_op.get(op)
+        if not isinstance(metadata, dict):
+            errors.append(f"missing semantic metadata for {op}")
             continue
+        numeric = metadata.get("numeric", {}) if isinstance(metadata.get("numeric"), dict) else {}
+        expected_bits = {
+            "input_bits": numeric_bits_for_role(str(numeric.get("input")), policy),
+            "internal_elem_bits": numeric_bits_for_role(str(numeric.get("internal")), policy),
+            "output_bits": numeric_bits_for_role(str(numeric.get("output")), policy),
+        }
         contract = stage.get("numeric_contract", {}) if isinstance(stage.get("numeric_contract"), dict) else {}
-        if scalar(contract.get("input_bits"), -1) != input_bits:
-            errors.append(f"{stage.get('stage_id')}: input_bits={contract.get('input_bits')} expected {input_bits}")
-        if scalar(contract.get("output_bits"), -1) != output_bits:
-            errors.append(f"{stage.get('stage_id')}: output_bits={contract.get('output_bits')} expected {output_bits}")
-    activation = stage_by_op.get("activation_mul", {})
-    latency_inputs = (activation.get("latency") or {}).get("formula_inputs", {}) if isinstance(activation.get("latency"), dict) else {}
-    intermediate = scalar(constraint_facts(state, "constraint.shape.model").get("intermediate_size"), 0)
-    if scalar(latency_inputs.get("stream_width"), -1) != intermediate:
-        errors.append(f"activation_mul latency stream_width={latency_inputs.get('stream_width')} expected intermediate_size={intermediate}")
+        for field, expected in expected_bits.items():
+            if scalar(contract.get(field), -1) != expected:
+                errors.append(f"{stage.get('stage_id')}: {field}={contract.get(field)} expected {expected}")
+        expected_input, expected_output = stage_shapes(metadata, shape)
+        if stage.get("input_shape") != expected_input:
+            errors.append(f"{stage.get('stage_id')}: input_shape={stage.get('input_shape')} expected {expected_input}")
+        if stage.get("output_shape") != expected_output:
+            errors.append(f"{stage.get('stage_id')}: output_shape={stage.get('output_shape')} expected {expected_output}")
+        latency_inputs = (stage.get("latency") or {}).get("formula_inputs", {}) if isinstance(stage.get("latency"), dict) else {}
+        if scalar(latency_inputs.get("stream_width"), -1) != scalar(expected_output.get("width"), -2):
+            errors.append(
+                f"{stage.get('stage_id')}: latency stream_width={latency_inputs.get('stream_width')} expected output width={expected_output.get('width')}"
+            )
     if errors:
         return fail_row("shape_numeric_contract_check", errors)
-    return pass_row("shape_numeric_contract_check", f"elem_bits={elem_bits}, accumulator_bits={acc_bits}")
+    return pass_row(
+        "shape_numeric_contract_check",
+        f"stages={len(plan.get('stages', []))}, activation_bits={policy.get('activation_bits')}, accumulator_bits={policy.get('accumulator_bits')}",
+    )
 
 
 def check_branch_join_contracts(plan: dict[str, Any]) -> dict[str, Any]:
@@ -745,11 +1059,20 @@ def check_branch_join_contracts(plan: dict[str, Any]) -> dict[str, Any]:
     errors = []
     split_contracts = contracts.get("split_contracts", [])
     join_contracts = contracts.get("join_contracts", [])
-    if not split_contracts:
-        errors.append("missing split_contracts")
-    if len(join_contracts) < 3:
-        errors.append("expected residual_add_1, activation_mul, and residual_add_2 join contracts")
     all_edges = set(edge_by_id(plan.get("stream_edges", [])).keys())
+    by_source: dict[str, list[str]] = {}
+    by_destination: dict[str, list[str]] = {}
+    for edge in plan.get("stream_edges", []):
+        by_source.setdefault(str(edge.get("src_stage")), []).append(str(edge.get("edge_id")))
+        by_destination.setdefault(str(edge.get("dst_stage")), []).append(str(edge.get("edge_id")))
+    expected_splits = {node: edges for node, edges in by_source.items() if len(edges) > 1}
+    expected_joins = {node: edges for node, edges in by_destination.items() if len(edges) > 1}
+    actual_splits = {str(row.get("node")): list(row.get("output_edges") or []) for row in split_contracts if isinstance(row, dict)}
+    actual_joins = {str(row.get("node")): list(row.get("input_edges") or []) for row in join_contracts if isinstance(row, dict)}
+    if actual_splits != expected_splits:
+        errors.append(f"split contracts do not match semantic graph fanout: expected={expected_splits}, actual={actual_splits}")
+    if actual_joins != expected_joins:
+        errors.append(f"join contracts do not match semantic graph fanin: expected={expected_joins}, actual={actual_joins}")
     for contract in split_contracts + join_contracts:
         edge_ids = contract.get("output_edges") or contract.get("input_edges") or []
         if not edge_ids:
@@ -863,12 +1186,21 @@ def check_memory_runtime_contract(plan: dict[str, Any]) -> dict[str, Any]:
 def check_attention_contract(plan: dict[str, Any]) -> dict[str, Any]:
     contract = plan.get("attention_contract", {}) if isinstance(plan.get("attention_contract"), dict) else {}
     errors = []
-    if contract.get("attention_kind") != "gqa":
-        errors.append(f"attention_kind={contract.get('attention_kind')} expected gqa")
+    attention_kind = str(contract.get("attention_kind") or "")
+    if attention_kind not in {"mha", "gqa", "mqa"}:
+        errors.append(f"unsupported attention_kind={contract.get('attention_kind')}")
     if scalar(contract.get("num_q_heads"), 0) <= 0 or scalar(contract.get("num_kv_heads"), 0) <= 0:
         errors.append("attention head counts must be positive")
-    if scalar(contract.get("num_q_heads"), 0) % max(1, scalar(contract.get("num_kv_heads"), 1)) != 0:
-        errors.append("num_q_heads must be divisible by num_kv_heads for GQA mapping")
+    q_heads = scalar(contract.get("num_q_heads"), 0)
+    kv_heads = scalar(contract.get("num_kv_heads"), 0)
+    if q_heads % max(1, kv_heads) != 0:
+        errors.append("num_q_heads must be divisible by num_kv_heads")
+    if attention_kind == "mha" and q_heads != kv_heads:
+        errors.append("MHA requires num_q_heads == num_kv_heads")
+    if attention_kind == "mqa" and kv_heads != 1:
+        errors.append("MQA requires num_kv_heads == 1")
+    if attention_kind == "gqa" and kv_heads in {0, 1, q_heads}:
+        errors.append("GQA requires 1 < num_kv_heads < num_q_heads")
     if scalar(contract.get("head_dim"), 0) <= 0:
         errors.append("head_dim must be positive")
     if not contract.get("stage_boundary"):
@@ -898,6 +1230,7 @@ def check_template_binding_contract(plan: dict[str, Any], state: dict[str, Any])
 def run_pipeline_static_checks(plan: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     rows = [
         check_operator_order(plan, state),
+        check_semantic_dataflow_contract(plan),
         check_stream_data_edge_mirror(plan),
         check_edge_contracts(plan),
         check_shape_numeric_contracts(plan, state),
@@ -959,12 +1292,15 @@ def build_pipeline_plan(state: dict[str, Any]) -> dict[str, Any]:
     if not selected:
         raise PipelinePlanningError("template selection has no operator templates")
     stage2_bindings = bindings_by_op(selection)
+    semantic_dataflow = pipeline_dataflow_for_state(state)
+    stage_metadata = semantic_dataflow["stage_metadata"]
 
     stages = []
     for index, item in enumerate(selected):
         op = str(item["op"])
         binding = stage2_bindings.get(op, {})
-        input_shape, output_shape = stage_shapes(op, shape, binding)
+        metadata = stage_metadata[op]
+        input_shape, output_shape = stage_shapes(metadata, shape)
         stages.append(
             {
                 "stage_id": f"stage_{index:02d}_{safe_id(op)}",
@@ -978,12 +1314,15 @@ def build_pipeline_plan(state: dict[str, Any]) -> dict[str, Any]:
                 "required_params": item.get("required_params", []),
                 "bound_params": binding.get("bound_params", {}),
                 "constraints_emitted": item.get("constraints_emitted", []),
-                "latency": symbolic_latency(op, shape, binding),
+                "semantic_metadata": metadata,
+                "latency": symbolic_latency(metadata, shape, binding),
             }
         )
 
-    contracts = stage_contracts(stages, state)
-    data_edges = enrich_edges_with_contracts(build_data_edges(stages), contracts, shape, state)
+    contracts = stage_contracts(stages, state, semantic_dataflow["boundary_numeric"])
+    data_edges = enrich_edges_with_contracts(
+        build_data_edges(stages, semantic_dataflow["edges"]), contracts, shape, state
+    )
     buffer_plan = build_buffer_plan(data_edges, design_space)
 
     plan = {
@@ -992,6 +1331,14 @@ def build_pipeline_plan(state: dict[str, Any]) -> dict[str, Any]:
         "status": "ready",
         "model_type": model.get("model_type"),
         "pipeline_style": "operator_stream_pipeline",
+        "semantic_dataflow": {
+            "adapter_path": semantic_dataflow["adapter_path"],
+            "schema_version": semantic_dataflow["schema_version"],
+            "boundary_numeric": semantic_dataflow["boundary_numeric"],
+            "stage_metadata": semantic_dataflow["stage_metadata"],
+            "declared_edges": semantic_dataflow["edges"],
+        },
+        "implementation_contract": semantic_dataflow["implementation_contract"],
         "stages": stages,
         "data_edges": data_edges,
         "stream_edges": [
@@ -1005,7 +1352,7 @@ def build_pipeline_plan(state: dict[str, Any]) -> dict[str, Any]:
             "split_policy": "source beat is duplicated into all branch FIFOs atomically; branch dequeue observes downstream ready independently",
             "deadlock_rule": "directed graph must be acyclic, or every cycle must include a bounded buffer and a checker-backed ready path proof",
         },
-        "branch_join_contracts": branch_join_contracts(stages, data_edges),
+        "branch_join_contracts": branch_join_contracts(data_edges),
         "attention_contract": attention_contract(state),
         "numeric_stream_policy": numeric_bit_policy(state),
         "multi_layer_execution": {
@@ -1014,7 +1361,7 @@ def build_pipeline_plan(state: dict[str, Any]) -> dict[str, Any]:
             "pipeline_overlap": "next token may enter stage_0 when backpressure allows; do not serialize whole-token full-block execution unless forced by dependencies",
             "weight_prefetch": "double_buffer_next_layer_weights",
         },
-        "memory_schedule": build_memory_schedule(state, model, shape),
+        "memory_schedule": build_memory_schedule(state, model, shape, stages, semantic_dataflow),
         "memory_policy": {
             "weight_policy": "template_bound",
             "activation_policy": "stream_between_stages",

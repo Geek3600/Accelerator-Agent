@@ -196,8 +196,14 @@ def materialize_transcendental_contract(out_dir: Path) -> dict[str, Any]:
     exp_table = exp2_fraction_lut(input_fraction_bits, exp_output_fraction_bits)
     sigmoid_values = sigmoid_table(sigmoid_segments, sigmoid_value_fraction_bits)
     exp_memh = write_memh(out_dir / "exp2_fraction_q24.memh", exp_table, exp_output_fraction_bits + 2)
+    write_memh(out_dir / "exp2_fraction_q24.mem", exp_table, exp_output_fraction_bits + 2)
     sigmoid_memh = write_memh(
         out_dir / "sigmoid_pwl_q18.memh",
+        sigmoid_values,
+        sigmoid_value_fraction_bits + 1,
+    )
+    write_memh(
+        out_dir / "sigmoid_pwl_q18.mem",
         sigmoid_values,
         sigmoid_value_fraction_bits + 1,
     )

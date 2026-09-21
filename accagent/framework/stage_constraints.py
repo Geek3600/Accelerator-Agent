@@ -183,7 +183,7 @@ def conflict_rules(field_evidence: dict[str, Any]) -> list[dict[str, Any]]:
                 ],
                 "reason": (
                     "Multiple AXI beat widths were observed in the input materials. The framework must not assume a fixed "
-                    "board interface; Stage9 runtime ABI gates must validate against the current target_board_profile and "
+                    "board interface; Stage-7 runtime ABI gates must validate against the current target_board_profile and "
                     "its declared real board reference RTL."
                 ),
             }

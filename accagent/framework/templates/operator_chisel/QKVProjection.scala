@@ -12,7 +12,12 @@ final case class QKVProjectionParams(
   elemBits: Int = 16,
   qkvElemsPerBeat: Int = 8,
   batchSize: Int = 16,
-  maxSeqLen: Int = 16
+  maxSeqLen: Int = 16,
+  hasBias: Boolean = true,
+  weightRole: String = "weight_qkv",
+  biasRole: String = "weight_qkv_bias",
+  computeArrayRows: Int = 0,
+  computeArrayCols: Int = 0
 ) {
   require(hiddenSize > 0, "hiddenSize must be positive")
   require(qHeads > 0 && kvHeads > 0, "attention head counts must be positive")
@@ -37,7 +42,11 @@ final case class QKVProjectionParams(
     outputBits = elemBits,
     batchSize = batchSize,
     maxSeqLen = maxSeqLen,
-    hasBias = true
+    hasBias = hasBias,
+    weightRole = weightRole,
+    biasRole = biasRole,
+    computeArrayRows = computeArrayRows,
+    computeArrayCols = computeArrayCols
   )
   val headBeats: Int = headDim / qkvElemsPerBeat
   val qkvBeatBits: Int = 3 * qkvElemsPerBeat * elemBits
@@ -75,7 +84,7 @@ class QKVProjection(p: QKVProjectionParams) extends Module {
   projection.io.weight <> io.weight
   projection.io.bias <> io.bias
   projection.io.scale.outScale := io.qScale
-  projection.io.scale.biasScale := IeeeMath.fp32One
+  projection.io.scale.biasScale := PhysicalMath.fp32One
   projection.io.in <> io.in
 
   // These ports are retained as part of the established template ABI. Linear
@@ -84,17 +93,30 @@ class QKVProjection(p: QKVProjectionParams) extends Module {
   dontTouch(io.kScale)
   dontTouch(io.vScale)
 
-  val projectedBeats = Reg(Vec(p.linear.outBeats, UInt(p.linear.outputBeatBits.W)))
+  val projectedMemory = Module(
+    new PhysicalSimpleDualPortMemory(
+      p.linear.outBeats,
+      p.linear.outputBeatBits,
+      "activation"
+    )
+  )
   val collectBeat = RegInit(0.U(log2Ceil(p.linear.outBeats max 2).W))
   val emitHead = RegInit(0.U(p.headBits.W))
   val emitBeat = RegInit(0.U(log2Ceil(p.headBeats max 2).W))
   val tokenStart = RegInit(false.B)
-  val sCollect :: sEmit :: Nil = Enum(2)
+  val readField = RegInit(0.U(2.W))
+  val readLane = RegInit(0.U(log2Ceil(p.qkvElemsPerBeat max 2).W))
+  val qValues = Reg(Vec(p.qkvElemsPerBeat, UInt(p.elemBits.W)))
+  val kValues = Reg(Vec(p.qkvElemsPerBeat, UInt(p.elemBits.W)))
+  val vValues = Reg(Vec(p.qkvElemsPerBeat, UInt(p.elemBits.W)))
+  val sCollect :: sReadIssue :: sReadCapture :: sEmit :: Nil = Enum(4)
   val state = RegInit(sCollect)
 
   projection.io.out.ready := state === sCollect
+  projectedMemory.io.writeEn := projection.io.out.fire
+  projectedMemory.io.writeAddr := collectBeat
+  projectedMemory.io.writeData := projection.io.out.bits.data
   when(projection.io.out.fire) {
-    projectedBeats(collectBeat) := projection.io.out.bits.data
     when(collectBeat === 0.U) {
       tokenStart := projection.io.out.bits.st
     }
@@ -102,31 +124,58 @@ class QKVProjection(p: QKVProjectionParams) extends Module {
       collectBeat := 0.U
       emitHead := 0.U
       emitBeat := 0.U
-      state := sEmit
+      readField := 0.U
+      readLane := 0.U
+      state := sReadIssue
     }.otherwise {
       collectBeat := collectBeat + 1.U
     }
   }
 
-  val projected = Wire(Vec(p.outDim, UInt(p.elemBits.W)))
-  for (beat <- 0 until p.linear.outBeats) {
-    val laneValues = projectedBeats(beat).asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
-    for (lane <- 0 until p.lanes) {
-      projected(beat * p.lanes + lane) := laneValues(lane)
-    }
-  }
-
   val dimensionBase = emitBeat * p.qkvElemsPerBeat.U
   val mappedKvHead = emitHead / p.kvGroupSize.U
-  val qValues = Wire(Vec(p.qkvElemsPerBeat, UInt(p.elemBits.W)))
-  val kValues = Wire(Vec(p.qkvElemsPerBeat, UInt(p.elemBits.W)))
-  val vValues = Wire(Vec(p.qkvElemsPerBeat, UInt(p.elemBits.W)))
+  val dimension = dimensionBase + readLane
+  val qElement = emitHead * p.headDim.U + dimension
+  val kElement = p.qDim.U + mappedKvHead * p.headDim.U + dimension
+  val vElement = (p.qDim + p.kDim).U + mappedKvHead * p.headDim.U + dimension
+  val selectedElement = MuxLookup(readField, qElement)(Seq(
+    1.U -> kElement,
+    2.U -> vElement
+  ))
+  val selectedBeat = selectedElement / p.lanes.U
+  val selectedLane = selectedElement % p.lanes.U
 
-  for (lane <- 0 until p.qkvElemsPerBeat) {
-    val dimension = dimensionBase + lane.U
-    qValues(lane) := projected(emitHead * p.headDim.U + dimension)
-    kValues(lane) := projected(p.qDim.U + mappedKvHead * p.headDim.U + dimension)
-    vValues(lane) := projected((p.qDim + p.kDim).U + mappedKvHead * p.headDim.U + dimension)
+  projectedMemory.io.readEn := state === sReadIssue
+  projectedMemory.io.readAddr := selectedBeat
+
+  when(state === sReadIssue) {
+    state := sReadCapture
+  }
+
+  val readBeatValues = projectedMemory.io.readData.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
+  val readValue = readBeatValues(AccMath.boundedIndex(selectedLane, p.lanes))
+  when(state === sReadCapture) {
+    when(readField === 0.U) {
+      qValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := readValue
+    }.elsewhen(readField === 1.U) {
+      kValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := readValue
+    }.otherwise {
+      vValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := readValue
+    }
+
+    when(readLane === (p.qkvElemsPerBeat - 1).U) {
+      readLane := 0.U
+      when(readField === 2.U) {
+        readField := 0.U
+        state := sEmit
+      }.otherwise {
+        readField := readField + 1.U
+        state := sReadIssue
+      }
+    }.otherwise {
+      readLane := readLane + 1.U
+      state := sReadIssue
+    }
   }
 
   io.out.valid := state === sEmit
@@ -144,9 +193,15 @@ class QKVProjection(p: QKVProjectionParams) extends Module {
         state := sCollect
       }.otherwise {
         emitHead := emitHead + 1.U
+        readField := 0.U
+        readLane := 0.U
+        state := sReadIssue
       }
     }.otherwise {
       emitBeat := emitBeat + 1.U
+      readField := 0.U
+      readLane := 0.U
+      state := sReadIssue
     }
   }
 }

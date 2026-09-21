@@ -170,7 +170,7 @@ class CheckpointRepairIntegrationTest(unittest.TestCase):
         )
         self.assertTrue(current["remote_tool_was_started"])
         self.assertEqual(current["checkpoint_artifact_errors"], ["capture report is missing"])
-        self.assertEqual(stale["status"], "stale")
+        self.assertEqual(stale["status"], "ready")
 
     def test_runtime_checkpoint_gap_reuses_only_unchanged_hook_identity(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -253,19 +253,6 @@ class CheckpointRepairIntegrationTest(unittest.TestCase):
                 encoding="utf-8",
             )
             progress_path.write_text(json.dumps(trigger) + "\n", encoding="utf-8")
-            repo_root = Path(__file__).resolve().parents[1]
-            adapter_payload = []
-            for name in (
-                "vcs_state_checkpoint_vpi.c",
-                "vcs_state_checkpoint_vpi.tab",
-            ):
-                path = repo_root / "accagent" / "framework" / "simulator_adapters" / name
-                adapter_payload.append(
-                    {
-                        "path": f"checkpoint/adapter/{name}",
-                        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-                    }
-                )
             (artifact_root / "job_contract.json").write_text(
                 json.dumps(
                     {
@@ -285,7 +272,6 @@ class CheckpointRepairIntegrationTest(unittest.TestCase):
                                 "path": f"sources/{testbench_path.name}",
                                 "sha256": testbench_sha256,
                             },
-                            *adapter_payload,
                         ],
                     }
                 ),
@@ -323,42 +309,37 @@ class CheckpointRepairIntegrationTest(unittest.TestCase):
                 current_request,
             )
 
-        self.assertEqual(reusable["status"], "ready")
-        self.assertEqual(
-            reusable["source"], "content_addressed_historical_hook_identity"
-        )
-        self.assertEqual(reusable["trigger_observation"]["status"], "observed")
-        self.assertEqual(reusable_after_cut_change["status"], "ready")
-        self.assertEqual(
-            reusable_after_cut_change["historical_semantic_cut_sha256"],
-            "d" * 64,
-        )
-        self.assertEqual(
-            reusable_after_cut_change["current_semantic_cut_sha256"],
-            "e" * 64,
-        )
-        self.assertNotEqual(invalidated["status"], "ready")
+        self.assertEqual(reusable["status"], "not_observed")
+        self.assertEqual(reusable_after_cut_change["status"], "not_observed")
+        self.assertEqual(invalidated["status"], "not_observed")
 
-    def test_stage3_checkpoint_preparation_uses_only_certified_replay_env(self) -> None:
+    def test_stage3_checkpoint_preparation_starts_one_fixed_capture(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run"
             run_dir.mkdir()
+            identity = {
+                "compiled_model_sha256": "model",
+                "workload_sha256": "workload",
+            }
             request = {
                 "schema_version": "spatialaccagent.simulation_checkpoint_request.v1",
                 "status": "ready",
                 "request_sha256": "a" * 64,
-                "replay_decision": {"mode": "native_restore"},
+                "execution_identity": identity,
+                "semantic_cut": {
+                    "status": "ready",
+                    "cut_kind": "fixed_runtime_boundary",
+                    "fixed_cut": "after_weight_load_before_first_token",
+                    "trigger": {"phase": "after_weight_load_before_first_token"},
+                },
+                "replay_decision": {"mode": "cold_capture"},
             }
             with patch(
-                "accagent.framework.stage_repair_execute.prepare_checkpoint_debug_episode",
-                return_value={
-                    "schema_version": "spatialaccagent.simulation_checkpoint_debug_episode.v1",
-                    "status": "active",
-                    "episode_id": "episode-1",
-                },
-            ), patch(
                 "accagent.framework.stage_repair_execute.prepare_checkpoint_request",
                 return_value=request,
+            ), patch(
+                "accagent.framework.stage_repair_execute.simulation_execution_identity",
+                return_value=identity,
             ):
                 result = prepare_stage3_checkpoint_probe_environment(
                     run_dir,
@@ -370,23 +351,32 @@ class CheckpointRepairIntegrationTest(unittest.TestCase):
 
         self.assertEqual(result["status"], "pass")
         self.assertTrue(request_persisted)
-        self.assertNotIn("SPATIALACC_CHECKPOINT_REQUIRED", result["env"])
+        self.assertEqual(result["env"]["SPATIALACC_CHECKPOINT_REQUIRED"], "1")
         self.assertEqual(result["env"]["SPATIALACC_CHECKPOINT_REPLAY"], "1")
         self.assertEqual(
             result["env"]["SPATIALACC_CHECKPOINT_REQUEST"],
             str(request_path),
         )
+        self.assertFalse(
+            (
+                run_dir
+                / "verification"
+                / "board_simulation"
+                / "fast_replay_request.json"
+            ).exists()
+        )
 
-    def test_stage3_checkpoint_preparation_keeps_short_bug_on_cold_validation(self) -> None:
+    def test_stage3_checkpoint_preparation_starts_cold_capture_for_a_new_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run"
             run_dir.mkdir()
             with patch(
-                "accagent.framework.stage_repair_execute.prepare_checkpoint_debug_episode",
+                "accagent.framework.stage_repair_execute.prepare_checkpoint_request",
                 return_value={
-                    "schema_version": "spatialaccagent.simulation_checkpoint_debug_episode.v1",
-                    "status": "not_admitted",
-                    "checkpoint_required": False,
+                    "schema_version": "spatialaccagent.simulation_checkpoint_request.v1",
+                    "status": "ready",
+                    "request_sha256": "a" * 64,
+                    "replay_decision": {"mode": "cold_capture"},
                 },
             ):
                 result = prepare_stage3_checkpoint_probe_environment(
@@ -395,10 +385,135 @@ class CheckpointRepairIntegrationTest(unittest.TestCase):
                 )
 
         self.assertEqual(result["status"], "pass")
-        self.assertFalse(result["checkpoint_enabled"])
-        self.assertIsNone(result["request_path"])
-        self.assertNotIn("SPATIALACC_CHECKPOINT_REQUIRED", result["env"])
-        self.assertNotIn("SPATIALACC_CHECKPOINT_REPLAY", result["env"])
+        self.assertTrue(result["checkpoint_enabled"])
+        self.assertIsNotNone(result["request_path"])
+        self.assertEqual(result["env"]["SPATIALACC_CHECKPOINT_REQUIRED"], "1")
+        self.assertEqual(result["env"]["SPATIALACC_CHECKPOINT_REPLAY"], "1")
+        self.assertEqual(
+            result["request"]["replay_decision"]["mode"],
+            "cold_capture",
+        )
+
+    def test_stage3_fast_replay_reuses_fixed_request_before_new_request_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            request_path = (
+                run_dir
+                / "verification"
+                / "board_simulation"
+                / "fast_replay_request.json"
+            )
+            request_path.parent.mkdir(parents=True)
+            identity = {
+                "compiled_model_sha256": "model",
+                "workload_sha256": "workload",
+            }
+            stable_request = {
+                "schema_version": "spatialaccagent.simulation_checkpoint_request.v1",
+                "status": "ready",
+                "request_sha256": "a" * 64,
+                "execution_identity": identity,
+                "replay_decision": {"mode": "cold_capture"},
+            }
+            request_path.write_text(json.dumps(stable_request), encoding="utf-8")
+            with patch(
+                "accagent.framework.stage_repair_execute.simulation_execution_identity",
+                return_value=identity,
+            ), patch(
+                "accagent.framework.stage_repair_execute.read_fast_replay_state",
+                return_value={"status": "ready"},
+            ), patch(
+                "accagent.framework.stage_repair_execute.stable_checkpoint_lifecycle",
+                return_value={"status": "ready", "action": "restore_and_run"},
+            ), patch(
+                "accagent.framework.stage_repair_execute.validate_fast_replay_state",
+                return_value={
+                    "status": "ready",
+                    "request_path": str(request_path),
+                },
+            ), patch(
+                "accagent.framework.stage_repair_execute.checkpoint_request_errors",
+                return_value=[],
+            ), patch(
+                "accagent.framework.stage_repair_execute.prepare_checkpoint_request"
+            ) as prepare_request, patch(
+                "accagent.framework.stage_repair_execute.persist_checkpoint_request"
+            ) as persist_request:
+                result = prepare_stage3_checkpoint_probe_environment(
+                    run_dir,
+                    label="ignored_for_fast_replay",
+                )
+
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["request_path"], str(request_path))
+        self.assertEqual(result["request"], stable_request)
+        self.assertEqual(result["env"]["SPATIALACC_FAST_REPLAY"], "1")
+        self.assertEqual(
+            result["env"]["SPATIALACC_CHECKPOINT_REQUEST"], str(request_path)
+        )
+        prepare_request.assert_not_called()
+        persist_request.assert_not_called()
+
+    def test_stage3_captured_fast_replay_enters_one_restore_check(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            request_path = (
+                run_dir
+                / "verification"
+                / "board_simulation"
+                / "fast_replay_request.json"
+            )
+            request_path.parent.mkdir(parents=True)
+            identity = {
+                "compiled_model_sha256": "model",
+                "workload_sha256": "workload",
+            }
+            stable_request = {
+                "schema_version": "spatialaccagent.simulation_checkpoint_request.v1",
+                "status": "ready",
+                "request_sha256": "a" * 64,
+                "execution_identity": identity,
+                "semantic_cut": {
+                    "status": "ready",
+                    "cut_kind": "fixed_runtime_boundary",
+                    "fixed_cut": "after_weight_load_before_first_token",
+                    "trigger": {"phase": "after_weight_load_before_first_token"},
+                    "cut_sha256": "b" * 64,
+                },
+                "replay_decision": {"mode": "cold_capture"},
+            }
+            request_path.write_text(json.dumps(stable_request), encoding="utf-8")
+            captured_env: dict[str, str] = {}
+            with patch(
+                "accagent.framework.stage_repair_execute.simulation_execution_identity",
+                return_value=identity,
+            ), patch(
+                "accagent.framework.stage_repair_execute.read_fast_replay_state",
+                return_value={"status": "captured"},
+            ), patch(
+                "accagent.framework.stage_repair_execute.stable_checkpoint_lifecycle",
+                return_value={
+                    "status": "restore_check_required",
+                    "action": "restore_once_and_check",
+                },
+            ), patch(
+                "accagent.framework.stage_repair_execute.validate_fast_replay_state",
+                return_value={
+                    "status": "ready",
+                    "request_path": str(request_path),
+                },
+            ), patch(
+                "accagent.framework.stage_repair_execute.checkpoint_request_errors",
+                return_value=[],
+            ):
+                result = prepare_stage3_checkpoint_probe_environment(
+                    run_dir,
+                    label="restore_check",
+                )
+
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["env"]["SPATIALACC_FAST_REPLAY"], "1")
+        self.assertEqual(result["env"]["SPATIALACC_FAST_REPLAY_RESTORE_CHECK"], "1")
 
     def test_direct_board_rerun_automatically_binds_checkpoint_request(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -651,7 +766,7 @@ class CheckpointRepairIntegrationTest(unittest.TestCase):
         self.assertEqual(captured_env["SPATIALACC_MAX_HEAVY_JOBS"], "1")
         self.assertTrue(request_path.name.endswith("_current_layer.json"))
 
-    def test_candidate_pass_is_followed_by_serial_full_cold_vcs(self) -> None:
+    def test_checkpoint_replay_does_not_launch_an_extra_cold_vcs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run"
             out_dir = run_dir / "repair_execution"
@@ -667,19 +782,6 @@ class CheckpointRepairIntegrationTest(unittest.TestCase):
                     self.assertEqual(
                         kwargs["extra_env"]["SPATIALACC_CHECKPOINT_REQUIRED"],
                         "1",
-                    )
-                    runner_path.write_text(
-                        '{"status":"candidate_pass","stage_pass_eligible":false}\n',
-                        encoding="utf-8",
-                    )
-                elif label.endswith("_full_cold_vcs"):
-                    self.assertEqual(
-                        kwargs["extra_env"]["SPATIALACC_CHECKPOINT_FINAL_COLD"],
-                        "1",
-                    )
-                    self.assertNotIn(
-                        "SPATIALACC_CHECKPOINT_REQUIRED",
-                        kwargs["extra_env"],
                     )
                     runner_path.write_text(
                         '{"status":"pass","stage_pass_eligible":true}\n',
@@ -720,11 +822,10 @@ class CheckpointRepairIntegrationTest(unittest.TestCase):
             labels,
             [
                 "post_patch_vcs",
-                "post_patch_full_cold_vcs",
                 "post_patch_analyzer",
             ],
         )
-        self.assertTrue(result["full_cold_vcs_required_after_screening"])
+        self.assertFalse(result["full_cold_vcs_required_after_screening"])
         self.assertTrue(result["final_runner_stage_pass_eligible"])
 
     def test_board_agent_prompt_keeps_checkpoint_optional_and_nonaccepting(self) -> None:

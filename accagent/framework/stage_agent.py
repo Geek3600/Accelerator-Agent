@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from accagent.framework.agent_common import CommandResult, ToolRunner, read_json
-from accagent.framework.llm_client import PreStageSafetyGate
 from accagent.framework.stage_team import run_design_team, team_summary
 
 
@@ -20,7 +19,6 @@ class StageResult:
     command_result: CommandResult
     output_path: str | None = None
     summary: dict | None = None
-    safety_gate: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -30,31 +28,7 @@ class StageResult:
             "command_log": self.command_result.log_path,
             "output_path": self.output_path,
             "summary": self.summary or {},
-            "safety_gate": self.safety_gate or {},
         }
-
-
-def blocked(rec: dict | None) -> bool:
-    if not rec:
-        return False
-    dec = rec.get("decision", {})
-    if not isinstance(dec, dict):
-        return False
-    decision = str(dec.get("decision") or "").strip()
-    if dec.get("tool_command_allowed") is False:
-        return True
-    return decision in {"stop", "needs_human_approval"}
-
-
-def block_result(name: str, cmd: list[str], root: Path, rec: dict | None, out: str | None = None) -> StageResult:
-    return StageResult(
-        name=name,
-        passed=False,
-        command_result=CommandResult(name, cmd, str(root), 1, "", "pre-stage safety gate stopped stage", 0.0, ""),
-        output_path=out,
-        summary={"status": "blocked", "errors": ["pre-stage safety gate stopped stage"]},
-        safety_gate=rec,
-    )
 
 
 def read_report(path: Path) -> dict:
@@ -136,10 +110,10 @@ class InputPreparationAgent:
         out: Path,
         task: Path,
         model_source: Path,
+        model_dir: Path,
         board_materials_dir: Path,
         quantization_materials_dir: Path,
         tool_materials_dir: Path,
-        safety_gate: PreStageSafetyGate,
     ) -> StageResult:
         cmd = [
             sys.executable,
@@ -151,6 +125,8 @@ class InputPreparationAgent:
             str(task),
             "--model-source",
             str(model_source),
+            "--model-dir",
+            str(model_dir),
             "--board-materials-dir",
             str(board_materials_dir),
             "--quantization-materials-dir",
@@ -158,10 +134,6 @@ class InputPreparationAgent:
             "--tool-materials-dir",
             str(tool_materials_dir),
         ]
-
-        rec = safety_gate.ask("input_preparation", cmd)
-        if safety_gate.cfg.enforce and blocked(rec):
-            return block_result("input_preparation", cmd, self.runner.repo_root, rec)
 
         res = self.runner.run("input_preparation", cmd, self.env)
         path = out / "input" / "prepared_inputs.json"
@@ -172,7 +144,6 @@ class InputPreparationAgent:
                 command_result=res,
                 output_path=str(path),
                 summary=failed_command_summary(res, path),
-                safety_gate=rec,
             )
         data = read_report(path)
         return StageResult(
@@ -185,7 +156,6 @@ class InputPreparationAgent:
                 "errors": data.get("errors", []),
                 "warnings": data.get("warnings", []),
             },
-            safety_gate=rec,
         )
 
 
@@ -194,7 +164,7 @@ class ConstraintExtractionAgent:
         self.runner = runner
         self.env = env
 
-    def run(self, prepared: Path, design: str, safety_gate: PreStageSafetyGate) -> StageResult:
+    def run(self, prepared: Path, design: str) -> StageResult:
         cmd = [
             sys.executable,
             "-m",
@@ -204,10 +174,6 @@ class ConstraintExtractionAgent:
             "--design-id",
             design,
         ]
-        rec = safety_gate.ask("constraint_extraction", cmd, prepared=prepared)
-        if safety_gate.cfg.enforce and blocked(rec):
-            return block_result("constraint_extraction", cmd, self.runner.repo_root, rec)
-
         res = self.runner.run("constraint_extraction", cmd, self.env)
         run_dir = prepared.parents[1]
         path = run_dir / "constraint_extraction" / "constraint_extraction_report.json"
@@ -218,7 +184,6 @@ class ConstraintExtractionAgent:
                 command_result=res,
                 output_path=str(path),
                 summary=failed_command_summary(res, path),
-                safety_gate=rec,
             )
         data = read_report(path)
         return StageResult(
@@ -233,7 +198,6 @@ class ConstraintExtractionAgent:
                 "errors": data.get("errors", []),
                 "outputs": data.get("outputs", {}),
             },
-            safety_gate=rec,
         )
 
 
@@ -242,7 +206,7 @@ class TemplateSelectionAgent:
         self.runner = runner
         self.env = env
 
-    def run(self, sacg: Path, safety_gate: PreStageSafetyGate) -> StageResult:
+    def run(self, sacg: Path) -> StageResult:
         cmd = [
             sys.executable,
             "-m",
@@ -250,10 +214,6 @@ class TemplateSelectionAgent:
             "--sacg-state",
             str(sacg),
         ]
-        rec = safety_gate.ask("template_selection", cmd, sacg=sacg)
-        if safety_gate.cfg.enforce and blocked(rec):
-            return block_result("template_selection", cmd, self.runner.repo_root, rec)
-
         res = self.runner.run("template_selection", cmd, self.env)
         run_dir = sacg.parents[1]
         path = run_dir / "template_selection" / "template_selection_report.json"
@@ -264,7 +224,6 @@ class TemplateSelectionAgent:
                 command_result=res,
                 output_path=str(path),
                 summary=failed_command_summary(res, path),
-                safety_gate=rec,
             )
         data = read_report(path)
         return StageResult(
@@ -279,7 +238,6 @@ class TemplateSelectionAgent:
                 "errors": data.get("errors", []),
                 "outputs": data.get("outputs", {}),
             },
-            safety_gate=rec,
         )
 
 
@@ -292,12 +250,8 @@ class GenericStageAgent:
         self.report = report
         self.env = env
 
-    def run(self, sacg: Path, safety_gate: PreStageSafetyGate) -> StageResult:
+    def run(self, sacg: Path) -> StageResult:
         cmd = [sys.executable, "-m", self.module, "--sacg-state", str(sacg)]
-        rec = safety_gate.ask(self.name, cmd, sacg=sacg)
-        if safety_gate.cfg.enforce and blocked(rec):
-            return block_result(self.name, cmd, self.runner.repo_root, rec)
-
         res = self.runner.run(self.name, cmd, self.env)
         run_dir = sacg.parents[1]
         path = run_dir / self.out_dir / self.report
@@ -308,7 +262,6 @@ class GenericStageAgent:
                 command_result=res,
                 output_path=str(path),
                 summary=failed_command_summary(res, path),
-                safety_gate=rec,
             )
         data = read_report(path)
         return StageResult(
@@ -317,7 +270,6 @@ class GenericStageAgent:
             command_result=res,
             output_path=str(path),
             summary=data,
-            safety_gate=rec,
         )
 
 
@@ -326,12 +278,8 @@ class SACGValidationAgent:
         self.runner = runner
         self.env = env
 
-    def run(self, sacg: Path, safety_gate: PreStageSafetyGate) -> StageResult:
+    def run(self, sacg: Path) -> StageResult:
         cmd = [sys.executable, "-m", "accagent.framework.sacg_store", "validate", str(sacg)]
-        rec = safety_gate.ask("sacg_validate", cmd, sacg=sacg)
-        if safety_gate.cfg.enforce and blocked(rec):
-            return block_result("sacg_validate", cmd, self.runner.repo_root, rec, str(sacg))
-
         res = self.runner.run("sacg_validate", cmd, self.env)
         run_dir = sacg.parents[1]
         with temporary_env(self.env):
@@ -354,5 +302,4 @@ class SACGValidationAgent:
             command_result=res,
             output_path=str(sacg),
             summary={"stdout": res.stdout.strip(), "stderr": res.stderr.strip(), "design_team": team_summary(team)},
-            safety_gate=rec,
         )

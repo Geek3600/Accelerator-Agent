@@ -558,7 +558,7 @@ def compact_parameter_binding_for_prompt(candidate: dict[str, Any]) -> dict[str,
             "template_id": row.get("template_id"),
             "params": row.get("params", {}),
             "legality_errors": row.get("legality_errors", []),
-            "resource_estimate": row.get("resource_estimate", {}),
+            "structural_dimensions": row.get("structural_dimensions", {}),
             "status": row.get("status"),
         }
 
@@ -573,7 +573,7 @@ def compact_parameter_binding_for_prompt(candidate: dict[str, Any]) -> dict[str,
         "bindings": [binding_row(row) for row in candidate.get("bindings", [])],
         "numeric_binding_plan": candidate.get("numeric_binding_plan", {}),
         "stream_contract_trace": candidate.get("stream_contract_trace", []),
-        "bandwidth_estimate": candidate.get("bandwidth_estimate", {}),
+        "axi_transfer_layout": candidate.get("axi_transfer_layout", {}),
         "checker_summary": candidate.get("checker_summary", {}),
         "checker_results": [
             {

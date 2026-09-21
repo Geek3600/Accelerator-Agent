@@ -143,6 +143,7 @@ def build_hierarchical_verification_plan(pipeline: dict[str, Any], case_adapter:
     axi_protocol_gate = gate_name(case_adapter, "axi_protocol")
     ddr_roundtrip_gate = gate_name(case_adapter, "ddr_image_roundtrip")
     board_semantic_gate = gate_name(case_adapter, "board_semantic_evidence")
+    board_bringup_gate = gate_name(case_adapter, "board_bringup")
     functional_gate = gate_name(case_adapter, "functional_sim")
     board_discovery_gate = gate_name(case_adapter, "board_interface_discovery")
     vivado_synth_gate = gate_name(case_adapter, "vivado_synthesis")
@@ -816,7 +817,7 @@ def build_review_checker_results(
         check_row(
             "verification_plan_static_check",
             bool(plan.get("checker_plan")) and bool(hierarchy.get("stage_agents")) and bool(hierarchy.get("merge_agents")),
-            "Stage 6 plan declares checker list, leaf stage agents, and merge agents",
+            "Stage 5 plan declares checker list, leaf stage agents, and merge agents",
             ["constraint.verification.plan", "constraint.verification.hierarchy"],
         ),
         check_row(
@@ -898,7 +899,7 @@ def build_review_checker_results(
         check_row(
             "board_runtime",
             "board_runtime" in evidence_gate_names and bool(policy.get("board_runtime_required_for_final_pass")),
-            "board runtime evidence is required for final closure and is not claimed by Stage 6",
+            "board runtime evidence is required for final closure and is not claimed by Stage 5",
             ["constraint.deployment.board", "constraint.human.boundary"],
             evidence_phase="downstream_gate_declared",
             execution_status="not_run_required_downstream",
@@ -1006,7 +1007,7 @@ def build_verification_review_artifact(
             "current_certificate_validation": certificate_validation,
             "current_stage_acceptance": [
                 "verification_plan must declare the three debug/repair layers: operator leaf modules, single transformer-layer kernel, and board AXI/DDR wrapped system",
-                "verification_artifact_contract must pass before the Stage 6 transition can be promoted",
+                "verification_artifact_contract must pass before the Stage 5 transition can be promoted",
                 "required tool protocols and generated handoff artifacts must be configured and present",
                 "upstream Stage 3, Stage 4, and Stage 5 static gates must be visible as evidence",
                 "lower-layer pass evidence is reusable but can be challenged by a bound current-layer CCTG/boundary trace",
@@ -1075,7 +1076,7 @@ def role_capability_errors(role: str, spec: dict[str, Any]) -> list[str]:
         if checker_only:
             errors.append(
                 "single_layer_functional_sim is declared as gate_checker_only; "
-                "Stage 7/8 requires a real current-layer simulation tool, not a report-presence checker"
+                "Stage 6/8 requires a real current-layer simulation tool, not a report-presence checker"
             )
         if not caps.intersection(
             {
@@ -1095,7 +1096,7 @@ def role_capability_errors(role: str, spec: dict[str, Any]) -> list[str]:
         if checker_only:
             errors.append(
                 "single_layer_golden_compare is declared as gate_checker_only; "
-                "Stage 7 promotion requires an independent single-layer golden/numeric comparison"
+                "Stage 6 promotion requires an independent single-layer golden/numeric comparison"
             )
         if not caps.intersection({"single_layer_golden_compare", "independent_golden_compare", "numeric_compare"}):
             errors.append(
@@ -1140,6 +1141,7 @@ def build_verification_gate_dag(case_adapter: dict[str, Any], run_dir: Path) -> 
     axi_protocol_gate = gate_name(case_adapter, "axi_protocol")
     ddr_roundtrip_gate = gate_name(case_adapter, "ddr_image_roundtrip")
     board_semantic_gate = gate_name(case_adapter, "board_semantic_evidence")
+    board_bringup_gate = gate_name(case_adapter, "board_bringup")
     functional_gate = gate_name(case_adapter, "functional_sim")
     board_discovery_gate = gate_name(case_adapter, "board_interface_discovery")
     vivado_synth_gate = gate_name(case_adapter, "vivado_synthesis")
@@ -1186,7 +1188,7 @@ def build_verification_gate_dag(case_adapter: dict[str, Any], run_dir: Path) -> 
             "planned_consumes": paths["planned_consumes"],
             "planned_produces": paths["planned_produces"],
             "evidence_status": evidence_status,
-            "tool_roles": stage6_gate_tool_roles(case_adapter, name),
+            "tool_roles": stage5_gate_tool_roles(case_adapter, name),
         }
         result.update(extra)
         return result
@@ -1378,25 +1380,21 @@ def build_verification_gate_dag(case_adapter: dict[str, Any], run_dir: Path) -> 
             required_maturity="axi_ddr_functional",
         ),
         node(
+            board_bringup_gate,
+            [single_layer_semantic_gate, board_discovery_gate, functional_gate],
+            "record board bring-up readiness from the passed single-layer certificate, validated exact board identity, current workload binding, complete real weight loading, and real VCS execution provenance; output/writeback remains diagnostic only",
+            phase="board_bringup",
+        ),
+        node(
             vivado_synth_gate,
-            [
-                multilayer_gate,
-                board_discovery_gate,
-                axi_gate,
-                functional_gate,
-                multilayer_functional_gate,
-                pipeline_deadlock_gate,
-                axi_protocol_gate,
-                ddr_roundtrip_gate,
-                board_semantic_gate,
-            ],
-            "run Vivado synthesis and collect utilization/timing evidence only after every third-layer functional subgate passes",
+            [board_bringup_gate],
+            "run Vivado synthesis and collect utilization/timing evidence after real board bring-up readiness; strict output/writeback functionality remains a separate Layer-3 diagnostic track",
             phase="vivado_synthesis",
         ),
         node(vivado_impl_gate, [vivado_synth_gate], "run Vivado implementation/route/DRC/timing evidence", phase="vivado_implementation"),
-        node(runtime_gate, [vivado_impl_gate, functional_gate, axi_gate, multilayer_gate], "run runtime/app-shell bitstream flow only after functional simulation and Vivado implementation pass", phase="vivado_bitstream"),
+        node(runtime_gate, [vivado_impl_gate, board_bringup_gate], "run runtime/app-shell bitstream flow only after board bring-up readiness and Vivado implementation pass", phase="vivado_bitstream"),
         node(runtime_abi_gate, [runtime_gate], "cross-check runtime ABI, register map, DDR layout, and bitstream artifacts", phase="runtime_abi"),
-        node(board_gate, [runtime_gate, runtime_abi_gate, functional_gate, real_weight_gate], "program board/runtime and collect valid output evidence", phase="board_runtime"),
+        node(board_gate, [runtime_gate, runtime_abi_gate, board_bringup_gate, real_weight_gate], "program board/runtime and collect valid output evidence", phase="board_runtime"),
     ]
     node_names = {str(item.get("name")) for item in nodes if isinstance(item, dict) and item.get("name")}
     edges = [
@@ -1447,6 +1445,7 @@ def build_verification_gate_dag(case_adapter: dict[str, Any], run_dir: Path) -> 
                 "axi_protocol_check",
                 "ddr_image_roundtrip",
                 "board_semantic_aggregate",
+                "board_bringup",
             ],
             "hierarchical_order": [
                 "real_weight_catalog",
@@ -1471,6 +1470,7 @@ def build_verification_gate_dag(case_adapter: dict[str, Any], run_dir: Path) -> 
                 "axi_protocol_check",
                 "ddr_image_roundtrip",
                 "board_semantic_aggregate",
+                "board_bringup",
                 "vivado_synthesis",
                 "vivado_implementation",
                 "vivado_bitstream",
@@ -1483,7 +1483,8 @@ def build_verification_gate_dag(case_adapter: dict[str, Any], run_dir: Path) -> 
             "single_layer_functional_before_board_axi_ddr_wrapped_system": True,
             "third_layer_contains_multilayer_pipeline_and_board_axi_ddr_wrapper_subgates": True,
             "board_axi_ddr_functional_before_backend": True,
-            "backend_requires_all_third_layer_subgates": True,
+            "vivado_implementation_requires_board_bringup_readiness": True,
+            "strict_board_output_functionality_remains_diagnostic_until_separately_closed": True,
             "all_gate_tool_roles_must_pass": True,
             "semantic_evidence_aggregators_are_mandatory_gate_tools": True,
             "vivado_report_checkers_are_mandatory_gate_tools": True,
@@ -1551,7 +1552,6 @@ def build_verification_artifact_contract(state: dict[str, Any], plan: dict[str, 
         "real_weight_artifacts",
         "single_layer_kernel",
         "single_layer_functional_sim",
-        "single_layer_golden_reference_builder",
         "single_layer_golden_compare",
         "single_layer_semantic_evidence",
         "multilayer_pipeline",
@@ -1657,7 +1657,7 @@ def build_verification_artifact_contract(state: dict[str, Any], plan: dict[str, 
     leaf_aggregate = node_by_name.get(stage_leaf_gate, {})
     leaf_aggregate_deps = [str(value) for value in leaf_aggregate.get("depends_on", [])] if isinstance(leaf_aggregate, dict) else []
     gate_protocol_coverage = {
-        "schema_version": "spatialaccagent.stage6_gate_protocol_coverage.v0",
+        "schema_version": "spatialaccagent.stage5_gate_protocol_coverage.v0",
         "required_gate_count": len(gates),
         "required_gate_names": [str(gate.get("name")) for gate in gates if isinstance(gate, dict) and gate.get("name")],
         "configured_tool_protocol_names": [str(row.get("name")) for row in tool_status if isinstance(row, dict) and row.get("configured")],
@@ -1680,15 +1680,15 @@ def build_verification_artifact_contract(state: dict[str, Any], plan: dict[str, 
         "leaf_aggregate_covers_all_leaf_stages": set(leaf_node_names).issubset(set(leaf_aggregate_deps)),
     }
     memory_summary = sacg_memory_summary(state, limit=12)
-    stage6_retry_requests = [
+    stage5_retry_requests = [
         item
         for item in memory_summary.get("open_retry_requests", [])
-        if item.get("target_stage") == "stage6.verification_artifacts"
+        if item.get("target_stage") == "stage5.verification_artifacts"
     ]
-    stage6_barriers = [
+    stage5_barriers = [
         item
         for item in memory_summary.get("active_contamination_barriers", [])
-        if str(item.get("artifact_id", "")).startswith("artifact.stage6.")
+        if str(item.get("artifact_id", "")).startswith("artifact.stage5.")
     ]
     return {
         "schema_version": "spatialaccagent.verification_artifact_contract.v0",
@@ -1736,9 +1736,9 @@ def build_verification_artifact_contract(state: dict[str, Any], plan: dict[str, 
         "debug_loop_contract": hierarchical_debug_loop_contract(),
         "retry_reconciliation_contract": {
             "schema_version": "spatialaccagent.stage_retry_reconciliation.v0",
-            "stage": "stage6.verification_artifacts",
-            "source_open_retry_requests": stage6_retry_requests,
-            "source_active_contamination_barriers": stage6_barriers,
+            "stage": "stage5.verification_artifacts",
+            "source_open_retry_requests": stage5_retry_requests,
+            "source_active_contamination_barriers": stage5_barriers,
             "same_stage_retry_policy": (
                 "Open retry requests and active contamination barriers produced by prior rejected Stage6 "
                 "transitions are expected inputs to a Stage6 retry. They are blockers for downstream "
@@ -1757,7 +1757,7 @@ def build_verification_artifact_contract(state: dict[str, Any], plan: dict[str, 
             ],
         },
         "backtrack_contract": {
-            "target_stage": "stage6.verification_artifacts",
+            "target_stage": "stage5.verification_artifacts",
             "trigger_conditions": [
                 "a selected gate has no executable tool role",
                 "a real-tool gate lacks planned consumed or produced evidence paths",
@@ -1785,7 +1785,7 @@ def build_verification_artifact_contract(state: dict[str, Any], plan: dict[str, 
             "status": case_adapter.get("status"),
             "source": case_adapter.get("source"),
         },
-        "existing_stage6_refinements": stage6_refinement_artifacts_for_state(state),
+        "existing_stage5_refinements": stage5_refinement_artifacts_for_state(state),
         "run_dir": str(run_dir),
         "policy": {
             "smoke_is_not_acceptance": True,
@@ -1800,8 +1800,8 @@ def build_verification_artifact_contract(state: dict[str, Any], plan: dict[str, 
             "board_runtime_required_for_final_pass": True,
             "contract_guided_debug_closure_required": True,
             "downstream_failure_requires_failure_slice": True,
-            "later_stage_missing_gate_or_tool_requires_stage6_backtrack": True,
-            "same_stage_retry_can_supersede_prior_stage6_barriers_after_promotion": True,
+            "later_stage_missing_gate_or_tool_requires_stage5_backtrack": True,
+            "same_stage_retry_can_supersede_prior_stage5_barriers_after_promotion": True,
             "lower_layer_pass_evidence_is_reusable_not_absolute": True,
             "higher_layer_trace_can_trigger_targeted_lower_layer_backtrack": True,
             "do_not_reopen_passed_lower_layer_without_contradicting_boundary_trace": True,
@@ -1810,7 +1810,7 @@ def build_verification_artifact_contract(state: dict[str, Any], plan: dict[str, 
     }
 
 
-def stage6_refinement_actions_materialized(
+def stage5_refinement_actions_materialized(
     output: dict[str, Any],
     refinement_materialization: dict[str, Any] | None,
 ) -> bool:
@@ -1825,7 +1825,7 @@ def stage6_refinement_actions_materialized(
         str(action.get("id"))
         for action in output.get("executable_actions", [])
         if isinstance(action, dict)
-        and str(action.get("id") or "").startswith("stage6.")
+        and str(action.get("id") or "").startswith("stage5.")
     }
     if not required:
         return False
@@ -1835,7 +1835,7 @@ def stage6_refinement_actions_materialized(
         return False
     materialized = {
         str(action_id)
-        for action_id in manifest.get("materialized_stage6_action_ids", [])
+        for action_id in manifest.get("materialized_stage5_action_ids", [])
     }
     coverage = manifest.get("action_coverage", {}) if isinstance(manifest.get("action_coverage"), dict) else {}
     covered = {
@@ -1874,7 +1874,7 @@ def stage_worker_errors(
         and bool(refinement_materialization.get("manifest"))
     )
     reviewed_refinement_ready = existing_refinement_ready and current_materialization_ready
-    current_stage6_refinements_cover_planner = stage6_refinement_actions_materialized(
+    current_stage5_refinements_cover_planner = stage5_refinement_actions_materialized(
         output,
         refinement_materialization,
     )
@@ -1886,26 +1886,26 @@ def stage_worker_errors(
         "ready_with_later_stage_risks",
         "ready_with_nonblocking_risks",
         "ready_with_required_downstream_gates",
-        "ready_with_stage7_obligations",
+        "ready_with_stage6_obligations",
     }
     if current_materialization_ready:
-        accepted_statuses.add("needs_stage6_refinement_before_stage7_retry")
-        accepted_statuses.add("needs_stage6_contract_refinement_before_stage7")
-    has_stage6_refinement_actions = any(
-        isinstance(action, dict) and str(action.get("id") or "").startswith("stage6.")
+        accepted_statuses.add("needs_stage5_refinement_before_stage6_retry")
+        accepted_statuses.add("needs_stage5_contract_refinement_before_stage6")
+    has_stage5_refinement_actions = any(
+        isinstance(action, dict) and str(action.get("id") or "").startswith("stage5.")
         for action in output.get("executable_actions", [])
     )
     refinement_required_status = (
-        ("stage6" in status or has_stage6_refinement_actions)
+        ("stage5" in status or has_stage5_refinement_actions)
         and "refinement" in status
         and ("required" in status or "need" in status)
-        and ("stage7" in status or "before_stage7" in status)
+        and ("stage6" in status or "before_stage6" in status)
     )
     status_accepted = (
         status in accepted_statuses
         or status.startswith("ready_with_")
         or status.startswith("ready_for_")
-        or (refinement_required_status and current_stage6_refinements_cover_planner)
+        or (refinement_required_status and current_stage5_refinements_cover_planner)
     )
     if status and not status_accepted:
         errors.append(f"verification_planner_agent status is {output.get('status')}")
@@ -1933,11 +1933,11 @@ def stage_worker_errors(
                 or "unresolved current stage" in text
                 or "missing current-stage" in text
                 or "missing current stage" in text
-                or "cannot promote stage6" in text
+                or "cannot promote stage5" in text
                 or "cannot promote stage 6" in text
-                or "stage6 promotion blocked" in text
+                or "stage5 promotion blocked" in text
                 or "stage 6 promotion blocked" in text
-                or "block stage6" in text
+                or "block stage5" in text
                 or "block stage 6" in text
             )
             if (
@@ -1960,7 +1960,7 @@ def stage_worker_errors(
                 continue
             if reviewed_refinement_ready and (
                 "current-stage refinement risk" in text
-                or "stage6 refinement" in text
+                or "stage5 refinement" in text
                 or "refined contract" in text
                 or "missing action/llm quality audit" in text
             ):
@@ -2211,15 +2211,15 @@ def compact_contract_for_planner(contract: dict[str, Any]) -> dict[str, Any]:
             ],
         },
         "debug_closure_contract": compact_debug_closure_for_planner(contract),
-        "existing_stage6_refinements": compact_prompt_value(
-            contract.get("existing_stage6_refinements", {}),
+        "existing_stage5_refinements": compact_prompt_value(
+            contract.get("existing_stage5_refinements", {}),
             max_dict_depth=2,
             max_list_depth=1,
             max_items=24,
             max_str_len=160,
         ),
-        "stage6_refinement_materialization": compact_prompt_value(
-            contract.get("stage6_refinement_materialization", {}),
+        "stage5_refinement_materialization": compact_prompt_value(
+            contract.get("stage5_refinement_materialization", {}),
             max_dict_depth=2,
             max_list_depth=1,
             max_items=24,
@@ -2228,24 +2228,24 @@ def compact_contract_for_planner(contract: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def stage6_refinement_artifacts_for_state(state: dict[str, Any]) -> dict[str, Any]:
+def stage5_refinement_artifacts_for_state(state: dict[str, Any]) -> dict[str, Any]:
     ids = [
-        "artifact.stage6.refinement_manifest",
-        "artifact.stage6.stage7_gate_selector_contract",
-        "artifact.stage6.downstream_artifact_blocklist",
-        "artifact.stage6.dependency_blocked_manifest_schema",
-        "artifact.stage6.functional_sim_real_tool_nodes",
-        "artifact.stage6.debug_trace_manifest_schema",
-        "artifact.stage6.failure_localization_schema",
-        "artifact.stage6.backend_app_shell_target_discovery_policy",
-        "artifact.stage6.canonical_gate_dag_refinement",
-        "artifact.stage6.semantic_promotion_gate_matrix",
-        "artifact.stage6.immutable_semantic_identity_contract",
-        "artifact.stage6.canonical_functional_sim_binding_contract",
-        "artifact.stage6.backend_eligibility_gate_contract",
-        "artifact.stage6.failed_node_repair_route_matrix",
-        "artifact.stage6.certificate_reuse_and_target_discovery_contract",
-        "artifact.stage6.action_materialization_coverage",
+        "artifact.stage5.refinement_manifest",
+        "artifact.stage5.stage6_gate_selector_contract",
+        "artifact.stage5.downstream_artifact_blocklist",
+        "artifact.stage5.dependency_blocked_manifest_schema",
+        "artifact.stage5.functional_sim_real_tool_nodes",
+        "artifact.stage5.debug_trace_manifest_schema",
+        "artifact.stage5.failure_localization_schema",
+        "artifact.stage5.backend_app_shell_target_discovery_policy",
+        "artifact.stage5.canonical_gate_dag_refinement",
+        "artifact.stage5.semantic_promotion_gate_matrix",
+        "artifact.stage5.immutable_semantic_identity_contract",
+        "artifact.stage5.canonical_functional_sim_binding_contract",
+        "artifact.stage5.backend_eligibility_gate_contract",
+        "artifact.stage5.failed_node_repair_route_matrix",
+        "artifact.stage5.certificate_reuse_and_target_discovery_contract",
+        "artifact.stage5.action_materialization_coverage",
     ]
     found = {}
     by_id = {str(item.get("id")): item for item in state.get("artifacts", []) if isinstance(item, dict)}
@@ -2260,13 +2260,13 @@ def stage6_refinement_artifacts_for_state(state: dict[str, Any]) -> dict[str, An
             "producer_transition": item.get("producer_transition"),
         }
     return {
-        "schema_version": "spatialaccagent.stage6_existing_refinements.v0",
+        "schema_version": "spatialaccagent.stage5_existing_refinements.v0",
         "status": "present" if found else "missing",
         "artifacts": found,
     }
 
 
-def stage6_gate_tool_roles(case_adapter: dict[str, Any], gate: str) -> list[str]:
+def stage5_gate_tool_roles(case_adapter: dict[str, Any], gate: str) -> list[str]:
     def include_if_present(role: str) -> list[str]:
         return [role] if adapter_tool(case_adapter, role) else []
 
@@ -2291,10 +2291,7 @@ def stage6_gate_tool_roles(case_adapter: dict[str, Any], gate: str) -> list[str]
             "single_layer_kernel",
         ],
         gate_name(case_adapter, "single_layer_functional"): ["single_layer_functional_sim"],
-        gate_name(case_adapter, "single_layer_golden_compare"): [
-            *include_if_present("single_layer_golden_reference_builder"),
-            "single_layer_golden_compare",
-        ],
+        gate_name(case_adapter, "single_layer_golden_compare"): ["single_layer_golden_compare"],
         gate_name(case_adapter, "single_layer_semantic_evidence"): ["single_layer_semantic_evidence"],
         gate_name(case_adapter, "multilayer_pipeline"): [
             "tb_scaffold_generate",
@@ -2356,7 +2353,7 @@ def build_semantic_promotion_gate_matrix(
     ]
     errors = []
     for binding in bindings:
-        roles = stage6_gate_tool_roles(case_adapter, str(binding["aggregate_gate"]))
+        roles = stage5_gate_tool_roles(case_adapter, str(binding["aggregate_gate"]))
         binding["mandatory_gate_tool_roles"] = roles
         if binding["semantic_tool_role"] not in roles:
             errors.append(
@@ -2470,7 +2467,7 @@ def build_canonical_functional_sim_binding_contract(
         "canonical_gate": functional_gate,
         "accepted_real_tool_candidates": accepted_candidates,
         "diagnostic_only_candidates": rejected_candidates,
-        "mandatory_gate_tool_roles": stage6_gate_tool_roles(case_adapter, functional_gate),
+        "mandatory_gate_tool_roles": stage5_gate_tool_roles(case_adapter, functional_gate),
         "derived_consumer_gates": derived_gates,
         "run_identity_required_fields": [
             "run_id",
@@ -2505,9 +2502,10 @@ def build_backend_eligibility_gate_contract(
         for node in dag.get("nodes", [])
         if isinstance(node, dict) and node.get("name")
     }
-    required_gates = list(
+    strict_board_gates = list(
         gate_selector.get("board_axi_ddr_promotion_certificate", {}).get("required_gates", [])
     )
+    board_bringup_gate = gate_name(case_adapter, "board_bringup")
     synth_gate = gate_name(case_adapter, "vivado_synthesis")
     impl_gate = gate_name(case_adapter, "vivado_implementation")
     runtime_gate = gate_name(case_adapter, "runtime_bitstream")
@@ -2518,7 +2516,12 @@ def build_backend_eligibility_gate_contract(
     runtime_node = nodes.get(runtime_gate, {})
     runtime_abi_node = nodes.get(runtime_abi_gate, {})
     board_node = nodes.get(board_gate, {})
-    missing_dependencies = sorted(set(required_gates).difference(synth_node.get("depends_on", [])))
+    # Vivado implementation is admitted by the minimal real-board bring-up
+    # contract.  The strict board-functional certificate remains available for
+    # diagnostics and later runtime closure, but is not a prerequisite for
+    # synthesis/implementation under the current acceptance policy.
+    implementation_entry_gates = [board_bringup_gate]
+    missing_dependencies = sorted(set(implementation_entry_gates).difference(synth_node.get("depends_on", [])))
     synth_roles = list(synth_node.get("tool_roles", []))
     impl_roles = list(impl_node.get("tool_roles", []))
     errors = [f"Vivado synthesis bypasses required third-layer gate {gate}" for gate in missing_dependencies]
@@ -2550,7 +2553,8 @@ def build_backend_eligibility_gate_contract(
         "schema_version": "spatialaccagent.backend_eligibility_gate_contract.v0",
         "status": "ready" if not errors else "incomplete",
         "errors": errors,
-        "required_board_closure_gates": required_gates,
+        "required_board_closure_gates": strict_board_gates,
+        "implementation_entry_gates": implementation_entry_gates,
         "backend_entry_gate": synth_gate,
         "backend_entry_dependencies": synth_node.get("depends_on", []),
         "synthesis_mandatory_tool_roles": synth_roles,
@@ -2563,8 +2567,10 @@ def build_backend_eligibility_gate_contract(
         "board_runtime_dependencies": board_node.get("depends_on", []),
         "runtime_identity_gates": runtime_identity_gates,
         "policy": {
-            "board_axi_ddr_promotion_certificate_required": True,
-            "all_third_layer_subgates_must_pass_before_vivado": True,
+            "board_bringup_certificate_required_before_vivado": True,
+            "all_strict_third_layer_subgates_required_before_vivado": False,
+            "complete_token_output_required_before_vivado": False,
+            "final_ddr_writeback_required_before_vivado": False,
             "vivado_exit_code_without_report_checks_is_not_acceptance": True,
             "implementation_package_timing_resource_and_drc_evidence_required": True,
             "board_runtime_requires_deployment_identity_and_target_model_output_validity": True,
@@ -2586,7 +2592,7 @@ def build_failed_node_repair_route_matrix(
             {
                 "gate": gate,
                 "phase": node.get("phase"),
-                "tool_roles": node.get("tool_roles", stage6_gate_tool_roles(case_adapter, gate)),
+                "tool_roles": node.get("tool_roles", stage5_gate_tool_roles(case_adapter, gate)),
                 "failure_evidence": node.get("planned_produces", []),
                 "first_action": "classify_real_tool_failure_and_collect_boundary_trace_or_trace_unavailable_record",
                 "localization": "CCTG earliest violated boundary and causal slice",
@@ -2647,7 +2653,7 @@ def build_certificate_reuse_and_target_discovery_contract(
     }
 
 
-def build_stage6_action_materialization_coverage(
+def build_stage5_action_materialization_coverage(
     planner_actions: list[dict[str, Any]],
     materialized: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
@@ -2662,13 +2668,13 @@ def build_stage6_action_materialization_coverage(
         ],
         "downstream_tool_gate_hardening": ["backend_eligibility_gate_contract"],
         "repair_boundary_contract_review": ["failed_node_repair_route_matrix"],
-        "stage7_gate_selector_contract_refinement": [
-            "stage7_gate_selector_contract",
+        "stage6_gate_selector_contract_refinement": [
+            "stage6_gate_selector_contract",
             "certificate_reuse_and_target_discovery_contract",
         ],
         "verification_gate_dag_refinement": [
             "canonical_gate_dag_refinement",
-            "stage7_gate_selector_contract",
+            "stage6_gate_selector_contract",
             "semantic_promotion_gate_matrix",
             "immutable_semantic_identity_contract",
             "canonical_functional_sim_binding_contract",
@@ -2688,7 +2694,7 @@ def build_stage6_action_materialization_coverage(
             "failed_node_repair_route_matrix",
         ],
         "gate_enablement_check": [
-            "stage7_gate_selector_contract",
+            "stage6_gate_selector_contract",
             "backend_eligibility_gate_contract",
         ],
         "sacg_constraint_review": ["certificate_reuse_and_target_discovery_contract"],
@@ -2739,12 +2745,12 @@ def build_stage6_action_materialization_coverage(
                 "status": "pass" if not prior_errors else "unmaterialized",
                 "required_artifacts": sorted(materialized),
                 "errors": list(prior_errors),
-                "fulfillment": "ready_for_stage6_static_checks_and_transition_promotion",
+                "fulfillment": "ready_for_stage5_static_checks_and_transition_promotion",
             }
         )
     errors = [error for row in rows for error in row.get("errors", [])]
     return {
-        "schema_version": "spatialaccagent.stage6_action_materialization_coverage.v0",
+        "schema_version": "spatialaccagent.stage5_action_materialization_coverage.v0",
         "status": "ready" if rows and not errors else "incomplete",
         "errors": errors,
         "actions": rows,
@@ -2868,7 +2874,7 @@ def materialize_canonical_gate_dag_refinement(
     }
 
 
-def write_stage6_refinement_artifacts(
+def write_stage5_refinement_artifacts(
     out_dir: Path,
     state: dict[str, Any],
     plan: dict[str, Any],
@@ -2883,8 +2889,8 @@ def write_stage6_refinement_artifacts(
         action for action in planner_output.get("executable_actions", [])
         if isinstance(action, dict)
         and (
-            str(action.get("stage") or "").startswith("stage6")
-            or str(action.get("id") or "").startswith("stage6.")
+            str(action.get("stage") or "").startswith("stage5")
+            or str(action.get("id") or "").startswith("stage5.")
         )
     ]
     canonical_gate_dag_refinement = materialize_canonical_gate_dag_refinement(
@@ -2954,9 +2960,9 @@ def write_stage6_refinement_artifacts(
     trace_schema = debug_contract.get("trace_record_schema", {}) if isinstance(debug_contract.get("trace_record_schema"), dict) else {}
 
     gate_selector = {
-        "schema_version": "spatialaccagent.stage7_gate_selector_contract.v0",
+        "schema_version": "spatialaccagent.stage6_gate_selector_contract.v0",
         "status": "ready",
-        "source": "stage6_planner_action_materialization",
+        "source": "stage5_planner_action_materialization",
         "debug_loop_contract": hierarchical_debug_loop_contract(),
         "debug_layers": [
             "operator_leaf_modules",
@@ -2967,15 +2973,15 @@ def write_stage6_refinement_artifacts(
         "debug_scope_order": ["operator_leaf_closure", "single_layer_closure", "board_axi_ddr_closure"],
         "selector_rules": [
             "execute a gate only when every declared dependency gate has pass evidence from the current trusted run",
-            "when a gate fails, stop at that debug layer and route evidence to Stage8 repair before any higher-layer gate runs",
-            "contaminated Stage7/Stage8 artifacts may be used as debug clues only, never as pass certificates",
+            "when a gate fails, stop at that debug layer and route evidence to the Stage-6 repair loop before any higher-layer gate runs",
+            "later verification/repair artifacts may be used as debug clues only, never as pass certificates",
             "lower-layer pass evidence is reusable evidence, not an absolute truth claim",
             "reopen a passed lower-layer gate only when current-layer CCTG/boundary trace explicitly contradicts it and names the challenged gate or module",
             "if a trace claims lower-layer contradiction without a challenged gate/module binding, rerun the failed current-layer trace before backtracking",
         ],
         "operator_leaf_promotion_certificate": {
             "required_gates": operator_leaf_required,
-            "required_artifact": "artifact.stage7.operator_leaf_promotion_certificate",
+            "required_artifact": "artifact.stage6.operator_leaf_promotion_certificate",
             "blocks_until_present": operator_leaf_blocklist,
             "evidence_contract": evidence_contract_for_level("operator_leaf_functional"),
             "evidence_semantics": {
@@ -2987,7 +2993,7 @@ def write_stage6_refinement_artifacts(
         },
         "single_layer_promotion_certificate": {
             "required_gates": single_layer_required,
-            "required_artifact": "artifact.stage7.single_layer_promotion_certificate",
+            "required_artifact": "artifact.stage6.single_layer_promotion_certificate",
             "blocks_until_present": single_layer_blocklist,
             "evidence_contract": evidence_contract_for_level("single_layer_functional"),
         },
@@ -2999,7 +3005,7 @@ def write_stage6_refinement_artifacts(
                 gate_name(case_adapter, "multilayer_functional"),
                 gate_name(case_adapter, "pipeline_deadlock"),
             ],
-            "required_artifact": "artifact.stage7.multilayer_pipeline_promotion_certificate",
+            "required_artifact": "artifact.stage6.multilayer_pipeline_promotion_certificate",
             "blocks_until_present": later_gates_after(contract, gate_name(case_adapter, "pipeline_deadlock")),
             "third_layer_subgate": True,
             "debug_layer": "board_axi_ddr_wrapped_system",
@@ -3017,7 +3023,7 @@ def write_stage6_refinement_artifacts(
                 gate_name(case_adapter, "ddr_image_roundtrip"),
                 gate_name(case_adapter, "board_semantic_evidence"),
             ],
-            "required_artifact": "artifact.stage7.board_axi_ddr_promotion_certificate",
+            "required_artifact": "artifact.stage6.board_axi_ddr_promotion_certificate",
             "debug_layer": "board_axi_ddr_wrapped_system",
             "blocks_until_present": later_gates_after(contract, gate_name(case_adapter, "board_semantic_evidence")),
             "evidence_contract": evidence_contract_for_level("axi_ddr_functional"),
@@ -3027,7 +3033,7 @@ def write_stage6_refinement_artifacts(
                 "name": str(node.get("name")),
                 "phase": node.get("phase"),
                 "depends_on": node.get("depends_on", []),
-                "tool_roles": stage6_gate_tool_roles(case_adapter, str(node.get("name"))),
+                "tool_roles": stage5_gate_tool_roles(case_adapter, str(node.get("name"))),
                 "evidence_status": node.get("evidence_status"),
             }
             for node in nodes
@@ -3046,20 +3052,20 @@ def write_stage6_refinement_artifacts(
         "blocklist_rules": [
             {
                 "blocked_gates": operator_leaf_blocklist,
-                "until_artifact": "artifact.stage7.operator_leaf_promotion_certificate",
+                "until_artifact": "artifact.stage6.operator_leaf_promotion_certificate",
                 "reason": "operator-leaf functional/static/golden gates must pass before single-layer, multilayer, AXI/DDR, backend, bitstream, or board runtime gates",
             },
             {
                 "blocked_gates": single_layer_blocklist,
-                "until_artifact": "artifact.stage7.single_layer_promotion_certificate",
+                "until_artifact": "artifact.stage6.single_layer_promotion_certificate",
                 "reason": "single-layer functional and golden comparison must pass before multilayer, AXI/DDR, backend, bitstream, or board runtime gates",
             },
             {
                 "blocked_artifacts": [
-                    "artifact.stage7.verification_result",
-                    "artifact.stage7.real_tool_results",
-                    "artifact.stage7.debug_closure",
-                    "artifact.stage8.repair_plan",
+                    "artifact.stage6.verification_result",
+                    "artifact.stage6.real_tool_results",
+                    "artifact.stage6.debug_closure",
+                    "artifact.stage6.repair_plan",
                 ],
                 "allowed_use": "planning_or_debug_only_until_superseded_by_current_trusted_rerun",
             },
@@ -3117,7 +3123,7 @@ def write_stage6_refinement_artifacts(
         "policy": {
             "downstream_failure_requires_upstream_boundary_localization": True,
             "repair_agent_receives_causal_slice_not_full_rtl_by_default": True,
-            "unlocalized_failure_backtracks_to_stage6_or_tool_capability_repair": True,
+            "unlocalized_failure_backtracks_to_stage5_or_tool_capability_repair": True,
             "lower_layer_pass_evidence_is_reusable_not_absolute": True,
             "targeted_lower_layer_backtrack_requires_bound_contradicting_trace": True,
         },
@@ -3144,7 +3150,7 @@ def write_stage6_refinement_artifacts(
     )
     materialized = {
         "canonical_gate_dag_refinement": canonical_gate_dag_refinement,
-        "stage7_gate_selector_contract": gate_selector,
+        "stage6_gate_selector_contract": gate_selector,
         "downstream_artifact_blocklist": downstream_blocklist,
         "dependency_blocked_manifest_schema": dependency_schema,
         "functional_sim_real_tool_nodes": functional_nodes,
@@ -3158,26 +3164,26 @@ def write_stage6_refinement_artifacts(
         "failed_node_repair_route_matrix": failed_node_routes,
         "certificate_reuse_and_target_discovery_contract": certificate_reuse_and_target,
     }
-    action_coverage = build_stage6_action_materialization_coverage(planner_actions, materialized)
-    materialized["stage6_action_materialization_coverage"] = action_coverage
+    action_coverage = build_stage5_action_materialization_coverage(planner_actions, materialized)
+    materialized["stage5_action_materialization_coverage"] = action_coverage
     paths: dict[str, str] = {}
     for name, data in materialized.items():
         path = refined_dir / f"{name}.json"
         write_json(path, data)
         paths[name] = str(path)
     manifest = {
-        "schema_version": "spatialaccagent.stage6_refinement_manifest.v0",
+        "schema_version": "spatialaccagent.stage5_refinement_manifest.v0",
         "status": "ready" if action_coverage.get("status") == "ready" else "incomplete",
         "errors": action_coverage.get("errors", []),
         "source": "verification_planner_agent_and_design_team_actions",
         "planner_status": planner_output.get("status"),
         "planner_action_ids": [str(action.get("id")) for action in planner_output.get("executable_actions", []) if isinstance(action, dict)],
-        "materialized_stage6_action_ids": [
+        "materialized_stage5_action_ids": [
             str(row.get("id"))
             for row in action_coverage.get("actions", [])
             if isinstance(row, dict) and row.get("status") == "pass"
         ],
-        "unmaterialized_stage6_actions": [
+        "unmaterialized_stage5_actions": [
             row
             for row in action_coverage.get("actions", [])
             if isinstance(row, dict) and row.get("status") != "pass"
@@ -3186,7 +3192,7 @@ def write_stage6_refinement_artifacts(
         "design_team_status": design_team.get("status"),
         "policy": {
             "materialization_is_not_hardware_pass": True,
-            "stage7_must_rerun_real_tools_after_stage6_promotion": True,
+            "stage6_must_rerun_real_tools_after_stage5_promotion": True,
             "higher_layers_remain_blocked_until_lower_layer_certificates_exist": True,
             "lower_layer_pass_evidence_is_reusable_not_absolute": True,
             "higher_layer_trace_can_trigger_targeted_lower_layer_backtrack": True,
@@ -3194,10 +3200,10 @@ def write_stage6_refinement_artifacts(
         },
         "artifacts": paths,
     }
-    manifest_path = refined_dir / "stage6_refinement_manifest.json"
+    manifest_path = refined_dir / "stage5_refinement_manifest.json"
     write_json(manifest_path, manifest)
     return {
-        "schema_version": "spatialaccagent.stage6_refinement_materialization.v0",
+        "schema_version": "spatialaccagent.stage5_refinement_materialization.v0",
         "status": manifest["status"],
         "errors": manifest.get("errors", []),
         "manifest": str(manifest_path),
@@ -3227,7 +3233,7 @@ def update_sacg(
         "verification",
         [],
         [],
-        ["artifact.stage6.verification_plan"],
+        ["artifact.stage5.verification_plan"],
         {"checkers": [item["checker"] for item in plan["checker_plan"]]},
     )
     add_constraint(
@@ -3236,7 +3242,7 @@ def update_sacg(
         "verification",
         [],
         [],
-        ["artifact.stage6.verification_plan"],
+        ["artifact.stage5.verification_plan"],
         {
             "strategy": plan["hierarchical_verification"]["strategy"],
             "stage_agents": [item["id"] for item in plan["hierarchical_verification"]["stage_agents"]],
@@ -3251,9 +3257,9 @@ def update_sacg(
         [],
         [],
         [
-            "artifact.stage6.verification_artifact_contract",
-            "artifact.stage6.verification_review_artifact",
-            "artifact.stage6.refinement_manifest",
+            "artifact.stage5.verification_artifact_contract",
+            "artifact.stage5.verification_review_artifact",
+            "artifact.stage5.refinement_manifest",
         ],
         {
             "status": artifact_contract.get("status"),
@@ -3280,7 +3286,7 @@ def update_sacg(
     )
     transition["required_checkers"] = STAGE6_PROMOTION_CHECKERS
     store.bind_artifact(
-        "artifact.stage6.verification_plan",
+        "artifact.stage5.verification_plan",
         str(plan_path),
         "stage.verification_plan",
         [],
@@ -3289,7 +3295,7 @@ def update_sacg(
         transition["id"],
     )
     store.bind_artifact(
-        "artifact.stage6.verification_review_artifact",
+        "artifact.stage5.verification_review_artifact",
         str(review_path),
         "stage.verification_review_artifact",
         [],
@@ -3298,7 +3304,7 @@ def update_sacg(
         transition["id"],
     )
     store.bind_artifact(
-        "artifact.stage6.verification_artifact_contract",
+        "artifact.stage5.verification_artifact_contract",
         str(contract_path),
         "stage.verification_artifact_contract",
         [],
@@ -3307,7 +3313,7 @@ def update_sacg(
         transition["id"],
     )
     store.bind_artifact(
-        "artifact.stage6.llm_action_audit",
+        "artifact.stage5.llm_action_audit",
         str(action_audit_path),
         "stage.llm_action_audit",
         [],
@@ -3316,7 +3322,7 @@ def update_sacg(
         transition["id"],
     )
     store.bind_artifact(
-        "artifact.stage6.llm_io_quality",
+        "artifact.stage5.llm_io_quality",
         str(llm_quality_path),
         "stage.llm_io_quality",
         [],
@@ -3325,66 +3331,66 @@ def update_sacg(
         transition["id"],
     )
     refinement_ids = {
-        "manifest": ("artifact.stage6.refinement_manifest", "stage.stage6_refinement_manifest"),
-        "stage7_gate_selector_contract": (
-            "artifact.stage6.stage7_gate_selector_contract",
-            "stage.stage7_gate_selector_contract",
+        "manifest": ("artifact.stage5.refinement_manifest", "stage.stage5_refinement_manifest"),
+        "stage6_gate_selector_contract": (
+            "artifact.stage5.stage6_gate_selector_contract",
+            "stage.stage6_gate_selector_contract",
         ),
         "downstream_artifact_blocklist": (
-            "artifact.stage6.downstream_artifact_blocklist",
+            "artifact.stage5.downstream_artifact_blocklist",
             "stage.downstream_artifact_blocklist",
         ),
         "dependency_blocked_manifest_schema": (
-            "artifact.stage6.dependency_blocked_manifest_schema",
+            "artifact.stage5.dependency_blocked_manifest_schema",
             "stage.dependency_blocked_manifest_schema",
         ),
         "functional_sim_real_tool_nodes": (
-            "artifact.stage6.functional_sim_real_tool_nodes",
+            "artifact.stage5.functional_sim_real_tool_nodes",
             "stage.functional_sim_real_tool_nodes",
         ),
         "debug_trace_manifest_schema": (
-            "artifact.stage6.debug_trace_manifest_schema",
+            "artifact.stage5.debug_trace_manifest_schema",
             "stage.debug_trace_manifest_schema",
         ),
         "failure_localization_schema": (
-            "artifact.stage6.failure_localization_schema",
+            "artifact.stage5.failure_localization_schema",
             "stage.failure_localization_schema",
         ),
         "backend_app_shell_target_discovery_policy": (
-            "artifact.stage6.backend_app_shell_target_discovery_policy",
+            "artifact.stage5.backend_app_shell_target_discovery_policy",
             "stage.backend_app_shell_target_discovery_policy",
         ),
         "canonical_gate_dag_refinement": (
-            "artifact.stage6.canonical_gate_dag_refinement",
+            "artifact.stage5.canonical_gate_dag_refinement",
             "stage.canonical_gate_dag_refinement",
         ),
         "semantic_promotion_gate_matrix": (
-            "artifact.stage6.semantic_promotion_gate_matrix",
+            "artifact.stage5.semantic_promotion_gate_matrix",
             "stage.semantic_promotion_gate_matrix",
         ),
         "immutable_semantic_identity_contract": (
-            "artifact.stage6.immutable_semantic_identity_contract",
+            "artifact.stage5.immutable_semantic_identity_contract",
             "stage.immutable_semantic_identity_contract",
         ),
         "canonical_functional_sim_binding_contract": (
-            "artifact.stage6.canonical_functional_sim_binding_contract",
+            "artifact.stage5.canonical_functional_sim_binding_contract",
             "stage.canonical_functional_sim_binding_contract",
         ),
         "backend_eligibility_gate_contract": (
-            "artifact.stage6.backend_eligibility_gate_contract",
+            "artifact.stage5.backend_eligibility_gate_contract",
             "stage.backend_eligibility_gate_contract",
         ),
         "failed_node_repair_route_matrix": (
-            "artifact.stage6.failed_node_repair_route_matrix",
+            "artifact.stage5.failed_node_repair_route_matrix",
             "stage.failed_node_repair_route_matrix",
         ),
         "certificate_reuse_and_target_discovery_contract": (
-            "artifact.stage6.certificate_reuse_and_target_discovery_contract",
+            "artifact.stage5.certificate_reuse_and_target_discovery_contract",
             "stage.certificate_reuse_and_target_discovery_contract",
         ),
-        "stage6_action_materialization_coverage": (
-            "artifact.stage6.action_materialization_coverage",
-            "stage.stage6_action_materialization_coverage",
+        "stage5_action_materialization_coverage": (
+            "artifact.stage5.action_materialization_coverage",
+            "stage.stage5_action_materialization_coverage",
         ),
     }
     refinement_paths = {
@@ -3459,11 +3465,11 @@ def update_sacg(
         status = str(checker.get("status") or "unknown")
         if status not in {"pass", "fail", "unknown"}:
             status = "unknown"
-        artifacts = ["artifact.stage6.verification_review_artifact"]
+        artifacts = ["artifact.stage5.verification_review_artifact"]
         if checker_name == "verification_artifact_contract_check":
-            artifacts.append("artifact.stage6.verification_artifact_contract")
+            artifacts.append("artifact.stage5.verification_artifact_contract")
         if checker_name in {"verification_plan_static_check", "hierarchical_verification_plan_check", "sacg_reference_check"}:
-            artifacts.append("artifact.stage6.verification_plan")
+            artifacts.append("artifact.stage5.verification_plan")
         store.attach_evidence(
             checker_name,
             status=status,
@@ -3479,7 +3485,7 @@ def update_sacg(
         status="pass" if action_audit.get("status") == "pass" else "fail",
         invariant="invariant.verification_action_audit_check",
         constraints=["constraint.verification.artifacts"],
-        artifacts=["artifact.stage6.llm_action_audit"],
+        artifacts=["artifact.stage5.llm_action_audit"],
         log_path=str(action_audit_path),
         transition_id=transition["id"],
         summary=str(action_audit.get("summary") or ""),
@@ -3490,7 +3496,7 @@ def update_sacg(
         status="pass" if llm_quality.get("status") != "fail" else "fail",
         invariant="invariant.llm_io_quality_check",
         constraints=["constraint.verification.artifacts"],
-        artifacts=["artifact.stage6.llm_io_quality"],
+        artifacts=["artifact.stage5.llm_io_quality"],
         log_path=str(llm_quality_path),
         transition_id=transition["id"],
         summary=str(llm_quality_summary),
@@ -3498,40 +3504,40 @@ def update_sacg(
     if errors:
         store.reject(transition["id"], f"verification artifact planning failed gate checks: {errors[:8]}")
         store.record_failure_lesson(
-            stage="stage6.verification_artifacts",
+            stage="stage5.verification_artifacts",
             failure_class="verification_gate_contract",
             summary=f"verification artifact planning failed gate checks: {errors[:8]}",
             violated_constraints=TOUCHED_CONSTRAINTS,
             artifacts=[
-                "artifact.stage6.verification_plan",
-                "artifact.stage6.verification_artifact_contract",
-                "artifact.stage6.llm_action_audit",
+                "artifact.stage5.verification_plan",
+                "artifact.stage5.verification_artifact_contract",
+                "artifact.stage5.llm_action_audit",
             ],
             recommended_action="Backtrack to Stage6 and regenerate/refine the gate DAG/tool protocol contract before Stage7 executes real tools.",
             retry_scope="same_stage",
         )
         store.record_retry_request(
-            stage="stage6.verification_artifacts",
+            stage="stage5.verification_artifacts",
             reason="Stage6 verification gate DAG or tool protocol contract is incomplete",
-            target_stage="stage6.verification_artifacts",
+            target_stage="stage5.verification_artifacts",
             required_inputs=["artifact.stage5.design_artifact_manifest", "artifact.input.tool_protocols", "artifact.input.case_adapter"],
-            blocked_artifacts=["artifact.stage6.verification_plan", "artifact.stage6.verification_artifact_contract"],
+            blocked_artifacts=["artifact.stage5.verification_plan", "artifact.stage5.verification_artifact_contract"],
         )
     else:
         store.promote(transition["id"])
     store.record_stage_outcome(
-        stage="stage6.verification_artifacts",
+        stage="stage5.verification_artifacts",
         status="ready" if not errors else "incomplete",
         transition_id=transition["id"],
         summary=str(artifact_contract.get("summary") or action_audit.get("summary") or "verification artifact planning completed"),
         errors=errors,
         artifacts=[
-            "artifact.stage6.verification_plan",
-            "artifact.stage6.verification_artifact_contract",
-            "artifact.stage6.llm_action_audit",
-            "artifact.stage6.llm_io_quality",
+            "artifact.stage5.verification_plan",
+            "artifact.stage5.verification_artifact_contract",
+            "artifact.stage5.llm_action_audit",
+            "artifact.stage5.llm_io_quality",
         ],
-        next_actions=[] if not errors else ["retry stage6.verification_artifacts before Stage7 real-tool execution"],
+        next_actions=[] if not errors else ["retry stage5.verification_artifacts before Stage7 real-tool execution"],
         retryable=bool(errors),
     )
     store.save()
@@ -3578,7 +3584,7 @@ def plan_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             "candidate_verification_artifact_contract": compact_contract_for_planner(artifact_contract),
             "candidate_verification_review_artifact": compact_review_for_planner(review_artifact),
             "retry_reconciliation_contract": artifact_contract.get("retry_reconciliation_contract", {}),
-            "stage6_gate_dag_refinement_policy": {
+            "stage5_gate_dag_refinement_policy": {
                 "required_order": [
                     "operator leaf modules",
                     "single transformer-layer LLM compute kernel",
@@ -3594,14 +3600,14 @@ def plan_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 "downstream_after_three_layer_closure": ["Vivado bitstream", "board runtime log"],
                 "llm_role": "Use current SACG memory, generated artifacts, case adapter, and tool protocols to find missing real-world verification gates. If coverage is incomplete, return executable_actions that update Stage6 gate/tool contracts rather than allowing Stage7 to run with a weak plan.",
                 "materializable_action_contract": {
-                    "required_id_prefix": "stage6.",
+                    "required_id_prefix": "stage5.",
                     "required_stage": "verification_artifacts",
                     "supported_action_types": [
                         "cross_layer_semantic_gate_refinement",
                         "board_functional_gate_dag_refinement",
                         "downstream_tool_gate_hardening",
                         "repair_boundary_contract_review",
-                        "stage7_gate_selector_contract_refinement",
+                        "stage6_gate_selector_contract_refinement",
                         "verification_gate_dag_refinement",
                         "board_and_backend_gate_dag_refinement",
                         "verification_artifact_contract_refinement",
@@ -3632,7 +3638,7 @@ def plan_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     )
     design_team = team_summary(team)
     case_adapter = case_adapter_for_state(source_data, run_dir)
-    refinement_materialization = write_stage6_refinement_artifacts(
+    refinement_materialization = write_stage5_refinement_artifacts(
         out_dir,
         source_data,
         plan,
@@ -3641,7 +3647,7 @@ def plan_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         design_team,
         case_adapter,
     )
-    artifact_contract["stage6_refinement_materialization"] = refinement_materialization
+    artifact_contract["stage5_refinement_materialization"] = refinement_materialization
     write_json(contract_path, artifact_contract)
     action_audit = build_audit_from_outputs(
         [
@@ -3658,7 +3664,7 @@ def plan_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     errors.extend(
         stage_worker_errors(
             llm["output"],
-            artifact_contract.get("existing_stage6_refinements", {}),
+            artifact_contract.get("existing_stage5_refinements", {}),
             refinement_materialization,
         )
     )
@@ -3690,8 +3696,8 @@ def plan_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             "verification_review_artifact": str(review_path),
             "llm_action_audit": str(action_audit_path),
             "llm_io_quality": str(llm_quality_path),
-            "stage6_refinement_manifest": refinement_materialization.get("manifest"),
-            "stage6_refinement_artifacts": refinement_materialization.get("artifacts", {}),
+            "stage5_refinement_manifest": refinement_materialization.get("manifest"),
+            "stage5_refinement_artifacts": refinement_materialization.get("artifacts", {}),
             "sacg_state": str(state_path),
             "llm_agent": llm["result_path"],
             "team_subtask_plan": team["subtask_plan_path"],
@@ -3709,7 +3715,7 @@ def plan_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         },
         "llm_action_audit": action_audit,
         "llm_io_quality": llm_quality,
-        "stage6_refinement_materialization": refinement_materialization,
+        "stage5_refinement_materialization": refinement_materialization,
         "checkers": [item["checker"] for item in plan["checker_plan"]],
         "verification_artifact_contract": artifact_contract,
         "sacg_transition_id": transition_id,

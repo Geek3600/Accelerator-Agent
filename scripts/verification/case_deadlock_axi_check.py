@@ -87,7 +87,6 @@ def load_diagnosis(run_dir: Path, override: str | None) -> tuple[Path, dict[str,
     candidates.extend(
         [
             run_dir / "verification" / "case_diagnostics" / "vcs_functional_diagnosis.json",
-            run_dir / "verification" / "qwen_vcs" / "qwen_vcs_functional_diagnosis.json",
         ]
     )
     for path in candidates:

@@ -42,7 +42,7 @@ from accagent.framework.semantic_simulator import (
     wall_timeout,
 )
 from accagent.framework.debug_closure import load_trace_records, localize_failure, targeted_replay_plan
-from accagent.framework.stage_debug_loop import stage7_scope_env
+from accagent.framework.stage_debug_loop import stage6_scope_env
 from scripts.verification.qwen_leaf_operator_verify import (
     execute_stage_reports,
     internal_trace_records,
@@ -86,6 +86,12 @@ class SemanticSimulatorTest(TestCase):
         self,
     ) -> None:
         self.assertTrue(semantic_stall_termination_label_allowed("vcs_simulate"))
+        self.assertTrue(
+            semantic_stall_termination_label_allowed("vcs_fast_replay_restore")
+        )
+        self.assertTrue(
+            semantic_stall_termination_label_allowed("vcs_fast_replay_recapture")
+        )
         self.assertTrue(
             semantic_stall_termination_label_allowed(
                 "vcs_checkpoint_equivalence_simulate_oracle_v2_deadbeef"
@@ -1709,7 +1715,7 @@ class SemanticSimulatorTest(TestCase):
                 "SPATIALACC_SEMANTIC_SIM_TIMEOUT_SEC": "222",
             },
         ):
-            with stage7_scope_env("operator_leaf_closure", 7200):
+            with stage6_scope_env("operator_leaf_closure", 7200):
                 self.assertEqual(os.environ["SPATIALACC_TOOL_TIMEOUT_SEC"], "7200")
                 self.assertEqual(os.environ["SPATIALACC_SEMANTIC_SIM_TIMEOUT_SEC"], "7200")
             self.assertEqual(os.environ["SPATIALACC_TOOL_TIMEOUT_SEC"], "111")
@@ -1723,7 +1729,7 @@ class SemanticSimulatorTest(TestCase):
                 "SPATIALACC_SEMANTIC_SIM_TIMEOUT_SEC": "7200",
             },
         ):
-            with stage7_scope_env("single_layer_closure", 0):
+            with stage6_scope_env("single_layer_closure", 0):
                 self.assertEqual(os.environ["SPATIALACC_TOOL_TIMEOUT_SEC"], "0")
                 self.assertEqual(os.environ["SPATIALACC_SEMANTIC_SIM_TIMEOUT_SEC"], "0")
             self.assertEqual(os.environ["SPATIALACC_TOOL_TIMEOUT_SEC"], "7200")

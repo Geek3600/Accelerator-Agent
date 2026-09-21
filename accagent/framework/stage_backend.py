@@ -12,6 +12,15 @@ from pathlib import Path
 from typing import Any
 
 from accagent.framework.case_adapter import adapter_tool, build_case_adapter
+from accagent.framework.dse_ledger import (
+    EXACT_TARGET_BOARD_APP_SHELL_SCOPE,
+    QOR_KEYS,
+    append_measurement,
+    candidate_fingerprint,
+    complete_metrics,
+    ledger_path,
+    load_latest,
+)
 from accagent.framework.llm_config import resolved_llm_cfg
 from accagent.framework.llm_io import build_prompt, parse_json_object, repair_prompt, validate_schema
 from accagent.framework.sacg_store import SACGStore
@@ -32,6 +41,7 @@ from accagent.framework.stage_input import (
     prompt_field_evidence_summary,
 )
 from accagent.framework.stage_llm import ACTION_GROUNDING_REGISTRY, call_llm_with_retry, llm_timeout_sec, run_stage_agent
+from accagent.framework.stage_llm import STAGE_AGENT_SCHEMA
 from accagent.framework.stage_team import run_design_team, team_failure_errors, team_summary
 from accagent.framework.tool_runner import run_tools
 
@@ -114,6 +124,24 @@ BACKEND_RECOVERY_ACTION_SCHEMA = {
         "forbidden_actions",
         "sacg_updates",
         "next_stage",
+    ],
+}
+
+
+QOR_ROUTER_SCHEMA = {
+    "type": "object",
+    "additionalProperties": True,
+    "properties": {
+        **STAGE_AGENT_SCHEMA["properties"],
+        "qor_decision": {"type": "string", "enum": ["local_optimization", "dse_backtrack", "pass"]},
+        "decision_rationale": {"type": "string"},
+        "target_misses": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+    },
+    "required": [
+        *STAGE_AGENT_SCHEMA["required"],
+        "qor_decision",
+        "decision_rationale",
+        "target_misses",
     ],
 }
 
@@ -264,7 +292,7 @@ def resolve_board_profile(state: dict[str, Any], run_dir: Path, out_dir: Path) -
     profile_path = out_dir / "resolved_target_board_profile.json"
     record = {
         **resolved,
-        "_stage9_resolution": {
+        "_stage7_resolution": {
             "schema_version": "spatialaccagent.resolved_target_board_profile.v0",
             "source_target_board_profile": str(original_path),
             "source_field_evidence_count": sum(len(item.get("evidence", [])) for item in evidence_items if isinstance(item, dict)),
@@ -296,48 +324,44 @@ def script_exists(argv: list[str]) -> bool:
 
 
 def roles_for_scope(scope: str) -> list[str]:
-    if scope in {"none", "plan", "dry_run"}:
-        return []
-    if scope in {"synth", "synthesis", "vivado_synthesis"}:
-        return ["vivado_synthesis", "vivado_synthesis_report_check"]
-    if scope in {"impl", "implementation", "bitstream", "vivado_implementation"}:
-        return ["vivado_implementation", "vivado_implementation_report_check"]
-    if scope in {"backend", "vivado", "standalone_backend"}:
-        return ["vivado_synthesis", "vivado_synthesis_report_check", "vivado_implementation", "vivado_implementation_report_check"]
-    if scope in {"runtime_bitstream", "runtime"}:
-        return [
-            "board_shell_wrapper_generate",
-            "runtime_bitstream",
-            "app_shell_target_discovery_contract",
-            "app_shell_target_hint_synthesis",
-            "app_shell_target_discovery_after_hint",
-            "app_shell_runtime_bitstream",
-            "runtime_abi_check",
-        ]
-    if scope in {"app_shell", "app_shell_runtime", "app_shell_runtime_bitstream"}:
-        return [
-            "board_shell_wrapper_generate",
-            "app_shell_target_discovery_contract",
-            "app_shell_target_hint_synthesis",
-            "app_shell_target_discovery_after_hint",
-            "app_shell_runtime_bitstream",
-            "runtime_abi_check",
-        ]
-    if scope in {"board", "board_runtime"}:
-        return ["board_runtime"]
-    return [
-        "vivado_synthesis",
-        "vivado_synthesis_report_check",
-        "vivado_implementation",
-        "vivado_implementation_report_check",
+    exact_app_shell_roles = [
         "board_shell_wrapper_generate",
-        "runtime_abi_check",
-        "runtime_bitstream",
+        "compute_slot_adapter_generate",
         "app_shell_target_discovery_contract",
         "app_shell_target_hint_synthesis",
         "app_shell_target_discovery_after_hint",
-        "board_runtime",
+        "app_shell_runtime_bitstream",
+        "runtime_abi_check",
+        "stage7_metrics",
     ]
+    if scope in {"none", "plan", "dry_run"}:
+        return []
+    if scope in {"legacy_standalone", "standalone_backend"}:
+        return ["vivado_synthesis", "vivado_synthesis_report_check", "vivado_implementation", "vivado_implementation_report_check", "vivado_power", "stage7_metrics"]
+    if scope in {
+        "synth",
+        "synthesis",
+        "vivado_synthesis",
+        "impl",
+        "implementation",
+        "bitstream",
+        "vivado_implementation",
+        "backend",
+        "vivado",
+        "runtime_bitstream",
+        "runtime",
+        "app_shell",
+        "app_shell_runtime",
+        "app_shell_runtime_bitstream",
+        "all",
+        "*",
+        "backend_board",
+        "final",
+    }:
+        return exact_app_shell_roles
+    if scope in {"board", "board_runtime"}:
+        return ["board_runtime"]
+    return exact_app_shell_roles
 
 
 def protocol_tool_by_name(tools: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
@@ -447,8 +471,57 @@ def board_shell_wrapper_manifest_path(run_dir: Path) -> Path:
     return run_dir / "generated" / "backend" / "reports" / "board_shell_wrapper_manifest.json"
 
 
+def compute_slot_adapter_rtl_path(run_dir: Path) -> Path:
+    contract = read_json_if_exists(app_shell_integration_contract_path(run_dir))
+    target = contract.get("integration_target", {}) if isinstance(contract.get("integration_target"), dict) else {}
+    abi = contract.get("compute_slot_abi", {}) if isinstance(contract.get("compute_slot_abi"), dict) else {}
+    module = first_nonblank(
+        target.get("replacement_module_identity"),
+        target.get("ip_name"),
+        abi.get("replacement_module_identity"),
+        abi.get("slot_module"),
+        "compute_slot_adapter",
+    )
+    return run_dir / "generated" / "backend" / "rtl" / f"{module}.v"
+
+
+def compute_slot_adapter_manifest_path(run_dir: Path) -> Path:
+    return run_dir / "generated" / "backend" / "reports" / "compute_slot_adapter_manifest.json"
+
+
 def app_shell_integration_contract_path(run_dir: Path) -> Path:
     return run_dir / "generated" / "backend" / "constraints" / "app_shell_integration_contract.json"
+
+
+def board_source_identity_path(run_dir: Path) -> Path:
+    return run_dir / "verification" / "board_interface" / "board_source_identity.json"
+
+
+def dut_weight_binding_requirements_path(run_dir: Path) -> Path:
+    return run_dir / "verification" / "semantic_testbench" / "dut_weight_binding_requirements.json"
+
+
+def semantic_testbench_manifest_path(run_dir: Path) -> Path:
+    return run_dir / "verification" / "semantic_testbench" / "semantic_testbench_manifest.json"
+
+
+def current_app_shell_binding_artifacts(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Read the current-run physical slot and loader contracts.
+
+    These are generated verification artifacts, not a board/model default.  Keeping
+    this lookup in the backend stage makes every later app-shell step consume the
+    same source of truth and prevents an old discovery result from becoming the
+    integration target by accident.
+    """
+    identity = read_json_if_exists(board_source_identity_path(run_dir))
+    requirements = read_json_if_exists(dut_weight_binding_requirements_path(run_dir))
+    manifest = read_json_if_exists(semantic_testbench_manifest_path(run_dir))
+    if isinstance(manifest.get("single_layer"), dict):
+        harness = manifest["single_layer"].get("dut_harness", {})
+        if isinstance(harness, dict) and isinstance(harness.get("loader_route_contract"), dict):
+            requirements = dict(requirements)
+            requirements["loader_route_contract"] = harness["loader_route_contract"]
+    return identity, requirements
 
 
 def backend_recovery_approval_path(run_dir: Path) -> Path | None:
@@ -471,6 +544,73 @@ def builtin_backend_tool(role: str, run_dir: Path, protocols: list[dict[str, Any
     contract = board_shell_contract_path(run_dir)
     app_shell_contract = app_shell_integration_contract_path(run_dir)
     wrapper_rtl = board_shell_wrapper_rtl_path(run_dir)
+    adapter_rtl = compute_slot_adapter_rtl_path(run_dir)
+    adapter_manifest = compute_slot_adapter_manifest_path(run_dir)
+    if role == "compute_slot_adapter_generate":
+        script = Path("scripts/synthesis/compute_slot_adapter_generator.py")
+        generated_top = run_dir / "generated" / "chisel" / "vivado" / "GeneratedAxiDdrTop.sv"
+        current_contract = read_json_if_exists(app_shell_contract)
+        target = current_contract.get("integration_target", {}) if isinstance(current_contract.get("integration_target"), dict) else {}
+        abi = current_contract.get("compute_slot_abi", {}) if isinstance(current_contract.get("compute_slot_abi"), dict) else {}
+        module = first_nonblank(
+            target.get("replacement_module_identity"),
+            target.get("ip_name"),
+            abi.get("replacement_module_identity"),
+            abi.get("slot_module"),
+            "compute_slot_adapter",
+        )
+        legacy = run_dir / "generated" / "board_integration" / f"{module}.v"
+        argv = [
+            "python3",
+            str(script),
+            "--contract",
+            str(app_shell_contract),
+            "--legacy-adapter",
+            str(legacy),
+            "--generated-top",
+            str(generated_top),
+            "--output",
+            str(adapter_rtl),
+            "--manifest",
+            str(adapter_manifest),
+        ]
+        return {
+            "name": "case_compute_slot_adapter_generate",
+            "kind": "compute_slot_adapter_generate",
+            "scope": "local",
+            "command": " ".join(argv),
+            "execution": {"argv": argv, "cwd": str(Path.cwd()), "env": {}, "timeout_sec": None},
+            "script_exists": script.exists(),
+            "required": True,
+            "required_group": None,
+            "consumes": [str(app_shell_contract), str(legacy), str(generated_top)],
+            "produces": [str(adapter_rtl), str(adapter_manifest)],
+            "adapter_role": role,
+            "legacy_name": None,
+        }
+    if role == "stage7_metrics":
+        script = Path("scripts/synthesis/case_stage7_metrics.py")
+        report = run_dir / "backend_board" / "qor" / "qor_metrics.json"
+        argv = ["python3", str(script), "--run-dir", str(run_dir), "--out", str(report)]
+        return {
+            "name": "case_stage7_metrics",
+            "kind": "stage7_metrics",
+            "scope": "local",
+            "command": " ".join(argv),
+            "execution": {"argv": argv, "cwd": str(Path.cwd()), "env": {}, "timeout_sec": None},
+            "script_exists": script.exists(),
+            "required": True,
+            "required_group": None,
+            "consumes": [
+                str(run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_utilization.rpt"),
+                str(run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_timing.rpt"),
+                str(run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_power.rpt"),
+                str(run_dir / "verification" / "board_simulation" / "reports" / "performance_counter_report.json"),
+            ],
+            "produces": [str(report)],
+            "adapter_role": role,
+            "legacy_name": None,
+        }
     if role == "board_shell_wrapper_generate":
         script = Path("scripts/synthesis/board_shell_wrapper_generator.py")
         generated_top = run_dir / "generated" / "chisel" / "GeneratedAxiDdrTop.sv"
@@ -504,6 +644,17 @@ def builtin_backend_tool(role: str, run_dir: Path, protocols: list[dict[str, Any
     if role == "app_shell_runtime_bitstream":
         script = Path("scripts/synthesis/app_shell_runtime_vivado.py")
         report = run_dir / "backend_board" / "case_diagnostics" / "app_shell_runtime_vivado.json"
+        generated_vivado_dir = run_dir / "generated" / "chisel" / "vivado"
+        ip_module_manifest = run_dir / "generated" / "chisel" / "simulation" / "fpga_ip_modules.txt"
+        ip_generation_tcl = run_dir / "generated" / "chisel" / "scripts" / "gen_xilinx_fp_ips_23.tcl"
+        ip_closure = read_json_if_exists(run_dir / "generated" / "chisel" / "simulation" / "fpga_ip_simulation_closure.json")
+        fpga_part = str(first_nonblank(ip_closure.get("fpga_part"), ""))
+        parameter_binding = read_json_if_exists(run_dir / "parameter_binding" / "parameter_binding.json")
+        global_params = parameter_binding.get("global_params", {}) if isinstance(parameter_binding.get("global_params"), dict) else {}
+        clock_target_mhz = first_nonblank(
+            global_params.get("clock_target_mhz"),
+            os.environ.get("SPATIALACC_CLOCK_TARGET_MHZ"),
+        )
         argv = [
             "python3",
             str(script),
@@ -512,7 +663,17 @@ def builtin_backend_tool(role: str, run_dir: Path, protocols: list[dict[str, Any
             "--contract",
             str(app_shell_contract),
             "--wrapper-rtl",
-            str(wrapper_rtl),
+            str(adapter_rtl if adapter_rtl.is_file() else wrapper_rtl),
+            "--generated-vivado-dir",
+            str(generated_vivado_dir),
+            "--ip-module-manifest",
+            str(ip_module_manifest),
+            "--ip-generation-tcl",
+            str(ip_generation_tcl),
+            "--fpga-part",
+            fpga_part,
+            "--clock-target-mhz",
+            str(clock_target_mhz or ""),
             "--mode",
             os.environ.get("SPATIALACC_APP_SHELL_MODE", "bitstream"),
             "--out",
@@ -527,7 +688,13 @@ def builtin_backend_tool(role: str, run_dir: Path, protocols: list[dict[str, Any
             "script_exists": script.exists(),
             "required": True,
             "required_group": None,
-            "consumes": [str(app_shell_contract), str(wrapper_rtl), str(run_dir / "generated" / "chisel")],
+            "consumes": [
+                str(app_shell_contract),
+                str(adapter_rtl if adapter_rtl.is_file() else wrapper_rtl),
+                str(generated_vivado_dir),
+                str(ip_module_manifest),
+                str(ip_generation_tcl),
+            ],
             "produces": [str(run_dir / "app_shell_runtime_bitstream"), str(report)],
             "adapter_role": role,
             "legacy_name": None,
@@ -703,6 +870,8 @@ def backend_tools_for_scope(
             continue
         if role in {
             "board_shell_wrapper_generate",
+            "compute_slot_adapter_generate",
+            "stage7_metrics",
             "runtime_bitstream",
             "app_shell_target_discovery_contract",
             "app_shell_target_hint_synthesis",
@@ -797,6 +966,10 @@ def backend_tool_report_digest(path_value: Any) -> dict[str, Any]:
         "normalized_approval",
         "bounded_recovery_actions",
         "updated_contract",
+        "resources",
+        "power_w",
+        "clock_frequency_mhz",
+        "performance_tokens_per_second",
     ]:
         value = report.get(key)
         if isinstance(value, list):
@@ -806,6 +979,281 @@ def backend_tool_report_digest(path_value: Any) -> dict[str, Any]:
         elif value is not None:
             digest[key] = value
     return digest
+
+
+def _qor_number(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
+def exact_app_shell_qor_evidence_paths(run_dir: Path) -> list[Path]:
+    """Return the sole evidence set accepted by the formal DSE campaign."""
+
+    return [
+        run_dir / "backend_board" / "case_diagnostics" / "app_shell_runtime_vivado.json",
+        run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_utilization.rpt",
+        run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_timing.rpt",
+        run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_power.rpt",
+        run_dir / "verification" / "board_simulation" / "reports" / "performance_counter_report.json",
+        run_dir / "backend_board" / "qor" / "qor_metrics.json",
+    ]
+
+
+def selected_dse_parameters(state: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """Read the current Stage 4 candidate without reconstructing it from reports."""
+
+    try:
+        binding_path = artifact_path(state, "artifact.stage4.parameter_binding")
+        binding = read_json(binding_path)
+    except Exception:
+        return {}, ""
+    selected = binding.get("selected_architecture", {}) if isinstance(binding.get("selected_architecture"), dict) else {}
+    parameters = selected.get("parameters", {}) if isinstance(selected.get("parameters"), dict) else {}
+    return parameters, str(binding_path)
+
+
+def app_shell_implementation_failure(report: dict[str, Any]) -> bool:
+    """Accept only an explicit real Vivado implementation failure as infeasible.
+
+    Transport, source-copy, missing-file, or remote-environment failures are not
+    design-space outcomes and must not remove a candidate from the campaign.
+    """
+
+    if str(report.get("mode") or "") != "bitstream" or str(report.get("status") or "") != "fail":
+        return False
+    inspection = report.get("inspection", {}) if isinstance(report.get("inspection"), dict) else {}
+    implementation_status = str(inspection.get("top_impl_status") or "").strip()
+    if not implementation_status:
+        return False
+    return "complete" not in implementation_status.lower()
+
+
+def record_exact_dse_measurement(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
+    """Persist one exact app-shell DSE outcome when its evidence is complete."""
+
+    parameters, binding_path = selected_dse_parameters(state)
+    if not parameters:
+        return {"status": "not_recorded", "reason": "current Stage4 selected architecture is unavailable"}
+
+    report_path, *evidence_paths = exact_app_shell_qor_evidence_paths(run_dir)
+    expected_paths = [str(path.resolve()) for path in [report_path, *evidence_paths]]
+    app_shell_report = read_json_if_exists(report_path)
+    if str(app_shell_report.get("mode") or "") != "bitstream":
+        return {"status": "not_recorded", "reason": "current app-shell implementation report is unavailable"}
+
+    if app_shell_implementation_failure(app_shell_report):
+        measurement_status = "infeasible"
+        metrics: dict[str, Any] | None = None
+        reason = str(app_shell_report.get("summary") or "real app-shell implementation failed")
+        paths = [str(report_path.resolve())]
+    elif str(app_shell_report.get("status") or "") == "pass":
+        metric_report = read_json_if_exists(evidence_paths[-1])
+        if metric_report.get("measurement_scope") != EXACT_TARGET_BOARD_APP_SHELL_SCOPE:
+            return {
+                "status": "not_recorded",
+                "reason": "QoR report is not explicitly scoped to the exact target-board app-shell flow",
+            }
+        metric_evidence_paths = metric_report.get("evidence_paths")
+        if metric_evidence_paths != expected_paths:
+            return {
+                "status": "not_recorded",
+                "reason": "QoR report evidence paths do not match the current exact app-shell report set",
+            }
+        metrics = {key: metric_report.get(key) for key in QOR_KEYS}
+        if not complete_metrics(metrics):
+            return {
+                "status": "not_recorded",
+                "reason": "exact app-shell implementation completed but the four-metric measurement is incomplete",
+            }
+        if not all(path.is_file() and path.stat().st_size > 0 for path in evidence_paths):
+            return {
+                "status": "not_recorded",
+                "reason": "exact app-shell report set is incomplete",
+            }
+        measurement_status = "measured"
+        reason = "exact target-board app-shell Vivado and hardware-counter QoR measurement"
+        paths = expected_paths
+    else:
+        return {
+            "status": "not_recorded",
+            "reason": "app-shell execution did not prove either implementation completion or implementation infeasibility",
+        }
+
+    latest = load_latest(ledger_path(run_dir)).get(candidate_fingerprint(parameters))
+    if (
+        latest
+        and latest.get("measurement_status") == measurement_status
+        and latest.get("metrics") == metrics
+        and latest.get("evidence_paths") == paths
+    ):
+        return {
+            "status": "reused",
+            "measurement_status": measurement_status,
+            "candidate_id": latest.get("candidate_id"),
+            "reason": "the current exact evidence is already recorded for this candidate",
+        }
+
+    row = append_measurement(
+        ledger_path(run_dir),
+        parameters=parameters,
+        measurement_status=measurement_status,
+        measurement_scope=EXACT_TARGET_BOARD_APP_SHELL_SCOPE,
+        metrics=metrics,
+        evidence_paths=paths,
+        binding_path=binding_path,
+        reason=reason,
+    )
+    return {
+        "status": "recorded",
+        "measurement_status": measurement_status,
+        "candidate_id": row["candidate_id"],
+        "reason": reason,
+        "evidence_paths": paths,
+    }
+
+
+def exact_dse_campaign(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
+    """Re-evaluate campaign completion from the current ledger and candidate space."""
+
+    try:
+        from accagent.framework.stage_params import build_dse_search
+
+        search = build_dse_search(state, run_dir)
+    except Exception as exc:
+        return {"status": "unavailable", "reason": str(exc)}
+    summary = search.get("measurement_summary", {}) if isinstance(search.get("measurement_summary"), dict) else {}
+    return {
+        "status": search.get("status"),
+        "measurement_summary": summary,
+        "unmeasured_candidate_ids": list(search.get("unmeasured_candidate_ids", [])),
+        "pareto_candidate_ids": list(search.get("pareto_candidate_ids", [])),
+    }
+
+
+def classify_qor_optimization(
+    state: dict[str, Any],
+    metrics: dict[str, Any],
+    campaign: dict[str, Any] | None = None,
+    measurement: dict[str, Any] | None = None,
+    llm_decision: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Route only measured four-metric QoR misses.
+
+    The framework computes exact metric misses but does not classify their
+    repair scope.  Once a measured miss exists, the LLM must select either a
+    local RTL/implementation repair or a formal Stage4 DSE backtrack.
+    """
+
+    campaign = campaign or {}
+    measurement = measurement or {}
+    unmeasured = [str(value) for value in campaign.get("unmeasured_candidate_ids", []) if str(value)]
+    if measurement.get("measurement_status") == "infeasible" and unmeasured:
+        return {
+            "status": "campaign_pending",
+            "decision": "dse_backtrack",
+            "reason": "the current candidate is implementation-infeasible; exact DSE has remaining legal candidates",
+            "next_stage": "stage4.parameter_binding",
+            "campaign": campaign,
+        }
+
+    resources = metrics.get("resources") if isinstance(metrics.get("resources"), dict) else None
+    power = _qor_number(metrics.get("power_w"))
+    clock = _qor_number(metrics.get("clock_frequency_mhz"))
+    performance = _qor_number(metrics.get("performance_tokens_per_second"))
+    if not resources or power is None or clock is None or performance is None:
+        return {
+            "status": "unavailable",
+            "decision": "continue_backend",
+            "reason": "all four measured QoR metrics are required before optimization routing",
+            "metrics": metrics,
+            "campaign": campaign,
+        }
+
+    if unmeasured:
+        return {
+            "status": "campaign_pending",
+            "decision": "dse_backtrack",
+            "reason": "exact DSE campaign has remaining legal candidates that require real app-shell measurement",
+            "metrics": metrics,
+            "next_stage": "stage4.parameter_binding",
+            "campaign": campaign,
+        }
+
+    try:
+        design_space = constraint_facts(state, "constraint.arch.design_space")
+    except (KeyError, ValueError):
+        design_space = {}
+    try:
+        binding = read_json(artifact_path(state, "artifact.stage4.parameter_binding"))
+    except (KeyError, OSError, ValueError):
+        binding = {}
+    board = constraint_facts(state, "constraint.deployment.board").get("board", {})
+    board_budget = board.get("resource_budget", {}) if isinstance(board, dict) else {}
+    targets = design_space.get("qor_targets", {}) if isinstance(design_space.get("qor_targets"), dict) else {}
+    global_params = binding.get("global_params", {}) if isinstance(binding.get("global_params"), dict) else {}
+    requested_clock = _qor_number(targets.get("clock_frequency_mhz")) or _qor_number(global_params.get("clock_target_mhz"))
+    requested_performance = _qor_number(targets.get("performance_tokens_per_second"))
+    requested_power = _qor_number(targets.get("power_w"))
+
+    ratios: list[tuple[str, float]] = []
+    for name in ["lut", "ff", "uram", "dsp"]:
+        limit = _qor_number(board_budget.get(name))
+        actual = _qor_number(resources.get(name))
+        if limit and actual is not None:
+            ratios.append((f"resources.{name}", actual / limit))
+    bram_limit = _qor_number(board_budget.get("bram"))
+    if bram_limit:
+        bram_actual = (_qor_number(resources.get("bram36")) or 0.0) + (_qor_number(resources.get("bram18")) or 0.0)
+        ratios.append(("resources.bram", bram_actual / bram_limit))
+    if requested_power:
+        ratios.append(("power_w", power / requested_power))
+    if requested_clock:
+        ratios.append(("clock_frequency_mhz", requested_clock / clock))
+    if requested_performance:
+        ratios.append(("performance_tokens_per_second", requested_performance / performance))
+
+    misses = [{"metric": name, "ratio": ratio} for name, ratio in ratios if ratio > 1.0]
+    if not misses:
+        return {
+            "status": "pass",
+            "decision": "pass",
+            "reason": "measured QoR meets every supplied four-metric target",
+            "metrics": metrics,
+            "targets_checked": [name for name, _ in ratios],
+            "campaign": campaign,
+        }
+    requested_decision = str((llm_decision or {}).get("qor_decision") or "").strip()
+    if requested_decision not in {"local_optimization", "dse_backtrack"}:
+        return {
+            "status": "needs_optimization",
+            "decision": "llm_required",
+            "reason": "measured QoR misses require an LLM decision between local hardware repair and Stage4 DSE backtrack",
+            "metrics": metrics,
+            "misses": misses,
+            "next_stage": None,
+            "preserve_existing_hardware": True,
+            "campaign": campaign,
+        }
+    decision = requested_decision
+    return {
+        "status": "needs_optimization",
+        "decision": decision,
+        "reason": str((llm_decision or {}).get("decision_rationale") or (
+            "LLM selected a local hardware optimization" if decision == "local_optimization"
+            else "LLM selected a formal Stage4 DSE backtrack"
+        )),
+        "metrics": metrics,
+        "misses": misses,
+        "next_stage": "stage5.code_generation" if decision == "local_optimization" else "stage4.parameter_binding",
+        # Both routes are incremental: a local fix adjusts only the existing
+        # RTL/implementation; DSE adjusts its existing parameter binding and
+        # regenerates from that design rather than discarding the hardware.
+        "preserve_existing_hardware": True,
+        "campaign": campaign,
+    }
 
 
 def normalize_tool_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -849,14 +1297,13 @@ def existing_real_tool_evidence(state: dict[str, Any]) -> list[dict[str, Any]]:
         if any(
             token in checker
             for token in [
-                "vivado",
-                "runtime_abi",
-                "runtime_bitstream",
                 "app_shell_runtime_bitstream",
                 "app_shell_target_discovery_contract",
                 "app_shell_target_hint_synthesis",
+                "app_shell_target_discovery_after_hint",
                 "backend_recovery_approval_ingest",
-                "board_runtime",
+                "runtime_abi",
+                "stage7_metrics",
             ]
         ):
             latest_by_checker[checker] = item
@@ -891,19 +1338,92 @@ def artifact_producer_transition(state: dict[str, Any], artifact_id: str) -> dic
 
 def check_upstream_hierarchical_verification_closure(state: dict[str, Any]) -> dict[str, Any]:
     blockers: list[str] = []
+    run_dir = run_dir_from_state(Path(str(state.get("_state_path") or ""))) if state.get("_state_path") else None
+    if run_dir is None:
+        # Stage state normally carries no self-path. The current Stage 7
+        # artifact is the only valid source for a run directory; a historical
+        # run must never be selected as a hidden backend fallback.
+        try:
+            run_dir = artifact_path(state, "artifact.stage6.verification_result").parents[1]
+        except Exception as exc:
+            return {
+                "schema_version": "spatialaccagent.stage7_upstream_hierarchy_gate.v1",
+                "status": "fail",
+                "backend_ready": False,
+                "closure_mode": "unresolved_current_run",
+                "verification_result": None,
+                "stage7_transition_status": "missing",
+                "board_bringup_ready": False,
+                "board_bringup_readiness": {
+                    "status": "fail",
+                    "board_bringup_ready": False,
+                    "checks": [],
+                    "blockers": [
+                        "unable to resolve the current run from Stage 6 verification evidence: "
+                        f"{exc}"
+                    ],
+                    "strict_output_diagnostics": {},
+                },
+                "blockers": [
+                    "Stage 6 verification result is required to resolve the current backend run"
+                ],
+            }
+
+    # Stage 7 only needs the real-board bring-up contract before synthesis and
+    # implementation.  Strict output/writeback closure remains diagnostic and
+    # is still preserved in the returned evidence when available.
     try:
-        verification = read_json(artifact_path(state, "artifact.stage7.verification_result"))
-        verification_path = str(artifact_path(state, "artifact.stage7.verification_result"))
+        from accagent.framework.stage_verification import build_board_bringup_readiness
+
+        board_bringup_readiness = build_board_bringup_readiness(state, run_dir)
     except Exception as exc:
-        return {
-            "schema_version": "spatialaccagent.stage9_upstream_hierarchy_gate.v0",
+        board_bringup_readiness = {
             "status": "fail",
-            "backend_ready": False,
-            "blockers": [f"Stage7 verification result is missing or unreadable: {exc}"],
-            "verification_result": None,
+            "board_bringup_ready": False,
+            "checks": [],
+            "blockers": [f"unable to evaluate board bring-up readiness: {exc}"],
+            "strict_output_diagnostics": {},
         }
-    transition = artifact_producer_transition(state, "artifact.stage7.verification_result")
+
+    try:
+        verification = read_json(artifact_path(state, "artifact.stage6.verification_result"))
+        verification_path = str(artifact_path(state, "artifact.stage6.verification_result"))
+    except Exception as exc:
+        verification = {}
+        verification_path = None
+        if not board_bringup_readiness.get("board_bringup_ready"):
+            blockers.append(f"Stage7 verification result is missing or unreadable: {exc}")
+    transition = artifact_producer_transition(state, "artifact.stage6.verification_result")
     transition_status = str((transition or {}).get("status") or "missing")
+
+    if board_bringup_readiness.get("board_bringup_ready") is True:
+        return {
+            "schema_version": "spatialaccagent.stage7_upstream_hierarchy_gate.v1",
+            "status": "pass",
+            "backend_ready": True,
+            "closure_mode": "board_bringup_to_implementation",
+            "verification_result": verification_path,
+            "stage7_transition_status": transition_status,
+            "board_bringup_ready": True,
+            "board_bringup_readiness": board_bringup_readiness,
+            "strict_output_diagnostics": board_bringup_readiness.get("strict_output_diagnostics", {}),
+            "maturity": verification.get("hierarchical_maturity", {}) if isinstance(verification, dict) else {},
+            "debug_closure": verification.get("debug_closure", {}) if isinstance(verification, dict) else {},
+            "blockers": [],
+            "policy": {
+                "stage7_accepts_real_board_bringup_for_vivado": True,
+                "stage7_does_not_require_complete_token_output_before_vivado": True,
+                "stage7_does_not_require_final_ddr_writeback_before_vivado": True,
+                "strict_output_and_writeback_remain_diagnostic": True,
+                "stage7_must_not_execute_board_runtime_in_backend_scope": True,
+            },
+        }
+
+    blockers.extend(
+        str(item)
+        for item in board_bringup_readiness.get("blockers", [])
+        if str(item)
+    )
     if transition_status != "promoted":
         blockers.append(f"Stage7 verification transition is {transition_status}, expected promoted")
     if verification.get("status") != "pass":
@@ -919,14 +1439,14 @@ def check_upstream_hierarchical_verification_closure(state: dict[str, Any]) -> d
     if not debug_closure.get("failure_localization"):
         blockers.append("Stage7 debug-closure localization artifact is missing")
     try:
-        board_axi_ddr_cert_path = artifact_path(state, "artifact.stage7.board_axi_ddr_promotion_certificate")
+        board_axi_ddr_cert_path = artifact_path(state, "artifact.stage6.board_axi_ddr_promotion_certificate")
         board_axi_ddr_cert = read_json(board_axi_ddr_cert_path)
     except Exception as exc:
         board_axi_ddr_cert_path = None
         board_axi_ddr_cert = {}
         blockers.append(f"Stage7 board AXI/DDR wrapped-system promotion certificate is missing or unreadable: {exc}")
     if board_axi_ddr_cert:
-        cert_transition = artifact_producer_transition(state, "artifact.stage7.board_axi_ddr_promotion_certificate")
+        cert_transition = artifact_producer_transition(state, "artifact.stage6.board_axi_ddr_promotion_certificate")
         cert_transition_status = str((cert_transition or {}).get("status") or "missing")
         if cert_transition_status != "promoted":
             blockers.append(f"Stage7 board AXI/DDR promotion certificate transition is {cert_transition_status}, expected promoted")
@@ -947,19 +1467,23 @@ def check_upstream_hierarchical_verification_closure(state: dict[str, Any]) -> d
     if missing_levels:
         blockers.append(f"Stage7 hierarchical maturity missing pass levels before backend: {missing_levels}")
     return {
-        "schema_version": "spatialaccagent.stage9_upstream_hierarchy_gate.v0",
+        "schema_version": "spatialaccagent.stage7_upstream_hierarchy_gate.v1",
         "status": "pass" if not blockers else "fail",
         "backend_ready": not blockers,
+        "closure_mode": "strict_hierarchical",
         "verification_result": verification_path,
         "stage7_transition_status": transition_status,
+        "board_bringup_ready": False,
+        "board_bringup_readiness": board_bringup_readiness,
         "board_axi_ddr_promotion_certificate": str(board_axi_ddr_cert_path) if board_axi_ddr_cert_path else None,
         "maturity": maturity,
         "debug_closure": debug_closure,
         "blockers": blockers,
         "policy": {
-            "stage9_must_not_execute_vivado_or_board_tools_before_strict_hierarchical_maturity": True,
-            "stage9_requires_board_axi_ddr_wrapped_system_promotion_certificate": True,
-            "blocked_stage9_records_sacg_recovery_instead_of_running_backend": True,
+            "stage7_must_not_execute_vivado_or_board_tools_before_strict_hierarchical_maturity": True,
+            "stage7_requires_board_axi_ddr_wrapped_system_promotion_certificate": True,
+            "blocked_stage7_records_sacg_recovery_instead_of_running_backend": True,
+            "board_bringup_readiness_is_required_before_vivado": True,
         },
     }
 
@@ -1105,6 +1629,38 @@ def backend_llm_decision_packet(plan: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def backend_qor_decision_packet(plan: dict[str, Any]) -> dict[str, Any]:
+    """Expose only current exact QoR evidence to the QoR routing agent."""
+
+    qor = plan.get("qor", {}) if isinstance(plan.get("qor"), dict) else {}
+    optimization = plan.get("qor_optimization", {}) if isinstance(plan.get("qor_optimization"), dict) else {}
+    return {
+        "schema_version": "spatialaccagent.backend_qor_decision_packet.v0",
+        "stage": "backend_board",
+        "measurement_scope": EXACT_TARGET_BOARD_APP_SHELL_SCOPE,
+        "qor_outputs": ["resources", "power_w", "clock_frequency_mhz", "performance_tokens_per_second"],
+        "measured_qor": {
+            "resources": qor.get("resources"),
+            "power_w": qor.get("power_w"),
+            "clock_frequency_mhz": qor.get("clock_frequency_mhz"),
+            "performance_tokens_per_second": qor.get("performance_tokens_per_second"),
+        },
+        "misses": optimization.get("misses", []),
+        "targets_checked": optimization.get("targets_checked", []),
+        "dse_campaign": {
+            "status": (plan.get("dse_campaign") or {}).get("status") if isinstance(plan.get("dse_campaign"), dict) else None,
+            "unmeasured_candidate_ids": (plan.get("dse_campaign") or {}).get("unmeasured_candidate_ids", []) if isinstance(plan.get("dse_campaign"), dict) else [],
+            "pareto_candidate_ids": (plan.get("dse_campaign") or {}).get("pareto_candidate_ids", []) if isinstance(plan.get("dse_campaign"), dict) else [],
+        },
+        "routing_policy": {
+            "local_optimization": "Use when the current architecture can plausibly satisfy the exact miss by a bounded RTL, pipeline, or implementation repair without changing Stage4 physical parameters.",
+            "dse_backtrack": "Use when the exact miss requires changing a legal physical architecture parameter and measuring another candidate through the same app-shell Vivado closure.",
+            "pass": "Use only when all supplied hard targets are met.",
+            "framework_must_not_choose_by_ratio": True,
+        },
+    }
+
+
 def compact_report(path: Path, extra_keys: list[str] | None = None) -> dict[str, Any]:
     if not path.is_file():
         return {"path": str(path), "status": "missing"}
@@ -1212,7 +1768,7 @@ def prompt_for_backend_recovery(context: dict[str, Any]) -> str:
     return build_prompt(
         agent="backend_bounded_recovery_agent",
         task=(
-            "Generate the next bounded recovery action for Stage9 backend/app-shell closure. "
+            "Generate the next bounded recovery action for Stage-7 backend/app-shell closure. "
             "Use the multi-agent design-team outputs and real tool evidence; do not guess board, model, or target names."
         ),
         inputs=context,
@@ -1633,7 +2189,7 @@ def build_board_shell_contract(
             "board_runtime_log_pass": False,
         },
         "missing_fields": missing_fields,
-        "policy": "The contract is derived from current-run artifacts and source-evidence-resolved board profile; it must not encode case-specific constants in Stage9 core.",
+        "policy": "The contract is derived from current-run artifacts and source-evidence-resolved board profile; it must not encode case-specific constants in the Stage-7 core.",
     }
 
 
@@ -1752,7 +2308,7 @@ def build_target_discovery_policy(
         "llm_expected_role": (
             "When profile fields are incomplete, the multi-agent design team must infer candidate_name_hints "
             "from user-supplied board/app-shell materials and real Vivado evidence with cited sources; "
-            "Stage9 scripts must not invent Qwen/OPT/app-shell/project-specific keywords."
+            "Stage-7 scripts must not invent Qwen/OPT/app-shell/project-specific keywords."
         ),
     }
 
@@ -1774,6 +2330,10 @@ def build_app_shell_integration_contract(
     generated_core = board_shell_contract.get("generated_core", {}) if isinstance(board_shell_contract.get("generated_core"), dict) else {}
     runtime_abi = board_shell_contract.get("runtime_abi", {}) if isinstance(board_shell_contract.get("runtime_abi"), dict) else {}
     existing_contract = read_json_if_exists(app_shell_integration_contract_path(run_dir))
+    board_identity, binding_requirements = current_app_shell_binding_artifacts(run_dir)
+    compute_slot_abi = board_identity.get("compute_slot_abi", {}) if isinstance(board_identity.get("compute_slot_abi"), dict) else {}
+    connected_weight = binding_requirements.get("connected_weight_stream_contract", {}) if isinstance(binding_requirements.get("connected_weight_stream_contract"), dict) else {}
+    connected_runtime = binding_requirements.get("connected_runtime_stream_contract", {}) if isinstance(binding_requirements.get("connected_runtime_stream_contract"), dict) else {}
     existing_target = existing_contract.get("integration_target", {}) if isinstance(existing_contract.get("integration_target"), dict) else {}
     existing_discovery = existing_contract.get("target_discovery", {}) if isinstance(existing_contract.get("target_discovery"), dict) else {}
     existing_target_selection_decision = (
@@ -1794,8 +2354,17 @@ def build_app_shell_integration_contract(
     shell_project = first_nonblank(shell.get("vivado_project_path"), sample_project.get("source_path"))
     remote_host = first_nonblank(runtime.get("remote_host"), sample_project.get("host"), runtime_abi.get("remote_host"))
     remote_port = first_nonblank(runtime.get("remote_ssh_port"), sample_project.get("ssh_port"))
+    slot_module = first_nonblank(compute_slot_abi.get("replacement_module_identity"), compute_slot_abi.get("slot_module"))
+    slot_instance = first_nonblank(compute_slot_abi.get("replacement_instance_boundary"), compute_slot_abi.get("slot_instance_path"))
+    slot_cell = compute_slot_abi.get("selected_cell_id")
+    slot_ooc_run = first_nonblank(
+        compute_slot_abi.get("ooc_run"),
+        f"{slot_module}_synth_1" if nonblank(slot_module) else None,
+    )
+    identity_ready = compute_slot_abi.get("status") == "pass" and bool(compute_slot_abi.get("all_required_ports_bound"))
     integration_target = {
         "ip_name": first_nonblank(
+            slot_module,
             existing_target.get("ip_name"),
             shell.get("accelerator_ip_name"),
             shell.get("compute_ip_name"),
@@ -1804,6 +2373,7 @@ def build_app_shell_integration_contract(
             sample_project.get("target_ip_name"),
         ),
         "bd_cell": first_nonblank(
+            slot_instance,
             existing_target.get("bd_cell"),
             shell.get("accelerator_bd_cell"),
             shell.get("compute_bd_cell"),
@@ -1811,8 +2381,26 @@ def build_app_shell_integration_contract(
             sample_project.get("accelerator_bd_cell"),
             sample_project.get("target_bd_cell"),
         ),
-        "bd_path": first_nonblank(existing_target.get("bd_path"), shell.get("bd_path"), sample_project.get("bd_path")),
-        "adapter_contract": first_nonblank(existing_target.get("adapter_contract"), shell.get("adapter_contract"), sample_project.get("adapter_contract")),
+        "bd_path": first_nonblank(existing_target.get("bd_path"), shell.get("bd_path"), sample_project.get("bd_path"), board_identity.get("top_module")),
+        "adapter_contract": first_nonblank(existing_target.get("adapter_contract"), shell.get("adapter_contract"), sample_project.get("adapter_contract"), "compute_slot_abi"),
+        "replacement_module_identity": slot_module,
+        "replacement_instance_boundary": slot_instance,
+        "selected_cell_id": slot_cell,
+        "ooc_run": slot_ooc_run,
+    }
+    identity_selection = {
+        "decision": "approved_target" if identity_ready else "unresolved_target",
+        "selection_reason": "selected from current board_source_identity.compute_slot_abi",
+        "selected_target": {
+            "module": slot_module,
+            "instance_path": slot_instance,
+            "selected_cell_id": slot_cell,
+            "ooc_run": slot_ooc_run,
+        },
+        "evidence": [
+            str(board_source_identity_path(run_dir)),
+            f"compute_slot_abi_sha256={board_identity.get('compute_slot_abi_sha256')}",
+        ],
     }
     target_discovery_policy = build_target_discovery_policy(existing_contract, shell, sample_project, integration_target)
     required_fields = {
@@ -1824,14 +2412,17 @@ def build_app_shell_integration_contract(
         "generated_core.top_module": generated_core.get("top_module"),
         "runtime_abi.control_protocol": runtime_abi.get("control_protocol"),
         "remote_host": remote_host,
+        "compute_slot_abi.status": compute_slot_abi.get("status"),
+        "compute_slot_abi.replacement_module_identity": slot_module,
+        "compute_slot_abi.replacement_instance_boundary": slot_instance,
     }
     missing_fields = [name for name, value in required_fields.items() if not nonblank(value)]
-    target_selected = nonblank(first_nonblank(integration_target.get("ip_name"), integration_target.get("bd_cell")))
+    target_selected = identity_ready and nonblank(first_nonblank(integration_target.get("ip_name"), integration_target.get("bd_cell")))
     if missing_fields:
         status = "incomplete"
     elif target_selected:
         status = "ready_for_app_shell_generation"
-    elif existing_discovery:
+    elif existing_discovery and not identity_ready:
         status = "target_discovery_needs_approval"
     else:
         status = "target_discovery_required"
@@ -1846,6 +2437,9 @@ def build_app_shell_integration_contract(
             "board_shell_wrapper_rtl": str(board_shell_wrapper_rtl_path(run_dir)),
             "board_shell_wrapper_manifest": str(board_shell_wrapper_manifest_path(run_dir)),
             "runtime_board_shell_vivado_report": str(runtime_report_path) if nonblank(runtime_report_path) else None,
+            "board_source_identity": str(board_source_identity_path(run_dir)),
+            "dut_weight_binding_requirements": str(dut_weight_binding_requirements_path(run_dir)),
+            "semantic_testbench_manifest": str(semantic_testbench_manifest_path(run_dir)),
         },
         "shell_project": {
             "name": first_nonblank(shell.get("name"), shell.get("base_shell_name")),
@@ -1858,9 +2452,21 @@ def build_app_shell_integration_contract(
             "ddr_axi_interface": first_nonblank(shell.get("core_ddr_axi_interface"), board_interface.get("raw_interface_name")),
         },
         "integration_target": integration_target,
+        "compute_slot_abi": compute_slot_abi,
+        "loader_route_contract": {
+            "weight": connected_weight,
+            "runtime": connected_runtime,
+        },
+        "dut_loader_route_contract": binding_requirements.get("loader_route_contract", {}),
+        "source_identity": {
+            "schema_version": board_identity.get("schema_version"),
+            "status": board_identity.get("status"),
+            "compute_slot_abi_sha256": board_identity.get("compute_slot_abi_sha256"),
+            "selected_simulation_source_closure_sha256": board_identity.get("selected_simulation_source_closure_sha256"),
+        },
         "target_discovery_policy": target_discovery_policy,
         "target_discovery": existing_discovery,
-        "target_selection_decision": existing_target_selection_decision,
+        "target_selection_decision": existing_target_selection_decision or identity_selection,
         "board_interface": board_interface,
         "generated_core": generated_core,
         "runtime_abi": runtime_abi,
@@ -1876,6 +2482,8 @@ def build_app_shell_integration_contract(
             "Open or clone the shell_project.vivado_project_path supplied by the board profile.",
             "Use the LLM design-team roles to convert user board/app-shell material and real Vivado evidence into target_discovery_policy updates with cited source fields.",
             "Integrate the generated runtime wrapper as an internal compute block behind the existing shell DDR/AXI subsystem.",
+            "Generate the replacement module named by compute_slot_abi.replacement_module_identity and match compute_slot_abi.required_ports exactly.",
+            "Use loader_route_contract from the current real-weight/runtime contracts to connect GeneratedAxiDdrTop; do not instantiate a semantic harness substitute.",
             "Connect board_interface.signal_prefix, clock, reset, and calibration signals inside the shell instead of exposing them as top-level FPGA pins.",
             "Preserve runtime_abi register/DDRx address semantics and memory_layout offsets from the current run.",
             "Run shell-level synthesis, implementation, timing, DRC, bitstream generation, and board runtime log collection before claiming pass.",
@@ -1886,19 +2494,19 @@ def build_app_shell_integration_contract(
             "shell_level_timing_drc_clean": True,
             "app_shell_bitstream_exists": True,
             "board_runtime_log_pass": True,
+            "compute_slot_abi_status_pass": True,
+            "generated_adapter_exact_port_match": True,
         },
         "missing_fields": missing_fields,
-        "policy": "This contract is derived from current-run board/profile/evidence artifacts and must not encode Qwen, OPT, or a fixed board in Stage9 core.",
+        "policy": "This contract is derived from current-run board/profile/evidence artifacts and must not encode Qwen, OPT, or a fixed board in the Stage-7 core.",
     }
 
 
 def generate_backend_package(run_dir: Path, state: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
     package_dir = run_dir / "generated" / "backend"
-    scripts_dir = package_dir / "scripts"
     constraints_dir = package_dir / "constraints"
     reports_dir = package_dir / "reports"
     rtl_dir = package_dir / "rtl"
-    scripts_dir.mkdir(parents=True, exist_ok=True)
     constraints_dir.mkdir(parents=True, exist_ok=True)
     reports_dir.mkdir(parents=True, exist_ok=True)
     rtl_dir.mkdir(parents=True, exist_ok=True)
@@ -1908,39 +2516,19 @@ def generate_backend_package(run_dir: Path, state: dict[str, Any], plan: dict[st
     runtime_cfg = run_dir / "generated" / "chisel" / "runtime" / "runtime_config.json"
     memory_layout = run_dir / "generated" / "chisel" / "memory" / "memory_layout.json"
 
-    synth_tcl = f"""# SpatialAccAgent generated Vivado synthesis handoff.
-# This script is a backend entry scaffold. Replace PART/TOP/fileset handling
-# with the target board shell before claiming backend pass.
-set design_id "{state.get('design_id')}"
-set code_root "{code_root}"
-set top_name "GeneratedAxiDdrTop"
-puts "SpatialAccAgent synth handoff for $design_id"
-puts "Generated Chisel root: $code_root"
-puts "Top module: $top_name"
-puts "TODO: run Chisel elaboration, import generated SystemVerilog, apply board XDC, synth_design."
-"""
-    impl_tcl = """# SpatialAccAgent generated Vivado implementation handoff.
-puts "TODO: open synthesized design, run opt/place/route, report timing/resource, write bitstream."
-"""
-    smoke = f"""#!/usr/bin/env bash
-set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-echo "SpatialAccAgent board smoke handoff"
-echo "runtime_config={runtime_cfg}"
-echo "memory_layout={memory_layout}"
-echo "Attach the board-specific run command in tool_protocols before final pass."
-exit 2
-"""
-    collect = """#!/usr/bin/env bash
-set -euo pipefail
-echo "Collect Vivado/board reports into generated/backend/reports"
-"""
-    write_text(scripts_dir / "vivado_synth.tcl", synth_tcl)
-    write_text(scripts_dir / "vivado_impl.tcl", impl_tcl)
-    write_text(scripts_dir / "board_smoke.sh", smoke)
-    write_text(scripts_dir / "collect_reports.sh", collect)
-    for script in ["board_smoke.sh", "collect_reports.sh"]:
-        (scripts_dir / script).chmod(0o755)
+    # Real execution belongs exclusively to the current case adapter's exact
+    # app-shell Vivado tool. Do not emit placeholder Tcl or smoke scripts that
+    # look executable but cannot produce valid board evidence.
+    stale_scripts_dir = package_dir / "scripts"
+    if stale_scripts_dir.is_dir():
+        for name in ("vivado_synth.tcl", "vivado_impl.tcl", "board_smoke.sh", "collect_reports.sh"):
+            path = stale_scripts_dir / name
+            if path.exists():
+                path.unlink()
+        try:
+            stale_scripts_dir.rmdir()
+        except OSError:
+            pass
     write_json(
         constraints_dir / "backend_handoff.json",
         {
@@ -1950,10 +2538,11 @@ echo "Collect Vivado/board reports into generated/backend/reports"
             "top_name": "GeneratedAxiDdrTop",
             "runtime_config": str(runtime_cfg),
             "memory_layout": str(memory_layout),
-            "closure_steps": plan.get("closure_steps", []),
+            "qor_outputs": plan.get("qor_outputs", []),
             "pass_criteria": plan.get("pass_criteria", {}),
             "final_design_pass_blockers": plan.get("final_design_pass_blockers", []),
-            "rule": "Generated scripts are handoff scaffolds. Real backend and board tool evidence is required for final pass.",
+            "execution_authority": "case_adapter.app_shell_runtime_bitstream",
+            "rule": "Only the current case adapter's exact app-shell Vivado tool may execute backend work or establish final board evidence.",
         },
     )
     board_shell_contract = build_board_shell_contract(state, plan, runtime_cfg, memory_layout)
@@ -1971,12 +2560,6 @@ echo "Collect Vivado/board reports into generated/backend/reports"
         "board_shell_wrapper_manifest": str(board_shell_wrapper_manifest_path(run_dir)),
         "app_shell_integration_contract": str(app_shell_contract_path),
         "app_shell_target_selection_decision": str(reports_dir / "app_shell_target_selection_decision.json"),
-        "scripts": {
-            "vivado_synthesis": str(scripts_dir / "vivado_synth.tcl"),
-            "vivado_implementation": str(scripts_dir / "vivado_impl.tcl"),
-            "board_smoke": str(scripts_dir / "board_smoke.sh"),
-            "collect_reports": str(scripts_dir / "collect_reports.sh"),
-        },
     }
 
 
@@ -1986,6 +2569,8 @@ def build_plan(
     tool_selection_blockers: list[str],
     resolved_board_profile: dict[str, Any],
     upstream_hierarchy_gate: dict[str, Any] | None = None,
+    dse_measurement: dict[str, Any] | None = None,
+    dse_campaign: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     deployment = constraint_facts(state, "constraint.deployment.board")
     memory = constraint_facts(state, "constraint.memory.board")
@@ -1997,16 +2582,16 @@ def build_plan(
     resolved_shell = resolved_profile.get("shell", {}) if isinstance(resolved_profile.get("shell"), dict) else deployment.get("shell", {})
     resolved_pass_criteria = resolved_profile.get("board_pass_criteria", {}) if isinstance(resolved_profile.get("board_pass_criteria"), dict) else deployment.get("board_pass_criteria", {})
     try:
-        repair = read_json(artifact_path(state, "artifact.stage8.repair_plan"))
+        repair = read_json(artifact_path(state, "artifact.stage6.repair_plan"))
     except KeyError:
         repair = {
             "schema_version": "spatialaccagent.repair_plan.v0",
             "stage": "repair",
             "status": "not_required",
             "pending_evidence": [],
-            "summary": "No Stage8 repair plan is required when upstream Stage7 verification is already promoted.",
+            "summary": "No Stage-6 repair plan is required when upstream verification is already promoted.",
         }
-    verification = read_json(artifact_path(state, "artifact.stage7.verification_result"))
+    verification = read_json(artifact_path(state, "artifact.stage6.verification_result"))
     artifacts = read_json(artifact_path(state, "artifact.stage5.design_artifact_manifest"))
     pending = repair.get("pending_evidence", [])
     verification_tools = [item for item in verification.get("results", []) if str(item.get("checker", "")).startswith("real_tool.")]
@@ -2030,20 +2615,65 @@ def build_plan(
     ] if upstream_hierarchy_gate.get("status") != "pass" else []
     passed_tool_names = {str(item.get("checker", "")).removeprefix("real_tool.") for item in passed_tools}
     final_required_tools = [
-        "case_vivado_synthesis",
-        "case_vivado_synthesis_report_check",
-        "case_vivado_implementation",
-        "case_vivado_implementation_report_check",
         "case_board_shell_wrapper_generate",
+        "case_compute_slot_adapter_generate",
         "app_shell_target_discovery_contract",
         "app_shell_target_hint_synthesis",
         "app_shell_target_discovery_after_hint",
-        "case_runtime_abi_check",
-        "case_runtime_bitstream",
         "app_shell_runtime_bitstream",
-        "board_runtime",
+        "case_runtime_abi_check",
+        "case_stage7_metrics",
+    ]
+    implementation_required_tools = [
+        "app_shell_runtime_bitstream",
+        "case_stage7_metrics",
     ]
     missing_final_tools = [name for name in final_required_tools if name not in passed_tool_names]
+    missing_implementation_tools = [
+        name for name in implementation_required_tools if name not in passed_tool_names
+    ]
+    board_bringup_ready = upstream_hierarchy_gate.get("board_bringup_ready") is True
+    implementation_closure_blockers = [
+        *(["current Stage7 board bring-up readiness is not established"] if not board_bringup_ready else []),
+        *[f"implementation evidence missing: {name}" for name in missing_implementation_tools],
+    ]
+    implementation_closure = {
+        "status": "pass" if not implementation_closure_blockers else "pending",
+        "required_upstream": "artifact.stage6.board_bringup_certificate",
+        "board_bringup_ready": board_bringup_ready,
+        "required_tools": implementation_required_tools,
+        "missing_tools": missing_implementation_tools,
+        "blockers": implementation_closure_blockers,
+        "acceptance": [
+            "real runtime and full weight loading completed",
+            "real Layer-3 board VCS compile and startup completed without syntax failure",
+            "Vivado synthesis completed",
+            "Vivado implementation completed",
+            "Vivado synthesis/implementation reports are readable",
+        ],
+        "does_not_require": [
+            "complete token output",
+            "final DDR writeback",
+            "bitstream generation",
+            "physical-board runtime",
+        ],
+    }
+    stage7_metrics_result = next(
+        (
+            item.get("tool_report_digest", {})
+            for item in real_tools
+            if item.get("checker") == "real_tool.case_stage7_metrics"
+        ),
+        {},
+    )
+    dse_measurement = dse_measurement or {}
+    dse_campaign = dse_campaign or {}
+    qor_optimization = classify_qor_optimization(
+        state,
+        stage7_metrics_result,
+        campaign=dse_campaign,
+        measurement=dse_measurement,
+    )
     blockers = [
         f"pending real tool: {item['checker']}"
         for item in pending_tools
@@ -2054,6 +2684,8 @@ def build_plan(
         f"final backend/board evidence missing: {name}"
         for name in missing_final_tools
     ] + upstream_blockers + selected_tool_blockers + artifacts.get("target_model_artifact_status", {}).get("missing_for_target", [])
+    if qor_optimization.get("decision") == "llm_required":
+        blockers.append("exact QoR miss requires an LLM routing decision before Stage4/Stage5 backtrack")
     return {
         "schema_version": "spatialaccagent.backend_board_plan.v0",
         "stage": "backend_board",
@@ -2065,8 +2697,8 @@ def build_plan(
         "runtime_interface": resolved_runtime,
         "resolved_board_profile": {
             "path": resolved_board_profile.get("path") if isinstance(resolved_board_profile, dict) else None,
-            "filled_fields": resolved_profile.get("_stage9_resolution", {}).get("filled_fields", []),
-            "policy": resolved_profile.get("_stage9_resolution", {}).get("policy"),
+            "filled_fields": resolved_profile.get("_stage7_resolution", {}).get("filled_fields", []),
+            "policy": resolved_profile.get("_stage7_resolution", {}).get("policy"),
         },
         "design_closure_metrics": {
             "nodes": len(state.get("nodes", [])),
@@ -2094,20 +2726,19 @@ def build_plan(
             "upstream_hierarchy_gate": upstream_hierarchy_gate,
         },
         "upstream_hierarchy_gate": upstream_hierarchy_gate,
+        "implementation_closure": implementation_closure,
+        "qor": stage7_metrics_result,
+        "dse_measurement": dse_measurement,
+        "dse_campaign": dse_campaign,
+        "qor_optimization": qor_optimization,
         "target_model_artifact_status": artifacts.get("target_model_artifact_status", {}),
         "final_design_pass": not blockers and not failed_invariants,
         "final_design_pass_blockers": blockers,
-        "closure_steps": [
-            "synthesis",
-            "implementation",
-            "timing_report",
-            "resource_report",
-            "bitstream_generation",
-            "board_shell_wrapper_generation",
-            "runtime_abi_contract",
-            "app_shell_integration",
-            "board_runtime_smoke",
-            "benchmark_report",
+        "qor_outputs": [
+            "resources",
+            "power_w",
+            "clock_frequency_mhz",
+            "performance_tokens_per_second",
         ],
         "pass_criteria": resolved_pass_criteria,
         "generated_code_package": artifacts.get("generated_package_root"),
@@ -2130,8 +2761,8 @@ def update_sacg(
         "backend",
         ["node.target_board"],
         [],
-        ["artifact.stage9.backend_board_plan"],
-        {"closure_steps": plan["closure_steps"], "pass_criteria": plan["pass_criteria"]},
+        ["artifact.stage7.backend_board_plan"],
+        {"qor_outputs": plan["qor_outputs"], "pass_criteria": plan["pass_criteria"]},
     )
     add_constraint(
         state,
@@ -2140,18 +2771,18 @@ def update_sacg(
         ["node.target_board"],
         [],
         [
-            "artifact.stage9.backend_board_plan",
-            "artifact.stage9.backend_package",
-            "artifact.stage9.board_shell_contract",
-            "artifact.stage9.board_shell_wrapper_rtl",
-            "artifact.stage9.board_shell_wrapper_manifest",
-            "artifact.stage9.app_shell_integration_contract",
-            "artifact.stage9.app_shell_target_selection_decision",
-            "artifact.stage9.backend_bounded_recovery_actions",
+            "artifact.stage7.backend_board_plan",
+            "artifact.stage7.backend_package",
+            "artifact.stage7.board_shell_contract",
+            "artifact.stage7.board_shell_wrapper_rtl",
+            "artifact.stage7.board_shell_wrapper_manifest",
+            "artifact.stage7.app_shell_integration_contract",
+            "artifact.stage7.app_shell_target_selection_decision",
+            "artifact.stage7.backend_bounded_recovery_actions",
         ],
         {
             "backend_package": plan.get("backend_package", {}),
-            "closure_steps": plan["closure_steps"],
+            "qor_outputs": plan["qor_outputs"],
             "real_tool_status": plan.get("real_tool_status", {}),
             "board_shell_contract": plan.get("backend_package", {}).get("board_shell_contract"),
             "board_shell_wrapper_rtl": plan.get("backend_package", {}).get("board_shell_wrapper_rtl"),
@@ -2165,7 +2796,7 @@ def update_sacg(
         "backend",
         ["node.target_board"],
         [],
-        ["artifact.stage9.backend_board_plan", "artifact.stage9.backend_real_tool_results"],
+        ["artifact.stage7.backend_board_plan", "artifact.stage7.backend_real_tool_results"],
         {
             "execution_scope": plan.get("execution_scope"),
             "real_tool_status": plan.get("real_tool_status", {}),
@@ -2178,10 +2809,10 @@ def update_sacg(
         "backend",
         ["node.target_board"],
         [],
-        ["artifact.stage9.backend_bounded_recovery_actions"],
+        ["artifact.stage7.backend_bounded_recovery_actions"],
         {
             "bounded_recovery_actions": plan.get("bounded_recovery_actions", {}),
-            "rule": "When backend/app-shell closure is blocked, Stage9 must emit an LLM-derived bounded recovery action before the next tool attempt.",
+            "rule": "When backend/app-shell closure needs repair, Stage 7 must emit an LLM-derived bounded recovery action before the next tool attempt.",
         },
     )
     add_constraint(
@@ -2191,14 +2822,14 @@ def update_sacg(
         ["node.target_board"],
         [],
         [
-            "artifact.stage9.app_shell_integration_contract",
-            "artifact.stage9.app_shell_target_selection_decision",
-            "artifact.stage9.board_shell_contract",
+            "artifact.stage7.app_shell_integration_contract",
+            "artifact.stage7.app_shell_target_selection_decision",
+            "artifact.stage7.board_shell_contract",
         ],
         {
             "app_shell_integration_contract": plan.get("backend_package", {}).get("app_shell_integration_contract"),
             "app_shell_target_selection_decision": plan.get("backend_package", {}).get("app_shell_target_selection_decision"),
-            "rule": "If standalone board-shell Vivado exposes board AXI as top-level FPGA pins or fails board IO DRC, Stage9 must move to existing shell internal integration rather than demoting DRC.",
+            "rule": "If standalone board-shell Vivado exposes board AXI as top-level FPGA pins or fails board IO DRC, Stage 7 must move to existing shell internal integration rather than demoting DRC.",
         },
     )
     resolved_profile_info = plan.get("resolved_board_profile", {}) if isinstance(plan.get("resolved_board_profile"), dict) else {}
@@ -2209,7 +2840,7 @@ def update_sacg(
         "backend",
         ["node.target_board"],
         [],
-        ["artifact.stage9.resolved_target_board_profile"],
+        ["artifact.stage7.resolved_target_board_profile"],
         {
             "resolved_board_profile": resolved_profile_info,
             "rule": "Backend tools consume a board profile resolved from current-run source evidence; blank fields may be filled, but board facts must not be invented.",
@@ -2235,12 +2866,12 @@ def update_sacg(
         ["node.target_board"],
         [],
         [
-            "artifact.stage9.backend_board_plan",
-            "artifact.stage9.backend_package",
-            "artifact.stage9.backend_real_tool_results",
-            "artifact.stage9.app_shell_integration_contract",
-            "artifact.stage9.app_shell_target_selection_decision",
-            "artifact.stage9.backend_bounded_recovery_actions",
+            "artifact.stage7.backend_board_plan",
+            "artifact.stage7.backend_package",
+            "artifact.stage7.backend_real_tool_results",
+            "artifact.stage7.app_shell_integration_contract",
+            "artifact.stage7.app_shell_target_selection_decision",
+            "artifact.stage7.backend_bounded_recovery_actions",
         ],
         {
             "execution_scope": execution_scope,
@@ -2266,7 +2897,7 @@ def update_sacg(
         note=f"Ran backend and board closure stage for scope={execution_scope}.",
     )
     store.bind_artifact(
-        "artifact.stage9.resolved_target_board_profile",
+        "artifact.stage7.resolved_target_board_profile",
         resolved_profile_path,
         "stage.resolved_target_board_profile",
         ["node.target_board"],
@@ -2275,7 +2906,7 @@ def update_sacg(
         transition["id"],
     )
     store.bind_artifact(
-        "artifact.stage9.backend_board_plan",
+        "artifact.stage7.backend_board_plan",
         str(plan_path),
         "stage.backend_board_plan",
         ["node.target_board"],
@@ -2284,7 +2915,7 @@ def update_sacg(
         transition["id"],
     )
     store.bind_artifact(
-        "artifact.stage9.backend_package",
+        "artifact.stage7.backend_package",
         str(plan.get("backend_package", {}).get("root", "")),
         "stage.backend_package",
         ["node.target_board"],
@@ -2294,7 +2925,7 @@ def update_sacg(
     )
     board_shell_contract_path = str(plan.get("backend_package", {}).get("board_shell_contract", ""))
     store.bind_artifact(
-        "artifact.stage9.board_shell_contract",
+        "artifact.stage7.board_shell_contract",
         board_shell_contract_path,
         "stage.board_shell_contract",
         ["node.target_board"],
@@ -2305,7 +2936,7 @@ def update_sacg(
     board_shell_wrapper_rtl = str(plan.get("backend_package", {}).get("board_shell_wrapper_rtl", ""))
     board_shell_wrapper_manifest = str(plan.get("backend_package", {}).get("board_shell_wrapper_manifest", ""))
     store.bind_artifact(
-        "artifact.stage9.board_shell_wrapper_rtl",
+        "artifact.stage7.board_shell_wrapper_rtl",
         board_shell_wrapper_rtl,
         "stage.board_shell_wrapper_rtl",
         ["node.target_board"],
@@ -2314,7 +2945,7 @@ def update_sacg(
         transition["id"],
     )
     store.bind_artifact(
-        "artifact.stage9.board_shell_wrapper_manifest",
+        "artifact.stage7.board_shell_wrapper_manifest",
         board_shell_wrapper_manifest,
         "stage.board_shell_wrapper_manifest",
         ["node.target_board"],
@@ -2324,7 +2955,7 @@ def update_sacg(
     )
     app_shell_integration_contract = str(plan.get("backend_package", {}).get("app_shell_integration_contract", ""))
     store.bind_artifact(
-        "artifact.stage9.app_shell_integration_contract",
+        "artifact.stage7.app_shell_integration_contract",
         app_shell_integration_contract,
         "stage.app_shell_integration_contract",
         ["node.target_board"],
@@ -2334,7 +2965,7 @@ def update_sacg(
     )
     app_shell_target_selection_decision = str(plan.get("backend_package", {}).get("app_shell_target_selection_decision", ""))
     store.bind_artifact(
-        "artifact.stage9.app_shell_target_selection_decision",
+        "artifact.stage7.app_shell_target_selection_decision",
         app_shell_target_selection_decision,
         "stage.app_shell_target_selection_decision",
         ["node.target_board"],
@@ -2344,7 +2975,7 @@ def update_sacg(
     )
     bounded_recovery_actions = str(plan.get("bounded_recovery_actions", {}).get("path", ""))
     store.bind_artifact(
-        "artifact.stage9.backend_bounded_recovery_actions",
+        "artifact.stage7.backend_bounded_recovery_actions",
         bounded_recovery_actions,
         "stage.backend_bounded_recovery_actions",
         ["node.target_board"],
@@ -2355,7 +2986,7 @@ def update_sacg(
     tool_log_dir = plan_path.parent / "real_tools"
     tool_log_dir.mkdir(parents=True, exist_ok=True)
     store.bind_artifact(
-        "artifact.stage9.backend_real_tool_results",
+        "artifact.stage7.backend_real_tool_results",
         str(tool_log_dir),
         "stage.backend_real_tool_results",
         ["node.target_board"],
@@ -2450,7 +3081,7 @@ def update_sacg(
         status="pass" if resolved_path.exists() else "fail",
         invariant="invariant.backend_resolved_board_profile_check",
         constraints=[RESOLVED_BOARD_CONSTRAINT],
-        artifacts=["artifact.stage9.resolved_target_board_profile"],
+        artifacts=["artifact.stage7.resolved_target_board_profile"],
         log_path=resolved_profile_path or str(plan_path),
         transition_id=transition["id"],
         summary=f"resolved board profile path={resolved_profile_path} filled_fields={resolved_profile_info.get('filled_fields', [])}",
@@ -2460,7 +3091,7 @@ def update_sacg(
         status="pass",
         invariant="invariant.backend_board_plan_static",
         constraints=scoped_constraints,
-        artifacts=["artifact.stage9.backend_board_plan"],
+        artifacts=["artifact.stage7.backend_board_plan"],
         log_path=str(plan_path),
         transition_id=transition["id"],
         summary="backend board plan artifact generated",
@@ -2471,7 +3102,7 @@ def update_sacg(
         status="pass" if package_root.exists() else "fail",
         invariant="invariant.backend_package_static",
         constraints=scoped_constraints,
-        artifacts=["artifact.stage9.backend_package"],
+        artifacts=["artifact.stage7.backend_package"],
         log_path=str(plan_path),
         transition_id=transition["id"],
         summary=f"backend package root={package_root}",
@@ -2483,7 +3114,7 @@ def update_sacg(
         status="pass" if contract_path.is_file() and contract.get("status") == "ready_for_generation" else "fail",
         invariant="invariant.backend_board_shell_contract_static",
         constraints=scoped_constraints,
-        artifacts=["artifact.stage9.board_shell_contract"],
+        artifacts=["artifact.stage7.board_shell_contract"],
         log_path=board_shell_contract_path or str(plan_path),
         transition_id=transition["id"],
         summary=f"board shell contract status={contract.get('status')} missing_fields={contract.get('missing_fields', [])}",
@@ -2496,7 +3127,7 @@ def update_sacg(
         status="pass" if wrapper_rtl_path.is_file() and wrapper_manifest.get("status") == "pass" else "fail",
         invariant="invariant.backend_board_shell_wrapper_static",
         constraints=scoped_constraints,
-        artifacts=["artifact.stage9.board_shell_wrapper_rtl", "artifact.stage9.board_shell_wrapper_manifest"],
+        artifacts=["artifact.stage7.board_shell_wrapper_rtl", "artifact.stage7.board_shell_wrapper_manifest"],
         log_path=board_shell_wrapper_manifest or str(plan_path),
         transition_id=transition["id"],
         summary=f"board shell wrapper manifest status={wrapper_manifest.get('status')} rtl_exists={wrapper_rtl_path.is_file()}",
@@ -2509,7 +3140,7 @@ def update_sacg(
         status="pass" if app_shell_contract_path.is_file() and app_shell_contract.get("status") in app_shell_ready_statuses else "fail",
         invariant="invariant.backend_app_shell_integration_contract_static",
         constraints=[APP_SHELL_INTEGRATION_CONSTRAINT],
-        artifacts=["artifact.stage9.app_shell_integration_contract"],
+        artifacts=["artifact.stage7.app_shell_integration_contract"],
         log_path=app_shell_integration_contract or str(plan_path),
         transition_id=transition["id"],
         summary=(
@@ -2525,7 +3156,7 @@ def update_sacg(
         status="pass" if decision_path.is_file() and decision_kind in {"approved_target", "approved_policy_hints", "defer"} else "fail",
         invariant="invariant.backend_app_shell_target_hint_synthesis",
         constraints=[APP_SHELL_INTEGRATION_CONSTRAINT],
-        artifacts=["artifact.stage9.app_shell_target_selection_decision"],
+        artifacts=["artifact.stage7.app_shell_target_selection_decision"],
         log_path=app_shell_target_selection_decision or str(plan_path),
         transition_id=transition["id"],
         summary=f"target selection decision={decision_kind or '<missing>'} path={app_shell_target_selection_decision}",
@@ -2537,7 +3168,7 @@ def update_sacg(
         status="pass" if recovery_path.is_file() and recovery_report.get("status") == "pass" else "fail",
         invariant="invariant.backend_bounded_recovery_action_check",
         constraints=[BACKEND_RECOVERY_CONSTRAINT],
-        artifacts=["artifact.stage9.backend_bounded_recovery_actions"],
+        artifacts=["artifact.stage7.backend_bounded_recovery_actions"],
         log_path=bounded_recovery_actions or str(plan_path),
         transition_id=transition["id"],
         summary=f"bounded recovery status={recovery_report.get('status')} decision={recovery_report.get('decision')}",
@@ -2547,7 +3178,7 @@ def update_sacg(
         status="pass" if scope_is_pass else "fail",
         invariant="invariant.backend_real_tool_evidence_check",
         constraints=scoped_constraints,
-        artifacts=["artifact.stage9.backend_board_plan"],
+        artifacts=["artifact.stage7.backend_board_plan"],
         log_path=str(plan_path),
         transition_id=transition["id"],
         summary=f"backend execution scope={plan.get('execution_scope')} scope_pass={scope_is_pass}",
@@ -2558,7 +3189,7 @@ def update_sacg(
         status="pass" if upstream_gate.get("status") == "pass" else "fail",
         invariant="invariant.backend_upstream_hierarchy_check",
         constraints=scoped_constraints,
-        artifacts=["artifact.stage9.backend_board_plan"],
+        artifacts=["artifact.stage7.backend_board_plan"],
         log_path=str(plan_path),
         transition_id=transition["id"],
         summary="Stage7 hierarchical maturity is backend-ready" if upstream_gate.get("status") == "pass" else "; ".join(str(item) for item in upstream_gate.get("blockers", [])[:8]),
@@ -2575,7 +3206,7 @@ def update_sacg(
             status=status if status in {"pass", "fail"} else "fail",
             invariant=invariant_id,
             constraints=scoped_constraints,
-            artifacts=["artifact.stage9.backend_board_plan"],
+            artifacts=["artifact.stage7.backend_board_plan"],
             log_path=str(plan_path),
             transition_id=transition["id"],
             summary=str(item.get("summary") or ""),
@@ -2594,7 +3225,7 @@ def update_sacg(
             status=evidence_status,
             invariant=invariant_id,
             constraints=scoped_constraints,
-            artifacts=["artifact.stage9.backend_board_plan"],
+            artifacts=["artifact.stage7.backend_board_plan"],
             log_path=str(item.get("log_path") or plan_path),
             transition_id=transition["id"],
             summary=str(item.get("summary") or ""),
@@ -2629,7 +3260,7 @@ def update_sacg(
             status="pass",
             invariant=str(invariant["id"]),
             constraints=list(invariant.get("constraints") or []),
-            artifacts=["artifact.stage9.backend_board_plan"],
+            artifacts=["artifact.stage7.backend_board_plan"],
             log_path=str(latest.get("log_path") or plan_path),
             transition_id=transition["id"],
             summary=f"carried forward existing pass evidence: {latest.get('summary', '')}",
@@ -2645,55 +3276,69 @@ def update_sacg(
             if item.get("status") == "fail"
         )
         store.record_failure_lesson(
-            stage="stage9.backend_board",
+            stage="stage7.backend_board",
             failure_class="backend_board_gate",
-            summary="; ".join(blockers[:8]) or "Stage9 backend/board execution scope did not pass",
+            summary="; ".join(blockers[:8]) or "Stage-7 backend/board execution scope did not pass",
             violated_constraints=scoped_constraints,
             artifacts=[
-                "artifact.stage9.backend_board_plan",
-                "artifact.stage9.app_shell_integration_contract",
-                "artifact.stage9.backend_bounded_recovery_actions",
+                "artifact.stage7.backend_board_plan",
+                "artifact.stage7.app_shell_integration_contract",
+                "artifact.stage7.backend_bounded_recovery_actions",
             ],
-            recommended_action="Consume backend_bounded_recovery_actions, resolve required human/design-team approvals or tool evidence gaps, then rerun Stage9 without claiming board pass.",
-            retry_scope="stage9_or_human_boundary",
+            recommended_action="Consume backend_bounded_recovery_actions, resolve required design-team/tool evidence gaps, then rerun Stage 7 without claiming board pass.",
+            retry_scope="stage7_or_human_boundary",
         )
         store.record_retry_request(
-            stage="stage9.backend_board",
+            stage="stage7.backend_board",
             reason="Backend/board real-tool scope did not pass",
-            target_stage="stage9.backend_board",
-            required_inputs=["artifact.stage9.backend_bounded_recovery_actions", "artifact.stage9.app_shell_integration_contract"],
-            blocked_artifacts=["artifact.stage9.backend_board_plan", "artifact.stage9.backend_real_tool_results"],
+            target_stage="stage7.backend_board",
+            required_inputs=["artifact.stage7.backend_bounded_recovery_actions", "artifact.stage7.app_shell_integration_contract"],
+            blocked_artifacts=["artifact.stage7.backend_board_plan", "artifact.stage7.backend_real_tool_results"],
         )
         recovery = plan.get("bounded_recovery_actions", {}) if isinstance(plan.get("bounded_recovery_actions"), dict) else {}
         if recovery.get("next_stage"):
             store.record_backtrack_request(
-                stage="stage9.backend_board",
+                stage="stage7.backend_board",
                 target_stage=str(recovery.get("next_stage")),
-                reason=str(recovery.get("summary") or "Stage9 requires bounded recovery before the next backend/board attempt"),
+                reason=str(recovery.get("summary") or "Stage 7 requires bounded recovery before the next backend/board attempt"),
                 missing_or_invalid_contracts=plan.get("final_design_pass_blockers", [])[:8],
-                evidence=["artifact.stage9.backend_bounded_recovery_actions", "artifact.stage9.backend_real_tool_results"],
+                evidence=["artifact.stage7.backend_bounded_recovery_actions", "artifact.stage7.backend_real_tool_results"],
             )
         upstream_gate = plan.get("upstream_hierarchy_gate", {}) if isinstance(plan.get("upstream_hierarchy_gate"), dict) else {}
         if upstream_gate.get("status") == "fail":
             store.record_backtrack_request(
-                stage="stage9.backend_board",
-                target_stage="stage7.verification",
-                reason="Stage9 backend tools are blocked until strict hierarchical verification maturity is backend-ready",
+                stage="stage7.backend_board",
+                target_stage="stage6.verification",
+                reason="Stage-7 backend tools require hierarchical verification maturity before backend execution",
                 missing_or_invalid_contracts=[str(value) for value in upstream_gate.get("blockers", [])[:12]],
-                evidence=["artifact.stage7.verification_result", "artifact.stage9.backend_board_plan"],
+                evidence=["artifact.stage6.verification_result", "artifact.stage7.backend_board_plan"],
             )
+    qor_optimization = plan.get("qor_optimization", {}) if isinstance(plan.get("qor_optimization"), dict) else {}
+    if qor_optimization.get("decision") in {"local_optimization", "dse_backtrack"}:
+        store.record_backtrack_request(
+            stage="stage7.vivado_implementation_and_qor",
+            target_stage=str(qor_optimization.get("next_stage")),
+            reason=str(qor_optimization.get("reason")),
+            missing_or_invalid_contracts=[str(item.get("metric")) for item in qor_optimization.get("misses", []) if isinstance(item, dict)],
+            evidence=["artifact.stage7.backend_real_tool_results"],
+            context={
+                "verification_scope": "formal_dse_campaign"
+                if qor_optimization.get("decision") == "dse_backtrack"
+                else "local_qor_optimization",
+            },
+        )
     store.record_stage_outcome(
-        stage="stage9.backend_board",
+        stage="stage7.backend_board",
         status="scope_ready" if scope_is_pass else "incomplete",
         transition_id=transition["id"],
         summary=f"execution_scope={execution_scope} scope_pass={scope_is_pass}",
         errors=plan.get("final_design_pass_blockers", [])[:16],
         artifacts=[
-            "artifact.stage9.backend_board_plan",
-            "artifact.stage9.app_shell_integration_contract",
-            "artifact.stage9.backend_bounded_recovery_actions",
+            "artifact.stage7.backend_board_plan",
+            "artifact.stage7.app_shell_integration_contract",
+            "artifact.stage7.backend_bounded_recovery_actions",
         ],
-        next_actions=[] if scope_is_pass else [str((plan.get("bounded_recovery_actions") or {}).get("next_stage") or "rerun stage9.backend_board after resolving blockers")],
+        next_actions=[] if scope_is_pass else [str((plan.get("bounded_recovery_actions") or {}).get("next_stage") or "rerun stage7.backend_board after resolving blockers")],
         retryable=not scope_is_pass,
     )
     store.save()
@@ -2713,6 +3358,7 @@ def plan_backend_board(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     write_board_shell_contract(run_dir, source_data, resolved_board_profile)
     write_initial_app_shell_integration_contract(run_dir, source_data, resolved_board_profile)
     upstream_hierarchy_gate = check_upstream_hierarchical_verification_closure(source_data)
+    dse_measurement = {"status": "not_recorded", "reason": "Stage7 implementation has not run"}
     if upstream_hierarchy_gate.get("status") == "pass":
         tool_results, tool_selection_blockers = run_backend_real_tools(
             source_data,
@@ -2721,16 +3367,86 @@ def plan_backend_board(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             Path(str(resolved_board_profile.get("path"))),
             board_shell_wrapper_rtl_path(run_dir),
         )
+        if any(item.get("checker") == "real_tool.app_shell_runtime_bitstream" for item in tool_results):
+            dse_measurement = record_exact_dse_measurement(source_data, run_dir)
     else:
         tool_results = []
         tool_selection_blockers = [
-            "Stage9 backend tools blocked until Stage7 hierarchical_maturity is backend-ready",
+            "Stage-7 backend tools require Stage-6 hierarchical maturity before execution",
             *[str(value) for value in upstream_hierarchy_gate.get("blockers", [])],
         ]
-    plan = build_plan(source_data, tool_results, tool_selection_blockers, resolved_board_profile, upstream_hierarchy_gate)
+    dse_campaign = exact_dse_campaign(source_data, run_dir)
+    plan = build_plan(
+        source_data,
+        tool_results,
+        tool_selection_blockers,
+        resolved_board_profile,
+        upstream_hierarchy_gate,
+        dse_measurement,
+        dse_campaign,
+    )
     backend_package = generate_backend_package(run_dir, source_data, plan)
     plan["backend_package"] = backend_package
     plan["llm_decision_packet"] = backend_llm_decision_packet(plan)
+    qor_router = None
+    qor_router_error = None
+    if plan.get("qor_optimization", {}).get("decision") == "llm_required":
+        try:
+            qor_router = run_stage_agent(
+                agent="qor_router_agent",
+                stage="backend_board",
+                task=(
+                    "Route the current exact four-metric QoR miss. Choose exactly one of "
+                    "local_optimization or dse_backtrack. Do not estimate or invent QoR; "
+                    "use only the supplied current app-shell Vivado and hardware-counter evidence."
+                ),
+                inputs={
+                    "backend_qor_decision_packet": backend_qor_decision_packet(plan),
+                    "source_sacg_state": str(source_state),
+                },
+                out_dir=out_dir / "qor_router",
+                fallback_summary="Exact QoR routing requires an LLM decision.",
+                output_schema=QOR_ROUTER_SCHEMA,
+                prompt_rules=[
+                    "Return one structured decision with qor_decision=local_optimization or dse_backtrack.",
+                    "Do not use a ratio threshold or any framework heuristic to choose the route.",
+                    "Use local_optimization only for a bounded RTL/implementation repair that preserves the Stage4 physical candidate.",
+                    "Use dse_backtrack when a physical parameter, memory layout, lane count, FIFO depth, or other Stage4 candidate dimension must change.",
+                    "The framework will execute only the selected legal route and will reject any decision unsupported by the current exact evidence.",
+                ],
+            )
+            qor_output = qor_router.get("output", {}) if isinstance(qor_router, dict) else {}
+            plan["qor_optimization"] = classify_qor_optimization(
+                source_data,
+                plan.get("qor", {}),
+                campaign=plan.get("dse_campaign", {}),
+                measurement=plan.get("dse_measurement", {}),
+                llm_decision=qor_output if isinstance(qor_output, dict) else None,
+            )
+        except Exception as exc:
+            qor_router_error = str(exc)
+    if plan.get("qor_optimization", {}).get("decision") != "pass":
+        plan["final_design_pass_blockers"] = [
+            blocker
+            for blocker in plan.get("final_design_pass_blockers", [])
+            if not str(blocker).startswith("exact QoR miss requires an LLM routing decision")
+            and not str(blocker).startswith("QoR routing requires")
+        ]
+        route = plan.get("qor_optimization", {}).get("decision")
+        if route == "llm_required":
+            plan["final_design_pass_blockers"].append(
+                "exact QoR miss requires an LLM routing decision before Stage4/Stage5 backtrack"
+            )
+        elif route in {"local_optimization", "dse_backtrack"}:
+            plan["final_design_pass_blockers"].append(
+                f"QoR routing requires {route} before final design pass"
+            )
+        plan["final_design_pass"] = False
+    plan["qor_router"] = {
+        "result_path": qor_router.get("result_path") if isinstance(qor_router, dict) else None,
+        "decision": plan.get("qor_optimization", {}).get("decision"),
+        "error": qor_router_error,
+    }
     write_json(plan_path, plan)
     team_error = None
     try:
@@ -2779,11 +3495,11 @@ def plan_backend_board(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             "agent": "backend_closure_agent",
             "stage": "backend_board",
             "status": "llm_error",
-            "summary": "LLM backend closure agent unavailable; Stage9 must remain blocked until LLM review succeeds.",
-            "sacg_focus": {"nodes": ["node.target_board"], "edges": [], "constraints": TOUCHED_CONSTRAINTS, "artifacts": ["artifact.stage9.backend_board_plan"]},
+            "summary": "LLM backend closure agent unavailable; Stage 7 must retry after the provider recovers.",
+            "sacg_focus": {"nodes": ["node.target_board"], "edges": [], "constraints": TOUCHED_CONSTRAINTS, "artifacts": ["artifact.stage7.backend_board_plan"]},
             "observations": [f"LLM backend closure agent failed: {llm_error}"],
             "risks": ["LLM outage blocks backend promotion; deterministic backend tool logs alone are not an agentic board-closure decision."],
-            "proposed_actions": ["Rerun Stage9 with the configured LLM provider available, preserving the same backend/app-shell tool evidence."],
+            "proposed_actions": ["Rerun Stage 7 with the configured LLM provider available, preserving the same backend/app-shell tool evidence."],
             "executable_actions": [],
             "approval_required_for": [],
         }
@@ -2825,12 +3541,12 @@ def plan_backend_board(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     write_json(plan_path, plan)
     scope_is_pass = scope_passed(scope, tool_results, tool_selection_blockers) and agent_gate_status.get("status") == "pass"
     transition_id = update_sacg(source_state, state_path, plan_path, plan, tool_results, scope_is_pass)
-    if plan.get("final_design_pass"):
-        report_status = "ready"
-    elif scope_is_pass:
-        report_status = "scope_ready"
-    else:
-        report_status = "incomplete"
+    # A completed exact app-shell measurement is a successful Stage 7 action
+    # even while the formal DSE campaign deliberately routes to another
+    # candidate.  The flow controller consumes the explicit SACG backtrack
+    # request; it must not mistake this normal campaign transition for a stage
+    # failure and stop before Stage 4 can select the next measurement.
+    report_status = "ready" if scope_is_pass else "incomplete"
     all_scope = scope in {"all", "*", "backend_board", "final"}
     report_errors = plan.get("final_design_pass_blockers", []) if all_scope else selected_tool_blockers
     report_errors = [*report_errors, *agent_gate_status.get("errors", [])]
@@ -2859,9 +3575,12 @@ def plan_backend_board(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "team_error": team_error,
         "agent_gate_status": agent_gate_status,
         "llm_decision_packet": plan.get("llm_decision_packet"),
-        "closure_steps": plan["closure_steps"],
+        "qor_outputs": plan["qor_outputs"],
         "final_design_pass": plan.get("final_design_pass"),
         "final_design_pass_blockers": plan.get("final_design_pass_blockers", []),
+        "qor": plan.get("qor", {}),
+        "qor_optimization": plan.get("qor_optimization", {}),
+        "qor_router": plan.get("qor_router", {}),
         "scope_pass": scope_is_pass,
         "scope_tool_blockers": selected_tool_blockers,
         "real_tool_results": tool_results,

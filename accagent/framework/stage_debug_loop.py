@@ -1,8 +1,8 @@
 """Run the hierarchical hardware verification/repair loop.
 
-This orchestrates existing agent stages.  It does not make hardware debug
-decisions itself; Stage7, Stage8, repair-execute, and their LLM agents own the
-analysis and bounded actions.
+This orchestrates the Stage 6 verification/repair closure. It does not make
+hardware-debug decisions itself; the LLM repair agents own analysis and
+bounded actions.
 """
 
 from __future__ import annotations
@@ -15,7 +15,10 @@ from typing import Any
 
 from accagent.framework.sacg_utils import artifact_path, run_dir_from_state, write_json
 from accagent.framework.stage_repair import plan_repair
-from accagent.framework.stage_repair_execute import run_repair_loop
+from accagent.framework.stage_repair_execute import (
+    prepare_stage3_checkpoint_probe_environment,
+    run_repair_loop,
+)
 from accagent.framework.stage_verification import run_verification
 from accagent.framework.verification_evidence_contract import (
     certificate_contract_errors,
@@ -40,7 +43,7 @@ def scope_sequence(target_scope: str) -> list[str]:
         "operator_leaf": "operator_leaf_closure",
         "leaf": "operator_leaf_closure",
         "single_layer": "single_layer_closure",
-        "stage7_single_layer": "single_layer_closure",
+        "stage6_single_layer": "single_layer_closure",
         "multilayer": "board_axi_ddr_closure",
         "multilayer_closure": "board_axi_ddr_closure",
         "axi_ddr": "board_axi_ddr_closure",
@@ -48,7 +51,7 @@ def scope_sequence(target_scope: str) -> list[str]:
         "board_axi_ddr": "board_axi_ddr_closure",
         "functional": "board_axi_ddr_closure",
         "functional_sim": "board_axi_ddr_closure",
-        "stage7_functional": "board_axi_ddr_closure",
+        "stage6_functional": "board_axi_ddr_closure",
     }
     target = aliases.get(target, target)
     if target in order:
@@ -59,9 +62,9 @@ def scope_sequence(target_scope: str) -> list[str]:
 
 
 SCOPE_PROMOTION_CERTIFICATES = {
-    "operator_leaf_closure": "artifact.stage7.operator_leaf_promotion_certificate",
-    "single_layer_closure": "artifact.stage7.single_layer_promotion_certificate",
-    "board_axi_ddr_closure": "artifact.stage7.board_axi_ddr_promotion_certificate",
+    "operator_leaf_closure": "artifact.stage6.operator_leaf_promotion_certificate",
+    "single_layer_closure": "artifact.stage6.single_layer_promotion_certificate",
+    "board_axi_ddr_closure": "artifact.stage6.board_axi_ddr_promotion_certificate",
 }
 
 SCOPE_SELECTOR_KEYS = {
@@ -113,7 +116,7 @@ def validated_scope_certificate(state: dict[str, Any], scope: str) -> dict[str, 
         return None
     if payload.get("status") != "pass":
         return None
-    selector_artifact = artifact_by_id(state, "artifact.stage6.stage7_gate_selector_contract")
+    selector_artifact = artifact_by_id(state, "artifact.stage5.stage6_gate_selector_contract")
     selector_path = Path(str(selector_artifact.get("path") or "")) if selector_artifact else Path()
     selector = read_json(selector_path) if selector_artifact and selector_path.exists() else {}
     selector_key = SCOPE_SELECTOR_KEYS.get(scope, "")
@@ -220,7 +223,7 @@ def reusable_scope_checkpoint_prefix(
     return []
 
 
-class stage7_scope_env:
+class stage6_scope_env:
     def __init__(
         self,
         scope: str,
@@ -237,12 +240,12 @@ class stage7_scope_env:
         self.previous_reused_scopes: str | None = None
 
     def __enter__(self) -> None:
-        self.previous_gate_scope = os.environ.get("SPATIALACC_STAGE7_GATE_SCOPE")
+        self.previous_gate_scope = os.environ.get("SPATIALACC_STAGE6_GATE_SCOPE")
         self.previous_execution_scope = os.environ.get("SPATIALACC_VERIFICATION_EXECUTION_SCOPE")
         self.previous_tool_timeout = os.environ.get("SPATIALACC_TOOL_TIMEOUT_SEC")
         self.previous_semantic_timeout = os.environ.get("SPATIALACC_SEMANTIC_SIM_TIMEOUT_SEC")
         self.previous_reused_scopes = os.environ.get("SPATIALACC_DEBUG_LOOP_REUSED_SCOPES")
-        os.environ["SPATIALACC_STAGE7_GATE_SCOPE"] = self.scope
+        os.environ["SPATIALACC_STAGE6_GATE_SCOPE"] = self.scope
         os.environ["SPATIALACC_VERIFICATION_EXECUTION_SCOPE"] = self.scope
         os.environ["SPATIALACC_DEBUG_LOOP_REUSED_SCOPES"] = ",".join(self.reused_scopes)
         if self.timeout_sec is not None:
@@ -251,9 +254,9 @@ class stage7_scope_env:
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         if self.previous_gate_scope is None:
-            os.environ.pop("SPATIALACC_STAGE7_GATE_SCOPE", None)
+            os.environ.pop("SPATIALACC_STAGE6_GATE_SCOPE", None)
         else:
-            os.environ["SPATIALACC_STAGE7_GATE_SCOPE"] = self.previous_gate_scope
+            os.environ["SPATIALACC_STAGE6_GATE_SCOPE"] = self.previous_gate_scope
         if self.previous_execution_scope is None:
             os.environ.pop("SPATIALACC_VERIFICATION_EXECUTION_SCOPE", None)
         else:
@@ -272,14 +275,72 @@ class stage7_scope_env:
             os.environ["SPATIALACC_DEBUG_LOOP_REUSED_SCOPES"] = self.previous_reused_scopes
 
 
+class temporary_process_env:
+    def __init__(self, values: dict[str, Any]) -> None:
+        self.values = {
+            str(key): str(value)
+            for key, value in values.items()
+            if value is not None
+        }
+        self.previous: dict[str, str | None] = {}
+
+    def __enter__(self) -> None:
+        for key, value in self.values.items():
+            self.previous[key] = os.environ.get(key)
+            os.environ[key] = value
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        for key, value in self.previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def run_stage6_verification(
+    *,
+    current_state: Path,
+    run_dir: Path,
+    active_scope: str,
+    timeout_sec: int,
+    reused_scopes: list[str],
+    iteration_index: int,
+) -> tuple[Path | None, dict[str, Any] | None, dict[str, Any]]:
+    """Run one Stage-6 scope with mandatory Layer-3 checkpoint execution."""
+
+    checkpoint_preparation: dict[str, Any] = {
+        "status": "not_required",
+        "summary": "checkpoint execution is only required for Layer 3",
+        "env": {},
+        "remote_tool_must_not_start": False,
+    }
+    if active_scope == "board_axi_ddr_closure":
+        checkpoint_preparation = prepare_stage3_checkpoint_probe_environment(
+            run_dir,
+            label=f"stage6_iteration_{iteration_index:04d}",
+        )
+        if checkpoint_preparation.get("status") != "pass":
+            return None, None, checkpoint_preparation
+
+    with stage6_scope_env(
+        active_scope,
+        timeout_sec,
+        reused_scopes=reused_scopes,
+    ), temporary_process_env(dict(checkpoint_preparation.get("env") or {})):
+        verification_path, verification_report = run_verification(
+            ns(sacg_state=current_state)
+        )
+    return verification_path, verification_report, checkpoint_preparation
+
+
 def pending_repair_execution_resume(
     state: dict[str, Any], run_dir: Path | None = None
 ) -> dict[str, Any] | None:
     """Return one executor retry when planning already completed unchanged."""
 
     try:
-        plan_path = artifact_path(state, "artifact.stage8.repair_plan")
-        execution_path = artifact_path(state, "artifact.stage8.repair_execution_report")
+        plan_path = artifact_path(state, "artifact.stage6.repair_plan")
+        execution_path = artifact_path(state, "artifact.stage6.repair_execution_report")
     except Exception:
         return None
     if not plan_path.is_file() or not execution_path.is_file():
@@ -317,7 +378,7 @@ def pending_repair_execution_resume(
 
             if validate_exact_board_identity(identity_path).get("status") == "pass":
                 # The persisted repair plan was generated from an older failed
-                # discovery result. Re-enter Stage 7 so its current plan can
+                # discovery result. Re-enter Stage 6 so its current plan can
                 # consume the validated identity instead of replaying the
                 # obsolete producer action.
                 return None
@@ -360,7 +421,7 @@ def repair_execution_has_new_real_tool_evidence(report: dict[str, Any]) -> bool:
 
 
 def repair_execution_requires_fresh_agent_planning(report: dict[str, Any]) -> bool:
-    """Route unresolved Agent-owned capabilities through fresh Stage 7 evidence."""
+    """Route unresolved Agent-owned capabilities through fresh Stage 6 evidence."""
 
     for row in report.get("step_results", []):
         result = row.get("result", {}) if isinstance(row, dict) else {}
@@ -462,7 +523,7 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     out_dir = run_dir / "debug_loop"
     out_dir.mkdir(parents=True, exist_ok=True)
     iterations: list[dict[str, Any]] = []
-    status = "blocked"
+    status = "running"
     summary = ""
     scopes = scope_sequence(args.target_scope)
     initial_state_data = read_json(current_state)
@@ -491,14 +552,15 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     if scope_index >= len(scopes):
         status = "pass"
         summary = f"hierarchical debug loop reused validated certificates through target_scope={args.target_scope}"
-    for index in range(args.max_iters):
+    index = 0
+    while args.max_iters <= 0 or index < args.max_iters:
         if scope_index >= len(scopes):
             break
         active_scope = scopes[min(scope_index, len(scopes) - 1)]
         iteration: dict[str, Any] = {
             "index": index,
             "input_sacg_state": str(current_state),
-            "stage7_scope": active_scope,
+            "stage6_scope": active_scope,
             "target_scope": args.target_scope,
         }
         try:
@@ -537,8 +599,8 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                     transaction_key = agent_transaction_retry_key(execute_report)
                     if transaction_key is not None:
                         iteration["agent_transaction_rejected"] = True
-                        iteration["fresh_stage7_agent_replan"] = True
-                        iteration["fresh_stage7_agent_replan_reason"] = (
+                        iteration["fresh_stage6_agent_replan"] = True
+                        iteration["fresh_stage6_agent_replan_reason"] = (
                             "the prior transaction was rejected before a source write; "
                             "replan from the current observation evidence"
                         )
@@ -557,25 +619,51 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                         }
                         continue
                     if repair_execution_requires_fresh_agent_planning(execute_report):
-                        iteration["fresh_stage7_agent_replan"] = True
-                        iteration["fresh_stage7_agent_replan_reason"] = (
+                        iteration["fresh_stage6_agent_replan"] = True
+                        iteration["fresh_stage6_agent_replan_reason"] = (
                             "an unresolved Agent-owned capability must be replanned "
-                            "against current Stage 7 evidence"
+                            "against current Stage 6 evidence"
                         )
                         continue
-                    status = "blocked"
-                    summary = (
-                        "resumed repair execution still requires a framework or "
-                        "source change; no duplicate LLM planning request was issued"
+                    iteration["fresh_stage6_agent_replan"] = True
+                    iteration["fresh_stage6_agent_replan_reason"] = (
+                        "repair execution did not complete; obtain a fresh LLM plan "
+                        "from the current real-tool evidence"
                     )
-                    break
+                    index += 1
+                    continue
                 continue
-            with stage7_scope_env(
-                active_scope,
-                args.timeout_sec,
-                reused_scopes=reused_scopes,
-            ):
-                verification_path, verification_report = run_verification(ns(sacg_state=current_state))
+            verification_path, verification_report, checkpoint_preparation = (
+                run_stage6_verification(
+                    current_state=current_state,
+                    run_dir=run_dir,
+                    active_scope=active_scope,
+                    timeout_sec=args.timeout_sec,
+                    reused_scopes=reused_scopes,
+                    iteration_index=index,
+                )
+            )
+            iteration["checkpoint_preparation"] = {
+                key: checkpoint_preparation.get(key)
+                for key in (
+                    "status",
+                    "summary",
+                    "request_path",
+                    "request_sha256",
+                    "checkpoint_enabled",
+                    "cold_fallback",
+                    "remote_tool_must_not_start",
+                )
+            }
+            if verification_path is None or verification_report is None:
+                iterations.append(iteration)
+                iteration["fresh_stage6_agent_replan"] = True
+                iteration["fresh_stage6_agent_replan_reason"] = (
+                    "verification preparation produced no report; retry the same "
+                    "scope without creating a terminal framework state"
+                )
+                index += 1
+                continue
             verification_state = Path(str(verification_report["outputs"]["sacg_state"]))
             iteration["verification_report"] = str(verification_path)
             iteration["verification_status"] = verification_report.get("status")
@@ -618,17 +706,25 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             iteration["repair_workflow_status"] = workflow_status
             workflow_ready = plan_status == "needs_repair" and workflow_status == "ready"
             if plan_status == "ready":
-                status = "blocked"
-                summary = "verification failed but repair plan reported no required repair"
                 current_state = repair_state
                 iterations.append(iteration)
-                break
+                iteration["fresh_stage6_agent_replan"] = True
+                iteration["fresh_stage6_agent_replan_reason"] = (
+                    "verification failed but the previous plan had no repair action; "
+                    "request a fresh LLM plan from current evidence"
+                )
+                index += 1
+                continue
             if not workflow_ready:
-                status = "blocked"
-                summary = f"verification failed but repair workflow is not executable: plan={plan_status} workflow={workflow_status}"
                 current_state = repair_state
                 iterations.append(iteration)
-                break
+                iteration["fresh_stage6_agent_replan"] = True
+                iteration["fresh_stage6_agent_replan_reason"] = (
+                    f"repair workflow was not executable (plan={plan_status}, "
+                    f"workflow={workflow_status}); request a new current-evidence plan"
+                )
+                index += 1
+                continue
 
             execute_path, execute_report = run_repair_loop(
                 ns(
@@ -665,34 +761,37 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 transaction_key = agent_transaction_retry_key(execute_report)
                 if transaction_key is not None:
                     iteration["agent_transaction_rejected"] = True
-                    iteration["fresh_stage7_agent_replan"] = True
-                    iteration["fresh_stage7_agent_replan_reason"] = (
+                    iteration["fresh_stage6_agent_replan"] = True
+                    iteration["fresh_stage6_agent_replan_reason"] = (
                         "the prior transaction was rejected before a source write; "
                         "replan from the current observation evidence"
                     )
                     continue
                 if repair_execution_requires_fresh_agent_planning(execute_report):
-                    iteration["fresh_stage7_agent_replan"] = True
-                    iteration["fresh_stage7_agent_replan_reason"] = (
+                    iteration["fresh_stage6_agent_replan"] = True
+                    iteration["fresh_stage6_agent_replan_reason"] = (
                         "an unresolved Agent-owned capability must be replanned "
-                        "against current Stage 7 evidence"
+                        "against current Stage 6 evidence"
                     )
                     continue
-                status = "blocked"
-                summary = (
-                    "current repair plan could not execute and produced no new real-tool "
-                    "evidence; duplicate verification and replanning were suppressed"
+                iteration["fresh_stage6_agent_replan"] = True
+                iteration["fresh_stage6_agent_replan_reason"] = (
+                    "repair execution did not complete; obtain a new observation and "
+                    "fresh LLM plan rather than suppressing replanning"
                 )
-                if args.stop_after_failed_repair:
-                    break
-                break
+                index += 1
+                continue
         except Exception as exc:
             iteration["exception"] = str(exc)
             iterations.append(iteration)
-            status = "blocked"
-            summary = f"debug loop blocked: {exc}"
-            break
-    else:
+            iteration["fresh_stage6_agent_replan"] = True
+            iteration["fresh_stage6_agent_replan_reason"] = (
+                f"debug-loop execution raised {exc}; retain current evidence and retry"
+            )
+            index += 1
+            continue
+        index += 1
+    if status != "pass" and args.max_iters > 0 and index >= args.max_iters:
         status = "needs_repair"
         summary = f"debug loop reached max_iters={args.max_iters}"
 
@@ -711,14 +810,14 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "policy": {
             "three_layer_order_required": True,
             "same_scope_repair_loop_until_pass": True,
-            "advance_scope_only_after_stage7_ready": True,
+            "advance_scope_only_after_stage6_ready": True,
             "reuse_validated_lower_layer_certificates": True,
             "debug_layers": [
                 "operator_leaf_modules",
                 "single_transformer_layer_kernel",
                 "board_axi_ddr_wrapped_system",
             ],
-            "uses_stage7_stage8_repair_execute_agents": True,
+            "uses_stage6_stage6_repair_execute_agents": True,
             "llm_required_for_agentic_decisions": True,
             "real_tools_required_for_acceptance": True,
         },
@@ -731,7 +830,12 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run hierarchical verification/repair loop")
     parser.add_argument("--sacg-state", type=Path, required=True)
-    parser.add_argument("--max-iters", type=int, default=12)
+    parser.add_argument(
+        "--max-iters",
+        type=int,
+        default=0,
+        help="positive value limits iterations; 0 keeps the current repair scope active until pass",
+    )
     parser.add_argument("--target-scope", default="board_axi_ddr_closure")
     parser.add_argument(
         "--timeout-sec",

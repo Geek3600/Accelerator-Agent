@@ -339,7 +339,7 @@ SACG 作用：
 - 标记受影响 artifacts；
 - 派生必须运行的 checker。
 
-### 5.7 Stage 6：Verification Artifact Generation
+### 5.7 Stage 5：实现与验证工件准备
 
 Agent 生成真实数据窗口、golden、trace、DDR image、runtime config。
 
@@ -348,7 +348,7 @@ SACG 作用：
 - 确保验证数据使用同一组 shape/numeric/layout/runtime constraints；
 - 防止 stage/top/system 使用不同语义的 golden 或 data packing。
 
-### 5.8 Stage 7：Stage/Top/System Verification
+### 5.8 Stage 6：分层真实验证、修复与自适应观测
 
 Verification Agent 运行 checker 和仿真。
 
@@ -359,27 +359,19 @@ SACG 作用：
 - 更新 invariant pass/fail/unknown；
 - 记录 first failing boundary。
 
-### 5.9 Stage 8：Repair and Regression
+验证失败后的 repair、观察信号加深、以及执行层快速重放均属于本
+阶段内部循环，而非单独的公开阶段。Repair Agent 将 symptom 映射到
+violated constraints，确定允许的补丁范围，并驱动下一次真实工具验证。
 
-Repair Agent 处理 failure。
-
-SACG 作用：
-
-- 将 symptom 映射到 violated constraints；
-- 判断 repair scope；
-- 记录 patch 与 affected constraints；
-- 派生 regression set；
-- 决定 state promotion 或 rejection。
-
-### 5.10 Stage 9：Backend and Board Closure
+### 5.9 Stage 7：Vivado 实现与 QoR
 
 Backend/Deployment Agent 运行 synthesis、implementation、board run。
 
 SACG 作用：
 
-- 绑定 timing/resource/board evidence；
-- 判断 timing repair 是否影响 stream/pipeline semantics；
-- 记录 board runtime status 和 benchmark；
+- 绑定实现后的资源、功耗、实际时钟频率和 token/s；
+- 小幅 QoR 偏差回到 Stage 5 进行增量 RTL/实现优化；
+- 明显架构偏差回到 Stage 4 增量调整 DSE 参数；
 - 完成 deployment constraints 的 closure。
 
 ---

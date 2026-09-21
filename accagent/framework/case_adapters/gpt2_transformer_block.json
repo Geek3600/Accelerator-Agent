@@ -1,0 +1,179 @@
+{
+  "schema_version": "spatialaccagent.model_semantic_adapter.v1",
+  "model_family": "gpt2",
+  "accelerator_scope": "transformer_blocks_only",
+  "decoder_layer_tensor_patterns": [
+    "^transformer\\.h\\.(?P<layer>\\d+)\\.(?P<suffix>.+)$"
+  ],
+  "excluded_model_regions": [
+    "wte",
+    "wpe",
+    "ln_f",
+    "lm_head",
+    "tokenizer",
+    "sampling"
+  ],
+  "pipeline_dataflow": {
+    "schema_version": "spatialaccagent.pipeline_dataflow.v1",
+    "boundary_numeric": {
+      "input": "accumulator",
+      "output": "accumulator"
+    },
+    "stage_metadata": {
+      "layer_norm_1": {
+        "shape": {"input": "hidden", "output": "hidden"},
+        "numeric": {"input": "accumulator", "internal": "accumulator", "output": "activation"},
+        "latency_kind": "pointwise_hidden"
+      },
+      "self_attention": {
+        "shape": {"input": "hidden", "output": "hidden"},
+        "numeric": {"input": "activation", "internal": "activation", "output": "accumulator"},
+        "latency_kind": "self_attention"
+      },
+      "residual_add_1": {
+        "shape": {"input": "hidden", "output": "hidden"},
+        "numeric": {"input": "accumulator", "internal": "accumulator", "output": "accumulator"},
+        "latency_kind": "pointwise_hidden"
+      },
+      "layer_norm_2": {
+        "shape": {"input": "hidden", "output": "hidden"},
+        "numeric": {"input": "accumulator", "internal": "accumulator", "output": "activation"},
+        "latency_kind": "pointwise_hidden"
+      },
+      "mlp_fc": {
+        "shape": {"input": "hidden", "output": "intermediate"},
+        "numeric": {"input": "activation", "internal": "activation", "output": "activation"},
+        "latency_kind": "linear_hidden_to_intermediate"
+      },
+      "activation": {
+        "shape": {"input": "intermediate", "output": "intermediate"},
+        "numeric": {"input": "activation", "internal": "activation", "output": "activation"},
+        "latency_kind": "pointwise_intermediate"
+      },
+      "mlp_proj": {
+        "shape": {"input": "intermediate", "output": "hidden"},
+        "numeric": {"input": "activation", "internal": "activation", "output": "accumulator"},
+        "latency_kind": "linear_intermediate_to_hidden"
+      },
+      "residual_add_2": {
+        "shape": {"input": "hidden", "output": "hidden"},
+        "numeric": {"input": "accumulator", "internal": "accumulator", "output": "accumulator"},
+        "latency_kind": "pointwise_hidden"
+      }
+    },
+    "edges": [
+      {"source": "block_input", "destination": "layer_norm_1", "kind": "input"},
+      {"source": "block_input", "destination": "residual_add_1", "kind": "residual_skip", "source_port": "residual", "destination_port": "skip"},
+      {"source": "layer_norm_1", "destination": "self_attention"},
+      {"source": "self_attention", "destination": "residual_add_1", "destination_port": "main"},
+      {"source": "residual_add_1", "destination": "layer_norm_2"},
+      {"source": "residual_add_1", "destination": "residual_add_2", "kind": "residual_skip", "source_port": "residual", "destination_port": "skip"},
+      {"source": "layer_norm_2", "destination": "mlp_fc"},
+      {"source": "mlp_fc", "destination": "activation"},
+      {"source": "activation", "destination": "mlp_proj"},
+      {"source": "mlp_proj", "destination": "residual_add_2", "destination_port": "main"},
+      {"source": "residual_add_2", "destination": "block_output", "kind": "output"}
+    ],
+    "weight_storage_terms": [
+      {"id": "ln_1_weight", "stage": "layer_norm_1", "physical_role": "weight", "dtype_role": "weight", "factors": ["hidden_size"]},
+      {"id": "ln_1_bias", "stage": "layer_norm_1", "physical_role": "weight", "dtype_role": "weight", "factors": ["hidden_size"]},
+      {"id": "attn_c_attn_weight", "stage": "self_attention", "physical_role": "weight_qkv", "dtype_role": "weight", "factors": ["hidden_size", 3, "num_q_heads", "head_dim"]},
+      {"id": "attn_c_attn_bias", "stage": "self_attention", "physical_role": "weight_qkv_bias", "dtype_role": "weight", "factors": [3, "num_q_heads", "head_dim"]},
+      {"id": "attn_c_proj_weight", "stage": "self_attention", "physical_role": "weight_attn_out", "dtype_role": "weight", "factors": ["hidden_size", "hidden_size"]},
+      {"id": "attn_c_proj_bias", "stage": "self_attention", "physical_role": "weight_attn_out_bias", "dtype_role": "weight", "factors": ["hidden_size"]},
+      {"id": "ln_2_weight", "stage": "layer_norm_2", "physical_role": "weight", "dtype_role": "weight", "factors": ["hidden_size"]},
+      {"id": "ln_2_bias", "stage": "layer_norm_2", "physical_role": "weight", "dtype_role": "weight", "factors": ["hidden_size"]},
+      {"id": "mlp_c_fc_weight", "stage": "mlp_fc", "physical_role": "weight_mlp_up", "dtype_role": "weight", "factors": ["hidden_size", "intermediate_size"]},
+      {"id": "mlp_c_fc_bias", "stage": "mlp_fc", "physical_role": "weight_mlp_up_bias", "dtype_role": "weight", "factors": ["intermediate_size"]},
+      {"id": "mlp_c_proj_weight", "stage": "mlp_proj", "physical_role": "weight_mlp_down", "dtype_role": "weight", "factors": ["intermediate_size", "hidden_size"]},
+      {"id": "mlp_c_proj_bias", "stage": "mlp_proj", "physical_role": "weight_mlp_down_bias", "dtype_role": "weight", "factors": ["hidden_size"]}
+    ]
+  },
+  "implementation_contract": {
+    "top_class": "GPT2PreLNBlock",
+    "requires_position_input": false,
+    "loader_ports": [
+      "norm1Weight",
+      "qkvWeight",
+      "qkvBias",
+      "attentionOutWeight",
+      "attentionOutBias",
+      "norm2Weight",
+      "ffnUpWeight",
+      "ffnUpBias",
+      "ffnDownWeight",
+      "ffnDownBias"
+    ],
+    "disabled_weight_ports": [],
+    "params": {
+      "class": "DecoderBlockParams",
+      "bindings": {
+        "hiddenSize": "hidden_size",
+        "numHeads": "num_q_heads",
+        "headDim": "head_dim",
+    "intermediateSize": "intermediate_size",
+    "lanes": "lanes",
+    "computeArrayRows": "compute_array_rows",
+    "computeArrayCols": "compute_array_cols",
+    "batchSize": "batch_size",
+        "maxSeqLen": "max_seq_len",
+        "inputBits": "input_bits",
+        "elemBits": "elem_bits",
+        "outputBits": "output_bits"
+      }
+    }
+  },
+  "semantic_stages": {
+    "layer_norm_1": {
+      "inputs": [{"source": "accelerator_input"}],
+      "expected": {"record": "input_layernorm", "value": "output"},
+      "required_weight_suffixes": ["ln_1.weight", "ln_1.bias"]
+    },
+    "self_attention": {
+      "inputs": [{"record": "input_layernorm", "value": "output"}],
+      "expected": {"record": "attn", "value": "output"},
+      "required_weight_suffixes": [
+        "attn.c_attn.weight",
+        "attn.c_attn.bias",
+        "attn.c_proj.weight",
+        "attn.c_proj.bias"
+      ]
+    },
+    "residual_add_1": {
+      "inputs": [
+        {"source": "accelerator_input"},
+        {"record": "attn", "value": "output"}
+      ],
+      "expected": {"record": "post_attention_layernorm", "value": "input"},
+      "required_weight_suffixes": []
+    },
+    "layer_norm_2": {
+      "inputs": [{"record": "post_attention_layernorm", "value": "input"}],
+      "expected": {"record": "post_attention_layernorm", "value": "output"},
+      "required_weight_suffixes": ["ln_2.weight", "ln_2.bias"]
+    },
+    "mlp_fc": {
+      "inputs": [{"record": "post_attention_layernorm", "value": "output"}],
+      "expected": {"record": "mlp.c_fc", "value": "output"},
+      "required_weight_suffixes": ["mlp.c_fc.weight", "mlp.c_fc.bias"]
+    },
+    "activation": {
+      "inputs": [{"record": "mlp.c_fc", "value": "output"}],
+      "expected": {"record": "mlp.c_proj", "value": "input"},
+      "required_weight_suffixes": []
+    },
+    "mlp_proj": {
+      "inputs": [{"record": "mlp.c_proj", "value": "input"}],
+      "expected": {"record": "mlp.c_proj", "value": "output"},
+      "required_weight_suffixes": ["mlp.c_proj.weight", "mlp.c_proj.bias"]
+    },
+    "residual_add_2": {
+      "inputs": [
+        {"record": "post_attention_layernorm", "value": "input"},
+        {"record": "mlp.c_proj", "value": "output"}
+      ],
+      "expected": {"record": "decoder_layer_0", "value": "output"},
+      "required_weight_suffixes": []
+    }
+  }
+}

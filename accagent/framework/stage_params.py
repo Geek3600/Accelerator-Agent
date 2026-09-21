@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import json
+from itertools import product
 from pathlib import Path
 from typing import Any
 
+from accagent.framework.dse_ledger import candidate_fingerprint, candidate_id, ledger_path, load_latest, measurement_summary
+from accagent.framework.dse_materialization import validate_candidate_universe
 from accagent.framework.sacg_store import SACGStore
 from accagent.framework.sacg_utils import (
     add_constraint,
@@ -21,15 +25,155 @@ from accagent.framework.sacg_utils import (
     write_json,
 )
 from accagent.framework.stage_entry import run_sacg_stage
-from accagent.framework.stage_llm import run_stage_agent
+from accagent.framework.stage_llm import STAGE_AGENT_SCHEMA, run_stage_agent
 from accagent.framework.stage_team import run_design_team, team_failure_errors, team_summary
 
 
 TOUCHED_CONSTRAINTS = [
     "constraint.parameter.binding",
-    "constraint.resource.estimate",
-    "constraint.bandwidth.estimate",
+    "constraint.dse.selection",
+    "constraint.parameter.structure",
+    "constraint.axi.layout",
 ]
+
+
+DSE_SELECTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": True,
+    "properties": {
+        **STAGE_AGENT_SCHEMA["properties"],
+        "selected_candidate_id": {"type": "string"},
+        "ranked_candidate_ids": {"type": "array", "items": {"type": "string"}},
+        "selection_rationale": {"type": "string"},
+        "assumptions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": [
+        *STAGE_AGENT_SCHEMA["required"],
+        "selected_candidate_id",
+        "ranked_candidate_ids",
+        "selection_rationale",
+        "assumptions",
+    ],
+}
+
+
+DSE_OVERRIDE_KEYS = (
+    "lanes",
+    "compute_array_rows",
+    "compute_array_cols",
+    "fifo_depth",
+    "weight_banks",
+    "activation_banks",
+    "weight_banks_by_role",
+)
+
+PHYSICAL_IMPLEMENTATION = {
+    "compute_backend": "vivado_fp_ip",
+    "weight_memory": "xpm_uram",
+    "activation_memory": "xpm_bram",
+    "fifo_memory": "xpm_bram",
+    "large_cache_memory": "xpm_uram",
+}
+
+
+def integer_role_map(value: Any, valid_roles: set[str]) -> dict[str, int]:
+    """Keep only explicit, physical role-to-bank bindings."""
+
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, int] = {}
+    for role, count in value.items():
+        name = str(role)
+        parsed = scalar(count, 0)
+        if name in valid_roles and parsed > 0:
+            result[name] = parsed
+    return result
+
+
+def semantic_weight_storage_terms(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the Stage-3-resolved physical parameter terms for this model.
+
+    Stage 4 must never infer a Qwen/LLaMA parameter inventory. Stage 3 already
+    resolves every adapter-declared term against the current model shape and
+    numeric policy, so it is the single source of truth for XPM placement.
+    """
+
+    schedule = plan.get("memory_schedule", {}) if isinstance(plan.get("memory_schedule"), dict) else {}
+    raw_terms = schedule.get("weight_storage_terms", [])
+    if not isinstance(raw_terms, list) or not raw_terms:
+        raise ValueError("Stage3 memory_schedule.weight_storage_terms is missing or empty")
+    terms: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in raw_terms:
+        if not isinstance(raw, dict):
+            raise ValueError("Stage3 weight storage terms must be objects")
+        term_id = str(raw.get("id") or "")
+        owner = str(raw.get("stage") or "")
+        physical_role = str(raw.get("physical_role") or "")
+        elements = scalar(raw.get("elements"), 0)
+        element_bits = scalar(raw.get("element_bits"), 0)
+        if (
+            not term_id
+            or term_id in seen
+            or not owner
+            or (physical_role != "weight" and not physical_role.startswith("weight_"))
+            or elements <= 0
+            or element_bits <= 0
+        ):
+            raise ValueError(f"invalid Stage3 weight storage term: {raw!r}")
+        seen.add(term_id)
+        terms.append(raw)
+    return terms
+
+
+def weight_role_capacity_bits(plan: dict[str, Any]) -> dict[str, int]:
+    """Return exact model-semantic storage capacities grouped by XPM role."""
+
+    capacities: dict[str, int] = {}
+    for term in semantic_weight_storage_terms(plan):
+        role = str(term["physical_role"])
+        capacities[role] = capacities.get(role, 0) + scalar(term.get("elements"), 0) * scalar(term.get("element_bits"), 0)
+    return capacities
+
+
+def physical_weight_layout(plan: dict[str, Any], parameters: dict[str, Any]) -> dict[str, Any]:
+    """Bind every generated weight role to explicit XPM banks.
+
+    Every model weight role uses XPM URAM. DSE may vary total banks per role,
+    but cannot remap a weight role into BRAM. Primitive counts are intentionally
+    absent: only Vivado's exact app-shell result supplies resource, power,
+    clock, and performance metrics.
+    """
+
+    capacities = weight_role_capacity_bits(plan)
+    valid_roles = set(capacities)
+    default_banks = max(1, scalar(parameters.get("weight_banks"), 1))
+    requested_banks = integer_role_map(parameters.get("weight_banks_by_role"), valid_roles)
+    roles = []
+    terms_by_role: dict[str, list[dict[str, Any]]] = {}
+    for term in semantic_weight_storage_terms(plan):
+        terms_by_role.setdefault(str(term["physical_role"]), []).append(term)
+    for role, capacity_bits in capacities.items():
+        banks = requested_banks.get(role, default_banks)
+        roles.append(
+            {
+                "role": role,
+                "term_ids": [str(term["id"]) for term in terms_by_role[role]],
+                "stages": sorted({str(term["stage"]) for term in terms_by_role[role]}),
+                "capacity_bits": capacity_bits,
+                "element_bits": sorted({scalar(term.get("element_bits"), 0) for term in terms_by_role[role]}),
+                "elements": sum(scalar(term.get("elements"), 0) for term in terms_by_role[role]),
+                "banks": banks,
+                "uram_banks": banks,
+                "primitive_policy": "xpm_uram",
+            }
+        )
+    return {
+        "schema_version": "spatialaccagent.weight_memory_layout.v2",
+        "measurement_policy": "Vivado app-shell implementation is the only resource/power authority for this layout.",
+        "roles": roles,
+        "weight_banks_by_role": {row["role"]: row["banks"] for row in roles},
+    }
 
 
 def first_value(search_params: dict[str, Any], key: str, default: Any) -> Any:
@@ -107,6 +251,156 @@ def selected_clock_target_mhz(search_params: dict[str, Any]) -> int | None:
     return None
 
 
+def candidate_values(entry: Any, default: int) -> list[int]:
+    """Return a stable, de-duplicated list of integral architecture choices."""
+
+    values: Any = entry
+    preferred: Any = None
+    if isinstance(entry, dict):
+        values = entry.get("candidates", entry.get("values", []))
+        preferred = entry.get("preferred_initial", entry.get("fixed"))
+    if not isinstance(values, list):
+        values = [values] if values is not None else []
+    normalized: list[int] = []
+    for value in [preferred, *values, default]:
+        parsed = scalar(value, 0)
+        if parsed > 0 and parsed not in normalized:
+            normalized.append(parsed)
+    return normalized
+
+
+def search_group_values(search: dict[str, Any], group: str, name: str, default: int) -> list[int]:
+    container = search.get(group, {}) if isinstance(search.get(group), dict) else {}
+    return candidate_values(container.get(name), default)
+
+
+def common_candidate_values(entries: list[Any], default: int) -> list[int]:
+    """Keep only values legal for every supplied stage-specific candidate set."""
+
+    choices = [set(candidate_values(entry, default)) for entry in entries if entry is not None]
+    if not choices:
+        return [default]
+    common = set.intersection(*choices)
+    if not common:
+        return [default]
+    return sorted(common, reverse=True)
+
+
+def declared_weight_layout_candidates(
+    search: dict[str, Any], weight_banks: list[int], weight_roles: set[str]
+) -> list[dict[str, Any]]:
+    """Return complete physical XPM layouts declared by Stage 0.
+
+    Layouts are hardware candidates, not estimates: each changes the generated
+    XPM URAM bank topology. Older Stage-0 inputs without explicit layouts get
+    one all-URAM layout per declared total-bank setting for compatibility.
+    """
+
+    raw = search.get("physical_weight_layout_candidates", [])
+    if isinstance(raw, dict):
+        raw = raw.get("candidates", [])
+    layouts: list[dict[str, Any]] = []
+    if isinstance(raw, list):
+        for value in raw:
+            if not isinstance(value, dict):
+                continue
+            banks_by_role = integer_role_map(value.get("weight_banks_by_role"), weight_roles)
+            if set(banks_by_role) != weight_roles:
+                raise ValueError(
+                    "physical_weight_layout_candidates must bind exactly the model-semantic weight roles: "
+                    f"expected={sorted(weight_roles)}, actual={sorted(banks_by_role)}"
+                )
+            layouts.append(
+                {
+                    "weight_banks": max(banks_by_role.values()),
+                    "weight_banks_by_role": banks_by_role,
+                }
+            )
+    if not layouts:
+        for count in weight_banks:
+            layouts.append(
+                {
+                    "weight_banks": count,
+                    "weight_banks_by_role": {role: count for role in sorted(weight_roles)},
+                }
+            )
+    unique: dict[str, dict[str, Any]] = {}
+    for layout in layouts:
+        unique[candidate_fingerprint(layout)] = layout
+    return list(unique.values())
+
+
+def architecture_candidate_space(search: dict[str, Any], weight_roles: set[str]) -> dict[str, Any]:
+    """Materialize only parameters that alter generated FPGA hardware."""
+
+    weight_banks = search_group_values(
+        search,
+        "bank_counts",
+        "weight_sram_banks",
+        scalar(first_value(search, "weight_banks", 1), 1),
+    )
+    return {
+        "lanes": search_group_values(search, "lanes", "global_lanes", scalar(first_value(search, "lanes", 8), 8)),
+        "compute_array_rows": search_group_values(
+            search, "compute_array", "rows", first_nested_candidate(search, "compute_array", "rows", 8)
+        ),
+        "compute_array_cols": search_group_values(
+            search, "compute_array", "cols", first_nested_candidate(search, "compute_array", "cols", 8)
+        ),
+        "fifo_depth": search_group_values(search, "fifo_depths", "stream_fifo_depth_entries", selected_fifo_depth(search, 16)),
+        "activation_banks": search_group_values(search, "bank_counts", "activation_sram_banks", scalar(first_value(search, "buffer_banks", 2), 2)),
+        "physical_weight_layouts": declared_weight_layout_candidates(search, weight_banks, weight_roles),
+        "excluded_until_hardware_binding": [
+            "tile_m",
+            "tile_n",
+            "tile_k",
+            "burst_beats",
+            "pipeline_depth",
+            "clock_target_mhz",
+        ],
+    }
+
+
+def selected_search_params(search: dict[str, Any], parameters: dict[str, Any] | None) -> dict[str, Any]:
+    """Overlay one selected architecture point without mutating SACG facts."""
+
+    selected = parameters or {}
+    result = dict(search)
+    for key in DSE_OVERRIDE_KEYS:
+        if key in selected and selected[key] is not None:
+            result[key] = [selected[key]]
+    return result
+
+
+def candidate_parameter_points(search: dict[str, Any], weight_roles: set[str]) -> list[dict[str, Any]]:
+    """Enumerate the complete declared legal DSE universe without sampling."""
+
+    space = architecture_candidate_space(search, weight_roles)
+    raw: list[dict[str, Any]] = []
+    for lanes, compute_array_rows, compute_array_cols, fifo_depth, activation_banks, layout in product(
+        space["lanes"],
+        space["compute_array_rows"],
+        space["compute_array_cols"],
+        space["fifo_depth"],
+        space["activation_banks"],
+        space["physical_weight_layouts"],
+    ):
+        point = {
+            "lanes": lanes,
+            "compute_array_rows": compute_array_rows,
+            "compute_array_cols": compute_array_cols,
+            "fifo_depth": fifo_depth,
+            "activation_banks": activation_banks,
+            **layout,
+            **PHYSICAL_IMPLEMENTATION,
+        }
+        raw.append(point)
+    unique: dict[str, dict[str, Any]] = {}
+    for point in raw:
+        unique[candidate_fingerprint(point)] = point
+    return list(unique.values())
+
+
 def bytes_for_elements(elements: int, bits: int) -> int:
     return (max(0, elements) * max(1, bits) + 7) // 8
 
@@ -138,6 +432,8 @@ def fallback_params(shape: dict[str, Any], numeric: dict[str, Any], search: dict
         "head_dim": shape.get("head_dim"),
         "seq_len": shape.get("target_max_seq_len"),
         "lanes": first_value(search, "lanes", 8),
+        "compute_array_rows": first_nested_candidate(search, "compute_array", "rows", first_value(search, "compute_array_rows", 8)),
+        "compute_array_cols": first_nested_candidate(search, "compute_array", "cols", first_value(search, "compute_array_cols", 8)),
         "tile_m": first_value(search, "tile_m", 8),
         "tile_n": first_value(search, "tile_n", 24),
         "tile_k": first_value(search, "tile_k", 8),
@@ -147,55 +443,60 @@ def fallback_params(shape: dict[str, Any], numeric: dict[str, Any], search: dict
         "causal": True,
         "fifo_depth": selected_fifo_depth(search, 16),
         "weight_banks": first_value(search, "weight_banks", 1),
-        "buffer_banks": first_value(search, "buffer_banks", 2),
+        "activation_banks": first_value(search, "buffer_banks", 2),
+        "burst_beats": first_value(search, "burst_beats", 1),
+        "pipeline_depth": first_value(search, "pipeline_depth", 1),
         "clock_target_mhz": selected_clock_target_mhz(search),
         "numeric_policy_id": numeric.get("policy_id"),
     }
 
 
-def bind_stage_params(stage: dict[str, Any], shape: dict[str, Any], numeric: dict[str, Any], search: dict[str, Any]) -> dict[str, Any]:
+def bind_stage_params(
+    stage: dict[str, Any],
+    shape: dict[str, Any],
+    numeric: dict[str, Any],
+    search: dict[str, Any],
+    selected_architecture: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     defaults = fallback_params(shape, numeric, search)
     params = defaults | concrete_bound_params(stage)
-    op = str(stage.get("op"))
-    if op in {"rms_norm_1", "rms_norm_2"}:
-        params["input_bits"] = defaults["input_bits"]
-        params["output_bits"] = defaults["elem_bits"]
-    elif op in {"residual_add_1", "residual_add_2"}:
-        params["elem_bits"] = defaults["output_bits"]
-        params["input_bits"] = defaults["output_bits"]
-        params["output_bits"] = defaults["output_bits"]
-    elif op == "mlp_down_proj":
-        params["input_bits"] = defaults["elem_bits"]
-        params["output_bits"] = defaults["output_bits"]
-    elif op == "self_attention":
-        params["input_bits"] = defaults["elem_bits"]
-        params["elem_bits"] = defaults["elem_bits"]
-        params["output_bits"] = defaults["output_bits"]
-    elif op in {"mlp_gate_proj", "mlp_up_proj", "activation_mul", "softmax"}:
-        params["input_bits"] = defaults["elem_bits"]
-        params["elem_bits"] = defaults["elem_bits"]
-        params["output_bits"] = defaults["elem_bits"]
+    for key in DSE_OVERRIDE_KEYS:
+        if key in (selected_architecture or {}) and (key in params or key in stage.get("required_params", [])):
+            params[key] = selected_architecture[key]
+    contract = stage.get("numeric_contract", {}) if isinstance(stage.get("numeric_contract"), dict) else {}
+    for param_name, contract_name, fallback_name in [
+        ("input_bits", "input_bits", "input_bits"),
+        ("elem_bits", "internal_elem_bits", "elem_bits"),
+        ("output_bits", "output_bits", "output_bits"),
+    ]:
+        params[param_name] = scalar(contract.get(contract_name), scalar(defaults.get(fallback_name), 16))
     required = {name: params.get(name) for name in stage.get("required_params", []) if name in params}
     return required | {
         "input_bits": params.get("input_bits"),
         "elem_bits": params.get("elem_bits"),
         "output_bits": params.get("output_bits"),
+        "compute_array_rows": (selected_architecture or {}).get("compute_array_rows", defaults["compute_array_rows"]),
+        "compute_array_cols": (selected_architecture or {}).get("compute_array_cols", defaults["compute_array_cols"]),
         "fifo_depth": defaults["fifo_depth"],
+        "weight_banks": (selected_architecture or {}).get("weight_banks", defaults["weight_banks"]),
+        "activation_banks": (selected_architecture or {}).get("activation_banks", defaults["activation_banks"]),
+        "burst_beats": (selected_architecture or {}).get("burst_beats", defaults["burst_beats"]),
+        "pipeline_depth": (selected_architecture or {}).get("pipeline_depth", defaults["pipeline_depth"]),
         "clock_target_mhz": defaults["clock_target_mhz"],
         "numeric_policy_id": defaults["numeric_policy_id"],
+        **{
+            key: (selected_architecture or {}).get(key, value)
+            for key, value in PHYSICAL_IMPLEMENTATION.items()
+        },
     }
 
 
-def dim_pair(op: str, shape: dict[str, Any]) -> tuple[int | None, int | None]:
-    hidden = shape.get("hidden_size")
-    intermediate = shape.get("intermediate_size")
-    if op in {"mlp_gate_proj", "mlp_up_proj"}:
-        return hidden, intermediate
-    if op == "activation_mul":
-        return intermediate, intermediate
-    if op == "mlp_down_proj":
-        return intermediate, hidden
-    return hidden, hidden
+def dim_pair(stage: dict[str, Any]) -> tuple[int | None, int | None]:
+    """Return semantic stream widths already resolved by Stage 3."""
+
+    input_shape = stage.get("input_shape", {}) if isinstance(stage.get("input_shape"), dict) else {}
+    output_shape = stage.get("output_shape", {}) if isinstance(stage.get("output_shape"), dict) else {}
+    return input_shape.get("width"), output_shape.get("width")
 
 
 def check_legality(stage: dict[str, Any], params: dict[str, Any], shape: dict[str, Any], memory: dict[str, Any]) -> list[str]:
@@ -204,11 +505,31 @@ def check_legality(stage: dict[str, Any], params: dict[str, Any], shape: dict[st
         if params.get(name) is None:
             errors.append(f"{stage['stage_id']}: missing required parameter {name}")
     lanes = params.get("lanes")
-    in_dim, out_dim = dim_pair(str(stage.get("op")), shape)
+    compute_rows = params.get("compute_array_rows")
+    compute_cols = params.get("compute_array_cols")
+    in_dim, out_dim = dim_pair(stage)
     if isinstance(lanes, int) and lanes > 0:
-        for dim_name, dim in [("input", in_dim), ("output", out_dim), ("head_dim", shape.get("head_dim"))]:
+        dimensions = [("input", in_dim), ("output", out_dim)]
+        if stage.get("template_id") == "attention":
+            dimensions.append(("head_dim", shape.get("head_dim")))
+        for dim_name, dim in dimensions:
             if isinstance(dim, int) and dim % lanes != 0:
                 errors.append(f"{stage['stage_id']}: {dim_name} dimension {dim} is not divisible by lanes={lanes}")
+    if not isinstance(compute_rows, int) or compute_rows <= 0:
+        errors.append(f"{stage['stage_id']}: compute_array_rows must be positive")
+    if not isinstance(compute_cols, int) or compute_cols <= 0:
+        errors.append(f"{stage['stage_id']}: compute_array_cols must be positive")
+    if isinstance(lanes, int) and lanes > 0 and isinstance(compute_rows, int) and isinstance(compute_cols, int):
+        if compute_rows > lanes or lanes % compute_rows != 0:
+            errors.append(f"{stage['stage_id']}: lanes={lanes} must be divisible by compute_array_rows={compute_rows}")
+        if compute_cols > lanes or lanes % compute_cols != 0:
+            errors.append(f"{stage['stage_id']}: lanes={lanes} must be divisible by compute_array_cols={compute_cols}")
+        if compute_cols & (compute_cols - 1):
+            errors.append(f"{stage['stage_id']}: compute_array_cols={compute_cols} must be a power of two")
+        if stage.get("template_id") == "attention":
+            head_dim = shape.get("head_dim")
+            if isinstance(head_dim, int) and head_dim % compute_cols != 0:
+                errors.append(f"{stage['stage_id']}: head_dim={head_dim} is not divisible by compute_array_cols={compute_cols}")
     elem_bits = params.get("elem_bits") or params.get("output_bits") or params.get("input_bits")
     axi_bits = (memory.get("memory_system") or {}).get("axi_data_width_bits")
     if isinstance(lanes, int) and isinstance(elem_bits, int) and isinstance(axi_bits, int):
@@ -223,38 +544,33 @@ def check_legality(stage: dict[str, Any], params: dict[str, Any], shape: dict[st
     return errors
 
 
-def estimate_resources(stage: dict[str, Any], params: dict[str, Any], shape: dict[str, Any]) -> dict[str, Any]:
-    op = str(stage.get("op"))
-    seq_len = int(shape.get("target_max_seq_len") or 1)
-    hidden = int(shape.get("hidden_size") or 1)
-    intermediate = int(shape.get("intermediate_size") or hidden)
-    q_heads = int(shape.get("num_q_heads") or 1)
-    kv_heads = int(shape.get("num_kv_heads") or q_heads)
-    head_dim = int(shape.get("head_dim") or max(1, hidden // max(q_heads, 1)))
+def stage_structural_dimensions(
+    stage: dict[str, Any], params: dict[str, Any], weight_terms: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Describe exact tensor/stream dimensions without predicting QoR.
+
+    This data exists solely to build the concrete AXI transfer layout and to
+    validate packing.  It contains no primitive, timing, power, or throughput
+    estimate and is never used to order DSE candidates.
+    """
+
+    input_shape = stage.get("input_shape", {}) if isinstance(stage.get("input_shape"), dict) else {}
+    output_shape = stage.get("output_shape", {}) if isinstance(stage.get("output_shape"), dict) else {}
+    seq_len = scalar(input_shape.get("seq_len"), scalar(output_shape.get("seq_len"), 1))
+    in_dim, out_dim = dim_pair(stage)
     lanes = int(params.get("lanes") or 1)
     elem_bits = int(params.get("elem_bits") or params.get("output_bits") or params.get("input_bits") or 16)
-    in_dim, out_dim = dim_pair(op, shape)
-    if op == "self_attention":
-        weight_elements = hidden * ((q_heads + 2 * kv_heads) * head_dim + hidden)
-        compute_ops = seq_len * hidden + seq_len * seq_len * q_heads * head_dim
-    elif op in {"mlp_gate_proj", "mlp_up_proj"}:
-        weight_elements = hidden * intermediate
-        compute_ops = seq_len * hidden * intermediate
-    elif op == "mlp_down_proj":
-        weight_elements = intermediate * hidden
-        compute_ops = seq_len * intermediate * hidden
-    elif op in {"rms_norm_1", "rms_norm_2"}:
-        weight_elements = hidden
-        compute_ops = seq_len * hidden
-    else:
-        weight_elements = 0
-        compute_ops = seq_len * int(out_dim or hidden)
+    owned_terms = [term for term in weight_terms if str(term.get("stage")) == str(stage.get("op"))]
+    weight_elements = sum(scalar(term.get("elements"), 0) for term in owned_terms)
+    weight_bytes = sum(scalar(term.get("bytes"), 0) for term in owned_terms)
     return {
-        "estimate_kind": "symbolic_first_order",
-        "used_for": "parameter binding sanity check only; not timing, implementation, or hardware pass evidence",
+        "description_kind": "exact_model_shape_and_stream_width",
+        "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
         "weight_elements": weight_elements,
-        "activation_elements": seq_len * int(out_dim or hidden),
-        "compute_ops": compute_ops,
+        "weight_bytes": weight_bytes,
+        "weight_term_ids": [str(term.get("id")) for term in owned_terms],
+        "input_elements": seq_len * scalar(in_dim, 1),
+        "output_elements": seq_len * scalar(out_dim, 1),
         "datapath_bits": lanes * elem_bits,
         "lanes": lanes,
         "elem_bits": elem_bits,
@@ -278,23 +594,19 @@ def board_axi(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def estimate_bandwidth(state: dict[str, Any], bindings: list[dict[str, Any]]) -> dict[str, Any]:
-    shape = constraint_facts(state, "constraint.shape.model")
+def build_axi_transfer_layout(state: dict[str, Any], bindings: list[dict[str, Any]]) -> dict[str, Any]:
     axi = board_axi(state)
     alignment = scalar(axi.get("alignment_bytes"), 64)
-    seq_len = scalar(shape.get("target_max_seq_len"), 1)
     per_stage = []
     for item in bindings:
         params = item.get("params", {}) if isinstance(item.get("params"), dict) else {}
         op = str(item.get("op"))
-        in_dim, out_dim = dim_pair(op, shape)
         input_bits = scalar(params.get("input_bits"), scalar(params.get("elem_bits"), 16))
         output_bits = scalar(params.get("output_bits"), scalar(params.get("elem_bits"), 16))
-        weight_bits = scalar(params.get("elem_bits"), 16)
-        estimate = item.get("resource_estimate", {}) if isinstance(item.get("resource_estimate"), dict) else {}
-        input_bytes = bytes_for_elements(seq_len * scalar(in_dim, 1), input_bits)
-        output_bytes = bytes_for_elements(seq_len * scalar(out_dim, 1), output_bits)
-        weight_bytes = bytes_for_elements(scalar(estimate.get("weight_elements"), 0), weight_bits)
+        structure = item.get("structural_dimensions", {}) if isinstance(item.get("structural_dimensions"), dict) else {}
+        input_bytes = bytes_for_elements(scalar(structure.get("input_elements"), 0), input_bits)
+        output_bytes = bytes_for_elements(scalar(structure.get("output_elements"), 0), output_bits)
+        weight_bytes = scalar(structure.get("weight_bytes"), 0)
         total_bytes = input_bytes + output_bytes + weight_bytes
         aligned_bytes = align_up(total_bytes, alignment)
         per_stage.append(
@@ -309,13 +621,13 @@ def estimate_bandwidth(state: dict[str, Any], bindings: list[dict[str, Any]]) ->
                 "axi_beats": aligned_bytes // max(1, scalar(axi.get("data_bytes"), 64)),
                 "input_bits": input_bits,
                 "output_bits": output_bits,
-                "weight_bits": weight_bits,
+                "weight_term_ids": structure.get("weight_term_ids", []),
             }
         )
     return {
-        "schema_version": "spatialaccagent.parameter_bandwidth_estimate.v0",
-        "estimate_kind": "symbolic_transfer_count_from_bound_params",
-        "used_for": "static transfer-count and AXI packing sanity only; not board bandwidth or timing pass evidence",
+        "schema_version": "spatialaccagent.parameter_axi_transfer_layout.v1",
+        "layout_kind": "exact_tensor_shape_transfer_layout",
+        "used_for": "static AXI alignment and packing checks only; not bandwidth, timing, power, or throughput evidence",
         "board_axi": axi,
         "per_stage": per_stage,
         "total_aligned_bytes_per_layer": sum(scalar(row.get("aligned_bytes"), 0) for row in per_stage),
@@ -344,7 +656,7 @@ def numeric_binding_plan(state: dict[str, Any], bindings: list[dict[str, Any]]) 
                 "output_bits": output_bits,
                 "input_cast": "none" if input_bits == elem_bits else f"{input_bits}_to_{elem_bits}",
                 "output_cast": "none" if output_bits == elem_bits else f"{elem_bits}_to_{output_bits}",
-                "residual_precision": output_bits if str(item.get("op", "")).startswith("residual_add") else None,
+                "residual_precision": output_bits if item.get("template_id") == "residual" else None,
             }
         )
     return {
@@ -407,9 +719,11 @@ def check_stage_numeric_contract(state: dict[str, Any], bindings: dict[str, Any]
     for item in bindings.get("bindings", []):
         params = item.get("params", {}) if isinstance(item.get("params"), dict) else {}
         contract = stage_contract.get(str(item.get("stage_id")), {})
-        checks = [("input_bits", "input_bits"), ("output_bits", "output_bits")]
-        if str(item.get("op")) not in {"rms_norm_1", "rms_norm_2"}:
-            checks.append(("internal_elem_bits", "elem_bits"))
+        checks = [
+            ("input_bits", "input_bits"),
+            ("internal_elem_bits", "elem_bits"),
+            ("output_bits", "output_bits"),
+        ]
         for key, param_key in checks:
             if scalar(contract.get(key), -1) != scalar(params.get(param_key), -2):
                 errors.append(
@@ -436,13 +750,12 @@ def check_edge_dtype_contract(bindings: dict[str, Any]) -> dict[str, Any]:
 
 
 def check_tile_overrides(bindings: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
-    shape = constraint_facts(state, "constraint.shape.model")
     errors = []
     for item in bindings.get("bindings", []):
         params = item.get("params", {}) if isinstance(item.get("params"), dict) else {}
-        op = str(item.get("op"))
-        in_dim, out_dim = dim_pair(op, shape)
-        seq_len = scalar(shape.get("target_max_seq_len"), 1)
+        in_dim, out_dim = dim_pair(item)
+        input_shape = item.get("input_shape", {}) if isinstance(item.get("input_shape"), dict) else {}
+        seq_len = scalar(input_shape.get("seq_len"), 1)
         for key, divisor in [("tile_m", seq_len), ("tile_n", scalar(out_dim, 1)), ("tile_k", scalar(in_dim, 1))]:
             value = params.get(key)
             if value is None:
@@ -465,9 +778,11 @@ def check_stream_packing(bindings: dict[str, Any], state: dict[str, Any]) -> dic
         if lanes <= 0:
             errors.append(f"{item.get('stage_id')}: lanes must be positive")
             continue
-        op = str(item.get("op"))
-        in_dim, out_dim = dim_pair(op, shape)
-        for name, dim in [("input", in_dim), ("output", out_dim), ("head_dim", shape.get("head_dim"))]:
+        in_dim, out_dim = dim_pair(item)
+        dimensions = [("input", in_dim), ("output", out_dim)]
+        if item.get("template_id") == "attention":
+            dimensions.append(("head_dim", shape.get("head_dim")))
+        for name, dim in dimensions:
             if isinstance(dim, int) and dim % lanes != 0:
                 errors.append(f"{item.get('stage_id')}: {name} dimension {dim} is not divisible by lanes={lanes}")
         for key in ["input_bits", "elem_bits", "output_bits"]:
@@ -478,19 +793,27 @@ def check_stream_packing(bindings: dict[str, Any], state: dict[str, Any]) -> dic
             datapath = lanes * bits
             if axi_bits % datapath != 0:
                 errors.append(f"{item.get('stage_id')}: lanes*{key}={datapath} does not divide axi_data_width_bits={axi_bits}")
+        rows = scalar(params.get("compute_array_rows"), 0)
+        cols = scalar(params.get("compute_array_cols"), 0)
+        if rows <= 0 or cols <= 0:
+            errors.append(f"{item.get('stage_id')}: compute_array_rows and compute_array_cols must be positive")
+        elif rows > lanes or cols > lanes or lanes % rows != 0 or lanes % cols != 0:
+            errors.append(f"{item.get('stage_id')}: compute array {rows}x{cols} must tile lanes={lanes}")
+        elif cols & (cols - 1):
+            errors.append(f"{item.get('stage_id')}: compute_array_cols={cols} must be a power of two")
     if errors:
         return fail_row("stream_packing_axi_check", errors)
     return pass_row("stream_packing_axi_check", f"axi_bits={axi_bits}")
 
 
-def check_bandwidth_estimate(bindings: dict[str, Any]) -> dict[str, Any]:
-    estimate = bindings.get("bandwidth_estimate", {}) if isinstance(bindings.get("bandwidth_estimate"), dict) else {}
-    axi = estimate.get("board_axi", {}) if isinstance(estimate.get("board_axi"), dict) else {}
+def check_axi_transfer_layout(bindings: dict[str, Any]) -> dict[str, Any]:
+    layout = bindings.get("axi_transfer_layout", {}) if isinstance(bindings.get("axi_transfer_layout"), dict) else {}
+    axi = layout.get("board_axi", {}) if isinstance(layout.get("board_axi"), dict) else {}
     alignment = scalar(axi.get("alignment_bytes"), 64)
     errors = []
-    if not estimate.get("per_stage"):
-        errors.append("bandwidth_estimate.per_stage is empty")
-    for row in estimate.get("per_stage", []):
+    if not layout.get("per_stage"):
+        errors.append("axi_transfer_layout.per_stage is empty")
+    for row in layout.get("per_stage", []):
         aligned = scalar(row.get("aligned_bytes"), 0)
         if aligned <= 0:
             errors.append(f"{row.get('stage_id')}: aligned_bytes must be positive")
@@ -499,8 +822,8 @@ def check_bandwidth_estimate(bindings: dict[str, Any]) -> dict[str, Any]:
         if scalar(row.get("axi_beats"), 0) <= 0:
             errors.append(f"{row.get('stage_id')}: axi_beats must be positive")
     if errors:
-        return fail_row("bandwidth_memory_estimate_check", errors)
-    return pass_row("bandwidth_memory_estimate_check", f"total_aligned_bytes_per_layer={estimate.get('total_aligned_bytes_per_layer')}")
+        return fail_row("axi_transfer_layout_check", errors)
+    return pass_row("axi_transfer_layout_check", f"total_aligned_bytes_per_layer={layout.get('total_aligned_bytes_per_layer')}")
 
 
 def check_fifo_contract(bindings: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
@@ -516,14 +839,34 @@ def check_fifo_contract(bindings: dict[str, Any], state: dict[str, Any]) -> dict
     return pass_row("fifo_contract_check", f"edge_buffers={len(plan.get('buffer_plan', []))}; stage fifo_depth is local default, Stage3 edge buffer depths remain authoritative")
 
 
+def check_physical_implementation(bindings: dict[str, Any]) -> dict[str, Any]:
+    errors = []
+    global_params = bindings.get("global_params", {})
+    for key, expected in PHYSICAL_IMPLEMENTATION.items():
+        if global_params.get(key) != expected:
+            errors.append(f"global_params.{key}={global_params.get(key)!r} expected {expected!r}")
+    for item in bindings.get("bindings", []):
+        params = item.get("params", {}) if isinstance(item.get("params"), dict) else {}
+        for key, expected in PHYSICAL_IMPLEMENTATION.items():
+            if params.get(key) != expected:
+                errors.append(f"{item.get('stage_id')}: {key}={params.get(key)!r} expected {expected!r}")
+    if errors:
+        return fail_row("physical_implementation_binding_check", errors)
+    return pass_row(
+        "physical_implementation_binding_check",
+        "compute=vivado_fp_ip, weights=xpm_uram, activations/fifos=xpm_bram",
+    )
+
+
 def run_parameter_static_checks(state: dict[str, Any], bindings: dict[str, Any]) -> dict[str, Any]:
     rows = [
         check_stage_numeric_contract(state, bindings),
         check_edge_dtype_contract(bindings),
         check_tile_overrides(bindings, state),
         check_stream_packing(bindings, state),
-        check_bandwidth_estimate(bindings),
+        check_axi_transfer_layout(bindings),
         check_fifo_contract(bindings, state),
+        check_physical_implementation(bindings),
     ]
     errors = [
         f"{row['checker']}: {error}"
@@ -552,7 +895,8 @@ def stage_gate_policy() -> dict[str, Any]:
             "per-stage params must match Stage 3 numeric_contract and edge stream_contract bit widths",
             "per-stage tile overrides are authoritative and must divide the corresponding tensor dimensions",
             "lanes and all bound bit widths must pack cleanly into the board AXI data width",
-            "bandwidth estimates must expose concrete static transfer counts and explicitly remain non-hardware evidence",
+            "compute_array_rows and compute_array_cols must tile vector lanes; every PE maps to one physical Vivado multiplier IP",
+            "the concrete AXI transfer layout must align every transfer to the board data width; it is not bandwidth or QoR evidence",
             "Stage 3 edge FIFO contracts remain authoritative; Stage 4 local fifo_depth is a template parameter default",
         ],
         "later_stage_obligations": [
@@ -564,22 +908,22 @@ def stage_gate_policy() -> dict[str, Any]:
     }
 
 
-def build_parameter_bindings(state: dict[str, Any]) -> dict[str, Any]:
+def evaluate_architecture_candidate(state: dict[str, Any], parameters: dict[str, Any]) -> dict[str, Any]:
     plan = read_json(artifact_path(state, "artifact.stage3.pipeline_plan"))
     shape = constraint_facts(state, "constraint.shape.model")
     numeric = constraint_facts(state, "constraint.numeric.policy")
     design_space = constraint_facts(state, "constraint.arch.design_space")
     memory = constraint_facts(state, "constraint.memory.board")
-    search = design_space.get("search_params", {})
+    search = selected_search_params(
+        design_space.get("search_params", {}) if isinstance(design_space.get("search_params"), dict) else {},
+        parameters,
+    )
     bindings = []
     errors = []
-    estimates = []
     for stage in plan.get("stages", []):
-        params = bind_stage_params(stage, shape, numeric, search)
+        params = bind_stage_params(stage, shape, numeric, search, parameters)
         legality_errors = check_legality(stage, params, shape, memory)
-        estimate = estimate_resources(stage, params, shape)
         errors.extend(legality_errors)
-        estimates.append({"stage_id": stage["stage_id"], "op": stage["op"], **estimate})
         bindings.append(
             {
                 "stage_id": stage["stage_id"],
@@ -587,11 +931,204 @@ def build_parameter_bindings(state: dict[str, Any]) -> dict[str, Any]:
                 "template_id": stage["template_id"],
                 "params": params,
                 "legality_errors": legality_errors,
-                "resource_estimate": estimate,
+                "status": "ready" if not legality_errors else "incomplete",
+            }
+        )
+    layout = physical_weight_layout(plan, parameters)
+    return {
+        "parameters": parameters,
+        "feasible": not errors,
+        "hard_constraint_errors": errors,
+        "physical_weight_layout": layout,
+        "binding_count": len(bindings),
+    }
+
+
+def measured_value(metrics: dict[str, Any], key: str) -> float:
+    try:
+        return float(metrics[key])
+    except (KeyError, TypeError, ValueError):
+        return float("inf")
+
+
+def measured_dominates(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    """Compare only exact four-metric app-shell measurements."""
+
+    left_metrics = (left.get("measurement") or {}).get("metrics", {})
+    right_metrics = (right.get("measurement") or {}).get("metrics", {})
+    left_resources = left_metrics.get("resources", {}) if isinstance(left_metrics, dict) else {}
+    right_resources = right_metrics.get("resources", {}) if isinstance(right_metrics, dict) else {}
+    if not isinstance(left_resources, dict) or not isinstance(right_resources, dict):
+        return False
+    minimize = [
+        (measured_value(left_resources, key), measured_value(right_resources, key))
+        for key in ("lut", "ff", "dsp", "bram18", "bram36", "uram")
+    ] + [
+        (measured_value(left_metrics, "power_w"), measured_value(right_metrics, "power_w")),
+    ]
+    maximize = [
+        (measured_value(right_metrics, "clock_frequency_mhz"), measured_value(left_metrics, "clock_frequency_mhz")),
+        (measured_value(right_metrics, "performance_tokens_per_second"), measured_value(left_metrics, "performance_tokens_per_second")),
+    ]
+    return (
+        all(left_value <= right_value for left_value, right_value in minimize)
+        and all(left_value <= right_value for left_value, right_value in maximize)
+        and (
+            any(left_value < right_value for left_value, right_value in minimize)
+            or any(left_value < right_value for left_value, right_value in maximize)
+        )
+    )
+
+
+def build_dse_search(state: dict[str, Any], run_dir: Path | None = None) -> dict[str, Any]:
+    design_space = constraint_facts(state, "constraint.arch.design_space")
+    search = design_space.get("search_params", {}) if isinstance(design_space.get("search_params"), dict) else {}
+    plan = read_json(artifact_path(state, "artifact.stage3.pipeline_plan"))
+    weight_roles = set(weight_role_capacity_bits(plan))
+    measurements = load_latest(ledger_path(run_dir or run_dir_from_state(state)))
+    records = []
+    for parameters in candidate_parameter_points(search, weight_roles):
+        record = evaluate_architecture_candidate(state, parameters)
+        record["candidate_id"] = candidate_id(parameters)
+        record["candidate_fingerprint"] = candidate_fingerprint(parameters)
+        record["measurement"] = measurements.get(record["candidate_fingerprint"])
+        records.append(record)
+    records.sort(key=lambda record: str(record["candidate_id"]))
+    materialization = validate_candidate_universe(records)
+    summary = measurement_summary(records)
+    measured = [
+        record
+        for record in records
+        if isinstance(record.get("measurement"), dict)
+        and record["measurement"].get("measurement_status") == "measured"
+    ]
+    pareto = [
+        record
+        for record in measured
+        if not any(other is not record and measured_dominates(other, record) for other in measured)
+    ]
+    pareto.sort(key=lambda record: str(record["candidate_id"]))
+    unmeasured_ids = [
+        str(record["candidate_id"])
+        for record in records
+        if record.get("feasible") and record.get("measurement") is None
+    ]
+    return {
+        "schema_version": "spatialaccagent.stage4_dse_search.v2",
+        "status": "measurement_pending" if unmeasured_ids else ("complete" if pareto else "incomplete"),
+        "search_space": architecture_candidate_space(search, weight_roles),
+        "candidate_count": len(records),
+        "records": records,
+        "measurement_summary": summary,
+        "unmeasured_candidate_ids": unmeasured_ids,
+        "pareto_candidate_ids": [record["candidate_id"] for record in pareto],
+        "policy": {
+            "candidate_universe_is_complete_and_unsampled": True,
+            "llm_selects_measurement_order_before_campaign_completion": True,
+            "llm_selects_only_measured_pareto_candidates_after_campaign_completion": True,
+            "deterministic_evaluator_enforces_hard_constraints": True,
+            "static_logic_never_estimates_or_ranks_qor": True,
+            "target_board_app_shell_measurements_are_the_only_qor_authority": True,
+            "candidate_dimensions_must_reach_generated_fpga_ip": True,
+        },
+        "candidate_materialization": materialization,
+    }
+
+
+def select_dse_candidate(dse: dict[str, Any], llm_output: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    records = {
+        str(record.get("candidate_id")): record
+        for record in dse.get("records", [])
+        if isinstance(record, dict) and record.get("candidate_id")
+    }
+    campaign_complete = bool((dse.get("measurement_summary") or {}).get("complete"))
+    eligible_ids = (
+        [str(value) for value in dse.get("pareto_candidate_ids", []) if str(value) in records]
+        if campaign_complete
+        else [str(value) for value in dse.get("unmeasured_candidate_ids", []) if str(value) in records]
+    )
+    requested = str(llm_output.get("selected_candidate_id") or "")
+    if not eligible_ids:
+        raise ValueError("Stage4 DSE has no eligible candidate for exact measurement or final Pareto selection")
+    if requested not in eligible_ids:
+        raise ValueError(
+            "Stage4 DSE requires the LLM to select one explicit eligible candidate; "
+            f"requested={requested or '<missing>'}, eligible={eligible_ids}"
+        )
+    ranked = [str(value) for value in llm_output.get("ranked_candidate_ids", []) if str(value) in eligible_ids]
+    selected_id = requested
+    selected = records[selected_id]
+    rationale = {
+        "schema_version": "spatialaccagent.stage4_dse_selection_rationale.v2",
+        "status": "ready",
+        "selected_candidate_id": selected_id,
+        "selection_source": (
+            "llm_measured_pareto_selection" if campaign_complete else "llm_measurement_order"
+        ),
+        "campaign_complete": campaign_complete,
+        "llm_requested_candidate_id": requested or None,
+        "llm_ranked_candidate_ids": ranked,
+        "llm_rationale": str(llm_output.get("selection_rationale") or ""),
+        "llm_assumptions": [str(value) for value in llm_output.get("assumptions", []) if str(value)],
+        "eligibility_reason": (
+            "Selected candidate belongs to the exact measured Pareto frontier."
+            if campaign_complete
+            else "Selected candidate is legal and has no target-board app-shell measurement yet."
+        ),
+        "requires_measurement": [] if campaign_complete else [
+            "integrated Vivado implementation resources",
+            "post-implementation Vivado power",
+            "achieved clock frequency",
+            "hardware-counter-derived tokens per second",
+        ],
+    }
+    return selected, rationale
+
+
+def build_parameter_bindings(state: dict[str, Any], selected_architecture: dict[str, Any] | None = None) -> dict[str, Any]:
+    plan = read_json(artifact_path(state, "artifact.stage3.pipeline_plan"))
+    shape = constraint_facts(state, "constraint.shape.model")
+    numeric = constraint_facts(state, "constraint.numeric.policy")
+    design_space = constraint_facts(state, "constraint.arch.design_space")
+    memory = constraint_facts(state, "constraint.memory.board")
+    selected_architecture = selected_architecture or {}
+    search = selected_search_params(
+        design_space.get("search_params", {}) if isinstance(design_space.get("search_params"), dict) else {},
+        selected_architecture,
+    )
+    qor_targets = design_space.get("qor_targets", {}) if isinstance(design_space.get("qor_targets"), dict) else {}
+    target_clock = scalar(qor_targets.get("clock_frequency_mhz"), 0)
+    if target_clock > 0 and selected_clock_target_mhz(search) is None:
+        search = dict(search)
+        search["clock_target_mhz"] = [target_clock]
+    default_weight_banks = scalar(selected_architecture.get("weight_banks"), scalar(first_value(search, "weight_banks", 1), 1))
+    weight_terms = semantic_weight_storage_terms(plan)
+    weight_layout = physical_weight_layout(plan, {**selected_architecture, "weight_banks": default_weight_banks})
+    bindings = []
+    errors = []
+    structures = []
+    for stage in plan.get("stages", []):
+        params = bind_stage_params(stage, shape, numeric, search, selected_architecture)
+        legality_errors = check_legality(stage, params, shape, memory)
+        structure = stage_structural_dimensions(stage, params, weight_terms)
+        errors.extend(legality_errors)
+        structures.append({"stage_id": stage["stage_id"], "op": stage["op"], **structure})
+        bindings.append(
+            {
+                "stage_id": stage["stage_id"],
+                "op": stage["op"],
+                "template_id": stage["template_id"],
+                "input_shape": stage.get("input_shape", {}),
+                "output_shape": stage.get("output_shape", {}),
+                "params": params,
+                "legality_errors": legality_errors,
+                "structural_dimensions": structure,
                 "status": "ready" if not legality_errors else "incomplete",
             }
         )
     lane_values = [item["params"].get("lanes") for item in bindings if item["params"].get("lanes")]
+    compute_row_values = [item["params"].get("compute_array_rows") for item in bindings if item["params"].get("compute_array_rows")]
+    compute_col_values = [item["params"].get("compute_array_cols") for item in bindings if item["params"].get("compute_array_cols")]
     clock_values = [item["params"].get("clock_target_mhz") for item in bindings if item["params"].get("clock_target_mhz")]
     clock_target = clock_values[0] if clock_values else selected_clock_target_mhz(search)
     result = {
@@ -600,30 +1137,49 @@ def build_parameter_bindings(state: dict[str, Any]) -> dict[str, Any]:
         "status": "ready" if not errors else "incomplete",
         "binding_policy": "stage2_strict_binding_plus_checked_global_defaults",
         "bindings": bindings,
-        "resource_estimates": estimates,
+        "stage_structural_dimensions": structures,
         "legality_errors": errors,
         "global_params": {
-            "lanes": lane_values[0] if lane_values else first_value(search, "lanes", 8),
-            "tile_m": first_value(search, "tile_m", 8),
-            "tile_n": first_value(search, "tile_n", 24),
-            "tile_k": first_value(search, "tile_k", 8),
-            "fifo_depth": selected_fifo_depth(search, 16),
+            "lanes": lane_values[0] if lane_values else selected_architecture.get("lanes", first_value(search, "lanes", 8)),
+            "compute_array_rows": compute_row_values[0] if compute_row_values else selected_architecture.get("compute_array_rows", first_nested_candidate(search, "compute_array", "rows", 8)),
+            "compute_array_cols": compute_col_values[0] if compute_col_values else selected_architecture.get("compute_array_cols", first_nested_candidate(search, "compute_array", "cols", 8)),
+            "tile_m": selected_architecture.get("tile_m", first_value(search, "tile_m", 8)),
+            "tile_n": selected_architecture.get("tile_n", first_value(search, "tile_n", 24)),
+            "tile_k": selected_architecture.get("tile_k", first_value(search, "tile_k", 8)),
+            "fifo_depth": selected_architecture.get("fifo_depth", selected_fifo_depth(search, 16)),
+            "weight_banks": selected_architecture.get("weight_banks", first_value(search, "weight_banks", 1)),
+            "activation_banks": selected_architecture.get("activation_banks", first_value(search, "buffer_banks", 2)),
+            "weight_banks_by_role": weight_layout["weight_banks_by_role"],
+            "burst_beats": selected_architecture.get("burst_beats", first_value(search, "burst_beats", 1)),
+            "pipeline_depth": selected_architecture.get("pipeline_depth", first_value(search, "pipeline_depth", 1)),
             "clock_target_mhz": clock_target,
             "input_bits": fallback_params(shape, numeric, search)["input_bits"],
             "elem_bits": fallback_params(shape, numeric, search)["elem_bits"],
             "output_bits": fallback_params(shape, numeric, search)["output_bits"],
+            **{
+                key: selected_architecture.get(key, value)
+                for key, value in PHYSICAL_IMPLEMENTATION.items()
+            },
         },
         "global_param_scope": {
             "tile_m": "default_only; per-stage tile_m takes precedence",
             "tile_n": "default_only; per-stage tile_n takes precedence",
             "tile_k": "default_only; per-stage tile_k takes precedence",
+            "compute_array_rows": "physical MAC-array row count; each PE row maps to an output lane group",
+            "compute_array_cols": "physical MAC-array column count; each PE column maps to an input lane group",
             "fifo_depth": "local template default only; Stage 3 buffer_plan owns edge FIFO depths",
+            "weight_banks": "physical XPM weight-bank parameter retained across DSE backtracks",
+            "activation_banks": "physical XPM activation-bank parameter retained across DSE backtracks",
+            "burst_beats": "generator compatibility default; excluded from DSE until it changes generated board behavior",
+            "pipeline_depth": "generator compatibility default; excluded from DSE until it changes generated hardware",
             "clock_target_mhz": "board shell clock is unknown unless non-null; this is not timing evidence",
         },
         "numeric_binding_plan": numeric_binding_plan(state, bindings),
         "stream_contract_trace": stream_contract_trace(state, bindings),
-        "bandwidth_estimate": estimate_bandwidth(state, bindings),
+        "axi_transfer_layout": build_axi_transfer_layout(state, bindings),
         "stage_gate_policy": stage_gate_policy(),
+        "selected_architecture_parameters": selected_architecture,
+        "physical_weight_layout": weight_layout,
         "constraints_touched": TOUCHED_CONSTRAINTS,
     }
     checks = run_parameter_static_checks(state, result)
@@ -653,14 +1209,42 @@ def update_sacg(
     target_state: Path,
     binding_path: Path,
     check_path: Path,
+    dse_paths: dict[str, Path],
     bindings: dict[str, Any],
+    selected_architecture: dict[str, Any],
+    selection_rationale: dict[str, Any],
     checks: dict[str, Any],
     errors: list[str],
 ) -> str:
     state = copy_state(source_state, target_state)
     node_ids = [f"node.pipeline.{item['stage_id']}" for item in bindings["bindings"]]
     edge_ids = [str(item.get("edge_id")) for item in bindings.get("stream_contract_trace", []) if item.get("edge_id")]
-    artifact_ids = ["artifact.stage4.parameter_binding", "artifact.stage4.parameter_static_checks"]
+    artifact_ids = [
+        "artifact.stage4.dse_search_space",
+        "artifact.stage4.dse_candidate_records",
+        "artifact.stage4.dse_constraint_report",
+        "artifact.stage4.dse_pareto_frontier",
+        "artifact.stage4.dse_measurements",
+        "artifact.stage4.selected_architecture",
+        "artifact.stage4.dse_selection_rationale",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage4.parameter_static_checks",
+    ]
+    add_constraint(
+        state,
+        "constraint.dse.selection",
+        "architecture",
+        node_ids,
+        edge_ids,
+        artifact_ids,
+        {
+            "selected_candidate_id": selected_architecture.get("candidate_id"),
+            "parameters": selected_architecture.get("parameters", {}),
+            "selection_source": selection_rationale.get("selection_source"),
+            "requires_measurement": selection_rationale.get("requires_measurement", []),
+            "policy": "Static checks select only legal hardware-effective candidates; target-board app-shell measurements determine Pareto membership and final QoR selection.",
+        },
+    )
     add_constraint(
         state,
         "constraint.parameter.binding",
@@ -680,30 +1264,29 @@ def update_sacg(
     )
     add_constraint(
         state,
-        "constraint.resource.estimate",
-        "resource",
+        "constraint.parameter.structure",
+        "parameter",
         node_ids,
         edge_ids,
         artifact_ids,
         {
-            "stage_estimates": bindings.get("resource_estimates", []),
-            "estimate_kind": "symbolic_first_order",
-            "used_for": "parameter binding sanity only; not timing, implementation, or hardware pass evidence",
+            "stage_structural_dimensions": bindings.get("stage_structural_dimensions", []),
+            "used_for": "parameter legality and AXI layout only; never resource, timing, power, or performance evidence",
         },
     )
     add_constraint(
         state,
-        "constraint.bandwidth.estimate",
-        "bandwidth",
+        "constraint.axi.layout",
+        "memory",
         node_ids,
         edge_ids,
         artifact_ids,
         {
             "datapath_bits": [
-                item.get("resource_estimate", {}).get("datapath_bits")
+                item.get("structural_dimensions", {}).get("datapath_bits")
                 for item in bindings.get("bindings", [])
             ],
-            "bandwidth_estimate": bindings.get("bandwidth_estimate", {}),
+            "axi_transfer_layout": bindings.get("axi_transfer_layout", {}),
             "rule": "datapath width must align with board AXI/DDR data width before code generation",
         },
     )
@@ -715,9 +1298,9 @@ def update_sacg(
     )
     add_invariant(
         state,
-        "invariant.resource_estimate_static",
-        "resource_estimate_static_check",
-        ["constraint.resource.estimate", "constraint.bandwidth.estimate"],
+        "invariant.parameter_structure_axi_layout",
+        "parameter_structure_axi_layout_check",
+        ["constraint.parameter.structure", "constraint.axi.layout"],
     )
     write_json(target_state, state)
 
@@ -727,8 +1310,26 @@ def update_sacg(
         touched_nodes=["node.design_space", *node_ids],
         touched_edges=edge_ids,
         touched_constraints=TOUCHED_CONSTRAINTS,
-        note="Bound template parameters using the first design-space point.",
+        note="Bound one legal hardware-effective candidate for exact target-board app-shell measurement or measured Pareto selection.",
     )
+    for artifact_id, key in [
+        ("artifact.stage4.dse_search_space", "search_space"),
+        ("artifact.stage4.dse_candidate_records", "candidate_records"),
+        ("artifact.stage4.dse_constraint_report", "constraint_report"),
+        ("artifact.stage4.dse_pareto_frontier", "pareto_frontier"),
+        ("artifact.stage4.dse_measurements", "measurements"),
+        ("artifact.stage4.selected_architecture", "selected_architecture"),
+        ("artifact.stage4.dse_selection_rationale", "selection_rationale"),
+    ]:
+        store.bind_artifact(
+            artifact_id,
+            str(dse_paths[key]),
+            "stage.dse_selection",
+            node_ids,
+            edge_ids,
+            TOUCHED_CONSTRAINTS,
+            transition["id"],
+        )
     store.bind_artifact(
         "artifact.stage4.parameter_binding",
         str(binding_path),
@@ -760,10 +1361,10 @@ def update_sacg(
         summary=evidence_summary,
     )
     store.attach_evidence(
-        checker="resource_estimate_static_check",
+        checker="parameter_structure_axi_layout_check",
         status=evidence_status,
-        invariant="invariant.resource_estimate_static",
-        constraints=["constraint.resource.estimate", "constraint.bandwidth.estimate"],
+        invariant="invariant.parameter_structure_axi_layout",
+        constraints=["constraint.parameter.structure", "constraint.axi.layout"],
         artifacts=["artifact.stage4.parameter_binding", "artifact.stage4.parameter_static_checks"],
         log_path=str(check_path),
         transition_id=transition["id"],
@@ -779,12 +1380,12 @@ def update_sacg(
             summary=f"parameter binding failed gate checks: {errors[:8]}",
             violated_constraints=TOUCHED_CONSTRAINTS,
             artifacts=artifact_ids,
-            recommended_action="Rerun Stage4 after the LLM design team resolves parameter legality/resource/bandwidth blockers; do not feed rejected parameter bindings into code generation.",
+            recommended_action="Rerun Stage4 after the LLM design team resolves parameter legality or AXI-layout blockers; do not feed rejected parameter bindings into code generation.",
             retry_scope="same_stage",
         )
         store.record_retry_request(
             stage="stage4.parameter_binding",
-            reason="Stage4 parameter binding did not pass static/resource gates",
+            reason="Stage4 parameter binding did not pass static parameter or AXI-layout gates",
             target_stage="stage4.parameter_binding",
             required_inputs=["artifact.stage3.pipeline_plan", "constraint.shape.model", "constraint.numeric.policy", "constraint.arch.design_space"],
             blocked_artifacts=artifact_ids,
@@ -809,12 +1410,129 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     out_dir = run_dir / "parameter_binding"
     binding_path = out_dir / "parameter_binding.json"
     check_path = out_dir / "parameter_static_checks.json"
+    dse_search_path = out_dir / "dse_search_space.json"
+    dse_records_path = out_dir / "dse_candidate_records.jsonl"
+    dse_constraint_path = out_dir / "dse_constraint_report.json"
+    dse_pareto_path = out_dir / "dse_pareto_frontier.json"
+    dse_measurements_path = ledger_path(run_dir)
+    selected_architecture_path = out_dir / "selected_architecture.json"
+    selection_rationale_path = out_dir / "dse_selection_rationale.json"
     state_path = out_dir / "sacg_state.json"
     report_path = out_dir / "parameter_binding_report.json"
 
     source_data = read_json(source_state)
     memory_truth = sacg_memory_truth(source_data)
-    bindings = build_parameter_bindings(source_data)
+    dse = build_dse_search(source_data, run_dir)
+    dse_measurements_path.parent.mkdir(parents=True, exist_ok=True)
+    dse_measurements_path.touch(exist_ok=True)
+    eligible_candidate_ids = (
+        dse.get("pareto_candidate_ids", [])
+        if (dse.get("measurement_summary") or {}).get("complete")
+        else dse.get("unmeasured_candidate_ids", [])
+    )
+    eligible_records = [
+        record
+        for record in dse["records"]
+        if record.get("candidate_id") in set(eligible_candidate_ids)
+    ]
+    dse_search = {
+        "schema_version": dse["schema_version"],
+        "status": dse["status"],
+        "search_space": dse["search_space"],
+        "candidate_count": dse["candidate_count"],
+        "measurement_summary": dse["measurement_summary"],
+        "unmeasured_candidate_ids": dse["unmeasured_candidate_ids"],
+        "policy": dse["policy"],
+        "measurement_ledger": str(dse_measurements_path),
+    }
+    write_json(dse_search_path, dse_search)
+    dse_records_path.parent.mkdir(parents=True, exist_ok=True)
+    dse_records_path.write_text(
+        "".join(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n" for record in dse["records"]),
+        encoding="utf-8",
+    )
+    pareto_records = [
+        record for record in dse["records"]
+        if record.get("candidate_id") in set(dse.get("pareto_candidate_ids", []))
+    ]
+    dse_constraint_report = {
+        "schema_version": "spatialaccagent.stage4_dse_constraint_report.v1",
+        "status": "pass" if any(record.get("feasible") for record in dse["records"]) else "fail",
+        "candidate_count": dse["candidate_count"],
+        "feasible_candidate_count": sum(1 for record in dse["records"] if record.get("feasible")),
+        "infeasible_candidates": [
+            {
+                "candidate_id": record.get("candidate_id"),
+                "hard_constraint_errors": record.get("hard_constraint_errors", []),
+            }
+            for record in dse["records"]
+            if not record.get("feasible")
+        ],
+        "policy": dse["policy"],
+        "candidate_materialization": dse.get("candidate_materialization", {}),
+    }
+    write_json(dse_constraint_path, dse_constraint_report)
+    write_json(
+        dse_pareto_path,
+        {
+            "schema_version": "spatialaccagent.stage4_dse_pareto_frontier.v1",
+            "status": "ready" if (dse.get("measurement_summary") or {}).get("complete") and pareto_records else "measurement_pending",
+            "candidate_ids": dse.get("pareto_candidate_ids", []),
+            "records": pareto_records,
+            "objectives": [
+                "minimize measured resources",
+                "minimize measured power",
+                "maximize measured achieved clock",
+                "maximize measured tokens per second",
+            ],
+        },
+    )
+    campaign_complete = bool((dse.get("measurement_summary") or {}).get("complete"))
+    llm = run_stage_agent(
+        agent="dse_parameter_agent",
+        stage="parameter_binding",
+        task=(
+            "Select the next exact-measurement candidate from the supplied legal candidate universe. "
+            "If and only if all legal candidates have target-board app-shell measurements, select a candidate "
+            "from the supplied measured Pareto frontier. Do not invent parameter values, QoR values, or select "
+            "outside the supplied eligible candidates."
+        ),
+        inputs={
+            "dse_search_space": dse_search,
+            "formal_dse_campaign": {
+                "campaign_complete": campaign_complete,
+                "eligible_candidate_ids": eligible_candidate_ids,
+                "eligible_records": eligible_records,
+                "measured_pareto_frontier": {
+                    "candidate_ids": dse.get("pareto_candidate_ids", []),
+                    "records": pareto_records,
+                },
+            },
+            "dse_constraint_report": dse_constraint_report,
+            "current_sacg_memory_truth": memory_truth,
+            "source_sacg_state": str(source_state),
+        },
+        out_dir=out_dir,
+        fallback_summary="Deterministic Stage4 DSE evaluated legal architecture candidates.",
+        output_schema=DSE_SELECTION_SCHEMA,
+        prompt_rules=[
+            "Before all legal candidates are measured, choose only one supplied unmeasured legal candidate as the next app-shell measurement; do not call it optimal or Pareto-optimal.",
+            "After the campaign is complete, choose only a supplied measured Pareto candidate using the four real objectives: resources, power, clock frequency, and tokens per second.",
+            "Never estimate, extrapolate, predict, or invent resources, power, clock, or performance. Only candidate-specific app-shell measurements are QoR evidence.",
+            "Rank at least the selected candidate and state the assumptions that make the choice appropriate.",
+            "The deterministic evaluator owns legality and hardware-effective parameter filtering; do not modify candidate parameters or claim a hardware pass before measurement.",
+        ],
+    )
+    selected_architecture, selection_rationale = select_dse_candidate(dse, llm["output"])
+    write_json(selected_architecture_path, selected_architecture)
+    write_json(selection_rationale_path, selection_rationale)
+    bindings = build_parameter_bindings(source_data, selected_architecture.get("parameters", {}))
+    bindings["selected_architecture"] = {
+        "candidate_id": selected_architecture.get("candidate_id"),
+        "parameters": selected_architecture.get("parameters", {}),
+        "measurement": selected_architecture.get("measurement"),
+        "selection_rationale": str(selection_rationale_path),
+    }
     checks = {
         "schema_version": "spatialaccagent.parameter_static_checks.v0",
         "stage": "parameter_binding",
@@ -826,27 +1544,10 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     write_json(check_path, checks)
     team = run_design_team(
         stage="parameter_binding",
-        objective="Bind template parameters and audit DSE/resource risks without changing model or numeric semantics.",
+        objective="Audit the selected legal DSE architecture and its exact target-board measurement obligations without changing model or numeric semantics.",
         state=source_data,
         candidate_artifact=bindings,
         out_dir=out_dir,
-    )
-    llm = run_stage_agent(
-        agent="dse_parameter_agent",
-        stage="parameter_binding",
-        task="Review the first architecture parameter binding point, team decomposition, and DSE risks.",
-        inputs={
-            "candidate_parameter_binding": bindings,
-            "stage_gate_policy": bindings.get("stage_gate_policy", {}),
-            "checker_results": checks.get("checker_results", []),
-            "checker_summary": checks.get("summary", {}),
-            "parameter_static_checks": checks,
-            "design_team": team_summary(team),
-            "current_sacg_memory_truth": memory_truth,
-            "source_sacg_state": str(source_state),
-        },
-        out_dir=out_dir,
-        fallback_summary="Parameter binding selected the first design-space point.",
     )
     design_team = team_summary(team)
     errors = list((checks.get("summary") or {}).get("errors") or [])
@@ -857,7 +1558,27 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         (llm.get("output") or {}).get("status"),
         memory_truth,
     )
-    transition_id = update_sacg(source_state, state_path, binding_path, check_path, bindings, checks, errors)
+    dse_paths = {
+        "search_space": dse_search_path,
+        "candidate_records": dse_records_path,
+        "constraint_report": dse_constraint_path,
+        "pareto_frontier": dse_pareto_path,
+        "selected_architecture": selected_architecture_path,
+        "selection_rationale": selection_rationale_path,
+        "measurements": dse_measurements_path,
+    }
+    transition_id = update_sacg(
+        source_state,
+        state_path,
+        binding_path,
+        check_path,
+        dse_paths,
+        bindings,
+        selected_architecture,
+        selection_rationale,
+        checks,
+        errors,
+    )
     report = {
         "schema_version": "spatialaccagent.parameter_binding_report.v0",
         "stage": "parameter_binding",
@@ -866,6 +1587,13 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "outputs": {
             "parameter_binding": str(binding_path),
             "parameter_static_checks": str(check_path),
+            "dse_search_space": str(dse_search_path),
+            "dse_candidate_records": str(dse_records_path),
+            "dse_constraint_report": str(dse_constraint_path),
+            "dse_pareto_frontier": str(dse_pareto_path),
+            "dse_measurements": str(dse_measurements_path),
+            "selected_architecture": str(selected_architecture_path),
+            "dse_selection_rationale": str(selection_rationale_path),
             "sacg_state": str(state_path),
             "llm_agent": llm["result_path"],
             "team_subtask_plan": team["subtask_plan_path"],
@@ -882,12 +1610,14 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "team_executable_actions": design_team.get("executable_actions", []),
         "num_bindings": len(bindings["bindings"]),
         "global_params": bindings["global_params"],
+        "selected_architecture": bindings.get("selected_architecture", {}),
+        "dse_measurement_summary": dse.get("measurement_summary", {}),
+        "dse_selection_rationale": selection_rationale,
         "checker_summary": checks.get("summary", {}),
         "numeric_binding_plan": bindings.get("numeric_binding_plan", {}),
         "stream_contract_trace": bindings.get("stream_contract_trace", []),
-        "bandwidth_estimate": bindings.get("bandwidth_estimate", {}),
+        "axi_transfer_layout": bindings.get("axi_transfer_layout", {}),
         "legality_errors": errors,
-        "resource_estimates": bindings.get("resource_estimates", []),
         "sacg_transition_id": transition_id,
         "errors": errors,
     }

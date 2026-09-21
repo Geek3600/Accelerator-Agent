@@ -27,26 +27,9 @@ class ResidualAdd(p: ResidualParams) extends Module {
   })
 
   val streamSpec = StreamSpec(p.beatBits, p.addrBits)
-  val residualQ = Module(new Queue(
-    new StreamBeat(streamSpec),
-    p.streamCapacity,
-    pipe = false,
-    flow = false,
-    useSyncReadMem = true
-  ))
-  val computedQ = Module(new Queue(
-    new StreamBeat(streamSpec),
-    p.streamCapacity,
-    pipe = false,
-    flow = false,
-    useSyncReadMem = true
-  ))
-  val outputQ = Module(new Queue(
-    new StreamBeat(streamSpec),
-    2,
-    pipe = true,
-    flow = false
-  ))
+  val residualQ = Module(new PhysicalStreamFifo(new StreamBeat(streamSpec), p.streamCapacity))
+  val computedQ = Module(new PhysicalStreamFifo(new StreamBeat(streamSpec), p.streamCapacity))
+  val outputQ = Module(new PhysicalStreamFifo(new StreamBeat(streamSpec), 2))
 
   io.residual <> residualQ.io.enq
   io.computed <> computedQ.io.enq
@@ -54,74 +37,47 @@ class ResidualAdd(p: ResidualParams) extends Module {
 
   val a = residualQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
   val b = computedQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
-  val y = Wire(Vec(p.lanes, UInt(p.elemBits.W)))
-  for (i <- 0 until p.lanes) {
-    val sum = IeeeMath.addFp32(
-      IeeeMath.toFp32(a(i), p.elemBits),
-      IeeeMath.toFp32(b(i), p.elemBits)
-    )
-    y(i) := IeeeMath.fromFp32(sum, p.elemBits)
+  val adders = Seq.tabulate(p.lanes) { lane =>
+    val add = Module(new PhysicalFp32Add)
+    add.io.a := PhysicalMath.toFp32(a(lane), p.elemBits)
+    add.io.b := PhysicalMath.toFp32(b(lane), p.elemBits)
+    add
   }
 
-  val joinedBeat = Wire(new StreamBeat(streamSpec))
-  joinedBeat.data := y.asUInt
-  joinedBeat.st := computedQ.io.deq.bits.st
-  joinedBeat.addr := computedQ.io.deq.bits.addr
-  joinedBeat.last := computedQ.io.deq.bits.last
-
-  val heldBeat = Reg(new StreamBeat(streamSpec))
-  val heldValid = RegInit(false.B)
-  val beatInToken = RegInit(0.U(log2Ceil(p.beats max 2).W))
-  val seqBits = log2Ceil(p.maxSeqLen + 1 max 2)
-  val tokenInSequence = RegInit(0.U(seqBits.W))
-  val configuredSeq = Mux(
-    io.cfg.seqlen === 0.U || io.cfg.seqlen > p.maxSeqLen.U,
-    p.maxSeqLen.U(seqBits.W),
-    io.cfg.seqlen
-  )
+  val sPair :: sWait :: sEmit :: Nil = Enum(3)
+  val state = RegInit(sPair)
+  val resultData = Reg(Vec(p.lanes, UInt(p.elemBits.W)))
+  val resultMeta = Reg(new StreamBeat(streamSpec))
   val pairValid = residualQ.io.deq.valid && computedQ.io.deq.valid
-  val tokenFinalBeat = beatInToken === (p.beats - 1).U
-  val sequenceFinalBeat = tokenFinalBeat && (tokenInSequence === (configuredSeq - 1.U))
+  val allAddReady = adders.map(_.io.inReady).reduce(_ && _)
+  val issue = state === sPair && pairValid && allAddReady
+  val allAddValid = VecInit(adders.map(_.io.outValid)).asUInt.andR
 
-  residualQ.io.deq.ready := false.B
-  computedQ.io.deq.ready := false.B
-  outputQ.io.enq.valid := false.B
-  outputQ.io.enq.bits := joinedBeat
+  adders.foreach(_.io.inValid := issue)
 
-  when(heldValid) {
-    outputQ.io.enq.valid := pairValid
-    outputQ.io.enq.bits := heldBeat
-    when(outputQ.io.enq.fire) {
-      heldValid := false.B
-    }
-  }.otherwise {
-    when(pairValid) {
-      when(tokenFinalBeat && !sequenceFinalBeat) {
-        residualQ.io.deq.ready := computedQ.io.deq.valid
-        computedQ.io.deq.ready := residualQ.io.deq.valid
-        when(residualQ.io.deq.fire && computedQ.io.deq.fire) {
-          heldBeat := joinedBeat
-          heldValid := true.B
-          beatInToken := 0.U
-          tokenInSequence := tokenInSequence + 1.U
-        }
-      }.otherwise {
-        outputQ.io.enq.valid := true.B
-        residualQ.io.deq.ready := computedQ.io.deq.valid && outputQ.io.enq.ready
-        computedQ.io.deq.ready := residualQ.io.deq.valid && outputQ.io.enq.ready
-        when(outputQ.io.enq.fire) {
-          when(tokenFinalBeat) {
-            beatInToken := 0.U
-            when(sequenceFinalBeat) {
-              tokenInSequence := 0.U
-            }.otherwise {
-              tokenInSequence := tokenInSequence + 1.U
-            }
-          }.otherwise {
-            beatInToken := beatInToken + 1.U
-          }
-        }
-      }
-    }
+  residualQ.io.deq.ready := state === sPair && computedQ.io.deq.valid && allAddReady
+  computedQ.io.deq.ready := state === sPair && residualQ.io.deq.valid && allAddReady
+  outputQ.io.enq.valid := state === sEmit
+  outputQ.io.enq.bits := resultMeta
+  outputQ.io.enq.bits.data := resultData.asUInt
+
+  when(issue) {
+    resultMeta.st := computedQ.io.deq.bits.st
+    resultMeta.addr := computedQ.io.deq.bits.addr
+    resultMeta.last := computedQ.io.deq.bits.last
+    state := sWait
   }
+
+  when(state === sWait && allAddValid) {
+    for (lane <- 0 until p.lanes) {
+      resultData(lane) := PhysicalMath.fromFp32(adders(lane).io.out, p.elemBits)
+    }
+    state := sEmit
+  }
+
+  when(outputQ.io.enq.fire) {
+    state := sPair
+  }
+
+  dontTouch(io.cfg)
 }

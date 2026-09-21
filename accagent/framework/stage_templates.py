@@ -11,8 +11,10 @@ from typing import Any
 
 from accagent.framework.sacg_store import SACGStore
 from accagent.framework.sacg_utils import read_json, write_json
+from accagent.framework.fpga_ip_contract import check_fpga_ip_template_contract
 from accagent.framework.stage_entry import run_sacg_stage
 from accagent.framework.stage_llm import run_stage_agent
+from accagent.framework.stage_pipeline import PipelinePlanningError, validate_implementation_contract
 from accagent.framework.stage_team import run_design_team, team_failure_errors, team_summary
 
 
@@ -66,7 +68,6 @@ PARAM_ALIASES = {
 
 TEMPLATE_CASE_CLASS = {
     "attention": "AttentionParams",
-    "decoder_block": "LlamaStyleBlockParams",
     "elementwise": "ElementwiseMulParams",
     "ffn": "GatedMLPParams",
     "kv_cache": "KVCacheParams",
@@ -114,6 +115,26 @@ def read_artifact_json(state: dict[str, Any], artifact_id: str) -> dict[str, Any
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def implementation_contract_for_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Load the model-owned Chisel binding shared with Stage 3/Stage 5."""
+
+    case_adapter = read_artifact_json(state, "artifact.input.case_adapter")
+    semantic_ref = case_adapter.get("model_semantic_adapter")
+    if not isinstance(semantic_ref, dict) or not semantic_ref.get("path"):
+        raise TemplateSelectionError("case adapter is missing model_semantic_adapter.path")
+
+    adapter_path = Path(str(semantic_ref["path"]))
+    if not adapter_path.is_file():
+        adapter_path = Path.cwd() / adapter_path
+    if not adapter_path.is_file():
+        raise TemplateSelectionError(f"model semantic adapter is missing: {adapter_path}")
+    try:
+        adapter = read_json(adapter_path)
+        return validate_implementation_contract(adapter.get("implementation_contract"), adapter_path)
+    except (OSError, ValueError, PipelinePlanningError) as exc:
+        raise TemplateSelectionError(f"invalid model implementation contract: {exc}") from exc
 
 
 def sha256_file(path: Path) -> str | None:
@@ -436,6 +457,8 @@ def template_priority(op: str, template_id: str) -> tuple[int, str]:
         "k_proj": "qkv_projection",
         "v_proj": "qkv_projection",
         "fused_qkv": "qkv_projection",
+        "mlp_fc": "ffn",
+        "mlp_proj": "ffn",
         "mlp_fc1": "ffn",
         "mlp_fc2": "ffn",
         "mlp_gate_proj": "ffn",
@@ -517,6 +540,8 @@ def bind_param(
         "num_kv_heads": "constraint.shape.model.num_kv_heads",
         "head_dim": "constraint.shape.model.head_dim",
         "seq_len": "constraint.shape.model.target_max_seq_len",
+        "batch_size": "constraint.shape.model.target_max_seq_len",
+        "max_seq_len": "constraint.shape.model.target_max_seq_len",
     }
     shape_keys = {
         "hidden_size": "hidden_size",
@@ -525,6 +550,8 @@ def bind_param(
         "num_kv_heads": "num_kv_heads",
         "head_dim": "head_dim",
         "seq_len": "target_max_seq_len",
+        "batch_size": "target_max_seq_len",
+        "max_seq_len": "target_max_seq_len",
     }
     if param in shape_keys:
         if param == "hidden_size" and op == "activation_mul":
@@ -664,7 +691,17 @@ def source_name_covered_by_metadata(source_name: str, metadata_params: list[str]
     return False
 
 
-def template_source_checks(selected: list[dict[str, Any]], template_facts: dict[str, Any], numeric: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+def wrapper_binding_sources(implementation_contract: dict[str, Any]) -> list[str]:
+    bindings = implementation_contract["params"]["bindings"]
+    return list(dict.fromkeys(str(source) for source in bindings.values()))
+
+
+def template_source_checks(
+    selected: list[dict[str, Any]],
+    template_facts: dict[str, Any],
+    numeric: dict[str, Any],
+    implementation_contract: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[str]]:
     template_dir = Path(str(template_facts.get("template_dir") or ""))
     elem_bits = numeric_elem_bits(numeric).get("value")
     checks: list[dict[str, Any]] = []
@@ -673,6 +710,20 @@ def template_source_checks(selected: list[dict[str, Any]], template_facts: dict[
         template_id = str(item.get("template_id"))
         source = str(item.get("source") or "")
         path = template_dir / source if source else Path("")
+        is_block_wrapper = item.get("role") == "block_wrapper"
+        constructor_bindings = (
+            implementation_contract["params"]["bindings"] if is_block_wrapper else {}
+        )
+        case_class = (
+            implementation_contract["params"]["class"]
+            if is_block_wrapper
+            else TEMPLATE_CASE_CLASS.get(template_id)
+        )
+        required_params = (
+            list(constructor_bindings)
+            if is_block_wrapper
+            else [str(param) for param in item.get("required_params", [])]
+        )
         check: dict[str, Any] = {
             "op": item.get("op"),
             "template_id": template_id,
@@ -680,8 +731,13 @@ def template_source_checks(selected: list[dict[str, Any]], template_facts: dict[
             "path": str(path) if source else None,
             "exists": bool(source and path.exists()),
             "sha256": sha256_file(path) if source else None,
-            "case_class": TEMPLATE_CASE_CLASS.get(template_id),
+            "case_class": case_class,
             "metadata_required_params": item.get("required_params", []),
+            "constructor_binding_names": list(constructor_bindings),
+            "constructor_binding_sources": constructor_bindings,
+            "constructor_requirement_source": (
+                "implementation_contract" if is_block_wrapper else "template_metadata"
+            ),
             "errors": [],
             "warnings": [],
         }
@@ -696,7 +752,6 @@ def template_source_checks(selected: list[dict[str, Any]], template_facts: dict[
             if not params:
                 check["errors"].append(f"expected case class {case_class} was not found in source")
             else:
-                required_params = [str(param) for param in item.get("required_params", [])]
                 missing_in_constructor = [
                     param for param in required_params if not constructor_param_matches(param, names)
                 ]
@@ -864,6 +919,7 @@ def stage2_gate_policy() -> dict[str, Any]:
             "any decoder operator has no trusted selected template or explicit required adapter",
             "any selected template required parameter is unbound, illegal, or only supplied by an implicit constructor default when model/numeric/board input has a value",
             "any selected template source file is missing or its metadata required parameters do not match the Chisel case-class constructor",
+            "the complete selected template closure contains HardFloat, SyncReadMem, or lacks mandatory Vivado floating-point/XPM bindings",
             "self_attention lacks selected or embedded coverage for Q/K/V projection, RoPE when required, GQA/MQA head mapping, softmax, output projection, required KV-cache behavior, or causal mask",
             "numeric policy, board memory, board runtime, board deployment, or cross-layer input-consistency constraints are absent from the template-selection trace",
             "LLM sub-agent output reports a concrete contradiction in the candidate selection for this stage",
@@ -890,6 +946,7 @@ def build_selection(state: dict[str, Any]) -> dict[str, Any]:
     template_facts = get_constraint(state, "constraint.template.library").get("facts", {})
     design_space = optional_constraint_facts(state, "constraint.arch.design_space")
     memory_facts = optional_constraint_facts(state, "constraint.memory.board")
+    implementation_contract = implementation_contract_for_state(state)
     templates = template_facts.get("templates", [])
     if not isinstance(templates, list) or not templates:
         raise TemplateSelectionError("template library constraint has no templates")
@@ -900,7 +957,10 @@ def build_selection(state: dict[str, Any]) -> dict[str, Any]:
     for op in wrapper_ops(model_facts):
         template, matched_op, candidates = match_template(op, templates)
         if template:
-            selected.append(make_selection("block_wrapper", op, matched_op, template, candidates))
+            wrapper = make_selection("block_wrapper", op, matched_op, template, candidates)
+            wrapper["required_params"] = wrapper_binding_sources(implementation_contract)
+            wrapper["implementation_constructor_bindings"] = implementation_contract["params"]["bindings"]
+            selected.append(wrapper)
             break
     else:
         missing_ops.append("decoder_block")
@@ -929,11 +989,21 @@ def build_selection(state: dict[str, Any]) -> dict[str, Any]:
         memory_facts,
         design_space,
     )
-    source_checks, source_errors = template_source_checks(selected, template_facts, numeric_facts)
+    source_checks, source_errors = template_source_checks(
+        selected,
+        template_facts,
+        numeric_facts,
+        implementation_contract,
+    )
+    ip_contract = check_fpga_ip_template_contract(
+        Path(str(template_facts.get("template_dir") or "")),
+        template_facts.get("source_files", []),
+    )
+    ip_errors = [str(error) for error in ip_contract.get("errors", [])]
     attention, attention_errors, adapters = attention_semantics(selected, model_facts, model_config, template_facts)
     trace, trace_errors = cross_layer_trace(state)
     coverage_errors = [f"missing template for op: {op}" for op in missing_ops]
-    errors = coverage_errors + binding_errors + source_errors + attention_errors + trace_errors
+    errors = coverage_errors + binding_errors + source_errors + ip_errors + attention_errors + trace_errors
     checker_results = [
         checker_result(
             "operator_coverage_check",
@@ -950,6 +1020,7 @@ def build_selection(state: dict[str, Any]) -> dict[str, Any]:
             source_errors,
             evidence={"checked_templates": len(source_checks)},
         ),
+        checker_result("mandatory_fpga_ip_binding_check", ip_errors, evidence=ip_contract),
         checker_result("attention_semantic_expansion_check", attention_errors, evidence=attention),
         checker_result("cross_layer_trace_check", trace_errors, evidence=trace),
     ]
@@ -999,6 +1070,7 @@ def build_selection(state: dict[str, Any]) -> dict[str, Any]:
         "status": "ready" if not errors else "incomplete",
         "library_id": template_facts.get("library_id"),
         "model_type": model_facts.get("model_type"),
+        "implementation_contract": implementation_contract,
         "operator_sequence": operator_sequence,
         "selected_templates": selected,
         "selected_template_ids": unique_template_ids,
@@ -1008,6 +1080,7 @@ def build_selection(state: dict[str, Any]) -> dict[str, Any]:
         "unsupported_bindings": unsupported_bindings,
         "required_adapters": adapters,
         "template_source_checks": source_checks,
+        "fpga_ip_contract": ip_contract,
         "attention_semantics": attention,
         "cross_layer_trace": trace,
         "checker_results": checker_results,
@@ -1016,6 +1089,7 @@ def build_selection(state: dict[str, Any]) -> dict[str, Any]:
             "Do not close missing template coverage with free-form RTL.",
             "Do not rely on Chisel default constructor values when a model, numeric, or board value is available.",
             "Do not change template internals, data order, memory layout, numeric policy, or board/runtime assumptions without approval.",
+            "Do not use HardFloat, SyncReadMem, or a simulation-only arithmetic/memory backend.",
         ],
         "coverage": {
             "required_ops": len(operator_sequence),

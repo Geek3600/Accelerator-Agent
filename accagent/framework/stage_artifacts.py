@@ -28,6 +28,15 @@ from accagent.framework.sacg_utils import (
 )
 from accagent.framework.stage_entry import run_sacg_stage
 from accagent.framework.stage_llm import run_stage_agent
+from accagent.framework.stage_pipeline import PipelinePlanningError, validate_implementation_contract
+from accagent.framework.fpga_ip_contract import (
+    check_fpga_ip_generation_contract,
+    check_fpga_ip_simulation_closure,
+    check_fpga_ip_template_contract,
+    refresh_fpga_ip_simulation_closure,
+    simulation_source_contract,
+)
+from accagent.framework.dse_materialization import validate_generated_params_source
 from accagent.framework.stage_team import run_design_team, team_failure_errors, team_summary
 
 
@@ -75,28 +84,76 @@ def numeric_default_bits(state: dict[str, Any], field: str, default: int) -> int
     return dtype_bits(rules.get(field) or numeric.get(field), default)
 
 
-def model_block_class(model_type: str | None) -> str:
-    value = (model_type or "").lower()
-    if "llama" in value or "qwen" in value:
-        return "LlamaStyleBlock"
-    if "gemma" in value:
-        return "Gemma3TextBlock"
-    if "gpt" in value:
-        return "GPT2PreLNBlock"
-    return "OPTPreLNBlock"
-
-
-def model_param_class(model_type: str | None) -> str:
-    value = (model_type or "").lower()
-    if "llama" in value or "qwen" in value:
-        return "LlamaStyleBlockParams"
-    if "gemma" in value:
-        return "Gemma3TextBlockParams"
-    return "DecoderBlockParams"
-
-
 def quote_list(values: list[str]) -> str:
     return ", ".join(f'"{value}"' for value in values)
+
+
+def scala_positive_int_map(values: Any) -> str:
+    """Render a stable Scala role-to-bank map from a Stage 4 physical layout."""
+
+    if not isinstance(values, dict):
+        return "Map.empty[String, Int]"
+    rows: list[tuple[str, int]] = []
+    for role, count in values.items():
+        name = str(role)
+        parsed = scalar(count, 0)
+        if name and parsed > 0:
+            rows.append((name, parsed))
+    if not rows:
+        return "Map.empty[String, Int]"
+    return "Map(" + ", ".join(f'\"{role}\" -> {count}' for role, count in sorted(rows)) + ")"
+
+
+def generated_axi_loader_interface(implementation_contract: dict[str, Any]) -> tuple[str, str, str]:
+    """Expose the model-declared loader contract through the AXI wrapper."""
+
+    ports = implementation_contract["loader_ports"]
+    declarations = [
+        f"    val {port} = Flipped(Decoupled(chiselTypeOf(core.io.{port}.bits)))"
+        for port in ports
+    ]
+    connections = [f"  core.io.{port} <> io.{port}" for port in ports]
+    tieoffs = [
+        f"  core.io.{port}.valid := false.B\n  core.io.{port}.bits := 0.U.asTypeOf(core.io.{port}.bits)"
+        for port in implementation_contract["disabled_weight_ports"]
+    ]
+    if "ropeRuntime" in ports:
+        declarations.extend(
+            [
+                "    val ropeRuntimeLast = Input(Bool())",
+                "    val ropeRuntimeLoaded = Output(Bool())",
+            ]
+        )
+        connections.extend(
+            [
+                "  core.io.ropeRuntimeLast := io.ropeRuntimeLast",
+                "  io.ropeRuntimeLoaded := core.io.ropeRuntimeLoaded",
+            ]
+        )
+    declaration_text = "\n".join(declarations) + ("\n" if declarations else "")
+    connection_text = "\n".join(connections) + ("\n" if connections else "")
+    tieoff_text = "\n".join(tieoffs) + ("\n" if tieoffs else "")
+    return declaration_text, connection_text, tieoff_text
+
+
+def implementation_contract_for_pipeline(pipeline: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return validate_implementation_contract(
+            pipeline.get("implementation_contract"),
+            "Stage 3 pipeline plan",
+        )
+    except PipelinePlanningError as exc:
+        raise ValueError(str(exc)) from exc
+
+
+def scala_params_expression(implementation_contract: dict[str, Any], values: dict[str, int]) -> str:
+    params = implementation_contract["params"]
+    arguments = []
+    for name, source in params["bindings"].items():
+        if source not in values:
+            raise ValueError(f"implementation contract parameter {name} has unresolved source {source}")
+        arguments.append(f"{name} = {values[source]}")
+    return f"{params['class']}(" + ", ".join(arguments) + ")"
 
 
 def write_text(path: Path, text: str) -> None:
@@ -129,15 +186,6 @@ def stage_params_by_op(bindings: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return result
 
 
-def first_param(params_by_op: dict[str, dict[str, Any]], names: list[str], default: int) -> int:
-    for params in params_by_op.values():
-        for name in names:
-            value = params.get(name)
-            if value is not None:
-                return scalar(value, default)
-    return default
-
-
 def align_up(value: int, alignment: int) -> int:
     if alignment <= 1:
         return value
@@ -165,11 +213,12 @@ def allocate_region(regions: list[dict[str, Any]], name: str, size_bytes: int, a
 def build_memory_layout(state: dict[str, Any], bindings: dict[str, Any], generated_package: dict[str, Any]) -> dict[str, Any]:
     model = constraint_facts(state, "constraint.model.decoder")
     memory = constraint_facts(state, "constraint.memory.board")
+    pipeline = read_json(artifact_path(state, "artifact.stage3.pipeline_plan"))
+    schedule = pipeline.get("memory_schedule", {}) if isinstance(pipeline.get("memory_schedule"), dict) else {}
     params = generated_package["params"]
     num_layers = scalar(model.get("num_layers"), 1)
     seq_len = params["max_seq_len"]
     hidden = params["hidden_size"]
-    intermediate = params["intermediate_size"]
     q_heads = params["num_q_heads"]
     kv_heads = params["num_kv_heads"]
     head_dim = params["head_dim"]
@@ -179,22 +228,37 @@ def build_memory_layout(state: dict[str, Any], bindings: dict[str, Any], generat
     memory_system = memory.get("memory_system", {}) if isinstance(memory.get("memory_system"), dict) else memory
     axi_bits = scalar(memory_system.get("axi_data_width_bits"), params["lanes"] * input_bits)
     alignment = max(1, axi_bits // 8)
-    token_hidden = seq_len * hidden
-    qkv_elements = hidden * ((q_heads + 2 * kv_heads) * head_dim)
-    out_proj_elements = hidden * hidden
-    ffn_elements = hidden * intermediate * 2 + intermediate * hidden
-    norm_elements = hidden * 2
-    per_layer_weight_bytes = bytes_for_elements(qkv_elements + out_proj_elements + ffn_elements, elem_bits) + bytes_for_elements(norm_elements, input_bits)
-    activation_bytes = bytes_for_elements(token_hidden, input_bits)
-    output_bytes = bytes_for_elements(token_hidden, output_bits)
-    intermediate_bytes = bytes_for_elements(seq_len * intermediate, elem_bits)
+    planned_regions = schedule.get("required_regions", []) if isinstance(schedule.get("required_regions"), list) else []
+    required_names = {
+        "input_tokens",
+        "output_tokens",
+        "activation_ping",
+        "activation_pong",
+        "weight_buffer_a",
+        "weight_buffer_b",
+    }
+    by_name = {
+        str(region.get("name")): region
+        for region in planned_regions
+        if isinstance(region, dict) and str(region.get("name") or "")
+    }
+    missing = sorted(required_names - set(by_name))
+    if missing:
+        raise ValueError(f"Stage3 memory schedule is missing required regions: {missing}")
     regions: list[dict[str, Any]] = []
-    allocate_region(regions, "input_tokens", activation_bytes, alignment, "activation_input", {"seq_len": seq_len, "hidden_size": hidden, "bits": input_bits})
-    allocate_region(regions, "output_tokens", output_bytes, alignment, "activation_output", {"seq_len": seq_len, "hidden_size": hidden, "bits": output_bits})
-    allocate_region(regions, "activation_ping", max(activation_bytes, intermediate_bytes), alignment, "activation_buffer", {"buffer": "ping"})
-    allocate_region(regions, "activation_pong", max(activation_bytes, intermediate_bytes), alignment, "activation_buffer", {"buffer": "pong"})
-    allocate_region(regions, "weight_buffer_a", per_layer_weight_bytes, alignment, "weight_buffer", {"double_buffer": "a", "bits": elem_bits})
-    allocate_region(regions, "weight_buffer_b", per_layer_weight_bytes, alignment, "weight_buffer", {"double_buffer": "b", "bits": elem_bits})
+    for name in ["input_tokens", "output_tokens", "activation_ping", "activation_pong", "weight_buffer_a", "weight_buffer_b"]:
+        region = by_name[name]
+        allocate_region(
+            regions,
+            name,
+            scalar(region.get("size_bytes"), 0),
+            alignment,
+            str(region.get("role") or "memory_region"),
+            {
+                "stage3_size_bytes": scalar(region.get("size_bytes"), 0),
+                "stage3_size_bytes_formula": region.get("size_bytes_formula"),
+            },
+        )
     allocate_region(regions, "runtime_status", alignment, alignment, "runtime_status", {"status_words": alignment // 4 if alignment >= 4 else 1})
     return {
         "schema_version": "spatialaccagent.memory_layout.v0",
@@ -211,11 +275,12 @@ def build_memory_layout(state: dict[str, Any], bindings: dict[str, Any], generat
         "tensor_shape": {
             "seq_len": seq_len,
             "hidden_size": hidden,
-            "intermediate_size": intermediate,
+            "intermediate_size": params["intermediate_size"],
             "num_q_heads": q_heads,
             "num_kv_heads": kv_heads,
             "head_dim": head_dim,
         },
+        "weight_storage_terms": schedule.get("weight_storage_terms", []),
         "regions": regions,
         "total_bytes": regions[-1]["base_addr"] + regions[-1]["size_bytes"] if regions else 0,
         "transfer_rules": [
@@ -235,6 +300,22 @@ def build_runtime_config(state: dict[str, Any], memory_layout: dict[str, Any], g
         "top_module": generated_package["fpga_wrapper_class"],
         "chisel_top": generated_package["top_class"],
         "params": generated_package["params"],
+        "physical_implementation": {
+            key: generated_package["params"].get(key)
+            for key in (
+                "compute_backend",
+                "weight_memory",
+                "activation_memory",
+                "fifo_memory",
+                "large_cache_memory",
+                "fifo_depth",
+                "weight_banks",
+                "activation_banks",
+                "weight_banks_by_role",
+                "burst_beats",
+                "pipeline_depth",
+            )
+        },
         "memory_layout": memory_layout,
         "board": deployment.get("board", {}),
         "runtime_interface": runtime,
@@ -249,6 +330,16 @@ def build_runtime_config(state: dict[str, Any], memory_layout: dict[str, Any], g
         "pass_criteria": {
             "required": ["no_deadlock", "done_asserted", "valid_output_bytes"],
             "bit_exact_float_model": False,
+        },
+        "performance_counter": {
+            "counter_source": "synthesizable_dut_counter",
+            "counter_width_bits": 64,
+            "cycles_signal": "performanceCycles",
+            "valid_signal": "performanceValid",
+            "start_event": "accepted_run_start",
+            "end_event": "final_output_transfer",
+            "counting_rule": "exclude the accepted start edge and include the completion edge",
+            "qor_metric_inputs": ["clock_frequency_mhz", "performance_tokens_per_second"],
         },
     }
 
@@ -287,6 +378,23 @@ def compile_warning_count(compile_gate: dict[str, Any]) -> int:
     return count
 
 
+def codegen_template_sources(template: dict[str, Any]) -> list[str]:
+    return sorted(
+        {
+            *(str(source) for source in template.get("source_files", [])),
+            "Common.scala",
+            "PhysicalResources.scala",
+        }
+    )
+
+
+def set_codegen_output_status(manifest: dict[str, Any], output_id: str, status: str) -> None:
+    for key in ("planned_code_outputs", "generated_code_outputs"):
+        for item in manifest.get(key, []):
+            if item.get("id") == output_id:
+                item["status"] = status
+
+
 def build_codegen_contract_check(
     state: dict[str, Any],
     manifest: dict[str, Any],
@@ -304,7 +412,17 @@ def build_codegen_contract_check(
     template = constraint_facts(state, "constraint.template.library")
     pipeline = read_json(artifact_path(state, "artifact.stage3.pipeline_plan"))
     bindings = read_json(artifact_path(state, "artifact.stage4.parameter_binding"))
+    try:
+        implementation_contract = implementation_contract_for_pipeline(pipeline)
+    except ValueError as exc:
+        errors.append(str(exc))
+        implementation_contract = {}
     params = generated_package.get("params", {})
+    stage_contracts = {
+        str(stage.get("stage_id")): stage.get("numeric_contract", {})
+        for stage in pipeline.get("stages", [])
+        if isinstance(stage, dict) and isinstance(stage.get("numeric_contract"), dict)
+    }
 
     for artifact_id in [
         "artifact.stage2.template_selection",
@@ -314,6 +432,22 @@ def build_codegen_contract_check(
         status = artifact_producer_status(state, artifact_id)
         if status and status != "promoted":
             errors.append(f"{artifact_id} producer transition is {status}, expected promoted")
+
+    if implementation_contract:
+        expected_top_class = implementation_contract["top_class"]
+        expected_param_class = implementation_contract["params"]["class"]
+        if generated_package.get("top_class") != expected_top_class:
+            errors.append(
+                f"generated top_class={generated_package.get('top_class')} does not match "
+                f"Stage3 implementation_contract.top_class={expected_top_class}"
+            )
+        if generated_package.get("param_class") != expected_param_class:
+            errors.append(
+                f"generated param_class={generated_package.get('param_class')} does not match "
+                f"Stage3 implementation_contract.params.class={expected_param_class}"
+            )
+        if generated_package.get("implementation_contract") != implementation_contract:
+            errors.append("generated implementation contract does not match the Stage3 pipeline plan")
 
     for key, shape_key in [
         ("hidden_size", "hidden_size"),
@@ -353,7 +487,7 @@ def build_codegen_contract_check(
 
     template_src = Path(template.get("template_dir", ""))
     template_dst = Path(generated_package["root"]) / "src" / "main" / "scala" / "spatialaccagent" / "templates"
-    for source in template.get("source_files", []):
+    for source in codegen_template_sources(template):
         source_path = template_src / source
         copied_path = template_dst / Path(source).name
         source_hash = sha256_file(source_path)
@@ -363,6 +497,15 @@ def build_codegen_contract_check(
         elif source_hash != copied_hash:
             errors.append(f"copied template hash mismatch for {source}")
 
+    ip_contract = check_fpga_ip_template_contract(
+        template_dst,
+        codegen_template_sources(template),
+    )
+    errors.extend(str(error) for error in ip_contract.get("errors", []))
+    ip_closure_path = Path(str(generated_package.get("ip_simulation_closure") or ""))
+    ip_closure = check_fpga_ip_simulation_closure(ip_closure_path)
+    errors.extend(str(error) for error in ip_closure.get("errors", []))
+
     if compile_gate.get("status") != "pass":
         errors.append(f"compile/elaboration gate status is {compile_gate.get('status')}")
     required_compile_labels = [
@@ -370,6 +513,8 @@ def build_codegen_contract_check(
         "GeneratedContractCheck",
         "ElaborateGeneratedAccelerator",
         "ElaborateGeneratedAxiDdrTop",
+        "ElaborateGeneratedAcceleratorVivado",
+        "ElaborateGeneratedAxiDdrTopVivado",
     ]
     command_text = "\n".join(" ".join(step.get("command", [])) for step in compile_gate.get("steps", []))
     for label in required_compile_labels:
@@ -417,6 +562,17 @@ def build_codegen_contract_check(
         errors.append("runtime_config top_module does not match generated FPGA wrapper")
     if runtime_config.get("params") != params:
         errors.append("runtime_config params do not match generated params")
+    performance_counter = runtime_config.get("performance_counter", {})
+    if performance_counter.get("counter_source") != "synthesizable_dut_counter":
+        errors.append("runtime_config performance_counter is not bound to a synthesizable DUT counter")
+    try:
+        axi_top_path = Path(generated_package["root"]) / "src" / "main" / "scala" / "spatialaccagent" / "generated" / "GeneratedAxiDdrTop.scala"
+        axi_top_text = axi_top_path.read_text(encoding="utf-8")
+        for token in ["performanceCycles", "performanceValid", "latencyCycles"]:
+            if token not in axi_top_text:
+                errors.append(f"GeneratedAxiDdrTop.scala is missing performance counter token {token}")
+    except OSError as exc:
+        errors.append(f"failed to read GeneratedAxiDdrTop.scala: {exc}")
 
     if bindings.get("status") != "ready":
         errors.append(f"parameter binding artifact status is {bindings.get('status')}")
@@ -425,14 +581,18 @@ def build_codegen_contract_check(
             errors.append(f"binding for {item.get('stage_id')} is {item.get('status')}")
         if item.get("legality_errors"):
             errors.append(f"binding for {item.get('stage_id')} has legality errors")
-        op = str(item.get("op"))
         item_params = item.get("params", {}) if isinstance(item.get("params"), dict) else {}
-        if op in {"residual_add_1", "residual_add_2"} and scalar(item_params.get("elem_bits"), -1) != output_bits:
-            errors.append(f"{op} elem_bits={item_params.get('elem_bits')} does not match block output_bits={output_bits}")
-        if op == "mlp_down_proj" and scalar(item_params.get("output_bits"), -1) != output_bits:
-            errors.append(f"{op} output_bits={item_params.get('output_bits')} does not match block output_bits={output_bits}")
-        if op in {"rms_norm_1", "rms_norm_2"} and scalar(item_params.get("output_bits"), -1) != elem_bits:
-            errors.append(f"{op} output_bits={item_params.get('output_bits')} does not match internal elem_bits={elem_bits}")
+        contract = stage_contracts.get(str(item.get("stage_id")), {})
+        for param_name, contract_name in [
+            ("input_bits", "input_bits"),
+            ("elem_bits", "internal_elem_bits"),
+            ("output_bits", "output_bits"),
+        ]:
+            if scalar(item_params.get(param_name), -1) != scalar(contract.get(contract_name), -2):
+                errors.append(
+                    f"{item.get('op')}: {param_name}={item_params.get(param_name)} "
+                    f"does not match Stage3 {contract_name}={contract.get(contract_name)}"
+                )
 
     result = {
         "schema_version": "spatialaccagent.codegen_contract_check.v0",
@@ -445,8 +605,11 @@ def build_codegen_contract_check(
         "checked_contracts": [
             "upstream_transition_status",
             "model_shape_to_generated_params",
+            "stage3_implementation_contract_to_generated_top",
             "numeric_policy_to_generated_bits",
             "template_provenance_hashes",
+            "mandatory_fpga_ip_binding",
+            "simulation_implementation_ip_timing_identity",
             "compile_and_elaboration_warning_free",
             "memory_layout_alignment_nonoverlap",
             "runtime_config_consistency",
@@ -467,6 +630,8 @@ def build_codegen_package_static_check(manifest: dict[str, Any], log_path: Path)
         "generated/chisel/build.sbt",
         "generated/chisel/memory/memory_layout.json",
         "generated/chisel/runtime/runtime_config.json",
+        "generated/chisel/simulation/fpga_ip_simulation_closure.json",
+        "generated/chisel/simulation/fpga_ip_modules.txt",
         "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAcceleratorTop.scala",
         "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAxiDdrTop.scala",
         "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedContractCheck.scala",
@@ -542,6 +707,14 @@ def compile_timeout_sec() -> int:
         return 1800
 
 
+def sbt_failure_markers(stdout: str, stderr: str) -> list[str]:
+    """Detect runMain failures that older SBT background execution masks as rc=0."""
+
+    text = f"{stdout}\n{stderr}"
+    markers = ("Exception in thread", "ExceptionInInitializerError", "[error]", "Caused by:")
+    return [marker for marker in markers if marker in text]
+
+
 def run_codegen_compile_gate(root: Path) -> dict[str, Any]:
     log_dir = root / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -577,6 +750,11 @@ def run_codegen_compile_gate(root: Path) -> dict[str, Any]:
         result["summary"] = "code generation compile gate disabled"
         write_json(log_path, result)
         return result
+    for pattern in ("*.sv", "*.v"):
+        for stale in root.glob(pattern):
+            stale.unlink()
+    shutil.rmtree(root / "vivado", ignore_errors=True)
+    shutil.rmtree(root / "verification", ignore_errors=True)
     commands = [
         ["sbt", "--no-server", "--batch", "--supershell=false", "Compile/compile"],
         ["sbt", "--no-server", "--batch", "--supershell=false", "runMain spatialaccagent.generated.GeneratedContractCheck"],
@@ -586,6 +764,8 @@ def run_codegen_compile_gate(root: Path) -> dict[str, Any]:
             [
                 ["sbt", "--no-server", "--batch", "--supershell=false", "runMain spatialaccagent.generated.ElaborateGeneratedAccelerator"],
                 ["sbt", "--no-server", "--batch", "--supershell=false", "runMain spatialaccagent.generated.ElaborateGeneratedAxiDdrTop"],
+                ["sbt", "--no-server", "--batch", "--supershell=false", "runMain spatialaccagent.generated.ElaborateGeneratedAcceleratorVivado"],
+                ["sbt", "--no-server", "--batch", "--supershell=false", "runMain spatialaccagent.generated.ElaborateGeneratedAxiDdrTopVivado"],
             ]
         )
     result["commands"] = commands
@@ -616,7 +796,8 @@ def run_codegen_compile_gate(root: Path) -> dict[str, Any]:
             step = {
                 "command": command,
                 "returncode": proc.returncode,
-                "status": "pass" if proc.returncode == 0 else "fail",
+                "failure_markers": sbt_failure_markers(proc.stdout, proc.stderr),
+                "status": "pass" if proc.returncode == 0 and not sbt_failure_markers(proc.stdout, proc.stderr) else "fail",
                 "stdout_tail": proc.stdout[-8000:],
                 "stderr_tail": proc.stderr[-8000:],
             }
@@ -624,11 +805,21 @@ def run_codegen_compile_gate(root: Path) -> dict[str, Any]:
             result["returncode"] = proc.returncode
             result["stdout_tail"] = step["stdout_tail"]
             result["stderr_tail"] = step["stderr_tail"]
-            if proc.returncode != 0:
+            if step["status"] != "pass":
                 result["status"] = "fail"
-                result["summary"] = f"failed command returncode={proc.returncode}: {' '.join(command)}"
+                detail = (
+                    f"returncode={proc.returncode}"
+                    if proc.returncode != 0
+                    else f"failure_markers={step['failure_markers']}"
+                )
+                result["summary"] = f"failed command {detail}: {' '.join(command)}"
                 break
         else:
+            modules = refresh_fpga_ip_simulation_closure(
+                root,
+                root / "simulation" / "fpga_ip_simulation_closure.json",
+            )
+            result["fpga_ip_modules"] = modules
             result["status"] = "pass"
             result["summary"] = f"completed {len(commands)} compile/elaboration command(s)"
     except FileNotFoundError as exc:
@@ -694,6 +885,7 @@ def codegen_stage_gate_policy() -> dict[str, Any]:
             "codegen_contract_check must pass upstream transition, model/shape/numeric, template provenance, compile warning, memory layout, runtime config, and parameter legality checks",
             "target_model_artifact_status.current_artifacts_match_target must be true and missing_for_target must be empty",
             "manifest template_sources must cover every template Scala file copied into the generated package",
+            "generated FPGA IP simulation closure must require the same Vivado IP/XPM module interfaces and latencies as implementation",
         ],
         "later_stage_obligations": [
             "VCS/Verilator functional simulation, numerical/model validation, Vivado synthesis/implementation/timing, and board execution are later verification/deployment gates",
@@ -713,21 +905,35 @@ def generate_chisel_package(run_dir: Path, state: dict[str, Any], manifest: dict
     bindings = read_json(artifact_path(state, "artifact.stage4.parameter_binding"))
 
     root = run_dir / "generated" / "chisel"
+    # Stage 5 owns only the generated core and trusted templates.  Verification
+    # harness sources from a previous run must not participate in this stage's
+    # compile gate.
+    shutil.rmtree(
+        root / "src" / "main" / "scala" / "spatialaccagent" / "semantic_harness",
+        ignore_errors=True,
+    )
     template_src = Path(template.get("template_dir", ""))
     template_dst = root / "src" / "main" / "scala" / "spatialaccagent" / "templates"
     generated_dir = root / "src" / "main" / "scala" / "spatialaccagent" / "generated"
     scripts_dir = root / "scripts"
-    if root.exists():
-        shutil.rmtree(root)
+    simulation_dir = root / "simulation"
     template_dst.mkdir(parents=True, exist_ok=True)
-    for source in template.get("source_files", []):
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    simulation_dir.mkdir(parents=True, exist_ok=True)
+    selected_template_sources = codegen_template_sources(template)
+    selected_names = {Path(source).name for source in selected_template_sources}
+    for stale in template_dst.glob("*.scala"):
+        if stale.name not in selected_names:
+            stale.unlink()
+    for source in selected_template_sources:
         src = template_src / source
         if src.exists():
             shutil.copy2(src, template_dst / src.name)
 
     model_type = str(model.get("model_type") or "unknown")
-    top_class = model_block_class(model_type)
-    param_class = model_param_class(model_type)
+    implementation_contract = implementation_contract_for_pipeline(pipeline)
+    top_class = implementation_contract["top_class"]
+    param_class = implementation_contract["params"]["class"]
     hidden = scalar(shape.get("hidden_size"), 768)
     intermediate = scalar(shape.get("intermediate_size"), hidden * 4)
     q_heads = scalar(shape.get("num_q_heads"), 12)
@@ -735,35 +941,54 @@ def generate_chisel_package(run_dir: Path, state: dict[str, Any], manifest: dict
     head_dim = scalar(shape.get("head_dim"), max(1, hidden // max(q_heads, 1)))
     max_seq = scalar(shape.get("target_max_seq_len"), 16)
     global_params = bindings.get("global_params", {})
-    params_by_op = stage_params_by_op(bindings)
+    pipeline_stages = pipeline.get("stages", []) if isinstance(pipeline.get("stages"), list) else []
+    first_stage = pipeline_stages[0] if pipeline_stages else {}
+    last_stage = pipeline_stages[-1] if pipeline_stages else {}
+    first_numeric = first_stage.get("numeric_contract", {}) if isinstance(first_stage.get("numeric_contract"), dict) else {}
+    last_numeric = last_stage.get("numeric_contract", {}) if isinstance(last_stage.get("numeric_contract"), dict) else {}
     lanes = scalar(global_params.get("lanes"), 8)
+    compute_array_rows = scalar(global_params.get("compute_array_rows"), lanes)
+    compute_array_cols = scalar(global_params.get("compute_array_cols"), lanes)
     clock = scalar(global_params.get("clock_target_mhz"), 0)
-    input_bits = first_param(params_by_op, ["block_input_bits", "input_bits"], numeric_default_bits(state, "acc_dtype", 32))
-    elem_bits = first_param(params_by_op, ["elem_bits"], numeric_default_bits(state, "activation_dtype", 16))
-    output_bits = first_param(params_by_op, ["block_output_bits"], input_bits)
+    input_bits = scalar(first_numeric.get("input_bits"), numeric_default_bits(state, "acc_dtype", 32))
+    elem_bits = numeric_default_bits(state, "activation_dtype", 16)
+    output_bits = scalar(last_numeric.get("output_bits"), input_bits)
+    compute_backend = str(global_params.get("compute_backend") or "vivado_fp_ip")
+    weight_memory = str(global_params.get("weight_memory") or "xpm_uram")
+    activation_memory = str(global_params.get("activation_memory") or "xpm_bram")
+    fifo_memory = str(global_params.get("fifo_memory") or "xpm_bram")
+    large_cache_memory = str(global_params.get("large_cache_memory") or "xpm_uram")
+    fifo_depth = scalar(global_params.get("fifo_depth"), 16)
+    weight_banks = scalar(global_params.get("weight_banks"), 1)
+    activation_banks = scalar(global_params.get("activation_banks"), 2)
+    weight_banks_by_role = (
+        global_params.get("weight_banks_by_role")
+        if isinstance(global_params.get("weight_banks_by_role"), dict)
+        else {}
+    )
+    burst_beats = scalar(global_params.get("burst_beats"), 1)
+    pipeline_depth = scalar(global_params.get("pipeline_depth"), 1)
     batch_size = max_seq
     design_name = safe_id(str(state.get("design_id", "spatialaccagent_design")))
 
-    if param_class == "LlamaStyleBlockParams":
-        params_expr = (
-            f"LlamaStyleBlockParams(hiddenSize = {hidden}, qHeads = {q_heads}, kvHeads = {kv_heads}, "
-            f"headDim = {head_dim}, intermediateSize = {intermediate}, lanes = {lanes}, "
-            f"batchSize = {batch_size}, maxSeqLen = {max_seq}, "
-            f"inputBits = {input_bits}, elemBits = {elem_bits}, outputBits = {output_bits})"
-        )
-    elif param_class == "Gemma3TextBlockParams":
-        params_expr = (
-            f"Gemma3TextBlockParams(hiddenSize = {hidden}, qHeads = {q_heads}, kvHeads = {kv_heads}, "
-            f"headDim = {head_dim}, intermediateSize = {intermediate}, lanes = {lanes}, "
-            f"batchSize = {batch_size}, maxSeqLen = {max_seq}, "
-            f"inputBits = {input_bits}, elemBits = {elem_bits}, outputBits = {output_bits})"
-        )
-    else:
-        params_expr = (
-            f"DecoderBlockParams(hiddenSize = {hidden}, numHeads = {q_heads}, headDim = {head_dim}, "
-            f"intermediateSize = {intermediate}, lanes = {lanes}, batchSize = {batch_size}, maxSeqLen = {max_seq}, "
-            f"inputBits = {input_bits}, elemBits = {elem_bits}, outputBits = {output_bits})"
-        )
+    params_expr = scala_params_expression(
+        implementation_contract,
+        {
+            "hidden_size": hidden,
+            "intermediate_size": intermediate,
+            "num_q_heads": q_heads,
+            "num_kv_heads": kv_heads,
+            "head_dim": head_dim,
+            "lanes": lanes,
+            "compute_array_rows": compute_array_rows,
+            "compute_array_cols": compute_array_cols,
+            "batch_size": batch_size,
+            "max_seq_len": max_seq,
+            "input_bits": input_bits,
+            "elem_bits": elem_bits,
+            "output_bits": output_bits,
+        },
+    )
 
     build_sbt = """ThisBuild / scalaVersion := "2.13.16"
 ThisBuild / version := "0.1.0"
@@ -793,6 +1018,20 @@ object GeneratedDesignParams {{
   val inputBits: Int = {input_bits}
   val elemBits: Int = {elem_bits}
   val outputBits: Int = {output_bits}
+  val lanes: Int = {lanes}
+  val computeArrayRows: Int = {compute_array_rows}
+  val computeArrayCols: Int = {compute_array_cols}
+  val computeBackend: String = "{compute_backend}"
+  val weightMemory: String = "{weight_memory}"
+  val activationMemory: String = "{activation_memory}"
+  val fifoMemory: String = "{fifo_memory}"
+  val largeCacheMemory: String = "{large_cache_memory}"
+  val fifoDepth: Int = {fifo_depth}
+  val weightBanks: Int = {weight_banks}
+  val activationBanks: Int = {activation_banks}
+  val weightBanksByRole: Map[String, Int] = {scala_positive_int_map(weight_banks_by_role)}
+  val burstBeats: Int = {burst_beats}
+  val pipelineDepth: Int = {pipeline_depth}
   val operatorSequence: Seq[String] = Seq({quote_list([stage['op'] for stage in pipeline.get('stages', [])])})
   val stageIds: Seq[String] = Seq({quote_list([stage['stage_id'] for stage in pipeline.get('stages', [])])})
   val params = {params_expr}
@@ -813,20 +1052,53 @@ class GeneratedAcceleratorTop extends Module {{
 }}
 
 object ElaborateGeneratedAccelerator extends App {{
+  PhysicalImplementation.configureFpgaIp(
+    GeneratedDesignParams.computeBackend,
+    GeneratedDesignParams.weightMemory,
+    GeneratedDesignParams.activationMemory,
+    GeneratedDesignParams.fifoMemory,
+    GeneratedDesignParams.largeCacheMemory,
+    GeneratedDesignParams.fifoDepth,
+    GeneratedDesignParams.weightBanks,
+    GeneratedDesignParams.activationBanks,
+    GeneratedDesignParams.weightBanksByRole
+  )
   _root_.circt.stage.ChiselStage.emitSystemVerilogFile(
     new GeneratedAcceleratorTop,
     firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info")
   )
 }}
+
+object ElaborateGeneratedAcceleratorVivado extends App {{
+  PhysicalImplementation.configureFpgaIp(
+    GeneratedDesignParams.computeBackend,
+    GeneratedDesignParams.weightMemory,
+    GeneratedDesignParams.activationMemory,
+    GeneratedDesignParams.fifoMemory,
+    GeneratedDesignParams.largeCacheMemory,
+    GeneratedDesignParams.fifoDepth,
+    GeneratedDesignParams.weightBanks,
+    GeneratedDesignParams.activationBanks,
+    GeneratedDesignParams.weightBanksByRole
+  )
+  _root_.circt.stage.ChiselStage.emitSystemVerilogFile(
+    new GeneratedAcceleratorTop,
+    args = Array("--target-dir", "vivado"),
+    firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info")
+  )
+}}
 """
-    position_assignment = "  core.io.position := io.position\n" if top_class in {"LlamaStyleBlock", "Gemma3TextBlock"} else ""
+    position_assignment = "  core.io.position := io.position\n" if implementation_contract["requires_position_input"] else ""
+    loader_declarations, loader_connections, loader_tieoffs = generated_axi_loader_interface(implementation_contract)
     axi_top_scala = f"""package spatialaccagent.generated
 
 import chisel3._
 import chisel3.util._
+import spatialaccagent.templates._
 
 class GeneratedAxiDdrTop extends Module {{
   private val p = GeneratedDesignParams.params
+  private val core = Module(new GeneratedAcceleratorTop)
   private val dataBits = p.lanes * p.inputBits
   private val addrBits = log2Ceil(p.batchSize * (p.hiddenSize / p.lanes) max 2)
   private val cfgBits = log2Ceil(p.maxSeqLen + 1 max 2)
@@ -838,6 +1110,8 @@ class GeneratedAxiDdrTop extends Module {{
     val cfgPrefill = Input(Bool())
     val cfgSingleQuery = Input(Bool())
     val position = Input(UInt(posBits.W))
+
+{loader_declarations}
 
     val axiReadValid = Input(Bool())
     val axiReadReady = Output(Bool())
@@ -855,16 +1129,25 @@ class GeneratedAxiDdrTop extends Module {{
 
     val busy = Output(Bool())
     val done = Output(Bool())
+    val performanceCycles = Output(UInt(64.W))
+    val performanceValid = Output(Bool())
   }})
 
-  private val core = Module(new GeneratedAcceleratorTop)
   private val running = RegInit(false.B)
+  private val latencyCycles = RegInit(0.U(64.W))
+  private val latencyValid = RegInit(false.B)
   private val active = running || io.start
 
   when(io.start) {{
     running := true.B
-  }}.elsewhen(core.io.out.fire && core.io.out.bits.last) {{
-    running := false.B
+    latencyCycles := 0.U
+    latencyValid := false.B
+  }}.elsewhen(running) {{
+    latencyCycles := latencyCycles + 1.U
+    when(core.io.out.fire && core.io.out.bits.last) {{
+      running := false.B
+      latencyValid := true.B
+    }}
   }}
 
   core.io.start := io.start
@@ -872,7 +1155,7 @@ class GeneratedAxiDdrTop extends Module {{
   core.io.cfg.prefill := io.cfgPrefill
   core.io.cfg.singleQuery := io.cfgSingleQuery
   core.io.cfgValid := active
-{position_assignment}  core.io.in.valid := io.axiReadValid && active
+{position_assignment}{loader_connections}{loader_tieoffs}  core.io.in.valid := io.axiReadValid && active
   core.io.in.bits.data := io.axiReadData
   core.io.in.bits.addr := io.axiReadAddr
   core.io.in.bits.st := io.axiReadStart
@@ -888,11 +1171,43 @@ class GeneratedAxiDdrTop extends Module {{
 
   io.busy := active
   io.done := !active
+  io.performanceCycles := latencyCycles
+  io.performanceValid := latencyValid
 }}
 
 object ElaborateGeneratedAxiDdrTop extends App {{
+  PhysicalImplementation.configureFpgaIp(
+    GeneratedDesignParams.computeBackend,
+    GeneratedDesignParams.weightMemory,
+    GeneratedDesignParams.activationMemory,
+    GeneratedDesignParams.fifoMemory,
+    GeneratedDesignParams.largeCacheMemory,
+    GeneratedDesignParams.fifoDepth,
+    GeneratedDesignParams.weightBanks,
+    GeneratedDesignParams.activationBanks,
+    GeneratedDesignParams.weightBanksByRole
+  )
   _root_.circt.stage.ChiselStage.emitSystemVerilogFile(
     new GeneratedAxiDdrTop,
+    firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info")
+  )
+}}
+
+object ElaborateGeneratedAxiDdrTopVivado extends App {{
+  PhysicalImplementation.configureFpgaIp(
+    GeneratedDesignParams.computeBackend,
+    GeneratedDesignParams.weightMemory,
+    GeneratedDesignParams.activationMemory,
+    GeneratedDesignParams.fifoMemory,
+    GeneratedDesignParams.largeCacheMemory,
+    GeneratedDesignParams.fifoDepth,
+    GeneratedDesignParams.weightBanks,
+    GeneratedDesignParams.activationBanks,
+    GeneratedDesignParams.weightBanksByRole
+  )
+  _root_.circt.stage.ChiselStage.emitSystemVerilogFile(
+    new GeneratedAxiDdrTop,
+    args = Array("--target-dir", "vivado"),
     firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info")
   )
 }}
@@ -905,8 +1220,19 @@ object GeneratedContractCheck extends App {
   require(p.intermediateSize > 0, "intermediateSize must be positive")
   require(p.lanes > 0, "lanes must be positive")
   require(p.hiddenSize % p.lanes == 0, "hiddenSize must be divisible by lanes")
+  require(GeneratedDesignParams.computeArrayRows > 0, "computeArrayRows must be positive")
+  require(GeneratedDesignParams.computeArrayCols > 0, "computeArrayCols must be positive")
+  require(GeneratedDesignParams.computeArrayRows <= p.lanes && p.lanes % GeneratedDesignParams.computeArrayRows == 0, "computeArrayRows must tile lanes")
+  require(GeneratedDesignParams.computeArrayCols <= p.lanes && p.lanes % GeneratedDesignParams.computeArrayCols == 0, "computeArrayCols must tile lanes")
+  require((GeneratedDesignParams.computeArrayCols & (GeneratedDesignParams.computeArrayCols - 1)) == 0, "computeArrayCols must be a power of two")
   require(p.inputBits == p.outputBits, "block ingress, egress, and residual path must use the same width")
   require(p.elemBits <= p.inputBits, "internal element width must not exceed block stream width")
+  require(GeneratedDesignParams.fifoDepth > 0, "fifoDepth must be positive")
+  require(GeneratedDesignParams.weightBanks > 0, "weightBanks must be positive")
+  require(GeneratedDesignParams.activationBanks > 0, "activationBanks must be positive")
+  require(GeneratedDesignParams.weightBanksByRole.values.forall(_ > 0), "weightBanksByRole values must be positive")
+  require(GeneratedDesignParams.burstBeats > 0, "burstBeats must be positive")
+  require(GeneratedDesignParams.pipelineDepth > 0, "pipelineDepth must be positive")
   println(
     s"GeneratedContractCheck pass: hidden=${p.hiddenSize}, intermediate=${p.intermediateSize}, lanes=${p.lanes}, bits=${p.inputBits}/${p.elemBits}/${p.outputBits}"
   )
@@ -926,6 +1252,67 @@ object GeneratedSACGMetadata {{
     write_text(generated_dir / "GeneratedAxiDdrTop.scala", axi_top_scala)
     write_text(generated_dir / "GeneratedContractCheck.scala", contract_check_scala)
     write_text(generated_dir / "GeneratedSACGMetadata.scala", metadata_scala)
+    physical_binding_source = "\n".join(
+        [params_scala, top_scala, axi_top_scala]
+    )
+    physical_binding_check = validate_generated_params_source(
+        physical_binding_source,
+        {
+            "lanes": lanes,
+            "compute_array_rows": compute_array_rows,
+            "compute_array_cols": compute_array_cols,
+            "fifo_depth": fifo_depth,
+            "activation_banks": activation_banks,
+            "weight_banks_by_role": weight_banks_by_role,
+        },
+    )
+    physical_binding_path = root / "logs" / "dse_physical_binding_check.json"
+    write_json(physical_binding_path, physical_binding_check)
+    if physical_binding_check["status"] != "pass":
+        raise ValueError(
+            "selected DSE candidate was not materialized into generated FPGA-IP bindings: "
+            + "; ".join(physical_binding_check["errors"])
+        )
+    ip_generator = Path("scripts/synthesis/gen_xilinx_fp_ips_23.tcl")
+    ip_generator_copy = scripts_dir / ip_generator.name
+    if not ip_generator.is_file():
+        raise ValueError(f"FPGA IP generator is missing: {ip_generator}")
+    shutil.copy2(ip_generator, ip_generator_copy)
+    ip_generation_contract = check_fpga_ip_generation_contract(ip_generator_copy)
+    if ip_generation_contract["status"] != "pass":
+        raise ValueError(
+            "FPGA IP generator does not satisfy the DSP PE contract: "
+            + "; ".join(ip_generation_contract["errors"])
+        )
+    ip_simulation_closure_path = simulation_dir / "fpga_ip_simulation_closure.json"
+    ip_module_manifest_path = simulation_dir / "fpga_ip_modules.txt"
+    fpga_part = str(board.get("board", {}).get("fpga_part") or "")
+    write_json(
+        ip_simulation_closure_path,
+        {
+            "schema_version": "spatialaccagent.fpga_ip_simulation_closure.v1",
+            "status": "pending_elaboration",
+            "policy": simulation_source_contract(),
+            "ip_generation_tcl": str(ip_generator_copy),
+            "ip_output_dir": str(simulation_dir / "vivado_ip"),
+            "ip_project_dir": str(simulation_dir / "vivado_ip_project"),
+            "ip_module_manifest": str(ip_module_manifest_path),
+            "fpga_part": fpga_part,
+            "required_ip_modules": [],
+            "vcs_compile_requirements": {
+                "generated_ip_simulation_sources": "discover recursively below ip_output_dir after Vivado generate_target simulation",
+                "xpm_library": "Vivado XPM simulation library",
+                "unisims_library": "Vivado unisims_ver library",
+                "global_module": "Vivado glbl.v",
+                "module_interface_source": "the exact Vivado IP generated from ip_generation_tcl",
+                "latency_source": "the exact generated Vivado IP simulation model",
+            },
+            "verification_rule": (
+                "Stage 6 compiles generated Vivado floating-point IP simulation models, "
+                "XPM, unisims_ver, and glbl.v with the generated RTL and board wrapper."
+            ),
+        },
+    )
 
     readme = f"""# Generated SpatialAccAgent Chisel Package
 
@@ -950,6 +1337,8 @@ Run:
 sbt "runMain spatialaccagent.generated.GeneratedContractCheck"
 sbt "runMain spatialaccagent.generated.ElaborateGeneratedAccelerator"
 sbt "runMain spatialaccagent.generated.ElaborateGeneratedAxiDdrTop"
+sbt "runMain spatialaccagent.generated.ElaborateGeneratedAcceleratorVivado"
+sbt "runMain spatialaccagent.generated.ElaborateGeneratedAxiDdrTopVivado"
 ```
 
 This package contains the accelerator compute top and the FPGA-facing AXI/DDR
@@ -963,12 +1352,12 @@ claimed.
     write_text(root / "README.md", readme)
     write_text(
         scripts_dir / "elaborate.sh",
-        "#!/usr/bin/env bash\nset -euo pipefail\ncd \"$(dirname \"$0\")/..\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAccelerator\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAxiDdrTop\"\n",
+        "#!/usr/bin/env bash\nset -euo pipefail\ncd \"$(dirname \"$0\")/..\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAccelerator\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAxiDdrTop\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAcceleratorVivado\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAxiDdrTopVivado\"\n",
     )
     (scripts_dir / "elaborate.sh").chmod(0o755)
     write_text(
         scripts_dir / "compile_check.sh",
-        "#!/usr/bin/env bash\nset -euo pipefail\ncd \"$(dirname \"$0\")/..\"\nmkdir -p .sbt/boot .ivy2 .cache/coursier\nexport SBT_OPTS=\"${SBT_OPTS:-} -Dsbt.global.base=$PWD/.sbt -Dsbt.boot.directory=$PWD/.sbt/boot -Dsbt.ivy.home=$PWD/.ivy2 -Dsbt.server.autostart=false -Dsbt.server.forcestart=false\"\nexport COURSIER_CACHE=\"${COURSIER_CACHE:-$PWD/.cache/coursier}\"\nsbt --no-server --batch --supershell=false Compile/compile\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.GeneratedContractCheck\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAccelerator\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAxiDdrTop\"\n",
+        "#!/usr/bin/env bash\nset -euo pipefail\ncd \"$(dirname \"$0\")/..\"\nmkdir -p .sbt/boot .ivy2 .cache/coursier\nexport SBT_OPTS=\"${SBT_OPTS:-} -Dsbt.global.base=$PWD/.sbt -Dsbt.boot.directory=$PWD/.sbt/boot -Dsbt.ivy.home=$PWD/.ivy2 -Dsbt.server.autostart=false -Dsbt.server.forcestart=false\"\nexport COURSIER_CACHE=\"${COURSIER_CACHE:-$PWD/.cache/coursier}\"\nsbt --no-server --batch --supershell=false Compile/compile\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.GeneratedContractCheck\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAccelerator\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAxiDdrTop\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAcceleratorVivado\"\nsbt --no-server --batch --supershell=false \"runMain spatialaccagent.generated.ElaborateGeneratedAxiDdrTopVivado\"\n",
     )
     (scripts_dir / "compile_check.sh").chmod(0o755)
 
@@ -978,7 +1367,11 @@ claimed.
         "files": files,
         "top_class": top_class,
         "fpga_wrapper_class": "GeneratedAxiDdrTop",
+        "ip_simulation_closure": str(ip_simulation_closure_path),
         "param_class": param_class,
+        "implementation_contract": implementation_contract,
+        "dse_physical_binding_check": physical_binding_check,
+        "dse_physical_binding_check_path": str(physical_binding_path),
         "params": {
             "hidden_size": hidden,
             "intermediate_size": intermediate,
@@ -991,6 +1384,17 @@ claimed.
             "input_bits": input_bits,
             "elem_bits": elem_bits,
             "output_bits": output_bits,
+            "compute_backend": compute_backend,
+            "weight_memory": weight_memory,
+            "activation_memory": activation_memory,
+            "fifo_memory": fifo_memory,
+            "large_cache_memory": large_cache_memory,
+            "fifo_depth": fifo_depth,
+            "weight_banks": weight_banks,
+            "activation_banks": activation_banks,
+            "weight_banks_by_role": weight_banks_by_role,
+            "burst_beats": burst_beats,
+            "pipeline_depth": pipeline_depth,
         },
     }
 
@@ -1002,13 +1406,15 @@ def build_manifest(state: dict[str, Any]) -> dict[str, Any]:
     model = next(c for c in state.get("constraints", []) if c.get("id") == "constraint.model.decoder")
     model_type = model.get("facts", {}).get("model_type")
     selected_sources = sorted({item.get("source") for item in selection.get("selected_templates", []) if item.get("source")})
-    template_sources = sorted(str(source) for source in template.get("source_files", []))
+    template_sources = codegen_template_sources(template)
     planned = [
         {"id": "generated.model_ir", "kind": "model_ir", "status": "generated", "depends_on": ["artifact.input.model_config"]},
         {"id": "generated.arch_plan", "kind": "architecture_plan", "status": "generated", "depends_on": ["artifact.stage3.pipeline_plan", "artifact.stage4.parameter_binding"]},
         {"id": "generated.chisel_modules", "kind": "chisel", "status": "generated", "template_sources": template_sources, "selected_operator_template_sources": selected_sources},
+        {"id": "generated.fpga_ip_simulation_closure", "kind": "fpga_ip_simulation_closure", "status": "generated", "depends_on": ["generated.chisel_modules"]},
         {"id": "generated.top_wrapper", "kind": "top_wrapper", "status": "generated", "depends_on": ["generated.chisel_modules", "artifact.input.target_board_profile"]},
         {"id": "generated.fpga_axi_ddr_top_wrapper", "kind": "fpga_axi_ddr_top_wrapper", "status": "generated", "depends_on": ["generated.top_wrapper", "artifact.input.target_board_profile"]},
+        {"id": "generated.performance_counter", "kind": "synthesizable_performance_counter", "status": "generated", "depends_on": ["generated.fpga_axi_ddr_top_wrapper", "generated.runtime_config"]},
         {"id": "generated.memory_layout", "kind": "memory_layout", "status": "generated", "depends_on": ["artifact.stage4.parameter_binding", "artifact.input.target_board_profile"]},
         {"id": "generated.runtime_config", "kind": "runtime_config", "status": "generated", "depends_on": ["generated.memory_layout", "artifact.input.target_board_profile"]},
         {"id": "generated.scala_contract_check", "kind": "scala_contract_check", "status": "generated", "depends_on": ["generated.chisel_modules", "artifact.stage4.parameter_binding"]},
@@ -1308,9 +1714,11 @@ def generate_code(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     }
     compile_gate = run_codegen_compile_gate(package_root)
     manifest["compile_gate"] = compile_gate
-    for item in manifest.get("generated_code_outputs", []):
-        if item.get("id") == "generated.codegen_compile_gate":
-            item["status"] = compile_gate.get("status")
+    set_codegen_output_status(
+        manifest,
+        "generated.codegen_compile_gate",
+        str(compile_gate.get("status") or "fail"),
+    )
     contract_check_path = package_root / "logs" / "codegen_contract_check.json"
     contract_check = build_codegen_contract_check(
         state,
@@ -1322,9 +1730,11 @@ def generate_code(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         contract_check_path,
     )
     manifest["contract_check"] = contract_check
-    for item in manifest.get("generated_code_outputs", []):
-        if item.get("id") == "generated.codegen_contract_check":
-            item["status"] = contract_check.get("status")
+    set_codegen_output_status(
+        manifest,
+        "generated.codegen_contract_check",
+        str(contract_check.get("status") or "fail"),
+    )
     manifest["generated_files"] = sorted(str(path.relative_to(run_dir)) for path in package_root.rglob("*") if path.is_file())
     package_check_path = package_root / "logs" / "codegen_package_static_check.json"
     package_static_check = build_codegen_package_static_check(manifest, package_check_path)

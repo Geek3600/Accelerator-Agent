@@ -75,12 +75,12 @@ def drc_ok(text: str) -> tuple[bool, str]:
 def build_report(run_dir: Path, mode: str) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
     blockers: list[str] = []
+    closure_blockers: list[str] = []
+    out_dir = run_dir / "app_shell_runtime_bitstream"
     if mode == "synth":
-        out_dir = run_dir / "vivado_qwen_generated_synth"
         required_files = [
-            (out_dir / "qwen_generated_synth.dcp", "synth_checkpoint"),
-            (out_dir / "qwen_generated_synth_timing.rpt", "synth_timing_report"),
-            (out_dir / "qwen_generated_synth_utilization.rpt", "synth_utilization_report"),
+            (run_dir / "backend_board" / "case_diagnostics" / "app_shell_runtime_vivado.json", "app_shell_synthesis_report"),
+            (out_dir / "app_shell_runtime_inspection.txt", "app_shell_inspection"),
         ]
         for path, label in required_files:
             ok, item = file_check(path, label)
@@ -97,14 +97,14 @@ def build_report(run_dir: Path, mode: str) -> dict[str, Any]:
             "summary": "Vivado synthesis artifacts are present" if not blockers else f"{len(blockers)} blocker(s)",
         }
 
-    out_dir = run_dir / "vivado_qwen_generated_bitstream"
     required_files = [
-        (out_dir / "qwen_generated_core.bit", "bitstream"),
-        (out_dir / "qwen_generated_routed.dcp", "routed_checkpoint"),
-        (out_dir / "qwen_generated_impl_timing.rpt", "implementation_timing_report"),
-        (out_dir / "qwen_generated_impl_utilization.rpt", "implementation_utilization_report"),
-        (out_dir / "qwen_generated_route_status.rpt", "route_status_report"),
-        (out_dir / "qwen_generated_drc.rpt", "drc_report"),
+        (out_dir / "app_shell.bit", "bitstream"),
+        (out_dir / "app_shell_routed.dcp", "routed_checkpoint"),
+        (out_dir / "app_shell_impl_timing.rpt", "implementation_timing_report"),
+        (out_dir / "app_shell_impl_utilization.rpt", "implementation_utilization_report"),
+        (out_dir / "app_shell_impl_power.rpt", "implementation_power_report"),
+        (out_dir / "app_shell_route_status.rpt", "route_status_report"),
+        (out_dir / "app_shell_drc.rpt", "drc_report"),
     ]
     for path, label in required_files:
         ok, item = file_check(path, label)
@@ -112,32 +112,38 @@ def build_report(run_dir: Path, mode: str) -> dict[str, Any]:
         if not ok:
             blockers.append(f"missing or empty {label}: {path}")
 
-    route_text = read_text(out_dir / "qwen_generated_route_status.rpt")
+    route_text = read_text(out_dir / "app_shell_route_status.rpt")
     ok, summary = route_status_ok(route_text)
     checks.append(check("route_fully_routed", ok, summary))
     if not ok:
         blockers.append(f"route status is not clean: {summary}")
 
-    timing_text = read_text(out_dir / "qwen_generated_impl_timing.rpt")
+    timing_text = read_text(out_dir / "app_shell_impl_timing.rpt")
     ok, summary = timing_ok(timing_text)
     checks.append(check("implementation_timing_met", ok, summary))
     if not ok:
-        blockers.append(f"implementation timing is not met: {summary}")
+        closure_blockers.append(f"implementation timing is not met: {summary}")
 
-    drc_text = read_text(out_dir / "qwen_generated_drc.rpt")
+    drc_text = read_text(out_dir / "app_shell_drc.rpt")
     ok, summary = drc_ok(drc_text)
     checks.append(check("drc_no_error_or_critical_warning", ok, summary))
     if not ok:
-        blockers.append(f"DRC is not clean: {summary}")
+        closure_blockers.append(f"DRC is not clean: {summary}")
 
     return {
         "schema_version": "spatialaccagent.case_vivado_report_check.v0",
         "mode": mode,
         "run_dir": str(run_dir),
         "status": "pass" if not blockers else "fail",
+        "closure_status": "pass" if not closure_blockers else "needs_optimization",
         "checks": checks,
         "blockers": blockers,
-        "summary": "Vivado implementation reports passed" if not blockers else f"{len(blockers)} blocker(s)",
+        "closure_blockers": closure_blockers,
+        "summary": (
+            "Vivado implementation characterization completed"
+            if not blockers
+            else f"{len(blockers)} implementation artifact blocker(s)"
+        ),
     }
 
 

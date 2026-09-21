@@ -59,10 +59,9 @@ verification evidence.
 
 ## Repair Experience
 
-Stage 8 archives each Agent intervention together with its hash-bound failure
-context, atomic file transaction, requested validation, and unchanged
-post-intervention real-tool result. Compact, content-addressed episodes are
-shared across runs in:
+Stage 6 archives each verification/repair intervention together with its
+current evidence context, atomic file transaction, requested validation, and
+post-intervention real-tool result. Compact episodes are shared across runs in:
 
 ```text
 accagent/runs/_shared_experience/repair_experience.jsonl
@@ -85,18 +84,24 @@ repeated without new distinguishing current-run evidence.
 ## Current Flow
 
 ```text
-input_preparation
-constraint_extraction
-template_selection
-pipeline_planning
-parameter_binding
-code_generation
-verification_artifacts
-verification
-repair
-backend_board
-sacg_validate
+Stage 0  objective_and_input_preparation
+Stage 1  sacg_extraction
+Stage 2  trusted_templates_and_fpga_ip_binding
+Stage 3  model_derived_spatial_pipeline
+Stage 4  dse_and_parameter_binding
+Stage 5  hardware_implementation_and_verification_preparation
+Stage 6  hierarchical_real_verification_and_repair
+Stage 7  vivado_implementation_and_qor
 ```
+
+Stage 5 combines RTL/board-shell generation with real-weight, runtime-image,
+testbench, CCTG, and three-layer verification preparation. Stage 6 owns all
+three verification layers, repair, adaptive observation, and execution-only
+fast replay. Stage 7 reports only `resources`, `power_w`,
+`clock_frequency_mhz`, and `performance_tokens_per_second`; a small QoR miss
+loops from Stage 7 to Stage 5, while a material architecture miss loops to
+Stage 4. Every generated accelerator binds Vivado floating-point IP and XPM
+physical memories, and VCS uses the matching generated IP timing models.
 
 `config.py` sets the task spec, model source, current-run input material
 directories, output directory, design id, LLM settings, and real-tool execution
@@ -133,14 +138,12 @@ framework reads OpenAI-compatible provider settings such as `model`,
 and turns them into the request endpoint and payload used by Stage 0 and later
 LLM stages.
 
-Every later stage is also preceded by an LLM pre-stage safety gate request. The safety gate
-does not bypass tools; it decides whether the next deterministic tool is safe
-to run and records which SACG nodes, edges, constraints, artifacts, and
-evidence must be watched.
+Before each deterministic command, the framework writes a local, non-blocking
+execution audit. It records the intended command for debugging but never calls
+an LLM, vetoes a Stage tool, or becomes repair evidence.
 
-The pre-stage safety gate is not the only LLM after Stage 0. Each major stage also runs a
-stage-local LLM worker that reviews the candidate artifact produced by the
-deterministic stage tool:
+Each major stage also runs its stage-local LLM worker that reviews the candidate
+artifact produced by the deterministic stage tool:
 
 ```text
 constraint_extraction   sacg_builder_agent
@@ -263,18 +266,17 @@ passed, and the run has configured protocols for real weight artifacts, AXI/DDR
 runtime checks, functional simulation, runtime bitstream, and board runtime
 evidence. Missing or rejected upstream evidence makes Stage 6 incomplete.
 
-`backend_board` now produces a backend handoff package:
+`backend_board` now produces a declarative backend/app-shell contract package:
 
 ```text
-<run_dir>/generated/backend/scripts/vivado_synth.tcl
-<run_dir>/generated/backend/scripts/vivado_impl.tcl
-<run_dir>/generated/backend/scripts/board_smoke.sh
-<run_dir>/generated/backend/scripts/collect_reports.sh
 <run_dir>/generated/backend/constraints/backend_handoff.json
+<run_dir>/generated/backend/constraints/board_shell_contract.json
+<run_dir>/generated/backend/constraints/app_shell_integration_contract.json
 ```
 
-These files are handoff scaffolds for real tool integration. Pending or failed
-real tools still block `final_design_pass`.
+The package contains no placeholder executable. The current case adapter's
+exact app-shell Vivado tool is the only backend execution authority. Pending or
+failed real tools still block `final_design_pass`.
 
 ## LLM I/O Protocol
 

@@ -14,6 +14,7 @@ from accagent.framework.board_progress import (
     pipeline_boundary_observation_authority,
     read_pipeline_trace_log,
     stage_internal_records_from_boundary_observations,
+    summarize_runtime_stage_trace_log,
     summarize_stage_internal_observations,
     read_complete_jsonl,
     summarize_pipeline_boundary_observations,
@@ -128,6 +129,134 @@ class BoardProgressTest(unittest.TestCase):
         self.assertEqual(parsed["stage_records"][0]["stage_id"], "stage_a")
         self.assertEqual(parsed["stage_records"][0]["signal"], "queue_count")
         self.assertEqual(parsed["stage_records"][0]["value"], 3)
+
+    def test_stage_trace_log_parses_real_dotted_scalar_value_format(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "simulation.log"
+            path.write_text(
+                "SPATIALACC_STAGE_TRACE stage=stage_a cycle=10 token=-1 beat=-1 "
+                "event=first_transfer signal=dut.core.pipe.data[3].known "
+                "scalar_value=1\n",
+                encoding="utf-8",
+            )
+            parsed = read_pipeline_trace_log(path)
+
+        self.assertEqual(parsed["stage_unparsed"], 0)
+        self.assertEqual(
+            parsed["stage_records"][0]["signal"],
+            "dut.core.pipe.data[3].known",
+        )
+        self.assertEqual(parsed["stage_records"][0]["token"], -1)
+        self.assertEqual(parsed["stage_records"][0]["value"], 1)
+
+    def test_runtime_stage_trace_summary_keeps_controls_and_compacts_known_bits(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "simulation.log"
+            path.write_text(
+                "\n".join(
+                    [
+                        "SPATIALACC_STAGE_TRACE stage=stage_a cycle=10 token=0 beat=0 "
+                        "event=first signal=dut.core.pipe_valid scalar_value=0",
+                        "SPATIALACC_STAGE_TRACE stage=stage_a cycle=12 token=0 beat=1 "
+                        "event=last signal=dut.core.pipe_valid scalar_value=1",
+                        "SPATIALACC_STAGE_TRACE stage=stage_a cycle=10 token=0 beat=0 "
+                        "event=first signal=dut.core.data[0].known scalar_value=1",
+                        "SPATIALACC_STAGE_TRACE stage=stage_a cycle=10 token=0 beat=0 "
+                        "event=first signal=dut.core.data[1].known scalar_value=0",
+                        "SPATIALACC_STAGE_TRACE stage=stage_a cycle=12 token=0 beat=1 "
+                        "event=last signal=dut.core.data[1].known scalar_value=1",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            summary = summarize_runtime_stage_trace_log(path)
+
+        self.assertEqual(summary["raw_stage_record_count"], 5)
+        self.assertEqual(summary["parsed_stage_record_count"], 5)
+        self.assertEqual(summary["distinct_signal_count"], 3)
+        stage = summary["stage_summaries"][0]
+        control = stage["scalar_signals"][0]
+        vector = stage["known_bit_vectors"][0]
+        self.assertEqual(control["signal"], "dut.core.pipe_valid")
+        self.assertEqual(control["change_count"], 1)
+        self.assertEqual(vector["signal"], "dut.core.data")
+        self.assertEqual(vector["width"], 2)
+        self.assertEqual(vector["observed_bit_count"], 2)
+        self.assertEqual(vector["known_bit_count"], 2)
+        self.assertEqual(vector["unknown_bit_count"], 0)
+
+    def test_runtime_summary_merges_current_boundary_stage_scalars(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            simulation = root / "simulation.log"
+            simulation.write_text("", encoding="utf-8")
+            boundary = root / "boundary_trace.jsonl"
+            boundary.write_text(
+                '{"cycle":42,"boundary_id":"edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",'
+                '"logical_index":3,"observed_value":{"event":"terminal_summary",'
+                '"boundary":{"valid":1,"ready":0},'
+                '"stage_01_self_attention":{"state":0,"collect_beat":8,"emit_beat":0,'
+                '"start":0,"weight_valid":0,"weight_ready":0,"bias_valid":0,"bias_ready":0}}}'
+                '\n',
+                encoding="utf-8",
+            )
+            selection = root / "current_selection.json"
+            selection.write_text(
+                json.dumps(
+                    {
+                        "selected_signals": [
+                            {
+                                "expression": "dut.spatialacc_single_kernel.core.qkv.io_in_valid",
+                                "stage": "stage_01_self_attention",
+                                "boundary": "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+                            },
+                            {
+                                "expression": "dut.spatialacc_single_kernel.core.qkv.io_in_ready",
+                                "stage": "stage_01_self_attention",
+                                "boundary": "edge.data.stage_00_rms_norm_1.to.stage_01_self_attention.main",
+                            },
+                            {
+                                "expression": "dut.spatialacc_single_kernel.core.qkv.collectBeat",
+                                "stage": "stage_01_self_attention",
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = summarize_runtime_stage_trace_log(
+                simulation,
+                boundary_trace_path=boundary,
+                selection_path=selection,
+            )
+
+        stage = next(
+            row
+            for row in summary["stage_summaries"]
+            if row["stage_id"] == "stage_01_self_attention"
+        )
+        signals = {row["signal"]: row for row in stage["scalar_signals"]}
+        self.assertEqual(signals["dut.spatialacc_single_kernel.core.qkv.io_in_valid"]["last_sample"]["value"], 1)
+        self.assertEqual(signals["dut.spatialacc_single_kernel.core.qkv.io_in_ready"]["last_sample"]["value"], 0)
+        self.assertEqual(signals["dut.spatialacc_single_kernel.core.qkv.collectBeat"]["last_sample"]["value"], 8)
+        self.assertEqual(summary["boundary_trace_merge"]["merged_scalar_sample_count"], 3)
+        self.assertEqual(summary["selected_signal_coverage"]["missing_selected_signal_count"], 0)
+
+    def test_boundary_jsonl_recovers_bare_four_state_unknown_scalars(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "boundary_trace.jsonl"
+            path.write_text(
+                '{"cycle":1,"observed_value":{"stage":"x","address":z}}\n',
+                encoding="utf-8",
+            )
+            parsed = read_complete_jsonl(path)
+
+        self.assertEqual(parsed["invalid_records"], [])
+        self.assertEqual(parsed["recovered_nonstandard_json_count"], 1)
+        self.assertEqual(parsed["records"][0]["observed_value"]["stage"], "x")
+        self.assertEqual(parsed["records"][0]["observed_value"]["address"], "z")
 
     def test_boundary_observation_authority_is_derived_from_current_pipeline(self) -> None:
         manifest = {

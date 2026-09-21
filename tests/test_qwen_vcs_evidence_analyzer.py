@@ -259,6 +259,38 @@ class QwenVcsEvidenceAnalyzerTest(unittest.TestCase):
         self.assertEqual(report["failure_evidence"]["structured_failures"], {})
         self.assertTrue(report["repair_handoff"]["agent_should_apply_code_changes"])
 
+    def test_fast_replay_livelock_is_not_mislabeled_as_board_runner_failure(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir, _ = self.make_run(Path(tmp))
+            evidence = {
+                "schema_version": "spatialaccagent.zero_time_livelock_evidence.v1",
+                "status": "proven_zero_time_livelock",
+                "last_cycle": 20_606_976,
+                "last_semantic_progress_cycle": 20_606_789,
+            }
+            report = self.analyze(
+                run_dir,
+                {
+                    "status": "fail",
+                    "phase": "fast_replay_restore_check",
+                    "compile": {"status": "pass", "returncode": 0},
+                    "run": {
+                        "status": "fail",
+                        "returncode": analyzer.ZERO_TIME_LIVELOCK_EXIT_CODE,
+                        "failure_class": "zero_time_simulation_livelock",
+                        "zero_time_livelock_evidence": evidence,
+                    },
+                    "pipeline_overlap_passed": False,
+                },
+            )
+
+        self.assertEqual(report["failure_class"], "vcs_runtime_zero_time_livelock")
+        self.assertIn("simulation time stopped advancing", report["summary"])
+        self.assertNotIn("pipeline overlap report", report["summary"])
+        self.assertTrue(report["repair_handoff"]["agent_should_apply_code_changes"])
+
     def test_supplemental_observation_artifact_reaches_failure_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_dir, _ = self.make_run(Path(tmp))

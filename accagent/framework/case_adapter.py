@@ -68,13 +68,22 @@ GENERIC_EVIDENCE_GATES = {
     "axi_protocol": "case_axi_protocol_check",
     "ddr_image_roundtrip": "case_ddr_image_roundtrip",
     "board_semantic_evidence": "case_board_semantic_evidence",
+    "board_bringup": "case_board_bringup_ready",
     "functional_sim": "functional_sim",
     "board_interface_discovery": "case_board_interface_discovery",
     "vivado_synthesis": "case_vivado_synthesis",
     "vivado_implementation": "case_vivado_implementation",
+    "vivado_power": "case_vivado_power",
+    "stage7_metrics": "case_stage7_metrics",
     "runtime_abi": "case_runtime_abi_check",
     "runtime_bitstream": "case_runtime_bitstream",
     "board_runtime": "board_runtime",
+}
+
+BUILTIN_SEMANTIC_ADAPTERS = {
+    "gpt2": Path("accagent/framework/case_adapters/gpt2_transformer_block.json"),
+    "llama": Path("accagent/framework/case_adapters/llama_transformer_block.json"),
+    "qwen2": Path("accagent/framework/case_adapters/qwen2_transformer_block.json"),
 }
 
 
@@ -239,12 +248,37 @@ def normalize_user_adapter(adapter: dict[str, Any], source_path: Path, run_dir: 
     return result
 
 
-def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any]:
+def configured_model_directory(model: dict[str, Any]) -> Path | None:
+    """Return only an explicit checkpoint directory from the current run input.
+
+    A model checkpoint is user material, not a framework default.  In
+    particular, a Qwen cache location must never become an implicit fallback
+    for GPT-2, LLaMA, or another user-selected model.
+    """
+
+    value = model.get("model_dir")
+    return Path(value).expanduser() if isinstance(value, str) and value.strip() else None
+
+
+def built_in_transformer_case_adapter(
+    model: dict[str, Any],
+    run_dir: Path,
+    family: str,
+) -> dict[str, Any]:
+    """Build the common real-tool adapter for supported decoder families.
+
+    The model family selects only a semantic contract.  Real weight cataloging,
+    current-run testbench generation, VCS evidence collection, and exact
+    app-shell implementation are shared framework capabilities.
+    """
+
+    if family not in BUILTIN_SEMANTIC_ADAPTERS:
+        raise ValueError(f"unsupported built-in transformer family: {family}")
     real_dir = run_dir / "verification" / "model_weights"
     reference_dir = run_dir / "verification" / "model_reference"
     semantic_tb_dir = run_dir / "verification" / "semantic_testbench"
     semantic_evidence_dir = run_dir / "verification" / "semantic_evidence"
-    hierarchy_dir = run_dir / "verification" / "qwen_hierarchy"
+    hierarchy_dir = run_dir / "verification" / "case_hierarchy"
     chisel_dir = run_dir / "generated" / "chisel"
     diagnosis_path = run_dir / "verification" / "case_diagnostics" / "vcs_functional_diagnosis.json"
     deadlock_axi_path = run_dir / "verification" / "case_diagnostics" / "deadlock_axi_check.json"
@@ -252,34 +286,31 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
     synth_report_check_path = run_dir / "backend_board" / "case_diagnostics" / "vivado_synth_report_check.json"
     bitstream_report_check_path = run_dir / "backend_board" / "case_diagnostics" / "vivado_bitstream_report_check.json"
     runtime_abi_check_path = run_dir / "backend_board" / "case_diagnostics" / "runtime_abi_check.json"
+    # This is the one canonical QoR result consumed by Stage 4 feedback and
+    # Stage 7 routing.  Do not create a second legacy metrics location: stale
+    # reports from a prior implementation run must never be selected instead.
+    stage7_metrics_path = run_dir / "backend_board" / "qor" / "qor_metrics.json"
     rtl_wrapper = str(run_dir / "verification" / "board_interface" / "sample_project_sources" / "wrapper.v")
     tb_path = board_testbench_path(run_dir)
-    model_id = str(model.get("model_id") or model.get("name") or "Qwen/Qwen2-0.5B")
-    model_dir = Path(
-        os.environ.get(
-            "SPATIALACC_TARGET_MODEL_DIR",
-            os.environ.get("QWEN2_HF_CACHE", Path.home() / ".cache" / "huggingface" / "hub" / "models--Qwen--Qwen2-0.5B"),
-        )
-    ).expanduser()
-    semantic_adapter = Path("accagent/framework/case_adapters/qwen2_transformer_block.json")
+    model_id = str(model.get("model_id") or model.get("name") or family)
+    model_dir = configured_model_directory(model)
+    semantic_adapter = BUILTIN_SEMANTIC_ADAPTERS[family]
     scripts = {
         "weight_manifest": "scripts/verification/target_model_weight_catalog.py",
         "target_model_reference": "scripts/verification/target_model_reference.py",
         "semantic_testbench": "scripts/verification/semantic_testbench_generator.py",
         "semantic_evidence": "scripts/verification/semantic_evidence_assembler.py",
         "board_discovery": "scripts/verification/sample_project_board_interface_discovery.py",
-        "tb_generator": "scripts/verification/qwen_tb_generator.py",
-        "hierarchical_check": "scripts/verification/qwen_hierarchical_check.py",
-        "leaf_operator_verify": "scripts/verification/qwen_leaf_operator_verify.py",
-        "single_layer_golden_builder": "scripts/verification/case_single_layer_golden_builder.py",
+        "tb_generator": "scripts/verification/case_tb_generator.py",
+        "hierarchical_check": "scripts/verification/case_hierarchical_check.py",
+        "leaf_operator_verify": "scripts/verification/case_leaf_operator_verify.py",
         "single_layer_stream_sim": "scripts/verification/case_single_layer_stream_sim.py",
-        "verilator_liveness": "scripts/verification/run_qwen_generated_verilator_smoke.sh",
-        "vcs_liveness": "scripts/verification/run_qwen_generated_vcs_smoke_23.sh",
         "vcs_functional": "scripts/verification/case_board_vcs_functional.py",
-        "vcs_analyzer": "scripts/verification/qwen_vcs_evidence_analyzer.py",
+        "vcs_analyzer": "scripts/verification/case_vcs_evidence_analyzer.py",
         "deadlock_axi_check": "scripts/verification/case_deadlock_axi_check.py",
-        "vivado_bitstream": "scripts/synthesis/run_qwen_generated_bitstream_23.sh",
+        "vivado_app_shell": "scripts/synthesis/case_app_shell_vivado.py",
         "vivado_report_check": "scripts/synthesis/case_vivado_report_check.py",
+        "stage7_metrics": "scripts/synthesis/case_stage7_metrics.py",
         "runtime_abi_check": "scripts/synthesis/case_runtime_abi_check.py",
     }
     num_layers = int(model.get("num_layers") or 24)
@@ -299,7 +330,7 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
                 "--model-id",
                 model_id,
                 "--model-dir",
-                str(model_dir),
+                str(model_dir) if model_dir is not None else "",
                 "--semantic-adapter",
                 str(semantic_adapter),
             ],
@@ -312,7 +343,6 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
                 str(real_dir / "artifact_hashes.json"),
             ],
             capabilities=["real_model_weights", "complete_scope_weight_manifest", "artifact_hash_manifest"],
-            legacy_name="qwen_weight_manifest_generate",
         ),
         "target_model_reference_generate": tool(
             name="case_target_model_reference",
@@ -397,7 +427,6 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
                 "sample_project_source_hashes",
                 *sorted(EXACT_BOARD_DISCOVERY_CAPABILITIES),
             ],
-            legacy_name="qwen_board_interface_discovery",
         ),
         "tb_scaffold_generate": tool(
             name="case_tb_scaffold_generate",
@@ -418,7 +447,6 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
                 str(semantic_tb_dir / "single_layer"),
             ],
             capabilities=["tb_scaffold_generate", "semantic_testbench_generate", "artifact_loading_testbench_generate"],
-            legacy_name="qwen_tb_scaffold_generate",
             python_modules=oracle_python_modules,
             python_environment_group=oracle_python_environment_group,
         ),
@@ -430,7 +458,6 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
             required=True,
             consumes=[str(chisel_dir)],
             capabilities=["gate_checker_only", "stage_leaf_static_check"],
-            legacy_name="qwen_stage_leaf_static",
         ),
         "boundary_contract_check": tool(
             name="boundary_contract_check",
@@ -659,33 +686,6 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
                 "connected_single_layer_evidence",
             ],
         ),
-        "single_layer_golden_reference_builder": tool(
-            name="case_single_layer_golden_reference_builder",
-            kind="case_single_layer_golden_reference_builder",
-            scope="local",
-            argv=["python3", scripts["target_model_reference"], "--run-dir", str(run_dir)],
-            required=True,
-            consumes=[
-                str(real_dir / "weight_manifest.json"),
-                str(run_dir / "input" / "model_config.json"),
-                str(run_dir / "input" / "numeric_policy.json"),
-                "deterministic random input generation contract",
-            ],
-            produces=[
-                str(reference_dir / "single_layer_output.pt"),
-                str(reference_dir / "reference_manifest.json"),
-                "semantic target-model single-layer golden reference",
-            ],
-            capabilities=[
-                "single_layer_golden_reference_builder",
-                "independent_golden_reference_builder",
-                "target_model_single_layer_reference",
-                "real_model_weights_consumed",
-                "independent_expected_output",
-            ],
-            python_modules=oracle_python_modules,
-            python_environment_group=oracle_python_environment_group,
-        ),
         "real_weight_artifacts": tool(
             name="case_real_weight_artifacts",
             kind="case_real_weight_artifacts",
@@ -700,7 +700,6 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
             ],
             produces=[str(hierarchy_dir / "real_weights.json")],
             capabilities=["complete_real_weight_catalog_check", "artifact_hash_check", "gate_checker_only"],
-            legacy_name="qwen_real_weight_artifacts",
         ),
         "multilayer_pipeline": tool(
             name="case_multilayer_pipeline",
@@ -716,7 +715,6 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
             ],
             produces=[str(hierarchy_dir / "multilayer_pipeline.json")],
             capabilities=["gate_checker_only", "multilayer_pipeline_static_check"],
-            legacy_name="qwen_multilayer_pipeline",
         ),
         "multilayer_functional_sim": tool(
             name="case_multilayer_functional",
@@ -752,7 +750,6 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
                 "axi_ddr_interface_check",
                 *sorted(EXACT_BOARD_ACCEPTANCE_CAPABILITIES),
             ],
-            legacy_name="qwen_axi_ddr_interface",
         ),
         "axi_protocol_check": tool(
             name="case_axi_protocol_check",
@@ -776,30 +773,6 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
             ],
             produces=[str(hierarchy_dir / "ddr_image_roundtrip.json")],
             capabilities=["gate_checker_only", "ddr_image_roundtrip_report_check"],
-        ),
-        "verilator_liveness": tool(
-            name="case_verilator_liveness",
-            kind="verilator_liveness_not_acceptance",
-            scope="local",
-            argv=[scripts["verilator_liveness"], str(run_dir)],
-            required=False,
-            required_group="functional_sim",
-            consumes=[str(chisel_dir), rtl_wrapper, tb_path],
-            legacy_name="qwen_verilator_smoke",
-            requires_external_tool="verilator",
-            capabilities=["liveness_smoke_only"],
-        ),
-        "vcs_liveness": tool(
-            name="case_vcs_liveness",
-            kind="vcs_liveness_not_acceptance",
-            scope="remote",
-            argv=[scripts["vcs_liveness"], str(run_dir)],
-            required=False,
-            required_group="functional_sim",
-            consumes=[str(chisel_dir), rtl_wrapper, tb_path],
-            legacy_name="qwen_vcs_smoke",
-            requires_external_tool="vcs",
-            capabilities=["liveness_smoke_only"],
         ),
         "vcs_functional_sim": tool(
             name="case_vcs_functional_sim",
@@ -830,7 +803,6 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
                 str(run_dir / "verification" / "board_simulation" / "rtl_output.memh"),
                 str(debug_dir / "boundary_trace.json"),
             ],
-            legacy_name="qwen_vcs_functional_sim",
             requires_external_tool="vcs",
             capabilities=[
                 "real_functional_sim",
@@ -873,7 +845,6 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
                 str(debug_dir / "boundary_trace.json"),
                 "board semantic comparison report",
             ],
-            legacy_name="qwen_vcs_evidence_analyzer",
             capabilities=[
                 "vcs_evidence_analyzer",
                 "failure_localization_input",
@@ -947,14 +918,21 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
         ),
         "vivado_synthesis": tool(
             name="case_vivado_synthesis",
-            kind="vivado_synthesis",
+            kind="exact_app_shell_vivado",
             scope="remote",
-            argv=[scripts["vivado_bitstream"], "synth", str(run_dir), "20.000"],
+            argv=[
+                "python3",
+                scripts["vivado_app_shell"],
+                "--run-dir",
+                str(run_dir),
+                "--mode",
+                "synth",
+            ],
             required=True,
-            consumes=[str(chisel_dir / "GeneratedAxiDdrTop.sv")],
-            produces=[str(run_dir / "vivado_qwen_generated_synth" / "qwen_generated_synth.dcp")],
+            consumes=[str(chisel_dir / "vivado"), str(run_dir / "generated" / "backend" / "constraints" / "app_shell_integration_contract.json")],
+            produces=[str(run_dir / "app_shell_runtime_bitstream" / "app_shell_runtime_inspection.txt")],
             requires_external_tool="vivado",
-            capabilities=["vivado_synthesis"],
+            capabilities=["exact_target_board_app_shell", "vivado_synthesis"],
         ),
         "vivado_synthesis_report_check": tool(
             name="case_vivado_synthesis_report_check",
@@ -972,23 +950,28 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
             ],
             required=True,
             consumes=[
-                str(run_dir / "vivado_qwen_generated_synth" / "qwen_generated_synth.dcp"),
-                str(run_dir / "vivado_qwen_generated_synth" / "qwen_generated_synth_timing.rpt"),
-                str(run_dir / "vivado_qwen_generated_synth" / "qwen_generated_synth_utilization.rpt"),
+                str(run_dir / "app_shell_runtime_bitstream" / "app_shell_runtime_inspection.txt"),
             ],
             produces=[str(synth_report_check_path)],
             capabilities=["vivado_synthesis_report_check"],
         ),
         "vivado_implementation": tool(
             name="case_vivado_implementation",
-            kind="vivado_implementation",
+            kind="exact_app_shell_vivado",
             scope="remote",
-            argv=[scripts["vivado_bitstream"], "bitstream", str(run_dir), "20.000"],
+            argv=[
+                "python3",
+                scripts["vivado_app_shell"],
+                "--run-dir",
+                str(run_dir),
+                "--mode",
+                "bitstream",
+            ],
             required=True,
-            consumes=[str(chisel_dir / "GeneratedAxiDdrTop.sv")],
-            produces=[str(run_dir / "vivado_qwen_generated_bitstream" / "qwen_generated_core.bit")],
+            consumes=[str(chisel_dir / "vivado"), str(run_dir / "generated" / "backend" / "constraints" / "app_shell_integration_contract.json")],
+            produces=[str(run_dir / "app_shell_runtime_bitstream")],
             requires_external_tool="vivado",
-            capabilities=["vivado_implementation", "bitstream_generate"],
+            capabilities=["exact_target_board_app_shell", "vivado_implementation", "bitstream_generate"],
         ),
         "vivado_implementation_report_check": tool(
             name="case_vivado_implementation_report_check",
@@ -1006,14 +989,46 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
             ],
             required=True,
             consumes=[
-                str(run_dir / "vivado_qwen_generated_bitstream" / "qwen_generated_core.bit"),
-                str(run_dir / "vivado_qwen_generated_bitstream" / "qwen_generated_routed.dcp"),
-                str(run_dir / "vivado_qwen_generated_bitstream" / "qwen_generated_impl_timing.rpt"),
-                str(run_dir / "vivado_qwen_generated_bitstream" / "qwen_generated_route_status.rpt"),
-                str(run_dir / "vivado_qwen_generated_bitstream" / "qwen_generated_drc.rpt"),
+                str(run_dir / "app_shell_runtime_bitstream" / "app_shell_runtime_inspection.txt"),
+                str(run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_timing.rpt"),
+                str(run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_utilization.rpt"),
+                str(run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_power.rpt"),
             ],
             produces=[str(bitstream_report_check_path)],
             capabilities=["vivado_implementation_report_check", "timing_drc_report_check"],
+        ),
+        "vivado_power": tool(
+            name="case_vivado_power",
+            kind="exact_app_shell_vivado",
+            scope="remote",
+            argv=["python3", scripts["vivado_app_shell"], "--run-dir", str(run_dir), "--mode", "bitstream"],
+            required=False,
+            consumes=[str(run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_power.rpt")],
+            produces=[str(run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_power.rpt")],
+            requires_external_tool="vivado",
+            capabilities=["exact_target_board_app_shell", "vivado_post_implementation_power"],
+        ),
+        "stage7_metrics": tool(
+            name="case_stage7_metrics",
+            kind="stage7_metrics",
+            scope="local",
+            argv=[
+                "python3",
+                scripts["stage7_metrics"],
+                "--run-dir",
+                str(run_dir),
+                "--out",
+                str(stage7_metrics_path),
+            ],
+            required=True,
+            consumes=[
+                str(run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_utilization.rpt"),
+                str(run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_timing.rpt"),
+                str(run_dir / "app_shell_runtime_bitstream" / "app_shell_impl_power.rpt"),
+                str(run_dir / "verification" / "board_simulation" / "reports" / "performance_counter_report.json"),
+            ],
+            produces=[str(stage7_metrics_path)],
+            capabilities=["latency_cycles", "tokens_per_second", "resource_metrics", "power_metrics"],
         ),
         "runtime_abi_check": tool(
             name="case_runtime_abi_check",
@@ -1057,23 +1072,30 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
             scope="remote",
             argv=["python3", scripts["hierarchical_check"], "--run-dir", str(run_dir), "--gate", "runtime_bitstream"],
             required=True,
-            legacy_name="qwen_runtime_bitstream",
             capabilities=["gate_checker_only", "runtime_bitstream_report_check"],
         ),
     }
     missing_scripts = [path for path in scripts.values() if not repo_has(path)]
     if not repo_has(str(semantic_adapter)):
         missing_scripts.append(str(semantic_adapter))
+    adapter_errors = [f"missing adapter script: {path}" for path in missing_scripts]
+    if model_dir is None:
+        adapter_errors.append(
+            "target model checkpoint directory is not configured; supply model_dir in the current run input"
+        )
     return {
         "schema_version": CASE_ADAPTER_SCHEMA,
-        "status": "ready" if not missing_scripts else "incomplete",
-        "case_id": "qwen2_hf_case",
-        "model_family": "qwen2",
+        "status": "ready" if not adapter_errors else "incomplete",
+        "case_id": f"{family}_hf_case",
+        "model_family": family,
         "model_id": model_id,
         "model_semantic_adapter": {
             "path": str(semantic_adapter),
             "accelerator_scope": "transformer_blocks_only",
-            "checkpoint": {"model_id": model_id, "model_dir": str(model_dir)},
+            "checkpoint": {
+                "model_id": model_id,
+                "model_dir": str(model_dir) if model_dir is not None else None,
+            },
         },
         "source": "built_in_case_adapter",
         "run_dir": str(run_dir),
@@ -1113,7 +1135,7 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
             "synth_report_check_path": str(synth_report_check_path),
             "bitstream_report_check_path": str(bitstream_report_check_path),
             "runtime_abi_check_path": str(runtime_abi_check_path),
-            "legacy_diagnosis_path": str(run_dir / "verification" / "qwen_vcs" / "qwen_vcs_functional_diagnosis.json"),
+            "stage7_metrics_path": str(stage7_metrics_path),
             "rtl_wrapper": rtl_wrapper,
             "testbench": tb_path,
         },
@@ -1188,12 +1210,11 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
         },
         "diagnosis": {
             "path": str(diagnosis_path),
-            "legacy_path": str(run_dir / "verification" / "qwen_vcs" / "qwen_vcs_functional_diagnosis.json"),
-            "trigger_tool_names": ["case_vcs_functional_sim", "case_vcs_liveness", "qwen_vcs_functional_sim", "qwen_vcs_smoke"],
+            "trigger_tool_names": ["case_vcs_functional_sim"],
         },
         "acceptance": {
             "functional_sim_accepts_any_one_of": ["case_vcs_functional_sim"],
-            "legacy_liveness_tools_not_acceptance": ["case_verilator_liveness", "case_vcs_liveness", "qwen_verilator_smoke", "qwen_vcs_smoke"],
+            "legacy_liveness_tools_not_acceptance": [],
             "pass_regex_source": str(run_dir / "verification" / "board_simulation" / "board_simulation_manifest.json"),
             "pass_regex_policy": "must be supplied by the current case adapter's exact sample-project testbench manifest",
             "exact_board_contract": {
@@ -1206,11 +1227,17 @@ def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any
             },
         },
         "implementation_notes": [
-            "This adapter preserves the current Qwen2 HF development case as an example implementation.",
-            "Framework core stages must depend on case_* gates and this manifest, not on Qwen-specific names.",
+            "The current model family selects semantic rules only; all verification and backend tool roles are generic.",
+            "Framework core stages depend on case_* gates and current-run artifacts, never on a prior model family.",
         ],
-        "errors": [f"missing adapter script: {path}" for path in missing_scripts],
+        "errors": adapter_errors,
     }
+
+
+def qwen2_hf_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any]:
+    """Compatibility alias for historical callers of the Qwen2 built-in path."""
+
+    return built_in_transformer_case_adapter(model, run_dir, "qwen2")
 
 
 def missing_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any]:
@@ -1243,13 +1270,58 @@ def missing_case_adapter(model: dict[str, Any], run_dir: Path) -> dict[str, Any]
     }
 
 
+def semantic_contract_only_case_adapter(model: dict[str, Any], run_dir: Path, family: str) -> dict[str, Any]:
+    """Expose a built-in semantic contract without claiming board readiness.
+
+    The framework can already catalog weights and build model references from
+    these contracts.  Exact board generation still needs a family-specific
+    shell/testbench binding, so the adapter remains incomplete until those
+    tools are supplied.  Keeping this state explicit prevents a new model from
+    silently taking the wrong Qwen/OPT path.
+    """
+
+    semantic_path = BUILTIN_SEMANTIC_ADAPTERS.get(family)
+    contract_exists = semantic_path is not None and semantic_path.is_file()
+    model_id = model.get("model_id") or model.get("name") or family
+    result = missing_case_adapter(model, run_dir)
+    result.update(
+        {
+            "case_id": f"{family}_hf_case",
+            "model_family": family,
+            "source": "built_in_semantic_contract",
+            "status": "incomplete" if contract_exists else "missing",
+            "model_semantic_adapter": {
+                "path": str(semantic_path) if semantic_path else "",
+                "accelerator_scope": "transformer_blocks_only",
+                "checkpoint": {"model_id": str(model_id)},
+            },
+            "paths": {
+                "semantic_adapter": str(semantic_path) if semantic_path else "",
+                "real_artifact_dir": str(run_dir / "verification" / "model_weights"),
+                "target_model_reference_manifest": str(
+                    run_dir / "verification" / "model_reference" / "reference_manifest.json"
+                ),
+            },
+            "implementation_notes": [
+                "The semantic contract is family-specific and can drive generic weight/reference preparation.",
+                "Exact AXI/DDR board-shell, VCS evidence, and Vivado runtime tools must be bound before Stage 5/7 execution.",
+            ],
+        }
+    )
+    result["errors"] = [
+        f"Built-in {family} semantic contract is ready, but its exact-board tool chain is not bound yet.",
+        "Provide a family adapter with real board testbench, hierarchical evidence analyzer, and backend commands before starting a formal run.",
+    ] if contract_exists else [f"Built-in semantic contract is missing for model family: {family}"]
+    return result
+
+
 def build_case_adapter(model: dict[str, Any], run_dir: Path, tool_materials_dir: Path) -> dict[str, Any]:
     custom_path = user_adapter_path(tool_materials_dir)
     if custom_path:
         return normalize_user_adapter(read_json(custom_path), custom_path, run_dir)
     family = str(model.get("model_type") or "").strip().lower()
-    if family == "qwen2":
-        return qwen2_hf_case_adapter(model, run_dir)
+    if family in BUILTIN_SEMANTIC_ADAPTERS:
+        return built_in_transformer_case_adapter(model, run_dir, family)
     return missing_case_adapter(model, run_dir)
 
 
@@ -1329,6 +1401,7 @@ def planned_evidence_paths_from_adapter(adapter: dict[str, Any], run_dir: Path, 
     real_dir = Path(str(paths.get("real_artifact_dir") or (run_dir / "verification" / "case_real_weights")))
     generated_root = run_dir / "generated" / "chisel"
     debug_dir = Path(str(paths.get("debug_closure_dir") or (run_dir / "verification" / "debug_closure")))
+    hierarchy_dir = Path(str(paths.get("hierarchy_dir") or (run_dir / "verification" / "case_hierarchy")))
 
     def unique(values: list[str]) -> list[str]:
         result: list[str] = []
@@ -1393,7 +1466,7 @@ def planned_evidence_paths_from_adapter(adapter: dict[str, Any], run_dir: Path, 
             ],
             "planned_produces": [
                 str(run_dir / "verification" / "operator_leaf_functional"),
-                str(run_dir / "verification" / "qwen_hierarchy" / "leaf_functional.json"),
+                str(hierarchy_dir / "leaf_functional.json"),
             ],
         },
         gate_name(adapter, "leaf_golden_compare"): {
@@ -1406,7 +1479,7 @@ def planned_evidence_paths_from_adapter(adapter: dict[str, Any], run_dir: Path, 
             ],
             "planned_produces": [
                 str(run_dir / "verification" / "operator_leaf_golden"),
-                str(run_dir / "verification" / "qwen_hierarchy" / "leaf_golden_compare.json"),
+                str(hierarchy_dir / "leaf_golden_compare.json"),
             ],
         },
         gate_name(adapter, "boundary_contract"): {
@@ -1415,7 +1488,7 @@ def planned_evidence_paths_from_adapter(adapter: dict[str, Any], run_dir: Path, 
                 str(run_dir / "verification" / "debug_closure" / "boundary_contracts.json"),
                 str(run_dir / "verification" / "debug_closure" / "trace_manifest.json"),
             ],
-            "planned_produces": [str(run_dir / "verification" / "qwen_hierarchy" / "boundary_contract.json")],
+            "planned_produces": [str(hierarchy_dir / "boundary_contract.json")],
         },
         gate_name(adapter, "tb_scaffold"): {
             "planned_consumes": [
@@ -1425,7 +1498,7 @@ def planned_evidence_paths_from_adapter(adapter: dict[str, Any], run_dir: Path, 
                 str(paths.get("dut_weight_binding_manifest") or generated_root / "memory" / "dut_weight_binding_manifest.json"),
             ],
             "planned_produces": [
-                str(run_dir / "verification" / "qwen_hierarchy" / "tb_scaffold.json"),
+                str(hierarchy_dir / "tb_scaffold.json"),
             ],
         },
         gate_name(adapter, "single_layer_kernel"): {
@@ -1444,8 +1517,8 @@ def planned_evidence_paths_from_adapter(adapter: dict[str, Any], run_dir: Path, 
         gate_name(adapter, "single_layer_functional"): {
             "planned_consumes": [
                 str(generated_root),
-                str(run_dir / "verification" / "qwen_hierarchy" / "leaf_functional.json"),
-                str(run_dir / "verification" / "qwen_hierarchy" / "single_layer_kernel.json"),
+                str(hierarchy_dir / "leaf_functional.json"),
+                str(hierarchy_dir / "single_layer_kernel.json"),
                 str(paths.get("target_model_reference_manifest") or run_dir / "verification" / "model_reference" / "reference_manifest.json"),
                 str(paths.get("semantic_testbench_manifest") or run_dir / "verification" / "semantic_testbench" / "semantic_testbench_manifest.json"),
                 str(paths.get("dut_weight_binding_manifest") or generated_root / "memory" / "dut_weight_binding_manifest.json"),

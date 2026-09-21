@@ -2,9 +2,6 @@ package spatialaccagent.templates
 
 import chisel3._
 import chisel3.util._
-import chisel3.util.experimental.loadMemoryFromFileInline
-import hardfloat._
-import hardfloat.consts
 
 final case class ActivationParams(
   hiddenSize: Int,
@@ -27,120 +24,186 @@ class Activation(p: ActivationParams) extends Module {
     val out = Decoupled(new StreamBeat(StreamSpec(p.beatBits, p.addrBits)))
   })
 
-  private val SigmoidTablePath =
-    "src/main/resources/spatialaccagent/numeric/sigmoid_pwl_q18.memh"
-  private val Fp32ExpWidth = 8
-  private val Fp32SigWidth = 24
-  private val Q11Width = 16
-  private val SigmoidFractionBits = 18
-
-  private def fp32ToSignedQ11(value: UInt): SInt = {
-    val scaled = IeeeMath.mulFp32(value, IeeeMath.fp32Constant(2048.0))
-    val convert = Module(new RecFNToIN(Fp32ExpWidth, Fp32SigWidth, Q11Width))
-    convert.io.in := recFNFromFN(Fp32ExpWidth, Fp32SigWidth, scaled)
-    convert.io.roundingMode := consts.round_near_even
-    convert.io.signedOut := true.B
-    convert.io.out.asSInt
-  }
-
-  private def signedIntegerToFp32(value: SInt): UInt = {
-    val convert = Module(new INToRecFN(value.getWidth, Fp32ExpWidth, Fp32SigWidth))
-    convert.io.signedIn := true.B
-    convert.io.in := value.asUInt
-    convert.io.roundingMode := consts.round_near_even
-    convert.io.detectTininess := consts.tininess_afterRounding
-    fNFromRecFN(Fp32ExpWidth, Fp32SigWidth, convert.io.out)
-  }
-
-  io.in.ready := io.out.ready
-  io.out.valid := io.in.valid
-  io.out.bits.st := io.in.bits.st
-  io.out.bits.addr := io.in.bits.addr
-  io.out.bits.last := io.in.bits.last
-
-  val inVec = io.in.bits.data.asTypeOf(Vec(p.lanes, SInt(p.elemBits.W)))
-  val outVec = Wire(Vec(p.lanes, UInt(p.elemBits.W)))
+  private val sigmoidTablePath = "src/main/resources/spatialaccagent/numeric/sigmoid_pwl_q18.mem"
+  private val q11Width = 16
+  private val sigmoidFractionBits = 18
 
   if (p.kind == "silu" || p.kind == "swish") {
-    require(
-      p.elemBits == 16 || p.elemBits == 32,
-      "target-model SiLU requires IEEE fp16 or fp32 stream elements"
+    require(p.elemBits == 16 || p.elemBits == 32, "target-model SiLU requires IEEE fp16 or fp32 stream elements")
+
+    val streamSpec = StreamSpec(p.beatBits, p.addrBits)
+    val inputBeat = Reg(new StreamBeat(streamSpec))
+    val resultData = Reg(Vec(p.lanes, UInt(p.elemBits.W)))
+    val laneIndex = RegInit(0.U(log2Ceil(p.lanes max 2).W))
+    val inputFpReg = Reg(UInt(32.W))
+    val scaledInputReg = Reg(UInt(32.W))
+    val inputQ11Reg = Reg(SInt(q11Width.W))
+    val belowMinusEightReg = RegInit(false.B)
+    val abovePlusEightReg = RegInit(false.B)
+    val productQ29Reg = Reg(SInt(36.W))
+    val productFpReg = Reg(UInt(32.W))
+
+    val states = Enum(12)
+    val sAccept = states(0)
+    val sClassifyIssue = states(1)
+    val sClassifyWait = states(2)
+    val sConvertIssue = states(3)
+    val sConvertWait = states(4)
+    val sTableIssue = states(5)
+    val sTableCapture = states(6)
+    val sProductConvertIssue = states(7)
+    val sProductConvertWait = states(8)
+    val sScaleProductIssue = states(9)
+    val sScaleProductWait = states(10)
+    val sEmit = states(11)
+    val state = RegInit(sAccept)
+
+    io.in.ready := state === sAccept
+    when(io.in.fire) {
+      inputBeat := io.in.bits
+      laneIndex := 0.U
+      state := sClassifyIssue
+    }
+
+    val inputValues = inputBeat.data.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
+    val selectedInput = inputValues(AccMath.boundedIndex(laneIndex, p.lanes))
+    val selectedFp32 = PhysicalMath.toFp32(selectedInput, p.elemBits)
+    val inputScale = Module(new PhysicalFp32Mul)
+    val belowCompare = Module(new PhysicalFp32CompareLt)
+    val aboveCompare = Module(new PhysicalFp32CompareLt)
+    inputScale.io.a := selectedFp32
+    inputScale.io.b := PhysicalMath.fp32Constant(2048.0)
+    belowCompare.io.a := PhysicalMath.fp32Constant(-8.0)
+    belowCompare.io.b := selectedFp32
+    aboveCompare.io.a := selectedFp32
+    aboveCompare.io.b := PhysicalMath.fp32Constant(8.0)
+    val classifyReady = inputScale.io.inReady && belowCompare.io.inReady && aboveCompare.io.inReady
+    val classifyIssue = state === sClassifyIssue && classifyReady
+    inputScale.io.inValid := classifyIssue
+    belowCompare.io.inValid := classifyIssue
+    aboveCompare.io.inValid := classifyIssue
+    when(classifyIssue) {
+      inputFpReg := selectedFp32
+      state := sClassifyWait
+    }
+    when(state === sClassifyWait && inputScale.io.outValid && belowCompare.io.outValid && aboveCompare.io.outValid) {
+      scaledInputReg := inputScale.io.out
+      belowMinusEightReg := !belowCompare.io.out(0)
+      abovePlusEightReg := !aboveCompare.io.out(0)
+      state := sConvertIssue
+    }
+
+    val q11Convert = Module(new PhysicalFp32ToSigned(q11Width))
+    q11Convert.io.in := scaledInputReg
+    q11Convert.io.inValid := state === sConvertIssue && q11Convert.io.inReady
+    when(state === sConvertIssue && q11Convert.io.inReady) {
+      state := sConvertWait
+    }
+    when(state === sConvertWait && q11Convert.io.outValid) {
+      inputQ11Reg := q11Convert.io.out
+      state := sTableIssue
+    }
+
+    val boundedQ11 = Wire(SInt(q11Width.W))
+    boundedQ11 := Mux(
+      belowMinusEightReg,
+      (-16384).S(q11Width.W),
+      Mux(abovePlusEightReg, 16383.S(q11Width.W), inputQ11Reg)
     )
+    val biasedQ11 = (boundedQ11.pad(18) + 16384.S(18.W)).asUInt
+    val segment = biasedQ11(14, 8)
+    val remainder = biasedQ11(7, 0)
+    val baseRom = Module(new PhysicalRom(129, 19, sigmoidTablePath))
+    val nextRom = Module(new PhysicalRom(129, 19, sigmoidTablePath))
+    baseRom.io.readEn := state === sTableIssue
+    baseRom.io.readAddr := segment
+    nextRom.io.readEn := state === sTableIssue
+    nextRom.io.readAddr := segment +& 1.U
+    when(state === sTableIssue) {
+      state := sTableCapture
+    }
 
-    val sigmoidTable = Mem(129, UInt(19.W))
-    loadMemoryFromFileInline(sigmoidTable, SigmoidTablePath)
+    val tableDelta = nextRom.io.readData.zext - baseRom.io.readData.zext
+    val interpolationProduct = tableDelta * Cat(0.U(1.W), remainder).asSInt
+    val roundedDelta = (interpolationProduct + 128.S(interpolationProduct.getWidth.W)) >> 8
+    val interpolatedQ18 = (baseRom.io.readData.zext + roundedDelta).asUInt(18, 0)
+    val q18One = (BigInt(1) << sigmoidFractionBits).U(19.W)
+    val sigmoidQ18 = Mux(
+      belowMinusEightReg,
+      0.U(19.W),
+      Mux(abovePlusEightReg, q18One, interpolatedQ18)
+    )
+    val rawProductQ29 = inputQ11Reg * sigmoidQ18.zext.asSInt
+    when(state === sTableCapture) {
+      productQ29Reg := rawProductQ29
+      state := sProductConvertIssue
+    }
 
-    val minusEight = IeeeMath.fp32Constant(-8.0)
-    val plusEight = IeeeMath.fp32Constant(8.0)
-    val q18One = (BigInt(1) << SigmoidFractionBits).U(19.W)
-    val productScale = IeeeMath.fp32Constant(math.pow(2.0, -29.0))
+    val productConvert = Module(new PhysicalSignedToFp32(36))
+    productConvert.io.in := productQ29Reg
+    productConvert.io.inValid := state === sProductConvertIssue && productConvert.io.inReady
+    when(state === sProductConvertIssue && productConvert.io.inReady) {
+      state := sProductConvertWait
+    }
+    when(state === sProductConvertWait && productConvert.io.outValid) {
+      productFpReg := productConvert.io.out
+      state := sScaleProductIssue
+    }
 
-    for (i <- 0 until p.lanes) {
-      val inputBits = inVec(i).asUInt
-      val inputFp32 = IeeeMath.toFp32(inputBits, p.elemBits)
-      val atOrBelowMinusEight = !IeeeMath.lessThanFp32(minusEight, inputFp32)
-      val atOrAbovePlusEight = !IeeeMath.lessThanFp32(inputFp32, plusEight)
-      val inputQ11 = fp32ToSignedQ11(inputFp32)
-
-      val tableInputQ11 = Wire(SInt(Q11Width.W))
-      tableInputQ11 := Mux(
-        atOrBelowMinusEight,
-        (-16384).S(Q11Width.W),
-        Mux(atOrAbovePlusEight, 16383.S(Q11Width.W), inputQ11)
+    val productScale = Module(new PhysicalFp32Mul)
+    productScale.io.a := productFpReg
+    productScale.io.b := PhysicalMath.fp32Constant(math.pow(2.0, -29.0))
+    productScale.io.inValid := state === sScaleProductIssue && productScale.io.inReady
+    when(state === sScaleProductIssue && productScale.io.inReady) {
+      state := sScaleProductWait
+    }
+    when(state === sScaleProductWait && productScale.io.outValid) {
+      val selectedResult = Mux(
+        belowMinusEightReg,
+        PhysicalMath.fp32Zero,
+        Mux(abovePlusEightReg, inputFpReg, productScale.io.out)
       )
+      resultData(AccMath.boundedIndex(laneIndex, p.lanes)) := PhysicalMath.fromFp32(selectedResult, p.elemBits)
+      when(laneIndex === (p.lanes - 1).U) {
+        laneIndex := 0.U
+        state := sEmit
+      }.otherwise {
+        laneIndex := laneIndex + 1.U
+        state := sClassifyIssue
+      }
+    }
 
-      val biasedQ11 = (tableInputQ11.pad(18) + 16384.S(18.W)).asUInt
-      val segment = biasedQ11(14, 8)
-      val remainder = biasedQ11(7, 0)
-      val nextSegment = segment +& 1.U
-      val tableBase = sigmoidTable.read(segment)
-      val tableNext = sigmoidTable.read(nextSegment)
-      val tableDelta = tableNext.zext - tableBase.zext
-      val remainderSigned = Cat(0.U(1.W), remainder).asSInt
-      val interpolationProduct = tableDelta * remainderSigned
-      val roundedDelta =
-        (interpolationProduct + 128.S(interpolationProduct.getWidth.W)) >> 8
-      val interpolatedWide = tableBase.zext + roundedDelta
-      val interpolatedBits = interpolatedWide.asUInt
-      val interpolatedQ18 = interpolatedBits(18, 0)
-
-      val sigmoidQ18 = Wire(UInt(19.W))
-      sigmoidQ18 := Mux(
-        atOrBelowMinusEight,
-        0.U,
-        Mux(atOrAbovePlusEight, q18One, interpolatedQ18)
-      )
-
-      val siluProductQ29 = inputQ11 * sigmoidQ18.zext
-      val productFp32 = signedIntegerToFp32(siluProductQ29)
-      val siluFp32 = IeeeMath.mulFp32(productFp32, productScale)
-      val boundedSilu = Mux(
-        atOrBelowMinusEight,
-        IeeeMath.fp32Zero,
-        Mux(atOrAbovePlusEight, inputFp32, siluFp32)
-      )
-      outVec(i) := IeeeMath.fromFp32(boundedSilu, p.elemBits)
+    io.out.valid := state === sEmit
+    io.out.bits.data := resultData.asUInt
+    io.out.bits.st := inputBeat.st
+    io.out.bits.addr := inputBeat.addr
+    io.out.bits.last := inputBeat.last
+    when(io.out.fire) {
+      state := sAccept
     }
   } else {
-    for (i <- 0 until p.lanes) {
-      val x = inVec(i)
-      val y =
-        if (p.kind == "relu") {
-          Mux(x < 0.S, 0.S(p.elemBits.W), x)
-        } else if (
-          p.kind == "gelu" ||
-          p.kind == "gelu_new" ||
-          p.kind == "gelu_pytorch_tanh"
-        ) {
-          Mux(x < 0.S, (x >> 1).asSInt, x)
-        } else {
-          x
-        }
-      outVec(i) := AccMath.resizeSignedToUInt(y, p.elemBits)
+    io.in.ready := io.out.ready
+    io.out.valid := io.in.valid
+    io.out.bits.st := io.in.bits.st
+    io.out.bits.addr := io.in.bits.addr
+    io.out.bits.last := io.in.bits.last
+    val inVec = io.in.bits.data.asTypeOf(Vec(p.lanes, SInt(p.elemBits.W)))
+    val outVec = Wire(Vec(p.lanes, UInt(p.elemBits.W)))
+    for (lane <- 0 until p.lanes) {
+      val x = inVec(lane)
+      val y = if (p.kind == "relu") {
+        Mux(x < 0.S, 0.S(p.elemBits.W), x)
+      } else if (p.kind == "gelu" || p.kind == "gelu_new" || p.kind == "gelu_pytorch_tanh") {
+        Mux(x < 0.S, (x >> 1).asSInt, x)
+      } else {
+        x
+      }
+      outVec(lane) := AccMath.resizeSignedToUInt(y, p.elemBits)
     }
+    io.out.bits.data := outVec.asUInt
   }
 
-  io.out.bits.data := outVec.asUInt
+  dontTouch(io.cfg)
 }
 
 class ActivationReLU(p: ActivationParams) extends Activation(p.copy(kind = "relu"))

@@ -14,15 +14,31 @@ final case class DecoderBlockParams(
   inputBits: Int = 32,
   elemBits: Int = 16,
   outputBits: Int = 32,
-  mlpActivation: String = "relu"
+  computeArrayRows: Int = 0,
+  computeArrayCols: Int = 0,
+  mlpActivation: String = "relu",
+  qkvHasBias: Boolean = true,
+  attentionOutHasBias: Boolean = true
 ) {
   require(inputBits == outputBits, "DecoderBlock inputBits and outputBits must match the residual stream width")
   val norm = VectorNormParams(hiddenSize, lanes, inputBits = inputBits, outputBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
-  val qkv = QKVProjectionParams(hiddenSize, numHeads, numHeads, headDim, lanes = lanes, elemBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
-  val attn = AttentionParams(hiddenSize, numHeads, numHeads, headDim, maxSeqLen, lanes = lanes, elemBits = elemBits, batchSize = batchSize)
+  val qkv = QKVProjectionParams(
+    hiddenSize, numHeads, numHeads, headDim, lanes = lanes, elemBits = elemBits,
+    batchSize = batchSize, maxSeqLen = maxSeqLen, hasBias = qkvHasBias,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+  )
+  val attn = AttentionParams(
+    hiddenSize, numHeads, numHeads, headDim, maxSeqLen, lanes = lanes, elemBits = elemBits,
+    batchSize = batchSize, outHasBias = attentionOutHasBias,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+  )
   val outLinear: LinearParams = attn.outLinear
   val residual = ResidualParams(hiddenSize, lanes = lanes, elemBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
-  val ffn = DenseFFNParams(hiddenSize, intermediateSize, lanes = lanes, elemBits = elemBits, outputBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen, activation = mlpActivation)
+  val ffn = DenseFFNParams(
+    hiddenSize, intermediateSize, lanes = lanes, elemBits = elemBits, outputBits = outputBits,
+    batchSize = batchSize, maxSeqLen = maxSeqLen, activation = mlpActivation,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+  )
 }
 
 class DecoderBlock(p: DecoderBlockParams) extends Module {
@@ -37,6 +53,7 @@ class DecoderBlock(p: DecoderBlockParams) extends Module {
     val qkvWeight = Flipped(Decoupled(new WeightWrite(p.qkv.linear.weightTileBits, p.qkv.linear.weightAddrBits)))
     val qkvBias = Flipped(Decoupled(new WeightWrite(p.qkv.linear.biasBeatBits, log2Ceil(p.qkv.linear.outBeats max 2))))
     val attentionOutWeight = Flipped(Decoupled(new WeightWrite(p.attn.outLinear.weightTileBits, p.attn.outLinear.weightAddrBits)))
+    val attentionOutBias = Flipped(Decoupled(new WeightWrite(p.attn.outLinear.biasBeatBits, log2Ceil(p.attn.outLinear.outBeats max 2))))
     val norm2Weight = Flipped(Decoupled(UInt(p.norm.inputBeatBits.W)))
     val ffnUpWeight = Flipped(Decoupled(new WeightWrite(p.ffn.up.weightTileBits, p.ffn.up.weightAddrBits)))
     val ffnUpBias = Flipped(Decoupled(new WeightWrite(p.ffn.up.biasBeatBits, log2Ceil(p.ffn.up.outBeats max 2))))
@@ -54,8 +71,8 @@ class DecoderBlock(p: DecoderBlockParams) extends Module {
   val ffn = Module(new DenseFFN(p.ffn))
   val add2 = Module(new ResidualAdd(p.residual))
 
-  val res1Q = Module(new Queue(new StreamBeat(inSpec), p.batchSize * p.norm.beats))
-  val res2Q = Module(new Queue(new StreamBeat(inSpec), p.batchSize * p.norm.beats))
+  val res1Q = Module(new PhysicalStreamFifo(new StreamBeat(inSpec), p.batchSize * p.norm.beats))
+  val res2Q = Module(new PhysicalStreamFifo(new StreamBeat(inSpec), p.batchSize * p.norm.beats))
 
   io.in.ready := ln1.io.in.ready && res1Q.io.enq.ready
   ln1.io.in.valid := io.in.valid && res1Q.io.enq.ready
@@ -66,7 +83,7 @@ class DecoderBlock(p: DecoderBlockParams) extends Module {
   ln1.io.cfg := io.cfg
   ln1.io.cfgValid := io.cfgValid
   ln1.io.weight <> io.norm1Weight
-  ln1.io.quant.outInvScale := IeeeMath.fp32One
+  ln1.io.quant.outInvScale := PhysicalMath.fp32One
   ln1.io.quant.outZeroPoint := 0.S
 
   qkv.io.start := io.start
@@ -74,19 +91,20 @@ class DecoderBlock(p: DecoderBlockParams) extends Module {
   qkv.io.cfgValid := io.cfgValid
   qkv.io.weight <> io.qkvWeight
   qkv.io.bias <> io.qkvBias
-  qkv.io.qScale := IeeeMath.fp32One
-  qkv.io.kScale := IeeeMath.fp32One
-  qkv.io.vScale := IeeeMath.fp32One
+  qkv.io.qScale := PhysicalMath.fp32One
+  qkv.io.kScale := PhysicalMath.fp32One
+  qkv.io.vScale := PhysicalMath.fp32One
   qkv.io.in <> ln1.io.out
 
   attn.io.cfg := io.cfg
   attn.io.cfgValid := io.cfgValid
   attn.io.mask := 0.U
-  attn.io.scoreScale := IeeeMath.fp32One
-  attn.io.ctxInvScale := IeeeMath.fp32One
+  attn.io.scoreScale := PhysicalMath.fp32One
+  attn.io.ctxInvScale := PhysicalMath.fp32One
   attn.io.ctxZeroPoint := 0.U
-  attn.io.outInvScale := IeeeMath.fp32One
+  attn.io.outInvScale := PhysicalMath.fp32One
   attn.io.outWeight <> io.attentionOutWeight
+  attn.io.outBias <> io.attentionOutBias
   attn.io.in <> qkv.io.out
 
   add1.io.cfg := io.cfg
@@ -102,7 +120,7 @@ class DecoderBlock(p: DecoderBlockParams) extends Module {
   ln2.io.cfg := io.cfg
   ln2.io.cfgValid := io.cfgValid
   ln2.io.weight <> io.norm2Weight
-  ln2.io.quant.outInvScale := IeeeMath.fp32One
+  ln2.io.quant.outInvScale := PhysicalMath.fp32One
   ln2.io.quant.outZeroPoint := 0.S
 
   ffn.io.start := io.start
@@ -135,17 +153,31 @@ final case class LlamaStyleBlockParams(
   inputBits: Int = 32,
   elemBits: Int = 16,
   outputBits: Int = 32,
-  ropeTheta: Double = 10000.0
+  computeArrayRows: Int = 0,
+  computeArrayCols: Int = 0,
+  ropeTheta: Double = 10000.0,
+  qkvHasBias: Boolean = false
 ) {
   require(inputBits == outputBits, "LlamaStyleBlock inputBits and outputBits must match the residual stream width")
   val inSpec = StreamSpec(lanes * inputBits, log2Ceil(batchSize * (hiddenSize / lanes) max 2))
   val rms = RMSNormParams(hiddenSize, lanes, inputBits = inputBits, outputBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
-  val qkv = QKVProjectionParams(hiddenSize, qHeads, kvHeads, headDim, lanes = lanes, elemBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
+  val qkv = QKVProjectionParams(
+    hiddenSize, qHeads, kvHeads, headDim, lanes = lanes, elemBits = elemBits,
+    batchSize = batchSize, maxSeqLen = maxSeqLen, hasBias = qkvHasBias,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+  )
   val rope = RoPEParams(qkv, theta = ropeTheta)
-  val attn = AttentionParams(hiddenSize, qHeads, kvHeads, headDim, maxSeqLen, lanes = lanes, elemBits = elemBits, batchSize = batchSize)
+  val attn = AttentionParams(
+    hiddenSize, qHeads, kvHeads, headDim, maxSeqLen, lanes = lanes, elemBits = elemBits, batchSize = batchSize,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+  )
   val outLinear: LinearParams = attn.outLinear
   val residual = ResidualParams(hiddenSize, lanes = lanes, elemBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
-  val mlp = GatedMLPParams(hiddenSize, intermediateSize, lanes = lanes, elemBits = elemBits, outputBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen, activation = "silu", hasBias = false)
+  val mlp = GatedMLPParams(
+    hiddenSize, intermediateSize, lanes = lanes, elemBits = elemBits, outputBits = outputBits,
+    batchSize = batchSize, maxSeqLen = maxSeqLen, activation = "silu", hasBias = false,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+  )
 }
 
 class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
@@ -178,8 +210,8 @@ class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
   val mlp = Module(new GatedMLP(p.mlp))
   val add2 = Module(new ResidualAdd(p.residual))
 
-  val res1Q = Module(new Queue(new StreamBeat(p.inSpec), p.batchSize * p.rms.vector.beats))
-  val res2Q = Module(new Queue(new StreamBeat(p.inSpec), p.batchSize * p.rms.vector.beats))
+  val res1Q = Module(new PhysicalStreamFifo(new StreamBeat(p.inSpec), p.batchSize * p.rms.vector.beats))
+  val res2Q = Module(new PhysicalStreamFifo(new StreamBeat(p.inSpec), p.batchSize * p.rms.vector.beats))
 
   io.in.ready := rms1.io.in.ready && res1Q.io.enq.ready
   rms1.io.in.valid := io.in.valid && res1Q.io.enq.ready
@@ -190,7 +222,7 @@ class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
   rms1.io.cfg := io.cfg
   rms1.io.cfgValid := io.cfgValid
   rms1.io.weight <> io.rms1Weight
-  rms1.io.quant.outInvScale := IeeeMath.fp32One
+  rms1.io.quant.outInvScale := PhysicalMath.fp32One
   rms1.io.quant.outZeroPoint := 0.S
 
   qkv.io.start := io.start
@@ -198,9 +230,9 @@ class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
   qkv.io.cfgValid := io.cfgValid
   qkv.io.weight <> io.qkvWeight
   qkv.io.bias <> io.qkvBias
-  qkv.io.qScale := IeeeMath.fp32One
-  qkv.io.kScale := IeeeMath.fp32One
-  qkv.io.vScale := IeeeMath.fp32One
+  qkv.io.qScale := PhysicalMath.fp32One
+  qkv.io.kScale := PhysicalMath.fp32One
+  qkv.io.vScale := PhysicalMath.fp32One
   qkv.io.in <> rms1.io.out
 
   rope.io.cfg := io.cfg
@@ -214,11 +246,14 @@ class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
   attn.io.cfg := io.cfg
   attn.io.cfgValid := io.cfgValid
   attn.io.mask := 0.U
-  attn.io.scoreScale := IeeeMath.fp32One
-  attn.io.ctxInvScale := IeeeMath.fp32One
+  attn.io.scoreScale := PhysicalMath.fp32One
+  attn.io.ctxInvScale := PhysicalMath.fp32One
   attn.io.ctxZeroPoint := 0.U
-  attn.io.outInvScale := IeeeMath.fp32One
+  attn.io.outInvScale := PhysicalMath.fp32One
   attn.io.outWeight <> io.attentionOutWeight
+  attn.io.outBias.valid := false.B
+  attn.io.outBias.bits.addr := 0.U
+  attn.io.outBias.bits.data := 0.U
   attn.io.in <> rope.io.out
 
   add1.io.cfg := io.cfg
@@ -234,7 +269,7 @@ class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
   rms2.io.cfg := io.cfg
   rms2.io.cfgValid := io.cfgValid
   rms2.io.weight <> io.rms2Weight
-  rms2.io.quant.outInvScale := IeeeMath.fp32One
+  rms2.io.quant.outInvScale := PhysicalMath.fp32One
   rms2.io.quant.outZeroPoint := 0.S
 
   mlp.io.start := io.start
@@ -256,6 +291,8 @@ class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
   add2.io.computed <> mlp.io.out
   io.out <> add2.io.out
 }
+
+class Qwen2Block(p: LlamaStyleBlockParams) extends LlamaStyleBlock(p.copy(qkvHasBias = true))
 
 final case class Gemma3TextBlockParams(
   hiddenSize: Int = 1152,
@@ -322,8 +359,8 @@ class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
   val postFfnNorm = Module(new RMSNorm(p.rmsFp))
   val add2 = Module(new ResidualAdd(p.residual))
 
-  val res1Q = Module(new Queue(new StreamBeat(p.inSpec), p.batchSize * p.rmsIn.vector.beats))
-  val res2Q = Module(new Queue(new StreamBeat(p.inSpec), p.batchSize * p.rmsIn.vector.beats))
+  val res1Q = Module(new PhysicalStreamFifo(new StreamBeat(p.inSpec), p.batchSize * p.rmsIn.vector.beats))
+  val res2Q = Module(new PhysicalStreamFifo(new StreamBeat(p.inSpec), p.batchSize * p.rmsIn.vector.beats))
 
   io.in.ready := rmsIn.io.in.ready && res1Q.io.enq.ready
   rmsIn.io.in.valid := io.in.valid && res1Q.io.enq.ready
@@ -334,7 +371,7 @@ class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
   rmsIn.io.cfg := io.cfg
   rmsIn.io.cfgValid := io.cfgValid
   rmsIn.io.weight <> io.rmsInWeight
-  rmsIn.io.quant.outInvScale := IeeeMath.fp32One
+  rmsIn.io.quant.outInvScale := PhysicalMath.fp32One
   rmsIn.io.quant.outZeroPoint := 0.S
 
   qkv.io.start := io.start
@@ -342,9 +379,9 @@ class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
   qkv.io.cfgValid := io.cfgValid
   qkv.io.weight <> io.qkvWeight
   qkv.io.bias <> io.qkvBias
-  qkv.io.qScale := IeeeMath.fp32One
-  qkv.io.kScale := IeeeMath.fp32One
-  qkv.io.vScale := IeeeMath.fp32One
+  qkv.io.qScale := PhysicalMath.fp32One
+  qkv.io.kScale := PhysicalMath.fp32One
+  qkv.io.vScale := PhysicalMath.fp32One
   qkv.io.in <> rmsIn.io.out
 
   qkNorm.io.cfg := io.cfg
@@ -364,17 +401,20 @@ class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
   attn.io.cfg := io.cfg
   attn.io.cfgValid := io.cfgValid
   attn.io.mask := 0.U
-  attn.io.scoreScale := IeeeMath.fp32One
-  attn.io.ctxInvScale := IeeeMath.fp32One
+  attn.io.scoreScale := PhysicalMath.fp32One
+  attn.io.ctxInvScale := PhysicalMath.fp32One
   attn.io.ctxZeroPoint := 0.U
-  attn.io.outInvScale := IeeeMath.fp32One
+  attn.io.outInvScale := PhysicalMath.fp32One
   attn.io.outWeight <> io.attentionOutWeight
+  attn.io.outBias.valid := false.B
+  attn.io.outBias.bits.addr := 0.U
+  attn.io.outBias.bits.data := 0.U
   attn.io.in <> rope.io.out
 
   postAttnNorm.io.cfg := io.cfg
   postAttnNorm.io.cfgValid := io.cfgValid
   postAttnNorm.io.weight <> io.postAttentionNormWeight
-  postAttnNorm.io.quant.outInvScale := IeeeMath.fp32One
+  postAttnNorm.io.quant.outInvScale := PhysicalMath.fp32One
   postAttnNorm.io.quant.outZeroPoint := 0.S
   postAttnNorm.io.in <> attn.io.out
 
@@ -391,7 +431,7 @@ class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
   preFfnNorm.io.cfg := io.cfg
   preFfnNorm.io.cfgValid := io.cfgValid
   preFfnNorm.io.weight <> io.preFfnNormWeight
-  preFfnNorm.io.quant.outInvScale := IeeeMath.fp32One
+  preFfnNorm.io.quant.outInvScale := PhysicalMath.fp32One
   preFfnNorm.io.quant.outZeroPoint := 0.S
 
   mlp.io.start := io.start
@@ -411,7 +451,7 @@ class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
   postFfnNorm.io.cfg := io.cfg
   postFfnNorm.io.cfgValid := io.cfgValid
   postFfnNorm.io.weight <> io.postFfnNormWeight
-  postFfnNorm.io.quant.outInvScale := IeeeMath.fp32One
+  postFfnNorm.io.quant.outInvScale := PhysicalMath.fp32One
   postFfnNorm.io.quant.outZeroPoint := 0.S
   postFfnNorm.io.in <> mlp.io.out
 

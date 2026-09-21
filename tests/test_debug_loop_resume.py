@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -11,10 +12,127 @@ from accagent.framework.stage_debug_loop import (
     repair_execution_requires_fresh_agent_planning,
     repair_execution_has_new_real_tool_evidence,
     reusable_scope_checkpoint_prefix,
+    run_stage6_verification,
 )
 
 
 class DebugLoopResumeTest(TestCase):
+    def test_initial_layer3_verification_receives_required_checkpoint_environment(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            state = root / "sacg_state.json"
+            request = root / "checkpoint_request.json"
+            observed: dict[str, str | None] = {}
+
+            def fake_run_verification(_args):
+                observed["required"] = os.environ.get(
+                    "SPATIALACC_CHECKPOINT_REQUIRED"
+                )
+                observed["request"] = os.environ.get(
+                    "SPATIALACC_CHECKPOINT_REQUEST"
+                )
+                return root / "verification_report.json", {"status": "ready"}
+
+            with patch(
+                "accagent.framework.stage_debug_loop.prepare_stage3_checkpoint_probe_environment",
+                return_value={
+                    "status": "pass",
+                    "summary": "prepared cold capture",
+                    "request_path": str(request),
+                    "checkpoint_enabled": True,
+                    "cold_fallback": False,
+                    "remote_tool_must_not_start": False,
+                    "env": {
+                        "SPATIALACC_CHECKPOINT_REQUIRED": "1",
+                        "SPATIALACC_CHECKPOINT_REQUEST": str(request),
+                    },
+                },
+            ), patch(
+                "accagent.framework.stage_debug_loop.run_verification",
+                side_effect=fake_run_verification,
+            ):
+                verification_path, verification_report, preparation = (
+                    run_stage6_verification(
+                        current_state=state,
+                        run_dir=root,
+                        active_scope="board_axi_ddr_closure",
+                        timeout_sec=0,
+                        reused_scopes=[
+                            "operator_leaf_closure",
+                            "single_layer_closure",
+                        ],
+                        iteration_index=0,
+                    )
+                )
+
+        self.assertEqual(verification_path, root / "verification_report.json")
+        self.assertEqual(verification_report, {"status": "ready"})
+        self.assertEqual(preparation["status"], "pass")
+        self.assertEqual(observed["required"], "1")
+        self.assertEqual(observed["request"], str(request))
+
+    def test_layer3_checkpoint_preparation_failure_prevents_verification(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with patch(
+                "accagent.framework.stage_debug_loop.prepare_stage3_checkpoint_probe_environment",
+                return_value={
+                    "status": "fail",
+                    "summary": "checkpoint request is not ready",
+                    "env": {"SPATIALACC_CHECKPOINT_REQUIRED": "1"},
+                    "remote_tool_must_not_start": True,
+                },
+            ), patch(
+                "accagent.framework.stage_debug_loop.run_verification"
+            ) as run_verification_mock:
+                verification_path, verification_report, preparation = (
+                    run_stage6_verification(
+                        current_state=root / "sacg_state.json",
+                        run_dir=root,
+                        active_scope="board_axi_ddr_closure",
+                        timeout_sec=0,
+                        reused_scopes=[],
+                        iteration_index=0,
+                    )
+                )
+
+        self.assertIsNone(verification_path)
+        self.assertIsNone(verification_report)
+        self.assertEqual(preparation["status"], "fail")
+        run_verification_mock.assert_not_called()
+
+    def test_lower_layer_verification_does_not_prepare_checkpoint(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for index, scope in enumerate(
+                ("operator_leaf_closure", "single_layer_closure")
+            ):
+                with self.subTest(scope=scope), patch(
+                    "accagent.framework.stage_debug_loop.prepare_stage3_checkpoint_probe_environment"
+                ) as prepare_mock, patch(
+                    "accagent.framework.stage_debug_loop.run_verification",
+                    return_value=(
+                        root / f"verification_report_{index}.json",
+                        {"status": "ready"},
+                    ),
+                ) as run_verification_mock:
+                    verification_path, verification_report, preparation = (
+                        run_stage6_verification(
+                            current_state=root / "sacg_state.json",
+                            run_dir=root,
+                            active_scope=scope,
+                            timeout_sec=0,
+                            reused_scopes=[],
+                            iteration_index=index,
+                        )
+                    )
+
+                prepare_mock.assert_not_called()
+                run_verification_mock.assert_called_once()
+                self.assertIsNotNone(verification_path)
+                self.assertEqual(verification_report, {"status": "ready"})
+                self.assertEqual(preparation["status"], "not_required")
+
     def test_recovers_scope_entry_certificates_without_replaying_lower_tools(self) -> None:
         with TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir)
@@ -39,12 +157,12 @@ class DebugLoopResumeTest(TestCase):
             state = {
                 "artifacts": [
                     {
-                        "id": "artifact.stage7.operator_leaf_promotion_certificate",
+                        "id": "artifact.stage6.operator_leaf_promotion_certificate",
                         "path": str(leaf_path),
                         "trust_status": "validated",
                     },
                     {
-                        "id": "artifact.stage7.single_layer_promotion_certificate",
+                        "id": "artifact.stage6.single_layer_promotion_certificate",
                         "path": str(single_path),
                         "trust_status": "validated",
                     },
@@ -96,9 +214,9 @@ class DebugLoopResumeTest(TestCase):
             )
             state = {
                 "artifacts": [
-                    {"id": "artifact.stage8.repair_plan", "path": str(plan_path)},
+                    {"id": "artifact.stage6.repair_plan", "path": str(plan_path)},
                     {
-                        "id": "artifact.stage8.repair_execution_report",
+                        "id": "artifact.stage6.repair_execution_report",
                         "path": str(execution_path),
                     },
                 ]
@@ -110,7 +228,7 @@ class DebugLoopResumeTest(TestCase):
         assert resume is not None
         self.assertEqual(resume["repair_plan"], plan_path)
 
-    def test_environment_only_block_reenters_stage7(self) -> None:
+    def test_environment_only_block_reenters_stage6(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plan_path = root / "repair_plan.json"
@@ -151,9 +269,9 @@ class DebugLoopResumeTest(TestCase):
             )
             state = {
                 "artifacts": [
-                    {"id": "artifact.stage8.repair_plan", "path": str(plan_path)},
+                    {"id": "artifact.stage6.repair_plan", "path": str(plan_path)},
                     {
-                        "id": "artifact.stage8.repair_execution_report",
+                        "id": "artifact.stage6.repair_execution_report",
                         "path": str(execution_path),
                     },
                 ]
@@ -207,9 +325,9 @@ class DebugLoopResumeTest(TestCase):
             )
             state = {
                 "artifacts": [
-                    {"id": "artifact.stage8.repair_plan", "path": str(plan_path)},
+                    {"id": "artifact.stage6.repair_plan", "path": str(plan_path)},
                     {
-                        "id": "artifact.stage8.repair_execution_report",
+                        "id": "artifact.stage6.repair_execution_report",
                         "path": str(execution_path),
                     },
                 ]
@@ -236,7 +354,7 @@ class DebugLoopResumeTest(TestCase):
         self.assertTrue(repair_execution_has_new_real_tool_evidence(report))
         self.assertFalse(repair_execution_has_new_real_tool_evidence({}))
 
-    def test_agent_owned_capability_reenters_stage7(self) -> None:
+    def test_agent_owned_capability_reenters_stage6(self) -> None:
         report = {
             "step_results": [
                 {

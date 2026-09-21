@@ -759,10 +759,10 @@ def _archived_semantic_execution_candidates(
     run_dir: Path,
     stage_id: str,
 ) -> list[dict[str, Any]]:
-    """Discover only completed Stage-8 snapshots with a real semantic execution."""
+    """Discover only completed Stage-6 snapshots with a real semantic execution."""
 
     candidates: list[dict[str, Any]] = []
-    # One Stage-8 iteration often snapshots both the canonical capability
+    # One Stage-6 iteration often snapshots both the canonical capability
     # report and a hierarchy-view copy of that same VCS execution. Rechecking
     # the source closure twice is redundant and can make recovery needlessly
     # expensive for large generated harnesses.
@@ -770,7 +770,7 @@ def _archived_semantic_execution_candidates(
     loop_dir = run_dir / "repair_execution" / "loop"
     for record_path in sorted(loop_dir.glob("iteration_*/iteration_record.json"), reverse=True):
         record = read_json(record_path) if record_path.is_file() else {}
-        if record.get("schema_version") != "spatialaccagent.stage8_repair_loop_iteration.v1":
+        if record.get("schema_version") != "spatialaccagent.stage6_repair_loop_iteration.v1":
             continue
         disposition = record.get("disposition", {}) if isinstance(record.get("disposition"), dict) else {}
         if disposition.get("status") != "complete":
@@ -1093,7 +1093,7 @@ def recover_archived_semantic_execution(
     contract: dict[str, Any],
     timeout_sec: int,
 ) -> dict[str, Any] | None:
-    """Rehydrate a current semantic execution only from immutable Stage-8 evidence.
+    """Rehydrate a current semantic execution only from immutable Stage-6 evidence.
 
     A previous VCS pass is never accepted from a mutable latest report.  The
     candidate must be a completed repair-loop snapshot, its receipt and output
@@ -1208,7 +1208,7 @@ def recover_archived_semantic_execution(
         },
         "policy": {
             "mutable_latest_reports_are_not_evidence": True,
-            "completed_stage8_snapshot_required": True,
+            "completed_stage6_snapshot_required": True,
             "remote_receipt_and_output_hash_required": True,
             "all_current_non_source_payload_bytes_must_match": True,
             "removed_sources_must_be_proven_unreachable": True,
@@ -1254,7 +1254,7 @@ def recover_archived_semantic_execution(
             "remote_job_reuse": {
                 "status": "pass",
                 "real_tool_was_not_relaunched": True,
-                "identity_source": "completed_stage8_hash_bound_historical_execution",
+                "identity_source": "completed_stage6_historical_execution",
                 "historic_input_fingerprint_sha256": selected[
                     "historic_input_fingerprint_sha256"
                 ],
@@ -2092,6 +2092,7 @@ def semantic_stall_termination_label_allowed(label: str) -> bool:
 
     return bool(
         label == "vcs_simulate"
+        or label.startswith("vcs_fast_replay_")
         or label == "vcs_checkpoint_equivalence_simulate"
         or label.startswith("vcs_checkpoint_equivalence_simulate_")
     )

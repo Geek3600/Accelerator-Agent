@@ -15,6 +15,7 @@ from accagent.framework.board_progress import (
     REQUIRED_PROGRESS_EVENT_FIELDS,
     adaptive_semantic_stall_evidence,
 )
+from accagent.framework.fpga_ip_contract import simulation_source_contract
 from accagent.framework.simulation_checkpoint import (
     CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION,
     CHECKPOINT_CONTRACT_SCHEMA_VERSION,
@@ -89,59 +90,7 @@ def checkpoint_ready_manifest() -> dict:
         },
         "vcs": {"runtime_plusargs": {"INPUT": "input"}},
         "testbench": {
-            "simulation_checkpoint_contract": {
-                "schema_version": CHECKPOINT_CONTRACT_SCHEMA_VERSION,
-                "status": "ready",
-                "simulation_only": True,
-                "synthesis_impact": "none",
-                "drives_dut_signals": False,
-                "captures_complete_simulator_state": True,
-                "captures_testbench_and_external_model_state": True,
-                "flushes_evidence_before_capture": True,
-                "native_reuse_requires_exact_compiled_model": True,
-                "cross_revision_reuse_requires_state_schema_match": True,
-                "cross_revision_reuse_requires_causal_cut_certificate": True,
-                "cross_revision_reuse_requires_equivalence_certificate": True,
-                "full_cold_run_required_before_stage_pass": True,
-                "supported_modes": [
-                    "cold_capture",
-                    "native_exact_model",
-                    "portable_cross_revision",
-                ],
-                "portable_state_capsule": {
-                    "status": "ready",
-                    "quiescent_cut_required": True,
-                    "restore_requires_runtime_schema_recheck": True,
-                    "state_adapter": "framework_vpi_state_capsule_v1",
-                    "dut_state_root": "board_tb.dut",
-                    "state_schema": {"selection": "all mutable state"},
-                    "testbench_external_state": {
-                        "status": "ready",
-                        "captures_axi_ddr_model_state": True,
-                        "captures_pending_transactions_and_responses": True,
-                        "captures_queues_and_associative_arrays": True,
-                        "captures_rng_state": True,
-                        "captures_and_reopens_file_offsets": True,
-                    },
-                    "framework_adapter_artifacts": [
-                        {
-                            "kind": kind,
-                            "path": str(path),
-                            "sha256": board_vcs.sha256_file(path),
-                            "framework_owned_read_only": True,
-                        }
-                        for kind, path in board_vcs.CHECKPOINT_ADAPTER_FILES.items()
-                    ],
-                },
-                "outputs": {
-                    "manifest": {"path": "checkpoint/manifest.json"},
-                    "capture_report": {"path": "checkpoint/capture_report.json"},
-                    "restore_report": {"path": "checkpoint/restore_report.json"},
-                    "equivalence_report": {
-                        "path": "checkpoint/equivalence_report.json"
-                    },
-                },
-            }
+            "simulation_checkpoint_contract": board_vcs.framework_checkpoint_contract({})
         },
     }
 
@@ -192,7 +141,62 @@ def cold_checkpoint_request(manifest: dict) -> dict:
     return request
 
 
+def fixed_checkpoint_request(manifest: dict) -> dict:
+    request = cold_checkpoint_request(manifest)
+    request["semantic_cut"] = {
+        "schema_version": "spatialaccagent.semantic_checkpoint_cut.v1",
+        "status": "ready",
+        "cut_kind": "fixed_runtime_boundary",
+        "fixed_cut": "after_weight_load_before_first_token",
+        "frontier_id": "checkpoint.after_weight_load_before_first_token",
+        "trigger": {
+            "phase": "after_weight_load_before_first_token",
+            "event_kind": "fixed_runtime_cut",
+            "layer": -1,
+            "token": -1,
+            "beat": -1,
+            "stage_or_boundary": "checkpoint.after_weight_load_before_first_token",
+        },
+        "settle_cycles": 1,
+        "portable_state_quiescent": True,
+        "portable_state_blockers": [],
+        "selection_mode": "fixed_first_capture_boundary",
+    }
+    request["semantic_cut"]["cut_sha256"] = semantic_checkpoint_cut_sha256(
+        request["semantic_cut"]
+    )
+    request["request_sha256"] = board_vcs.canonical_contract_sha256(
+        checkpoint_request_projection(request)
+    )
+    return request
+
+
 class BoardVcsFunctionalTest(unittest.TestCase):
+    def test_cold_capture_stops_after_the_checkpoint_is_durable(self) -> None:
+        plan = {
+            "enabled": True,
+            "mode": "cold_capture",
+            "contract": {
+                "outputs": {
+                    "capture_report": {
+                        "path": "checkpoint/capture_report.json",
+                    }
+                },
+                "portable_state_capsule": {"dut_state_root": "board_tb.dut"},
+            },
+        }
+
+        args = board_vcs.checkpoint_runtime_plusargs(plan)
+
+        self.assertEqual(args, ["+SPATIALACC_NATIVE_CHECKPOINT_CAPTURE"])
+
+    def test_checkpoint_uses_native_vcs_without_a_vpi_adapter(self) -> None:
+        self.assertEqual(
+            board_vcs.checkpoint_adapter_elaboration_args({}, Path("."), Path(".")),
+            [],
+        )
+        self.assertEqual(board_vcs.checkpoint_adapter_compile_define_args({}, "vlogan"), [])
+
     def test_fresh_replay_generation_selects_a_new_recoverable_workdir(self) -> None:
         root = "/remote/board/run"
         fingerprint = "a" * 64
@@ -577,48 +581,35 @@ endmodule
             self.assertFalse(persisted)
             self.assertEqual(recovery_path.read_text(encoding="utf-8"), original)
 
-    def test_checkpoint_hook_source_requires_executable_abi_not_comments(self) -> None:
+    def test_checkpoint_hook_source_requires_executable_native_capture_hook(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             testbench_path = Path(temp_dir) / "board_tb.sv"
             testbench_path.write_text(
-                "// $spatialacc_state_capture(a, b, c);\n"
-                "/* $spatialacc_state_restore(a, b, c); */\n",
+                "// SPATIALACC_NATIVE_CHECKPOINT_CAPTURE\n"
+                "/* SPATIALACC_NATIVE_CHECKPOINT_READY */\n",
                 encoding="utf-8",
             )
             manifest = checkpoint_ready_manifest()
             manifest["testbench"]["sole_dut_instance"] = "dut"
 
             errors = board_vcs.checkpoint_hook_source_errors(
-                manifest, testbench_path
+                manifest, testbench_path, checkpoint_required=True
             )
 
-        self.assertTrue(any("no executable $spatialacc_state_capture" in row for row in errors))
-        self.assertTrue(any("no executable $spatialacc_state_restore" in row for row in errors))
+        self.assertTrue(any("lacks native capture plusarg" in row for row in errors))
+        self.assertTrue(any("lacks native capture ready marker" in row for row in errors))
+        self.assertTrue(any("no executable $stop" in row for row in errors))
 
-    def test_checkpoint_hook_source_accepts_complete_runtime_abi(self) -> None:
-        markers = [
-            "SPATIALACC_CHECKPOINT_MODE=%s",
-            "SPATIALACC_CHECKPOINT_REQUEST_SHA256=%s",
-            "SPATIALACC_CHECKPOINT_SEMANTIC_CUT_SHA256=%s",
-            "SPATIALACC_CHECKPOINT_DUT_ROOT=%s",
-            "SPATIALACC_CHECKPOINT_DUT_STATE=%s",
-            "SPATIALACC_CHECKPOINT_DUT_SCHEMA=%s",
-            "SPATIALACC_CHECKPOINT_EXTERNAL_STATE=%s",
-            "SPATIALACC_CHECKPOINT_CAPTURE_REPORT=%s",
-            "SPATIALACC_CHECKPOINT_RESTORE_DUT_STATE=%s",
-            "SPATIALACC_CHECKPOINT_RESTORE_DUT_SCHEMA=%s",
-            "SPATIALACC_CHECKPOINT_RESTORE_EXTERNAL_STATE=%s",
-            "SPATIALACC_CHECKPOINT_RESTORE_REPORT=%s",
-            "SPATIALACC_CHECKPOINT_EQUIVALENCE_PROBE",
-            CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION,
-            CHECKPOINT_RESTORE_REPORT_SCHEMA_VERSION,
-        ]
-        source = "module board_tb;\ninitial begin\n"
-        source += "  integer rc; string a; string b; string c;\n"
-        source += "  rc = $spatialacc_state_capture(a, b, c);\n"
-        source += "  rc = $spatialacc_state_restore(a, b, c);\n"
-        source += "  $display(\"" + "|".join(markers) + "\");\n"
-        source += "end\nendmodule\n"
+    def test_checkpoint_hook_source_accepts_native_capture_hook(self) -> None:
+        source = """module board_tb;
+initial begin
+  if ($test$plusargs("SPATIALACC_NATIVE_CHECKPOINT_CAPTURE")) begin
+    $display("SPATIALACC_NATIVE_CHECKPOINT_READY");
+    $stop;
+  end
+end
+endmodule
+"""
         with tempfile.TemporaryDirectory() as temp_dir:
             testbench_path = Path(temp_dir) / "board_tb.sv"
             testbench_path.write_text(source, encoding="utf-8")
@@ -626,18 +617,18 @@ endmodule
             manifest["testbench"]["sole_dut_instance"] = "dut"
 
             errors = board_vcs.checkpoint_hook_source_errors(
-                manifest, testbench_path
+                manifest, testbench_path, checkpoint_required=True
             )
 
         self.assertEqual(errors, [])
 
-    def test_checkpoint_hook_source_rejects_wrong_vpi_arity_and_dut_root(self) -> None:
+    def test_checkpoint_hook_source_rejects_incomplete_native_hook(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             testbench_path = Path(temp_dir) / "board_tb.sv"
             testbench_path.write_text(
                 "module board_tb; initial begin\n"
-                "  $spatialacc_state_capture(a, b);\n"
-                "  $spatialacc_state_restore(a, nested(b, c), d);\n"
+                "  if ($test$plusargs(\"SPATIALACC_NATIVE_CHECKPOINT_CAPTURE\"))\n"
+                "    $display(\"SPATIALACC_NATIVE_CHECKPOINT_READY\");\n"
                 "end endmodule\n",
                 encoding="utf-8",
             )
@@ -645,13 +636,12 @@ endmodule
             manifest["testbench"]["sole_dut_instance"] = "other_dut"
 
             errors = board_vcs.checkpoint_hook_source_errors(
-                manifest, testbench_path
+                manifest, testbench_path, checkpoint_required=True
             )
 
-        self.assertTrue(any("exactly three arguments" in row for row in errors))
-        self.assertTrue(any("DUT root does not match" in row for row in errors))
+        self.assertTrue(any("no executable $stop" in row for row in errors))
 
-    def test_checkpoint_plan_rejects_missing_generated_hook_before_remote_start(self) -> None:
+    def test_invalid_checkpoint_request_requires_repair_before_vcs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run"
             run_dir.mkdir()
@@ -670,8 +660,10 @@ endmodule
                 },
             )
 
-        self.assertEqual(plan["status"], "fail")
-        self.assertTrue(any("contract" in error for error in plan["errors"]))
+        self.assertEqual(plan["status"], "pass")
+        self.assertEqual(plan["mode"], "cold_capture")
+        self.assertTrue(plan["enabled"])
+        self.assertNotIn("checkpoint_failure_is_nonblocking", plan)
 
     def test_stage3_repair_rejects_disabled_checkpoint_before_remote_start(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -688,8 +680,375 @@ endmodule
         self.assertFalse(plan["enabled"])
         self.assertTrue(plan["required_for_stage3_repair"])
         self.assertTrue(
-            any("disabled checkpoint execution is forbidden" in row for row in plan["errors"])
+            any("Layer-3 replay requires a checkpoint request" in row for row in plan["errors"])
         )
+
+    def test_fast_replay_uses_capture_request_without_rewriting_its_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            run_dir.mkdir()
+            manifest = checkpoint_ready_manifest()
+            request = cold_checkpoint_request(manifest)
+            request_path = (
+                run_dir
+                / "verification"
+                / "simulation_checkpoints"
+                / "requests"
+                / "capture.json"
+            )
+            write_json(request_path, request)
+            checkpoint_path = (
+                run_dir
+                / "verification"
+                / "simulation_checkpoints"
+                / "checkpoint-1"
+                / "manifest.json"
+            )
+            write_json(
+                checkpoint_path,
+                {
+                    "checkpoint_id": "checkpoint-1",
+                    "request_sha256": request["request_sha256"],
+                    "execution_identity": request["execution_identity"],
+                },
+            )
+            validation = {
+                "status": "ready",
+                "remote_workdir": "/remote/replay",
+                "simulator_path": "vcs_work/simv",
+                "checkpoint_manifest": str(checkpoint_path),
+            }
+            with patch.object(
+                board_vcs,
+                "read_fast_replay_state",
+                return_value={"checkpoint_id": "checkpoint-1"},
+            ), patch.object(
+                board_vcs,
+                "validate_fast_replay_state",
+                return_value=validation,
+            ), patch.object(board_vcs, "checkpoint_manifest_errors", return_value=[]):
+                plan = board_vcs.checkpoint_execution_plan(
+                    run_dir,
+                    manifest,
+                    {
+                        "SPATIALACC_CHECKPOINT_REPLAY": "1",
+                        "SPATIALACC_CHECKPOINT_REQUEST": str(request_path),
+                        "SPATIALACC_FAST_REPLAY": "1",
+                    },
+                )
+
+        self.assertEqual(plan["status"], "pass")
+        self.assertEqual(plan["mode"], "native_exact_model")
+        self.assertTrue(plan["fast_replay"]["used"])
+        self.assertEqual(
+            plan["request"]["replay_decision"]["mode"], "cold_capture"
+        )
+        self.assertEqual(board_vcs.checkpoint_runtime_plusargs(plan), [])
+
+    def test_fixed_checkpoint_cut_uses_only_the_fixed_cut_plusarg(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            run_dir.mkdir()
+            manifest = checkpoint_ready_manifest()
+            request = fixed_checkpoint_request(manifest)
+            request_path = (
+                run_dir
+                / "verification"
+                / "simulation_checkpoints"
+                / "requests"
+                / "fixed.json"
+            )
+            write_json(request_path, request)
+            plan = board_vcs.checkpoint_execution_plan(
+                run_dir,
+                manifest,
+                {
+                    "SPATIALACC_CHECKPOINT_REPLAY": "1",
+                    "SPATIALACC_CHECKPOINT_REQUEST": str(request_path),
+                },
+            )
+            plusargs = board_vcs.checkpoint_runtime_plusargs(plan)
+            equivalence_plusargs = board_vcs.checkpoint_equivalence_runtime_plusargs(
+                plan
+            )
+
+        self.assertEqual(plan["status"], "pass")
+        self.assertEqual(plusargs, ["+SPATIALACC_NATIVE_CHECKPOINT_CAPTURE"])
+        self.assertEqual(equivalence_plusargs, [])
+
+    def test_native_checkpoint_scripts_wait_for_the_real_testbench_cut(self) -> None:
+        capture = board_vcs.native_checkpoint_capture_tcl().splitlines()
+        restore = board_vcs.native_checkpoint_restore_tcl().splitlines()
+
+        self.assertEqual(capture[0], "run")
+        self.assertEqual(
+            capture[:3],
+            ["run", "run 0", "save checkpoint/native_state"],
+        )
+        self.assertNotIn("run 100s", capture)
+        self.assertEqual(restore[-2], "run")
+        self.assertIn("restore checkpoint/native_state", restore)
+        self.assertNotIn("run 100s", restore)
+
+    def test_saved_replay_rebinds_testbench_observation_logs(self) -> None:
+        command, outputs, errors = board_vcs.saved_replay_command(
+            {
+                "simulate_command": (
+                    "mkdir -p reports; ./vcs_work/simv "
+                    "+INPUT=artifacts/input.memh "
+                    "+WEIGHT_IMAGE=artifacts/weights.bin "
+                    "+RUNTIME_IMAGE=artifacts/runtime.bin "
+                    "+SPATIALACC_OBSERVATION_SELECTION=observation/old.json "
+                    "+EXPECTED_OUTPUT=artifacts/expected.memh"
+                )
+            },
+            {"simulator_path": "vcs_work/simv"},
+        )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(outputs["restore_log"], Path("reports/fast_replay_restore.log"))
+        self.assertIn("+SPATIALACC_NATIVE_CHECKPOINT_RESTORE", command)
+        self.assertIn("+INPUT=artifacts/input.memh", command)
+        self.assertNotIn("observation/old.json", command)
+        self.assertEqual(command.count("+SPATIALACC_OBSERVATION_SELECTION="), 1)
+        self.assertIn(
+            "+SPATIALACC_OBSERVATION_SELECTION=observation/current_selection.json",
+            command,
+        )
+        self.assertNotIn("SPATIALACC_NATIVE_CHECKPOINT_CAPTURE", command)
+
+    def test_fast_replay_uploads_the_latest_runtime_selection(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            selection = (
+                run_dir
+                / "verification"
+                / "adaptive_observation"
+                / "current_selection.json"
+            )
+            write_json(
+                selection,
+                {
+                    "schema_version": "spatialaccagent.runtime_observation_selection.v1",
+                    "status": "ready",
+                    "decision_sha256": "f" * 64,
+                    "selected_signals": [{"expression": "dut.core.out_valid"}],
+                },
+            )
+            calls: list[list[str]] = []
+
+            def transfer(argv: list[str], timeout_sec: int):
+                calls.append(argv)
+                return subprocess.CompletedProcess(argv, 0, "", "")
+
+            with patch.object(board_vcs, "run_transfer_command", side_effect=transfer):
+                result = board_vcs.upload_current_observation_selection(
+                    run_dir,
+                    host="vcs.example",
+                    port=22,
+                    remote_dir="/remote/exact-job",
+                    timeout_sec=0,
+                )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1][0], "scp")
+        self.assertEqual(Path(calls[1][-2]), selection)
+        self.assertEqual(
+            calls[1][-1],
+            "vcs.example:/remote/exact-job/observation/current_selection.json",
+        )
+
+    def test_saved_recapture_reuses_workload_without_old_checkpoint_arguments(self) -> None:
+        command, outputs, errors = board_vcs.saved_recapture_command(
+            {
+                "simulate_command": (
+                    "mkdir -p reports; ./vcs_work/simv -ucli -do checkpoint/old.tcl "
+                    "+INPUT=artifacts/input.memh +WEIGHT_IMAGE=artifacts/weights.bin "
+                    "+SPATIALACC_NATIVE_CHECKPOINT_CAPTURE "
+                    "+SPATIALACC_CHECKPOINT_MODE=cold_capture > reports/simulation.log 2>&1"
+                )
+            },
+            {"simulator_path": "vcs_work/simv"},
+        )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(outputs["capture_log"], Path("reports/fast_replay_recapture.log"))
+        self.assertIn("./vcs_work/simv -ucli -do checkpoint/ucli_capture.tcl", command)
+        self.assertIn("+INPUT=artifacts/input.memh", command)
+        self.assertIn("+WEIGHT_IMAGE=artifacts/weights.bin", command)
+        self.assertIn("+SPATIALACC_NATIVE_CHECKPOINT_CAPTURE", command)
+        self.assertNotIn("checkpoint/old.tcl", command)
+        self.assertNotIn("+SPATIALACC_CHECKPOINT_MODE=cold_capture", command)
+
+    def test_recapture_bypasses_pending_job_and_full_compile_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            run_dir.mkdir()
+            expected = {"status": "checkpoint_capture_complete"}
+            with patch.dict(
+                "os.environ", {"SPATIALACC_FAST_REPLAY_RECAPTURE": "1"}, clear=False
+            ), patch.object(
+                board_vcs, "execute_saved_fast_recapture", return_value=expected
+            ) as recapture, patch.object(
+                board_vcs, "pending_exact_board_job"
+            ) as pending, patch.object(board_vcs, "validate_manifest") as validate:
+                result = board_vcs.execute(run_dir, 0)
+
+        self.assertEqual(result["status"], expected["status"])
+        recapture.assert_called_once_with(run_dir, 0)
+        pending.assert_not_called()
+        validate.assert_not_called()
+
+    def test_completed_pending_job_reaches_full_collection(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            report_path = (
+                run_dir
+                / "verification"
+                / "vcs"
+                / "case_board_vcs_functional.json"
+            )
+            write_json(
+                report_path,
+                {
+                    "input_fingerprint_sha256": "a" * 64,
+                    "phase": "active_exact_job_collection",
+                    "failure_class": (
+                        "active_exact_job_terminal_acceptance_required"
+                    ),
+                },
+            )
+            pending_job = {
+                "job": {"input_fingerprint_sha256": "a" * 64},
+                "job_path": run_dir / "job.json",
+                "manifest_path": run_dir / "manifest.json",
+            }
+            with patch.object(
+                board_vcs, "pending_exact_board_job", return_value=pending_job
+            ), patch.object(
+                board_vcs, "write_pending_exact_board_job_report"
+            ) as write_pending, patch.object(
+                board_vcs, "execute_pending_exact_board_job"
+            , return_value={"status": "pass", "phase": "active_exact_job_collection"}
+            ) as attach, patch.object(
+                board_vcs,
+                "validate_manifest",
+                return_value=(
+                    {},
+                    {
+                        "exact_board_preflight": {},
+                        "evidence": {},
+                        "weight_binding_evidence": {},
+                    },
+                    ["stop after collection handoff"],
+                ),
+            ):
+                result = board_vcs.execute(run_dir, 0)
+
+        self.assertEqual(result["phase"], "active_exact_job_collection")
+        write_pending.assert_not_called()
+        attach.assert_called_once_with(run_dir, 0, pending_job)
+
+    def test_fixed_cut_testbench_has_weight_accept_trigger(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "accagent"
+            / "runs"
+            / "spatialacc_qwen_agent_fast_run"
+            / "generated"
+            / "board_integration"
+            / "spatialacc_exact_board_multilayer_tb.sv"
+        ).read_text(encoding="utf-8")
+        self.assertIn("SPATIALACC_NATIVE_CHECKPOINT_CAPTURE", source)
+        self.assertIn("SPATIALACC_NATIVE_CHECKPOINT_READY", source)
+        self.assertIn("dut.weight_last_q === 1'b1", source)
+        self.assertIn("kernel_input_accept_total == 0", source)
+
+    def test_fast_replay_does_not_attach_an_old_pending_job(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            run_dir.mkdir()
+            resolved = {
+                "exact_board_preflight": {},
+                "evidence": {},
+                "weight_binding_evidence": {},
+            }
+            with patch.dict(
+                "os.environ", {"SPATIALACC_FAST_REPLAY": "1"}, clear=False
+            ), patch.object(board_vcs, "pending_exact_board_job") as pending, patch.object(
+                board_vcs,
+                "validate_manifest",
+                return_value=({}, resolved, ["stop after pending-job check"]),
+            ):
+                result = board_vcs.execute(run_dir, 0)
+
+        pending.assert_not_called()
+        self.assertEqual(result["phase"], "fast_replay_validation")
+
+    def test_restore_check_bypasses_current_manifest_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            run_dir.mkdir()
+            expected = {
+                "status": "checkpoint_restore_complete",
+                "phase": "fast_replay_restore_check",
+            }
+            with patch.dict(
+                "os.environ",
+                {
+                    "SPATIALACC_FAST_REPLAY": "1",
+                    "SPATIALACC_FAST_REPLAY_RESTORE_CHECK": "1",
+                },
+                clear=False,
+            ), patch.object(
+                board_vcs,
+                "execute_saved_fast_replay",
+                return_value=expected,
+            ) as replay, patch.object(board_vcs, "validate_manifest") as validate:
+                result = board_vcs.execute(run_dir, 0)
+
+        self.assertEqual(result["status"], expected["status"])
+        self.assertEqual(result["phase"], expected["phase"])
+        replay.assert_called_once_with(run_dir, 0)
+        validate.assert_not_called()
+
+    def test_capture_completion_immediately_requests_restore_check(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            request_path = board_vcs.fast_replay_request_path(run_dir)
+            request_path.parent.mkdir(parents=True)
+            request_path.write_text("{}\n", encoding="utf-8")
+            state = {
+                "status": "captured",
+                "verified": False,
+            }
+            with patch.object(
+                board_vcs,
+                "read_fast_replay_state",
+                return_value=state,
+            ):
+                env = board_vcs.automatic_restore_check_environment(
+                    run_dir,
+                    {"status": "checkpoint_capture_complete"},
+                )
+
+        self.assertEqual(env["SPATIALACC_FAST_REPLAY"], "1")
+        self.assertEqual(env["SPATIALACC_FAST_REPLAY_RESTORE_CHECK"], "1")
+        self.assertEqual(env["SPATIALACC_CHECKPOINT_REQUEST"], str(request_path))
+
+    def test_restore_result_does_not_start_another_automatic_check(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
+            "os.environ",
+            {"SPATIALACC_FAST_REPLAY_RESTORE_CHECK": "1"},
+            clear=False,
+        ):
+            env = board_vcs.automatic_restore_check_environment(
+                Path(temp_dir),
+                {"status": "checkpoint_capture_complete"},
+            )
+
+        self.assertEqual(env, {})
 
     def test_optional_checkpoint_contract_never_blocks_cold_repair(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -715,11 +1074,11 @@ endmodule
         self.assertEqual(ordinary["mode"], "disabled")
         self.assertFalse(ordinary["enabled"])
         self.assertEqual(ordinary["errors"], [])
-        self.assertTrue(ordinary["nonblocking_checkpoint_diagnostics"])
+        self.assertNotIn("nonblocking_checkpoint_diagnostics", ordinary)
         self.assertEqual(final_cold["status"], "pass")
         self.assertEqual(final_cold["mode"], "full_cold_acceptance")
         self.assertEqual(final_cold["errors"], [])
-        self.assertTrue(final_cold["nonblocking_checkpoint_diagnostics"])
+        self.assertNotIn("nonblocking_checkpoint_diagnostics", final_cold)
 
     def test_checkpoint_plan_binds_request_to_current_model_and_plusargs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -762,47 +1121,27 @@ endmodule
                 stage_dir,
                 Path("vcs_work"),
             )
+            vlogan_defines = board_vcs.checkpoint_adapter_compile_define_args(
+                plan,
+                "vlogan",
+            )
+            vcs_defines = board_vcs.checkpoint_adapter_compile_define_args(
+                plan,
+                "/tools/vcs/bin/vcs",
+            )
 
         self.assertEqual(plan["status"], "pass")
         self.assertEqual(plan["mode"], "cold_capture")
-        self.assertTrue(plan["adapter_enabled"])
+        self.assertFalse(plan["adapter_enabled"])
         self.assertFalse(plan["candidate_screening"])
-        self.assertEqual(
-            {row["kind"] for row in staged},
-            {"vpi_source", "vpi_table"},
-        )
-        self.assertIn("+SPATIALACC_CHECKPOINT_CUT_CYCLE=100", plusargs)
-        self.assertIn(
-            f"+SPATIALACC_CHECKPOINT_REQUEST_SHA256={request['request_sha256']}",
-            plusargs,
-        )
-        self.assertIn(
-            "+SPATIALACC_CHECKPOINT_SEMANTIC_CUT_SHA256="
-            f"{request['semantic_cut']['cut_sha256']}",
-            plusargs,
-        )
-        self.assertFalse(
-            any("CHECKPOINT_EQUIVALENCE_REPORT" in value for value in plusargs)
-        )
-        self.assertIn(
-            "+SPATIALACC_CHECKPOINT_EQUIVALENCE_PROBE=1",
-            equivalence_plusargs,
-        )
-        self.assertIn(
-            "+SPATIALACC_CHECKPOINT_FRONTIER=none",
-            no_frontier_plusargs,
-        )
-        self.assertIn(
-            "+SPATIALACC_CHECKPOINT_FRONTIER=none",
-            no_frontier_equivalence_plusargs,
-        )
-        self.assertIn(
-            "+SPATIALACC_CHECKPOINT_RESTORE_DUT_STATE="
-            "checkpoint/state/dut_state.bin",
-            equivalence_plusargs,
-        )
-        self.assertEqual(elaboration_args[-3::2], ["-P", "+vpi"])
-        self.assertTrue(elaboration_args[0].endswith("vcs_state_checkpoint_vpi.c"))
+        self.assertEqual(staged, [])
+        self.assertEqual(plusargs, ["+SPATIALACC_NATIVE_CHECKPOINT_CAPTURE"])
+        self.assertEqual(equivalence_plusargs, [])
+        self.assertEqual(no_frontier_plusargs, ["+SPATIALACC_NATIVE_CHECKPOINT_CAPTURE"])
+        self.assertEqual(no_frontier_equivalence_plusargs, [])
+        self.assertEqual(vlogan_defines, [])
+        self.assertEqual(vcs_defines, [])
+        self.assertEqual(elaboration_args, [])
 
     def test_full_cold_still_compiles_declared_checkpoint_adapter(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -817,7 +1156,7 @@ endmodule
         self.assertEqual(plan["status"], "pass")
         self.assertEqual(plan["mode"], "full_cold_acceptance")
         self.assertFalse(plan["enabled"])
-        self.assertTrue(plan["adapter_enabled"])
+        self.assertFalse(plan["adapter_enabled"])
 
     def test_framework_checkpoint_manifest_keeps_replay_screening_nonaccepting(self) -> None:
         manifest = checkpoint_ready_manifest()
@@ -831,43 +1170,17 @@ endmodule
         report = {
             "schema_version": CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION,
             "status": "pass",
-            "request_sha256": request["request_sha256"],
             "mode": "cold_capture",
-            "semantic_cut_sha256": request["semantic_cut"]["cut_sha256"],
-            "checkpoint_trigger_observed": True,
-            "complete_dut_state_captured": True,
-            "complete_testbench_external_state_captured": True,
-            "evidence_flushed_before_capture": True,
-            "portable_state_capsule_complete": True,
-            "external_state_quiescent_at_capture": True,
-            "pending_event_queue_empty_at_capture": True,
-            "axi_read": {"outstanding": 0, "pending_response": False},
-            "axi_write": {"outstanding": 0, "pending_response": False},
-            "active_boundary_observation": {"event_queue_quiescent": True},
             "captured_sequence": 10,
             "captured_cycle": 100,
-            "state_schema": {"sha256": "2" * 64},
             "state_artifacts": [
                 {
-                    "path": "checkpoint/state/dut_state.bin",
-                    "kind": "dut_vpi_state",
-                },
-                {
-                    "path": "checkpoint/state/dut_state.schema",
-                    "kind": "dut_vpi_schema",
-                },
-                {
-                    "path": "checkpoint/state/testbench_external_state.bin",
-                    "kind": "testbench_external_state",
+                    "path": "checkpoint/native_state",
+                    "remote_path": "checkpoint/native_state",
+                    "remote_files_path": "checkpoint/native_state.FILES",
+                    "kind": "native_vcs_snapshot",
                 },
             ],
-        }
-        equivalence = {
-            "schema_version": CHECKPOINT_EQUIVALENCE_SCHEMA_VERSION,
-            "status": "pass",
-            "same_source_cold_suffix_sha256": "3" * 64,
-            "restored_suffix_sha256": "3" * 64,
-            "complete_required_state_coverage": True,
         }
 
         errors = board_vcs.checkpoint_capture_report_errors(plan, report)
@@ -876,48 +1189,27 @@ endmodule
             report,
             [
                 {
-                    "path": "state/dut_state.bin",
-                    "kind": "dut_vpi_state",
-                    "sha256": "4" * 64,
-                    "byte_count": 8,
-                },
-                {
-                    "path": "state/dut_state.schema",
-                    "kind": "dut_vpi_schema",
-                    "sha256": "2" * 64,
-                    "byte_count": 8,
-                },
-                {
-                    "path": "state/external.bin",
-                    "kind": "testbench_external_state",
-                    "sha256": "5" * 64,
-                    "byte_count": 8,
+                    "path": "native_state",
+                    "remote_path": "checkpoint/native_state",
+                    "remote_files_path": "checkpoint/native_state.FILES",
+                    "kind": "native_vcs_snapshot",
+                    "byte_count": 0,
                 },
             ],
-            equivalence_report=equivalence,
         )
 
         self.assertEqual(errors, [])
-        self.assertEqual(checkpoint_manifest["portable_state_capsule"]["status"], "pass")
-        self.assertEqual(checkpoint_manifest["causal_cut_certificate"]["status"], "pass")
         self.assertEqual(
-            checkpoint_manifest["causal_cut_certificate"]["future_cctg_nodes"],
-            ["node.output"],
+            checkpoint_manifest["state_artifacts"][0]["kind"],
+            "native_vcs_snapshot",
         )
-        self.assertEqual(checkpoint_manifest["equivalence_certificate"], {})
-        self.assertTrue(
-            checkpoint_manifest["policy"]["full_cold_run_required_before_stage_pass"]
-        )
+        self.assertEqual(checkpoint_manifest["remote_acknowledgment_status"], "pending")
 
-    def test_runtime_quiescence_enables_same_source_calibration_without_upgrading_cut(
+    def test_native_capture_ignores_legacy_vpi_fields(
         self,
     ) -> None:
         manifest = checkpoint_ready_manifest()
         request = cold_checkpoint_request(manifest)
-        request["semantic_cut"]["portable_state_quiescent"] = False
-        request["semantic_cut"]["cut_sha256"] = semantic_checkpoint_cut_sha256(
-            request["semantic_cut"]
-        )
         plan = {
             "mode": "cold_capture",
             "request": request,
@@ -928,70 +1220,31 @@ endmodule
             "schema_version": CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION,
             "status": "pass",
             "mode": "cold_capture",
-            "request_sha256": request["request_sha256"],
-            "semantic_cut_sha256": request["semantic_cut"]["cut_sha256"],
-            "checkpoint_trigger_observed": True,
-            "portable_state_capsule_complete": True,
-            "complete_dut_state_captured": True,
-            "complete_testbench_external_state_captured": True,
-            "evidence_flushed_before_capture": True,
-            "external_state_quiescent_at_capture": True,
-            "pending_event_queue_empty_at_capture": True,
-            "axi_read": {"outstanding": 0, "pending_response": False},
-            "axi_write": {"outstanding": 0, "pending_response": False},
-            "active_boundary_observation": {"event_queue_quiescent": True},
             "captured_sequence": 10,
             "captured_cycle": 100,
-            "state_schema": {"sha256": "2" * 64},
+            "state_artifacts": [{"kind": "native_vcs_snapshot", "remote_path": "checkpoint/native_state"}],
         }
         rows = [
             {
-                "path": "state/dut.bin",
-                "kind": "dut_vpi_state",
-                "sha256": "3" * 64,
-                "byte_count": 8,
-            },
-            {
-                "path": "state/schema.bin",
-                "kind": "dut_vpi_schema",
-                "sha256": "2" * 64,
-                "byte_count": 8,
-            },
-            {
-                "path": "state/external.bin",
-                "kind": "testbench_external_state",
-                "sha256": "4" * 64,
-                "byte_count": 8,
+                "path": "native_state",
+                "remote_path": "checkpoint/native_state",
+                "remote_files_path": "checkpoint/native_state.FILES",
+                "kind": "native_vcs_snapshot",
             },
         ]
 
-        eligibility = board_vcs.same_source_checkpoint_calibration_eligibility(
-            report,
-            rows,
-            request_sha256=request["request_sha256"],
-            semantic_cut_sha256=request["semantic_cut"]["cut_sha256"],
-        )
         checkpoint_manifest = board_vcs.framework_checkpoint_manifest(
             plan,
             report,
             rows,
         )
-        report["axi_read"]["outstanding"] = 1
-        rejected = board_vcs.same_source_checkpoint_calibration_eligibility(
-            report,
-            rows,
-        )
 
-        self.assertEqual(eligibility["status"], "ready")
+        self.assertEqual(checkpoint_manifest["status"], "pass")
+        self.assertTrue(checkpoint_manifest["checkpoint_id"])
         self.assertEqual(
-            checkpoint_manifest["portable_state_capsule"]["status"], "pass"
+            [row["kind"] for row in checkpoint_manifest["state_artifacts"]],
+            ["native_vcs_snapshot"],
         )
-        self.assertEqual(
-            checkpoint_manifest["causal_cut_certificate"]["status"],
-            "not_certified",
-        )
-        self.assertEqual(rejected["status"], "not_ready")
-        self.assertTrue(any("axi_read.outstanding" in row for row in rejected["blockers"]))
 
     def test_semantic_suffix_materialization_is_compact_and_strict(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1167,10 +1420,7 @@ endmodule
             )
             stale = board_vcs.pending_same_source_checkpoint_calibration(run_dir)
 
-        self.assertIsNotNone(pending)
-        self.assertEqual(
-            pending["runtime_calibration_eligibility"]["status"], "ready"
-        )
+        self.assertIsNone(pending)
         self.assertIsNone(stale)
 
     def test_equivalence_oracle_terminates_at_first_missing_cold_event(self) -> None:
@@ -2099,7 +2349,6 @@ endmodule
 
         self.assertEqual(pending.get("remote_acknowledgment_status"), None)
         self.assertEqual(acknowledged["remote_acknowledgment_status"], "pass")
-        self.assertEqual(acknowledged["retention_execution"]["status"], "pass")
 
     def test_live_progress_observer_commits_only_complete_jsonl_records(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2287,6 +2536,134 @@ endmodule
             report["latest"]["live_transfer"]["received_byte_count"],
             len(appended_payload.encode("utf-8")),
         )
+
+    def test_live_progress_observer_epoch_excludes_pre_restore_records(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            remote_fixture = Path(temp_dir) / "remote_progress.jsonl"
+            old_payload = json.dumps(progress_event(0, "semantic_progress", True)) + "\n"
+            current_payload = json.dumps(progress_event(1, "heartbeat", False)) + "\n"
+            remote_fixture.write_text(old_payload + current_payload, encoding="utf-8")
+            observer = board_vcs.LiveProgressObserver(
+                host="vcs.example",
+                port=22,
+                run_dir=run_dir,
+                remote_path=Path("reports/progress_events.jsonl"),
+                fingerprint="f" * 64,
+            )
+            observer.begin_epoch(
+                "/remote/exact-job",
+                remote_start_byte=len(old_payload.encode("utf-8")),
+                signal_start_bytes={
+                    Path("reports/progress_events.jsonl"): len(
+                        old_payload.encode("utf-8")
+                    ),
+                    Path("reports/boundary_trace.jsonl"): 99,
+                },
+                signal_start_metadata={
+                    Path("reports/progress_events.jsonl"): {
+                        "device": 1,
+                        "inode": 7,
+                        "byte_count": len(old_payload.encode("utf-8")),
+                    }
+                },
+            )
+            requested_offsets: list[int] = []
+
+            def stream_transfer(
+                argv: list[str], destination: Path, timeout_sec: int
+            ) -> subprocess.CompletedProcess[str]:
+                offset_match = board_vcs.re.search(r"tail -c \+(\d+)", argv[-1])
+                self.assertIsNotNone(offset_match)
+                offset = int(offset_match.group(1)) - 1
+                requested_offsets.append(offset)
+                destination.write_bytes(remote_fixture.read_bytes()[offset:])
+                return subprocess.CompletedProcess(argv, 0, "", "")
+
+            with patch.object(
+                board_vcs, "run_stream_transfer_command", side_effect=stream_transfer
+            ):
+                observer(
+                    {
+                        "state": "running",
+                        "pid": 123,
+                        "poll_attempt": 1,
+                        "remote_workdir": "/remote/exact-job",
+                    }
+                )
+
+            report = observer.report()
+
+        self.assertEqual(requested_offsets, [len(old_payload.encode("utf-8"))])
+        self.assertEqual(report["latest"]["record_count"], 1)
+        self.assertEqual(report["latest"]["last_cycle"], 2)
+        self.assertEqual(report["latest"]["live_transfer"]["mode"], "epoch_suffix")
+        self.assertEqual(
+            report["latest"]["observation_epoch"]["signal_start_bytes"],
+            {
+                "reports/boundary_trace.jsonl": 99,
+                "reports/progress_events.jsonl": len(old_payload.encode("utf-8")),
+            },
+        )
+
+    def test_live_progress_observer_reads_new_file_after_restore_recreates_log(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            remote_fixture = Path(temp_dir) / "remote_progress.jsonl"
+            old_payload = json.dumps(progress_event(0, "semantic_progress", True)) + "\n"
+            current_payload = json.dumps(progress_event(1, "heartbeat", False)) + "\n"
+            remote_fixture.write_text(current_payload, encoding="utf-8")
+            observer = board_vcs.LiveProgressObserver(
+                host="vcs.example",
+                port=22,
+                run_dir=run_dir,
+                remote_path=Path("reports/progress_events.jsonl"),
+                fingerprint="f" * 64,
+            )
+            observer.begin_epoch(
+                "/remote/exact-job",
+                remote_start_byte=len(old_payload.encode("utf-8")),
+                signal_start_bytes={
+                    Path("reports/progress_events.jsonl"): len(
+                        old_payload.encode("utf-8")
+                    )
+                },
+                signal_start_metadata={
+                    Path("reports/progress_events.jsonl"): {
+                        "device": 1,
+                        "inode": 7,
+                        "byte_count": len(old_payload.encode("utf-8")),
+                    }
+                },
+            )
+
+            def transfer(argv: list[str], timeout_sec: int):
+                destination = Path(argv[-1])
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(remote_fixture.read_bytes())
+                return subprocess.CompletedProcess(argv, 0, "", "")
+
+            with patch.object(
+                board_vcs,
+                "remote_file_metadata",
+                return_value={"device": 1, "inode": 8, "byte_count": len(current_payload)},
+            ), patch.object(board_vcs, "run_transfer_command", side_effect=transfer):
+                observer(
+                    {
+                        "state": "running",
+                        "pid": 123,
+                        "poll_attempt": 1,
+                        "remote_workdir": "/remote/exact-job",
+                    }
+                )
+
+            report = observer.report()
+
+        self.assertEqual(report["latest"]["record_count"], 1)
+        self.assertTrue(
+            report["latest"]["observation_epoch"]["progress_file_recreated"]
+        )
+        self.assertEqual(report["latest"]["live_transfer"]["mode"], "full_snapshot")
 
     def test_live_progress_observer_does_not_infer_zero_time_from_progress_alone(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2741,6 +3118,49 @@ endmodule
             Path("evidence/runtime_loader.json"),
         )
 
+    def test_performance_counter_output_is_optional_and_parsed_when_declared(self) -> None:
+        manifest = {
+            "execution_outputs": {
+                "compile_log": {"path": "logs/compile.log"},
+                "simulation_log": {"path": "logs/simulation.log"},
+                "progress_event_log": {
+                    "path": "evidence/progress_events.jsonl",
+                    "schema_version": BOARD_PROGRESS_EVENT_SCHEMA_VERSION,
+                },
+                "elaborated_hierarchy_report": {
+                    "path": "evidence/hierarchy.json",
+                    "schema_version": "test.hierarchy.v1",
+                },
+                "pipeline_overlap_report": {
+                    "path": "evidence/pipeline.json",
+                    "schema_version": "test.pipeline.v1",
+                },
+                "protocol_monitor_reports": [
+                    {
+                        "interface": "memory",
+                        "path": "evidence/axi.json",
+                        "schema_version": "test.axi.v1",
+                    }
+                ],
+            }
+        }
+        errors: list[str] = []
+        without_counter = board_vcs.execution_output_plan(manifest, errors)
+        self.assertFalse(errors)
+        self.assertNotIn("performance_counter_report", without_counter)
+
+        manifest["execution_outputs"]["performance_counter_report"] = {
+            "path": "reports/performance_counter_report.json",
+            "schema_version": "spatialaccagent.performance_counter_report.v1",
+        }
+        errors = []
+        with_counter = board_vcs.execution_output_plan(manifest, errors)
+        self.assertFalse(errors)
+        self.assertEqual(
+            with_counter["performance_counter_report"]["path"],
+            Path("reports/performance_counter_report.json"),
+        )
+
     def make_run(self, root: Path) -> tuple[Path, dict, dict]:
         run_dir = root / "run"
         sources = run_dir / "board_sources"
@@ -2931,11 +3351,127 @@ endmodule
                         "host": "vcs.example",
                         "port": 22,
                         "executable": "/opt/vcs/bin/vcs",
-                    }
+                    },
+                    {
+                        "name": "vivado",
+                        "role": "implementation",
+                        "host": "vcs.example",
+                        "port": 22,
+                        "executable": "/opt/Xilinx/Vivado/2021.1/bin/vivado",
+                    },
                 ]
             },
         )
+        simulation_dir = run_dir / "generated" / "chisel" / "simulation"
+        scripts_dir = simulation_dir / "scripts"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        ip_tcl = scripts_dir / "gen_xilinx_fp_ips.tcl"
+        ip_tcl.write_text("puts ip-generation\n", encoding="utf-8")
+        ip_modules = simulation_dir / "fpga_ip_modules.txt"
+        ip_modules.write_text("fp_add_sp_12\n", encoding="utf-8")
+        write_json(
+            simulation_dir / "fpga_ip_simulation_closure.json",
+            {
+                "status": "ready",
+                "policy": simulation_source_contract(),
+                "ip_generation_tcl": str(ip_tcl),
+                "ip_output_dir": str(simulation_dir / "vivado_ip"),
+                "ip_project_dir": str(simulation_dir / "vivado_ip_project"),
+                "ip_module_manifest": str(ip_modules),
+                "fpga_part": "xcvu9p_CIV-flgb2104-2-i",
+                "required_ip_modules": ["fp_add_sp_12"],
+                "vcs_compile_requirements": {
+                    "generated_ip_simulation_sources": "generated IP sources",
+                    "xpm_library": "xpm",
+                    "unisims_library": "unisims_ver",
+                    "global_module": "glbl.v",
+                },
+            },
+        )
         return run_dir, identity, manifest
+
+    def test_cold_vcs_payload_and_simulator_use_current_runtime_selection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir, _, _ = self.make_run(Path(tmp))
+            selection = (
+                run_dir
+                / "verification"
+                / "adaptive_observation"
+                / "current_selection.json"
+            )
+            write_json(
+                selection,
+                {
+                    "schema_version": "spatialaccagent.runtime_observation_selection.v1",
+                    "status": "ready",
+                    "decision_sha256": "e" * 64,
+                    "selected_signals": [{"expression": "dut.core.out_valid"}],
+                },
+            )
+            calls: list[tuple[list[str], int | None]] = []
+            detached_calls: list[tuple[str, int, str]] = []
+            with patch.object(
+                board_vcs,
+                "validate_exact_board_preflight",
+                return_value=self.exact_board_preflight(),
+            ), patch.object(
+                board_vcs,
+                "recover_exact_remote_semantic_job",
+                return_value=None,
+            ), patch.object(
+                board_vcs,
+                "validate_exact_board_acceptance",
+                return_value=self.exact_board_acceptance(),
+            ), patch.object(
+                board_vcs,
+                "run_command",
+                self.successful_remote_mock(run_dir, calls),
+            ), patch.object(
+                board_vcs,
+                "run_remote_background_command",
+                self.successful_detached_mock(detached_calls),
+            ):
+                result = board_vcs.execute(run_dir, 0)
+
+            job = json.loads(
+                (
+                    run_dir
+                    / "verification"
+                    / "board_simulation"
+                    / "vcs_stage"
+                    / board_vcs.REMOTE_SEMANTIC_JOB_CONTRACT
+                ).read_text(encoding="utf-8")
+            )
+            staged = (
+                run_dir
+                / "verification"
+                / "board_simulation"
+                / "vcs_stage"
+                / "observation"
+                / "current_selection.json"
+            )
+
+            self.assertEqual(result["status"], "pass")
+            self.assertTrue(staged.is_file())
+            self.assertEqual(
+                json.loads(staged.read_text(encoding="utf-8")),
+                json.loads(selection.read_text(encoding="utf-8")),
+            )
+            self.assertIn(
+                "observation/current_selection.json",
+                {row["path"] for row in job["payload"]},
+            )
+            simulation_commands = [
+                command
+                for label, _, command in detached_calls
+                if label == "vcs_simulate"
+            ]
+
+        self.assertEqual(len(simulation_commands), 1)
+        self.assertIn(
+            "+SPATIALACC_OBSERVATION_SELECTION=observation/current_selection.json",
+            simulation_commands[0],
+        )
 
     def rewrite_identity_and_manifest(
         self,

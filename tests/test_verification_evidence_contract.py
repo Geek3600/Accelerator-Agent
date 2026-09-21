@@ -6,7 +6,7 @@ from unittest import TestCase
 from accagent.framework.stage_debug_loop import validated_scope_certificate
 from accagent.framework.stage_verification import (
     build_promotion_evidence_binding,
-    stage7_selector_blockers,
+    stage6_selector_blockers,
 )
 from accagent.framework.stage_verification_plan import current_certificate_validation_summary
 from accagent.framework.verification_evidence_contract import (
@@ -222,7 +222,7 @@ class VerificationEvidenceContractTest(TestCase):
                 selector,
                 root / "certificate_snapshots",
                 current_promotion_artifact_id=(
-                    "artifact.stage7.operator_leaf_promotion_certificate"
+                    "artifact.stage6.operator_leaf_promotion_certificate"
                 ),
             )
 
@@ -284,7 +284,7 @@ class VerificationEvidenceContractTest(TestCase):
             previous_certificate.write_text(
                 json.dumps(
                     {
-                        "artifact_id": "artifact.stage7.operator_leaf_promotion_certificate",
+                        "artifact_id": "artifact.stage6.operator_leaf_promotion_certificate",
                         "status": "pass",
                     }
                 ),
@@ -326,7 +326,7 @@ class VerificationEvidenceContractTest(TestCase):
                 root,
                 selector,
                 root / "same_scope_snapshots",
-                current_promotion_artifact_id="artifact.stage7.operator_leaf_promotion_certificate",
+                current_promotion_artifact_id="artifact.stage6.operator_leaf_promotion_certificate",
             )
             self.assertEqual(errors, [])
             self.assertFalse(
@@ -334,7 +334,7 @@ class VerificationEvidenceContractTest(TestCase):
             )
             self.assertEqual(
                 same_scope["excluded_same_scope_promotion_certificates"][0]["artifact_id"],
-                "artifact.stage7.operator_leaf_promotion_certificate",
+                "artifact.stage6.operator_leaf_promotion_certificate",
             )
             lower_scope, errors = build_promotion_evidence_binding(
                 gate_summary,
@@ -343,7 +343,7 @@ class VerificationEvidenceContractTest(TestCase):
                 root,
                 selector,
                 root / "lower_scope_snapshots",
-                current_promotion_artifact_id="artifact.stage7.single_layer_promotion_certificate",
+                current_promotion_artifact_id="artifact.stage6.single_layer_promotion_certificate",
             )
             self.assertEqual(errors, [])
             self.assertTrue(
@@ -353,7 +353,7 @@ class VerificationEvidenceContractTest(TestCase):
                 "schema_version": PROMOTION_CERTIFICATE_SCHEMA_VERSION,
                 "evidence_binding": same_scope,
             }
-            previous_certificate.write_text('{"artifact_id":"artifact.stage7.operator_leaf_promotion_certificate","status":"replacement"}', encoding="utf-8")
+            previous_certificate.write_text('{"artifact_id":"artifact.stage6.operator_leaf_promotion_certificate","status":"replacement"}', encoding="utf-8")
             self.assertEqual(promotion_evidence_binding_errors(same_scope_payload, [gate]), [])
 
     def test_old_certificate_cannot_cover_current_real_weight_contract(self) -> None:
@@ -387,13 +387,13 @@ class VerificationEvidenceContractTest(TestCase):
             state = {
                 "artifacts": [
                     {
-                        "id": "artifact.stage7.operator_leaf_promotion_certificate",
+                        "id": "artifact.stage6.operator_leaf_promotion_certificate",
                         "path": str(cert_path),
                         "producer_transition": "transition.0001",
                         "trust_status": "validated",
                     },
                     {
-                        "id": "artifact.stage6.stage7_gate_selector_contract",
+                        "id": "artifact.stage5.stage6_gate_selector_contract",
                         "path": str(selector_path),
                     },
                 ],
@@ -443,20 +443,20 @@ class VerificationEvidenceContractTest(TestCase):
             )
             board_selector = {
                 "operator_leaf_promotion_certificate": {
-                    "required_artifact": "artifact.stage7.operator_leaf_promotion_certificate",
+                    "required_artifact": "artifact.stage6.operator_leaf_promotion_certificate",
                     "required_gates": gates,
                     "blocks_until_present": ["board_gate"],
                     "evidence_contract": evidence_contract_for_level("operator_leaf_functional"),
                 }
             }
-            self.assertEqual(stage7_selector_blockers(state, ["board_gate"], board_selector), [])
+            self.assertEqual(stage6_selector_blockers(state, ["board_gate"], board_selector), [])
 
             evidence_path = Path(
                 json.loads(cert_path.read_text(encoding="utf-8"))["evidence_binding"]["file_bindings"][0]["path"]
             )
             evidence_path.write_text("changed source bytes", encoding="utf-8")
             self.assertIsNone(validated_scope_certificate(state, "operator_leaf_closure"))
-            self.assertTrue(stage7_selector_blockers(state, ["board_gate"], board_selector))
+            self.assertTrue(stage6_selector_blockers(state, ["board_gate"], board_selector))
 
     def test_semantic_report_requires_real_weight_and_independent_output_provenance(self) -> None:
         report = {

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -56,9 +57,13 @@ PIPELINE_TRACE_RE = re.compile(
 PIPELINE_STAGE_TRACE_RE = re.compile(
     r"SPATIALACC_STAGE_TRACE\s+"
     r"stage=(?P<stage>\S+)\s+cycle=\s*(?P<cycle>\d+)\s+"
-    r"token=\s*(?P<token>\d+)\s+beat=\s*(?P<beat>\d+)\s+"
-    r"event=(?P<event>\S+)\s+signal=(?P<signal>[A-Za-z_][A-Za-z0-9_$]*)\s+"
-    r"value=(?P<value>\S+)"
+    r"token=\s*(?P<token>-?\d+)\s+beat=\s*(?P<beat>-?\d+)\s+"
+    r"event=(?P<event>\S+)\s+signal=(?P<signal>\S+)\s+"
+    r"(?:value|scalar_value)=(?P<value>\S+)"
+)
+
+STAGE_TRACE_VECTOR_KNOWN_RE = re.compile(
+    r"^(?P<base>.+)\[(?P<index>\d+)\]\.known$"
 )
 
 REQUIRED_DEBUG_EVENT_KINDS = {
@@ -113,6 +118,10 @@ _ADAPTIVE_HEARTBEAT_MULTIPLIER = 16384
 _MIN_STALL_SNAPSHOT_COUNT = 8
 _CCTG_FRONTIER_BUDGET_MULTIPLIER = 32
 
+_BARE_UNKNOWN_JSON_TOKEN_RE = re.compile(
+    r"(?P<prefix>[:\[,])\s*(?P<value>[xXzZ])\s*(?P<suffix>[,\]}])"
+)
+
 
 def read_complete_jsonl(path: Path) -> dict[str, Any]:
     """Read only newline-committed JSON objects from a file being written."""
@@ -132,14 +141,31 @@ def read_complete_jsonl(path: Path) -> dict[str, Any]:
     committed = raw[:committed_byte_count]
     records: list[dict[str, Any]] = []
     invalid: list[dict[str, Any]] = []
+    recovered_nonstandard_json_count = 0
     for line_number, line in enumerate(committed.splitlines(), start=1):
         if not line.strip():
             continue
         try:
             value = json.loads(line.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            invalid.append({"line": line_number, "error": str(exc)[:500]})
-            continue
+            # Older board wrappers wrote four-state unknown values as bare
+            # x/z tokens inside JSONL.  Recover only those exact scalar
+            # tokens; do not apply a broad JSON repair that could hide a
+            # malformed record.
+            try:
+                text = line.decode("utf-8")
+                repaired = _BARE_UNKNOWN_JSON_TOKEN_RE.sub(
+                    lambda match: (
+                        f'{match.group("prefix")}\"{match.group("value").lower()}\"'
+                        f'{match.group("suffix")}'
+                    ),
+                    text,
+                )
+                value = json.loads(repaired)
+                recovered_nonstandard_json_count += 1
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                invalid.append({"line": line_number, "error": str(exc)[:500]})
+                continue
         if isinstance(value, dict):
             records.append(value)
         else:
@@ -154,6 +180,39 @@ def read_complete_jsonl(path: Path) -> dict[str, Any]:
         "trailing_partial_byte_count": len(raw) - committed_byte_count,
         "records": records,
         "invalid_records": invalid[:64],
+        "recovered_nonstandard_json_count": recovered_nonstandard_json_count,
+    }
+
+
+def _stage_trace_value(raw_value: str) -> Any:
+    """Convert one emitted scalar without treating an unknown as a number."""
+
+    if raw_value.lower() in {"x", "z", "xx", "zz", "unknown"}:
+        return raw_value
+    if raw_value.lower() in {"true", "false"}:
+        return raw_value.lower() == "true"
+    try:
+        return int(raw_value, 0)
+    except ValueError:
+        return raw_value[:128]
+
+
+def parse_stage_trace_line(line: str) -> dict[str, Any] | None:
+    """Parse one VCS stage-trace line emitted by the generated testbench."""
+
+    match = PIPELINE_STAGE_TRACE_RE.search(line)
+    if match is None:
+        return None
+    return {
+        "schema_version": PIPELINE_STAGE_TRACE_SCHEMA_VERSION,
+        "stage_id": match.group("stage"),
+        "cycle": int(match.group("cycle")),
+        "token": int(match.group("token")),
+        "beat": int(match.group("beat")),
+        "event": match.group("event"),
+        "signal": match.group("signal"),
+        "value": _stage_trace_value(match.group("value")),
+        "source": "simulation_log",
     }
 
 
@@ -196,33 +255,11 @@ def read_pipeline_trace_log(path: Path) -> dict[str, Any]:
                 }
             )
         elif "SPATIALACC_STAGE_TRACE" in line:
-            match = PIPELINE_STAGE_TRACE_RE.search(line)
-            if match is None:
+            stage_record = parse_stage_trace_line(line)
+            if stage_record is None:
                 stage_unparsed += 1
                 continue
-            raw_value = match.group("value")
-            if raw_value.lower() in {"x", "z", "xx", "zz", "unknown"}:
-                value: Any = raw_value
-            elif raw_value.lower() in {"true", "false"}:
-                value = raw_value.lower() == "true"
-            else:
-                try:
-                    value = int(raw_value, 0)
-                except ValueError:
-                    value = raw_value[:128]
-            stage_records.append(
-                {
-                    "schema_version": PIPELINE_STAGE_TRACE_SCHEMA_VERSION,
-                    "stage_id": match.group("stage"),
-                    "cycle": int(match.group("cycle")),
-                    "token": int(match.group("token")),
-                    "beat": int(match.group("beat")),
-                    "event": match.group("event"),
-                    "signal": match.group("signal"),
-                    "value": value,
-                    "source": "simulation_log",
-                }
-            )
+            stage_records.append(stage_record)
     return {
         "status": "ready",
         "path": str(path),
@@ -231,6 +268,507 @@ def read_pipeline_trace_log(path: Path) -> dict[str, Any]:
         "unparsed": unparsed,
         "stage_unparsed": stage_unparsed,
     }
+
+
+def _stage_trace_sample(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: record.get(key)
+        for key in ("cycle", "token", "beat", "event", "value")
+    }
+
+
+def _value_is_known(value: Any) -> bool:
+    """Return whether a ``...[bit].known`` probe says its bit is known."""
+
+    return value is True or (
+        isinstance(value, int) and not isinstance(value, bool) and value == 1
+    )
+
+
+def _integer_ranges(values: list[int]) -> list[list[int]]:
+    """Compact sorted bit positions into inclusive ranges."""
+
+    if not values:
+        return []
+    ranges: list[list[int]] = []
+    start = values[0]
+    previous = values[0]
+    for value in values[1:]:
+        if value == previous + 1:
+            previous = value
+            continue
+        ranges.append([start, previous])
+        start = value
+        previous = value
+    ranges.append([start, previous])
+    return ranges
+
+
+def _normalized_signal_name(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+
+
+_BOUNDARY_STAGE_IDS = {
+    "stage_00_rms_norm_1",
+    "stage_01_self_attention",
+    "stage_02_residual_add_1",
+    "stage_03_rms_norm_2",
+    "stage_04_mlp_gate_proj",
+    "stage_05_mlp_up_proj",
+    "stage_06_activation_mul",
+    "stage_07_mlp_down_proj",
+    "stage_08_residual_add_2",
+}
+
+
+_BOUNDARY_FIELD_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
+    "stage_01_self_attention": {
+        "collect_beat": ("collectbeat",),
+        "emit_head": ("emithead",),
+        "emit_beat": ("emitbeat",),
+        "start": ("iostart",),
+        "weight_valid": ("ioweightvalid",),
+        "weight_ready": ("ioweightready",),
+        "bias_valid": ("iobiasvalid",),
+        "bias_ready": ("iobiasready",),
+        "projection_output_valid": ("projectioniooutvalid",),
+        "projection_output_last": ("projectioniooutbitslast",),
+        "output_head": ("iooutbitshead",),
+        "output_last": ("iooutbitslast",),
+        "state": ("state",),
+    },
+    "stage_02_residual_add_1": {
+        "residual_skip_full": ("maybe_full",),
+        "held_valid": ("heldvalid",),
+        "pair_valid": ("pairvalid",),
+        "output_queue_full": ("maybe_full",),
+        "residual_queue_read_ready": ("residualqiodeqready",),
+        "computed_queue_read_ready": ("computedqiodeqready",),
+        "output_queue_write_ready": ("outputqioenqready",),
+        "computed_queue_write_pointer": ("computedqenqptrvalue",),
+        "beat_in_token": ("beatinToken", "beatinsequence"),
+        "token_in_sequence": ("tokeninsequence",),
+        "token_final_beat": ("tokenfinalbeat",),
+        "sequence_final_beat": ("sequencefinalbeat",),
+    },
+    "stage_08_residual_add_2": {
+        "held_valid": ("heldvalid",),
+        "pair_valid": ("pairvalid",),
+        "output_queue_full": ("maybe_full",),
+        "token_final_beat": ("tokenfinalbeat",),
+        "sequence_final_beat": ("sequencefinalbeat",),
+        "token_in_sequence": ("tokeninsequence",),
+    },
+}
+
+
+def _load_runtime_signal_rows(path: Path | None) -> list[dict[str, Any]]:
+    if path is None or not path.is_file():
+        return []
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    if not isinstance(value, dict):
+        return []
+    rows = value.get("selected_signals", [])
+    if not isinstance(rows, list):
+        rows = value.get("signals", [])
+    return [row for row in rows if isinstance(row, dict) and row.get("expression")]
+
+
+def _signal_row_matches_field(
+    row: dict[str, Any],
+    *,
+    stage_id: str | None,
+    field_name: str,
+) -> bool:
+    if stage_id and str(row.get("stage") or "") != stage_id:
+        return False
+    expression = str(row.get("expression") or "")
+    leaf = _normalized_signal_name(expression.rsplit(".", 1)[-1])
+    aliases = set(
+        _BOUNDARY_FIELD_ALIASES.get(stage_id or "", {}).get(
+            field_name, ()
+        )
+    )
+    aliases.add(_normalized_signal_name(field_name))
+    return leaf in aliases
+
+
+def _boundary_signal_rows(
+    rows: list[dict[str, Any]],
+    boundary_id: str,
+    field_name: str,
+) -> list[dict[str, Any]]:
+    normalized_field = _normalized_signal_name(field_name)
+    matches: list[dict[str, Any]] = []
+    for row in rows:
+        if str(row.get("boundary") or "") != boundary_id:
+            continue
+        expression = str(row.get("expression") or "")
+        leaf = _normalized_signal_name(expression.rsplit(".", 1)[-1])
+        if leaf == normalized_field or leaf.endswith(normalized_field):
+            matches.append(row)
+    return matches
+
+
+def _record_runtime_scalar(
+    stages: dict[str, dict[str, Any]],
+    all_signal_names: set[str],
+    *,
+    stage_id: str,
+    signal: str,
+    sample: dict[str, Any],
+) -> None:
+    stage = stages.setdefault(
+        stage_id,
+        {
+            "record_count": 0,
+            "first_cycle": None,
+            "last_cycle": None,
+            "event_counts": Counter(),
+            "scalar_signals": {},
+            "known_bit_vectors": {},
+        },
+    )
+    stage["record_count"] += 1
+    cycle = int(sample.get("cycle") or 0)
+    if stage["first_cycle"] is None or cycle < stage["first_cycle"]:
+        stage["first_cycle"] = cycle
+    if stage["last_cycle"] is None or cycle > stage["last_cycle"]:
+        stage["last_cycle"] = cycle
+    stage["event_counts"][str(sample.get("event") or "boundary_snapshot")] += 1
+    scalar = stage["scalar_signals"].setdefault(
+        signal,
+        {
+            "sample_count": 0,
+            "change_count": 0,
+            "first_sample": None,
+            "last_sample": None,
+            "last_change": None,
+        },
+    )
+    if scalar["first_sample"] is None:
+        scalar["first_sample"] = sample
+    elif scalar["last_sample"]["value"] != sample["value"]:
+        scalar["change_count"] += 1
+        scalar["last_change"] = sample
+    scalar["sample_count"] += 1
+    scalar["last_sample"] = sample
+    all_signal_names.add(signal)
+
+
+def _merge_boundary_trace_scalars(
+    stages: dict[str, dict[str, Any]],
+    all_signal_names: set[str],
+    boundary_trace_path: Path,
+    catalog_path: Path | None,
+) -> dict[str, Any]:
+    parsed = read_complete_jsonl(boundary_trace_path)
+    rows = _load_runtime_signal_rows(catalog_path)
+    recovered = int(parsed.get("recovered_nonstandard_json_count") or 0)
+    scalar_count = 0
+    unmapped: Counter[str] = Counter()
+    for record in parsed.get("records", []):
+        if not isinstance(record, dict):
+            continue
+        observed = record.get("observed_value")
+        if not isinstance(observed, dict):
+            continue
+        cycle = int(record.get("cycle") or 0)
+        token = int(record.get("logical_index") or -1)
+        event = str(observed.get("event") or record.get("event") or "boundary_snapshot")
+        boundary_id = str(record.get("boundary_id") or "")
+        sample_base = {"cycle": cycle, "token": token, "beat": -1, "event": event}
+
+        # Boundary valid/ready are the actual input/output handshake signals
+        # for the selected DUT expressions.  This is the missing QKV input
+        # and output evidence in the old runtime-only summary.
+        boundary_values = observed.get("boundary")
+        if isinstance(boundary_values, dict):
+            for field_name in ("valid", "ready"):
+                if field_name not in boundary_values:
+                    continue
+                for row in _boundary_signal_rows(rows, boundary_id, field_name):
+                    sample = {**sample_base, "value": boundary_values[field_name]}
+                    _record_runtime_scalar(
+                        stages,
+                        all_signal_names,
+                        stage_id=str(row.get("stage") or "board_control"),
+                        signal=str(row["expression"]),
+                        sample=sample,
+                    )
+                    scalar_count += 1
+
+        for section_name, section in observed.items():
+            if not isinstance(section, dict):
+                continue
+            if section_name in _BOUNDARY_STAGE_IDS:
+                stage_id = section_name
+                for field_name, value in section.items():
+                    if isinstance(value, (dict, list)):
+                        continue
+                    matched = [
+                        row
+                        for row in rows
+                        if _signal_row_matches_field(
+                            row,
+                            stage_id=stage_id,
+                            field_name=str(field_name),
+                        )
+                    ]
+                    if not matched:
+                        unmapped[f"{stage_id}.{field_name}"] += 1
+                        continue
+                    for row in matched:
+                        _record_runtime_scalar(
+                            stages,
+                            all_signal_names,
+                            stage_id=stage_id,
+                            signal=str(row["expression"]),
+                            sample={**sample_base, "value": value},
+                        )
+                        scalar_count += 1
+                continue
+
+            if section_name not in {"adapter", "axi"}:
+                continue
+            for field_name, value in section.items():
+                if isinstance(value, (dict, list)):
+                    continue
+                matched = [
+                    row
+                    for row in rows
+                    if _signal_row_matches_field(
+                        row,
+                        stage_id=None,
+                        field_name=str(field_name),
+                    )
+                    and (
+                        section_name == "axi"
+                        and str(row.get("stage") or "") == "axi_ddr"
+                        or section_name == "adapter"
+                        and str(row.get("stage") or "")
+                        in {"board_control", "board_output", "runtime_loader", "weight_loader"}
+                    )
+                ]
+                if not matched:
+                    unmapped[f"{section_name}.{field_name}"] += 1
+                    continue
+                for row in matched:
+                    _record_runtime_scalar(
+                        stages,
+                        all_signal_names,
+                        stage_id=str(row.get("stage") or "board_control"),
+                        signal=str(row["expression"]),
+                        sample={**sample_base, "value": value},
+                    )
+                    scalar_count += 1
+    return {
+        "status": "ready" if parsed.get("records") else parsed.get("status", "empty"),
+        "record_count": len(parsed.get("records", [])),
+        "invalid_record_count": len(parsed.get("invalid_records", [])),
+        "recovered_nonstandard_json_count": recovered,
+        "merged_scalar_sample_count": scalar_count,
+        "unmapped_scalar_count": sum(unmapped.values()),
+        "unmapped_scalar_fields": sorted(unmapped)[:128],
+    }
+
+
+def summarize_runtime_stage_trace_log(
+    path: Path,
+    *,
+    boundary_trace_path: Path | None = None,
+    selection_path: Path | None = None,
+) -> dict[str, Any]:
+    """Compact all current-run internal stage signals from a VCS text log.
+
+    The testbench emits one line per selected scalar at meaningful transitions.
+    A full run can therefore contain hundreds of thousands of rows.  This
+    reader processes the file line-by-line and keeps every non-vector control
+    signal while collapsing ``...[bit].known`` probes into one vector summary.
+    It is diagnostic evidence only and never changes functional acceptance.
+    """
+
+    summary: dict[str, Any] = {
+        "schema_version": "spatialaccagent.runtime_stage_trace_summary.v1",
+        "status": "missing" if not path.is_file() else "ready",
+        "raw_stage_record_count": 0,
+        "parsed_stage_record_count": 0,
+        "unparsed_stage_record_count": 0,
+        "distinct_signal_count": 0,
+        "stage_count": 0,
+        "stage_summaries": [],
+        "boundary_trace_merge": {
+            "status": "not_requested",
+            "record_count": 0,
+            "merged_scalar_sample_count": 0,
+        },
+        "policy": {
+            "current_log_only": True,
+            "all_non_vector_scalar_signals_retained": True,
+            "known_bit_vectors_are_grouped_without_raw_payload_values": True,
+            "raw_trace_rows_are_not_embedded": True,
+        },
+    }
+    if not path.is_file():
+        return summary
+
+    stages: dict[str, dict[str, Any]] = {}
+    all_signal_names: set[str] = set()
+    with path.open("r", encoding="utf-8", errors="replace") as stream:
+        for line in stream:
+            if "SPATIALACC_STAGE_TRACE" not in line:
+                continue
+            summary["raw_stage_record_count"] += 1
+            record = parse_stage_trace_line(line)
+            if record is None:
+                summary["unparsed_stage_record_count"] += 1
+                continue
+            summary["parsed_stage_record_count"] += 1
+            stage_id = str(record["stage_id"])
+            signal = str(record["signal"])
+            all_signal_names.add(signal)
+            stage = stages.setdefault(
+                stage_id,
+                {
+                    "record_count": 0,
+                    "first_cycle": None,
+                    "last_cycle": None,
+                    "event_counts": Counter(),
+                    "scalar_signals": {},
+                    "known_bit_vectors": {},
+                },
+            )
+            vector_match = STAGE_TRACE_VECTOR_KNOWN_RE.match(signal)
+            if vector_match is None:
+                _record_runtime_scalar(
+                    stages,
+                    all_signal_names,
+                    stage_id=stage_id,
+                    signal=signal,
+                    sample=_stage_trace_sample(record),
+                )
+                continue
+
+            base = vector_match.group("base")
+            index = int(vector_match.group("index"))
+            vector = stage["known_bit_vectors"].setdefault(
+                base,
+                {
+                    "sample_count": 0,
+                    "change_count": 0,
+                    "first_sample": None,
+                    "last_sample": None,
+                    "last_change": None,
+                    "bits": {},
+                },
+            )
+            sample = _stage_trace_sample(record)
+            bit = vector["bits"].setdefault(
+                index,
+                {"last_value": None, "last_sample": None},
+            )
+            if bit["last_sample"] is not None and bit["last_value"] != sample["value"]:
+                vector["change_count"] += 1
+                vector["last_change"] = sample
+            bit["last_value"] = sample["value"]
+            bit["last_sample"] = sample
+            if vector["first_sample"] is None:
+                vector["first_sample"] = sample
+            vector["sample_count"] += 1
+            vector["last_sample"] = sample
+
+    if boundary_trace_path is not None and boundary_trace_path.is_file():
+        summary["boundary_trace_merge"] = _merge_boundary_trace_scalars(
+            stages,
+            all_signal_names,
+            boundary_trace_path,
+            selection_path,
+        )
+
+    selected_rows = _load_runtime_signal_rows(selection_path)
+    selected_expressions = {
+        str(row.get("expression"))
+        for row in selected_rows
+        if row.get("expression")
+    }
+    observed_expressions = set(all_signal_names)
+    missing_selected = sorted(selected_expressions - observed_expressions)
+    summary["selected_signal_coverage"] = {
+        "selection_path": str(selection_path) if selection_path else None,
+        "selected_signal_count": len(selected_expressions),
+        "observed_selected_signal_count": len(
+            selected_expressions & observed_expressions
+        ),
+        "missing_selected_signal_count": len(missing_selected),
+        "coverage_ratio": (
+            len(selected_expressions & observed_expressions)
+            / len(selected_expressions)
+            if selected_expressions
+            else None
+        ),
+        "missing_selected_signals": missing_selected[:256],
+    }
+
+    stage_summaries: list[dict[str, Any]] = []
+    for stage_id in sorted(stages):
+        stage = stages[stage_id]
+        scalar_signals = [
+            {"signal": signal, **stats}
+            for signal, stats in sorted(stage["scalar_signals"].items())
+        ]
+        known_bit_signal_count = sum(
+            len(stats["bits"])
+            for stats in stage["known_bit_vectors"].values()
+        )
+        vectors: list[dict[str, Any]] = []
+        for signal, stats in sorted(stage["known_bit_vectors"].items()):
+            bits = stats["bits"]
+            indices = sorted(bits)
+            width = indices[-1] + 1 if indices else 0
+            unknown_indices = [
+                index
+                for index in indices
+                if not _value_is_known(bits[index]["last_value"])
+            ]
+            observed_bit_count = len(indices)
+            vectors.append(
+                {
+                    "signal": signal,
+                    "width": width,
+                    "observed_bit_count": observed_bit_count,
+                    "unobserved_bit_count": max(width - observed_bit_count, 0),
+                    "known_bit_count": observed_bit_count - len(unknown_indices),
+                    "unknown_bit_count": len(unknown_indices),
+                    "unknown_bit_ranges": _integer_ranges(unknown_indices),
+                    "sample_count": stats["sample_count"],
+                    "change_count": stats["change_count"],
+                    "first_sample": stats["first_sample"],
+                    "last_sample": stats["last_sample"],
+                    "last_change": stats["last_change"],
+                }
+            )
+        stage_summaries.append(
+            {
+                "stage_id": stage_id,
+                "record_count": stage["record_count"],
+                "distinct_signal_count": len(stage["scalar_signals"])
+                + known_bit_signal_count,
+                "scalar_signal_count": len(scalar_signals),
+                "known_bit_vector_count": len(vectors),
+                "first_cycle": stage["first_cycle"],
+                "last_cycle": stage["last_cycle"],
+                "event_counts": dict(sorted(stage["event_counts"].items())),
+                "scalar_signals": scalar_signals,
+                "known_bit_vectors": vectors,
+            }
+        )
+    summary["distinct_signal_count"] = len(all_signal_names)
+    summary["stage_count"] = len(stage_summaries)
+    summary["stage_summaries"] = stage_summaries
+    return summary
 
 
 def stage_internal_records_from_boundary_observations(

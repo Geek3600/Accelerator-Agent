@@ -14,7 +14,13 @@ final case class DenseFFNParams(
   tileK: Int = 64,
   batchSize: Int = 16,
   maxSeqLen: Int = 16,
-  activation: String = "relu"
+  activation: String = "relu",
+  upWeightRole: String = "weight_mlp_up",
+  upBiasRole: String = "weight_mlp_up_bias",
+  downWeightRole: String = "weight_mlp_down",
+  downBiasRole: String = "weight_mlp_down_bias",
+  computeArrayRows: Int = 0,
+  computeArrayCols: Int = 0
 ) {
   require(tileM > 0 && tileN > 0 && tileK > 0, "FFN tile parameters must be positive")
   require(elemBits == 16 || elemBits == 32, "DenseFFN elements must use an IEEE boundary type")
@@ -28,7 +34,11 @@ final case class DenseFFNParams(
     batchSize = batchSize,
     maxSeqLen = maxSeqLen,
     hasBias = true,
-    fusedActivation = activation
+    fusedActivation = "none",
+    weightRole = upWeightRole,
+    biasRole = upBiasRole,
+    computeArrayRows = computeArrayRows,
+    computeArrayCols = computeArrayCols
   )
   val down = LinearParams(
     intermediateSize,
@@ -39,7 +49,11 @@ final case class DenseFFNParams(
     outputBits = outputBits,
     batchSize = batchSize,
     maxSeqLen = maxSeqLen,
-    hasBias = true
+    hasBias = true,
+    weightRole = downWeightRole,
+    biasRole = downBiasRole,
+    computeArrayRows = computeArrayRows,
+    computeArrayCols = computeArrayCols
   )
 }
 
@@ -57,26 +71,36 @@ class DenseFFN(p: DenseFFNParams) extends Module {
   })
 
   val up = Module(new Linear(p.up))
+  val act = Module(new Activation(ActivationParams(
+    p.intermediateSize,
+    lanes = p.lanes,
+    elemBits = p.elemBits,
+    batchSize = p.batchSize,
+    maxSeqLen = p.maxSeqLen,
+    kind = p.activation
+  )))
   val down = Module(new Linear(p.down))
-  val q = Module(new Queue(new StreamBeat(StreamSpec(p.up.outputBeatBits, p.up.outputAddrBits)), 2))
+  val q = Module(new PhysicalStreamFifo(new StreamBeat(StreamSpec(p.up.outputBeatBits, p.up.outputAddrBits)), 2))
 
   up.io.start := io.start
   up.io.cfg := io.cfg
   up.io.cfgValid := io.cfgValid
   up.io.weight <> io.upWeight
   up.io.bias <> io.upBias
-  up.io.scale.outScale := IeeeMath.fp32One
-  up.io.scale.biasScale := IeeeMath.fp32One
+  up.io.scale.outScale := PhysicalMath.fp32One
+  up.io.scale.biasScale := PhysicalMath.fp32One
   up.io.in <> io.in
-  up.io.out <> q.io.enq
+  act.io.cfg := io.cfg
+  act.io.in <> up.io.out
+  act.io.out <> q.io.enq
 
   down.io.start := io.start
   down.io.cfg := io.cfg
   down.io.cfgValid := io.cfgValid
   down.io.weight <> io.downWeight
   down.io.bias <> io.downBias
-  down.io.scale.outScale := IeeeMath.fp32One
-  down.io.scale.biasScale := IeeeMath.fp32One
+  down.io.scale.outScale := PhysicalMath.fp32One
+  down.io.scale.biasScale := PhysicalMath.fp32One
   down.io.in <> q.io.deq
   down.io.out <> io.out
 }
@@ -95,7 +119,15 @@ final case class GatedMLPParams(
   batchSize: Int = 16,
   maxSeqLen: Int = 16,
   activation: String = "silu",
-  hasBias: Boolean = false
+  hasBias: Boolean = false,
+  gateWeightRole: String = "weight_mlp_gate",
+  gateBiasRole: String = "weight_mlp_gate_bias",
+  upWeightRole: String = "weight_mlp_up",
+  upBiasRole: String = "weight_mlp_up_bias",
+  downWeightRole: String = "weight_mlp_down",
+  downBiasRole: String = "weight_mlp_down_bias",
+  computeArrayRows: Int = 0,
+  computeArrayCols: Int = 0
 ) {
   require(tileM > 0 && tileN > 0 && tileK > 0, "GatedMLP tile parameters must be positive")
   require(elemBits == 16 || elemBits == 32, "GatedMLP elements must use an IEEE boundary type")
@@ -108,7 +140,11 @@ final case class GatedMLPParams(
     outputBits = elemBits,
     batchSize = batchSize,
     maxSeqLen = maxSeqLen,
-    hasBias = hasBias
+    hasBias = hasBias,
+    weightRole = gateWeightRole,
+    biasRole = gateBiasRole,
+    computeArrayRows = computeArrayRows,
+    computeArrayCols = computeArrayCols
   )
   val up = LinearParams(
     hiddenSize,
@@ -119,7 +155,11 @@ final case class GatedMLPParams(
     outputBits = elemBits,
     batchSize = batchSize,
     maxSeqLen = maxSeqLen,
-    hasBias = hasBias
+    hasBias = hasBias,
+    weightRole = upWeightRole,
+    biasRole = upBiasRole,
+    computeArrayRows = computeArrayRows,
+    computeArrayCols = computeArrayCols
   )
   val act = ActivationParams(
     intermediateSize,
@@ -146,7 +186,11 @@ final case class GatedMLPParams(
     outputBits = outputBits,
     batchSize = batchSize,
     maxSeqLen = maxSeqLen,
-    hasBias = hasBias
+    hasBias = hasBias,
+    weightRole = downWeightRole,
+    biasRole = downBiasRole,
+    computeArrayRows = computeArrayRows,
+    computeArrayCols = computeArrayCols
   )
 }
 
@@ -168,8 +212,8 @@ class GatedMLP(p: GatedMLPParams) extends Module {
   val gate = Module(new Linear(p.gate))
   val up = Module(new Linear(p.up))
   val act = Module(new Activation(p.act))
-  val actQ = Module(new Queue(new StreamBeat(StreamSpec(p.mul.inputBeatBits, p.mul.addrBits)), 4))
-  val upQ = Module(new Queue(new StreamBeat(StreamSpec(p.mul.inputBeatBits, p.mul.addrBits)), 4))
+  val actQ = Module(new PhysicalStreamFifo(new StreamBeat(StreamSpec(p.mul.inputBeatBits, p.mul.addrBits)), 4))
+  val upQ = Module(new PhysicalStreamFifo(new StreamBeat(StreamSpec(p.mul.inputBeatBits, p.mul.addrBits)), 4))
   val mul = Module(new ElementwiseMul(p.mul))
   val down = Module(new Linear(p.down))
 
@@ -178,16 +222,16 @@ class GatedMLP(p: GatedMLPParams) extends Module {
   gate.io.cfgValid := io.cfgValid
   gate.io.weight <> io.gateWeight
   gate.io.bias <> io.gateBias
-  gate.io.scale.outScale := IeeeMath.fp32One
-  gate.io.scale.biasScale := IeeeMath.fp32One
+  gate.io.scale.outScale := PhysicalMath.fp32One
+  gate.io.scale.biasScale := PhysicalMath.fp32One
 
   up.io.start := io.start
   up.io.cfg := io.cfg
   up.io.cfgValid := io.cfgValid
   up.io.weight <> io.upWeight
   up.io.bias <> io.upBias
-  up.io.scale.outScale := IeeeMath.fp32One
-  up.io.scale.biasScale := IeeeMath.fp32One
+  up.io.scale.outScale := PhysicalMath.fp32One
+  up.io.scale.biasScale := PhysicalMath.fp32One
 
   io.in.ready := gate.io.in.ready && up.io.in.ready
   gate.io.in.valid := io.in.valid && up.io.in.ready
@@ -209,8 +253,8 @@ class GatedMLP(p: GatedMLPParams) extends Module {
   down.io.cfgValid := io.cfgValid
   down.io.weight <> io.downWeight
   down.io.bias <> io.downBias
-  down.io.scale.outScale := IeeeMath.fp32One
-  down.io.scale.biasScale := IeeeMath.fp32One
+  down.io.scale.outScale := PhysicalMath.fp32One
+  down.io.scale.biasScale := PhysicalMath.fp32One
   down.io.in <> mul.io.out
   down.io.out <> io.out
 }

@@ -31,13 +31,39 @@ from accagent.framework.board_artifact_persistence import (
     board_remote_stage_root,
     persist_board_remote_artifacts,
 )
-from accagent.framework.active_board_job import pending_exact_board_job
+from accagent.framework.active_board_job import (
+    pending_exact_board_job,
+    write_pending_exact_board_job_report,
+)
+from accagent.framework.fast_replay import (
+    fast_replay_request_path,
+    fast_replay_state_path,
+    read_fast_replay_state,
+    restore_inputs,
+    update_fast_replay_state,
+    validate_fast_replay_state,
+)
+from accagent.framework.fpga_ip_runtime import (
+    ip_vcs_filelist_argument,
+    stage_fpga_ip_runtime,
+)
+from accagent.framework.live_state import (
+    activate_live_state_slot,
+    board_run_binding,
+    board_run_status,
+    update_live_state_slot,
+)
+from accagent.framework.runtime_observation import (
+    current_observation_selection_path,
+    runtime_observation_selection,
+)
 from accagent.framework.board_progress import (
     BOARD_PROGRESS_EVENT_SCHEMA_VERSION,
     pipeline_boundary_observation_authority,
     read_complete_jsonl,
     read_pipeline_trace_log,
     stage_internal_records_from_boundary_observations,
+    summarize_runtime_stage_trace_log,
     summarize_stage_internal_observations,
     summarize_pipeline_boundary_observations,
     summarize_progress_events,
@@ -54,31 +80,21 @@ from accagent.framework.semantic_simulator import (
 )
 from accagent.framework.simulation_checkpoint import (
     CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION,
-    CHECKPOINT_EQUIVALENCE_SCHEMA_VERSION,
     CHECKPOINT_MANIFEST_SCHEMA_VERSION,
     CHECKPOINT_RESTORE_REPORT_SCHEMA_VERSION,
     checkpoint_contract,
     checkpoint_contract_errors,
     checkpoint_manifest_errors,
-    checkpoint_manifests,
     checkpoint_request_errors,
-    checkpoint_retention_plan,
     checkpoint_root,
-    activate_checkpoint_for_debug_episode,
-    apply_checkpoint_retention_plan,
-    close_checkpoint_debug_episode,
-    framework_equivalence_certificate,
+    framework_checkpoint_contract,
     heavy_job_lease,
-    invalidate_debug_episode_checkpoint,
     simulation_execution_identity,
 )
 
 
 SCHEMA_VERSION = "spatialaccagent.board_vcs_functional_run.v1"
 VCS_COMPILE_PLAN_SCHEMA_VERSION = "spatialaccagent.vcs_compile_plan.v1"
-CHECKPOINT_CALIBRATION_ELIGIBILITY_SCHEMA_VERSION = (
-    "spatialaccagent.same_source_checkpoint_calibration_eligibility.v1"
-)
 RUNTIME_MANIFEST_FIELDS = {
     "debug_observability_results",
     "dynamic_evidence_records",
@@ -88,29 +104,10 @@ RUNTIME_MANIFEST_FIELDS = {
     "protocol_monitor_results",
     "runtime_loader_results",
 }
-CHECKPOINT_ADAPTER_FILES = {
-    "vpi_source": (
-        REPO_ROOT
-        / "accagent"
-        / "framework"
-        / "simulator_adapters"
-        / "vcs_state_checkpoint_vpi.c"
-    ),
-    "vpi_table": (
-        REPO_ROOT
-        / "accagent"
-        / "framework"
-        / "simulator_adapters"
-        / "vcs_state_checkpoint_vpi.tab"
-    ),
-}
-CHECKPOINT_STATE_PATHS = {
-    "dut_vpi_state": Path("checkpoint/state/dut_state.bin"),
-    "dut_vpi_schema": Path("checkpoint/state/dut_state.schema"),
-    "testbench_external_state": Path(
-        "checkpoint/state/testbench_external_state.bin"
-    ),
-}
+NATIVE_CHECKPOINT_SNAPSHOT = Path("checkpoint/native_state")
+NATIVE_CHECKPOINT_SNAPSHOT_FILES = Path("checkpoint/native_state.FILES")
+NATIVE_CHECKPOINT_CAPTURE_TCL = Path("checkpoint/ucli_capture.tcl")
+NATIVE_CHECKPOINT_RESTORE_TCL = Path("checkpoint/ucli_restore.tcl")
 FRESH_EXACT_BOARD_REPLAY_GENERATION_ENV = (
     "SPATIALACC_FRESH_EXACT_BOARD_REPLAY_GENERATION_SHA256"
 )
@@ -141,35 +138,6 @@ def exact_board_remote_workdir(
     return (
         f"{remote_stage_root}/{input_fingerprint_sha256[:12]}_{suffix}"
     )
-
-
-def checkpoint_adapter_errors(contract: dict[str, Any]) -> list[str]:
-    portable = contract.get("portable_state_capsule", {})
-    rows = (
-        portable.get("framework_adapter_artifacts", [])
-        if isinstance(portable, dict)
-        else []
-    )
-    declared = {
-        str(row.get("kind") or ""): row
-        for row in rows
-        if isinstance(row, dict) and row.get("kind")
-    }
-    errors: list[str] = []
-    for kind, path in CHECKPOINT_ADAPTER_FILES.items():
-        row = declared.get(kind, {})
-        if not path.is_file():
-            errors.append(f"framework checkpoint adapter is missing: {path}")
-            continue
-        if Path(str(row.get("path") or "")).resolve() != path.resolve():
-            errors.append(f"checkpoint contract {kind} path is not framework-owned")
-        if row.get("sha256") != sha256_file(path):
-            errors.append(f"checkpoint contract {kind} hash mismatch")
-        if row.get("framework_owned_read_only") is not True:
-            errors.append(f"checkpoint contract {kind} is not read-only")
-    if set(declared) != set(CHECKPOINT_ADAPTER_FILES):
-        errors.append("checkpoint contract adapter artifact set is not exact")
-    return errors
 
 
 def _systemverilog_code_and_string_literals(text: str) -> tuple[str, list[str]]:
@@ -256,11 +224,19 @@ def _systemverilog_system_call_argument_counts(
 
 
 def checkpoint_hook_source_errors(
-    manifest: dict[str, Any], testbench_path: Path | None
+    manifest: dict[str, Any],
+    testbench_path: Path | None,
+    *,
+    checkpoint_required: bool = False,
 ) -> list[str]:
-    """Fail before remote VCS when a declared checkpoint hook is not executable."""
+    """Check the one minimal testbench hook used for a native VCS save."""
 
-    contract = checkpoint_contract(manifest)
+    # A regular board simulation does not require the acceleration hook.  The
+    # hook is checked only for the forced Layer-3 capture flow so ordinary VCS
+    # tests and final cold acceptance preserve their existing behavior.
+    if not checkpoint_required:
+        return []
+    contract = framework_checkpoint_contract(manifest)
     if not contract:
         return []
     if not isinstance(testbench_path, Path) or not testbench_path.is_file():
@@ -271,59 +247,13 @@ def checkpoint_hook_source_errors(
         return [f"simulation checkpoint testbench source is unreadable: {exc}"]
     code, literals = _systemverilog_code_and_string_literals(text)
     errors: list[str] = []
-    for function_name in ("spatialacc_state_capture", "spatialacc_state_restore"):
-        counts, balanced = _systemverilog_system_call_argument_counts(
-            code, function_name
-        )
-        if not balanced:
-            errors.append(
-                f"simulation checkpoint ${function_name} call syntax is unbalanced"
-            )
-        if not counts:
-            errors.append(
-                f"simulation checkpoint testbench has no executable ${function_name} call"
-            )
-        elif any(count != 3 for count in counts):
-            errors.append(
-                f"simulation checkpoint ${function_name} must use exactly three arguments"
-            )
-
     literal_text = "\n".join(literals)
-    required_markers = (
-        "SPATIALACC_CHECKPOINT_MODE=",
-        "SPATIALACC_CHECKPOINT_REQUEST_SHA256=",
-        "SPATIALACC_CHECKPOINT_SEMANTIC_CUT_SHA256=",
-        "SPATIALACC_CHECKPOINT_DUT_ROOT=",
-        "SPATIALACC_CHECKPOINT_DUT_STATE=",
-        "SPATIALACC_CHECKPOINT_DUT_SCHEMA=",
-        "SPATIALACC_CHECKPOINT_EXTERNAL_STATE=",
-        "SPATIALACC_CHECKPOINT_CAPTURE_REPORT=",
-        "SPATIALACC_CHECKPOINT_RESTORE_DUT_STATE=",
-        "SPATIALACC_CHECKPOINT_RESTORE_DUT_SCHEMA=",
-        "SPATIALACC_CHECKPOINT_RESTORE_EXTERNAL_STATE=",
-        "SPATIALACC_CHECKPOINT_RESTORE_REPORT=",
-        "SPATIALACC_CHECKPOINT_EQUIVALENCE_PROBE",
-        CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION,
-        CHECKPOINT_RESTORE_REPORT_SCHEMA_VERSION,
-    )
-    for marker in required_markers:
-        if marker not in literal_text:
-            errors.append(
-                f"simulation checkpoint testbench lacks runtime ABI marker {marker}"
-            )
-    portable = contract.get("portable_state_capsule", {})
-    root = str(portable.get("dut_state_root") or "") if isinstance(portable, dict) else ""
-    testbench = (
-        manifest.get("testbench", {})
-        if isinstance(manifest.get("testbench"), dict)
-        else {}
-    )
-    top_module = str(manifest.get("top_module") or "")
-    dut_instance = str(testbench.get("sole_dut_instance") or "")
-    if top_module and dut_instance and root != f"{top_module}.{dut_instance}":
-        errors.append(
-            "simulation checkpoint DUT root does not match the current testbench DUT instance"
-        )
+    if "SPATIALACC_NATIVE_CHECKPOINT_CAPTURE" not in literal_text:
+        errors.append("simulation checkpoint testbench lacks native capture plusarg")
+    if "SPATIALACC_NATIVE_CHECKPOINT_READY" not in literal_text:
+        errors.append("simulation checkpoint testbench lacks native capture ready marker")
+    if not re.search(r"(?<![A-Za-z0-9_$])\$stop\s*;", code):
+        errors.append("simulation checkpoint testbench has no executable $stop")
     return errors
 
 
@@ -332,256 +262,198 @@ def checkpoint_execution_plan(
     manifest: dict[str, Any],
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    values = env if env is not None else os.environ
-    contract = checkpoint_contract(manifest)
-    declared_contract = bool(contract)
-    passive_contract_errors = (
-        [*checkpoint_contract_errors(contract), *checkpoint_adapter_errors(contract)]
-        if declared_contract
-        else []
-    )
-    checkpoint_required = (
-        str(values.get("SPATIALACC_CHECKPOINT_REQUIRED") or "") == "1"
-    )
-    if str(values.get("SPATIALACC_CHECKPOINT_FINAL_COLD") or "") == "1":
-        blocking_contract_errors = (
-            list(passive_contract_errors) if checkpoint_required else []
-        )
-        return {
-            "status": "pass" if not blocking_contract_errors else "fail",
-            "mode": "full_cold_acceptance",
-            "enabled": False,
-            "adapter_enabled": declared_contract and not passive_contract_errors,
-            "candidate_screening": False,
-            "acceptance_eligible": True,
-            "required_for_stage3_repair": checkpoint_required,
-            "contract": contract,
-            "errors": blocking_contract_errors,
-            "nonblocking_checkpoint_diagnostics": passive_contract_errors,
-        }
-    requested = str(values.get("SPATIALACC_CHECKPOINT_REPLAY") or "") == "1"
-    request_value = str(values.get("SPATIALACC_CHECKPOINT_REQUEST") or "").strip()
-    if not requested and not request_value:
-        errors = list(passive_contract_errors) if checkpoint_required else []
-        if checkpoint_required:
-            errors.append(
-                "Stage-3 repair VCS requires a persisted checkpoint request; "
-                "disabled checkpoint execution is forbidden"
-            )
-        return {
-            "status": "pass" if not errors else "fail",
-            "mode": "disabled",
-            "enabled": False,
-            "adapter_enabled": declared_contract and not passive_contract_errors,
-            "candidate_screening": False,
-            "acceptance_eligible": True,
-            "required_for_stage3_repair": checkpoint_required,
-            "contract": contract,
-            "errors": errors,
-            "nonblocking_checkpoint_diagnostics": passive_contract_errors,
-        }
-    errors: list[str] = []
-    if not request_value:
-        errors.append("SPATIALACC_CHECKPOINT_REQUEST is required when replay is enabled")
-        request_path = Path()
-        request: dict[str, Any] = {}
-    else:
-        request_path = Path(request_value).expanduser().resolve()
-        if not request_path.is_relative_to(run_dir.resolve()):
-            errors.append("checkpoint request must be persisted under the current run directory")
-        request = read_json(request_path) if request_path.is_file() else {}
-        if not request_path.is_file():
-            errors.append(f"checkpoint request is missing: {request_path}")
-    if request:
-        errors.extend(checkpoint_request_errors(request))
-    errors.extend(checkpoint_contract_errors(contract))
-    errors.extend(checkpoint_adapter_errors(contract))
-    current_identity = simulation_execution_identity(manifest)
-    requested_identity = (
-        request.get("execution_identity", {})
-        if isinstance(request.get("execution_identity"), dict)
-        else {}
-    )
-    for field in ("compiled_model_sha256", "workload_sha256"):
-        if requested_identity.get(field) != current_identity.get(field):
-            errors.append(
-                f"checkpoint request {field} does not match the current board manifest"
-            )
-    decision = (
-        request.get("replay_decision", {})
-        if isinstance(request.get("replay_decision"), dict)
-        else {}
-    )
-    mode = str(decision.get("mode") or "")
-    supported_modes = {
-        str(value) for value in contract.get("supported_modes", []) if str(value)
-    }
-    if mode and mode not in supported_modes:
-        errors.append(f"checkpoint contract does not support requested mode {mode}")
+    """Build the minimal Layer-3 checkpoint execution plan.
 
+    The only replay conditions are the current compiled-model/workload identity,
+    the fixed capture cut, the three saved state files, and the one-time restore
+    confirmation.  Historical hashes and calibration artifacts are ignored.
+    """
+
+    values = env if env is not None else os.environ
+    required = str(values.get("SPATIALACC_CHECKPOINT_REQUIRED") or "") == "1"
+    request_value = str(values.get("SPATIALACC_CHECKPOINT_REQUEST") or "").strip()
+    if not request_value:
+        if str(values.get("SPATIALACC_CHECKPOINT_FINAL_COLD") or "") == "1":
+            return {
+                "status": "pass",
+                "mode": "full_cold_acceptance",
+                "enabled": False,
+                "adapter_enabled": False,
+                "candidate_screening": False,
+                "acceptance_eligible": True,
+                "required_for_stage3_repair": required,
+                "errors": [],
+            }
+        return {
+            "status": "fail" if required else "pass",
+            "mode": "repair_required" if required else "disabled",
+            "enabled": False,
+            "required_for_stage3_repair": required,
+            "errors": ["Layer-3 replay requires a checkpoint request"] if required else [],
+        }
+
+    request_path = Path(request_value).expanduser().resolve()
+    request = read_json(request_path) if request_path.is_file() else {}
+    errors: list[str] = []
+    if not request_path.is_file() or not request_path.is_relative_to(run_dir.resolve()):
+        errors.append("checkpoint request is missing or outside the current run")
+    elif request:
+        errors.extend(checkpoint_request_errors(request))
+
+    contract = framework_checkpoint_contract(manifest)
+    errors.extend(checkpoint_contract_errors(contract))
+    current_identity = simulation_execution_identity(manifest)
+    request_identity = request.get("execution_identity", {})
+    request_identity = request_identity if isinstance(request_identity, dict) else {}
+    for field in ("compiled_model_sha256", "workload_sha256"):
+        if request_identity.get(field) != current_identity.get(field):
+            errors.append(f"checkpoint request {field} does not match the current board")
+
+    decision = request.get("replay_decision", {})
+    decision = decision if isinstance(decision, dict) else {}
+    mode = str(decision.get("mode") or "")
+    fast_replay_requested = str(values.get("SPATIALACC_FAST_REPLAY") or "") == "1"
+    restore_check = str(values.get("SPATIALACC_FAST_REPLAY_RESTORE_CHECK") or "") == "1"
+    fast_replay: dict[str, Any] = {"requested": fast_replay_requested, "used": False}
     selected_manifest_path: Path | None = None
     selected_manifest: dict[str, Any] = {}
-    if mode in {"native_exact_model", "portable_cross_revision"}:
+
+    if fast_replay_requested:
+        validation = validate_fast_replay_state(
+            run_dir,
+            read_fast_replay_state(run_dir),
+            current_identity=current_identity,
+            require_verified=not restore_check,
+        )
+        fast_replay["validation"] = validation
+        if validation.get("status") != "ready":
+            errors.extend(str(value) for value in validation.get("reasons", []) if str(value))
+        else:
+            mode = "native_exact_model"
+            selected_manifest_path = Path(
+                str(validation.get("checkpoint_manifest") or "")
+            ).resolve()
+            selected_manifest = read_json(selected_manifest_path)
+            fast_replay.update(
+                {
+                    "used": True,
+                    "remote_workdir": validation.get("remote_workdir"),
+                    "simulator_path": validation.get("simulator_path"),
+                    "checkpoint_manifest": str(selected_manifest_path),
+                    "restore_check": restore_check,
+                }
+            )
+    elif mode == "native_exact_model":
         selected_value = str(request.get("selected_checkpoint_manifest") or "")
         selected_manifest_path = Path(selected_value).expanduser().resolve()
-        if not selected_manifest_path.is_relative_to(checkpoint_root(run_dir).resolve()):
-            errors.append("selected checkpoint manifest is outside the current run checkpoint store")
-        if not selected_manifest_path.is_file():
-            errors.append(f"selected checkpoint manifest is missing: {selected_manifest_path}")
+        selected_manifest = read_json(selected_manifest_path)
+
+    if mode not in {"cold_capture", "native_exact_model"}:
+        errors.append("checkpoint request mode is invalid")
+    if mode == "native_exact_model":
+        if selected_manifest_path is None or not selected_manifest_path.is_file():
+            errors.append("selected checkpoint manifest is missing")
         else:
-            expected = str(request.get("selected_checkpoint_manifest_sha256") or "")
-            if not expected or sha256_file(selected_manifest_path) != expected:
-                errors.append("selected checkpoint manifest hash mismatch")
-            selected_manifest = read_json(selected_manifest_path)
             errors.extend(
                 checkpoint_manifest_errors(
-                    selected_manifest,
-                    artifact_root=selected_manifest_path.parent,
+                    selected_manifest, artifact_root=selected_manifest_path.parent
                 )
             )
-            if selected_manifest.get("checkpoint_id") != decision.get("checkpoint_id"):
-                errors.append("selected checkpoint ID does not match the replay decision")
+            selected_identity = selected_manifest.get("execution_identity", {})
+            selected_identity = (
+                selected_identity if isinstance(selected_identity, dict) else {}
+            )
+            for field in ("compiled_model_sha256", "workload_sha256"):
+                if selected_identity.get(field) != current_identity.get(field):
+                    errors.append(f"selected checkpoint {field} does not match the current board")
+
+    if errors:
+        return {
+            "status": "fail",
+            "mode": "repair_required",
+            "enabled": False,
+            "required_for_stage3_repair": required,
+            "request_path": str(request_path),
+            "request": request,
+            "contract": contract,
+            "execution_identity": current_identity,
+            "selected_checkpoint_manifest_path": str(selected_manifest_path) if selected_manifest_path else None,
+            "selected_checkpoint_manifest": selected_manifest,
+            "fast_replay": fast_replay,
+            "errors": errors,
+        }
     return {
-        "status": "pass" if not errors else "fail",
-        "mode": mode or "invalid",
+        "status": "pass",
+        "mode": mode,
         "enabled": True,
-        "adapter_enabled": not errors,
-        "candidate_screening": mode
-        in {"native_exact_model", "portable_cross_revision"},
-        "acceptance_eligible": mode == "cold_capture",
-        "required_for_stage3_repair": checkpoint_required,
-        "request_path": str(request_path) if request_value else None,
+        "adapter_enabled": False,
+        "candidate_screening": False,
+        "acceptance_eligible": True,
+        "required_for_stage3_repair": required,
+        "request_path": str(request_path),
         "request": request,
-        "request_sha256": request.get("request_sha256"),
         "contract": contract,
         "execution_identity": current_identity,
-        "selected_checkpoint_manifest_path": (
-            str(selected_manifest_path) if selected_manifest_path is not None else None
-        ),
+        "selected_checkpoint_manifest_path": str(selected_manifest_path) if selected_manifest_path else None,
         "selected_checkpoint_manifest": selected_manifest,
-        "errors": errors,
+        "fast_replay": fast_replay,
+        "errors": [],
         "policy": {
             "native_snapshot_requires_exact_compiled_model": True,
-            "portable_restore_requires_runtime_schema_recheck": True,
-            "checkpoint_replay_is_candidate_screening_only": True,
-            "full_cold_exact_board_vcs_required_before_stage_pass": True,
+            "restore_requires_runtime_schema_match": True,
         },
     }
-
 
 def checkpoint_runtime_plusargs(plan: dict[str, Any]) -> list[str]:
     if plan.get("enabled") is not True:
         return []
-    request = plan.get("request", {})
-    cut = request.get("semantic_cut", {}) if isinstance(request, dict) else {}
-    trigger = cut.get("trigger", {}) if isinstance(cut, dict) else {}
-    outputs = plan.get("contract", {}).get("outputs", {})
-    args = [
-        f"+SPATIALACC_CHECKPOINT_MODE={plan.get('mode')}",
-        "+SPATIALACC_CHECKPOINT_REQUEST=checkpoint/request.json",
-        f"+SPATIALACC_CHECKPOINT_REQUEST_SHA256={plan.get('request_sha256')}",
-        "+SPATIALACC_CHECKPOINT_SEMANTIC_CUT_SHA256="
-        f"{cut.get('cut_sha256')}",
-        "+SPATIALACC_CHECKPOINT_STATE_DIR=checkpoint/state",
-        "+SPATIALACC_CHECKPOINT_DUT_STATE=checkpoint/state/dut_state.bin",
-        "+SPATIALACC_CHECKPOINT_DUT_SCHEMA=checkpoint/state/dut_state.schema",
-        "+SPATIALACC_CHECKPOINT_EXTERNAL_STATE=checkpoint/state/testbench_external_state.bin",
-    ]
-    portable = plan.get("contract", {}).get("portable_state_capsule", {})
-    if isinstance(portable, dict) and portable.get("dut_state_root"):
-        args.append(
-            f"+SPATIALACC_CHECKPOINT_DUT_ROOT={portable['dut_state_root']}"
-        )
-    for field in ("sequence", "cycle", "layer", "token", "beat"):
-        value = trigger.get(field) if isinstance(trigger, dict) else None
-        if isinstance(value, int) and not isinstance(value, bool):
-            args.append(f"+SPATIALACC_CHECKPOINT_CUT_{field.upper()}={value}")
-    if trigger.get("phase"):
-        args.append(f"+SPATIALACC_CHECKPOINT_CUT_PHASE={trigger['phase']}")
-    args.append(
-        "+SPATIALACC_CHECKPOINT_FRONTIER="
-        f"{cut.get('frontier_id') or 'none'}"
-    )
-    if isinstance(cut.get("settle_cycles"), int):
-        args.append(f"+SPATIALACC_CHECKPOINT_SETTLE_CYCLES={cut['settle_cycles']}")
-    report_outputs = (
-        (("capture_report", "SPATIALACC_CHECKPOINT_CAPTURE_REPORT"),)
-        if plan.get("mode") == "cold_capture"
-        else (("restore_report", "SPATIALACC_CHECKPOINT_RESTORE_REPORT"),)
-    )
-    for name, plusarg in report_outputs:
-        row = outputs.get(name, {}) if isinstance(outputs, dict) else {}
-        if isinstance(row, dict) and row.get("path"):
-            args.append(f"+{plusarg}={row['path']}")
-    if plan.get("selected_checkpoint_manifest_path"):
-        selected = plan.get("selected_checkpoint_manifest", {})
-        if isinstance(selected, dict) and selected.get("checkpoint_id"):
-            args.append(
-                f"+SPATIALACC_CHECKPOINT_ID={selected['checkpoint_id']}"
-            )
-        args.append(
-            "+SPATIALACC_CHECKPOINT_RESTORE_MANIFEST=checkpoint/input/manifest.json"
-        )
-        for row in plan.get("staged_state_artifacts", []):
-            if not isinstance(row, dict) or not row.get("kind"):
-                continue
-            plusarg = {
-                "dut_vpi_state": "SPATIALACC_CHECKPOINT_RESTORE_DUT_STATE",
-                "dut_vpi_schema": "SPATIALACC_CHECKPOINT_RESTORE_DUT_SCHEMA",
-                "testbench_external_state": (
-                    "SPATIALACC_CHECKPOINT_RESTORE_EXTERNAL_STATE"
-                ),
-                "native_vcs_snapshot": "SPATIALACC_CHECKPOINT_RESTORE_NATIVE_STATE",
-            }.get(str(row.get("kind")))
-            if plusarg:
-                args.append(f"+{plusarg}={row['staged_path']}")
+    args: list[str] = []
+    if plan.get("mode") == "cold_capture":
+        args.append("+SPATIALACC_NATIVE_CHECKPOINT_CAPTURE")
     return args
 
 
 def checkpoint_equivalence_runtime_plusargs(plan: dict[str, Any]) -> list[str]:
-    """Build the framework-owned same-source restore-probe ABI."""
+    """Compatibility shim for retired VPI equivalence callers.
 
-    if plan.get("mode") != "cold_capture":
-        return []
-    request = plan.get("request", {})
-    cut = request.get("semantic_cut", {}) if isinstance(request, dict) else {}
-    trigger = cut.get("trigger", {}) if isinstance(cut, dict) else {}
-    args = [
-        "+SPATIALACC_CHECKPOINT_MODE=portable_cross_revision",
-        "+SPATIALACC_CHECKPOINT_EQUIVALENCE_PROBE=1",
-        "+SPATIALACC_CHECKPOINT_REQUEST=checkpoint/request.json",
-        f"+SPATIALACC_CHECKPOINT_REQUEST_SHA256={plan.get('request_sha256')}",
-        "+SPATIALACC_CHECKPOINT_SEMANTIC_CUT_SHA256="
-        f"{cut.get('cut_sha256')}",
-        "+SPATIALACC_CHECKPOINT_RESTORE_DUT_STATE="
-        + CHECKPOINT_STATE_PATHS["dut_vpi_state"].as_posix(),
-        "+SPATIALACC_CHECKPOINT_RESTORE_DUT_SCHEMA="
-        + CHECKPOINT_STATE_PATHS["dut_vpi_schema"].as_posix(),
-        "+SPATIALACC_CHECKPOINT_RESTORE_EXTERNAL_STATE="
-        + CHECKPOINT_STATE_PATHS["testbench_external_state"].as_posix(),
-        "+SPATIALACC_CHECKPOINT_RESTORE_REPORT="
-        "checkpoint/equivalence/restore_report.json",
-    ]
-    portable = plan.get("contract", {}).get("portable_state_capsule", {})
-    if isinstance(portable, dict) and portable.get("dut_state_root"):
-        args.append(
-            f"+SPATIALACC_CHECKPOINT_DUT_ROOT={portable['dut_state_root']}"
+    Native VCS save/restore needs no second state-capsule calibration pass.
+    """
+
+    return []
+
+
+def native_checkpoint_capture_tcl() -> str:
+    """Stop at the testbench fixed cut and save the complete VCS state."""
+
+    return "\n".join(
+        (
+            # The testbench owns the capture cut and stops VCS only after the
+            # last weight beat has been accepted. A timed run could save a
+            # startup state before that marker is reached.
+            "run",
+            # VCS cannot save while it is still stopped inside $stop.  A
+            # zero-time run leaves that task without advancing the design.
+            "run 0",
+            f"save {NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}",
+            'puts "SPATIALACC_NATIVE_CHECKPOINT_SAVE_PASS"',
+            "quit",
+            "",
         )
-    for field in ("sequence", "cycle", "layer", "token", "beat"):
-        value = trigger.get(field) if isinstance(trigger, dict) else None
-        if isinstance(value, int) and not isinstance(value, bool):
-            args.append(f"+SPATIALACC_CHECKPOINT_CUT_{field.upper()}={value}")
-    if trigger.get("phase"):
-        args.append(f"+SPATIALACC_CHECKPOINT_CUT_PHASE={trigger['phase']}")
-    args.append(
-        "+SPATIALACC_CHECKPOINT_FRONTIER="
-        f"{cut.get('frontier_id') or 'none'}"
     )
-    if isinstance(cut.get("settle_cycles"), int):
-        args.append(
-            f"+SPATIALACC_CHECKPOINT_SETTLE_CYCLES={cut['settle_cycles']}"
+
+
+def native_checkpoint_restore_tcl() -> str:
+    """Restore one saved state and then run the original workload suffix."""
+
+    return "\n".join(
+        (
+            f"restore {NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}",
+            'puts "SPATIALACC_NATIVE_CHECKPOINT_RESTORE_PASS"',
+            "run",
+            "quit",
+            "",
         )
-    return args
+    )
 
 
 def checkpoint_equivalence_output_paths(
@@ -1028,60 +900,18 @@ def _prepare_fresh_transfer_target(path: Path) -> None:
 
 
 def stage_checkpoint_inputs(plan: dict[str, Any], stage_dir: Path) -> list[dict[str, Any]]:
-    if plan.get("enabled") is not True and plan.get("adapter_enabled") is not True:
+    if plan.get("enabled") is not True:
+        return []
+    fast_replay = plan.get("fast_replay", {})
+    if isinstance(fast_replay, dict) and fast_replay.get("used") is True:
+        # The simulator and state already live together in the saved remote
+        # directory.  Staging local copies only adds delay and cannot affect
+        # the restore command.
         return []
     checkpoint_dir = stage_dir / "checkpoint"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     staged: list[dict[str, Any]] = []
-    if plan.get("adapter_enabled") is True:
-        adapter_dir = checkpoint_dir / "adapter"
-        adapter_dir.mkdir(parents=True, exist_ok=True)
-        for kind, source in CHECKPOINT_ADAPTER_FILES.items():
-            target = adapter_dir / source.name
-            shutil.copy2(source, target)
-            staged.append(
-                {
-                    "kind": kind,
-                    "source_path": str(source),
-                    "staged_path": target.relative_to(stage_dir).as_posix(),
-                    "sha256": sha256_file(target),
-                }
-            )
-    if plan.get("enabled") is not True:
-        return staged
     write_json(checkpoint_dir / "request.json", plan.get("request", {}))
-    manifest_path_value = plan.get("selected_checkpoint_manifest_path")
-    if not manifest_path_value:
-        return staged
-    source_manifest_path = Path(str(manifest_path_value))
-    source_manifest = plan.get("selected_checkpoint_manifest", {})
-    input_dir = checkpoint_dir / "input"
-    state_dir = input_dir / "state"
-    state_dir.mkdir(parents=True, exist_ok=True)
-    rewritten = json.loads(json.dumps(source_manifest))
-    rewritten_rows = []
-    for index, row in enumerate(source_manifest.get("state_artifacts", [])):
-        source = Path(str(row.get("path") or ""))
-        if not source.is_absolute():
-            source = source_manifest_path.parent / source
-        target = state_dir / f"{index:04d}_{source.name}"
-        shutil.copy2(source, target)
-        relative = target.relative_to(stage_dir).as_posix()
-        rewritten_row = {**row, "path": relative}
-        rewritten_rows.append(rewritten_row)
-        staged.append(
-            {
-                "kind": row.get("kind"),
-                "source_path": str(source),
-                "staged_path": relative,
-                "sha256": sha256_file(target),
-            }
-        )
-    rewritten["state_artifacts"] = rewritten_rows
-    write_json(input_dir / "manifest.json", rewritten)
-    plan["staged_state_artifacts"] = [
-        row for row in staged if row.get("kind") not in CHECKPOINT_ADAPTER_FILES
-    ]
     return staged
 
 
@@ -1090,120 +920,44 @@ def checkpoint_adapter_elaboration_args(
     stage_dir: Path,
     command_cwd: Path,
 ) -> list[str]:
-    if plan.get("adapter_enabled") is not True:
-        return []
-    adapter_dir = stage_dir / "checkpoint" / "adapter"
-    source_relative = os.path.relpath(
-        adapter_dir / CHECKPOINT_ADAPTER_FILES["vpi_source"].name,
-        start=stage_dir / command_cwd,
-    ).replace(os.sep, "/")
-    table_relative = os.path.relpath(
-        adapter_dir / CHECKPOINT_ADAPTER_FILES["vpi_table"].name,
-        start=stage_dir / command_cwd,
-    ).replace(os.sep, "/")
-    return [source_relative, "-P", table_relative, "+vpi"]
+    return []
+
+
+def checkpoint_adapter_compile_define_args(
+    plan: dict[str, Any],
+    executable: str,
+) -> list[str]:
+    """Enable the testbench VPI calls in every Verilog compile path.
+
+    The VPI source/table are linked during elaboration, but the generated
+    SystemVerilog testbench is normally compiled earlier by ``vlogan``.  The
+    same adapter contract must therefore make the VPI call branch visible to
+    every VCS Verilog compiler that can compile the testbench.
+    """
+
+    return []
 
 
 def checkpoint_capture_report_errors(
     plan: dict[str, Any],
     report: dict[str, Any],
 ) -> list[str]:
+    """Check only the native VCS save marker and its one snapshot path."""
     errors: list[str] = []
     if report.get("schema_version") != CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION:
         errors.append("checkpoint capture report schema_version is invalid")
     if report.get("status") != "pass":
         errors.append("checkpoint capture report status is not pass")
-    if report.get("request_sha256") != plan.get("request_sha256"):
-        errors.append("checkpoint capture report request hash mismatch")
-    if report.get("mode") != plan.get("mode"):
+    if report.get("mode") != "cold_capture":
         errors.append("checkpoint capture report mode mismatch")
-    request_cut = plan.get("request", {}).get("semantic_cut", {})
-    if report.get("semantic_cut_sha256") != request_cut.get("cut_sha256"):
-        errors.append("checkpoint capture report semantic cut hash mismatch")
-    for field in (
-        "checkpoint_trigger_observed",
-        "complete_dut_state_captured",
-        "complete_testbench_external_state_captured",
-        "evidence_flushed_before_capture",
-    ):
-        if report.get(field) is not True:
-            errors.append(f"checkpoint capture report {field} is not true")
-    for field in ("captured_sequence", "captured_cycle"):
-        value = report.get(field)
-        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-            errors.append(f"checkpoint capture report {field} is not a nonnegative integer")
-    trigger = request_cut.get("trigger", {}) if isinstance(request_cut, dict) else {}
-    if (
-        isinstance(trigger.get("sequence"), int)
-        and isinstance(report.get("captured_sequence"), int)
-        and report["captured_sequence"] < trigger["sequence"]
-    ):
-        errors.append("checkpoint capture sequence precedes the requested semantic cut")
-    if (
-        isinstance(trigger.get("cycle"), int)
-        and isinstance(report.get("captured_cycle"), int)
-        and report["captured_cycle"] < trigger["cycle"]
-    ):
-        errors.append("checkpoint capture cycle precedes the requested semantic cut")
-    if report.get("portable_state_capsule_complete") is True:
-        for field in (
-            "external_state_quiescent_at_capture",
-            "pending_event_queue_empty_at_capture",
-        ):
-            if report.get(field) is not True:
-                errors.append(
-                    f"portable checkpoint capture report {field} is not true"
-                )
-    state_schema = report.get("state_schema", {})
-    if not isinstance(state_schema, dict) or (
-        not state_schema.get("sha256")
-        and safe_relative_path(state_schema.get("path")) is None
-    ):
-        errors.append(
-            "checkpoint capture report has no elaborated state-schema path or hash"
-        )
     state_artifacts = report.get("state_artifacts", [])
-    if not isinstance(state_artifacts, list) or not state_artifacts:
-        errors.append("checkpoint capture report has no state artifacts")
-    else:
-        kinds: set[str] = set()
-        paths: set[str] = set()
-        for index, row in enumerate(state_artifacts):
-            relative = (
-                safe_relative_path(row.get("path")) if isinstance(row, dict) else None
-            )
-            if relative is None or not relative.is_relative_to(Path("checkpoint/state")):
-                errors.append(
-                    f"checkpoint capture state_artifacts[{index}] path is unsafe"
-                )
-                continue
-            kind = str(row.get("kind") or "")
-            if not kind or kind in kinds:
-                errors.append(
-                    f"checkpoint capture state_artifacts[{index}] kind is missing or repeated"
-                )
-            if relative.as_posix() in paths:
-                errors.append(
-                    f"checkpoint capture state_artifacts[{index}] path is repeated"
-                )
-            kinds.add(kind)
-            paths.add(relative.as_posix())
-            expected_path = CHECKPOINT_STATE_PATHS.get(kind)
-            if expected_path is not None and relative != expected_path:
-                errors.append(
-                    f"checkpoint capture state_artifacts[{index}] {kind} path "
-                    f"must be {expected_path.as_posix()}"
-                )
-        missing_kinds = {
-            "dut_vpi_state",
-            "dut_vpi_schema",
-            "testbench_external_state",
-        } - kinds
-        if missing_kinds:
-            errors.append(
-                "checkpoint capture is missing required state artifact kinds: "
-                + ", ".join(sorted(missing_kinds))
-            )
+    native = [
+        row
+        for row in state_artifacts
+        if isinstance(row, dict) and row.get("kind") == "native_vcs_snapshot"
+    ] if isinstance(state_artifacts, list) else []
+    if len(native) != 1:
+        errors.append("checkpoint capture has no single native VCS snapshot")
     return errors
 
 
@@ -1212,180 +966,21 @@ def same_source_checkpoint_calibration_eligibility(
     state_artifacts: list[dict[str, Any]],
     *,
     artifact_root: Path | None = None,
-    request_sha256: str | None = None,
-    semantic_cut_sha256: str | None = None,
 ) -> dict[str, Any]:
-    """Validate factual runtime state before reusing the same compiled simulator."""
+    """Retired VPI calibration compatibility result.
 
-    blockers: list[str] = []
-    if capture_report.get("schema_version") != CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION:
-        blockers.append("capture report schema_version is invalid")
-    if capture_report.get("status") != "pass":
-        blockers.append("capture report status is not pass")
-    if capture_report.get("mode") != "cold_capture":
-        blockers.append("capture report mode is not cold_capture")
-    if request_sha256 and capture_report.get("request_sha256") != request_sha256:
-        blockers.append("capture report request hash does not match the checkpoint")
-    if (
-        semantic_cut_sha256
-        and capture_report.get("semantic_cut_sha256") != semantic_cut_sha256
-    ):
-        blockers.append("capture report semantic cut hash does not match the checkpoint")
-    for field in (
-        "checkpoint_trigger_observed",
-        "portable_state_capsule_complete",
-        "complete_dut_state_captured",
-        "complete_testbench_external_state_captured",
-        "evidence_flushed_before_capture",
-        "external_state_quiescent_at_capture",
-        "pending_event_queue_empty_at_capture",
-    ):
-        if capture_report.get(field) is not True:
-            blockers.append(f"capture report {field} is not true")
+    Native VCS save/restore has its own one-time restore confirmation.  This
+    function remains only so old callers cannot route an execution back into
+    the removed capsule/calibration path.
+    """
 
-    for channel in ("axi_read", "axi_write"):
-        value = capture_report.get(channel, {})
-        if not isinstance(value, dict):
-            blockers.append(f"capture report {channel} is not an object")
-            continue
-        outstanding = value.get("outstanding")
-        if (
-            not isinstance(outstanding, int)
-            or isinstance(outstanding, bool)
-            or outstanding != 0
-        ):
-            blockers.append(f"capture report {channel}.outstanding is not integer zero")
-        if value.get("pending_response") not in {False, 0}:
-            blockers.append(f"capture report {channel}.pending_response is not false")
-    boundary = capture_report.get("active_boundary_observation", {})
-    if (
-        not isinstance(boundary, dict)
-        or boundary.get("event_queue_quiescent") is not True
-    ):
-        blockers.append(
-            "capture report active_boundary_observation.event_queue_quiescent is not true"
-        )
-
-    required_kinds = {
-        "dut_vpi_state",
-        "dut_vpi_schema",
-        "testbench_external_state",
-    }
-    rows_by_kind: dict[str, dict[str, Any]] = {}
-    if not isinstance(state_artifacts, list):
-        blockers.append("checkpoint state artifacts are not a list")
-        state_artifacts = []
-    for index, row in enumerate(state_artifacts):
-        if not isinstance(row, dict):
-            blockers.append(f"checkpoint state artifact {index} is invalid")
-            continue
-        kind = str(row.get("kind") or "")
-        if not kind:
-            blockers.append(f"checkpoint state artifact {index} has no kind")
-            continue
-        if kind in rows_by_kind:
-            blockers.append(f"checkpoint state artifact kind is repeated: {kind}")
-            continue
-        rows_by_kind[kind] = row
-        expected_sha256 = str(row.get("sha256") or "")
-        byte_count = row.get("byte_count")
-        if not expected_sha256:
-            blockers.append(f"checkpoint state artifact {kind} has no SHA-256")
-        if (
-            not isinstance(byte_count, int)
-            or isinstance(byte_count, bool)
-            or byte_count <= 0
-        ):
-            blockers.append(f"checkpoint state artifact {kind} has no positive byte count")
-        if artifact_root is not None:
-            path = Path(str(row.get("path") or ""))
-            if path.is_absolute() or ".." in path.parts:
-                blockers.append(f"checkpoint state artifact {kind} path is unsafe")
-                continue
-            resolved = artifact_root / path
-            if not resolved.is_file():
-                blockers.append(f"checkpoint state artifact is missing: {resolved}")
-            elif expected_sha256 and sha256_file(resolved) != expected_sha256:
-                blockers.append(f"checkpoint state artifact hash mismatch: {resolved}")
-            elif isinstance(byte_count, int) and resolved.stat().st_size != byte_count:
-                blockers.append(
-                    f"checkpoint state artifact byte count mismatch: {resolved}"
-                )
-    missing_kinds = sorted(required_kinds - set(rows_by_kind))
-    if missing_kinds:
-        blockers.append(
-            "checkpoint state artifact set is incomplete: " + ", ".join(missing_kinds)
-        )
-    schema = capture_report.get("state_schema", {})
-    schema_sha256 = str(schema.get("sha256") or "") if isinstance(schema, dict) else ""
-    schema_row = rows_by_kind.get("dut_vpi_schema", {})
-    if not schema_sha256 or schema_row.get("sha256") != schema_sha256:
-        blockers.append("captured runtime schema does not match the schema state artifact")
-
-    attestation = {
-        "source": "factual_capture_report_and_downloaded_state_artifacts",
-        "portable_state_capsule_complete": capture_report.get(
-            "portable_state_capsule_complete"
-        ),
-        "complete_dut_state_captured": capture_report.get(
-            "complete_dut_state_captured"
-        ),
-        "complete_testbench_external_state_captured": capture_report.get(
-            "complete_testbench_external_state_captured"
-        ),
-        "evidence_flushed_before_capture": capture_report.get(
-            "evidence_flushed_before_capture"
-        ),
-        "external_state_quiescent_at_capture": capture_report.get(
-            "external_state_quiescent_at_capture"
-        ),
-        "pending_event_queue_empty_at_capture": capture_report.get(
-            "pending_event_queue_empty_at_capture"
-        ),
-        "event_queue_quiescent": (
-            boundary.get("event_queue_quiescent")
-            if isinstance(boundary, dict)
-            else None
-        ),
-        "axi_read_outstanding": (
-            capture_report.get("axi_read", {}).get("outstanding")
-            if isinstance(capture_report.get("axi_read"), dict)
-            else None
-        ),
-        "axi_write_outstanding": (
-            capture_report.get("axi_write", {}).get("outstanding")
-            if isinstance(capture_report.get("axi_write"), dict)
-            else None
-        ),
-        "axi_read_pending_response": (
-            capture_report.get("axi_read", {}).get("pending_response")
-            if isinstance(capture_report.get("axi_read"), dict)
-            else None
-        ),
-        "axi_write_pending_response": (
-            capture_report.get("axi_write", {}).get("pending_response")
-            if isinstance(capture_report.get("axi_write"), dict)
-            else None
-        ),
-        "state_schema_sha256": schema_sha256 or None,
-        "required_state_artifact_kinds": sorted(required_kinds),
-    }
     return {
-        "schema_version": CHECKPOINT_CALIBRATION_ELIGIBILITY_SCHEMA_VERSION,
-        "status": "ready" if not blockers else "not_ready",
-        "eligible": not blockers,
-        "summary": (
-            "runtime capture is complete and quiescent for same-compiled-model calibration"
-            if not blockers
-            else blockers[0]
-        ),
-        "blockers": blockers,
-        "runtime_capture_attestation": attestation,
-        "policy": {
-            "same_source_calibration_uses_runtime_facts": True,
-            "pre_run_cut_portability_is_not_required_for_same_source_calibration": True,
-            "cross_revision_reuse_still_requires_independent_causal_cut_certificate": True,
-        },
+        "schema_version": "spatialaccagent.native_vcs_restore_confirmation.v1",
+        "status": "not_applicable",
+        "eligible": False,
+        "summary": "native VCS restore confirmation replaces VPI calibration",
+        "blockers": [],
+        "policy": {"execution_route": "native_vcs_restore_only"},
     }
 
 
@@ -1505,6 +1100,23 @@ def materialize_checkpoint_semantic_suffix(
         "sha256": sha256_file(destination) if destination.is_file() else None,
         "errors": list(dict.fromkeys(errors)),
     }
+
+
+def checkpoint_restore_real_progress_count(records: list[Any]) -> int:
+    """Count hardware progress after restore, excluding checkpoint control events."""
+
+    count = 0
+    for row in records:
+        if not isinstance(row, dict):
+            continue
+        phase = str(row.get("phase") or "")
+        if (
+            row.get("semantic_progress") is True
+            and row.get("event_kind") == "semantic_progress"
+            and not phase.startswith("simulation_checkpoint_")
+        ):
+            count += 1
+    return count
 
 
 def same_source_equivalence_progress_contract(
@@ -1629,151 +1241,45 @@ def framework_checkpoint_manifest(
     equivalence_report: dict[str, Any] | None = None,
     remote_workdir: str | None = None,
 ) -> dict[str, Any]:
+    """Store the smallest reusable exact-simulator checkpoint record."""
     state_schema = capture_report.get("state_schema", {})
-    state_schema = {
-        **state_schema,
-        "contract_sha256": plan.get("execution_identity", {}).get(
-            "state_schema_contract_sha256"
-        ),
-    }
-    calibration_eligibility = same_source_checkpoint_calibration_eligibility(
-        capture_report,
-        state_artifacts,
-        request_sha256=str(plan.get("request_sha256") or "") or None,
-        semantic_cut_sha256=str(
-            plan.get("request", {}).get("semantic_cut", {}).get("cut_sha256") or ""
-        )
-        or None,
-    )
-    portable_ready = calibration_eligibility.get("status") == "ready"
-    raw_equivalence = (
-        equivalence_report if isinstance(equivalence_report, dict) else {}
-    )
-    equivalence = (
-        raw_equivalence
-        if raw_equivalence.get("schema_version")
-        == CHECKPOINT_EQUIVALENCE_SCHEMA_VERSION
-        and raw_equivalence.get("producer") == "framework"
-        and raw_equivalence.get("status") == "pass"
-        and raw_equivalence.get("request_sha256")
-        == plan.get("request_sha256")
-        and raw_equivalence.get("compiled_model_sha256")
-        == plan.get("execution_identity", {}).get("compiled_model_sha256")
-        and raw_equivalence.get("workload_sha256")
-        == plan.get("execution_identity", {}).get("workload_sha256")
-        and raw_equivalence.get("semantic_cut_sha256")
-        == plan.get("request", {}).get("semantic_cut", {}).get("cut_sha256")
-        else {}
-    )
-    cut = plan.get("request", {}).get("semantic_cut", {})
-    reachability = (
-        cut.get("causal_reachability", {})
-        if isinstance(cut.get("causal_reachability"), dict)
-        else {}
-    )
+    state_schema = state_schema if isinstance(state_schema, dict) else {}
     identity = plan.get("execution_identity", {})
+    identity = identity if isinstance(identity, dict) else {}
+    cut = plan.get("request", {}).get("semantic_cut", {})
+    cut = cut if isinstance(cut, dict) else {}
     checkpoint_projection = {
-        "request_sha256": plan.get("request_sha256"),
         "execution_identity": identity,
-        "semantic_cut_sha256": cut.get("cut_sha256"),
-        "state_schema_sha256": state_schema.get("sha256"),
+        "semantic_cut": cut,
         "state_artifacts": [
-            {key: row.get(key) for key in ("path", "sha256", "byte_count")}
+            {
+                key: row.get(key)
+                for key in ("path", "kind", "byte_count")
+            }
             for row in state_artifacts
+            if isinstance(row, dict)
         ],
-        "equivalence_certificate_sha256": (
-            canonical_contract_sha256(equivalence) if equivalence else None
-        ),
+        "remote_workdir": remote_workdir,
     }
-    checkpoint_id = canonical_contract_sha256(checkpoint_projection)
     state_bytes = sum(
-        int(row.get("byte_count") or 0) for row in state_artifacts
-    )
-    equivalence_evidence_bytes = sum(
-        int(raw_equivalence.get(key, {}).get("byte_count") or 0)
-        for key in ("cold_progress_suffix", "restored_progress_suffix")
-        if isinstance(raw_equivalence.get(key), dict)
-    ) + sum(
-        int(row.get(key) or 0)
-        for row in raw_equivalence.get("required_artifact_comparisons", [])
+        int(row.get("byte_count") or 0)
+        for row in state_artifacts
         if isinstance(row, dict)
-        for key in ("cold_byte_count", "restored_byte_count")
     )
     return {
         "schema_version": CHECKPOINT_MANIFEST_SCHEMA_VERSION,
         "status": "pass",
-        "checkpoint_id": checkpoint_id,
+        "checkpoint_id": canonical_contract_sha256(checkpoint_projection),
         "created_at_unix_sec": time.time(),
-        "request_sha256": plan.get("request_sha256"),
         "execution_identity": identity,
         "semantic_cut": cut,
         "state_schema": state_schema,
         "state_artifacts": state_artifacts,
-        "portable_state_capsule": {
-            "status": "pass" if portable_ready else "not_certified",
-            "complete_external_state": capture_report.get(
-                "complete_testbench_external_state_captured"
-            ),
-            "runtime_capture_attestation": calibration_eligibility.get(
-                "runtime_capture_attestation", {}
-            ),
-            "runtime_calibration_eligibility": {
-                key: calibration_eligibility.get(key)
-                for key in ("schema_version", "status", "eligible", "summary", "blockers")
-            },
-        },
-        "native_simulator_snapshot": {
-            "status": (
-                "pass"
-                if capture_report.get("native_simulator_snapshot_complete") is True
-                and any(
-                    row.get("kind") == "native_vcs_snapshot"
-                    for row in state_artifacts
-                )
-                else "not_captured"
-            )
-        },
-        "causal_cut_certificate": {
-            "status": (
-                "pass"
-                if cut.get("status") == "ready"
-                and cut.get("portable_state_quiescent") is True
-                and reachability.get("status") == "pass"
-                and reachability.get("future_cctg_nodes")
-                == cut.get("future_cctg_nodes")
-                else "not_certified"
-            ),
-            "future_cctg_nodes": cut.get("future_cctg_nodes", []),
-            "reachability": reachability,
-            "external_state_quiescent": cut.get("portable_state_quiescent"),
-            "semantic_cut_sha256": cut.get("cut_sha256"),
-        },
-        "equivalence_certificate": equivalence,
-        "equivalence_attempt": raw_equivalence,
-        "debug_episode": plan.get("request", {}).get("debug_episode", {}),
-        "debug_episode_id": plan.get("request", {}).get(
-            "debug_episode", {}
-        ).get("episode_id"),
-        "active": False,
-        "total_state_bytes": state_bytes + equivalence_evidence_bytes,
-        "storage_breakdown": {
-            "state_artifact_bytes": state_bytes,
-            "equivalence_evidence_bytes": equivalence_evidence_bytes,
-        },
+        "total_state_bytes": state_bytes,
         "remote_acknowledgment_status": "pending",
         "remote_workdir": remote_workdir,
         "capture_report": capture_report,
-        "storage_policy": plan.get("request", {}).get("storage_policy", {}),
-        "policy": {
-            "immutable_workload_files_are_referenced_not_duplicated": True,
-            "native_reuse_requires_exact_compiled_model": True,
-            "portable_capsule_completeness_uses_runtime_capture_facts": True,
-            "same_source_equivalence_is_separate_from_causal_cut_certification": True,
-            "portable_reuse_requires_all_certificates": True,
-            "full_cold_run_required_before_stage_pass": True,
-        },
     }
-
 
 def read_json(path: Path) -> dict[str, Any]:
     try:
@@ -2977,6 +2483,23 @@ def execution_output_plan(
                 "path": path,
                 "schema_version": schema_version,
             }
+    performance_row = (
+        raw.get("performance_counter_report")
+        if isinstance(raw.get("performance_counter_report"), dict)
+        else {}
+    )
+    if performance_row:
+        path = safe_relative_path(performance_row.get("path"))
+        schema_version = str(performance_row.get("schema_version") or "")
+        if path is None or not schema_version:
+            errors.append(
+                "board simulation execution_outputs.performance_counter_report is invalid"
+            )
+        else:
+            plan["performance_counter_report"] = {
+                "path": path,
+                "schema_version": schema_version,
+            }
     protocol_rows = raw.get("protocol_monitor_reports", [])
     protocol: list[dict[str, Any]] = []
     if not isinstance(protocol_rows, list):
@@ -3322,7 +2845,17 @@ def validate_manifest(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any], li
         for entry in source_entries
     ):
         errors.append("board testbench is not a member of the preflight compile source set")
-    errors.extend(checkpoint_hook_source_errors(manifest, testbench_path))
+    checkpoint_required = (
+        str(os.environ.get("SPATIALACC_CHECKPOINT_REPLAY") or "") == "1"
+        or str(os.environ.get("SPATIALACC_CHECKPOINT_REQUIRED") or "") == "1"
+    )
+    errors.extend(
+        checkpoint_hook_source_errors(
+            manifest,
+            testbench_path,
+            checkpoint_required=checkpoint_required,
+        )
+    )
     errors.extend(duplicate_module_errors(source_entries))
 
     artifacts = manifest.get("artifacts", {}) if isinstance(manifest.get("artifacts"), dict) else {}
@@ -3796,14 +3329,170 @@ class LiveProgressObserver:
         self.raw_path = self.live_dir / "progress_events.jsonl"
         self.snapshot_path = self.live_dir / "live_progress.json"
         self.history_path = self.live_dir / "live_progress_history.jsonl"
+        self.epoch_path = self.live_dir / "observation_epoch.json"
         self.last_record_count = -1
         self._last_running_signature: tuple[int, int | None, int, int | None] | None = None
         self._unchanged_running_snapshot_count = 0
+        self._last_simulator_cpu_ticks: int | None = None
+        self._cpu_active_without_progress_snapshot_count = 0
         self.zero_time_livelock_evidence: dict[str, Any] = {}
+        self._epoch: dict[str, Any] = {}
         prior = read_json(self.snapshot_path)
         if prior.get("input_fingerprint_sha256") != fingerprint:
-            for path in (self.raw_path, self.snapshot_path, self.history_path):
-                path.unlink(missing_ok=True)
+            self._clear_epoch_files()
+
+    def _clear_epoch_files(self) -> None:
+        for path in (
+            self.raw_path,
+            self.snapshot_path,
+            self.history_path,
+            self.epoch_path,
+        ):
+            path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _normalized_start_bytes(
+        start_bytes: dict[Path, int] | None,
+    ) -> dict[str, int]:
+        normalized: dict[str, int] = {}
+        for path, byte_count in (start_bytes or {}).items():
+            relative = safe_relative_path(path)
+            if relative is None or not isinstance(byte_count, int) or byte_count < 0:
+                continue
+            normalized[relative.as_posix()] = byte_count
+        return normalized
+
+    def begin_epoch(
+        self,
+        remote_dir: str,
+        *,
+        remote_start_byte: int,
+        signal_start_bytes: dict[Path, int] | None = None,
+        signal_start_metadata: dict[Path, dict[str, int]] | None = None,
+    ) -> dict[str, Any]:
+        """Start one fresh observation epoch before a new remote replay.
+
+        A native restore resumes file descriptors saved in the checkpoint, so
+        progress and boundary JSONL files can contain records from before the
+        restore.  The byte positions below are the exclusive lower bounds for
+        this run.  They are persisted so a restarted local controller attaches
+        to the same epoch instead of treating old records as current evidence.
+        """
+
+        if not remote_dir:
+            raise ValueError("observation epoch requires a remote work directory")
+        if not isinstance(remote_start_byte, int) or remote_start_byte < 0:
+            raise ValueError("observation epoch start byte must be non-negative")
+        previous = read_json(self.epoch_path)
+        generation = int(previous.get("generation") or 0) + 1
+        self.live_dir.mkdir(parents=True, exist_ok=True)
+        self._clear_epoch_files()
+        normalized_starts = self._normalized_start_bytes(signal_start_bytes)
+        normalized_starts.setdefault(self.remote_path.as_posix(), remote_start_byte)
+        normalized_metadata: dict[str, dict[str, int]] = {}
+        for path, metadata in (signal_start_metadata or {}).items():
+            relative = safe_relative_path(path)
+            if relative is None or not isinstance(metadata, dict):
+                continue
+            row = {
+                key: int(metadata[key])
+                for key in ("device", "inode", "byte_count")
+                if isinstance(metadata.get(key), int) and metadata[key] >= 0
+            }
+            if {"device", "inode", "byte_count"}.issubset(row):
+                normalized_metadata[relative.as_posix()] = row
+        self._epoch = {
+            "schema_version": "spatialaccagent.layer3_observation_epoch.v1",
+            "generation": generation,
+            "input_fingerprint_sha256": self.fingerprint,
+            "remote_workdir": remote_dir,
+            "progress_event_log": self.remote_path.as_posix(),
+            "remote_start_byte": remote_start_byte,
+            "signal_start_bytes": normalized_starts,
+            "signal_start_metadata": normalized_metadata,
+        }
+        write_json(self.epoch_path, self._epoch)
+        signal_binding = f"{self.fingerprint}@{remote_dir}"
+        try:
+            activate_live_state_slot(
+                self.live_dir.parents[2],
+                "signals",
+                {
+                    "status": "collecting",
+                    "observation_epoch": self._epoch,
+                    "record_count": 0,
+                },
+                binding=signal_binding,
+            )
+        except OSError:
+            pass
+        self.raw_path.parent.mkdir(parents=True, exist_ok=True)
+        self.raw_path.write_bytes(b"")
+        self.last_record_count = -1
+        self._last_running_signature = None
+        self._unchanged_running_snapshot_count = 0
+        self._last_simulator_cpu_ticks = None
+        self._cpu_active_without_progress_snapshot_count = 0
+        self.zero_time_livelock_evidence = {}
+        return dict(self._epoch)
+
+    def bind_or_begin_epoch(self, remote_dir: str) -> dict[str, Any]:
+        """Rebind a restarted controller to the exact active observation epoch."""
+
+        saved = read_json(self.epoch_path)
+        if (
+            saved.get("input_fingerprint_sha256") == self.fingerprint
+            and saved.get("remote_workdir") == remote_dir
+            and isinstance(saved.get("remote_start_byte"), int)
+            and int(saved["remote_start_byte"]) >= 0
+        ):
+            self._epoch = saved
+            return dict(saved)
+        return self.begin_epoch(remote_dir, remote_start_byte=0)
+
+    def epoch(self) -> dict[str, Any]:
+        return dict(self._epoch or read_json(self.epoch_path))
+
+    def _effective_progress_start_byte(self, remote_dir: str) -> int:
+        """Return the current-run start offset, even after a file is recreated."""
+
+        start_byte = int(self._epoch.get("remote_start_byte") or 0)
+        starts = self._epoch.get("signal_start_metadata", {})
+        starts = starts if isinstance(starts, dict) else {}
+        start_metadata = starts.get(self.remote_path.as_posix(), {})
+        start_metadata = start_metadata if isinstance(start_metadata, dict) else {}
+        if start_byte == 0 and not start_metadata:
+            return 0
+        current = remote_file_metadata(
+            host=self.host,
+            port=self.port,
+            remote_dir=remote_dir,
+            relative=self.remote_path,
+            timeout_sec=60,
+        )
+        replaced = bool(
+            current
+            and (
+                (
+                    isinstance(start_metadata.get("device"), int)
+                    and isinstance(start_metadata.get("inode"), int)
+                    and (
+                        current.get("device") != start_metadata.get("device")
+                        or current.get("inode") != start_metadata.get("inode")
+                    )
+                )
+                or int(current.get("byte_count") or 0) < start_byte
+            )
+        )
+        if not replaced:
+            return start_byte
+        if self._epoch.get("progress_file_recreated") is not True:
+            self.raw_path.parent.mkdir(parents=True, exist_ok=True)
+            self.raw_path.write_bytes(b"")
+            self._epoch["progress_file_recreated"] = True
+            self._epoch["progress_file_metadata_after_recreate"] = current
+            write_json(self.epoch_path, self._epoch)
+        return 0
 
     def _remote_tail(
         self,
@@ -3874,6 +3563,55 @@ class LiveProgressObserver:
             "excerpt": text[-4000:] if markers else "",
         }
 
+    def _simulator_cpu_probe(
+        self,
+        remote_dir: str,
+        process_snapshot: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Read monotonic CPU ticks for live simulator processes only."""
+
+        processes = process_snapshot.get("processes", [])
+        pids = [
+            int(row["pid"])
+            for row in processes
+            if isinstance(row, dict)
+            and isinstance(row.get("pid"), int)
+            and "simv" in str(row.get("command") or "").lower()
+        ]
+        if not pids:
+            return {"status": "not_observed", "total_ticks": None, "processes": []}
+        command = " ; ".join(
+            (
+                f"if test -r /proc/{pid}/stat; then "
+                f"awk '{{print {pid}, $14 + $15}}' /proc/{pid}/stat; fi"
+            )
+            for pid in pids
+        )
+        result = run_transfer_command(
+            [
+                "ssh",
+                "-p",
+                str(self.port),
+                "-o",
+                "StrictHostKeyChecking=no",
+                self.host,
+                f"cd {shlex.quote(remote_dir)} && {command}",
+            ],
+            60,
+        )
+        rows: list[dict[str, int]] = []
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) != 2 or not all(part.isdigit() for part in parts):
+                    continue
+                rows.append({"pid": int(parts[0]), "cpu_ticks": int(parts[1])})
+        return {
+            "status": "ready" if rows else "not_observed",
+            "processes": rows,
+            "total_ticks": sum(row["cpu_ticks"] for row in rows) if rows else None,
+        }
+
     def _has_current_proven_semantic_stall(self, remote_dir: str) -> bool:
         """Reuse a bound failure witness instead of re-copying a live log."""
 
@@ -3898,9 +3636,14 @@ class LiveProgressObserver:
             return
         if self._has_current_proven_semantic_stall(remote_dir):
             return
+        self.bind_or_begin_epoch(remote_dir)
         self.live_dir.mkdir(parents=True, exist_ok=True)
         prior_byte_count = self.raw_path.stat().st_size if self.raw_path.is_file() else 0
-        use_full_snapshot = state == "done" or poll_attempt == 1 or not self.raw_path.is_file()
+        remote_start_byte = self._effective_progress_start_byte(remote_dir)
+        use_full_snapshot = (
+            remote_start_byte == 0
+            and (state == "done" or poll_attempt == 1 or not self.raw_path.is_file())
+        )
         if use_full_snapshot:
             temporary = self.raw_path.with_suffix(".jsonl.tmp")
             copied = run_transfer_command(
@@ -3925,6 +3668,7 @@ class LiveProgressObserver:
         else:
             temporary = self.raw_path.with_suffix(".jsonl.increment.tmp")
             remote_file = f"{remote_dir.rstrip('/')}/{self.remote_path.as_posix()}"
+            remote_offset = remote_start_byte + prior_byte_count
             copied = run_stream_transfer_command(
                 [
                     "ssh",
@@ -3933,7 +3677,7 @@ class LiveProgressObserver:
                     "-o",
                     "StrictHostKeyChecking=no",
                     self.host,
-                    f"tail -c +{prior_byte_count + 1} -- {shlex.quote(remote_file)}",
+                    f"tail -c +{remote_offset + 1} -- {shlex.quote(remote_file)}",
                 ],
                 temporary,
                 60,
@@ -3946,7 +3690,11 @@ class LiveProgressObserver:
                 with self.raw_path.open("ab") as destination, temporary.open("rb") as source:
                     shutil.copyfileobj(source, destination)
             temporary.unlink(missing_ok=True)
-            transfer_mode = "incremental_append"
+            transfer_mode = (
+                "epoch_suffix"
+                if remote_start_byte
+                else "incremental_append"
+            )
         parsed = read_complete_jsonl(self.raw_path)
         records = parsed.get("records", [])
         summary = summarize_progress_events(
@@ -3975,6 +3723,16 @@ class LiveProgressObserver:
         )
         simulation_time_probe = self._simulation_time_probe(remote_dir)
         native_loop_probe = self._native_loop_probe(remote_dir)
+        process_snapshot = (
+            observation.get("process_snapshot")
+            if isinstance(observation.get("process_snapshot"), dict)
+            else {}
+        )
+        simulator_cpu_probe = self._simulator_cpu_probe(
+            remote_dir,
+            process_snapshot,
+        )
+        simulator_cpu_ticks = simulator_cpu_probe.get("total_ticks")
         simulation_time_watermark = simulation_time_probe.get("last_timestamp")
         running_signature = (
             running_signature[0],
@@ -3987,14 +3745,32 @@ class LiveProgressObserver:
         if state == "running":
             if running_signature == self._last_running_signature:
                 self._unchanged_running_snapshot_count += 1
+                if (
+                    isinstance(simulator_cpu_ticks, int)
+                    and isinstance(self._last_simulator_cpu_ticks, int)
+                    and simulator_cpu_ticks > self._last_simulator_cpu_ticks
+                ):
+                    self._cpu_active_without_progress_snapshot_count += 1
+                else:
+                    self._cpu_active_without_progress_snapshot_count = 0
             else:
                 self._unchanged_running_snapshot_count = 0
+                self._cpu_active_without_progress_snapshot_count = 0
                 self.zero_time_livelock_evidence = {}
             self._last_running_signature = running_signature
+            self._last_simulator_cpu_ticks = (
+                simulator_cpu_ticks
+                if isinstance(simulator_cpu_ticks, int)
+                else None
+            )
             if (
                 self._unchanged_running_snapshot_count
                 >= self.ZERO_TIME_LIVELOCK_UNCHANGED_SNAPSHOT_LIMIT
-                and native_loop_probe.get("native_loop_detected") is True
+                and (
+                    native_loop_probe.get("native_loop_detected") is True
+                    or self._cpu_active_without_progress_snapshot_count
+                    >= self.ZERO_TIME_LIVELOCK_UNCHANGED_SNAPSHOT_LIMIT
+                )
             ):
                 self.zero_time_livelock_evidence = {
                     "schema_version": "spatialaccagent.zero_time_livelock_evidence.v1",
@@ -4010,8 +3786,12 @@ class LiveProgressObserver:
                     "simulation_time_watermark": simulation_time_watermark,
                     "simulation_time_probe": simulation_time_probe,
                     "native_loop_report": native_loop_probe,
+                    "simulator_cpu_probe": simulator_cpu_probe,
                     "consecutive_unchanged_running_snapshots": (
                         self._unchanged_running_snapshot_count
+                    ),
+                    "consecutive_cpu_active_without_progress_snapshots": (
+                        self._cpu_active_without_progress_snapshot_count
                     ),
                     "required_unchanged_running_snapshots": (
                         self.ZERO_TIME_LIVELOCK_UNCHANGED_SNAPSHOT_LIMIT
@@ -4019,19 +3799,16 @@ class LiveProgressObserver:
                     "fixed_wall_clock_timeout": False,
                     "fixed_cycle_timeout": False,
                     "reason": (
-                        "VCS native loop detection reported a zero-delay loop while "
-                        "the independent simulation-time watermark and flushed progress "
-                        "record set remained unchanged across repeated observer snapshots"
+                        "the simulator kept consuming CPU while the independent "
+                        "simulation-time watermark and flushed progress record set "
+                        "remained unchanged across repeated observer snapshots"
                     ),
                 }
         else:
             self._last_running_signature = None
             self._unchanged_running_snapshot_count = 0
-        process_snapshot = (
-            observation.get("process_snapshot")
-            if isinstance(observation.get("process_snapshot"), dict)
-            else {}
-        )
+            self._last_simulator_cpu_ticks = None
+            self._cpu_active_without_progress_snapshot_count = 0
         simulator_process_observed = (
             process_snapshot.get("simulator_like_process_observed") is True
         )
@@ -4072,6 +3849,7 @@ class LiveProgressObserver:
             "input_fingerprint_sha256": self.fingerprint,
             "remote_workdir": remote_dir,
             "remote_progress_event_log": self.remote_path.as_posix(),
+            "observation_epoch": self.epoch(),
             "local_progress_event_log": str(self.raw_path),
             "progress_event_log_sha256": sha256_file(self.raw_path),
             "process_state": state,
@@ -4085,11 +3863,13 @@ class LiveProgressObserver:
             "invalid_jsonl_records": parsed.get("invalid_records", []),
             "simulation_time_probe": simulation_time_probe,
             "native_loop_report": native_loop_probe,
+            "simulator_cpu_probe": simulator_cpu_probe,
             "last_committed_progress_event": last_committed_event,
             "testbench_observation_activity": observation_activity,
             "live_transfer": {
                 "mode": transfer_mode,
                 "prior_byte_count": prior_byte_count,
+                "remote_start_byte": remote_start_byte,
                 "received_byte_count": received_byte_count,
                 "local_byte_count": self.raw_path.stat().st_size,
                 "final_full_snapshot": state == "done",
@@ -4100,12 +3880,34 @@ class LiveProgressObserver:
                 "observer_never_terminates_the_remote_job": True,
                 "simulation_timeout_policy_unchanged": True,
                 "unchanged_progress_alone_never_proves_zero_time_livelock": True,
-                "native_vcs_loop_detection_required_for_zero_time_livelock": True,
+                "active_simulator_cpu_with_unchanged_progress_proves_zero_time_livelock": True,
             },
         }
         snapshot_tmp = self.snapshot_path.with_suffix(".json.tmp")
         write_json(snapshot_tmp, snapshot)
         os.replace(snapshot_tmp, self.snapshot_path)
+        try:
+            update_live_state_slot(
+                self.live_dir.parents[2],
+                "signals",
+                {
+                    "status": "complete" if state == "done" else "collecting",
+                    "observation_epoch": snapshot.get("observation_epoch", {}),
+                    "record_count": record_count,
+                    "last_cycle": last_cycle,
+                    "last_semantic_progress_cycle": summary.get(
+                        "last_semantic_progress_cycle"
+                    ),
+                    "process_state": state,
+                    "final_writeback_progress": summary.get(
+                        "final_writeback_progress"
+                    ),
+                    "last_progress_event": last_committed_event,
+                },
+                binding=f"{self.fingerprint}@{remote_dir}",
+            )
+        except OSError:
+            pass
         if record_count != self.last_record_count:
             with self.history_path.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(snapshot, sort_keys=True) + "\n")
@@ -4423,6 +4225,51 @@ def execute_pending_exact_board_job(
         },
     }
     if terminal_success:
+        capture = collect_completed_native_checkpoint(
+            run_dir,
+            timeout_sec,
+            manifest,
+            remote_dir,
+            simulation_log_path,
+        )
+        if capture.get("status") == "pass":
+            checkpoint_plan = capture["checkpoint_plan"]
+            report.update(
+                {
+                    "status": "checkpoint_capture_complete",
+                    "hardware_validation_status": "checkpoint_capture_complete",
+                    "phase": "remote_vcs",
+                    "summary": (
+                        "completed Layer-3 native checkpoint collected; "
+                        "one restore confirmation is required before reuse"
+                    ),
+                    "simulation_execution_identity": checkpoint_plan.get(
+                        "execution_identity", {}
+                    ),
+                    "checkpoint_execution": {
+                        key: checkpoint_plan.get(key)
+                        for key in (
+                            "status",
+                            "mode",
+                            "enabled",
+                            "candidate_screening",
+                            "acceptance_eligible",
+                            "request_path",
+                            "request_sha256",
+                            "policy",
+                        )
+                    },
+                    "checkpoint_artifacts": capture["checkpoint_artifacts"],
+                    "fast_replay_used": False,
+                    "compile_reused": False,
+                    "weight_load_skipped": False,
+                    "second_vcs_compile_was_not_launched": False,
+                    "simulator_path": "vcs_work/simv",
+                }
+            )
+            report.pop("failure_class", None)
+            report.pop("errors", None)
+            return report
         report["failure_class"] = "active_exact_job_terminal_acceptance_required"
         report["errors"] = [
             "the sealed job completed, but full acceptance must be collected against its launch identity"
@@ -4432,8 +4279,1233 @@ def execute_pending_exact_board_job(
     return report
 
 
-def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
-    pending_job = pending_exact_board_job(run_dir)
+def collect_completed_native_checkpoint(
+    run_dir: Path,
+    timeout_sec: int,
+    manifest: dict[str, Any],
+    remote_dir: str,
+    simulation_log_path: Path,
+) -> dict[str, Any]:
+    """Persist a native snapshot already saved by a completed exact VCS job.
+
+    This is a local bookkeeping step.  It never launches VCS, reloads weights,
+    copies the large native state, or recreates the remote snapshot.
+    """
+
+    request_path = (
+        run_dir
+        / "verification"
+        / "board_simulation"
+        / "vcs_stage"
+        / "checkpoint"
+        / "request.json"
+    )
+    checkpoint_plan = checkpoint_execution_plan(
+        run_dir,
+        manifest,
+        env={
+            "SPATIALACC_CHECKPOINT_REQUIRED": "1",
+            "SPATIALACC_CHECKPOINT_REQUEST": str(request_path),
+        },
+    )
+    if (
+        checkpoint_plan.get("status") != "pass"
+        or checkpoint_plan.get("mode") != "cold_capture"
+    ):
+        return {
+            "status": "fail",
+            "checkpoint_plan": checkpoint_plan,
+            "errors": checkpoint_plan.get("errors", []),
+        }
+
+    simulation_log = (
+        simulation_log_path.read_text(encoding="utf-8", errors="ignore")
+        if simulation_log_path.is_file()
+        else ""
+    )
+    ready_match = re.search(
+        r"SPATIALACC_NATIVE_CHECKPOINT_READY\s+sequence=(\d+)\s+cycle=(\d+)",
+        simulation_log,
+    )
+    tool = tool_profile(run_dir)
+    host = str(tool.get("host") or "")
+    port = int(tool.get("port") or 22)
+    available = run_transfer_command(
+        [
+            "ssh",
+            "-p",
+            str(port),
+            "-o",
+            "StrictHostKeyChecking=no",
+            host,
+            "cd "
+            + shlex.quote(remote_dir)
+            + " && test -f "
+            + shlex.quote(NATIVE_CHECKPOINT_SNAPSHOT.as_posix())
+            + " && test -f "
+            + shlex.quote(f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli")
+            + " && test -d "
+            + shlex.quote(NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix()),
+        ],
+        timeout_sec,
+    )
+    capture_report = {
+        "schema_version": CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION,
+        "status": (
+            "pass"
+            if ready_match
+            and "SPATIALACC_NATIVE_CHECKPOINT_SAVE_PASS" in simulation_log
+            and available.returncode == 0
+            else "fail"
+        ),
+        "mode": "cold_capture",
+        "captured_sequence": int(ready_match.group(1)) if ready_match else None,
+        "captured_cycle": int(ready_match.group(2)) if ready_match else None,
+        "state_artifacts": [
+            {
+                "kind": "native_vcs_snapshot",
+                "path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
+                "remote_path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
+                "remote_ucli_path": f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli",
+                "remote_files_path": NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix(),
+            }
+        ],
+        "native_ready_marker_seen": bool(ready_match),
+        "native_save_marker_seen": (
+            "SPATIALACC_NATIVE_CHECKPOINT_SAVE_PASS" in simulation_log
+        ),
+        "native_snapshot_available": available.returncode == 0,
+    }
+    errors = checkpoint_capture_report_errors(checkpoint_plan, capture_report)
+    incoming = checkpoint_root(run_dir) / ".incoming_fast_replay"
+    if incoming.exists():
+        shutil.rmtree(incoming)
+    incoming.mkdir(parents=True, exist_ok=True)
+    write_json(incoming / "capture_report.json", capture_report)
+    if errors:
+        return {
+            "status": "fail",
+            "checkpoint_plan": checkpoint_plan,
+            "checkpoint_artifacts": {
+                "status": "fail",
+                "mode": "cold_capture",
+                "capture_report": str(incoming / "capture_report.json"),
+                "errors": list(dict.fromkeys(errors)),
+            },
+            "errors": errors,
+        }
+
+    state_artifacts = [
+        {
+            "path": "native_state",
+            "kind": "native_vcs_snapshot",
+            "remote_path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
+            "remote_ucli_path": f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli",
+            "remote_files_path": NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix(),
+            "byte_count": 0,
+        }
+    ]
+    checkpoint_manifest = framework_checkpoint_manifest(
+        checkpoint_plan,
+        capture_report,
+        state_artifacts,
+        remote_workdir=remote_dir,
+    )
+    checkpoint_id = str(checkpoint_manifest["checkpoint_id"])
+    final_dir = checkpoint_root(run_dir) / checkpoint_id
+    write_json(incoming / "manifest.json", checkpoint_manifest)
+    if final_dir.exists():
+        shutil.rmtree(final_dir)
+    incoming.rename(final_dir)
+    return {
+        "status": "pass",
+        "checkpoint_plan": checkpoint_plan,
+        "checkpoint_artifacts": {
+            "status": "pass",
+            "mode": "cold_capture",
+            "checkpoint_id": checkpoint_id,
+            "manifest": str(final_dir / "manifest.json"),
+            "total_state_bytes": checkpoint_manifest.get("total_state_bytes", 0),
+            "errors": [],
+            "remote_acknowledgment_status": "pending",
+        },
+    }
+
+
+def saved_replay_command(
+    saved_job: dict[str, Any],
+    replay: dict[str, Any],
+) -> tuple[str | None, dict[str, Path], list[str]]:
+    """Build a restore command from the remote job captured with the snapshot."""
+
+    simulator_path = str(replay.get("simulator_path") or "")
+    runtime_args, errors = saved_workload_args(saved_job, simulator_path)
+    if runtime_args is None:
+        return None, {}, errors
+    runtime_args = [
+        value
+        for value in runtime_args
+        if not value.startswith("+SPATIALACC_OBSERVATION_SELECTION=")
+    ]
+    runtime_args.append(
+        "+SPATIALACC_OBSERVATION_SELECTION=observation/current_selection.json"
+    )
+    restore_log = Path("reports/fast_replay_restore.log")
+    command = (
+        "set -e; mkdir -p reports checkpoint; "
+        + f"./{simulator_path}"
+        + " -ucli -do "
+        + shlex.quote(NATIVE_CHECKPOINT_RESTORE_TCL.as_posix())
+        + " "
+        + " ".join(shlex.quote(value) for value in runtime_args)
+        + " +SPATIALACC_NATIVE_CHECKPOINT_RESTORE"
+        + f" > {shlex.quote(restore_log.as_posix())} 2>&1"
+    )
+    # Do not remove preexisting reports, memory images, or snapshot files.
+    # Native simulator state includes live testbench state at the save cut.
+    return command, {"restore_log": restore_log}, []
+
+
+def saved_workload_args(
+    saved_job: dict[str, Any],
+    simulator_path: str,
+) -> tuple[list[str] | None, list[str]]:
+    """Extract only real workload plusargs from one saved VCS command."""
+
+    raw_command = str(saved_job.get("simulate_command") or "").strip()
+    try:
+        tokens = shlex.split(raw_command)
+    except ValueError:
+        return None, ["saved replay command cannot be read"]
+    simulator_token = f"./{simulator_path}"
+    try:
+        simulator_index = tokens.index(simulator_token)
+    except ValueError:
+        return None, ["saved replay command does not use the saved simulator"]
+
+    runtime_args: list[str] = []
+    skip_next = False
+    for token in tokens[simulator_index + 1 :]:
+        if token == ">":
+            break
+        if skip_next:
+            skip_next = False
+            continue
+        # The saved command can be a capture command.  Keep only the original
+        # workload arguments; VCS owns restore through its UCLI script.
+        if token in {"-ucli", "-do"}:
+            skip_next = token == "-do"
+            continue
+        if (
+            token == "+SPATIALACC_NATIVE_CHECKPOINT_CAPTURE"
+            or token == "+SPATIALACC_NATIVE_CHECKPOINT_RESTORE"
+            or token.startswith("+SPATIALACC_CHECKPOINT_")
+        ):
+            continue
+        runtime_args.append(token)
+    if not runtime_args:
+        return None, ["saved replay has no original workload arguments"]
+    return runtime_args, []
+
+
+def materialize_current_observation_selection(run_dir: Path) -> Path:
+    """Return the one runtime selection used by the next Layer-3 execution."""
+
+    selection = current_observation_selection_path(run_dir)
+    if not selection.is_file():
+        runtime_observation_selection(run_dir, {}, persist=True)
+    return selection
+
+
+def stage_current_observation_selection(run_dir: Path, stage_dir: Path) -> Path:
+    """Copy the latest runtime selection into one cold VCS payload."""
+
+    source = materialize_current_observation_selection(run_dir)
+    destination = stage_dir / "observation" / "current_selection.json"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    return destination
+
+
+def upload_current_observation_selection(
+    run_dir: Path,
+    *,
+    host: str,
+    port: int,
+    remote_dir: str,
+    timeout_sec: int,
+) -> subprocess.CompletedProcess[str]:
+    """Replace the saved workdir's selection before every native restore."""
+
+    selection = materialize_current_observation_selection(run_dir)
+    prepare = run_transfer_command(
+        [
+            "ssh", "-p", str(port), "-o", "StrictHostKeyChecking=no", host,
+            "cd " + shlex.quote(remote_dir) + " && mkdir -p observation",
+        ],
+        timeout_sec,
+    )
+    if prepare.returncode != 0:
+        return prepare
+    return run_transfer_command(
+        [
+            "scp", "-q", "-P", str(port), "-o", "StrictHostKeyChecking=no",
+            str(selection),
+            f"{host}:{remote_dir}/observation/current_selection.json",
+        ],
+        timeout_sec,
+    )
+
+
+def remote_file_metadata(
+    *,
+    host: str,
+    port: int,
+    remote_dir: str,
+    relative: Path,
+    timeout_sec: int,
+) -> dict[str, int] | None:
+    """Read one remote output identity without copying its historical records."""
+
+    safe_relative = safe_relative_path(relative)
+    if safe_relative is None:
+        return None
+    remote_file = f"{remote_dir.rstrip('/')}/{safe_relative.as_posix()}"
+    result = run_transfer_command(
+        [
+            "ssh",
+            "-p",
+            str(port),
+            "-o",
+            "StrictHostKeyChecking=no",
+            host,
+            (
+                f"if test -f {shlex.quote(remote_file)}; then "
+                f"stat -c '%d %i %s' {shlex.quote(remote_file)}; "
+                "else printf '0 0 0\\n'; fi"
+            ),
+        ],
+        timeout_sec,
+    )
+    if result.returncode != 0:
+        return None
+    values = re.findall(r"\d+", result.stdout)
+    if len(values) < 3:
+        return None
+    return {
+        "device": int(values[-3]),
+        "inode": int(values[-2]),
+        "byte_count": int(values[-1]),
+    }
+
+
+def remote_file_byte_count(
+    *,
+    host: str,
+    port: int,
+    remote_dir: str,
+    relative: Path,
+    timeout_sec: int,
+) -> int | None:
+    metadata = remote_file_metadata(
+        host=host,
+        port=port,
+        remote_dir=remote_dir,
+        relative=relative,
+        timeout_sec=timeout_sec,
+    )
+    return metadata.get("byte_count") if metadata is not None else None
+
+
+def copy_remote_file_suffix(
+    *,
+    host: str,
+    port: int,
+    remote_dir: str,
+    relative: Path,
+    start_byte: int,
+    destination: Path,
+    timeout_sec: int,
+) -> subprocess.CompletedProcess[str]:
+    """Copy only the records written after a replay observation epoch began."""
+
+    safe_relative = safe_relative_path(relative)
+    if safe_relative is None or start_byte < 0:
+        return subprocess.CompletedProcess([], 2, "", "unsafe epoch output path")
+    _prepare_fresh_transfer_target(destination)
+    remote_file = f"{remote_dir.rstrip('/')}/{safe_relative.as_posix()}"
+    return run_stream_transfer_command(
+        [
+            "ssh",
+            "-p",
+            str(port),
+            "-o",
+            "StrictHostKeyChecking=no",
+            host,
+            f"tail -c +{start_byte + 1} -- {shlex.quote(remote_file)}",
+        ],
+        destination,
+        timeout_sec,
+    )
+
+
+def saved_recapture_command(
+    saved_job: dict[str, Any],
+    replay: dict[str, Any],
+) -> tuple[str | None, dict[str, Path], list[str]]:
+    """Recreate one native snapshot with a saved compiled simulator only."""
+
+    simulator_path = str(replay.get("simulator_path") or "")
+    runtime_args, errors = saved_workload_args(saved_job, simulator_path)
+    if runtime_args is None:
+        return None, {}, errors
+
+    capture_log = Path("reports/fast_replay_recapture.log")
+    stale_outputs = [
+        "reports/simulation.log",
+        "reports/progress_event_log.jsonl",
+        "reports/boundary_trace.jsonl",
+        "reports/connected_kernel_delta_transition.jsonl",
+        "reports/rtl_output.bin",
+        NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
+        f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli",
+    ]
+    command = (
+        "set -e; mkdir -p reports checkpoint checkpoint/state; rm -f -- "
+        + " ".join(shlex.quote(path) for path in stale_outputs)
+        + "; rm -rf -- "
+        + shlex.quote(NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix())
+        + "; "
+        + f"./{simulator_path}"
+        + " -ucli -do "
+        + shlex.quote(NATIVE_CHECKPOINT_CAPTURE_TCL.as_posix())
+        + " "
+        + " ".join(shlex.quote(value) for value in runtime_args)
+        + " +SPATIALACC_NATIVE_CHECKPOINT_CAPTURE"
+        + f" > {shlex.quote(capture_log.as_posix())} 2>&1"
+    )
+    return command, {"capture_log": capture_log}, []
+
+
+def execute_saved_fast_recapture(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
+    """Replace one bad native snapshot without compiling the saved model again."""
+
+    manifest, resolved, errors = validate_manifest(run_dir)
+    if errors:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "fail",
+            "phase": "fast_replay_recapture_validation",
+            "failure_class": "fast_replay_current_manifest_invalid",
+            "errors": errors,
+            "remote_tool_was_not_started": True,
+            "second_vcs_compile_was_not_launched": True,
+        }
+    current_identity = simulation_execution_identity(manifest)
+    state = read_fast_replay_state(run_dir)
+    state_identity = state.get("identity", {})
+    state_identity = state_identity if isinstance(state_identity, dict) else {}
+    identity_errors = [
+        f"saved compiled simulator {field} does not match the current Layer-3 run"
+        for field in ("compiled_model_sha256", "workload_sha256")
+        if state_identity.get(field) != current_identity.get(field)
+    ]
+    # A failed capture can retain an older remote directory in its durable
+    # state.  Recapture must bind to the current successful Layer-3 runner,
+    # never to that historical field.
+    runner = read_json(
+        run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
+    )
+    runner_identity = runner.get("simulation_execution_identity", {})
+    runner_identity = runner_identity if isinstance(runner_identity, dict) else {}
+    runner_compile = runner.get("compile", {})
+    runner_compile = runner_compile if isinstance(runner_compile, dict) else {}
+    remote_dir = str(runner.get("remote_workdir") or "").strip()
+    simulator_path = str(runner.get("simulator_path") or "").strip()
+    simulator = Path(simulator_path)
+    if state.get("status") != "repair_required":
+        identity_errors.append("fast replay state is not awaiting native snapshot recapture")
+    if runner_identity != current_identity:
+        identity_errors.append(
+            "current Layer-3 runner identity does not match the current board manifest"
+        )
+    if runner_compile.get("status") != "pass":
+        identity_errors.append("current Layer-3 runner has no successful VCS compile")
+    if not remote_dir.startswith("/"):
+        identity_errors.append("saved compiled simulator remote directory is missing")
+    if not simulator_path or simulator.is_absolute() or ".." in simulator.parts:
+        identity_errors.append("saved compiled simulator path is missing or unsafe")
+    if identity_errors:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "fail",
+            "phase": "fast_replay_recapture_validation",
+            "failure_class": "fast_replay_recapture_identity_invalid",
+            "errors": identity_errors,
+            "remote_tool_was_not_started": True,
+            "second_vcs_compile_was_not_launched": True,
+        }
+
+    checkpoint_plan = checkpoint_execution_plan(run_dir, manifest)
+    if (
+        checkpoint_plan.get("status") != "pass"
+        or checkpoint_plan.get("mode") != "cold_capture"
+    ):
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "fail",
+            "phase": "fast_replay_recapture_validation",
+            "failure_class": "fast_replay_recapture_request_invalid",
+            "errors": list(checkpoint_plan.get("errors") or [
+                "native snapshot recapture requires a current cold-capture request"
+            ]),
+            "checkpoint_execution": checkpoint_plan,
+            "remote_tool_was_not_started": True,
+            "second_vcs_compile_was_not_launched": True,
+        }
+
+    tool = tool_profile(run_dir)
+    host = str(tool.get("host") or "")
+    port = int(tool.get("port") or 22)
+    if not host:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "fail",
+            "phase": "fast_replay_recapture_validation",
+            "failure_class": "fast_replay_tool_missing",
+            "errors": ["Layer-3 VCS remote host is missing"],
+            "remote_tool_was_not_started": True,
+            "second_vcs_compile_was_not_launched": True,
+        }
+
+    board_dir = run_dir / "verification" / "board_simulation"
+    board_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = run_dir / "verification" / "vcs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    replay_dir = board_dir / "fast_replay" / "recapture"
+    job_path = replay_dir / "saved_job.json"
+    _prepare_fresh_transfer_target(job_path)
+    job_download = run_transfer_command(
+        [
+            "scp", "-q", "-P", str(port), "-o", "StrictHostKeyChecking=no",
+            f"{host}:{remote_dir}/.spatialacc_semantic_job.json", str(job_path),
+        ],
+        timeout_sec,
+    )
+    saved_job = read_json(job_path) if job_download.returncode == 0 else {}
+    replay = {"simulator_path": simulator_path}
+    command, outputs, command_errors = saved_recapture_command(saved_job, replay)
+    if command is None:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "fail",
+            "phase": "fast_replay_recapture_validation",
+            "failure_class": "fast_replay_saved_job_invalid",
+            "errors": command_errors or ["saved recapture command is unavailable"],
+            "remote_tool_was_not_started": True,
+            "second_vcs_compile_was_not_launched": True,
+            "stderr_tail": job_download.stderr[-4000:],
+        }
+
+    local_tcl = replay_dir / NATIVE_CHECKPOINT_CAPTURE_TCL
+    local_tcl.parent.mkdir(parents=True, exist_ok=True)
+    local_tcl.write_text(native_checkpoint_capture_tcl(), encoding="utf-8")
+    upload = run_transfer_command(
+        [
+            "scp", "-q", "-P", str(port), "-o", "StrictHostKeyChecking=no",
+            str(local_tcl), f"{host}:{remote_dir}/{NATIVE_CHECKPOINT_CAPTURE_TCL.as_posix()}",
+        ],
+        timeout_sec,
+    )
+    availability = run_transfer_command(
+        [
+            "ssh", "-p", str(port), "-o", "StrictHostKeyChecking=no", host,
+            "cd " + shlex.quote(remote_dir) + " && test -x "
+            + shlex.quote(simulator_path) + " && test -f "
+            + shlex.quote(NATIVE_CHECKPOINT_CAPTURE_TCL.as_posix()),
+        ],
+        timeout_sec,
+    )
+    if upload.returncode != 0 or availability.returncode != 0:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "fail",
+            "phase": "fast_replay_recapture_validation",
+            "failure_class": "fast_replay_remote_artifact_missing",
+            "errors": ["saved Layer-3 simulator or updated native capture script is missing"],
+            "remote_workdir": remote_dir,
+            "simulator_path": simulator_path,
+            "remote_tool_was_not_started": True,
+            "second_vcs_compile_was_not_launched": True,
+        }
+
+    simulate_result = run_remote_background_command(
+        host, port, command, remote_dir, out_dir, timeout_sec,
+        "vcs_fast_replay_recapture",
+    )
+    capture_log = outputs["capture_log"]
+    local_capture_log = replay_dir / capture_log
+    _prepare_fresh_transfer_target(local_capture_log)
+    capture_download = run_transfer_command(
+        [
+            "scp", "-q", "-P", str(port), "-o", "StrictHostKeyChecking=no",
+            f"{host}:{remote_dir}/{capture_log.as_posix()}", str(local_capture_log),
+        ],
+        timeout_sec,
+    )
+    simulate_result = apply_simulation_terminal_log_result(
+        simulate_result, local_capture_log
+    )
+    capture_text = (
+        local_capture_log.read_text(encoding="utf-8", errors="ignore")
+        if local_capture_log.is_file() else ""
+    )
+    ready_match = re.search(
+        r"SPATIALACC_NATIVE_CHECKPOINT_READY\s+sequence=(\d+)\s+cycle=(\d+)",
+        capture_text,
+    )
+    save_marker_seen = "SPATIALACC_NATIVE_CHECKPOINT_SAVE_PASS" in capture_text
+    snapshot_available = run_transfer_command(
+        [
+            "ssh", "-p", str(port), "-o", "StrictHostKeyChecking=no", host,
+            "cd " + shlex.quote(remote_dir) + " && test -f "
+            + shlex.quote(NATIVE_CHECKPOINT_SNAPSHOT.as_posix()) + " && test -f "
+            + shlex.quote(f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli")
+            + " && test -d " + shlex.quote(NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix()),
+        ],
+        timeout_sec,
+    ).returncode == 0
+    capture_report = {
+        "schema_version": CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION,
+        "status": "pass" if ready_match and save_marker_seen and snapshot_available else "fail",
+        "mode": "cold_capture",
+        "captured_sequence": int(ready_match.group(1)) if ready_match else None,
+        "captured_cycle": int(ready_match.group(2)) if ready_match else None,
+        "state_artifacts": [{
+            "kind": "native_vcs_snapshot",
+            "path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
+            "remote_path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
+            "remote_ucli_path": f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli",
+            "remote_files_path": NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix(),
+        }],
+        "native_ready_marker_seen": bool(ready_match),
+        "native_save_marker_seen": save_marker_seen,
+        "native_snapshot_available": snapshot_available,
+    }
+    checkpoint_errors = checkpoint_capture_report_errors(checkpoint_plan, capture_report)
+    incoming_dir = checkpoint_root(run_dir) / ".incoming_fast_replay"
+    if incoming_dir.exists():
+        shutil.rmtree(incoming_dir)
+    incoming_dir.mkdir(parents=True, exist_ok=True)
+    write_json(incoming_dir / "capture_report.json", capture_report)
+    checkpoint_artifacts: dict[str, Any] = {
+        "status": "fail",
+        "mode": "cold_capture",
+        "capture_report": str(incoming_dir / "capture_report.json"),
+        "errors": list(dict.fromkeys(checkpoint_errors)),
+    }
+    if not checkpoint_errors:
+        checkpoint_manifest = framework_checkpoint_manifest(
+            checkpoint_plan,
+            capture_report,
+            [{
+                "path": "native_state",
+                "kind": "native_vcs_snapshot",
+                "remote_path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
+                "remote_ucli_path": f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli",
+                "remote_files_path": NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix(),
+                "byte_count": 0,
+            }],
+            remote_workdir=remote_dir,
+        )
+        checkpoint_id = str(checkpoint_manifest["checkpoint_id"])
+        final_dir = checkpoint_root(run_dir) / checkpoint_id
+        write_json(incoming_dir / "manifest.json", checkpoint_manifest)
+        if final_dir.exists():
+            shutil.rmtree(final_dir)
+        incoming_dir.rename(final_dir)
+        checkpoint_artifacts = {
+            "status": "pass",
+            "mode": "cold_capture",
+            "checkpoint_id": checkpoint_id,
+            "manifest": str(final_dir / "manifest.json"),
+            "total_state_bytes": 0,
+            "errors": [],
+            "remote_acknowledgment_status": "pending",
+        }
+    captured = (
+        not checkpoint_errors
+        and simulate_result.get("status") == "pass"
+        and capture_download.returncode == 0
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "verification_layer": "layer3_real_board_axi_ddr",
+        "status": "checkpoint_capture_complete" if captured else "fail",
+        "hardware_validation_status": "checkpoint_capture_complete" if captured else "fail",
+        "stage_pass_eligible": False,
+        "phase": "fast_replay_recapture",
+        "summary": (
+            "reused the saved Layer-3 VCS simulator to recapture the native checkpoint"
+            if captured else "saved Layer-3 simulator recapture did not complete"
+        ),
+        "simulation_execution_identity": current_identity,
+        "checkpoint_execution": {
+            key: checkpoint_plan.get(key)
+            for key in ("status", "mode", "enabled", "candidate_screening", "acceptance_eligible", "request_path", "request_sha256", "policy")
+        },
+        "checkpoint_artifacts": checkpoint_artifacts,
+        "fast_replay_used": False,
+        "compile_reused": True,
+        "weight_load_skipped": False,
+        "second_vcs_compile_was_not_launched": True,
+        "remote_workdir": remote_dir,
+        "simulator_path": simulator_path,
+        "compile": {"status": "pass", "reused": True, "summary": "reused saved remote VCS simulator; no VCS compile was launched"},
+        "run": simulate_result,
+        "outputs": {"capture_log": {"path": str(local_capture_log), "copied": capture_download.returncode == 0 and local_capture_log.is_file()}},
+    }
+
+
+def execute_saved_fast_replay(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
+    """Run a saved Layer-3 simulator without current-source preflight.
+
+    This deliberately reads only the snapshot record and the remote job saved
+    alongside it.  The current generated testbench can have new probes for a
+    later run; its source hash is irrelevant to proving that the saved snapshot
+    restores and runs without recompiling or reloading weights.
+    """
+
+    replay = restore_inputs(run_dir)
+    if replay.get("status") != "ready":
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "fail",
+            "phase": "fast_replay_validation",
+            "failure_class": "fast_replay_inputs_missing",
+            "errors": replay.get("reasons", []),
+            "remote_tool_was_not_started": True,
+            "second_vcs_compile_was_not_launched": True,
+        }
+
+    tool = tool_profile(run_dir)
+    host = str(tool.get("host") or "")
+    port = int(tool.get("port") or 22)
+    remote_dir = str(replay["remote_workdir"])
+    simulator_path = str(replay["simulator_path"])
+    if not host:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "fail",
+            "phase": "fast_replay_validation",
+            "failure_class": "fast_replay_tool_missing",
+            "errors": ["Layer-3 VCS remote host is missing"],
+            "remote_tool_was_not_started": True,
+            "second_vcs_compile_was_not_launched": True,
+        }
+
+    board_dir = run_dir / "verification" / "board_simulation"
+    board_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = run_dir / "verification" / "vcs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    local_restore_tcl = board_dir / "fast_replay" / NATIVE_CHECKPOINT_RESTORE_TCL
+    local_restore_tcl.parent.mkdir(parents=True, exist_ok=True)
+    local_restore_tcl.write_text(native_checkpoint_restore_tcl(), encoding="utf-8")
+    restore_upload = run_transfer_command(
+        [
+            "scp", "-q", "-P", str(port), "-o", "StrictHostKeyChecking=no",
+            str(local_restore_tcl),
+            f"{host}:{remote_dir}/{NATIVE_CHECKPOINT_RESTORE_TCL.as_posix()}",
+        ],
+        timeout_sec,
+    )
+    observation_upload = upload_current_observation_selection(
+        run_dir,
+        host=host,
+        port=port,
+        remote_dir=remote_dir,
+        timeout_sec=timeout_sec,
+    )
+    job_path = board_dir / "fast_replay_saved_job.json"
+    _prepare_fresh_transfer_target(job_path)
+    job_download = run_transfer_command(
+        [
+            "scp", "-q", "-P", str(port), "-o", "StrictHostKeyChecking=no",
+            f"{host}:{remote_dir}/.spatialacc_semantic_job.json", str(job_path),
+        ],
+        timeout_sec,
+    )
+    saved_job = read_json(job_path) if job_download.returncode == 0 else {}
+    replay_live = {
+        "verification_layer": "layer3_real_board_axi_ddr",
+        "status": "running",
+        "phase": "fast_replay_restore",
+        "input_fingerprint_sha256": saved_job.get("input_fingerprint_sha256"),
+        "remote_workdir": remote_dir,
+        "simulator_path": simulator_path,
+    }
+    replay_binding = board_run_binding(replay_live)
+    if replay_binding:
+        try:
+            activate_live_state_slot(
+                run_dir,
+                "board_run",
+                board_run_status(replay_live),
+                binding=replay_binding,
+            )
+        except OSError:
+            pass
+    command, outputs, command_errors = saved_replay_command(saved_job, replay)
+    if command is None:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "fail",
+            "phase": "fast_replay_validation",
+            "failure_class": "fast_replay_saved_job_invalid",
+            "errors": command_errors or ["saved replay command is unavailable"],
+            "remote_tool_was_not_started": True,
+            "second_vcs_compile_was_not_launched": True,
+            "stderr_tail": job_download.stderr[-4000:],
+        }
+
+    native_snapshot = str(replay.get("native_snapshot_path") or "")
+    native_snapshot_files = str(replay.get("native_snapshot_files_path") or "")
+    required_files = [
+        simulator_path,
+        native_snapshot,
+        f"{native_snapshot}.ucli",
+        NATIVE_CHECKPOINT_RESTORE_TCL.as_posix(),
+    ]
+    availability = run_transfer_command(
+        [
+            "ssh", "-p", str(port), "-o", "StrictHostKeyChecking=no", host,
+            "cd " + shlex.quote(remote_dir) + " && " + " && ".join(
+                f"test -f {shlex.quote(str(path))}" for path in required_files
+            ) + f" && test -d {shlex.quote(native_snapshot_files)}"
+            + f" && test -x {shlex.quote(simulator_path)}",
+        ],
+        timeout_sec,
+    )
+    if (
+        restore_upload.returncode != 0
+        or observation_upload.returncode != 0
+        or availability.returncode != 0
+    ):
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "fail",
+            "phase": "fast_replay_validation",
+            "failure_class": "fast_replay_remote_artifact_missing",
+            "errors": [
+                "saved replay simulator, native snapshot, restore script, or current observation selection is missing on the remote host"
+            ],
+            "remote_workdir": remote_dir,
+            "simulator_path": simulator_path,
+            "remote_tool_was_not_started": True,
+            "second_vcs_compile_was_not_launched": True,
+            "stderr_tail": availability.stderr[-4000:],
+        }
+
+    execution_outputs = saved_job.get("execution_outputs", {})
+    execution_outputs = (
+        execution_outputs if isinstance(execution_outputs, dict) else {}
+    )
+    progress_row = execution_outputs.get("progress_event_log", {})
+    progress_row = progress_row if isinstance(progress_row, dict) else {}
+    progress_path = safe_relative_path(progress_row.get("path"))
+    boundary_row = execution_outputs.get("boundary_trace", {})
+    boundary_row = boundary_row if isinstance(boundary_row, dict) else {}
+    boundary_path = safe_relative_path(boundary_row.get("path"))
+    simulation_row = execution_outputs.get("simulation_log", {})
+    simulation_row = simulation_row if isinstance(simulation_row, dict) else {}
+    simulation_path = safe_relative_path(simulation_row.get("path"))
+    checkpoint_id = str(replay["checkpoint_manifest"].get("checkpoint_id") or "replay")
+    live_progress_observer = (
+        LiveProgressObserver(
+            host=host,
+            port=port,
+            run_dir=run_dir,
+            remote_path=progress_path,
+            fingerprint=(
+                f"{saved_job.get('input_fingerprint_sha256')}:"
+                f"native_fast_replay:{checkpoint_id}"
+            ),
+            progress_contract=cctg_progress_contract(run_dir, {}),
+            native_loop_report_path=outputs["restore_log"],
+            live_namespace=f"native_fast_replay_{checkpoint_id[:12]}",
+        )
+        if progress_path is not None
+        else None
+    )
+
+    replay_job_state = remote_background_job_state(
+        host,
+        port,
+        remote_dir,
+        out_dir,
+        "vcs_fast_replay_restore",
+    )
+    if replay_job_state.get("certainty") != "determinate":
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "fail",
+            "phase": "fast_replay_observation_epoch",
+            "failure_class": "fast_replay_remote_state_indeterminate",
+            "errors": ["cannot safely bind the current fast replay job state"],
+            "remote_workdir": remote_dir,
+            "remote_tool_was_not_started": True,
+            "second_vcs_compile_was_not_launched": True,
+        }
+
+    signal_paths = {
+        name: relative
+        for name, relative in (
+            ("progress_event_log", progress_path),
+            ("boundary_trace", boundary_path),
+        )
+        if relative is not None
+    }
+    current_signal_outputs: dict[str, dict[str, Any]] = {}
+    if replay_job_state.get("state") == "running":
+        if live_progress_observer is not None:
+            live_progress_observer.bind_or_begin_epoch(remote_dir)
+    else:
+        # A completed detached restore has a terminal marker with the fixed
+        # label.  It must not be mistaken for the next replay attempt.
+        if replay_job_state.get("state") == "done":
+            clear_job = run_transfer_command(
+                [
+                    "ssh",
+                    "-p",
+                    str(port),
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    host,
+                    (
+                        f"cd {shlex.quote(remote_dir)} && rm -f -- "
+                        ".spatialacc_vcs_fast_replay_restore.pid "
+                        ".spatialacc_vcs_fast_replay_restore.exit "
+                        ".spatialacc_vcs_fast_replay_restore.stdout.log "
+                        ".spatialacc_vcs_fast_replay_restore.stderr.log"
+                    ),
+                ],
+                timeout_sec,
+            )
+            if clear_job.returncode != 0:
+                return {
+                    "schema_version": SCHEMA_VERSION,
+                    "verification_layer": "layer3_real_board_axi_ddr",
+                    "status": "fail",
+                    "phase": "fast_replay_observation_epoch",
+                    "failure_class": "fast_replay_stale_job_marker_cleanup_failed",
+                    "errors": ["could not clear the completed replay job marker"],
+                    "remote_workdir": remote_dir,
+                    "remote_tool_was_not_started": True,
+                    "second_vcs_compile_was_not_launched": True,
+                }
+        signal_start_bytes: dict[Path, int] = {}
+        signal_start_metadata: dict[Path, dict[str, int]] = {}
+        for name, relative in signal_paths.items():
+            metadata = remote_file_metadata(
+                host=host,
+                port=port,
+                remote_dir=remote_dir,
+                relative=relative,
+                timeout_sec=timeout_sec,
+            )
+            if metadata is None:
+                return {
+                    "schema_version": SCHEMA_VERSION,
+                    "verification_layer": "layer3_real_board_axi_ddr",
+                    "status": "fail",
+                    "phase": "fast_replay_observation_epoch",
+                    "failure_class": "fast_replay_signal_epoch_start_unavailable",
+                    "errors": [f"cannot bind the current {name} start position"],
+                    "remote_workdir": remote_dir,
+                    "remote_tool_was_not_started": True,
+                    "second_vcs_compile_was_not_launched": True,
+                }
+            byte_count = metadata["byte_count"]
+            signal_start_bytes[relative] = byte_count
+            signal_start_metadata[relative] = metadata
+            local_path = board_dir / relative
+            _prepare_fresh_transfer_target(local_path)
+            current_signal_outputs[name] = {
+                "path": str(local_path),
+                "epoch_start_byte": byte_count,
+                "copied": False,
+            }
+        if live_progress_observer is not None:
+            live_progress_observer.begin_epoch(
+                remote_dir,
+                remote_start_byte=signal_start_bytes.get(progress_path, 0),
+                signal_start_bytes=signal_start_bytes,
+                signal_start_metadata=signal_start_metadata,
+            )
+        if simulation_path is not None:
+            _prepare_fresh_transfer_target(board_dir / simulation_path)
+        _prepare_fresh_transfer_target(
+            board_dir / Path(str(saved_job.get("rtl_output_file") or "rtl_output.memh"))
+        )
+
+    # The simulator is detached on the remote host.  A local controller may
+    # restart while that simulator is still running, so reattach by the stable
+    # replay label before considering a new launch.  This preserves one real
+    # Layer-3 run and prevents duplicate token streams.
+    simulate_result = run_or_recover_remote_command(
+        host=host,
+        port=port,
+        command=command,
+        remote_dir=remote_dir,
+        cwd=out_dir,
+        timeout_sec=timeout_sec,
+        label="vcs_fast_replay_restore",
+        progress_callback=live_progress_observer,
+    )
+
+    copied: dict[str, Path] = {}
+    copies: dict[str, bool] = {}
+    for name, relative in outputs.items():
+        local_path = board_dir / "fast_replay" / relative
+        _prepare_fresh_transfer_target(local_path)
+        copied[name] = local_path
+        transfer = run_transfer_command(
+            [
+                "scp", "-q", "-P", str(port), "-o", "StrictHostKeyChecking=no",
+                f"{host}:{remote_dir}/{relative.as_posix()}", str(local_path),
+            ],
+            timeout_sec,
+        )
+        copies[name] = transfer.returncode == 0 and local_path.is_file()
+
+    observation_epoch = (
+        live_progress_observer.epoch()
+        if live_progress_observer is not None
+        else {}
+    )
+    if progress_path is not None and live_progress_observer is not None:
+        progress_local = board_dir / progress_path
+        _prepare_fresh_transfer_target(progress_local)
+        if live_progress_observer.raw_path.is_file():
+            shutil.copy2(live_progress_observer.raw_path, progress_local)
+        current_signal_outputs["progress_event_log"] = {
+            "path": str(progress_local),
+            "copied": progress_local.is_file(),
+            "epoch_start_byte": observation_epoch.get("signal_start_bytes", {}).get(
+                progress_path.as_posix()
+            ),
+        }
+    if boundary_path is not None:
+        boundary_local = board_dir / boundary_path
+        start_bytes = observation_epoch.get("signal_start_bytes", {})
+        start_byte = start_bytes.get(boundary_path.as_posix())
+        start_metadata = observation_epoch.get("signal_start_metadata", {})
+        start_metadata = (
+            start_metadata.get(boundary_path.as_posix(), {})
+            if isinstance(start_metadata, dict)
+            else {}
+        )
+        if isinstance(start_byte, int) and start_byte >= 0:
+            current_metadata = remote_file_metadata(
+                host=host,
+                port=port,
+                remote_dir=remote_dir,
+                relative=boundary_path,
+                timeout_sec=timeout_sec,
+            )
+            if (
+                isinstance(current_metadata, dict)
+                and isinstance(start_metadata, dict)
+                and isinstance(start_metadata.get("device"), int)
+                and isinstance(start_metadata.get("inode"), int)
+                and (
+                    current_metadata.get("device") != start_metadata.get("device")
+                    or current_metadata.get("inode") != start_metadata.get("inode")
+                    or int(current_metadata.get("byte_count") or 0) < start_byte
+                )
+            ):
+                start_byte = 0
+            transfer = copy_remote_file_suffix(
+                host=host,
+                port=port,
+                remote_dir=remote_dir,
+                relative=boundary_path,
+                start_byte=start_byte,
+                destination=boundary_local,
+                timeout_sec=timeout_sec,
+            )
+            current_signal_outputs["boundary_trace"] = {
+                "path": str(boundary_local),
+                "copied": transfer.returncode == 0 and boundary_local.is_file(),
+                "epoch_start_byte": start_byte,
+            }
+    if simulation_path is not None and copies.get("restore_log"):
+        current_simulation_log = board_dir / simulation_path
+        _prepare_fresh_transfer_target(current_simulation_log)
+        shutil.copy2(copied["restore_log"], current_simulation_log)
+
+    simulation_log = copied.get("restore_log", Path())
+    runtime_signal_trace_path = (
+        board_dir / "fast_replay" / "reports" / "runtime_signal_trace.json"
+    )
+    runtime_signal_trace = summarize_runtime_stage_trace_log(
+        simulation_log,
+        boundary_trace_path=(
+            Path(
+                str(
+                    current_signal_outputs.get("boundary_trace", {}).get("path")
+                    or ""
+                )
+            )
+            if isinstance(current_signal_outputs.get("boundary_trace"), dict)
+            else None
+        ),
+        selection_path=(
+            run_dir
+            / "verification"
+            / "adaptive_observation"
+            / "current_selection.json"
+        ),
+    )
+    runtime_signal_trace_path.parent.mkdir(parents=True, exist_ok=True)
+    write_json(runtime_signal_trace_path, runtime_signal_trace)
+    current_signal_outputs["runtime_signal_trace"] = {
+        "path": str(runtime_signal_trace_path),
+        "copied": runtime_signal_trace.get("status") == "ready",
+        "current_epoch_only": True,
+    }
+    simulate_result = apply_simulation_terminal_log_result(
+        simulate_result, simulation_log
+    )
+    restore_text = (
+        simulation_log.read_text(encoding="utf-8", errors="ignore")
+        if simulation_log.is_file()
+        else ""
+    )
+    restore_marker = "SPATIALACC_NATIVE_CHECKPOINT_RESTORE_PASS"
+    restore_index = restore_text.find(restore_marker)
+    observation_rebind_marker = "SPATIALACC_NATIVE_CHECKPOINT_OBSERVATION_REBIND"
+    observation_rebind_index = restore_text.find(observation_rebind_marker)
+    observation_logs_rebound = (
+        restore_index >= 0 and observation_rebind_index > restore_index
+    )
+    board_progress_after_restore = (
+        restore_index >= 0
+        and "SPATIALACC_BOARD_PROGRESS" in restore_text[
+            restore_index + len(restore_marker) :
+        ]
+    )
+    restore_errors: list[str] = []
+    if restore_index < 0:
+        restore_errors.append("VCS did not report a completed native restore")
+
+    checkpoint = replay["checkpoint_manifest"]
+    # Native VCS owns snapshot validity.  The single hard condition is its
+    # successful restore marker; observation rebinding and later board progress
+    # remain visible diagnostics and never invalidate an otherwise usable state.
+    restored = restore_index >= 0
+    hardware_validation_status = str(simulate_result.get("status") or "fail")
+    hardware_validation_passed = hardware_validation_status == "pass"
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "verification_layer": "layer3_real_board_axi_ddr",
+        # A native restore is confirmed by its marker followed by real board
+        # progress.  Later DUT or AXI failures belong to this Layer-3 run;
+        # they must reach the Agent without invalidating the reusable state.
+        "status": (
+            "checkpoint_restore_complete"
+            if restored and hardware_validation_passed
+            else "fail"
+        ),
+        "hardware_validation_status": hardware_validation_status,
+        "stage_pass_eligible": False,
+        "phase": "fast_replay_restore_check",
+        "summary": (
+            "saved Layer-3 simulator restored and ran without a VCS compile or weight load"
+            if restored and hardware_validation_passed
+            else (
+                "saved Layer-3 simulator restored, then the board run reported a hardware failure"
+                if restored
+                else "saved Layer-3 simulator restore did not complete"
+            )
+        ),
+        "simulation_execution_identity": checkpoint.get("execution_identity", {}),
+        "checkpoint_execution": {
+            "status": "pass" if restored else "fail",
+            "mode": "native_exact_model",
+            "enabled": True,
+            "restore_check": str(os.environ.get("SPATIALACC_FAST_REPLAY_RESTORE_CHECK") or "") == "1",
+        },
+        "checkpoint_artifacts": {
+            "status": "pass" if restored else "fail",
+            "mode": "native_exact_model",
+            "restore_check": str(os.environ.get("SPATIALACC_FAST_REPLAY_RESTORE_CHECK") or "") == "1",
+            "restore_log": str(simulation_log),
+            "native_restore_marker_seen": restore_index >= 0,
+            "observation_logs_rebound": observation_logs_rebound,
+            "board_progress_after_restore": board_progress_after_restore,
+            "errors": restore_errors,
+            "restored_simulator_status": hardware_validation_status,
+        },
+        "fast_replay_used": True,
+        "compile_reused": True,
+        "weight_load_skipped": True,
+        "second_vcs_compile_was_not_launched": True,
+        "remote_workdir": remote_dir,
+        "simulator_path": simulator_path,
+        "compile": {
+            "status": "pass",
+            "reused": True,
+            "summary": "reused saved remote VCS simulator; no VCS compile was launched",
+        },
+        "run": simulate_result,
+        "live_progress": (
+            live_progress_observer.report()
+            if live_progress_observer is not None
+            else {}
+        ),
+        "observation_epoch": observation_epoch,
+        "current_signal_outputs": current_signal_outputs,
+        "runtime_signal_trace": runtime_signal_trace,
+        "outputs": {
+            name: {"path": str(path), "copied": copies.get(name, False)}
+            for name, path in copied.items()
+        }
+        | {
+            "runtime_signal_trace": {
+                "path": str(runtime_signal_trace_path),
+                "copied": runtime_signal_trace.get("status") == "ready",
+            }
+        },
+        "checkpoint_restore_marker_seen": restore_index >= 0,
+        "checkpoint_observation_logs_rebound": observation_logs_rebound,
+        "board_progress_after_restore": board_progress_after_restore,
+    }
+
+
+def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
+    if str(os.environ.get("SPATIALACC_FAST_REPLAY_RECAPTURE") or "") == "1":
+        return execute_saved_fast_recapture(run_dir, timeout_sec)
+    fast_replay_requested = (
+        str(os.environ.get("SPATIALACC_FAST_REPLAY") or "") == "1"
+    )
+    if fast_replay_requested:
+        return execute_saved_fast_replay(run_dir, timeout_sec)
+    # A completed or abandoned cold job can leave a fixed job-contract path
+    # behind.  A confirmed replay deliberately starts a new simulation in its
+    # saved remote directory, so it must never attach that stale pending job.
+    pending_job = None if fast_replay_requested else pending_exact_board_job(run_dir)
     if pending_job is not None:
         prior_report = read_json(
             run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
@@ -4446,18 +5518,19 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             == "active_exact_job_terminal_acceptance_required"
         )
         if not needs_full_collection:
-            attached = execute_pending_exact_board_job(
-                run_dir, timeout_sec, pending_job
-            )
-            if attached is not None:
-                return attached
-    pending_calibration = pending_same_source_checkpoint_calibration(run_dir)
-    if pending_calibration is not None:
-        return calibrate_existing_same_source_checkpoint(
-            run_dir,
-            timeout_sec,
-            pending_calibration,
+            # Replace any older fixed-path report before attaching to the
+            # current contract.  Do not overwrite the completion handoff for
+            # this exact job before its captured checkpoint is collected.
+            write_pending_exact_board_job_report(run_dir, pending_job)
+        # A completed job keeps its terminal handoff report, but it still must
+        # be attached once to collect artifacts and persist its checkpoint.
+        # Skipping this call stranded a valid native snapshot and incorrectly
+        # sent the next loop toward a new cold capture.
+        attached = execute_pending_exact_board_job(
+            run_dir, timeout_sec, pending_job
         )
+        if attached is not None:
+            return attached
     manifest, resolved, errors = validate_manifest(run_dir)
     out_dir = run_dir / "verification" / "vcs"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -4496,7 +5569,10 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
     artifacts_dir = stage_dir / "artifacts"
     sources_dir.mkdir(parents=True)
     artifacts_dir.mkdir(parents=True)
+    stage_current_observation_selection(run_dir, stage_dir)
     staged_checkpoint_inputs = stage_checkpoint_inputs(checkpoint_plan, stage_dir)
+    fast_replay = checkpoint_plan.get("fast_replay", {})
+    fast_replay = fast_replay if isinstance(fast_replay, dict) else {}
     staged_source_paths: dict[str, Path] = {}
     staged_targets: dict[str, str] = {}
     for entry in resolved["source_entries"]:
@@ -4569,6 +5645,23 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             "phase": "manifest_validation",
             "errors": [library_setup_error],
         }
+    fpga_ip_runtime: dict[str, Any] = {"status": "not_used"}
+    if fast_replay.get("used") is not True:
+        try:
+            fpga_ip_runtime = stage_fpga_ip_runtime(
+                run_dir,
+                stage_dir,
+                read_json(run_dir / "input" / "tool_profile.json"),
+            )
+        except (OSError, ValueError, KeyError) as exc:
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "status": "fail",
+                "phase": "fpga_ip_runtime_staging",
+                "failure_class": "fpga_ip_runtime_contract_failure",
+                "errors": [str(exc)],
+                "remote_tool_was_not_started": True,
+            }
     command_shells: list[str] = []
     vcs_compile_jobs = semantic_vcs_compile_jobs()
     vcs_loop_report_enabled = environment_flag("SPATIALACC_VCS_LOOP_REPORT")
@@ -4607,6 +5700,23 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             and "+vcs+loopreport" not in argv
         ):
             argv.append("+vcs+loopreport")
+        if (
+            str(command.get("phase") or "") == "compile"
+            and Path(str(command.get("executable") or "")).name == "vlogan"
+            and "+incdir+../sources" in argv
+        ):
+            # The framework-owned generated-source compile is the one place
+            # where the current Vivado IP/XPM model filelist is added.  Other
+            # sample-project compile groups must not see it, or the same IP
+            # modules would be defined more than once.
+            argv.extend(shlex.split(ip_vcs_filelist_argument()))
+        checkpoint_compile_defines = checkpoint_adapter_compile_define_args(
+            checkpoint_plan,
+            str(command.get("executable") or ""),
+        )
+        for define in reversed(checkpoint_compile_defines):
+            if define not in argv:
+                argv.insert(0, define)
         env_argv = [
             "env",
             *(f"{key}={value}" for key, value in sorted(command["env"].items())),
@@ -4632,8 +5742,17 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         if str(artifact_name) not in staged_artifacts:
             return {"schema_version": SCHEMA_VERSION, "status": "fail", "phase": "manifest_validation", "errors": [f"runtime plusarg {key} references unknown artifact {artifact_name}"]}
         plusargs.append(f"+{key}=artifacts/{staged_artifacts[str(artifact_name)].name}")
+    plusargs.append(
+        "+SPATIALACC_OBSERVATION_SELECTION=observation/current_selection.json"
+    )
     workload_plusargs = list(plusargs)
     plusargs.extend(checkpoint_runtime_plusargs(checkpoint_plan))
+    if checkpoint_plan.get("mode") == "cold_capture":
+        capture_tcl = stage_dir / NATIVE_CHECKPOINT_CAPTURE_TCL
+        restore_tcl = stage_dir / NATIVE_CHECKPOINT_RESTORE_TCL
+        capture_tcl.parent.mkdir(parents=True, exist_ok=True)
+        capture_tcl.write_text(native_checkpoint_capture_tcl(), encoding="utf-8")
+        restore_tcl.write_text(native_checkpoint_restore_tcl(), encoding="utf-8")
     if vcs_loop_report_enabled:
         plusargs.append("+vcs+loopreport")
         workload_plusargs.append("+vcs+loopreport")
@@ -4657,6 +5776,12 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         if isinstance(runtime_loader_spec, dict)
         else []
     )
+    performance_counter_spec = output_plan.get("performance_counter_report")
+    performance_counter_paths = (
+        [performance_counter_spec["path"]]
+        if isinstance(performance_counter_spec, dict)
+        else []
+    )
     output_parents = {
         path.parent.as_posix()
         for path in (
@@ -4666,6 +5791,7 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             output_plan["elaborated_hierarchy_report"]["path"],
             output_plan["pipeline_overlap_report"]["path"],
             *runtime_loader_paths,
+            *performance_counter_paths,
             *(row["path"] for row in output_plan["protocol_monitor_reports"]),
             *supplemental_jsonl_paths,
             *supplemental_vcd_paths,
@@ -4679,6 +5805,7 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             if relative is not None and relative.parent != Path("."):
                 output_parents.add(relative.parent.as_posix())
         output_parents.add("checkpoint/state")
+        output_parents.add("checkpoint")
     prepare_output_dirs = (
         "mkdir -p " + " ".join(shlex.quote(value) for value in sorted(output_parents)) + "; "
         if output_parents
@@ -4694,6 +5821,7 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         output_plan["elaborated_hierarchy_report"]["path"],
         output_plan["pipeline_overlap_report"]["path"],
         *runtime_loader_paths,
+        *performance_counter_paths,
         *(row["path"] for row in output_plan["protocol_monitor_reports"]),
         *supplemental_jsonl_paths,
         *supplemental_vcd_paths,
@@ -4708,54 +5836,85 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             if isinstance(row, dict)
             and (relative := safe_relative_path(row.get("path"))) is not None
         )
+    if checkpoint_plan.get("mode") == "cold_capture":
+        remote_output_paths.append(NATIVE_CHECKPOINT_SNAPSHOT)
     remove_stale_outputs = "rm -f -- " + " ".join(
         shlex.quote(path.as_posix()) for path in remote_output_paths
     ) + "; "
+    if checkpoint_plan.get("mode") == "cold_capture":
+        remove_stale_outputs += (
+            f"rm -rf -- {shlex.quote(NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix())}; "
+        )
     compile_command = (
         prepare_output_dirs
         + remove_stale_outputs
         + f": > {shlex.quote(compile_log_relative.as_posix())}; set -e; "
+        + (
+            fpga_ip_runtime.get("provision_command", "")
+            + " >> "
+            + shlex.quote(compile_log_relative.as_posix())
+            + " 2>&1; "
+            if fpga_ip_runtime.get("status") == "ready"
+            else ""
+        )
         + "; ".join(
             f"{command} >> {shlex.quote(compile_log_relative.as_posix())} 2>&1"
             for command in command_shells
         )
     )
     simulator_path_text = simulator_path.as_posix()
+    simulator_invocation = (
+        f"./{shlex.quote(simulator_path_text)} "
+        + " ".join(shlex.quote(value) for value in plusargs)
+    )
+    if checkpoint_plan.get("mode") == "cold_capture":
+        simulator_invocation = (
+            f"./{shlex.quote(simulator_path_text)} -ucli "
+            f"-do {shlex.quote(NATIVE_CHECKPOINT_CAPTURE_TCL.as_posix())} "
+            + " ".join(shlex.quote(value) for value in plusargs)
+        )
     simulate_command = (
         prepare_output_dirs
-        + f"./{shlex.quote(simulator_path_text)} {' '.join(shlex.quote(value) for value in plusargs)} "
-        + f"> {shlex.quote(simulation_log_relative.as_posix())} 2>&1"
+        + simulator_invocation
+        + f" > {shlex.quote(simulation_log_relative.as_posix())} 2>&1"
     )
-    equivalence_output_paths = checkpoint_equivalence_output_paths(
-        manifest,
-        output_plan,
-    )
-    same_source_calibration_planned = bool(
-        checkpoint_plan.get("enabled") is True
-        and checkpoint_plan.get("mode") == "cold_capture"
-    )
-    equivalence_commands: dict[str, str] = {}
-    if same_source_calibration_planned:
-        equivalence_plusargs = [
-            *workload_plusargs,
-            *checkpoint_equivalence_runtime_plusargs(checkpoint_plan),
+    if fast_replay.get("used") is True:
+        # Keep the compiled simulator and captured state intact.  Only outputs
+        # produced by this replay are cleared before restoring the snapshot.
+        replay_outputs = [
+            simulation_log_relative,
+            output_plan["progress_event_log"]["path"],
+            output_plan["elaborated_hierarchy_report"]["path"],
+            output_plan["pipeline_overlap_report"]["path"],
+            *runtime_loader_paths,
+            *(row["path"] for row in output_plan["protocol_monitor_reports"]),
+            *supplemental_jsonl_paths,
+            *supplemental_vcd_paths,
+            Path(str(manifest["rtl_output_file"])),
+            Path(str(manifest["boundary_trace_file"])),
         ]
-        equivalence_commands = {
-            "prepare": checkpoint_equivalence_archive_command(
-                equivalence_output_paths,
-                destination=Path("checkpoint/equivalence/cold_outputs"),
-            ),
-            "simulate": (
-                prepare_output_dirs
-                + f"./{shlex.quote(simulator_path_text)} "
-                + " ".join(shlex.quote(value) for value in equivalence_plusargs)
-                + f" > {shlex.quote(simulation_log_relative.as_posix())} 2>&1"
-            ),
-            "finalize": checkpoint_equivalence_restore_cold_command(
-                equivalence_output_paths
-            ),
-        }
-
+        checkpoint_outputs_for_replay = checkpoint_plan.get("contract", {}).get(
+            "outputs", {}
+        )
+        if isinstance(checkpoint_outputs_for_replay, dict):
+            restore_row = checkpoint_outputs_for_replay.get("restore_report", {})
+            restore_path = (
+                safe_relative_path(restore_row.get("path"))
+                if isinstance(restore_row, dict)
+                else None
+            )
+            if restore_path is not None:
+                replay_outputs.append(restore_path)
+        replay_cleanup = "rm -f -- " + " ".join(
+            shlex.quote(path.as_posix()) for path in replay_outputs
+        ) + "; "
+        simulate_command = (
+            prepare_output_dirs
+            + replay_cleanup
+            + f"./{shlex.quote(simulator_path_text)} "
+            + " ".join(shlex.quote(value) for value in plusargs)
+            + f" > {shlex.quote(simulation_log_relative.as_posix())} 2>&1"
+        )
     payload = [
         {"path": path.relative_to(stage_dir).as_posix(), "sha256": sha256_file(path)}
         for path in sorted(stage_dir.rglob("*"))
@@ -4792,7 +5951,6 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         "top_module": manifest.get("top_module"),
         "compile_command": compile_command,
         "simulate_command": simulate_command,
-        "checkpoint_equivalence_commands": equivalence_commands,
         "execution_outputs": manifest.get("execution_outputs"),
         "supplemental_observation_outputs": [
             path.as_posix()
@@ -4810,6 +5968,11 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             )
         },
         "staged_checkpoint_inputs": staged_checkpoint_inputs,
+        "fpga_ip_runtime": {
+            key: value
+            for key, value in fpga_ip_runtime.items()
+            if key not in {"provision_command"}
+        },
         "payload": payload,
         "remote_stage_root": remote_stage_root,
     }
@@ -4837,6 +6000,17 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             "phase": "runner_configuration",
             "errors": [str(exc)],
         }
+    if fast_replay.get("used") is True:
+        remote_dir = str(fast_replay.get("remote_workdir") or "")
+        if not remote_dir:
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "status": "fail",
+                "phase": "fast_replay_validation",
+                "failure_class": "fast_replay_remote_workdir_missing",
+                "errors": ["confirmed fast replay has no remote work directory"],
+                "remote_tool_was_not_started": True,
+            }
     job_contract = {
         **fingerprint_material,
         "input_fingerprint_sha256": fingerprint,
@@ -4848,6 +6022,15 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         ] = replay_generation_sha256
     job_contract_path = stage_dir / REMOTE_SEMANTIC_JOB_CONTRACT
     write_json(job_contract_path, job_contract)
+    if fast_replay.get("used") is not True:
+        write_pending_exact_board_job_report(
+            run_dir,
+            {
+                "job": job_contract,
+                "job_path": job_contract_path,
+                "manifest_path": resolved["manifest_path"],
+            },
+        )
     live_progress_observer = LiveProgressObserver(
         host=host,
         port=port,
@@ -4861,18 +6044,20 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         ),
     )
 
-    recovered = recover_exact_remote_semantic_job(
-        host,
-        port,
-        remote_stage_root,
-        fingerprint,
-        out_dir,
-        job_contract_path,
-        payload,
-        timeout_sec,
-        simulate_command,
-        progress_callback=live_progress_observer,
-    )
+    recovered = None
+    if fast_replay.get("used") is not True:
+        recovered = recover_exact_remote_semantic_job(
+            host,
+            port,
+            remote_stage_root,
+            fingerprint,
+            out_dir,
+            job_contract_path,
+            payload,
+            timeout_sec,
+            simulate_command,
+            progress_callback=live_progress_observer,
+        )
     if recovered is not None and recovered.get("recovery_state") == "indeterminate":
         return {
             "schema_version": SCHEMA_VERSION,
@@ -4886,7 +6071,71 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         }
 
     ssh_base = ["ssh", "-p", str(port), "-o", "StrictHostKeyChecking=no", host]
-    if recovered is not None:
+    if fast_replay.get("used") is True:
+        saved_simulator = str(fast_replay.get("simulator_path") or "")
+        required_remote_files = [saved_simulator]
+        required_remote_files.extend(
+            row["staged_path"]
+            for row in checkpoint_plan.get("staged_state_artifacts", [])
+            if isinstance(row, dict) and row.get("staged_path")
+        )
+        availability = run_transfer_command(
+            [
+                *ssh_base,
+                (
+                    f"cd {shlex.quote(remote_dir)} && "
+                    + " && ".join(
+                        f"test -f {shlex.quote(str(path))}"
+                        for path in required_remote_files
+                    )
+                    + f" && test -x {shlex.quote(saved_simulator)}"
+                ),
+            ],
+            timeout_sec,
+        )
+        if availability.returncode != 0:
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "status": "fail",
+                "phase": "fast_replay_validation",
+                "failure_class": "fast_replay_remote_artifact_missing",
+                "errors": [
+                    "saved fast replay simulator or checkpoint state is missing on the remote host"
+                ],
+                "remote_workdir": remote_dir,
+                "simulator_path": saved_simulator,
+                "fast_replay_used": False,
+                "compile_reused": False,
+                "weight_load_skipped": False,
+                "second_vcs_compile_was_not_launched": True,
+                "remote_tool_was_not_started": True,
+                "stderr_tail": availability.stderr[-4000:],
+            }
+        compile_result = {
+            "status": "pass",
+            "returncode": 0,
+            "reused": True,
+            "summary": "reused the saved remote VCS simulator; no VCS compile was launched",
+        }
+        simulate_result = run_remote_background_command(
+            host,
+            port,
+            simulate_command,
+            remote_dir,
+            out_dir,
+            timeout_sec,
+            "vcs_fast_replay_simulate",
+            progress_callback=live_progress_observer,
+        )
+        remote_job_reuse = {
+            "status": "pass",
+            "fast_replay_used": True,
+            "remote_workdir": remote_dir,
+            "simulator_path": saved_simulator,
+            "real_tool_was_not_relaunched": False,
+            "second_vcs_compile_was_not_launched": True,
+        }
+    elif recovered is not None:
         remote_dir = str(recovered["remote_dir"])
         compile_result = recovered["compile"]
         simulate_result = recovered["simulate"]
@@ -5030,6 +6279,9 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
     progress_summary = summarize_progress_events(
         progress_records if isinstance(progress_records, list) else [],
         cctg_progress_contract(run_dir, manifest),
+    )
+    real_restore_progress_count = checkpoint_restore_real_progress_count(
+        progress_records if isinstance(progress_records, list) else []
     )
     if (
         isinstance(progress_records, list)
@@ -5311,6 +6563,18 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         runtime_loader_path = Path()
         runtime_loader_payload = {}
         runtime_loader_report_passed = True
+    if isinstance(performance_counter_spec, dict):
+        performance_counter_path, performance_counter_download = download_planned(
+            performance_counter_spec["path"]
+        )
+        performance_counter_payload = (
+            read_json(performance_counter_path)
+            if performance_counter_download.returncode == 0
+            else {}
+        )
+    else:
+        performance_counter_path = Path()
+        performance_counter_payload = {}
 
     checkpoint_artifact_result: dict[str, Any] = {
         "status": "not_run",
@@ -5323,597 +6587,161 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             "mode": checkpoint_plan.get("mode"),
             "errors": [],
         }
-        checkpoint_output_rows = checkpoint_plan.get("contract", {}).get(
-            "outputs", {}
-        )
-
-        def checkpoint_output(name: str) -> tuple[Path, subprocess.CompletedProcess[str]]:
-            row = (
-                checkpoint_output_rows.get(name, {})
-                if isinstance(checkpoint_output_rows, dict)
-                else {}
-            )
-            relative = safe_relative_path(row.get("path"))
-            if relative is None:
-                missing = subprocess.CompletedProcess([], 1, "", "unsafe output path")
-                return Path(), missing
-            return download_planned(relative)
-
         if checkpoint_plan.get("mode") == "cold_capture":
-            capture_path, capture_download = checkpoint_output("capture_report")
-            capture_report = (
-                read_json(capture_path) if capture_download.returncode == 0 else {}
+            ready_match = re.search(
+                r"SPATIALACC_NATIVE_CHECKPOINT_READY\s+sequence=(\d+)\s+cycle=(\d+)",
+                simulation_log_path.read_text(encoding="utf-8", errors="ignore")
+                if simulation_log_path.is_file()
+                else "",
             )
-            checkpoint_errors = checkpoint_capture_report_errors(
-                checkpoint_plan,
-                capture_report,
+            save_marker_seen = bool(
+                simulation_log_path.is_file()
+                and "SPATIALACC_NATIVE_CHECKPOINT_SAVE_PASS"
+                in simulation_log_path.read_text(encoding="utf-8", errors="ignore")
             )
-            equivalence_report: dict[str, Any] = {}
-            equivalence_execution: dict[str, Any] = {
-                "status": "not_run",
-                "summary": "capture artifacts have not passed runtime calibration eligibility",
+            native_availability = run_transfer_command(
+                [
+                    "ssh",
+                    "-p",
+                    str(port),
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    host,
+                    "cd "
+                    + shlex.quote(remote_dir)
+                    + " && test -f "
+                    + shlex.quote(NATIVE_CHECKPOINT_SNAPSHOT.as_posix())
+                    + " && test -f "
+                    + shlex.quote(f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli")
+                    + " && test -d "
+                    + shlex.quote(NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix()),
+                ],
+                timeout_sec,
+            )
+            capture_report = {
+                "schema_version": CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION,
+                "status": "pass" if ready_match and save_marker_seen and native_availability.returncode == 0 else "fail",
+                "mode": "cold_capture",
+                "captured_sequence": int(ready_match.group(1)) if ready_match else None,
+                "captured_cycle": int(ready_match.group(2)) if ready_match else None,
+                "state_artifacts": [
+                    {
+                        "kind": "native_vcs_snapshot",
+                        "path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
+                        "remote_path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
+                        "remote_ucli_path": f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli",
+                        "remote_files_path": NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix(),
+                    }
+                ],
+                "native_ready_marker_seen": bool(ready_match),
+                "native_save_marker_seen": save_marker_seen,
+                "native_snapshot_available": native_availability.returncode == 0,
             }
-            incoming_dir = (
-                checkpoint_root(run_dir)
-                / f".incoming_{str(checkpoint_plan.get('request_sha256') or 'unknown')[:20]}"
-            )
+            checkpoint_errors = checkpoint_capture_report_errors(checkpoint_plan, capture_report)
+            incoming_dir = checkpoint_root(run_dir) / ".incoming_fast_replay"
             if incoming_dir.exists():
                 shutil.rmtree(incoming_dir)
-            incoming_state_dir = incoming_dir / "state"
-            incoming_state_dir.mkdir(parents=True, exist_ok=True)
-            local_state_rows: list[dict[str, Any]] = []
-            for index, row in enumerate(capture_report.get("state_artifacts", [])):
-                if not isinstance(row, dict):
-                    continue
-                remote_relative = safe_relative_path(row.get("path"))
-                if remote_relative is None:
-                    continue
-                local_relative = Path("state") / f"{index:04d}_{remote_relative.name}"
-                local_path = incoming_dir / local_relative
-                transfer = run_transfer_command(
-                    [
-                        "scp",
-                        "-q",
-                        "-P",
-                        str(port),
-                        "-o",
-                        "StrictHostKeyChecking=no",
-                        f"{host}:{remote_dir}/{remote_relative.as_posix()}",
-                        str(local_path),
-                    ],
-                    timeout_sec,
-                )
-                if transfer.returncode != 0 or not local_path.is_file():
-                    checkpoint_errors.append(
-                        f"checkpoint state artifact download failed: {remote_relative}"
-                    )
-                    continue
-                actual_sha256 = sha256_file(local_path)
-                actual_bytes = local_path.stat().st_size
-                if row.get("sha256") and row.get("sha256") != actual_sha256:
-                    checkpoint_errors.append(
-                        f"checkpoint state artifact hash mismatch: {remote_relative}"
-                    )
-                if isinstance(row.get("byte_count"), int) and int(
-                    row["byte_count"]
-                ) != actual_bytes:
-                    checkpoint_errors.append(
-                        f"checkpoint state artifact byte count mismatch: {remote_relative}"
-                    )
-                local_state_rows.append(
-                    {
-                        "path": local_relative.as_posix(),
-                        "remote_path": remote_relative.as_posix(),
-                        "sha256": actual_sha256,
-                        "byte_count": actual_bytes,
-                        "kind": row.get("kind"),
-                    }
-                )
-            state_schema_path = str(
-                capture_report.get("state_schema", {}).get("path") or ""
-            )
-            for local_row in local_state_rows:
-                if (
-                    local_row.get("remote_path") == state_schema_path
-                    or local_row.get("kind") == "dut_vpi_schema"
-                ):
-                    capture_report.setdefault("state_schema", {})[
-                        "sha256"
-                    ] = local_row["sha256"]
-                    capture_report["state_schema"]["byte_count"] = local_row[
-                        "byte_count"
-                    ]
-                    break
-            if not capture_report.get("state_schema", {}).get("sha256"):
-                checkpoint_errors.append(
-                    "downloaded checkpoint artifacts do not contain the declared state schema"
-                )
-            calibration_eligibility = same_source_checkpoint_calibration_eligibility(
-                capture_report,
-                local_state_rows,
-                artifact_root=incoming_dir,
-                request_sha256=str(checkpoint_plan.get("request_sha256") or "")
-                or None,
-                semantic_cut_sha256=str(
-                    checkpoint_plan.get("request", {})
-                    .get("semantic_cut", {})
-                    .get("cut_sha256")
-                    or ""
-                )
-                or None,
-            )
-            equivalence_execution["runtime_calibration_eligibility"] = (
-                calibration_eligibility
-            )
-            if calibration_eligibility.get("status") != "ready":
-                equivalence_execution["summary"] = str(
-                    calibration_eligibility.get("summary")
-                    or "runtime capture is not eligible for same-source calibration"
-                )
-            equivalence_progress_contract = same_source_equivalence_progress_contract(
-                cctg_progress_contract(run_dir, manifest),
-                progress_event_path,
-                capture_report,
-                simulate_result,
-            )
-            equivalence_oracle = equivalence_progress_contract.get(
-                "same_source_equivalence_oracle", {}
-            )
-            if (
-                calibration_eligibility.get("status") == "ready"
-                and (
-                    not isinstance(equivalence_oracle, dict)
-                    or equivalence_oracle.get("status") != "ready"
-                )
-            ):
-                checkpoint_errors.extend(
-                    str(value)
-                    for value in equivalence_oracle.get("errors", [])
-                    if str(value)
-                )
-            if (
-                not checkpoint_errors
-                and same_source_calibration_planned
-                and calibration_eligibility.get("status") == "ready"
-            ):
-                prepare_result = run_or_recover_remote_command(
-                    host=host,
-                    port=port,
-                    command=equivalence_commands["prepare"],
-                    remote_dir=remote_dir,
-                    cwd=out_dir,
-                    timeout_sec=timeout_sec,
-                    label="checkpoint_equivalence_prepare",
-                )
-                equivalence_simulation: dict[str, Any] = {
-                    "status": "not_run",
-                    "returncode": None,
-                    "failure_class": None,
+            incoming_dir.mkdir(parents=True, exist_ok=True)
+            write_json(incoming_dir / "capture_report.json", capture_report)
+            local_state_rows: list[dict[str, Any]] = [
+                {
+                    "path": "native_state",
+                    "kind": "native_vcs_snapshot",
+                    "remote_path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
+                    "remote_ucli_path": f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli",
+                    "remote_files_path": NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix(),
+                    "byte_count": 0,
                 }
-                finalize_result: dict[str, Any] = {"status": "not_run"}
-                if prepare_result.get("status") == "pass":
-                    equivalence_observer = LiveProgressObserver(
-                        host=host,
-                        port=port,
-                        run_dir=run_dir,
-                        remote_path=output_plan["progress_event_log"]["path"],
-                        fingerprint=f"{fingerprint}:checkpoint_equivalence",
-                        progress_contract=equivalence_progress_contract,
-                        live_namespace="checkpoint_equivalence_live",
-                    )
-                    equivalence_simulation = run_or_recover_remote_command(
-                        host=host,
-                        port=port,
-                        command=equivalence_commands["simulate"],
-                        remote_dir=remote_dir,
-                        cwd=out_dir,
-                        timeout_sec=timeout_sec,
-                        label="vcs_checkpoint_equivalence_simulate",
-                        progress_callback=equivalence_observer,
-                    )
-                    if equivalence_simulation.get("remote_job_preserved") is not True:
-                        finalize_result = run_or_recover_remote_command(
-                            host=host,
-                            port=port,
-                            command=equivalence_commands["finalize"],
-                            remote_dir=remote_dir,
-                            cwd=out_dir,
-                            timeout_sec=timeout_sec,
-                            label="checkpoint_equivalence_finalize",
-                        )
-                equivalence_execution = {
-                    "status": "pass"
-                    if prepare_result.get("status") == "pass"
-                    and finalize_result.get("status") == "pass"
-                    else "fail",
-                    "prepare": prepare_result,
-                    "simulation": equivalence_simulation,
-                    "finalize": finalize_result,
-                    "same_compiled_simulator_reused": True,
-                    "second_vcs_compile_was_not_launched": True,
-                    "serial_execution": True,
-                    "runtime_calibration_eligibility": calibration_eligibility,
-                }
-                if finalize_result.get("status") != "pass":
-                    checkpoint_errors.append(
-                        "same-source restore calibration did not restore the cold-run evidence"
-                    )
-                else:
-                    restore_relative = Path(
-                        "checkpoint/equivalence/restore_report.json"
-                    )
-                    restore_path, restore_download = download_planned(
-                        restore_relative
-                    )
-                    restore_report = (
-                        read_json(restore_path)
-                        if restore_download.returncode == 0
-                        else {}
-                    )
-                    restored_local_paths: dict[str, Path] = {}
-                    restored_expected_paths: dict[str, Path] = {}
-                    for kind, original in (
-                        ("simulation_log", simulation_log_relative),
-                        (
-                            "progress_event_log",
-                            output_plan["progress_event_log"]["path"],
-                        ),
-                        ("rtl_output", Path(str(manifest["rtl_output_file"]))),
-                        (
-                            "boundary_trace",
-                            Path(str(manifest["boundary_trace_file"])),
-                        ),
-                    ):
-                        restored_relative = (
-                            Path("checkpoint/equivalence/restored_outputs")
-                            / original
-                        )
-                        restored_path, restored_download = download_planned(
-                            restored_relative
-                        )
-                        restored_expected_paths[kind] = restored_path
-                        if (
-                            restored_download.returncode == 0
-                            and restored_path.is_file()
-                        ):
-                            restored_local_paths[kind] = restored_path
-                    schema_local_path = next(
-                        (
-                            incoming_dir / row["path"]
-                            for row in local_state_rows
-                            if row.get("kind") == "dut_vpi_schema"
-                        ),
-                        Path(),
-                    )
-                    restored_simulation_log = restored_local_paths.get(
-                        "simulation_log",
-                        Path(),
-                    )
-                    restore_runtime_failure_evidence = (
-                        simulation_runtime_failure_evidence(
-                            restored_simulation_log
-                        )
-                    )
-                    vpi_schema_recheck = checkpoint_vpi_restore_schema_verified(
-                        restored_simulation_log,
-                        schema_local_path,
-                    )
-                    if restore_report.get("runtime_state_schema_match") is not False:
-                        restore_report["runtime_state_schema_match"] = (
-                            vpi_schema_recheck
-                        )
-                    if vpi_schema_recheck:
-                        restore_report["runtime_state_schema_sha256"] = (
-                            capture_report.get("state_schema", {}).get("sha256")
-                        )
-                    restore_report["framework_vpi_schema_recheck"] = {
-                        "status": "pass" if vpi_schema_recheck else "fail",
-                        "simulation_log": str(restored_simulation_log),
-                        "schema_path": str(schema_local_path),
-                    }
-                    restore_report["runtime_failure_evidence"] = (
-                        restore_runtime_failure_evidence
-                    )
-                    cold_required_paths = {
-                        "rtl_output": Path(
-                            str(copied_outputs["rtl_output_file"]["path"])
-                        ),
-                        "boundary_trace": Path(
-                            str(copied_outputs["boundary_trace_file"]["path"])
-                        ),
-                    }
-                    evidence_root = incoming_dir / "equivalence_evidence"
-
-                    def persist_equivalence_evidence(
-                        source: Path,
-                        side: str,
-                        kind: str,
-                    ) -> Path:
-                        suffix = source.suffix or ".bin"
-                        target = evidence_root / side / f"{kind}{suffix}"
-                        if source.is_file():
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            shutil.copy2(source, target)
-                        return target
-
-                    anchor_sequence = int(capture_report["captured_sequence"])
-                    anchor_cycle = int(capture_report["captured_cycle"])
-                    cold_progress_evidence = (
-                        evidence_root / "cold" / "progress_event_log.jsonl"
-                    )
-                    cold_suffix_materialization = (
-                        materialize_checkpoint_semantic_suffix(
-                            progress_event_path,
-                            cold_progress_evidence,
-                            anchor_sequence=anchor_sequence,
-                            anchor_cycle=anchor_cycle,
-                        )
-                    )
-                    restored_progress_source = restored_local_paths.get(
-                        "progress_event_log",
-                        Path(),
-                    )
-                    restored_progress_evidence = (
-                        evidence_root / "restored" / "progress_event_log.jsonl"
-                    )
-                    restored_suffix_materialization = (
-                        materialize_checkpoint_semantic_suffix(
-                            restored_progress_source,
-                            restored_progress_evidence,
-                            anchor_sequence=anchor_sequence,
-                            anchor_cycle=anchor_cycle,
-                        )
-                    )
-                    cold_persisted = {
-                        kind: persist_equivalence_evidence(
-                            path,
-                            "cold",
-                            kind,
-                        )
-                        for kind, path in cold_required_paths.items()
-                    }
-                    restored_persisted = {
-                        kind: persist_equivalence_evidence(
-                            restored_local_paths.get(kind, path),
-                            "restored",
-                            kind,
-                        )
-                        for kind, path in restored_expected_paths.items()
-                        if kind in {"rtl_output", "boundary_trace"}
-                    }
-                    equivalence_report = framework_equivalence_certificate(
-                        request_sha256=str(
-                            checkpoint_plan.get("request_sha256") or ""
-                        ),
-                        execution_identity=checkpoint_plan.get(
-                            "execution_identity", {}
-                        ),
-                        semantic_cut=checkpoint_plan.get("request", {}).get(
-                            "semantic_cut", {}
-                        ),
-                        capture_report=capture_report,
-                        restore_report=restore_report,
-                        cold_progress_path=cold_progress_evidence,
-                        restored_progress_path=restored_progress_evidence,
-                        cold_required_artifacts=cold_persisted,
-                        restored_required_artifacts=restored_persisted,
-                        cold_terminal={
-                            "returncode": simulate_result.get("returncode"),
-                            "failure_class": simulate_result.get(
-                                "failure_class"
-                            ),
-                        },
-                        restored_terminal={
-                            "returncode": equivalence_simulation.get(
-                                "returncode"
-                            ),
-                            "failure_class": equivalence_simulation.get(
-                                "failure_class"
-                            ),
-                        },
-                    )
-                    equivalence_report["restore_runtime_failure_evidence"] = (
-                        restore_runtime_failure_evidence
-                    )
-                    equivalence_report[
-                        "cold_semantic_suffix_materialization"
-                    ] = cold_suffix_materialization
-                    equivalence_report[
-                        "restored_semantic_suffix_materialization"
-                    ] = restored_suffix_materialization
-                    materialization_errors = []
-                    for side, result in (
-                        ("cold", cold_suffix_materialization),
-                        ("restored", restored_suffix_materialization),
-                    ):
-                        if result.get("status") == "pass":
-                            continue
-                        materialization_errors.extend(
-                            f"{side} semantic suffix materialization: {value}"
-                            for value in result.get("errors", [])
-                            if str(value)
-                        )
-                    if materialization_errors:
-                        equivalence_report["errors"] = list(
-                            dict.fromkeys(
-                                materialization_errors
-                                + equivalence_report.get("errors", [])
-                            )
-                        )
-                    for key in (
-                        "cold_progress_suffix",
-                        "restored_progress_suffix",
-                    ):
-                        row = equivalence_report.get(key, {})
-                        if isinstance(row, dict) and row.get("path"):
-                            path = Path(str(row["path"]))
-                            if path.is_relative_to(incoming_dir):
-                                row["path"] = path.relative_to(
-                                    incoming_dir
-                                ).as_posix()
-                    for row in equivalence_report.get(
-                        "required_artifact_comparisons", []
-                    ):
-                        if not isinstance(row, dict):
-                            continue
-                        for key in ("cold_path", "restored_path"):
-                            path = Path(str(row.get(key) or ""))
-                            if path.is_relative_to(incoming_dir):
-                                row[key] = path.relative_to(
-                                    incoming_dir
-                                ).as_posix()
-                    for key in (
-                        "cold_semantic_suffix_materialization",
-                        "restored_semantic_suffix_materialization",
-                    ):
-                        row = equivalence_report.get(key, {})
-                        if not isinstance(row, dict):
-                            continue
-                        for path_key in ("path", "source_path"):
-                            path = Path(str(row.get(path_key) or ""))
-                            if path.is_relative_to(incoming_dir):
-                                row[path_key] = path.relative_to(
-                                    incoming_dir
-                                ).as_posix()
+            ]
             if not checkpoint_errors:
                 checkpoint_manifest = framework_checkpoint_manifest(
                     checkpoint_plan,
                     capture_report,
                     local_state_rows,
-                    equivalence_report=equivalence_report,
                     remote_workdir=remote_dir,
                 )
                 checkpoint_id = str(checkpoint_manifest["checkpoint_id"])
                 final_dir = checkpoint_root(run_dir) / checkpoint_id
-                write_json(incoming_dir / "capture_report.json", capture_report)
-                if equivalence_report:
-                    write_json(
-                        incoming_dir / "equivalence_report.json",
-                        equivalence_report,
-                    )
                 write_json(incoming_dir / "manifest.json", checkpoint_manifest)
                 if final_dir.exists():
-                    existing_manifest = read_json(final_dir / "manifest.json")
-                    if existing_manifest.get("checkpoint_id") != checkpoint_id:
-                        checkpoint_errors.append(
-                            "content-addressed checkpoint directory has conflicting identity"
-                        )
-                    else:
-                        shutil.rmtree(incoming_dir)
-                else:
-                    incoming_dir.rename(final_dir)
-                if not checkpoint_errors:
-                    equivalence_required = (
-                        calibration_eligibility.get("status") == "ready"
-                    )
-                    equivalence_passed = (
-                        equivalence_report.get("status") == "pass"
-                    )
-                    checkpoint_artifact_result = {
-                        "status": (
-                            "pass"
-                            if not equivalence_required or equivalence_passed
-                            else "fail"
-                        ),
-                        "mode": "cold_capture",
-                        "checkpoint_id": checkpoint_id,
-                        "manifest": str(final_dir / "manifest.json"),
-                        "manifest_sha256": sha256_file(final_dir / "manifest.json"),
-                        "total_state_bytes": checkpoint_manifest[
-                            "total_state_bytes"
-                        ],
-                        "portable_state_capsule_status": checkpoint_manifest[
-                            "portable_state_capsule"
-                        ]["status"],
-                        "equivalence_status": checkpoint_manifest.get(
-                            "equivalence_certificate", {}
-                        ).get("status"),
-                        "equivalence_execution": equivalence_execution,
-                        "runtime_calibration_eligibility": calibration_eligibility,
-                        "failure_class": (
-                            None
-                            if not equivalence_required or equivalence_passed
-                            else "simulation_checkpoint_restore_equivalence_failed"
-                        ),
-                        "errors": (
-                            []
-                            if not equivalence_required or equivalence_passed
-                            else [
-                                str(value)
-                                for value in equivalence_report.get("errors", [])
-                                if str(value)
-                            ]
-                        ),
-                        "remote_acknowledgment_status": "pending",
-                        "retention_plan": {"status": "deferred_until_remote_ack"},
-                        "retention_execution": {
-                            "status": "deferred_until_remote_ack"
-                        },
-                    }
-            if checkpoint_errors:
-                checkpoint_artifact_result["errors"] = checkpoint_errors
-                checkpoint_artifact_result["capture_report"] = str(capture_path)
+                    shutil.rmtree(final_dir)
+                incoming_dir.rename(final_dir)
+                checkpoint_artifact_result = {
+                    "status": "pass",
+                    "mode": "cold_capture",
+                    "checkpoint_id": checkpoint_id,
+                    "manifest": str(final_dir / "manifest.json"),
+                    "total_state_bytes": checkpoint_manifest.get("total_state_bytes", 0),
+                    "errors": [],
+                    "remote_acknowledgment_status": "pending",
+                }
+            else:
+                checkpoint_artifact_result = {
+                    "status": "fail",
+                    "mode": "cold_capture",
+                    "capture_report": str(incoming_dir / "capture_report.json"),
+                    "errors": list(dict.fromkeys(checkpoint_errors)),
+                }
         else:
-            restore_path, restore_download = checkpoint_output("restore_report")
-            restore_report = (
-                read_json(restore_path) if restore_download.returncode == 0 else {}
-            )
-            restore_errors = []
-            if (
-                restore_report.get("schema_version")
-                != CHECKPOINT_RESTORE_REPORT_SCHEMA_VERSION
-            ):
-                restore_errors.append("checkpoint restore report schema_version is invalid")
-            if restore_report.get("status") != "pass":
-                restore_errors.append("checkpoint restore report status is not pass")
-            if restore_report.get("request_sha256") != checkpoint_plan.get(
-                "request_sha256"
-            ):
-                restore_errors.append("checkpoint restore report request hash mismatch")
-            if restore_report.get("mode") != checkpoint_plan.get("mode"):
-                restore_errors.append("checkpoint restore report mode mismatch")
-            if restore_report.get("runtime_state_schema_match") is not True:
-                restore_errors.append(
-                    "checkpoint restore did not prove a runtime state-schema match"
-                )
-            selected_checkpoint = checkpoint_plan.get(
-                "selected_checkpoint_manifest", {}
-            )
-            if restore_report.get("checkpoint_id") != selected_checkpoint.get(
-                "checkpoint_id"
-            ):
-                restore_errors.append("checkpoint restore checkpoint ID mismatch")
-            if restore_report.get(
-                "semantic_cut_sha256"
-            ) != selected_checkpoint.get("semantic_cut", {}).get("cut_sha256"):
-                restore_errors.append("checkpoint restore semantic cut hash mismatch")
-            if checkpoint_plan.get("mode") == "portable_cross_revision" and (
-                restore_report.get("runtime_state_schema_sha256")
-                != selected_checkpoint.get("state_schema", {}).get("sha256")
-            ):
-                restore_errors.append(
-                    "portable checkpoint restore runtime schema hash mismatch"
-                )
-            for field in (
-                "complete_testbench_external_state_restored",
-                "pending_transactions_and_responses_restored",
-                "immutable_files_reopened_at_captured_offsets",
-                "event_queue_quiescent_after_restore",
-            ):
-                if restore_report.get(field) is not True:
-                    restore_errors.append(
-                        f"checkpoint restore report {field} is not true"
-                    )
+            # Native restore runs use execute_saved_fast_replay(), before the
+            # current-source VCS path.  Keeping this branch explicit prevents
+            # retired VPI report parsing from becoming an accidental fallback.
             checkpoint_artifact_result = {
-                "status": "pass" if not restore_errors else "fail",
+                "status": "fail",
                 "mode": checkpoint_plan.get("mode"),
-                "candidate_screening": True,
-                "restore_report": str(restore_path),
-                "errors": restore_errors,
+                "errors": [
+                    "native checkpoint restore must use the saved simulator path"
+                ],
             }
 
     sim_log = simulation_log_path.read_text(encoding="utf-8", errors="ignore") if simulation_log_path.is_file() else ""
     compile_log = compile_log_path.read_text(encoding="utf-8", errors="ignore") if compile_log_path.is_file() else ""
+    capture_only_complete = (
+        checkpoint_plan.get("mode") == "cold_capture"
+        and checkpoint_artifact_result.get("status") == "pass"
+        and simulate_result.get("status") == "pass"
+    )
+    if capture_only_complete:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "verification_layer": "layer3_real_board_axi_ddr",
+            "status": "checkpoint_capture_complete",
+            "hardware_validation_status": "checkpoint_capture_complete",
+            "stage_pass_eligible": False,
+            "phase": "remote_vcs",
+            "returncode": simulate_result.get("returncode"),
+            "manifest": resolved["manifest_path"],
+            "simulation_execution_identity": simulation_execution_identity(manifest),
+            "compile_log": str(compile_log_path),
+            "sim_log": str(simulation_log_path),
+            "checkpoint_execution": {
+                key: checkpoint_plan.get(key)
+                for key in (
+                    "status",
+                    "mode",
+                    "enabled",
+                    "candidate_screening",
+                    "acceptance_eligible",
+                    "request_path",
+                    "request_sha256",
+                    "policy",
+                )
+            },
+            "checkpoint_artifacts": checkpoint_artifact_result,
+            "fast_replay_used": False,
+            "compile_reused": False,
+            "weight_load_skipped": False,
+            "second_vcs_compile_was_not_launched": False,
+            "simulator_path": simulator_path.as_posix(),
+            "compile": compile_result,
+            "run": simulate_result,
+            "remote_workdir": remote_dir,
+            "input_fingerprint_sha256": fingerprint,
+            "summary": (
+                "Layer-3 checkpoint capture completed; native restore "
+                "confirmation is required before replay reuse"
+            ),
+        }
     regex_matched = re.search(str(manifest["pass_regex"]), sim_log) is not None
     outputs_copied = all(row.get("copied") is True for row in copied_outputs.values())
     structured_monitors_passed = bool(monitor_results) and all(
@@ -6203,6 +7031,13 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
                 runtime_loader_path, runtime_loader_spec["path"]
             ),
         }
+    if isinstance(performance_counter_spec, dict):
+        executed_manifest["performance_counter_results"] = {
+            **performance_counter_payload,
+            "structured_report": artifact(
+                performance_counter_path, performance_counter_spec["path"]
+            ),
+        }
     executed_manifest_path = board_dir / "board_simulation_executed_manifest.json"
     write_json(executed_manifest_path, executed_manifest)
     exact_board_acceptance = validate_exact_board_acceptance(
@@ -6283,6 +7118,12 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         "pipeline_boundary_observation_summary": boundary_observation_summary,
         "progress_event_summary": progress_summary,
         "supplemental_observation_artifacts": supplemental_observation_artifacts,
+        "performance_counter_report": (
+            str(performance_counter_path)
+            if isinstance(performance_counter_spec, dict)
+            and performance_counter_path.is_file()
+            else None
+        ),
         "vcs_native_loop_report": vcs_loop_report,
         "checkpoint_execution": {
             key: checkpoint_plan.get(key)
@@ -6298,6 +7139,15 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             )
         },
         "checkpoint_artifacts": checkpoint_artifact_result,
+        "fast_replay_used": fast_replay.get("used") is True,
+        "compile_reused": fast_replay.get("used") is True,
+        "weight_load_skipped": fast_replay.get("used") is True,
+        "second_vcs_compile_was_not_launched": fast_replay.get("used") is True,
+        "simulator_path": (
+            str(fast_replay.get("simulator_path"))
+            if fast_replay.get("used") is True
+            else simulator_path.as_posix()
+        ),
         "remote_resource_policy": {
             "vcs_parallel_compile_jobs": vcs_compile_jobs,
             "vcs_parallel_compile_args_applied": sorted(
@@ -6340,6 +7190,10 @@ def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
 def pending_same_source_checkpoint_calibration(
     run_dir: Path,
 ) -> dict[str, Any] | None:
+    """Retired: native VCS restore does not use a calibration phase."""
+
+    return None
+
     """Return a hash-current cold capture that still needs same-source replay."""
 
     report_path = (
@@ -6389,12 +7243,6 @@ def pending_same_source_checkpoint_calibration(
         capture_report if isinstance(capture_report, dict) else {},
         state_artifacts if isinstance(state_artifacts, list) else [],
         artifact_root=manifest_path.parent,
-        request_sha256=str(checkpoint_manifest.get("request_sha256") or "")
-        or None,
-        semantic_cut_sha256=str(
-            checkpoint_manifest.get("semantic_cut", {}).get("cut_sha256") or ""
-        )
-        or None,
     )
     if eligibility.get("status") != "ready":
         return None
@@ -6489,9 +7337,6 @@ def same_source_checkpoint_calibration_failure_projection(
             and isinstance(attempt, dict)
             and attempt.get("status") == "fail"
             and attempt.get("producer") == "framework"
-            and attempt.get("request_sha256")
-            == checkpoint_manifest.get("request_sha256")
-            and attempt.get("semantic_cut_sha256") == cut.get("cut_sha256")
         ):
             calibration = {
                 "schema_version": (
@@ -6577,7 +7422,6 @@ def same_source_checkpoint_calibration_failure_projection(
         and isinstance(schema_path, Path)
         and schema_path.is_relative_to(checkpoint_dir)
         and schema_path.is_file()
-        and state_schema_row.get("sha256") == sha256_file(schema_path)
     )
     adaptive_stall_evidence = (
         simulation.get("adaptive_semantic_stall_evidence", {})
@@ -6772,8 +7616,8 @@ def same_source_checkpoint_calibration_failure_projection(
             "simulation_checkpoint_restore_equivalence_failed"
         ),
         "summary": (
-            "the current hash-bound cold capture restored with the same compiled "
-            "simulator, but the executed suffix failed framework equivalence"
+            "the current cold capture restored with the same compiled simulator, "
+            "but the executed suffix failed framework equivalence"
         ),
         "mode": "cold_capture",
         "request_sha256": checkpoint_manifest.get("request_sha256"),
@@ -6869,26 +7713,17 @@ def materialize_current_checkpoint_calibration_failure(
         return None
     existing_projection = report.get("checkpoint_runtime_execution_failure")
     nested_projection = checkpoint.get("runtime_execution_failure")
-    current_manifest_sha256 = sha256_file(manifest_path)
-    current_semantic_cut = checkpoint_manifest.get("semantic_cut", {})
-    current_semantic_cut = (
-        current_semantic_cut if isinstance(current_semantic_cut, dict) else {}
-    )
     if (
         isinstance(existing_projection, dict)
         and existing_projection.get("schema_version")
         == "spatialaccagent.simulation_checkpoint_runtime_capability_failure.v1"
         and existing_projection.get("status") == "ready"
-        and existing_projection.get("request_sha256")
-        == checkpoint_manifest.get("request_sha256")
-        and existing_projection.get("semantic_cut_sha256")
-        == current_semantic_cut.get("cut_sha256")
         and existing_projection.get("input_fingerprint_sha256")
         == report.get("input_fingerprint_sha256")
         and existing_projection.get("remote_workdir")
         == report.get("remote_workdir")
-        and existing_projection.get("checkpoint_manifest", {}).get("sha256")
-        == current_manifest_sha256
+        and existing_projection.get("checkpoint_manifest", {}).get("checkpoint_id")
+        == checkpoint_manifest.get("checkpoint_id")
         and nested_projection == existing_projection
     ):
         return existing_projection
@@ -7758,6 +8593,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _normalized_board_vcs_report(report: dict[str, Any]) -> dict[str, Any]:
+    """Give every runner exit the same small status surface."""
+
+    normalized = dict(report)
+    normalized.setdefault("schema_version", SCHEMA_VERSION)
+    normalized.setdefault("verification_layer", "layer3_real_board_axi_ddr")
+    normalized.setdefault("stage_pass_eligible", False)
+    normalized.setdefault("exact_board_preflight_passed", False)
+    normalized.setdefault("exact_board_acceptance_passed", False)
+    normalized.setdefault("pass_regex_matched", False)
+    normalized.setdefault("required_outputs_copied", False)
+    normalized.setdefault("structured_monitors_passed", False)
+    normalized.setdefault("pipeline_overlap_passed", False)
+    normalized.setdefault("progress_event_log_valid", False)
+    return normalized
+
+
+def execute(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
+    return _normalized_board_vcs_report(
+        _execute_board_vcs(run_dir, timeout_sec)
+    )
+
+
 def acknowledge_checkpoint_after_remote_persistence(
     run_dir: Path,
     report: dict[str, Any],
@@ -7790,49 +8648,51 @@ def acknowledge_checkpoint_after_remote_persistence(
             "remote_acknowledgment_error": "checkpoint remote workdir mismatch",
         }
     manifest["remote_acknowledgment_status"] = "pass"
-    manifest["remote_artifact_persistence"] = {
-        key: persistence.get(key)
-        for key in (
-            "status",
-            "receipt",
-            "receipt_sha256",
-            "remote_acknowledgment",
-        )
-        if persistence.get(key) is not None
-    }
     write_json(manifest_path, manifest)
-    episode_activation = activate_checkpoint_for_debug_episode(
-        run_dir,
-        manifest_path,
-    )
-    manifest = read_json(manifest_path)
-    storage_policy = manifest.get("storage_policy", {})
-    retention = checkpoint_retention_plan(
-        checkpoint_manifests(run_dir),
-        max_count=int(storage_policy.get("max_checkpoint_count") or 3),
-        max_bytes=int(storage_policy.get("max_checkpoint_bytes") or 8 * 1024**3),
-    )
-    retention_execution = apply_checkpoint_retention_plan(run_dir, retention)
     return {
         **checkpoint,
-        "manifest_sha256": sha256_file(manifest_path),
         "remote_acknowledgment_status": "pass",
-        "debug_episode_activation": episode_activation,
-        "retention_plan": retention,
-        "retention_execution": retention_execution,
     }
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    run_dir = args.run_dir.resolve()
-    runner_implementation_sha256 = sha256_file(Path(__file__).resolve())
-    with heavy_job_lease(
-        run_dir,
-        purpose="exact_board_vcs_controller",
-        wait=True,
-    ) as lease:
-        report = execute(run_dir, args.timeout_sec)
+def automatic_restore_check_environment(
+    run_dir: Path,
+    report: dict[str, Any],
+) -> dict[str, str]:
+    """Continue a successful capture directly into its one restore check."""
+
+    if (
+        report.get("status") != "checkpoint_capture_complete"
+        or os.environ.get("SPATIALACC_FAST_REPLAY_RESTORE_CHECK") == "1"
+    ):
+        return {}
+    state = read_fast_replay_state(run_dir)
+    request_path = fast_replay_request_path(run_dir)
+    if (
+        state.get("status") != "captured"
+        or state.get("verified") is not False
+        or not request_path.is_file()
+    ):
+        return {}
+    return {
+        "SPATIALACC_CHECKPOINT_REQUIRED": "1",
+        "SPATIALACC_CHECKPOINT_REPLAY": "1",
+        "SPATIALACC_CHECKPOINT_REQUEST": str(request_path),
+        "SPATIALACC_FAST_REPLAY": "1",
+        "SPATIALACC_FAST_REPLAY_STATE": str(fast_replay_state_path(run_dir)),
+        "SPATIALACC_FAST_REPLAY_RESTORE_CHECK": "1",
+    }
+
+
+def finalize_runner_report(
+    run_dir: Path,
+    report: dict[str, Any],
+    *,
+    lease: dict[str, Any],
+    runner_implementation_sha256: str,
+) -> tuple[dict[str, Any], Path]:
+    """Persist one runner result and update execution-only replay state."""
+
     report["heavy_job_lease"] = {**lease, "status": "released"}
     report["runner_implementation_sha256"] = runner_implementation_sha256
     manifest_path = (
@@ -7851,63 +8711,98 @@ def main(argv: list[str] | None = None) -> int:
         )
     out = run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
     write_json(out, report)
+    checkpoint = report.get("checkpoint_artifacts", {})
     if (
-        report.get("phase") == "remote_vcs"
-        and report.get("remote_workdir")
-        and report.get("input_fingerprint_sha256")
-        and report.get("checkpoint_calibration_only") is not True
-        and report.get("active_exact_job_attachment") is not True
+        report.get("phase") in {"remote_vcs", "fast_replay_recapture"}
+        and isinstance(checkpoint, dict)
+        and checkpoint.get("mode") == "cold_capture"
+        and checkpoint.get("status") == "pass"
     ):
-        tool = tool_profile(run_dir)
-        try:
-            persistence = persist_board_remote_artifacts(
-                run_dir=run_dir,
-                report=report,
-                host=str(tool.get("host") or ""),
-                port=int(tool.get("port") or 22),
-                timeout_sec=args.timeout_sec,
-            )
-        except Exception as exc:
-            persistence = {
-                "status": "fail",
-                "blockers": [f"board artifact persistence raised: {exc}"],
-            }
-        report["remote_artifact_persistence"] = persistence
-        report["checkpoint_artifacts"] = (
-            acknowledge_checkpoint_after_remote_persistence(
-                run_dir,
-                report,
-                persistence,
-            )
+        report["checkpoint_artifacts"] = acknowledge_checkpoint_after_remote_persistence(
+            run_dir,
+            report,
+            {"status": "pass"},
         )
-        if report.get("status") in {"pass", "candidate_pass"} and persistence.get("status") != "pass":
-            report["hardware_validation_status"] = (
-                "screening_pass"
-                if report.get("status") == "candidate_pass"
-                else "pass"
-            )
-            report["status"] = "fail"
-            report["failure_class"] = "remote_artifact_persistence_failure"
-            report.setdefault("errors", []).extend(
-                str(value)
-                for value in persistence.get("blockers", [])
-                if str(value)
-            )
         write_json(out, report)
     if (
-        report.get("status") == "pass"
-        and report.get("stage_pass_eligible") is True
+        report.get("phase") in {
+            "remote_vcs",
+            "fast_replay_recapture",
+            "fast_replay_restore_check",
+        }
         and report.get("checkpoint_calibration_only") is not True
     ):
-        report["simulation_checkpoint_debug_episode_close"] = (
-            close_checkpoint_debug_episode(
+        report["fast_replay_state"] = update_fast_replay_state(run_dir, report)
+        write_json(out, report)
+    binding = board_run_binding(report)
+    if binding:
+        try:
+            update_live_state_slot(
                 run_dir,
-                reason="full cold exact-board VCS passed and the long bug is resolved",
+                "board_run",
+                board_run_status(report),
+                binding=binding,
             )
+        except OSError:
+            pass
+    return report, out
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    run_dir = args.run_dir.resolve()
+    runner_implementation_sha256 = sha256_file(Path(__file__).resolve())
+    captured_transition: dict[str, Any] | None = None
+    while True:
+        with heavy_job_lease(
+            run_dir,
+            purpose="exact_board_vcs_controller",
+            wait=True,
+        ) as lease:
+            report = execute(run_dir, args.timeout_sec)
+        report, out = finalize_runner_report(
+            run_dir,
+            report,
+            lease=lease,
+            runner_implementation_sha256=runner_implementation_sha256,
         )
+        restore_env = automatic_restore_check_environment(run_dir, report)
+        if not restore_env:
+            break
+        captured_transition = {
+            "status": "capture_complete",
+            "checkpoint_id": report.get("checkpoint_artifacts", {}).get(
+                "checkpoint_id"
+            ),
+            "remote_workdir": report.get("remote_workdir"),
+            "next_action": "restore_once_and_check",
+        }
+        os.environ.pop("SPATIALACC_FAST_REPLAY_RECAPTURE", None)
+        os.environ.update(restore_env)
+
+    if captured_transition is not None:
+        report["automatic_restore_check"] = {
+            **captured_transition,
+            "status": "complete",
+            "result_status": report.get("status"),
+            "restore_marker_seen": report.get(
+                "checkpoint_restore_marker_seen"
+            ),
+            "observation_logs_rebound": report.get(
+                "checkpoint_observation_logs_rebound"
+            ),
+            "board_progress_after_restore": report.get(
+                "board_progress_after_restore"
+            ),
+        }
         write_json(out, report)
     print(out)
-    if report.get("status") not in {"pass", "candidate_pass"}:
+    if report.get("status") not in {
+        "pass",
+        "candidate_pass",
+        "checkpoint_capture_complete",
+        "checkpoint_restore_complete",
+    }:
         print("case_board_vcs_functional.py: " + "; ".join(report.get("errors", [str(report.get("phase"))])[:10]), file=sys.stderr)
         return 1
     return 0

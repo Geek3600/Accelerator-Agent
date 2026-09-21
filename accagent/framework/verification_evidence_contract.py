@@ -121,11 +121,6 @@ ROLE_CAPABILITY_REQUIREMENTS: dict[str, set[str]] = {
         "real_model_weights_consumed",
         "random_input_stimulus",
     },
-    "single_layer_golden_reference_builder": {
-        "target_model_single_layer_reference",
-        "real_model_weights_consumed",
-        "independent_expected_output",
-    },
     "single_layer_golden_compare": {
         "target_model_single_layer_semantics",
         "real_model_weights_consumed",
@@ -180,7 +175,6 @@ ROLE_PATH_REQUIREMENTS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "leaf_functional_sim": (("weight", "input"), ("semantic", "report")),
     "leaf_golden_compare": (("weight", "input"), ("semantic", "golden", "report")),
     "single_layer_functional_sim": (("weight", "input"), ("semantic", "functional", "report")),
-    "single_layer_golden_reference_builder": (("weight", "input"), ("golden", "semantic", "reference")),
     "single_layer_golden_compare": (("weight", "input", "golden"), ("semantic", "golden", "report")),
     "board_interface_discovery": (("target_board", "sample_project"), ("identity", "hash", "board")),
     "vcs_functional_sim": (("weight", "input", "wrapper", "sample"), ("log", "trace", "output")),
@@ -206,7 +200,6 @@ ORACLE_PYTHON_ENVIRONMENT_ROLES = {
     "leaf_functional_sim",
     "leaf_golden_compare",
     "single_layer_functional_sim",
-    "single_layer_golden_reference_builder",
     "single_layer_golden_compare",
     "vcs_evidence_analyzer",
 }

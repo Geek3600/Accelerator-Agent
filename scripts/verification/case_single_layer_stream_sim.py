@@ -600,7 +600,7 @@ def rematerialize_cctg_boundary_replay(run_dir: Path) -> tuple[Path, dict[str, A
             if direct_rematerialization.get("status") == "pass":
                 report["status"] = "pass"
         write_json(report_path, report)
-        hierarchy_path = run_dir / "verification" / "qwen_hierarchy" / "single_layer_functional.json"
+        hierarchy_path = run_dir / "verification" / "case_hierarchy" / "single_layer_functional.json"
         if hierarchy_path.parent.exists():
             write_json(hierarchy_path, {**report, "gate": "single_layer_functional"})
     return rematerialization_path, rematerialization
@@ -1611,8 +1611,7 @@ def resolve_input_manifest(run_dir: Path, paths: dict[str, Any]) -> Path:
     candidates = [
         Path(str(paths.get("input_manifest"))) if paths.get("input_manifest") else None,
         Path(str(paths.get("packed_input_manifest"))) if paths.get("packed_input_manifest") else None,
-        run_dir / "verification" / "case_real_weights" / "input_manifest.json",
-        run_dir / "verification" / "qwen_real_weights" / "input_manifest.json",
+        run_dir / "verification" / "model_weights" / "input_manifest.json",
     ]
     path = first_existing([p for p in candidates if p is not None])
     if path is None:
@@ -1625,8 +1624,7 @@ def resolve_input_memh(run_dir: Path, paths: dict[str, Any], manifest: dict[str,
     candidates = [
         Path(str(paths.get("input_memh"))) if paths.get("input_memh") else None,
         Path(str(image.get("path"))) if image.get("path") else None,
-        run_dir / "verification" / "case_real_weights" / "input_activation.u32.memh",
-        run_dir / "verification" / "qwen_real_weights" / "input_activation.u32.memh",
+        run_dir / "verification" / "model_weights" / "input_activation.u32.memh",
     ]
     path = first_existing([p for p in candidates if p is not None])
     if path is None:
@@ -1987,7 +1985,7 @@ def functional_mode(args: argparse.Namespace) -> int:
                 report["status"] = "fail"
         report_path = run_dir / "verification" / "single_layer" / "single_layer_functional_report.json"
         write_json(report_path, report)
-        hierarchy_path = run_dir / "verification" / "qwen_hierarchy" / "single_layer_functional.json"
+        hierarchy_path = run_dir / "verification" / "case_hierarchy" / "single_layer_functional.json"
         write_json(hierarchy_path, {**report, "gate": "single_layer_functional"})
         expected_beats = int(section.get("expected_output", {}).get("beats") or 0)
         write_boundary_trace(run_dir, report, expected_beats)
@@ -2040,7 +2038,7 @@ def functional_mode(args: argparse.Namespace) -> int:
     }
     report_path = run_dir / "verification" / "single_layer" / "single_layer_functional_report.json"
     write_json(report_path, report)
-    hierarchy_path = run_dir / "verification" / "qwen_hierarchy" / "single_layer_functional.json"
+    hierarchy_path = run_dir / "verification" / "case_hierarchy" / "single_layer_functional.json"
     if hierarchy_path.parent.exists():
         write_json(hierarchy_path, {**report, "gate": "single_layer_functional"})
     write_boundary_trace(run_dir, report, expected_beats)
@@ -2152,7 +2150,7 @@ def golden_mode(args: argparse.Namespace) -> int:
         }
         report_path = run_dir / "verification" / "single_layer" / "single_layer_golden_compare.json"
         write_json(report_path, report)
-        hierarchy_path = run_dir / "verification" / "qwen_hierarchy" / "single_layer_golden_compare.json"
+        hierarchy_path = run_dir / "verification" / "case_hierarchy" / "single_layer_golden_compare.json"
         write_json(hierarchy_path, {**report, "gate": "single_layer_golden_compare"})
         print(report_path)
         return 0 if not blockers else 1
@@ -2168,7 +2166,6 @@ def golden_mode(args: argparse.Namespace) -> int:
         [
             run_dir / "verification" / "single_layer" / "single_layer_golden.memh",
             run_dir / "verification" / "case_real_weights" / "single_layer_golden.memh",
-            run_dir / "verification" / "qwen_real_weights" / "single_layer_golden.memh",
         ]
     )
     golden_path = first_existing(golden_candidates)
@@ -2204,7 +2201,7 @@ def golden_mode(args: argparse.Namespace) -> int:
     }
     report_path = run_dir / "verification" / "single_layer" / "single_layer_golden_compare.json"
     write_json(report_path, report)
-    hierarchy_path = run_dir / "verification" / "qwen_hierarchy" / "single_layer_golden_compare.json"
+    hierarchy_path = run_dir / "verification" / "case_hierarchy" / "single_layer_golden_compare.json"
     if hierarchy_path.parent.exists():
         write_json(hierarchy_path, {**report, "gate": "single_layer_golden_compare"})
     print(report_path)

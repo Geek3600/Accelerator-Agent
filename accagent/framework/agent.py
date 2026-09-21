@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -23,28 +24,28 @@ from accagent.framework.stage_agent import (
     temporary_env,
 )
 from accagent.framework.config import CFG, RunCfg
-from accagent.framework.llm_client import PreStageSafetyGate
 from accagent.framework.stage_input_common import DEFAULT_TEMPLATE_DIR
 from accagent.framework.stage_llm import run_stage_agent
-
-
-STAGE_TARGET_ALIASES = {
-    "stage3.pipeline_planning": "pipeline_planning",
-    "stage4.parameter_binding": "parameter_binding",
-    "stage5.code_generation": "code_generation",
-    "stage6.verification_artifacts": "verification_artifacts",
-    "stage7.verification": "debug_loop",
-    "stage7.debug_loop": "debug_loop",
-    "stage8.repair": "debug_loop",
-    "stage9.backend_board": "backend_board",
-}
-
-MAX_STAGE_ATTEMPTS = 2
-MAX_FLOW_BACKTRACKS = 6
+from accagent.framework.workflow_contract import (
+    STAGE_TARGET_ALIASES,
+    public_stage,
+    public_workflow_manifest,
+)
 
 
 def json_dumps_stable(data: object) -> str:
     return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def is_formal_dse_backtrack(request: dict[str, Any], target_stage: str | None = None) -> bool:
+    """Formal exact DSE measurements are not generic retry churn."""
+
+    if not isinstance(request, dict):
+        return False
+    requested_target = str(request.get("target_stage") or "")
+    if target_stage is not None and requested_target not in {target_stage, f"stage4.{target_stage}"}:
+        return False
+    return str(request.get("verification_scope") or "") == "formal_dse_campaign"
 
 
 class TopAgent:
@@ -59,7 +60,6 @@ class TopAgent:
         self.checkpoint_dir = self.out / "agent" / "checkpoints"
         self.flow_state_path = self.out / "agent" / "flow_state.json"
         self.runner = ToolRunner(self.root, self.log_dir)
-        self.safety_gate = PreStageSafetyGate(self.out, cfg.llm)
         self.tool_env = {
             "SPATIALACC_RUN_REAL_TOOLS": "1" if cfg.run_real_tools else "0",
             "SPATIALACC_TOOL_TIMEOUT_SEC": str(cfg.real_tool_timeout_sec),
@@ -68,7 +68,6 @@ class TopAgent:
             "SPATIALACC_LLM_ENDPOINT": cfg.llm.endpoint,
             "SPATIALACC_LLM_API_KEY": cfg.llm.api_key,
             "SPATIALACC_LLM_TIMEOUT_SEC": str(cfg.llm.timeout_sec),
-            "SPATIALACC_LLM_ENFORCE": "1",
             "SPATIALACC_LLM_REASONING_EFFORT": cfg.llm.reasoning_effort or "",
             "SPATIALACC_LLM_STORE": "1" if cfg.llm.store else "0",
             "SPATIALACC_LLM_TEXT_VERBOSITY": cfg.llm.text_verbosity or "",
@@ -308,7 +307,6 @@ class TopAgent:
     def initialize_run_counters(self) -> None:
         if self.resume_enabled():
             self.runner.index = len(list(self.log_dir.glob("*.json")))
-            self.safety_gate.i = len(list((self.out / "agent" / "llm").glob("*_decision.json")))
             self.flow_state = self.load_flow_state()
             self.flow_events = [
                 event for event in self.flow_state.get("flow_events", []) if isinstance(event, dict)
@@ -377,6 +375,7 @@ class TopAgent:
                 [
                     self.cfg.task_spec,
                     self.cfg.model_source,
+                    self.cfg.model_dir,
                     self.cfg.board_materials_dir,
                     self.cfg.quantization_materials_dir,
                     self.cfg.tool_materials_dir,
@@ -487,14 +486,15 @@ class TopAgent:
             command_result=cmd,
             output_path=str(report_path),
             summary=report,
-            safety_gate={"enabled": False, "decision": {"decision": "reuse_checkpoint", "tool_command_allowed": False}},
         )
 
     def record(self, result: StageResult) -> None:
         self.results.append(result)
         self.write_report(status="running" if result.passed else "failed")
         status = "pass" if result.passed else "fail"
-        print(f"[agent] stage {result.name}: {status}", file=sys.stderr, flush=True)
+        stage = public_stage(result.name)
+        label = f"Stage {stage['id']} {stage['name']}" if stage["id"] is not None else "internal"
+        print(f"[agent] {label} ({result.name}): {status}", file=sys.stderr, flush=True)
         if result.output_path:
             print(f"[agent] output {result.output_path}", file=sys.stderr, flush=True)
         if result.summary:
@@ -516,7 +516,11 @@ class TopAgent:
                     "enforce": True,
                     "mandatory": True,
                 },
-                "stages": [result.to_dict() for result in self.results],
+                "public_workflow": public_workflow_manifest(),
+                "stages": [
+                    {**result.to_dict(), "public_stage": public_stage(result.name)}
+                    for result in self.results
+                ],
                 "flow_events": self.flow_events,
                 "flow_state": {
                     "path": str(self.flow_state_path),
@@ -582,8 +586,9 @@ class TopAgent:
                 "do_not_use_failed_artifacts_as_validated_downstream_inputs": True,
                 "prefer_retry_same_stage_for_retry_requests": True,
                 "honor_backtrack_requests_before_downstream_progress": True,
-                "bounded_attempts_per_stage": MAX_STAGE_ATTEMPTS,
-                "bounded_total_backtracks": MAX_FLOW_BACKTRACKS,
+                "stage_attempt_counters_are_observability_only": True,
+                "backtrack_counters_are_observability_only": True,
+                "framework_never_terminates_a_valid_llm_repair_or_replan_loop": True,
             },
         }
         with temporary_env(self.tool_env):
@@ -665,20 +670,19 @@ class TopAgent:
             if target is None:
                 event.update(
                     {
-                        "decision": "stop",
-                        "reason": f"open backtrack request has no known target stage: {latest.get('target_stage')}",
+                        "decision": "retry_replan",
+                        "reason": (
+                            "open backtrack request has no known target stage; "
+                            "retry the current stage so the LLM can emit a valid route"
+                        ),
+                        "invalid_target_stage": latest.get("target_stage"),
+                        "target_stage": current_stage,
+                        "target_index": current_index,
                     }
                 )
-                return None, sacg_state, event
+                return current_index, sacg_state, event
             target_index = stage_names.index(target)
-            if backtrack_count >= MAX_FLOW_BACKTRACKS:
-                event.update(
-                    {
-                        "decision": "stop",
-                        "reason": f"bounded backtrack limit reached before target {target}",
-                    }
-                )
-                return None, sacg_state, event
+            formal_dse_campaign = is_formal_dse_backtrack(latest, target)
             event.update(
                 {
                     "decision": "backtrack",
@@ -686,6 +690,7 @@ class TopAgent:
                     "target_stage": target,
                     "target_index": target_index,
                     "request_id": latest.get("id"),
+                    "formal_dse_campaign": formal_dse_campaign,
                 }
             )
             return target_index, sacg_state, event
@@ -701,7 +706,7 @@ class TopAgent:
             for item in retries
             if self.stage_key_for_target(str(item.get("target_stage") or ""), stage_names) == current_stage
         ]
-        if retry_current and attempt_counts.get(current_stage, 0) < MAX_STAGE_ATTEMPTS:
+        if retry_current:
             latest = retry_current[-1]
             event.update(
                 {
@@ -718,7 +723,6 @@ class TopAgent:
         if (
             not result.passed
             and (llm_retry_actions or llm_status_contains("retry_current_stage"))
-            and attempt_counts.get(current_stage, 0) < MAX_STAGE_ATTEMPTS
         ):
             latest = llm_retry_actions[-1] if llm_retry_actions else {}
             event.update(
@@ -735,26 +739,12 @@ class TopAgent:
             )
             return current_index, sacg_state, event
 
-        if (
-            not result.passed
-            and (llm_retry_actions or llm_status_contains("retry_current_stage"))
-            and attempt_counts.get(current_stage, 0) >= MAX_STAGE_ATTEMPTS
-        ):
-            event.update(
-                {
-                    "decision": "stop",
-                    "reason": f"bounded stage retry limit reached after LLM flow controller requested retry: {current_stage}",
-                    "source": "llm_flow_controller",
-                }
-            )
-            return None, sacg_state, event
-
         retry_targets = [
             self.stage_key_for_target(str(item.get("target_stage") or ""), stage_names)
             for item in retries
         ]
         retry_targets = [target for target in retry_targets if target]
-        if retry_targets and backtrack_count < MAX_FLOW_BACKTRACKS:
+        if retry_targets:
             target = retry_targets[-1]
             target_index = stage_names.index(target)
             event.update(
@@ -770,21 +760,33 @@ class TopAgent:
         if current_stage == "debug_loop":
             event.update(
                 {
-                    "decision": "stop",
-                    "reason": "hierarchical debug loop failed; backend must not run until closed",
+                    "decision": "retry_replan",
+                    "reason": (
+                        "hierarchical debug loop is incomplete; rerun its current repair "
+                        "scope so the LLM can replan from current real-tool evidence"
+                    ),
+                    "target_stage": current_stage,
+                    "target_index": current_index,
                 }
             )
-            return None, sacg_state, event
+            return current_index, sacg_state, event
 
         event.update(
             {
-                "decision": "stop",
-                "reason": "stage failed and no bounded retry/backtrack/repair route is available",
+                "decision": "retry_replan",
+                "reason": (
+                    "stage failed without a valid route; keep the current stage active "
+                    "and request a fresh LLM replan rather than terminating the flow"
+                ),
+                "target_stage": current_stage,
+                "target_index": current_index,
             }
         )
-        return None, sacg_state, event
+        return current_index, sacg_state, event
 
     def run(self) -> bool:
+        if self.cfg.model_source is None or self.cfg.model_dir is None:
+            raise ValueError("a complete design run requires explicit model_source and model_dir inputs")
         self.initialize_run_counters()
         self.write_report(status="running")
 
@@ -801,10 +803,10 @@ class TopAgent:
                 out=self.out,
                 task=self.cfg.task_spec,
                 model_source=self.cfg.model_source,
+                model_dir=self.cfg.model_dir,
                 board_materials_dir=self.cfg.board_materials_dir,
                 quantization_materials_dir=self.cfg.quantization_materials_dir,
                 tool_materials_dir=self.cfg.tool_materials_dir,
-                safety_gate=self.safety_gate,
             )
         self.record(input_result)
         self.write_stage_checkpoint(
@@ -830,7 +832,7 @@ class TopAgent:
         )
         if constraint_result is None:
             constraint_agent = ConstraintExtractionAgent(self.runner, self.tool_env)
-            constraint_result = constraint_agent.run(prepared_inputs, self.cfg.design, safety_gate=self.safety_gate)
+            constraint_result = constraint_agent.run(prepared_inputs, self.cfg.design)
         self.record(constraint_result)
         self.write_stage_checkpoint(
             stage="constraint_extraction",
@@ -855,7 +857,7 @@ class TopAgent:
         )
         if template_result is None:
             template_agent = TemplateSelectionAgent(self.runner, self.tool_env)
-            template_result = template_agent.run(sacg_state, safety_gate=self.safety_gate)
+            template_result = template_agent.run(sacg_state)
         self.record(template_result)
         self.write_stage_checkpoint(
             stage="template_selection",
@@ -912,24 +914,6 @@ class TopAgent:
         self.hydrate_stage_attempts_from_logs([spec[0] for spec in stage_specs])
         while stage_index < len(stage_specs):
             name, module, report_dir, report_file = stage_specs[stage_index]
-            active_attempt_count = self.stage_attempt_count(name, module)
-            if active_attempt_count >= MAX_STAGE_ATTEMPTS:
-                self.record_flow_event(
-                    {
-                        "stage": name,
-                        "stage_passed": False,
-                        "sacg_state": str(sacg_state) if sacg_state else None,
-                        "decision": "stop",
-                        "reason": f"persistent bounded attempt limit reached for {name}: {MAX_STAGE_ATTEMPTS}",
-                        "attempt_count": active_attempt_count,
-                        "legacy_failure_count": int(
-                            self.flow_state.get("legacy_stage_failures", {}).get(name, 0) or 0
-                        ),
-                        "flow_state_path": str(self.flow_state_path),
-                    }
-                )
-                self.write_report(status="failed")
-                return False
             attempt_count = self.increment_stage_attempt(name, module)
             report_path = self.out / report_dir / report_file
             expected_state = self.stage_state_path(report_dir)
@@ -941,7 +925,7 @@ class TopAgent:
             )
             if stage_result is None:
                 stage_agent = GenericStageAgent(self.runner, name, module, report_dir, report_file, self.tool_env)
-                stage_result = stage_agent.run(sacg_state, safety_gate=self.safety_gate)
+                stage_result = stage_agent.run(sacg_state)
             self.record(stage_result)
             next_sacg_state = self.report_state_path(stage_result)
             if next_sacg_state is None:
@@ -986,21 +970,26 @@ class TopAgent:
                         "stage": name,
                         "stage_passed": stage_result.passed,
                         "sacg_state": str(next_sacg_state) if next_sacg_state else None,
-                        "decision": "stop",
-                        "reason": f"LLM flow controller failed: {exc}",
+                        "decision": "retry_replan",
+                        "reason": f"LLM flow controller failed transiently: {exc}",
+                        "target_stage": name,
+                        "target_index": stage_index,
                     }
                 )
-                self.write_report(status="failed")
-                return False
+                self.write_report(status="running")
+                sacg_state = next_sacg_state or sacg_state
+                continue
             event["attempt_count"] = attempt_count
             event["flow_state_path"] = str(self.flow_state_path)
             self.record_flow_event(event)
-            self.write_report(status="running" if next_index is not None else ("ready" if stage_result.passed else "failed"))
+            self.write_report(status="running" if next_index is not None else ("ready" if stage_result.passed else "running"))
             if next_index is None:
                 if stage_result.passed:
                     break
-                self.write_report(status="failed")
-                return False
+                # A failed stage must never become a terminal framework state.
+                # Keep its current SACG evidence and obtain a fresh LLM route.
+                sacg_state = next_sacg_state or sacg_state
+                continue
             if event.get("decision") in {"backtrack", "reroute_retry_target"}:
                 self.flow_state["backtrack_count"] = int(self.flow_state.get("backtrack_count", 0) or 0) + 1
                 self.save_flow_state()
@@ -1008,7 +997,7 @@ class TopAgent:
             stage_index = next_index
 
         validation_agent = SACGValidationAgent(self.runner, self.tool_env)
-        validation_result = validation_agent.run(sacg_state, safety_gate=self.safety_gate)
+        validation_result = validation_agent.run(sacg_state)
         self.record(validation_result)
         final_status = "ready" if validation_result.passed else "failed"
         self.write_report(status=final_status)
@@ -1017,11 +1006,34 @@ class TopAgent:
 
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
-    if args:
-        print("error: edit accagent/framework/config.py instead of passing CLI arguments", file=sys.stderr)
-        return 2
+    import argparse
 
-    agent = TopAgent(CFG)
+    parser = argparse.ArgumentParser(description="Run one complete SpatialAccAgent design flow")
+    parser.add_argument("--run-dir", type=Path, required=True)
+    parser.add_argument("--design", required=True)
+    parser.add_argument("--task-spec", type=Path, required=True)
+    parser.add_argument("--model-source", type=Path, required=True)
+    parser.add_argument("--model-dir", type=Path, required=True)
+    parser.add_argument("--board-materials-dir", type=Path, default=CFG.board_materials_dir)
+    parser.add_argument("--quantization-materials-dir", type=Path, default=CFG.quantization_materials_dir)
+    parser.add_argument("--tool-materials-dir", type=Path, default=CFG.tool_materials_dir)
+    parser.add_argument("--tool-timeout-sec", type=int, default=CFG.real_tool_timeout_sec)
+    parser.add_argument("--no-resume", action="store_true")
+    parsed = parser.parse_args(args)
+    cfg = replace(
+        CFG,
+        out=parsed.run_dir,
+        design=parsed.design,
+        task_spec=parsed.task_spec,
+        model_source=parsed.model_source,
+        model_dir=parsed.model_dir,
+        board_materials_dir=parsed.board_materials_dir,
+        quantization_materials_dir=parsed.quantization_materials_dir,
+        tool_materials_dir=parsed.tool_materials_dir,
+        real_tool_timeout_sec=parsed.tool_timeout_sec,
+        resume_existing=not parsed.no_resume,
+    )
+    agent = TopAgent(cfg)
     passed = agent.run()
     print(agent.report_path)
     return 0 if passed else 1

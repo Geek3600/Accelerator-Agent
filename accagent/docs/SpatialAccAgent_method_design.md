@@ -2,9 +2,13 @@
 
 ## 0. 文档状态
 
-本文档是 SpatialAccAgent 的顶层方法设计文档。它整合了当前项目上下文、`accagent/docs` 中已有的问题定义和 SACG 文档、本地相关论文阅读、以及现有 agent / EDA agent / 加速器生成系统的设计模式。
+本文档保留为早期方法讨论和问题审计档案。它不定义当前运行流程，也不应作为
+Stage 编号、DSE 语义、验证闭环或后端通过条件的执行依据。
 
-本文档不是单纯针对当前代码原型的修改计划，而是定义后续论文和系统实现应该围绕的核心方法。
+当前正式方法和唯一可执行的连续 Stage 0--7 定义位于
+`accagent/docs/methodology.md` 与 `accagent/framework/workflow_contract.py`。
+本文后续出现的独立 Stage 8/9、first-candidate DSE、旧 checkpoint/hash gate 或
+历史缺口描述均属于已归档的历史状态，不能与当前正式框架并列引用。
 
 当前范围：
 
@@ -543,17 +547,11 @@ Repair scope：
 - `approval_required`：golden changes、oracle changes、tolerance changes、compute-core edits、model semantics changes；
 - `forbidden`：删除测试、绕过 checker、缺少必要证据却 claim final pass、削弱目标 spatial semantics。
 
-### Stage 8：Backend 和板上闭环
+### Stage 7：Vivado 实现与 QoR 闭环
 
-输出：
-
-- synthesis report；
-- implementation report；
-- timing summary；
-- resource utilization；
-- board runtime log；
-- benchmark metrics；
-- unresolved backend violations。
+对外输出仅保留四项 QoR 指标：`resources`、`power_w`、
+`clock_frequency_mhz` 和 `performance_tokens_per_second`。Vivado 原始报告
+仅作为这些指标的证据，不构成额外对外阶段产物。
 
 Backend failures 应该转换成 backend/deployment rule violations，而不是散落在 Vivado log 中。
 

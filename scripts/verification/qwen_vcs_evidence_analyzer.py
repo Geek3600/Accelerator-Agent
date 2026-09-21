@@ -497,6 +497,9 @@ def structured_failures(
                 key: pipeline.get(key)
                 for key in (
                     "status",
+                    "errors",
+                    "blockers",
+                    "failed_checks",
                     "pipeline_semantics",
                     "required_dependency_overlap_complete",
                     "all_planned_stages_participate_in_required_overlap",
@@ -542,7 +545,12 @@ def first_structured_error(structured: dict[str, Any]) -> str | None:
         return "elaborated hierarchy report is invalid"
     pipeline = structured.get("pipeline_overlap", {})
     if isinstance(pipeline, dict) and pipeline:
-        return "pipeline overlap report is invalid"
+        for field in ("errors", "blockers", "failed_checks"):
+            values = pipeline.get(field)
+            if isinstance(values, list) and values:
+                return f"pipeline overlap {field}: {values[0]}"[:2000]
+        if pipeline.get("status") == "fail":
+            return "pipeline overlap report failed"
     checks = structured.get("exact_board_acceptance_checks", [])
     if isinstance(checks, list) and checks:
         return f"exact board acceptance check failed: {checks[0].get('name') or checks[0]}"[:2000]
@@ -690,6 +698,29 @@ def classify_manifest_runner_failure(
     runner: dict[str, Any], compile_text: str, simulation_text: str
 ) -> tuple[str, str]:
     phase = str(runner.get("phase") or "unknown")
+    run_result = (
+        runner.get("run", {}) if isinstance(runner.get("run"), dict) else {}
+    )
+
+    # A fast-replay restore check is still a real VCS execution.  Its runtime
+    # conclusion must win over the execution-layer phase name, otherwise a
+    # proven simulator livelock is mislabeled as a generic board-runner error.
+    if phase == "fast_replay_restore_check":
+        zero_time_livelock = zero_time_livelock_from_runner(runner)
+        if (
+            run_result.get("returncode") == ZERO_TIME_LIVELOCK_EXIT_CODE
+            and run_result.get("failure_class") == "zero_time_simulation_livelock"
+            and zero_time_livelock.get("status")
+            == "proven_zero_time_livelock"
+        ):
+            return "vcs_runtime_zero_time_livelock", "board_rtl_or_testbench"
+        semantic_stall = adaptive_semantic_stall_from_runner(runner)
+        if (
+            run_result.get("returncode") == SEMANTIC_STALL_EXIT_CODE
+            and semantic_stall.get("status") == "proven_semantic_stall"
+        ):
+            return "vcs_runtime_semantic_stall", "board_rtl_or_testbench"
+
     if runner.get("failure_class") == "remote_artifact_persistence_failure":
         return "remote_artifact_persistence_failure", "remote_transport_retry"
     if phase == "manifest_validation":
@@ -718,9 +749,6 @@ def classify_manifest_runner_failure(
         runner.get("compile", {})
         if isinstance(runner.get("compile"), dict)
         else {}
-    )
-    run_result = (
-        runner.get("run", {}) if isinstance(runner.get("run"), dict) else {}
     )
     if (
         checkpoint_execution.get("enabled") is True

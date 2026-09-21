@@ -67,7 +67,12 @@ class LlmRetryPathTests(unittest.TestCase):
             lock["frontier_id"], "kernel_output_stream_completion"
         )
         self.assertEqual(
-            lock["allowed_modes"], ["deepen_simulation_observation"]
+            lock["allowed_modes"],
+            [
+                "direct_executed_contradiction",
+                "direct_tool_failure",
+                "deepen_simulation_observation",
+            ],
         )
         self.assertIn("Copy this current frontier_id exactly", lock["instruction"])
         self.assertEqual(
@@ -126,7 +131,7 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertEqual(text, '{"ok":true}')
         self.assertEqual(len(errors), 3)
 
-    def test_checkpoint_capability_gap_survives_exact_board_compaction(self) -> None:
+    def test_checkpoint_capability_gap_is_not_in_exact_board_prompt_context(self) -> None:
         gap = {
             "status": "ready_for_capability_repair",
             "atomic_manifest_merge": {
@@ -151,10 +156,9 @@ class LlmRetryPathTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(
-            compact["adaptive_design_inputs"]
-            ["simulation_checkpoint_capability_gap"],
-            gap,
+        self.assertNotIn(
+            "simulation_checkpoint_capability_gap",
+            compact["adaptive_design_inputs"],
         )
 
     def test_checkpoint_repair_route_survives_full_retry_compaction(self) -> None:
@@ -319,7 +323,7 @@ class LlmRetryPathTests(unittest.TestCase):
             stage_llm.exact_board_compact_request_errors(bad_inputs),
         )
 
-    def test_runtime_checkpoint_failure_survives_exact_board_compaction(self) -> None:
+    def test_layer3_execution_checkpoint_is_absent_from_compaction(self) -> None:
         execution = {
             "status": "pass",
             "enabled": True,
@@ -371,10 +375,112 @@ class LlmRetryPathTests(unittest.TestCase):
         feedback = compact["current_board_vcs_feedback"]
         diagnosis = feedback["diagnosis"]["value"]["failure_evidence"]
         runner = feedback["runner_report"]["value"]
-        self.assertEqual(diagnosis["checkpoint_execution"], execution)
-        self.assertEqual(diagnosis["checkpoint_artifacts"], artifacts)
-        self.assertEqual(runner["checkpoint_execution"], execution)
-        self.assertEqual(runner["checkpoint_artifacts"], artifacts)
+        self.assertNotIn("checkpoint_execution", diagnosis)
+        self.assertNotIn("checkpoint_artifacts", diagnosis)
+        self.assertNotIn("checkpoint_execution", runner)
+        self.assertNotIn("checkpoint_artifacts", runner)
+
+    def test_post_vcs_compaction_uses_only_current_signal_epoch(self) -> None:
+        package = {
+            "generation_phase_contract": {
+                "status": "repair_existing_board_sources",
+                "current_vcs_feedback_ready": True,
+            },
+            "current_board_vcs_feedback": {
+                "status": "ready",
+                "diagnosis": {
+                    "value": {
+                        "failure_evidence": {
+                            "sacg_cctg_causal_slice": {
+                                "sha256": "a" * 64,
+                                "value": {
+                                    "earliest_unproven_frontier": {
+                                        "frontier_id": "kernel_output_stream_completion"
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+                "runner_report": {
+                    "value": {
+                        "status": "fail",
+                        "checkpoint_execution": {
+                            "enabled": True,
+                            "mode": "fast_replay",
+                        },
+                        "live_progress": {
+                            "latest": {
+                                "observation_epoch": {"generation": 8},
+                                "last_cycle": 1234,
+                                "first_stalled_boundary": (
+                                    "kernel_output_stream_completion"
+                                ),
+                                "extra_signal_snapshots": [
+                                    {
+                                        "signal": "core.final_output_valid",
+                                        "value": 0,
+                                    }
+                                ],
+                            }
+                        },
+                        "runtime_signal_trace": {
+                            "status": "ready",
+                            "raw_stage_record_count": 285327,
+                            "distinct_signal_count": 4412,
+                            "stage_summaries": [
+                                {
+                                    "stage_id": "stage_08_residual_add_2",
+                                    "scalar_signals": [
+                                        {
+                                            "signal": "core.io_out_valid",
+                                            "last_sample": {"value": 0},
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                    }
+                },
+            },
+            "adaptive_observation_state": {
+                "decision": {"frontier_id": "runtime_loader_completion"},
+                "failed_state_recheck": {
+                    "boundary": {
+                        "summary": {
+                            "old_signal": "runtime_loader_completion"
+                        }
+                    }
+                },
+            },
+            "current_fresh_exact_source_provenance_replay": {
+                "status": "ready",
+                "replay_status": "fast_replay",
+            },
+        }
+
+        compact = stage_llm.compact_verification_capability_repair_package(package)
+        feedback = compact["current_board_vcs_feedback"]
+        current_epoch = feedback["current_signal_epoch"]
+        serialized = json.dumps(compact, sort_keys=True)
+
+        self.assertEqual(
+            current_epoch["value"]["first_stalled_boundary"],
+            "kernel_output_stream_completion",
+        )
+        self.assertEqual(
+            current_epoch["value"]["extra_signal_snapshots"][0]["signal"],
+            "core.final_output_valid",
+        )
+        self.assertEqual(
+            current_epoch["value"]["runtime_signal_trace"]
+            ["distinct_signal_count"],
+            4412,
+        )
+        self.assertNotIn("adaptive_observation_state", compact)
+        self.assertNotIn("runtime_loader_completion", serialized)
+        self.assertNotIn("checkpoint_execution", serialized)
+        self.assertNotIn("fast_replay", serialized)
 
     def test_stage0_honors_unbounded_transient_retry(self) -> None:
         with (
@@ -3342,7 +3448,11 @@ class LlmRetryPathTests(unittest.TestCase):
         )
 
     def test_post_vcs_board_compaction_keeps_only_current_repair_inputs(self) -> None:
-        testbench = "module dynamic_board_tb; endmodule\n"
+        testbench = (
+            "module dynamic_board_tb;\n"
+            "  // Native checkpoint setup belongs to execution only.\n"
+            "endmodule\n"
+        )
         testbench_sha = hashlib.sha256(testbench.encode("utf-8")).hexdigest()
         sample = "module sample_compute_slot; endmodule\n"
         sample_sha = hashlib.sha256(sample.encode("utf-8")).hexdigest()
@@ -3494,6 +3604,12 @@ class LlmRetryPathTests(unittest.TestCase):
             runtime_names,
             {"dut_weight_binding_manifest.json", "dynamic_board_tb.sv"},
         )
+        runtime_testbench = next(
+            row
+            for row in runtime_compact["repair_source_bundle"]["documents"]
+            if row["path"] == source_path
+        )
+        self.assertEqual(runtime_testbench["content"], testbench)
         runtime_manifest = next(
             row
             for row in runtime_compact["repair_source_bundle"]["documents"]
@@ -3714,7 +3830,7 @@ class LlmRetryPathTests(unittest.TestCase):
             stage_llm.exact_board_compact_request_errors(compact_inputs),
         )
 
-    def test_post_vcs_compaction_keeps_only_causal_failed_interventions(self) -> None:
+    def test_post_vcs_compaction_omits_historical_failed_interventions(self) -> None:
         history = {
             "intervention_response_history": {
                 "transitions": [
@@ -3761,9 +3877,9 @@ class LlmRetryPathTests(unittest.TestCase):
         serialized = json.dumps(compact, sort_keys=True)
 
         self.assertNotIn("exact_board_repair_attempt_history", compact)
-        self.assertEqual(len(compact["failed_interventions"]), 1)
-        self.assertIn("defer_start", serialized)
-        self.assertIn("falsified", serialized)
+        self.assertNotIn("failed_interventions", compact)
+        self.assertNotIn("defer_start", serialized)
+        self.assertNotIn("falsified", serialized)
         self.assertNotIn("/run/old.json", serialized)
         self.assertNotIn("/remote/job", serialized)
         self.assertNotIn("a" * 64, serialized)
@@ -3877,7 +3993,7 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertEqual(feedback["agent_transaction_rejection"], transaction)
         self.assertNotIn("patch_application", feedback)
 
-    def test_completed_fresh_replay_survives_as_a_small_prompt_projection(self) -> None:
+    def test_completed_fresh_replay_is_absent_from_layer3_prompt_projection(self) -> None:
         decision = {
             "schema_version": (
                 "spatialaccagent.adaptive_observation_decision.v1"
@@ -3919,15 +4035,8 @@ class LlmRetryPathTests(unittest.TestCase):
             compact
         )
 
-        replay = compact_again[
-            "current_fresh_exact_source_provenance_replay"
-        ]
-        self.assertEqual(replay["decision"], decision)
-        self.assertEqual(replay["execution_generation_sha256"], "9" * 64)
-        self.assertEqual(replay["replay_status"], "fail")
-        self.assertNotIn("real_tool_probe", replay)
-        self.assertNotIn("path", replay)
-        self.assertLess(len(json.dumps(replay)), 10_000)
+        self.assertNotIn("current_fresh_exact_source_provenance_replay", compact_again)
+        self.assertNotIn("fresh_exact_source_provenance_replay", json.dumps(compact_again))
 
     def test_post_vcs_exact_board_prompt_is_proactively_compacted(self) -> None:
         custom_schema = {

@@ -12,6 +12,123 @@
     "tokenizer",
     "sampling"
   ],
+  "pipeline_dataflow": {
+    "schema_version": "spatialaccagent.pipeline_dataflow.v1",
+    "boundary_numeric": {
+      "input": "accumulator",
+      "output": "accumulator"
+    },
+    "stage_metadata": {
+      "rms_norm_1": {
+        "shape": {"input": "hidden", "output": "hidden"},
+        "numeric": {"input": "accumulator", "internal": "accumulator", "output": "activation"},
+        "latency_kind": "pointwise_hidden"
+      },
+      "self_attention": {
+        "shape": {"input": "hidden", "output": "hidden"},
+        "numeric": {"input": "activation", "internal": "activation", "output": "accumulator"},
+        "latency_kind": "self_attention"
+      },
+      "residual_add_1": {
+        "shape": {"input": "hidden", "output": "hidden"},
+        "numeric": {"input": "accumulator", "internal": "accumulator", "output": "accumulator"},
+        "latency_kind": "pointwise_hidden"
+      },
+      "rms_norm_2": {
+        "shape": {"input": "hidden", "output": "hidden"},
+        "numeric": {"input": "accumulator", "internal": "accumulator", "output": "activation"},
+        "latency_kind": "pointwise_hidden"
+      },
+      "mlp_gate_proj": {
+        "shape": {"input": "hidden", "output": "intermediate"},
+        "numeric": {"input": "activation", "internal": "activation", "output": "activation"},
+        "latency_kind": "linear_hidden_to_intermediate"
+      },
+      "mlp_up_proj": {
+        "shape": {"input": "hidden", "output": "intermediate"},
+        "numeric": {"input": "activation", "internal": "activation", "output": "activation"},
+        "latency_kind": "linear_hidden_to_intermediate"
+      },
+      "activation_mul": {
+        "shape": {"input": "intermediate", "output": "intermediate"},
+        "numeric": {"input": "activation", "internal": "activation", "output": "activation"},
+        "latency_kind": "pointwise_intermediate"
+      },
+      "mlp_down_proj": {
+        "shape": {"input": "intermediate", "output": "hidden"},
+        "numeric": {"input": "activation", "internal": "activation", "output": "accumulator"},
+        "latency_kind": "linear_intermediate_to_hidden"
+      },
+      "residual_add_2": {
+        "shape": {"input": "hidden", "output": "hidden"},
+        "numeric": {"input": "accumulator", "internal": "accumulator", "output": "accumulator"},
+        "latency_kind": "pointwise_hidden"
+      }
+    },
+    "edges": [
+      {"source": "block_input", "destination": "rms_norm_1", "kind": "input"},
+      {"source": "block_input", "destination": "residual_add_1", "kind": "residual_skip", "source_port": "residual", "destination_port": "skip"},
+      {"source": "rms_norm_1", "destination": "self_attention"},
+      {"source": "self_attention", "destination": "residual_add_1", "destination_port": "main"},
+      {"source": "residual_add_1", "destination": "rms_norm_2"},
+      {"source": "residual_add_1", "destination": "residual_add_2", "kind": "residual_skip", "source_port": "residual", "destination_port": "skip"},
+      {"source": "rms_norm_2", "destination": "mlp_gate_proj", "kind": "mlp_gate_branch"},
+      {"source": "rms_norm_2", "destination": "mlp_up_proj", "kind": "mlp_up_branch"},
+      {"source": "mlp_gate_proj", "destination": "activation_mul", "kind": "mlp_gate_to_mul", "destination_port": "lhs"},
+      {"source": "mlp_up_proj", "destination": "activation_mul", "kind": "mlp_up_to_mul", "destination_port": "rhs"},
+      {"source": "activation_mul", "destination": "mlp_down_proj"},
+      {"source": "mlp_down_proj", "destination": "residual_add_2", "destination_port": "main"},
+      {"source": "residual_add_2", "destination": "block_output", "kind": "output"}
+    ],
+    "weight_storage_terms": [
+      {"id": "input_norm_weight", "stage": "rms_norm_1", "physical_role": "weight", "dtype_role": "weight", "factors": ["hidden_size"]},
+      {"id": "q_proj_weight", "stage": "self_attention", "physical_role": "weight_qkv", "dtype_role": "weight", "factors": ["hidden_size", "num_q_heads", "head_dim"]},
+      {"id": "q_proj_bias", "stage": "self_attention", "physical_role": "weight_qkv_bias", "dtype_role": "weight", "factors": ["num_q_heads", "head_dim"]},
+      {"id": "k_proj_weight", "stage": "self_attention", "physical_role": "weight_qkv", "dtype_role": "weight", "factors": ["hidden_size", "num_kv_heads", "head_dim"]},
+      {"id": "k_proj_bias", "stage": "self_attention", "physical_role": "weight_qkv_bias", "dtype_role": "weight", "factors": ["num_kv_heads", "head_dim"]},
+      {"id": "v_proj_weight", "stage": "self_attention", "physical_role": "weight_qkv", "dtype_role": "weight", "factors": ["hidden_size", "num_kv_heads", "head_dim"]},
+      {"id": "v_proj_bias", "stage": "self_attention", "physical_role": "weight_qkv_bias", "dtype_role": "weight", "factors": ["num_kv_heads", "head_dim"]},
+      {"id": "o_proj_weight", "stage": "self_attention", "physical_role": "weight_attn_out", "dtype_role": "weight", "factors": ["hidden_size", "hidden_size"]},
+      {"id": "post_attention_norm_weight", "stage": "rms_norm_2", "physical_role": "weight", "dtype_role": "weight", "factors": ["hidden_size"]},
+      {"id": "mlp_gate_weight", "stage": "mlp_gate_proj", "physical_role": "weight_mlp_gate", "dtype_role": "weight", "factors": ["hidden_size", "intermediate_size"]},
+      {"id": "mlp_up_weight", "stage": "mlp_up_proj", "physical_role": "weight_mlp_up", "dtype_role": "weight", "factors": ["hidden_size", "intermediate_size"]},
+      {"id": "mlp_down_weight", "stage": "mlp_down_proj", "physical_role": "weight_mlp_down", "dtype_role": "weight", "factors": ["intermediate_size", "hidden_size"]}
+    ]
+  },
+  "implementation_contract": {
+    "top_class": "Qwen2Block",
+    "requires_position_input": true,
+    "loader_ports": [
+      "rms1Weight",
+      "qkvWeight",
+      "qkvBias",
+      "ropeRuntime",
+      "attentionOutWeight",
+      "rms2Weight",
+      "mlpGateWeight",
+      "mlpUpWeight",
+      "mlpDownWeight"
+    ],
+    "disabled_weight_ports": [],
+    "params": {
+      "class": "LlamaStyleBlockParams",
+      "bindings": {
+        "hiddenSize": "hidden_size",
+        "qHeads": "num_q_heads",
+        "kvHeads": "num_kv_heads",
+        "headDim": "head_dim",
+    "intermediateSize": "intermediate_size",
+    "lanes": "lanes",
+    "computeArrayRows": "compute_array_rows",
+    "computeArrayCols": "compute_array_cols",
+    "batchSize": "batch_size",
+        "maxSeqLen": "max_seq_len",
+        "inputBits": "input_bits",
+        "elemBits": "elem_bits",
+        "outputBits": "output_bits"
+      }
+    }
+  },
   "semantic_runtime_streams": {
     "self_attention": {
       "source_order": [

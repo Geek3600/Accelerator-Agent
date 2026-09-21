@@ -30,24 +30,9 @@ class ElementwiseMul(p: ElementwiseMulParams) extends Module {
 
   val inputSpec = StreamSpec(p.inputBeatBits, p.addrBits)
   val outputSpec = StreamSpec(p.outputBeatBits, p.addrBits)
-  val lhsQ = Module(new Queue(
-    new StreamBeat(inputSpec),
-    4,
-    pipe = true,
-    flow = false
-  ))
-  val rhsQ = Module(new Queue(
-    new StreamBeat(inputSpec),
-    4,
-    pipe = true,
-    flow = false
-  ))
-  val outputQ = Module(new Queue(
-    new StreamBeat(outputSpec),
-    2,
-    pipe = true,
-    flow = false
-  ))
+  val lhsQ = Module(new PhysicalStreamFifo(new StreamBeat(inputSpec), 4))
+  val rhsQ = Module(new PhysicalStreamFifo(new StreamBeat(inputSpec), 4))
+  val outputQ = Module(new PhysicalStreamFifo(new StreamBeat(outputSpec), 2))
 
   io.lhs <> lhsQ.io.enq
   io.rhs <> rhsQ.io.enq
@@ -55,69 +40,47 @@ class ElementwiseMul(p: ElementwiseMulParams) extends Module {
 
   val a = lhsQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
   val b = rhsQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
-  val y = Wire(Vec(p.lanes, UInt(p.outputBits.W)))
-  for (i <- 0 until p.lanes) {
-    val product = IeeeMath.mulFp32(
-      IeeeMath.toFp32(a(i), p.elemBits),
-      IeeeMath.toFp32(b(i), p.elemBits)
-    )
-    y(i) := IeeeMath.fromFp32(product, p.outputBits)
+  val multipliers = Seq.tabulate(p.lanes) { lane =>
+    val mul = Module(new PhysicalFp32Mul)
+    mul.io.a := PhysicalMath.toFp32(a(lane), p.elemBits)
+    mul.io.b := PhysicalMath.toFp32(b(lane), p.elemBits)
+    mul
   }
 
-  val productBeat = Wire(new StreamBeat(outputSpec))
-  productBeat.data := y.asUInt
-  productBeat.st := lhsQ.io.deq.bits.st
-  productBeat.addr := lhsQ.io.deq.bits.addr
-  productBeat.last := lhsQ.io.deq.bits.last
-
-  val heldBeat = Reg(new StreamBeat(outputSpec))
-  val heldValid = RegInit(false.B)
-  val beatInToken = RegInit(0.U(log2Ceil(p.beats max 2).W))
-  val tokenIndex = RegInit(0.U(log2Ceil(p.maxSeqLen + 1 max 2).W))
+  val sPair :: sWait :: sEmit :: Nil = Enum(3)
+  val state = RegInit(sPair)
+  val resultData = Reg(Vec(p.lanes, UInt(p.outputBits.W)))
+  val resultMeta = Reg(new StreamBeat(outputSpec))
   val pairValid = lhsQ.io.deq.valid && rhsQ.io.deq.valid
-  val tokenFinalBeat = beatInToken === (p.beats - 1).U
-  val configuredTokenCount = Mux(io.cfg.seqlen === 0.U, 1.U, io.cfg.seqlen)
-  val sequenceFinalToken = tokenIndex === (configuredTokenCount - 1.U)
+  val allMulReady = multipliers.map(_.io.inReady).reduce(_ && _)
+  val issue = state === sPair && pairValid && allMulReady
+  val allMulValid = VecInit(multipliers.map(_.io.outValid)).asUInt.andR
 
-  lhsQ.io.deq.ready := false.B
-  rhsQ.io.deq.ready := false.B
-  outputQ.io.enq.valid := false.B
-  outputQ.io.enq.bits := productBeat
+  multipliers.foreach(_.io.inValid := issue)
 
-  when(heldValid) {
-    outputQ.io.enq.valid := pairValid
-    outputQ.io.enq.bits := heldBeat
-    when(outputQ.io.enq.fire) {
-      heldValid := false.B
-    }
-  }.otherwise {
-    when(pairValid) {
-      when(tokenFinalBeat && !sequenceFinalToken) {
-        lhsQ.io.deq.ready := rhsQ.io.deq.valid
-        rhsQ.io.deq.ready := lhsQ.io.deq.valid
-        when(lhsQ.io.deq.fire && rhsQ.io.deq.fire) {
-          heldBeat := productBeat
-          heldValid := true.B
-          beatInToken := 0.U
-          tokenIndex := tokenIndex + 1.U
-        }
-      }.otherwise {
-        outputQ.io.enq.valid := true.B
-        lhsQ.io.deq.ready := rhsQ.io.deq.valid && outputQ.io.enq.ready
-        rhsQ.io.deq.ready := lhsQ.io.deq.valid && outputQ.io.enq.ready
-        when(outputQ.io.enq.fire) {
-          when(tokenFinalBeat) {
-            beatInToken := 0.U
-            when(sequenceFinalToken) {
-              tokenIndex := 0.U
-            }.otherwise {
-              tokenIndex := tokenIndex + 1.U
-            }
-          }.otherwise {
-            beatInToken := beatInToken + 1.U
-          }
-        }
-      }
-    }
+  lhsQ.io.deq.ready := state === sPair && rhsQ.io.deq.valid && allMulReady
+  rhsQ.io.deq.ready := state === sPair && lhsQ.io.deq.valid && allMulReady
+  outputQ.io.enq.valid := state === sEmit
+  outputQ.io.enq.bits := resultMeta
+  outputQ.io.enq.bits.data := resultData.asUInt
+
+  when(issue) {
+    resultMeta.st := lhsQ.io.deq.bits.st
+    resultMeta.addr := lhsQ.io.deq.bits.addr
+    resultMeta.last := lhsQ.io.deq.bits.last
+    state := sWait
   }
+
+  when(state === sWait && allMulValid) {
+    for (lane <- 0 until p.lanes) {
+      resultData(lane) := PhysicalMath.fromFp32(multipliers(lane).io.out, p.outputBits)
+    }
+    state := sEmit
+  }
+
+  when(outputQ.io.enq.fire) {
+    state := sPair
+  }
+
+  dontTouch(io.cfg)
 }

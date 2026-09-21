@@ -171,7 +171,7 @@ class HistoricalSemanticExecutionRecoveryTest(TestCase):
         iteration_dir = run_dir / "repair_execution" / "loop" / "iteration_0042"
         report_path = self.write(iteration_dir / "capability_report.json", json.dumps(historic_report))
         record = {
-            "schema_version": "spatialaccagent.stage8_repair_loop_iteration.v1",
+            "schema_version": "spatialaccagent.stage6_repair_loop_iteration.v1",
             "iteration": 42,
             "disposition": {"status": "complete"},
             "repair_execution_report": {
@@ -241,7 +241,7 @@ class HistoricalSemanticExecutionRecoveryTest(TestCase):
             self.assertEqual(recovered["status"], "pass")
             self.assertEqual(
                 recovered["remote_job_reuse"]["identity_source"],
-                "completed_stage8_hash_bound_historical_execution",
+                "completed_stage6_historical_execution",
             )
 
     def test_targeted_replay_bypasses_historical_execution_recovery(self) -> None:

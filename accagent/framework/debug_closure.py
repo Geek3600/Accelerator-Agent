@@ -301,7 +301,10 @@ def load_trace_records(paths: list[Path]) -> list[dict[str, Any]]:
             records.extend(item for item in data["debug_closure"]["boundary_trace"] if isinstance(item, dict))
         elif isinstance(data.get("records"), list):
             records.extend(item for item in data["records"] if isinstance(item, dict))
-        elif str(data.get("schema_version") or "").startswith("spatialaccagent.qwen_leaf_operator_verify"):
+        elif str(data.get("schema_version") or "").startswith((
+            "spatialaccagent.case_leaf_operator_verify",
+            "spatialaccagent.qwen_leaf_operator_verify",
+        )):
             closure = data.get("debug_closure", {}) if isinstance(data.get("debug_closure"), dict) else {}
             slice_items = closure.get("failure_slice", []) if isinstance(closure.get("failure_slice"), list) else []
             if not slice_items and data.get("status") == "fail":

@@ -121,6 +121,7 @@ MODEL_CONFIG_SCHEMA = {
     "additionalProperties": True,
     "properties": {
         "model_type": {"type": "string"},
+        "model_dir": {"type": "string"},
         "num_layers": {"type": "integer"},
         "hidden_size": {"type": "integer"},
         "target_max_seq_len": {"type": "integer"},
@@ -879,7 +880,7 @@ def prepare_task_card(task_text: str, model_config: dict[str, Any], out_dir: Pat
         "target_layers": model_config.get("num_layers"),
         "target_seq_len": model_config.get("target_max_seq_len"),
         "design_goal": "generate a complete board-runnable spatial accelerator",
-        "human_inputs": ["task_spec", "model_source", "board_materials_dir", "quantization_materials_dir", "tool_materials_dir"],
+        "human_inputs": ["task_spec", "model_source", "model_dir", "board_materials_dir", "quantization_materials_dir", "tool_materials_dir"],
         "notes": ["deterministic candidate generated from structured model facts"],
     }
     prompt = build_prompt(
@@ -1355,18 +1356,30 @@ def prepare_design_space(model: dict[str, Any], templates: dict[str, Any], board
             "board_id": board.get("board", {}).get("board_id"),
         },
         "search_params": {
-            "lanes": [8, 16, 24],
-            "tile_m": [8, 16],
-            "tile_n": [16, 24, 32],
-            "tile_k": [8, 16],
-            "weight_banks": [1, 2, 4],
-            "buffer_banks": [2, 4],
-            "fifo_depth": [32, 64, 128],
-            "clock_target_mhz": board.get("board", {}).get("clock_options_mhz", []),
+            "lanes": {"global_lanes": {"candidates": [8, 16, 24]}},
+            "compute_array": {
+                "rows": {"candidates": [4, 8, 16]},
+                "cols": {"candidates": [4, 8, 16]},
+            },
+            "fifo_depths": {"stream_fifo_depth_entries": {"candidates": [32, 64, 128]}},
+            "bank_counts": {
+                "activation_sram_banks": {"candidates": [2, 4]},
+                "weight_sram_banks": {"candidates": [1, 2, 4]},
+            },
         },
-        "objectives": ["minimize_latency_cycles", "minimize_dsp_total", "minimize_storage_bits"],
-        "hard_constraints": ["fit_target_board_resources", "timing_wns_non_negative", "valid_board_output"],
-        "notes": ["fallback first design space; DSE agent must refine during architecture search"],
+        "objectives": [
+            "minimize_resources",
+            "minimize_power_w",
+            "maximize_clock_frequency_mhz",
+            "maximize_performance_tokens_per_second",
+        ],
+        "hard_constraints": [
+            "resources_within_target_budget",
+            "power_within_target_budget",
+            "clock_frequency_meets_target",
+            "performance_meets_target",
+        ],
+        "notes": ["fallback formal DSE universe contains only parameters that change generated FPGA RTL/XPM topology"],
     }
     prompt = build_prompt(
         agent="design_space_agent",
@@ -1380,9 +1393,12 @@ def prepare_design_space(model: dict[str, Any], templates: dict[str, Any], board
         rules=[
             "The design space must be compatible with the extracted model facts, template library, numeric policy, and target board profile.",
             "Search parameters must be hardware parameters, not model semantics.",
-            "Include lanes, tile sizes, bank counts, FIFO depth, and clock targets when applicable.",
-            "Hard constraints must include board resource fit, timing closure, and board-valid output.",
+            "Declare a finite, complete candidate universe containing only parameters that genuinely change generated RTL, Vivado FP IP, XPM BRAM/URAM topology, or board behavior. Exclude metadata-only tile, burst, pipeline-depth, and clock-target fields until they are wired into generated hardware.",
+            "Include lanes, compute_array.rows, compute_array.cols, physical FIFO depth, activation-bank count, and optional physical_weight_layout_candidates. The two compute_array values are the physical MAC PE array dimensions; every PE must instantiate one fixed Vivado multiplier/DSP IP, so they must be real generated-hardware parameters rather than metadata. Keep compute_array.cols power-of-two for the trusted reduction tree and require both dimensions to tile the selected vector lanes. When supplied, each layout must bind every model-semantic weight-storage term declared by the current semantic adapter to a positive XPM URAM bank count. Do not use another model family's role names. If no explicit layouts are supplied, Stage 4 derives the complete all-URAM baseline from the same semantic contract.",
+            "Hard constraints must use only resource, power, clock-frequency, and token-per-second targets when evidence supplies a target value.",
+            "The design must bind Vivado floating-point/DSP IP and XPM physical memories from the first implementation candidate; do not select a software arithmetic or ideal-memory backend.",
             "Do not choose parameters that require changing model semantics or bypassing DDR/AXI/runtime constraints.",
+            "Do not provide resource, power, frequency, or performance estimates. Stage 4 will use only real target-board app-shell Vivado and hardware-counter measurements for those four metrics.",
         ],
     )
     return llm_json("design_space_agent", prompt, DESIGN_SPACE_SCHEMA, fallback, out_dir)
@@ -2445,13 +2461,13 @@ def prepare_tool_protocols(
             argv=[
                 "bash",
                 "-lc",
-                f"./scripts/elaborate.sh && test -f {shlex.quote(str(top_sv))} && test -f {shlex.quote(str(fpga_top_sv))} && test -f {shlex.quote(str(chisel_dir / 'LlamaStyleBlock.sv'))}",
+                f"./scripts/elaborate.sh && test -f {shlex.quote(str(top_sv))} && test -f {shlex.quote(str(fpga_top_sv))}",
             ],
             cwd=chisel_dir,
             required=True,
             script_expected_after_codegen=True,
             consumes=[str(chisel_dir / "src/main/scala")],
-            produces=[str(top_sv), str(fpga_top_sv), str(chisel_dir / "LlamaStyleBlock.sv")],
+            produces=[str(top_sv), str(fpga_top_sv)],
         ),
         structured_command(
             name="chisel_compile",
@@ -2460,11 +2476,11 @@ def prepare_tool_protocols(
             argv=[
                 "bash",
                 "-lc",
-                f"test -f {shlex.quote(str(top_sv))} && test -f {shlex.quote(str(fpga_top_sv))} && test -f {shlex.quote(str(chisel_dir / 'LlamaStyleBlock.sv'))}",
+                f"test -f {shlex.quote(str(top_sv))} && test -f {shlex.quote(str(fpga_top_sv))}",
             ],
             cwd=run_dir,
             required=True,
-            consumes=[str(top_sv), str(fpga_top_sv), str(chisel_dir / "LlamaStyleBlock.sv")],
+            consumes=[str(top_sv), str(fpga_top_sv)],
         ),
         case_tool("weight_manifest_generate"),
         case_tool("board_interface_discovery"),
@@ -2715,13 +2731,17 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     field_evidence_summary = prompt_field_evidence_summary(field_evidence)
     target_seq = target_seq_from_task(task_text)
 
-    model_fallback = load_model_source(args.model_source.resolve(), target_seq)
+    model_source = args.model_source.resolve()
+    model_dir = args.model_dir.resolve()
+    if not model_dir.is_dir():
+        raise InputPreparationError(f"model_dir is not a directory: {model_dir}")
+    model_fallback = load_model_source(model_source, target_seq)
 
     llm_workers = env_int("SPATIALACC_STAGE0_LLM_WORKERS", 1, 1)
     template_library, template_metadata = prepare_template_library(args.template_dir, input_dir)
 
     if llm_workers == 1:
-        model_config = prepare_model_config(task_text, args.model_source.resolve(), model_fallback, llm_dir)
+        model_config = prepare_model_config(task_text, model_source, model_fallback, llm_dir)
         numeric_policy = prepare_numeric_policy(quantization_materials_text, llm_dir)
         target_board_profile = prepare_board_profile(board_summary, field_evidence_summary, sample_project_summary_data, llm_dir)
         task_card = prepare_task_card(task_text, model_config, llm_dir)
@@ -2731,7 +2751,7 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         first_wave: dict[str, Any] = {}
         with ThreadPoolExecutor(max_workers=llm_workers) as pool:
             futures = {
-                pool.submit(prepare_model_config, task_text, args.model_source.resolve(), model_fallback, llm_dir): "model_config",
+                pool.submit(prepare_model_config, task_text, model_source, model_fallback, llm_dir): "model_config",
                 pool.submit(prepare_numeric_policy, quantization_materials_text, llm_dir): "numeric_policy",
                 pool.submit(prepare_board_profile, board_summary, field_evidence_summary, sample_project_summary_data, llm_dir): "target_board_profile",
             }
@@ -2755,6 +2775,9 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         task_card = second_wave["task_card"]
         tool_profile = second_wave["tool_profile"]
         design_space = second_wave["design_space"]
+    # The checkpoint is an explicit run input.  Do not let a shared environment
+    # variable select another parallel run's model material.
+    model_config = {**model_config, "model_dir": str(model_dir)}
     tool_availability = prepare_tool_availability(tool_profile, input_dir, target_board_profile)
     case_adapter = build_case_adapter(model_config, run_dir, args.tool_materials_dir)
     write_json(input_dir / "case_adapter.json", case_adapter)
@@ -2801,7 +2824,8 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "inputs": refs,
         "source_specs": {
             "task_spec": str(args.task_spec.resolve()),
-            "model_source": str(args.model_source.resolve()),
+            "model_source": str(model_source),
+            "model_dir": str(model_dir),
             "board_materials_dir": str(args.board_materials_dir.resolve()),
             "quantization_materials_dir": str(args.quantization_materials_dir.resolve()),
             "tool_materials_dir": str(args.tool_materials_dir.resolve()),
@@ -2810,6 +2834,7 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "source_roles": {
             "task_spec": "run-specific objective and acceptance boundary",
             "model_source": "run-specific model architecture source",
+            "model_dir": "run-specific target checkpoint directory",
             "quantization_materials_dir": "current-run numeric and quantization design materials",
             "board_materials_dir": "current-run target FPGA board, DDR/AXI, runtime, and sample-project materials",
             "tool_materials_dir": "current-run EDA tool location, usage, and limitation materials",
@@ -2867,6 +2892,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--task-spec", type=Path, required=True)
     parser.add_argument("--model-source", type=Path, required=True)
+    parser.add_argument("--model-dir", type=Path, required=True)
     parser.add_argument("--template-dir", type=Path, default=DEFAULT_TEMPLATE_DIR)
     parser.add_argument("--board-materials-dir", type=Path, default=DEFAULT_BOARD_MATERIALS_DIR)
     parser.add_argument("--quantization-materials-dir", type=Path, default=DEFAULT_QUANTIZATION_MATERIALS_DIR)
