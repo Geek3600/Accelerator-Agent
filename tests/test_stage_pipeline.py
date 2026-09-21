@@ -89,10 +89,23 @@ def state_for(family: str, temp_dir: Path) -> dict:
     adapter.write_text(
         json.dumps({"model_semantic_adapter": {"path": str(adapter_path(family))}}), encoding="utf-8"
     )
+    model_config = temp_dir / "model_config.json"
+    model_config.write_text(
+        json.dumps(
+            {
+                "model_type": family,
+                "mlp": {"type": "dense" if family == "gpt2" else "gated"},
+                "norm": {"eps": 1.0e-5},
+                "attention": {"causal": True},
+            }
+        ),
+        encoding="utf-8",
+    )
     return {
         "artifacts": [
             {"id": "artifact.stage2.template_selection", "path": str(selection_path)},
             {"id": "artifact.input.case_adapter", "path": str(adapter)},
+            {"id": "artifact.input.model_config", "path": str(model_config)},
         ],
         "constraints": [
             {"id": "constraint.model.decoder", "facts": model},
@@ -120,7 +133,18 @@ def state_for(family: str, temp_dir: Path) -> dict:
             },
             {
                 "id": "constraint.arch.design_space",
-                "facts": {"search_params": {"fifo_depth": [32], "ddr_axi": {"data_width_bits": [512]}}},
+                "facts": {
+                    "search_params": {
+                        "hardware_parameter_tuples": [
+                            {
+                                "lanes": 8,
+                                "compute_array": {"rows": 4, "cols": 4},
+                                "physical_fifo_depth_entries": 32,
+                                "activation_bank_count": 2,
+                            }
+                        ]
+                    }
+                },
             },
             {
                 "id": "constraint.memory.board",
@@ -140,6 +164,14 @@ def state_for(family: str, temp_dir: Path) -> dict:
             {
                 "id": "constraint.runtime.board",
                 "facts": {"control_protocol": "xdma_raw_register_and_ddr", "xdma_id_default": 0},
+            },
+            {
+                "id": "constraint.deployment.board",
+                "facts": {"fpga_part": "xcvu9p-flga2104-2L-e", "deployment_mode": "app_shell"},
+            },
+            {
+                "id": "constraint.cross_layer.input_consistency",
+                "facts": {"model_shape_numeric_board_contract": "consistent"},
             },
             {
                 "id": "constraint.template.library",

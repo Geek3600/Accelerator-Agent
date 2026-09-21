@@ -70,6 +70,14 @@ class SemanticTemplateBindingTest(TestCase):
         self.assertNotIn("num_kv_heads", wrapper["required_params"])
         self.assertNotIn("rope_theta", wrapper["required_params"])
         self.assertEqual(selection["implementation_contract"]["params"]["class"], "DecoderBlockParams")
+        self.assertEqual(selection["status"], "ready")
+        self.assertTrue(
+            all(
+                binding["bound_params"]["lanes"]["status"] == "candidate_bound"
+                for binding in selection["parameter_bindings"]
+                if "lanes" in binding["bound_params"]
+            )
+        )
 
     def test_qwen2_and_llama_wrappers_use_llama_style_params(self) -> None:
         with TemporaryDirectory() as temp:
@@ -88,6 +96,8 @@ class SemanticTemplateBindingTest(TestCase):
         llama_wrapper = next(item for item in llama_selection["selected_templates"] if item["role"] == "block_wrapper")
         self.assertIn("num_kv_heads", qwen_wrapper["required_params"])
         self.assertIn("num_kv_heads", llama_wrapper["required_params"])
+        self.assertEqual(qwen_selection["status"], "ready")
+        self.assertEqual(llama_selection["status"], "ready")
 
     def test_wrapper_parameter_class_comes_from_adapter_not_model_family(self) -> None:
         with TemporaryDirectory() as temp:

@@ -11,6 +11,7 @@ from typing import Any
 
 from accagent.framework.sacg_store import SACGStore
 from accagent.framework.sacg_utils import read_json, write_json
+from accagent.framework.dse_candidates import physical_candidate_tuples
 from accagent.framework.fpga_ip_contract import check_fpga_ip_template_contract
 from accagent.framework.stage_entry import run_sacg_stage
 from accagent.framework.stage_llm import run_stage_agent
@@ -53,9 +54,6 @@ PARAM_ALIASES = {
     "head_dim": ["headDim"],
     "seq_len": ["seqLen", "maxSeqLen"],
     "lanes": ["lanes", "inLanes", "outLanes"],
-    "tile_m": ["tileM"],
-    "tile_n": ["tileN"],
-    "tile_k": ["tileK"],
     "eps": ["eps"],
     "elem_bits": ["elemBits", "inputBits", "outputBits"],
     "input_bits": ["inputBits"],
@@ -67,6 +65,7 @@ PARAM_ALIASES = {
 
 
 TEMPLATE_CASE_CLASS = {
+    "activation": "ActivationParams",
     "attention": "AttentionParams",
     "elementwise": "ElementwiseMulParams",
     "ffn": "GatedMLPParams",
@@ -185,75 +184,25 @@ def numeric_bits(numeric: dict[str, Any], field: str, fallback_field: str = "act
     }
 
 
-def flatten_candidate_values(value: Any, key_names: set[str]) -> list[int]:
-    found: list[int] = []
-    if isinstance(value, dict):
-        for key, child in value.items():
-            if str(key) in key_names and isinstance(child, list):
-                for item in child:
-                    if isinstance(item, int) and item > 0 and item not in found:
-                        found.append(item)
-            found.extend(flatten_candidate_values(child, key_names))
-    elif isinstance(value, list):
-        for child in value:
-            found.extend(flatten_candidate_values(child, key_names))
-    return found
-
-
-def int_candidates(value: Any) -> list[int]:
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, int) and item > 0]
-
-
 def first_legal(candidates: list[int], predicate: Any) -> tuple[int | None, list[int]]:
     legal = [value for value in candidates if predicate(value)]
     return (legal[0] if legal else None), legal
-
-
-def ordered_candidates(candidates: list[int], preferred: Any = None) -> list[int]:
-    values: list[int] = []
-    if isinstance(preferred, int) and preferred > 0:
-        values.append(preferred)
-    for value in candidates:
-        if isinstance(value, int) and value > 0 and value not in values:
-            values.append(value)
-    return values
-
-
-def linear_profile(search_params: dict[str, Any], op: str) -> dict[str, Any]:
-    linear_tiles = search_params.get("linear_tiles", {})
-    if not isinstance(linear_tiles, dict):
-        return {}
-    for profile in linear_tiles.values():
-        if not isinstance(profile, dict):
-            continue
-        applies_to = [str(item) for item in profile.get("applies_to", [])]
-        if op in applies_to:
-            return profile
-    return {}
 
 
 def select_lanes(shape: dict[str, Any], numeric: dict[str, Any], memory: dict[str, Any], search_params: dict[str, Any]) -> dict[str, Any]:
     elem_bits = numeric_elem_bits(numeric).get("value")
     memory_system = memory.get("memory_system", {})
     axi_bits = memory_system.get("axi_data_width_bits")
-    candidates: list[int] = []
-    lane_groups = search_params.get("lanes", {})
-    if isinstance(lane_groups, dict):
-        for group in lane_groups.values():
-            if isinstance(group, dict):
-                for value in int_candidates(group.get("candidates")):
-                    if value not in candidates:
-                        candidates.append(value)
-    for value in flatten_candidate_values(
-        search_params,
-        {"lanes_candidates", "vector_lanes_candidates", "head_dim_lanes_candidates", "rope_lanes_candidates"},
-    ):
-        if value not in candidates:
-            candidates.append(value)
-    if not candidates:
-        candidates = [1, 2, 4, 8, 16, 32]
+    try:
+        physical_candidates = physical_candidate_tuples(search_params)
+    except ValueError as exc:
+        return {
+            "value": None,
+            "source": "constraint.arch.design_space.search_params",
+            "status": "missing",
+            "error": str(exc),
+        }
+    candidates = list(dict.fromkeys(item["lanes"] for item in physical_candidates))
     hidden = shape.get("hidden_size")
     intermediate = shape.get("intermediate_size")
     head_dim = shape.get("head_dim")
@@ -269,139 +218,79 @@ def select_lanes(shape: dict[str, Any], numeric: dict[str, Any], memory: dict[st
 
     selected, legal_values = first_legal(candidates, legal)
     return {
-        "value": selected,
+        "value": None,
+        "planning_value": selected,
         "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
         "candidate_values": candidates,
         "legal_values": legal_values,
-        "status": "bound" if selected is not None else "missing",
+        "status": "candidate_bound" if selected is not None else "missing",
     }
 
 
-def projection_dims(op: str, shape: dict[str, Any]) -> tuple[int | None, int | None]:
-    hidden = shape.get("hidden_size")
-    intermediate = shape.get("intermediate_size")
-    head_dim = shape.get("head_dim")
-    num_q = shape.get("num_q_heads")
-    num_kv = shape.get("num_kv_heads")
-    if op in {"mlp_gate_proj", "mlp_up_proj"}:
-        return hidden, intermediate
-    if op == "mlp_down_proj":
-        return intermediate, hidden
-    if op == "q_proj":
-        return hidden, (num_q * head_dim if isinstance(num_q, int) and isinstance(head_dim, int) else None)
-    if op in {"k_proj", "v_proj"}:
-        return hidden, (num_kv * head_dim if isinstance(num_kv, int) and isinstance(head_dim, int) else None)
-    return hidden, hidden
+def select_compute_array(shape: dict[str, Any], numeric: dict[str, Any], memory: dict[str, Any], search_params: dict[str, Any]) -> dict[str, Any]:
+    """Verify Stage-0 physical PE candidates without selecting a Stage-4 point."""
 
-
-def tile_size_profile(tile_sizes: dict[str, Any], op: str) -> tuple[str, dict[str, Any]]:
-    if op in {"mlp_gate_proj", "mlp_up_proj"}:
-        profile = tile_sizes.get("ffn_gate_up", {})
-        return "ffn_gate_up", profile if isinstance(profile, dict) else {}
-    if op == "mlp_down_proj":
-        profile = tile_sizes.get("ffn_down", {})
-        return "ffn_down", profile if isinstance(profile, dict) else {}
-    if op in {"q_proj", "k_proj", "v_proj", "fused_qkv"}:
-        profile = tile_sizes.get("qkv_projection", {})
-        return "qkv_projection", profile if isinstance(profile, dict) else {}
-    if op in {"out_proj", "output_projection"}:
-        profile = tile_sizes.get("out_projection", {})
-        return "out_projection", profile if isinstance(profile, dict) else {}
-    return "", {}
-
-
-def profile_tile_candidates(profile: dict[str, Any], param: str) -> list[int]:
-    preferred = profile.get("preferred_initial")
-    preferred_value = preferred.get(param) if isinstance(preferred, dict) else None
-    return ordered_candidates(int_candidates(profile.get(f"{param}_candidates")), preferred_value)
-
-
-def select_tile_param(param: str, op: str, shape: dict[str, Any], search_params: dict[str, Any]) -> dict[str, Any]:
-    seq_len = shape.get("target_max_seq_len")
-    in_dim, out_dim = projection_dims(op, shape)
-    profile = linear_profile(search_params, op)
-    source = f"constraint.arch.design_space.search_params"
-    fallback = search_params.get("global_datapath", {}) if isinstance(search_params.get("global_datapath"), dict) else {}
-    candidates = profile.get(f"{param}_candidates") or fallback.get(f"{param}_candidates") or []
-    tiles = search_params.get("tiles", {})
-    if isinstance(tiles, dict):
-        if param == "tile_m":
-            token_tiles = tiles.get("tile_m_tokens", {})
-            if isinstance(token_tiles, dict):
-                candidates = int_candidates(token_tiles.get("candidates")) or candidates
-                source = "constraint.arch.design_space.search_params.tiles.tile_m_tokens"
-        elif op in {"mlp_gate_proj", "mlp_up_proj"}:
-            gate_up = tiles.get("mlp_gate_up_projection", {})
-            common = tiles.get("safe_common_ffn_tile_candidates", {})
-            if isinstance(gate_up, dict):
-                key = "tile_k_hidden_candidates" if param == "tile_k" else "tile_n_intermediate_candidates"
-                candidates = int_candidates(gate_up.get(key)) or candidates
-                source = f"constraint.arch.design_space.search_params.tiles.mlp_gate_up_projection.{key}"
-            if not candidates and isinstance(common, dict):
-                candidates = int_candidates(common.get(param)) or candidates
-                source = f"constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates.{param}"
-        elif op == "mlp_down_proj":
-            down = tiles.get("mlp_down_projection", {})
-            common = tiles.get("safe_common_ffn_tile_candidates", {})
-            if isinstance(down, dict):
-                key = "tile_k_intermediate_candidates" if param == "tile_k" else "tile_n_hidden_candidates"
-                candidates = int_candidates(down.get(key)) or candidates
-                source = f"constraint.arch.design_space.search_params.tiles.mlp_down_projection.{key}"
-            if not candidates and isinstance(common, dict):
-                candidates = int_candidates(common.get(param)) or candidates
-                source = f"constraint.arch.design_space.search_params.tiles.safe_common_ffn_tile_candidates.{param}"
-    tile_sizes = search_params.get("tile_sizes", {})
-    if isinstance(tile_sizes, dict):
-        profile_name, nested_profile = tile_size_profile(tile_sizes, op)
-        nested_candidates = profile_tile_candidates(nested_profile, param) if nested_profile else []
-        if nested_candidates:
-            candidates = nested_candidates
-            source = f"constraint.arch.design_space.search_params.tile_sizes.{profile_name}.{param}_candidates"
-        elif param == "tile_m":
-            seq_tile = tile_sizes.get("seq_tile_m", {})
-            if isinstance(seq_tile, dict):
-                candidates = ordered_candidates(int_candidates(seq_tile.get("candidates")), seq_tile.get("preferred_initial")) or candidates
-                if candidates:
-                    source = "constraint.arch.design_space.search_params.tile_sizes.seq_tile_m.candidates"
-            else:
-                candidates = (
-                    int_candidates(tile_sizes.get("seq_tile_m_candidates"))
-                    or int_candidates(tile_sizes.get("linear_tile_m_candidates"))
-                    or candidates
-                )
-                if candidates:
-                    source = "constraint.arch.design_space.search_params.tile_sizes.seq_tile_m_candidates"
-        elif param == "tile_n":
-            if op in {"mlp_gate_proj", "mlp_up_proj"}:
-                candidates = int_candidates(tile_sizes.get("ffn_gate_up_tile_n_candidates")) or candidates
-                if candidates:
-                    source = "constraint.arch.design_space.search_params.tile_sizes.ffn_gate_up_tile_n_candidates"
-            elif op == "mlp_down_proj":
-                candidates = int_candidates(tile_sizes.get("ffn_down_tile_n_candidates")) or candidates
-                if candidates:
-                    source = "constraint.arch.design_space.search_params.tile_sizes.ffn_down_tile_n_candidates"
-            candidates = int_candidates(tile_sizes.get("common_matmul_tile_n_candidates")) or candidates
-            if candidates and source == "constraint.arch.design_space.search_params":
-                source = "constraint.arch.design_space.search_params.tile_sizes.common_matmul_tile_n_candidates"
-        elif param == "tile_k":
-            candidates = int_candidates(tile_sizes.get("common_matmul_tile_k_candidates")) or candidates
-            if candidates:
-                source = "constraint.arch.design_space.search_params.tile_sizes.common_matmul_tile_k_candidates"
-    candidates = [value for value in candidates if isinstance(value, int) and value > 0]
-    if param == "tile_m":
-        divisor = seq_len
-    elif param == "tile_n":
-        divisor = out_dim
-    else:
-        divisor = in_dim
-    selected, legal_values = first_legal(candidates, lambda value: isinstance(divisor, int) and divisor > 0 and divisor % value == 0)
+    lane_binding = select_lanes(shape, numeric, memory, search_params)
+    if lane_binding.get("status") != "candidate_bound":
+        return {
+            "value": None,
+            "source": "constraint.arch.design_space.search_params",
+            "status": "missing",
+            "error": lane_binding.get("error", "no legal lane candidate"),
+        }
+    candidates = physical_candidate_tuples(search_params)
+    legal_lanes = set(lane_binding.get("legal_values", []))
+    legal = [item for item in candidates if item["lanes"] in legal_lanes]
+    if not legal:
+        return {
+            "value": None,
+            "source": "constraint.arch.design_space.search_params",
+            "status": "missing",
+            "error": "no physical PE-array candidate is compatible with the model and board lane domain",
+        }
     return {
-        "value": selected,
-        "source": source,
-        "candidate_values": candidates,
-        "legal_values": legal_values,
-        "divides": divisor,
-        "status": "bound" if selected is not None else "missing",
+        "value": None,
+        "planning_value": {
+            "compute_array_rows": legal[0]["compute_array_rows"],
+            "compute_array_cols": legal[0]["compute_array_cols"],
+        },
+        "source": "constraint.arch.design_space.search_params physical candidate universe",
+        "candidate_values": legal,
+        "legal_values": legal,
+        "status": "candidate_bound",
+    }
+
+
+def select_physical_dimension(
+    name: str,
+    shape: dict[str, Any],
+    numeric: dict[str, Any],
+    memory: dict[str, Any],
+    search_params: dict[str, Any],
+) -> dict[str, Any]:
+    """Expose a legal PE-array dimension without preselecting a DSE point."""
+
+    arrays = select_compute_array(shape, numeric, memory, search_params)
+    if arrays.get("status") != "candidate_bound":
+        return {
+            "value": None,
+            "source": arrays.get("source"),
+            "status": "missing",
+            "error": arrays.get("error", "no legal physical candidate"),
+        }
+    values = [
+        item[name]
+        for item in arrays.get("legal_values", [])
+        if isinstance(item, dict) and isinstance(item.get(name), int)
+    ]
+    values = list(dict.fromkeys(values))
+    return {
+        "value": None,
+        "planning_value": values[0] if values else None,
+        "source": arrays.get("source"),
+        "candidate_values": values,
+        "legal_values": values,
+        "status": "candidate_bound" if values else "missing",
     }
 
 
@@ -565,8 +454,8 @@ def bind_param(
         return {"value": value, "source": shape_sources[param], "status": "bound" if value is not None else "missing"}
     if param == "lanes":
         return lane_binding
-    if param in {"tile_m", "tile_n", "tile_k"}:
-        return select_tile_param(param, op, shape, search_params)
+    if param in {"compute_array_rows", "compute_array_cols"}:
+        return select_physical_dimension(param, shape, numeric, memory, search_params)
     if param == "eps":
         value = (model_config.get("norm") or {}).get("eps")
         return {
@@ -616,7 +505,7 @@ def bind_param(
 def validate_binding(op: str, bound: dict[str, dict[str, Any]], shape: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     for name, record in bound.items():
-        if record.get("status") != "bound":
+        if record.get("status") not in {"bound", "candidate_bound"}:
             errors.append(f"{op}: parameter {name} is not bound from SACG/input artifacts")
     hidden = value_of(bound, "hidden_size", shape.get("hidden_size"))
     intermediate = value_of(bound, "intermediate_size", shape.get("intermediate_size"))
@@ -665,7 +554,11 @@ def build_parameter_bindings(
             for param in required_params
         }
         binding_errors = validate_binding(str(item["op"]), bound, shape)
-        missing_params = [name for name, record in bound.items() if record.get("status") != "bound"]
+        missing_params = [
+            name
+            for name, record in bound.items()
+            if record.get("status") not in {"bound", "candidate_bound"}
+        ]
         errors.extend(binding_errors)
         bindings.append(
             {
@@ -696,16 +589,29 @@ def wrapper_binding_sources(implementation_contract: dict[str, Any]) -> list[str
     return list(dict.fromkeys(str(source) for source in bindings.values()))
 
 
+def template_case_class(template_id: str, op: str, model_config: dict[str, Any]) -> str | None:
+    """Resolve the real constructor behind a semantic template selection."""
+
+    if template_id == "ffn":
+        mlp = model_config.get("mlp", {}) if isinstance(model_config.get("mlp"), dict) else {}
+        return "DenseFFNParams" if mlp.get("type") == "dense" else "GatedMLPParams"
+    if template_id == "norm":
+        return "VectorNormParams" if op.startswith("layer_norm") else "RMSNormParams"
+    return TEMPLATE_CASE_CLASS.get(template_id)
+
+
 def template_source_checks(
     selected: list[dict[str, Any]],
     template_facts: dict[str, Any],
     numeric: dict[str, Any],
     implementation_contract: dict[str, Any],
+    model_config: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     template_dir = Path(str(template_facts.get("template_dir") or ""))
     elem_bits = numeric_elem_bits(numeric).get("value")
     checks: list[dict[str, Any]] = []
     errors: list[str] = []
+    model_config = model_config or {}
     for item in selected:
         template_id = str(item.get("template_id"))
         source = str(item.get("source") or "")
@@ -717,7 +623,7 @@ def template_source_checks(
         case_class = (
             implementation_contract["params"]["class"]
             if is_block_wrapper
-            else TEMPLATE_CASE_CLASS.get(template_id)
+            else template_case_class(template_id, str(item.get("op") or ""), model_config)
         )
         required_params = (
             list(constructor_bindings)
@@ -821,7 +727,7 @@ def attention_semantics(
         ("rope", "DecoderBlock.scala", "Module(new RoPE", (position.get("type") == "rope")),
         ("gqa_head_mapping", "QKVProjection.scala", "kvGroupSize", isinstance(q_heads, int) and isinstance(kv_heads, int) and q_heads != kv_heads),
         ("softmax", "DecoderBlock.scala", "Module(new Softmax", True),
-        ("output_projection", "DecoderBlock.scala", "Module(new Linear(p.outLinear)", True),
+        ("output_projection", "Attention.scala", "val outputProjection = Module(new Linear(p.outLinear))", True),
         ("kv_cache", "DecoderBlock.scala", "Module(new KVCache", bool(attention_cfg.get("uses_kv_cache"))),
         ("causal_mask", "DecoderBlock.scala", "Module(new Mask", causal),
     ]
@@ -994,6 +900,7 @@ def build_selection(state: dict[str, Any]) -> dict[str, Any]:
         template_facts,
         numeric_facts,
         implementation_contract,
+        model_config,
     )
     ip_contract = check_fpga_ip_template_contract(
         Path(str(template_facts.get("template_dir") or "")),

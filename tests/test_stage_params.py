@@ -3,7 +3,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
+from accagent.framework.dse_candidates import physical_candidate_tuples
 from accagent.framework.stage_params import (
+    architecture_candidate_space,
     build_dse_search,
     build_parameter_bindings,
     select_dse_candidate,
@@ -100,6 +102,103 @@ class SemanticParameterBindingTest(TestCase):
         parameters = dse["records"][0]["parameters"]
         self.assertIn("weight_mlp_up", parameters["weight_banks_by_role"])
         self.assertIn("weight_qkv", parameters["weight_banks_by_role"])
+
+    def test_explicit_physical_tuples_preserve_declared_correlations(self) -> None:
+        search = {
+            "hardware_parameter_tuples": [
+                {
+                    "lanes": 8,
+                    "compute_array": {"rows": 2, "cols": 4},
+                    "physical_fifo_depth_entries": 16,
+                    "activation_bank_count": 2,
+                },
+                {
+                    "lanes": 16,
+                    "compute_array": {"rows": 4, "cols": 8},
+                    "physical_fifo_depth_entries": 48,
+                    "activation_bank_count": 4,
+                },
+            ]
+        }
+
+        self.assertEqual(
+            physical_candidate_tuples(search),
+            [
+                {
+                    "lanes": 8,
+                    "compute_array_rows": 2,
+                    "compute_array_cols": 4,
+                    "fifo_depth": 16,
+                    "activation_banks": 2,
+                },
+                {
+                    "lanes": 16,
+                    "compute_array_rows": 4,
+                    "compute_array_cols": 8,
+                    "fifo_depth": 48,
+                    "activation_banks": 4,
+                },
+            ],
+        )
+
+    def test_candidate_universe_expands_only_declared_legal_array_tuples(self) -> None:
+        search = {
+            "candidate_universe": {
+                "compute_array": {
+                    "legal_compute_array_tuples": [
+                        {"lanes": 8, "rows": 2, "cols": 4},
+                        {"lanes": 16, "rows": 4, "cols": 8},
+                    ]
+                },
+                "physical_fifo_depth": {"candidate_values": [16, 32]},
+                "activation_bank_count": {"candidate_values": [2, 4]},
+            }
+        }
+
+        tuples = physical_candidate_tuples(search)
+        self.assertEqual(len(tuples), 8)
+        self.assertEqual(
+            {(row["lanes"], row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
+            {(8, 2, 4), (16, 4, 8)},
+        )
+        space = architecture_candidate_space(search, {"weight_qkv"})
+        self.assertEqual(space["physical_candidate_tuples"], tuples)
+
+    def test_candidate_universe_supports_explicit_legal_pairs(self) -> None:
+        search = {
+            "candidate_universe": {
+                "lanes": {"candidates": [32]},
+                "compute_array": {"legal_pairs": [[8, 8], [16, 32]]},
+                "physical_fifo_depth": {"entries_candidates": [16, 32]},
+                "activation_bank_count": {"candidates": [1, 2]},
+            }
+        }
+
+        tuples = physical_candidate_tuples(search)
+        self.assertEqual(len(tuples), 8)
+        self.assertEqual(
+            {(row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
+            {(8, 8), (16, 32)},
+        )
+
+    def test_global_params_come_from_current_bound_physical_tuple(self) -> None:
+        with TemporaryDirectory() as temp:
+            state = prepare_state("gpt2", Path(temp))
+            design_space = next(
+                item for item in state["constraints"] if item["id"] == "constraint.arch.design_space"
+            )
+            design_space["facts"]["search_params"]["hardware_parameter_tuples"] = [
+                {
+                    "lanes": 8,
+                    "compute_array": {"rows": 4, "cols": 4},
+                    "physical_fifo_depth_entries": 48,
+                    "activation_bank_count": 3,
+                }
+            ]
+            bindings = build_parameter_bindings(state)
+
+        self.assertEqual(bindings["global_params"]["fifo_depth"], 48)
+        self.assertEqual(bindings["global_params"]["activation_banks"], 3)
 
     def test_wrong_model_weight_role_layout_is_rejected_instead_of_silently_reused(self) -> None:
         with TemporaryDirectory() as temp:

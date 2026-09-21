@@ -61,6 +61,8 @@ def bound_value(binding: dict[str, Any], name: str, default: Any = None) -> Any:
     record = params.get(name)
     if isinstance(record, dict) and record.get("status") == "bound":
         return record.get("value")
+    if isinstance(record, dict) and record.get("status") == "candidate_bound":
+        return record.get("planning_value", default)
     return default
 
 

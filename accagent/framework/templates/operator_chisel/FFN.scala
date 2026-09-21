@@ -9,9 +9,6 @@ final case class DenseFFNParams(
   lanes: Int = 12,
   elemBits: Int = 16,
   outputBits: Int = 32,
-  tileM: Int = 1,
-  tileN: Int = 64,
-  tileK: Int = 64,
   batchSize: Int = 16,
   maxSeqLen: Int = 16,
   activation: String = "relu",
@@ -22,7 +19,6 @@ final case class DenseFFNParams(
   computeArrayRows: Int = 0,
   computeArrayCols: Int = 0
 ) {
-  require(tileM > 0 && tileN > 0 && tileK > 0, "FFN tile parameters must be positive")
   require(elemBits == 16 || elemBits == 32, "DenseFFN elements must use an IEEE boundary type")
   val up = LinearParams(
     hiddenSize,
@@ -113,9 +109,6 @@ final case class GatedMLPParams(
   lanes: Int = 12,
   elemBits: Int = 16,
   outputBits: Int = 32,
-  tileM: Int = 1,
-  tileN: Int = 64,
-  tileK: Int = 64,
   batchSize: Int = 16,
   maxSeqLen: Int = 16,
   activation: String = "silu",
@@ -129,7 +122,6 @@ final case class GatedMLPParams(
   computeArrayRows: Int = 0,
   computeArrayCols: Int = 0
 ) {
-  require(tileM > 0 && tileN > 0 && tileK > 0, "GatedMLP tile parameters must be positive")
   require(elemBits == 16 || elemBits == 32, "GatedMLP elements must use an IEEE boundary type")
   val gate = LinearParams(
     hiddenSize,

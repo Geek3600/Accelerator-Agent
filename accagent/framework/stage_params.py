@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from accagent.framework.dse_ledger import candidate_fingerprint, candidate_id, ledger_path, load_latest, measurement_summary
+from accagent.framework.dse_candidates import physical_candidate_tuples
 from accagent.framework.dse_materialization import validate_candidate_universe
 from accagent.framework.sacg_store import SACGStore
 from accagent.framework.sacg_utils import (
@@ -339,21 +340,16 @@ def architecture_candidate_space(search: dict[str, Any], weight_roles: set[str])
         "weight_sram_banks",
         scalar(first_value(search, "weight_banks", 1), 1),
     )
+    tuples = physical_candidate_tuples(search)
     return {
-        "lanes": search_group_values(search, "lanes", "global_lanes", scalar(first_value(search, "lanes", 8), 8)),
-        "compute_array_rows": search_group_values(
-            search, "compute_array", "rows", first_nested_candidate(search, "compute_array", "rows", 8)
-        ),
-        "compute_array_cols": search_group_values(
-            search, "compute_array", "cols", first_nested_candidate(search, "compute_array", "cols", 8)
-        ),
-        "fifo_depth": search_group_values(search, "fifo_depths", "stream_fifo_depth_entries", selected_fifo_depth(search, 16)),
-        "activation_banks": search_group_values(search, "bank_counts", "activation_sram_banks", scalar(first_value(search, "buffer_banks", 2), 2)),
+        "physical_candidate_tuples": tuples,
+        "lanes": sorted({item["lanes"] for item in tuples}),
+        "compute_array_rows": sorted({item["compute_array_rows"] for item in tuples}),
+        "compute_array_cols": sorted({item["compute_array_cols"] for item in tuples}),
+        "fifo_depth": sorted({item["fifo_depth"] for item in tuples}),
+        "activation_banks": sorted({item["activation_banks"] for item in tuples}),
         "physical_weight_layouts": declared_weight_layout_candidates(search, weight_banks, weight_roles),
         "excluded_until_hardware_binding": [
-            "tile_m",
-            "tile_n",
-            "tile_k",
             "burst_beats",
             "pipeline_depth",
             "clock_target_mhz",
@@ -377,20 +373,9 @@ def candidate_parameter_points(search: dict[str, Any], weight_roles: set[str]) -
 
     space = architecture_candidate_space(search, weight_roles)
     raw: list[dict[str, Any]] = []
-    for lanes, compute_array_rows, compute_array_cols, fifo_depth, activation_banks, layout in product(
-        space["lanes"],
-        space["compute_array_rows"],
-        space["compute_array_cols"],
-        space["fifo_depth"],
-        space["activation_banks"],
-        space["physical_weight_layouts"],
-    ):
+    for physical, layout in product(space["physical_candidate_tuples"], space["physical_weight_layouts"]):
         point = {
-            "lanes": lanes,
-            "compute_array_rows": compute_array_rows,
-            "compute_array_cols": compute_array_cols,
-            "fifo_depth": fifo_depth,
-            "activation_banks": activation_banks,
+            **physical,
             **layout,
             **PHYSICAL_IMPLEMENTATION,
         }
@@ -424,6 +409,7 @@ def fallback_params(shape: dict[str, Any], numeric: dict[str, Any], search: dict
     rules = numeric.get("default_rules", {}) if isinstance(numeric.get("default_rules"), dict) else {}
     activation_bits = dtype_bits(rules.get("activation_dtype", "FP16"), 16)
     acc_bits = dtype_bits(rules.get("acc_dtype", "FP32"), 32)
+    physical = physical_candidate_tuples(search)[0]
     return {
         "hidden_size": shape.get("hidden_size"),
         "intermediate_size": shape.get("intermediate_size"),
@@ -431,19 +417,16 @@ def fallback_params(shape: dict[str, Any], numeric: dict[str, Any], search: dict
         "num_kv_heads": shape.get("num_kv_heads"),
         "head_dim": shape.get("head_dim"),
         "seq_len": shape.get("target_max_seq_len"),
-        "lanes": first_value(search, "lanes", 8),
-        "compute_array_rows": first_nested_candidate(search, "compute_array", "rows", first_value(search, "compute_array_rows", 8)),
-        "compute_array_cols": first_nested_candidate(search, "compute_array", "cols", first_value(search, "compute_array_cols", 8)),
-        "tile_m": first_value(search, "tile_m", 8),
-        "tile_n": first_value(search, "tile_n", 24),
-        "tile_k": first_value(search, "tile_k", 8),
+        "lanes": physical["lanes"],
+        "compute_array_rows": physical["compute_array_rows"],
+        "compute_array_cols": physical["compute_array_cols"],
         "elem_bits": activation_bits,
         "input_bits": acc_bits,
         "output_bits": acc_bits,
         "causal": True,
-        "fifo_depth": selected_fifo_depth(search, 16),
+        "fifo_depth": physical["fifo_depth"],
         "weight_banks": first_value(search, "weight_banks", 1),
-        "activation_banks": first_value(search, "buffer_banks", 2),
+        "activation_banks": physical["activation_banks"],
         "burst_beats": first_value(search, "burst_beats", 1),
         "pipeline_depth": first_value(search, "pipeline_depth", 1),
         "clock_target_mhz": selected_clock_target_mhz(search),
@@ -477,7 +460,7 @@ def bind_stage_params(
         "output_bits": params.get("output_bits"),
         "compute_array_rows": (selected_architecture or {}).get("compute_array_rows", defaults["compute_array_rows"]),
         "compute_array_cols": (selected_architecture or {}).get("compute_array_cols", defaults["compute_array_cols"]),
-        "fifo_depth": defaults["fifo_depth"],
+        "fifo_depth": (selected_architecture or {}).get("fifo_depth", defaults["fifo_depth"]),
         "weight_banks": (selected_architecture or {}).get("weight_banks", defaults["weight_banks"]),
         "activation_banks": (selected_architecture or {}).get("activation_banks", defaults["activation_banks"]),
         "burst_beats": (selected_architecture or {}).get("burst_beats", defaults["burst_beats"]),
@@ -536,11 +519,6 @@ def check_legality(stage: dict[str, Any], params: dict[str, Any], shape: dict[st
         data_bits = lanes * elem_bits
         if data_bits > axi_bits or axi_bits % data_bits != 0:
             errors.append(f"{stage['stage_id']}: lanes*elem_bits={data_bits} is not aligned to axi_data_width_bits={axi_bits}")
-    seq_len = shape.get("target_max_seq_len")
-    for name, divisor in [("tile_m", seq_len), ("tile_n", out_dim), ("tile_k", in_dim)]:
-        value = params.get(name)
-        if isinstance(value, int) and isinstance(divisor, int) and divisor > 0 and divisor % value != 0:
-            errors.append(f"{stage['stage_id']}: {name}={value} does not divide {divisor}")
     return errors
 
 
@@ -749,24 +727,6 @@ def check_edge_dtype_contract(bindings: dict[str, Any]) -> dict[str, Any]:
     return pass_row("edge_dtype_stream_contract_check", f"edges={len(bindings.get('stream_contract_trace', []))}")
 
 
-def check_tile_overrides(bindings: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
-    errors = []
-    for item in bindings.get("bindings", []):
-        params = item.get("params", {}) if isinstance(item.get("params"), dict) else {}
-        in_dim, out_dim = dim_pair(item)
-        input_shape = item.get("input_shape", {}) if isinstance(item.get("input_shape"), dict) else {}
-        seq_len = scalar(input_shape.get("seq_len"), 1)
-        for key, divisor in [("tile_m", seq_len), ("tile_n", scalar(out_dim, 1)), ("tile_k", scalar(in_dim, 1))]:
-            value = params.get(key)
-            if value is None:
-                continue
-            if scalar(value, 0) <= 0 or divisor % scalar(value, 1) != 0:
-                errors.append(f"{item.get('stage_id')}: {key}={value} does not divide {divisor}")
-    if errors:
-        return fail_row("tile_override_legality_check", errors)
-    return pass_row("tile_override_legality_check", "per-stage tile params are authoritative; global tile params are defaults only")
-
-
 def check_stream_packing(bindings: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     shape = constraint_facts(state, "constraint.shape.model")
     axi = board_axi(state)
@@ -862,7 +822,6 @@ def run_parameter_static_checks(state: dict[str, Any], bindings: dict[str, Any])
     rows = [
         check_stage_numeric_contract(state, bindings),
         check_edge_dtype_contract(bindings),
-        check_tile_overrides(bindings, state),
         check_stream_packing(bindings, state),
         check_axi_transfer_layout(bindings),
         check_fifo_contract(bindings, state),
@@ -1129,6 +1088,12 @@ def build_parameter_bindings(state: dict[str, Any], selected_architecture: dict[
     lane_values = [item["params"].get("lanes") for item in bindings if item["params"].get("lanes")]
     compute_row_values = [item["params"].get("compute_array_rows") for item in bindings if item["params"].get("compute_array_rows")]
     compute_col_values = [item["params"].get("compute_array_cols") for item in bindings if item["params"].get("compute_array_cols")]
+    fifo_values = [item["params"].get("fifo_depth") for item in bindings if item["params"].get("fifo_depth")]
+    activation_bank_values = [
+        item["params"].get("activation_banks")
+        for item in bindings
+        if item["params"].get("activation_banks")
+    ]
     clock_values = [item["params"].get("clock_target_mhz") for item in bindings if item["params"].get("clock_target_mhz")]
     clock_target = clock_values[0] if clock_values else selected_clock_target_mhz(search)
     result = {
@@ -1143,12 +1108,13 @@ def build_parameter_bindings(state: dict[str, Any], selected_architecture: dict[
             "lanes": lane_values[0] if lane_values else selected_architecture.get("lanes", first_value(search, "lanes", 8)),
             "compute_array_rows": compute_row_values[0] if compute_row_values else selected_architecture.get("compute_array_rows", first_nested_candidate(search, "compute_array", "rows", 8)),
             "compute_array_cols": compute_col_values[0] if compute_col_values else selected_architecture.get("compute_array_cols", first_nested_candidate(search, "compute_array", "cols", 8)),
-            "tile_m": selected_architecture.get("tile_m", first_value(search, "tile_m", 8)),
-            "tile_n": selected_architecture.get("tile_n", first_value(search, "tile_n", 24)),
-            "tile_k": selected_architecture.get("tile_k", first_value(search, "tile_k", 8)),
-            "fifo_depth": selected_architecture.get("fifo_depth", selected_fifo_depth(search, 16)),
+            "fifo_depth": fifo_values[0] if fifo_values else selected_architecture.get("fifo_depth", selected_fifo_depth(search, 16)),
             "weight_banks": selected_architecture.get("weight_banks", first_value(search, "weight_banks", 1)),
-            "activation_banks": selected_architecture.get("activation_banks", first_value(search, "buffer_banks", 2)),
+            "activation_banks": (
+                activation_bank_values[0]
+                if activation_bank_values
+                else selected_architecture.get("activation_banks", first_value(search, "buffer_banks", 2))
+            ),
             "weight_banks_by_role": weight_layout["weight_banks_by_role"],
             "burst_beats": selected_architecture.get("burst_beats", first_value(search, "burst_beats", 1)),
             "pipeline_depth": selected_architecture.get("pipeline_depth", first_value(search, "pipeline_depth", 1)),
@@ -1162,9 +1128,6 @@ def build_parameter_bindings(state: dict[str, Any], selected_architecture: dict[
             },
         },
         "global_param_scope": {
-            "tile_m": "default_only; per-stage tile_m takes precedence",
-            "tile_n": "default_only; per-stage tile_n takes precedence",
-            "tile_k": "default_only; per-stage tile_k takes precedence",
             "compute_array_rows": "physical MAC-array row count; each PE row maps to an output lane group",
             "compute_array_cols": "physical MAC-array column count; each PE column maps to an input lane group",
             "fifo_depth": "local template default only; Stage 3 buffer_plan owns edge FIFO depths",
