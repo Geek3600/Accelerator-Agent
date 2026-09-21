@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
 import unittest
+from unittest.mock import patch
 
-from accagent.framework.stage_input import redact_sensitive_text, sanitize_llm_payload
+from accagent.framework import stage_input
+from accagent.framework.stage_input import (
+    bind_task_qor_targets,
+    bind_discovered_board_resource_budget,
+    parse_vivado_resource_budget,
+    redact_sensitive_text,
+    sanitize_llm_payload,
+    task_qor_hard_constraints,
+    task_qor_targets,
+)
 
 
 class StageInputSanitizationTest(unittest.TestCase):
@@ -29,6 +40,87 @@ class StageInputSanitizationTest(unittest.TestCase):
 
         self.assertEqual(sanitized["evidence"], [{"field": "tool.remote.host", "value": "build@example.org"}])
         self.assertNotIn("tool_api_key", sanitized)
+
+    def test_formal_campaign_qor_constraints_are_preserved_from_each_task_spec(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        for campaign in ("20260921_gpt2", "20260921_qwen2", "20260921_llama"):
+            targets = task_qor_targets(
+                (root / "accagent" / "campaigns" / campaign / "task_spec.md").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(targets["clock_frequency_mhz"], 250.0)
+            self.assertEqual(targets["clock_frequency_comparison"], ">=")
+            self.assertEqual(targets["performance_tokens_per_second"], 170.0)
+            self.assertEqual(targets["performance_comparison"], ">")
+            self.assertEqual(targets["resource_budget"], "discovered_target_board")
+            self.assertTrue(targets["power_report_required"])
+            self.assertFalse(targets["power_limit_applies"])
+            self.assertEqual(
+                task_qor_hard_constraints(targets),
+                [
+                    "clock_frequency_mhz >= 250",
+                    "performance_tokens_per_second > 170",
+                    "lut_ff_bram_uram_dsp <= discovered_target_board_resource_budget",
+                    "power_w measured",
+                ],
+            )
+
+    def test_task_qor_constraints_override_an_incomplete_llm_design_space(self) -> None:
+        targets = task_qor_targets(
+            "Hard QoR constraints: achieved clock frequency must be at least 250 MHz; "
+            "measured performance must be strictly greater than 170 token/s; LUT, FF, BRAM, "
+            "URAM, and DSP usage must remain within the discovered target board resource budget. "
+            "Measure and report power, but do not impose a power limit."
+        )
+        incomplete = {
+            "schema_version": "spatialaccagent.design_space.v0",
+            "status": "ready",
+            "sources": {},
+            "search_params": {"lanes": {"candidates": [8]}},
+            "objectives": [],
+            "hard_constraints": [],
+            "notes": [],
+        }
+
+        with patch.object(stage_input, "llm_json", return_value=incomplete):
+            result = stage_input.prepare_design_space(
+                {"model_type": "generic"},
+                {"library_id": "templates", "templates": []},
+                {"board": {"board_id": "target"}},
+                {"default_rules": {"weight_dtype": "fp16"}},
+                targets,
+                Path("unused"),
+            )
+
+        self.assertEqual(result["qor_targets"], targets)
+        self.assertEqual(result["hard_constraints"], task_qor_hard_constraints(targets))
+        self.assertEqual(
+            result["sources"]["task_qor_targets"]["binding"],
+            "deterministic_user_constraint",
+        )
+
+    def test_real_vivado_capacity_report_binds_the_target_board_budget(self) -> None:
+        report = """
+|        Site Type        | Used | Fixed | Prohibited | Available | Util% |
+| CLB LUTs*               |    0 |     0 |          0 |   1182240 |  0.00 |
+| CLB Registers           |    0 |     0 |          0 |   2364480 |  0.00 |
+|   RAMB36/FIFO*          |    0 |     0 |          0 |      2160 |  0.00 |
+|   RAMB18                |    0 |     0 |          0 |      4320 |  0.00 |
+| URAM                    |    0 |     0 |          0 |       960 |  0.00 |
+| DSPs                    |    0 |     0 |          0 |      6840 |  0.00 |
+"""
+        budget = parse_vivado_resource_budget(report)
+        self.assertEqual(
+            budget,
+            {"lut": 1_182_240, "ff": 2_364_480, "bram": 2160, "bram36": 2160, "bram18": 4320, "uram": 960, "dsp": 6840},
+        )
+
+        board = bind_discovered_board_resource_budget(
+            {"board": {"fpga_part": "target-part", "resource_budget": {}}},
+            {"discovered_target_board_resource_budget": budget},
+        )
+        self.assertEqual(board["board"]["resource_budget"], budget)
+        self.assertEqual(board["board"]["resource_budget_source"], "real_vivado_target_part_probe")
 
 
 if __name__ == "__main__":

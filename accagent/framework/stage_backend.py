@@ -1199,13 +1199,13 @@ def classify_qor_optimization(
     requested_power = _qor_number(targets.get("power_w"))
 
     ratios: list[tuple[str, float]] = []
-    for name in ["lut", "ff", "uram", "dsp"]:
+    for name in ["lut", "ff", "uram", "dsp", "bram36", "bram18"]:
         limit = _qor_number(board_budget.get(name))
         actual = _qor_number(resources.get(name))
         if limit and actual is not None:
             ratios.append((f"resources.{name}", actual / limit))
     bram_limit = _qor_number(board_budget.get("bram"))
-    if bram_limit:
+    if bram_limit and not (_qor_number(board_budget.get("bram36")) or _qor_number(board_budget.get("bram18"))):
         bram_actual = (_qor_number(resources.get("bram36")) or 0.0) + (_qor_number(resources.get("bram18")) or 0.0)
         ratios.append(("resources.bram", bram_actual / bram_limit))
     if requested_power:
@@ -1215,7 +1215,21 @@ def classify_qor_optimization(
     if requested_performance:
         ratios.append(("performance_tokens_per_second", requested_performance / performance))
 
+    performance_comparison = str(targets.get("performance_comparison") or ">=").strip()
     misses = [{"metric": name, "ratio": ratio} for name, ratio in ratios if ratio > 1.0]
+    if (
+        requested_performance is not None
+        and performance_comparison == ">"
+        and performance <= requested_performance
+        and not any(item["metric"] == "performance_tokens_per_second" for item in misses)
+    ):
+        misses.append(
+            {
+                "metric": "performance_tokens_per_second",
+                "ratio": requested_performance / performance if performance else float("inf"),
+                "comparison": ">",
+            }
+        )
     if not misses:
         return {
             "status": "pass",

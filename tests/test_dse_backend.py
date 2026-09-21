@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from accagent.framework.agent import is_formal_dse_backtrack
 from accagent.framework.dse_ledger import EXACT_TARGET_BOARD_APP_SHELL_SCOPE, load_latest
@@ -115,6 +116,51 @@ class DseBackendTest(unittest.TestCase):
 
         self.assertEqual(result["decision"], "dse_backtrack")
         self.assertEqual(result["next_stage"], "stage4.parameter_binding")
+
+    def test_strict_throughput_target_rejects_equal_measured_value(self) -> None:
+        metrics = {
+            "resources": {"lut": 10, "ff": 20, "bram36": 1, "bram18": 0, "uram": 1, "dsp": 1},
+            "power_w": 1.0,
+            "clock_frequency_mhz": 250.0,
+            "performance_tokens_per_second": 170.0,
+        }
+
+        def facts(_state: dict[str, object], key: str) -> dict[str, object]:
+            if key == "constraint.arch.design_space":
+                return {
+                    "qor_targets": {
+                        "clock_frequency_mhz": 250.0,
+                        "performance_tokens_per_second": 170.0,
+                        "performance_comparison": ">",
+                    }
+                }
+            return {"board": {"resource_budget": {"lut": 100, "ff": 100, "bram": 10, "uram": 10, "dsp": 10}}}
+
+        with patch("accagent.framework.stage_backend.constraint_facts", side_effect=facts):
+            result = classify_qor_optimization({}, metrics)
+
+        self.assertEqual(result["decision"], "llm_required")
+        self.assertEqual(result["misses"][0]["metric"], "performance_tokens_per_second")
+        self.assertEqual(result["misses"][0]["comparison"], ">")
+
+    def test_separate_bram36_and_bram18_budgets_are_checked_without_double_counting(self) -> None:
+        metrics = {
+            "resources": {"lut": 10, "ff": 20, "bram36": 1, "bram18": 5, "uram": 1, "dsp": 1},
+            "power_w": 1.0,
+            "clock_frequency_mhz": 250.0,
+            "performance_tokens_per_second": 200.0,
+        }
+
+        def facts(_state: dict[str, object], key: str) -> dict[str, object]:
+            if key == "constraint.arch.design_space":
+                return {"qor_targets": {}}
+            return {"board": {"resource_budget": {"lut": 100, "ff": 100, "bram36": 2, "bram18": 4, "uram": 10, "dsp": 10}}}
+
+        with patch("accagent.framework.stage_backend.constraint_facts", side_effect=facts):
+            result = classify_qor_optimization({}, metrics)
+
+        self.assertEqual(result["decision"], "llm_required")
+        self.assertEqual(result["misses"][0]["metric"], "resources.bram18")
 
     def test_exact_dse_backtrack_is_identified_across_public_stage_aliases(self) -> None:
         request = {

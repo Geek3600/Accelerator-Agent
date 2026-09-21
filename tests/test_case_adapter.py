@@ -124,6 +124,32 @@ class BuiltinTransformerCaseAdapterTest(unittest.TestCase):
             self.assertIn("GeneratedAxiDdrTop.sv", material)
             self.assertNotIn("LlamaStyleBlock.sv", material)
 
+    def test_unconfigured_legacy_liveness_tools_are_not_stage0_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = root / "run"
+            input_dir = run_dir / "input"
+            input_dir.mkdir(parents=True)
+            checkpoint = root / "checkpoint"
+            checkpoint.mkdir()
+            adapter = build_case_adapter(
+                {"model_type": "gpt2", "model_id": "test-gpt2", "model_dir": str(checkpoint)},
+                run_dir,
+                root / "tool_materials",
+            )
+            protocols = prepare_tool_protocols(
+                {"runtime_interface": {}},
+                {"tools": []},
+                "",
+                root / "tool_materials",
+                input_dir,
+                adapter,
+            )
+
+        tools = {item["name"]: item for item in protocols["tools"]}
+        self.assertFalse(tools["case_verilator_liveness"]["required"])
+        self.assertFalse(tools["case_vcs_liveness"]["required"])
+
 
 if __name__ == "__main__":
     unittest.main()

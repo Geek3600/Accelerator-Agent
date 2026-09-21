@@ -893,6 +893,114 @@ def target_seq_from_task(task_text: str) -> int:
     return 16
 
 
+def task_qor_targets(task_text: str) -> dict[str, Any]:
+    """Extract explicit QoR gates from the current task specification.
+
+    These values are user constraints, not LLM-generated architecture advice.
+    The Stage-0 DSE agent receives them for context, but cannot erase or weaken
+    them in the design-space artifact consumed by later stages.
+    """
+
+    text = " ".join(str(task_text or "").split())
+
+    def target_number(patterns: list[str], *, unit_scale: float = 1.0) -> float | None:
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return float(match.group(1)) * unit_scale
+        return None
+
+    clock_mhz = target_number(
+        [r"(?:achieved\s+)?clock(?:\s+frequency)?[^.;:]{0,80}?(?:at\s+least|>=|no\s+less\s+than)\s*(\d+(?:\.\d+)?)\s*mhz"]
+    )
+    if clock_mhz is None:
+        clock_mhz = target_number(
+            [r"(?:achieved\s+)?clock(?:\s+frequency)?[^.;:]{0,80}?(?:at\s+least|>=|no\s+less\s+than)\s*(\d+(?:\.\d+)?)\s*ghz"],
+            unit_scale=1000.0,
+        )
+
+    performance = target_number(
+        [
+            r"(?:measured\s+)?(?:performance|throughput)[^.;:]{0,100}?(?:strictly\s+greater\s+than|greater\s+than|>)\s*(\d+(?:\.\d+)?)\s*(?:tokens?\s*/\s*s|tokens?\s+per\s+second)",
+            r"(?:measured\s+)?(?:performance|throughput)[^.;:]{0,100}?(?:at\s+least|>=|no\s+less\s+than)\s*(\d+(?:\.\d+)?)\s*(?:tokens?\s*/\s*s|tokens?\s+per\s+second)",
+        ]
+    )
+    strict_performance = bool(
+        re.search(
+            r"(?:performance|throughput)[^.;:]{0,100}?(?:strictly\s+greater\s+than|>)",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    resources_within_board = bool(
+        re.search(
+            r"(?:lut|ff|bram|uram|dsp)[^.;:]{0,160}?(?:within|not\s+exceed|must\s+not\s+exceed)[^.;:]{0,120}?(?:board\s+)?resource\s+budget",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    power_measured = bool(re.search(r"(?:measure|report)[^.;:]{0,80}\bpower\b|\bpower\b[^.;:]{0,80}(?:measure|report)", text, re.IGNORECASE))
+    power_unconstrained = bool(
+        re.search(
+            r"(?:no|without)\s+(?:a\s+)?power\s+limit|do\s+not\s+impose\s+(?:a\s+)?power\s+limit|power\s+(?:is\s+)?unconstrained",
+            text,
+            re.IGNORECASE,
+        )
+    )
+
+    targets: dict[str, Any] = {
+        "resource_budget": "discovered_target_board" if resources_within_board else None,
+        "resource_comparison": "<=" if resources_within_board else None,
+        "power_w": None,
+        "power_report_required": power_measured,
+        "power_limit_applies": not power_unconstrained if power_measured else None,
+        "source": "task_spec",
+    }
+    if clock_mhz is not None:
+        targets["clock_frequency_mhz"] = clock_mhz
+        targets["clock_frequency_comparison"] = ">="
+    if performance is not None:
+        targets["performance_tokens_per_second"] = performance
+        targets["performance_comparison"] = ">" if strict_performance else ">="
+    return {key: value for key, value in targets.items() if value is not None}
+
+
+def task_qor_hard_constraints(targets: dict[str, Any]) -> list[str]:
+    constraints: list[str] = []
+    clock = targets.get("clock_frequency_mhz")
+    if isinstance(clock, (int, float)):
+        constraints.append(f"clock_frequency_mhz {targets.get('clock_frequency_comparison', '>=')} {clock:g}")
+    performance = targets.get("performance_tokens_per_second")
+    if isinstance(performance, (int, float)):
+        constraints.append(
+            f"performance_tokens_per_second {targets.get('performance_comparison', '>=')} {performance:g}"
+        )
+    if targets.get("resource_budget") == "discovered_target_board":
+        constraints.append("lut_ff_bram_uram_dsp <= discovered_target_board_resource_budget")
+    if targets.get("power_report_required"):
+        constraints.append("power_w measured" if not targets.get("power_limit_applies") else "power_w within_task_limit")
+    return constraints
+
+
+def bind_task_qor_targets(design_space: dict[str, Any], targets: dict[str, Any]) -> dict[str, Any]:
+    """Make explicit task QoR gates immutable in the Stage-0 handoff."""
+
+    result = copy.deepcopy(design_space)
+    result["qor_targets"] = copy.deepcopy(targets)
+    result["hard_constraints"] = task_qor_hard_constraints(targets)
+    sources = result.setdefault("sources", {})
+    if isinstance(sources, dict):
+        sources["task_qor_targets"] = {
+            "source": "task_spec",
+            "values": copy.deepcopy(targets),
+            "binding": "deterministic_user_constraint",
+        }
+    notes = result.setdefault("notes", [])
+    if isinstance(notes, list):
+        notes.append("Explicit task QoR targets are deterministically bound and cannot be weakened by DSE planning.")
+    return result
+
+
 def load_model_source(path: Path, target_seq: int) -> dict[str, Any]:
     source = read_json(path)
     if {"model_type", "block", "attention", "mlp"} <= set(source):
@@ -1401,7 +1509,14 @@ def prepare_template_library(template_dir: Path, input_dir: Path) -> tuple[dict[
     return library, metadata
 
 
-def prepare_design_space(model: dict[str, Any], templates: dict[str, Any], board: dict[str, Any], out_dir: Path) -> dict[str, Any]:
+def prepare_design_space(
+    model: dict[str, Any],
+    templates: dict[str, Any],
+    board: dict[str, Any],
+    numeric_policy: dict[str, Any],
+    qor_targets: dict[str, Any],
+    out_dir: Path,
+) -> dict[str, Any]:
     fallback = {
         "schema_version": "spatialaccagent.design_space.v0",
         "status": "generated_by_stage0_agent",
@@ -1428,12 +1543,8 @@ def prepare_design_space(model: dict[str, Any], templates: dict[str, Any], board
             "maximize_clock_frequency_mhz",
             "maximize_performance_tokens_per_second",
         ],
-        "hard_constraints": [
-            "resources_within_target_budget",
-            "power_within_target_budget",
-            "clock_frequency_meets_target",
-            "performance_meets_target",
-        ],
+        "qor_targets": qor_targets,
+        "hard_constraints": task_qor_hard_constraints(qor_targets),
         "notes": ["fallback formal DSE universe contains only parameters that change generated FPGA RTL/XPM topology"],
     }
     prompt = build_prompt(
@@ -1443,6 +1554,8 @@ def prepare_design_space(model: dict[str, Any], templates: dict[str, Any], board
             "model_config": model,
             "template_metadata_summary": {"library_id": templates.get("library_id"), "templates": templates.get("templates", [])},
             "target_board_profile": board,
+            "numeric_policy": numeric_policy,
+            "explicit_task_qor_targets": qor_targets,
         },
         output_schema=DESIGN_SPACE_SCHEMA,
         rules=[
@@ -1450,13 +1563,16 @@ def prepare_design_space(model: dict[str, Any], templates: dict[str, Any], board
             "Search parameters must be hardware parameters, not model semantics.",
             "Declare a finite, complete candidate universe containing only parameters that genuinely change generated RTL, Vivado FP IP, XPM BRAM/URAM topology, or board behavior. Exclude metadata-only tile, burst, pipeline-depth, and clock-target fields until they are wired into generated hardware.",
             "Include lanes, compute_array.rows, compute_array.cols, physical FIFO depth, activation-bank count, and optional physical_weight_layout_candidates. The two compute_array values are the physical MAC PE array dimensions; every PE must instantiate one fixed Vivado multiplier/DSP IP, so they must be real generated-hardware parameters rather than metadata. Keep compute_array.cols power-of-two for the trusted reduction tree and require both dimensions to tile the selected vector lanes. When supplied, each layout must bind every model-semantic weight-storage term declared by the current semantic adapter to a positive XPM URAM bank count. Do not use another model family's role names. If no explicit layouts are supplied, Stage 4 derives the complete all-URAM baseline from the same semantic contract.",
-            "Hard constraints must use only resource, power, clock-frequency, and token-per-second targets when evidence supplies a target value.",
+            "The supplied explicit_task_qor_targets are immutable user constraints. Repeat them accurately, but do not add, delete, weaken, or replace them.",
             "The design must bind Vivado floating-point/DSP IP and XPM physical memories from the first implementation candidate; do not select a software arithmetic or ideal-memory backend.",
             "Do not choose parameters that require changing model semantics or bypassing DDR/AXI/runtime constraints.",
             "Do not provide resource, power, frequency, or performance estimates. Stage 4 will use only real target-board app-shell Vivado and hardware-counter measurements for those four metrics.",
         ],
     )
-    return llm_json("design_space_agent", prompt, DESIGN_SPACE_SCHEMA, fallback, out_dir)
+    return bind_task_qor_targets(
+        llm_json("design_space_agent", prompt, DESIGN_SPACE_SCHEMA, fallback, out_dir),
+        qor_targets,
+    )
 
 
 def tool_by_name(tool_profile: dict[str, Any], name: str) -> dict[str, Any] | None:
@@ -2274,6 +2390,37 @@ def probe_remote_vcs_flow(tool: dict[str, Any], executable: str, timeout_sec: in
     return run_ssh_command(host, port, remote_body, timeout_sec)
 
 
+def parse_vivado_resource_budget(report_text: str) -> dict[str, int] | None:
+    """Parse resource capacities from a real Vivado utilization report."""
+
+    labels = {
+        "CLB LUTs": "lut",
+        "CLB Registers": "ff",
+        "RAMB36/FIFO": "bram36",
+        "RAMB18": "bram18",
+        "URAM": "uram",
+        "DSPs": "dsp",
+    }
+    budget: dict[str, int] = {}
+    for line in str(report_text or "").splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        cells = [cell.strip().replace("*", "") for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 5:
+            continue
+        key = labels.get(cells[0])
+        if not key:
+            continue
+        try:
+            budget[key] = int(cells[4].replace(",", ""))
+        except ValueError:
+            continue
+    if set(labels.values()) <= set(budget):
+        budget["bram"] = budget["bram36"]
+        return budget
+    return None
+
+
 def probe_remote_vivado_flow(tool: dict[str, Any], executable: str, board_part: str | None, timeout_sec: int) -> dict[str, Any]:
     if not board_part:
         return {"ok": False, "error": "board fpga_part missing; Vivado synthesis probe cannot choose part"}
@@ -2299,9 +2446,16 @@ def probe_remote_vivado_flow(tool: dict[str, Any], executable: str, board_part: 
             f"{exe} -mode batch -source probe.tcl -nojournal -log vivado.log > vivado_stdout.log 2>&1",
             "(grep -q STAGE0_VIVADO_PROBE_PASS vivado.log || grep -q STAGE0_VIVADO_PROBE_PASS vivado_stdout.log)",
             "printf 'STAGE0_VIVADO_FLOW_PASS\\n'",
+            r"grep -E '^\|[[:space:]]*(CLB LUTs\*|CLB Registers|RAMB36/FIFO\*|RAMB18|URAM|DSPs)' util.rpt",
         ]
     )
-    return run_ssh_command(host, port, remote_body, timeout_sec)
+    probe = run_ssh_command(host, port, remote_body, timeout_sec)
+    budget = parse_vivado_resource_budget(str(probe.get("stdout") or ""))
+    if budget is None:
+        probe["resource_budget_error"] = "Vivado flow probe did not expose a complete FPGA resource budget"
+    else:
+        probe["resource_budget"] = budget
+    return probe
 
 
 def probe_remote_tool(tool: dict[str, Any], timeout_sec: int, board_part: str | None = None) -> dict[str, Any]:
@@ -2397,8 +2551,32 @@ def prepare_tool_availability(tool_profile: dict[str, Any], input_dir: Path, boa
         },
         "tools": tools,
     }
+    vivado = availability_by_name(availability, "vivado")
+    budget = (vivado or {}).get("flow_probe", {}).get("resource_budget")
+    if isinstance(budget, dict):
+        availability["discovered_target_board_resource_budget"] = budget
     write_json(input_dir / "tool_availability.json", availability)
     return availability
+
+
+def bind_discovered_board_resource_budget(
+    board_profile: dict[str, Any],
+    tool_availability: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach only real Vivado-discovered device capacity to the board profile."""
+
+    result = copy.deepcopy(board_profile)
+    budget = tool_availability.get("discovered_target_board_resource_budget")
+    if not isinstance(budget, dict):
+        return result
+    required = {"lut", "ff", "bram", "bram36", "bram18", "uram", "dsp"}
+    if not required <= set(budget):
+        return result
+    board = result.setdefault("board", {})
+    if isinstance(board, dict):
+        board["resource_budget"] = {key: int(budget[key]) for key in sorted(required)}
+        board["resource_budget_source"] = "real_vivado_target_part_probe"
+    return result
 
 
 def availability_by_name(tool_availability: dict[str, Any], name: str) -> dict[str, Any] | None:
@@ -2473,13 +2651,18 @@ def prepare_tool_protocols(
     verilator_tool = tool_by_name(tool_profile, "verilator") or {}
     verilator_bin = clean_executable_path(verilator_tool.get("executable")) or "verilator"
 
-    def case_tool(role: str, *, env: dict[str, str] | None = None) -> dict[str, Any]:
+    def case_tool(
+        role: str,
+        *,
+        env: dict[str, str] | None = None,
+        required: bool | None = None,
+    ) -> dict[str, Any]:
         spec = adapter_tool(case_adapter, role) or {
             "name": f"case_{role}",
             "kind": f"case_{role}",
             "scope": "local",
             "argv": [],
-            "required": True,
+            "required": False,
             "consumes": [],
             "produces": [],
         }
@@ -2498,7 +2681,7 @@ def prepare_tool_protocols(
             argv=argv,
             cwd=Path.cwd(),
             env=env or {},
-            required=bool(spec.get("required", False)),
+            required=bool(spec.get("required", False)) if required is None else required,
             required_group=spec.get("required_group"),
             consumes=list(spec.get("consumes") or []),
             produces=list(spec.get("produces") or []),
@@ -2545,8 +2728,8 @@ def prepare_tool_protocols(
         case_tool("multilayer_pipeline"),
         case_tool("axi_ddr_interface"),
         structured_command(name="stage_verilator_lint", kind="stage_verilator_lint", scope="local", argv=["bash", "-lc", f"{shlex.quote(verilator_bin)} --lint-only -Wno-fatal --timing {shlex.quote(str(chisel_dir))}/*.sv"] if has_verilator else [], cwd=Path.cwd(), required=False, consumes=[str(chisel_dir)]),
-        case_tool("verilator_liveness", env=verilator_env),
-        case_tool("vcs_liveness", env=vcs_env),
+        case_tool("verilator_liveness", env=verilator_env, required=False),
+        case_tool("vcs_liveness", env=vcs_env, required=False),
         case_tool("vcs_functional_sim", env=vcs_env),
         case_tool("vcs_evidence_analyzer"),
         case_tool("vivado_synthesis", env=vivado_env),
@@ -2647,6 +2830,12 @@ def validate_inputs(items: dict[str, dict[str, Any]]) -> tuple[list[str], list[s
         errors.append("template_metadata missing templates")
     if not items["design_space"].get("search_params"):
         errors.append("design_space missing search_params")
+    qor_targets = items["design_space"].get("qor_targets", {})
+    if qor_targets.get("resource_budget") == "discovered_target_board":
+        budget = board.get("board", {}).get("resource_budget", {}) if isinstance(board.get("board"), dict) else {}
+        required_budget_fields = {"lut", "ff", "bram36", "bram18", "uram", "dsp"}
+        if not required_budget_fields <= set(budget):
+            errors.append("target_board_profile missing real Vivado-discovered resource budget")
     if case_adapter.get("status") not in {"ready", "pass"}:
         adapter_errors = case_adapter.get("errors", [])
         errors.append(f"case_adapter is not ready for this run: status={case_adapter.get('status')} errors={adapter_errors}")
@@ -2766,6 +2955,7 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     require_llm_configuration(input_dir)
 
     task_text = read_text(args.task_spec)
+    qor_targets = task_qor_targets(task_text)
     quantization_materials_text, quantization_index = read_text_bundle_indexed(args.quantization_materials_dir, input_dir, "quantization")
     board_materials_text, board_index = read_text_bundle_indexed(args.board_materials_dir, input_dir, "board")
     tool_materials_text, tool_index = read_text_bundle_indexed(args.tool_materials_dir, input_dir, "tools")
@@ -2801,7 +2991,14 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         target_board_profile = prepare_board_profile(board_summary, field_evidence_summary, sample_project_summary_data, llm_dir)
         task_card = prepare_task_card(task_text, model_config, llm_dir)
         tool_profile = prepare_tool_profile(tool_summary, target_board_profile, field_evidence_summary, llm_dir)
-        design_space = prepare_design_space(model_config, template_metadata, target_board_profile, llm_dir)
+        design_space = prepare_design_space(
+            model_config,
+            template_metadata,
+            target_board_profile,
+            numeric_policy,
+            qor_targets,
+            llm_dir,
+        )
     else:
         first_wave: dict[str, Any] = {}
         with ThreadPoolExecutor(max_workers=llm_workers) as pool:
@@ -2822,7 +3019,15 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             futures = {
                 pool.submit(prepare_task_card, task_text, model_config, llm_dir): "task_card",
                 pool.submit(prepare_tool_profile, tool_summary, target_board_profile, field_evidence_summary, llm_dir): "tool_profile",
-                pool.submit(prepare_design_space, model_config, template_metadata, target_board_profile, llm_dir): "design_space",
+                pool.submit(
+                    prepare_design_space,
+                    model_config,
+                    template_metadata,
+                    target_board_profile,
+                    numeric_policy,
+                    qor_targets,
+                    llm_dir,
+                ): "design_space",
             }
             for future in as_completed(futures):
                 second_wave[futures[future]] = future.result()
@@ -2834,6 +3039,7 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     # variable select another parallel run's model material.
     model_config = {**model_config, "model_dir": str(model_dir)}
     tool_availability = prepare_tool_availability(tool_profile, input_dir, target_board_profile)
+    target_board_profile = bind_discovered_board_resource_budget(target_board_profile, tool_availability)
     case_adapter = build_case_adapter(model_config, run_dir, args.tool_materials_dir)
     write_json(input_dir / "case_adapter.json", case_adapter)
     tool_protocols = prepare_tool_protocols(
