@@ -10,6 +10,7 @@ from accagent.framework.stage_input import (
     bind_discovered_board_resource_budget,
     parse_vivado_resource_budget,
     redact_sensitive_text,
+    remote_probe_workdir_expr,
     sanitize_llm_payload,
     task_qor_hard_constraints,
     task_qor_targets,
@@ -121,6 +122,22 @@ class StageInputSanitizationTest(unittest.TestCase):
         )
         self.assertEqual(board["board"]["resource_budget"], budget)
         self.assertEqual(board["board"]["resource_budget_source"], "real_vivado_target_part_probe")
+
+    def test_parallel_runs_use_distinct_remote_probe_directories(self) -> None:
+        tool: dict[str, object] = {}
+
+        first = remote_probe_workdir_expr(tool, "vivado", "formal/gpt2")
+        second = remote_probe_workdir_expr(tool, "vivado", "formal/qwen2")
+
+        self.assertEqual(
+            first,
+            "$HOME/workspace/spatialacc_stage0_tool_probe/vivado/formal_gpt2",
+        )
+        self.assertEqual(
+            second,
+            "$HOME/workspace/spatialacc_stage0_tool_probe/vivado/formal_qwen2",
+        )
+        self.assertNotEqual(first, second)
 
 
 if __name__ == "__main__":

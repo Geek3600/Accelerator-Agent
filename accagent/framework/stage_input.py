@@ -2378,22 +2378,40 @@ def probe_local_tool(tool: dict[str, Any], timeout_sec: int) -> dict[str, Any]:
     }
 
 
-def remote_probe_workdir_expr(tool: dict[str, Any], name: str) -> str:
+def remote_probe_workdir_expr(
+    tool: dict[str, Any],
+    name: str,
+    run_namespace: str = "",
+) -> str:
+    safe_namespace = re.sub(r"[^A-Za-z0-9_.-]", "_", run_namespace).strip("._-")
+    namespace_suffix = f"/{safe_namespace}" if safe_namespace else ""
     configured = tool.get("workdir") or os.environ.get("SPATIALACC_REMOTE_PROBE_WORKDIR")
     if configured:
-        return shlex.quote(str(configured).rstrip("/") + f"/stage0_{name}_probe")
+        return shlex.quote(
+            str(configured).rstrip("/")
+            + f"/stage0_{name}_probe"
+            + namespace_suffix
+        )
     safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", name)
-    return f"$HOME/workspace/spatialacc_stage0_tool_probe/{safe_name}"
+    return (
+        f"$HOME/workspace/spatialacc_stage0_tool_probe/{safe_name}"
+        + namespace_suffix
+    )
 
 
-def probe_remote_vcs_flow(tool: dict[str, Any], executable: str, timeout_sec: int) -> dict[str, Any]:
+def probe_remote_vcs_flow(
+    tool: dict[str, Any],
+    executable: str,
+    timeout_sec: int,
+    run_namespace: str = "",
+) -> dict[str, Any]:
     host = str(tool.get("host"))
     port = int(tool.get("port") or 22)
     env_dict = dict(tool.get("env") or {})
     env_dict.setdefault("VCS_TARGET_ARCH", "linux64")
     env = quote_remote_env(env_dict)
     exe = shlex.quote(executable)
-    workdir = remote_probe_workdir_expr(tool, "vcs")
+    workdir = remote_probe_workdir_expr(tool, "vcs", run_namespace)
     tb = 'module stage0_vcs_probe_tb; initial begin $display("STAGE0_VCS_PROBE_PASS"); $finish; end endmodule'
     run_vcs = f"{env} {exe} -full64 -sverilog -o simv stage0_vcs_probe_tb.sv > vcs_compile.log 2>&1" if env else f"{exe} -full64 -sverilog -o simv stage0_vcs_probe_tb.sv > vcs_compile.log 2>&1"
     remote_body = " && ".join(
@@ -2441,13 +2459,19 @@ def parse_vivado_resource_budget(report_text: str) -> dict[str, int] | None:
     return None
 
 
-def probe_remote_vivado_flow(tool: dict[str, Any], executable: str, board_part: str | None, timeout_sec: int) -> dict[str, Any]:
+def probe_remote_vivado_flow(
+    tool: dict[str, Any],
+    executable: str,
+    board_part: str | None,
+    timeout_sec: int,
+    run_namespace: str = "",
+) -> dict[str, Any]:
     if not board_part:
         return {"ok": False, "error": "board fpga_part missing; Vivado synthesis probe cannot choose part"}
     host = str(tool.get("host"))
     port = int(tool.get("port") or 22)
     exe = shlex.quote(executable)
-    workdir = remote_probe_workdir_expr(tool, "vivado")
+    workdir = remote_probe_workdir_expr(tool, "vivado", run_namespace)
     verilog = "module stage0_vivado_probe(input clk, input a, output y); assign y = a; endmodule"
     tcl_lines = [
         "read_verilog stage0_vivado_probe.v",
@@ -2478,7 +2502,12 @@ def probe_remote_vivado_flow(tool: dict[str, Any], executable: str, board_part: 
     return probe
 
 
-def probe_remote_tool(tool: dict[str, Any], timeout_sec: int, board_part: str | None = None) -> dict[str, Any]:
+def probe_remote_tool(
+    tool: dict[str, Any],
+    timeout_sec: int,
+    board_part: str | None = None,
+    run_namespace: str = "",
+) -> dict[str, Any]:
     name = str(tool.get("name") or "").lower()
     host = tool.get("host")
     port = int(tool.get("port") or 22)
@@ -2520,9 +2549,13 @@ def probe_remote_tool(tool: dict[str, Any], timeout_sec: int, board_part: str | 
     version_probe = run_ssh_command(str(host), port, remote_body, timeout_sec)
     flow_probe = {"ok": bool(version_probe.get("ok")), "note": "minimal flow probe not required for this remote tool"}
     if name == "vcs":
-        flow_probe = probe_remote_vcs_flow(tool, executable, timeout_sec)
+        flow_probe = probe_remote_vcs_flow(
+            tool, executable, timeout_sec, run_namespace
+        )
     elif name == "vivado":
-        flow_probe = probe_remote_vivado_flow(tool, executable, board_part, timeout_sec)
+        flow_probe = probe_remote_vivado_flow(
+            tool, executable, board_part, timeout_sec, run_namespace
+        )
     return {
         "name": name,
         "scope": "remote",
@@ -2539,6 +2572,7 @@ def prepare_tool_availability(tool_profile: dict[str, Any], input_dir: Path, boa
     timeout_sec = int(os.environ.get("SPATIALACC_TOOL_PROBE_TIMEOUT_SEC", "120") or "120")
     timeout_sec = max(5, timeout_sec)
     board_part = (board_profile or {}).get("board", {}).get("fpga_part")
+    run_namespace = input_dir.parent.name
     tools = []
     for tool in tool_profile.get("tools", []):
         scope = str(tool.get("scope") or "").lower()
@@ -2546,7 +2580,14 @@ def prepare_tool_availability(tool_profile: dict[str, Any], input_dir: Path, boa
         if name not in {"vcs", "verilator", "vivado"}:
             continue
         if scope == "remote":
-            tools.append(probe_remote_tool(tool, timeout_sec, board_part))
+            tools.append(
+                probe_remote_tool(
+                    tool,
+                    timeout_sec,
+                    board_part,
+                    run_namespace,
+                )
+            )
         elif scope == "local":
             tools.append(probe_local_tool(tool, timeout_sec))
         else:
