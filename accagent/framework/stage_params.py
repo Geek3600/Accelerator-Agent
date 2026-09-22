@@ -1044,6 +1044,100 @@ def select_dse_candidate(dse: dict[str, Any], llm_output: dict[str, Any]) -> tup
     return selected, rationale
 
 
+def dse_llm_candidate_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Project one physical candidate into the LLM decision evidence.
+
+    The evaluator keeps the complete candidate records on disk.  The selector
+    only needs the immutable candidate identity, hardware-effective parameters,
+    legality, and measured QoR; sending the repeated structural bindings and
+    full candidate universe makes the prompt exceed the provider context.
+    """
+
+    parameters = record.get("parameters", {})
+    parameters = parameters if isinstance(parameters, dict) else {}
+    measurement = record.get("measurement")
+    measurement = measurement if isinstance(measurement, dict) else None
+    metrics = measurement.get("metrics", {}) if measurement else {}
+    metrics = metrics if isinstance(metrics, dict) else {}
+    resources = metrics.get("resources", {})
+    resources = resources if isinstance(resources, dict) else {}
+    return {
+        "candidate_id": record.get("candidate_id"),
+        "parameters": {
+            key: parameters.get(key)
+            for key in (
+                "lanes",
+                "compute_array_rows",
+                "compute_array_cols",
+                "fifo_depth",
+                "activation_banks",
+                "weight_banks",
+                "weight_banks_by_role",
+            )
+            if parameters.get(key) is not None
+        },
+        "feasible": bool(record.get("feasible")),
+        "hard_constraint_errors": list(record.get("hard_constraint_errors", [])),
+        "measurement_status": measurement.get("measurement_status") if measurement else "unmeasured",
+        "measurement": (
+            {
+                "clock_frequency_mhz": metrics.get("clock_frequency_mhz"),
+                "performance_tokens_per_second": metrics.get("performance_tokens_per_second"),
+                "power_w": metrics.get("power_w"),
+                "resources": {
+                    key: resources.get(key)
+                    for key in ("lut", "ff", "dsp", "bram18", "bram36", "uram")
+                    if resources.get(key) is not None
+                },
+            }
+            if measurement
+            else None
+        ),
+    }
+
+
+def dse_llm_selection_evidence(
+    dse: dict[str, Any],
+    eligible_records: list[dict[str, Any]],
+    pareto_records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build a bounded, non-lossy candidate view for the DSE selector."""
+
+    search_space = dse.get("search_space", {})
+    search_space = search_space if isinstance(search_space, dict) else {}
+    return {
+        "schema_version": "spatialaccagent.stage4_dse_llm_selection_evidence.v1",
+        "candidate_count": dse.get("candidate_count"),
+        "measurement_summary": dse.get("measurement_summary", {}),
+        "candidate_dimensions": {
+            key: search_space.get(key, [])
+            for key in (
+                "lanes",
+                "compute_array_rows",
+                "compute_array_cols",
+                "fifo_depth",
+                "activation_banks",
+            )
+        },
+        "eligible_candidates": [
+            dse_llm_candidate_record(record)
+            for record in eligible_records
+            if isinstance(record, dict)
+        ],
+        "measured_pareto_candidates": [
+            dse_llm_candidate_record(record)
+            for record in pareto_records
+            if isinstance(record, dict)
+        ],
+        "policy": {
+            "candidate_ids_and_parameters_are_complete_for_selection": True,
+            "eligible_candidates_are_the_only_selectable_candidates": True,
+            "unmeasured_candidates_must_be_selected_before_pareto_selection": True,
+            "qor_is_valid_only_when_measurement_status_is_measured": True,
+        },
+    }
+
+
 def build_parameter_bindings(state: dict[str, Any], selected_architecture: dict[str, Any] | None = None) -> dict[str, Any]:
     plan = read_json(artifact_path(state, "artifact.stage3.pipeline_plan"))
     shape = constraint_facts(state, "constraint.shape.model")
@@ -1401,7 +1495,16 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     dse_search = {
         "schema_version": dse["schema_version"],
         "status": dse["status"],
-        "search_space": dse["search_space"],
+        "search_space": {
+            key: dse["search_space"].get(key, [])
+            for key in (
+                "lanes",
+                "compute_array_rows",
+                "compute_array_cols",
+                "fifo_depth",
+                "activation_banks",
+            )
+        },
         "candidate_count": dse["candidate_count"],
         "measurement_summary": dse["measurement_summary"],
         "unmeasured_candidate_ids": dse["unmeasured_candidate_ids"],
@@ -1451,6 +1554,7 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         },
     )
     campaign_complete = bool((dse.get("measurement_summary") or {}).get("complete"))
+    selection_evidence = dse_llm_selection_evidence(dse, eligible_records, pareto_records)
     llm = run_stage_agent(
         agent="dse_parameter_agent",
         stage="parameter_binding",
@@ -1462,13 +1566,14 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         ),
         inputs={
             "dse_search_space": dse_search,
+            "dse_selection_evidence": selection_evidence,
             "formal_dse_campaign": {
                 "campaign_complete": campaign_complete,
                 "eligible_candidate_ids": eligible_candidate_ids,
-                "eligible_records": eligible_records,
+                "eligible_candidate_count": len(eligible_records),
                 "measured_pareto_frontier": {
                     "candidate_ids": dse.get("pareto_candidate_ids", []),
-                    "records": pareto_records,
+                    "candidate_count": len(pareto_records),
                 },
             },
             "dse_constraint_report": dse_constraint_report,
@@ -1484,6 +1589,7 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             "Never estimate, extrapolate, predict, or invent resources, power, clock, or performance. Only candidate-specific app-shell measurements are QoR evidence.",
             "Rank at least the selected candidate and state the assumptions that make the choice appropriate.",
             "The deterministic evaluator owns legality and hardware-effective parameter filtering; do not modify candidate parameters or claim a hardware pass before measurement.",
+            "dse_selection_evidence is the complete current candidate decision set; use its candidate_id and parameters directly. Do not claim that the candidate universe or measurement status is absent merely because full evaluator records are stored on disk.",
         ],
     )
     selected_architecture, selection_rationale = select_dse_candidate(dse, llm["output"])
