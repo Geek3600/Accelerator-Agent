@@ -219,6 +219,50 @@ def _candidate_universe_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
     return tuples
 
 
+def _candidate_dimension_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
+    """Normalize an explicit finite Stage-0 candidate-dimensions declaration."""
+
+    dimensions = search.get("candidate_dimensions")
+    if not isinstance(dimensions, dict):
+        return []
+    lanes_values = _values(dimensions.get("lanes"))
+    fifo_values = _values(dimensions.get("physical_fifo_depth"))
+    activation_values = _values(dimensions.get("activation_bank_count"))
+    raw_arrays = dimensions.get("compute_array")
+    shapes = raw_arrays.get("values") if isinstance(raw_arrays, dict) else raw_arrays
+    if not isinstance(shapes, list):
+        shapes = []
+    if not all((lanes_values, fifo_values, activation_values, shapes)):
+        raise ValueError("candidate_dimensions has no complete physical DSE candidate declaration")
+
+    tuples: list[dict[str, int]] = []
+    for index, raw in enumerate(shapes):
+        if not isinstance(raw, dict):
+            raise ValueError(f"candidate_dimensions compute_array.values[{index}] must be an object")
+        rows = _positive(_field(raw, "rows", "compute_array_rows"))
+        cols = _positive(_field(raw, "cols", "compute_array_cols"))
+        if rows is None or cols is None:
+            raise ValueError(f"candidate_dimensions compute_array.values[{index}] is incomplete")
+        for lanes, fifo_depth, activation_banks in product(
+            lanes_values, fifo_values, activation_values
+        ):
+            try:
+                tuples.append(
+                    _normal_tuple(
+                        {
+                            "lanes": lanes,
+                            "compute_array": {"rows": rows, "cols": cols},
+                            "physical_fifo_depth": fifo_depth,
+                            "activation_bank_count": activation_banks,
+                        },
+                        index,
+                    )
+                )
+            except ValueError:
+                continue
+    return tuples
+
+
 def _legacy_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
     array = search.get("compute_array") if isinstance(search.get("compute_array"), dict) else {}
     lanes_values = _values(search.get("lanes"))
@@ -311,7 +355,11 @@ def physical_candidate_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
         if len(tuples) != len(explicit):
             raise ValueError("hardware_parameter_tuples entries must be objects")
     else:
-        tuples = _candidate_universe_tuples(search) or _legacy_tuples(search)
+        tuples = (
+            _candidate_universe_tuples(search)
+            or _candidate_dimension_tuples(search)
+            or _legacy_tuples(search)
+        )
 
     unique: dict[tuple[int, int, int, int, int], dict[str, int]] = {}
     for row in tuples:

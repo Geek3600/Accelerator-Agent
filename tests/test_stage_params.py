@@ -233,6 +233,29 @@ class SemanticParameterBindingTest(TestCase):
         self.assertEqual({row["fifo_depth"] for row in tuples}, {16, 32})
         self.assertEqual({row["activation_banks"] for row in tuples}, {1, 2, 4})
 
+    def test_candidate_dimensions_expand_only_declared_physical_axes(self) -> None:
+        search = {
+            "candidate_dimensions": {
+                "lanes": {"values": [32]},
+                "compute_array": {
+                    "values": [
+                        {"rows": 4, "cols": 8},
+                        {"rows": 8, "cols": 16},
+                    ]
+                },
+                "physical_fifo_depth": {"values": [32, 64]},
+                "activation_bank_count": {"values": [2, 4]},
+            }
+        }
+
+        tuples = physical_candidate_tuples(search)
+
+        self.assertEqual(len(tuples), 8)
+        self.assertEqual(
+            {(row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
+            {(4, 8), (8, 16)},
+        )
+
     def test_summary_universe_uses_top_level_declared_physical_axes(self) -> None:
         search = {
             "candidate_universe": {
