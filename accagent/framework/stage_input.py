@@ -1021,6 +1021,152 @@ def bind_task_qor_targets(design_space: dict[str, Any], targets: dict[str, Any])
     return result
 
 
+def _positive_candidate_values(value: Any) -> list[int]:
+    """Read integer candidates from the finite Stage-0 declaration forms."""
+
+    if isinstance(value, dict):
+        values: Any = None
+        for key in ("candidate_values", "values_in_complete_universe", "entries_candidates", "candidates", "values"):
+            if key in value:
+                values = value[key]
+                break
+        if values is None and value.get("fixed") is not None:
+            values = [value["fixed"]]
+    else:
+        values = value
+    if not isinstance(values, list):
+        values = [values] if values is not None else []
+    result: list[int] = []
+    for item in values:
+        try:
+            parsed = int(item)
+        except (TypeError, ValueError):
+            continue
+        if parsed > 0 and parsed not in result:
+            result.append(parsed)
+    return result
+
+
+def _declared_lane_candidates(search_params: dict[str, Any]) -> list[int]:
+    """Collect only lanes explicitly declared by the Stage-0 schema."""
+
+    result: list[int] = []
+
+    def visit(value: Any, key: str = "") -> None:
+        if key in {"lanes", "global_lanes"}:
+            for lane in _positive_candidate_values(value):
+                if lane not in result:
+                    result.append(lane)
+        if isinstance(value, dict):
+            for child_key, child in value.items():
+                visit(child, str(child_key))
+        elif isinstance(value, list):
+            for child in value:
+                visit(child, key)
+
+    visit(search_params)
+    return result
+
+
+def semantic_stream_contract(
+    case_adapter: dict[str, Any] | None,
+    numeric_policy: dict[str, Any],
+    board: dict[str, Any],
+) -> dict[str, Any]:
+    """Resolve the stream widths that every physical lane candidate must pack."""
+
+    adapter = case_adapter or {}
+    dataflow = adapter.get("pipeline_dataflow")
+    if not isinstance(dataflow, dict):
+        semantic = adapter.get("model_semantic_adapter", {})
+        path_value = semantic.get("path") if isinstance(semantic, dict) else None
+        path = Path(str(path_value)) if path_value else None
+        if path is not None and not path.is_file():
+            path = Path.cwd() / path
+        if path is not None and path.is_file():
+            try:
+                dataflow = read_json(path).get("pipeline_dataflow")
+            except (OSError, ValueError, json.JSONDecodeError):
+                dataflow = None
+    if not isinstance(dataflow, dict):
+        return {"status": "unavailable", "required_stream_bits": [], "axi_data_width_bits": None}
+
+    rules = numeric_policy.get("default_rules", {}) if isinstance(numeric_policy.get("default_rules"), dict) else {}
+    dtype_bits = {
+        "FP32": 32,
+        "FLOAT32": 32,
+        "F32": 32,
+        "FP16": 16,
+        "FLOAT16": 16,
+        "F16": 16,
+        "BF16": 16,
+        "BFP16": 16,
+        "INT8": 8,
+        "UINT8": 8,
+        "I8": 8,
+        "U8": 8,
+    }
+
+    def bits_for_role(role: Any) -> int | None:
+        role_name = str(role or "")
+        field = {"activation": "activation_dtype", "accumulator": "acc_dtype"}.get(role_name)
+        if field is None:
+            return None
+        dtype = str(rules.get(field) or "").strip().upper().replace("_", "")
+        return dtype_bits.get(dtype)
+
+    roles: list[str] = []
+    boundary = dataflow.get("boundary_numeric", {})
+    if isinstance(boundary, dict):
+        roles.extend(str(boundary.get(key)) for key in ("input", "output") if boundary.get(key))
+    metadata = dataflow.get("stage_metadata", {})
+    if isinstance(metadata, dict):
+        for item in metadata.values():
+            numeric = item.get("numeric", {}) if isinstance(item, dict) else {}
+            if isinstance(numeric, dict):
+                roles.extend(str(numeric.get(key)) for key in ("input", "output") if numeric.get(key))
+    stream_bits = sorted({bits for role in roles if (bits := bits_for_role(role)) is not None})
+    memory = board.get("memory_system", {}) if isinstance(board.get("memory_system"), dict) else {}
+    axi_bits = maybe_int(memory.get("axi_data_width_bits"))
+    if axi_bits is None:
+        axi_bits = maybe_int(memory.get("ddr_word_width_bits"))
+    return {
+        "status": "ready" if stream_bits and axi_bits else "incomplete",
+        "required_numeric_roles": sorted(set(roles)),
+        "required_stream_bits": stream_bits,
+        "axi_data_width_bits": axi_bits,
+        "packing_rule": "lanes * stream_element_bits must be <= AXI width and divide it exactly",
+    }
+
+
+def design_space_stream_packing_errors(
+    design_space: dict[str, Any], stream_contract: dict[str, Any]
+) -> list[str]:
+    """Reject an LLM lane domain that cannot represent a declared stream width."""
+
+    if stream_contract.get("status") != "ready":
+        return []
+    search_params = design_space.get("search_params", {})
+    if not isinstance(search_params, dict):
+        return ["design_space.search_params must be an object"]
+    lanes = _declared_lane_candidates(search_params)
+    if not lanes:
+        return ["design_space does not declare any physical lanes candidates"]
+    axi_bits = maybe_int(stream_contract.get("axi_data_width_bits"))
+    stream_bits = [maybe_int(value) for value in stream_contract.get("required_stream_bits", [])]
+    stream_bits = [value for value in stream_bits if value and value > 0]
+    errors = []
+    for bits in stream_bits:
+        valid = [lane for lane in lanes if lane * bits <= axi_bits and axi_bits % (lane * bits) == 0]
+        if not valid:
+            errors.append(
+                f"no declared lane candidate can pack stream element width {bits} into "
+                f"axi_data_width_bits={axi_bits}; at least one lane must satisfy lanes*bits <= AXI "
+                "and divide AXI exactly"
+            )
+    return errors
+
+
 def load_model_source(path: Path, target_seq: int) -> dict[str, Any]:
     source = read_json(path)
     if {"model_type", "block", "attention", "mlp"} <= set(source):
@@ -1536,6 +1682,7 @@ def prepare_design_space(
     numeric_policy: dict[str, Any],
     qor_targets: dict[str, Any],
     out_dir: Path,
+    case_adapter: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     fallback = {
         "schema_version": "spatialaccagent.design_space.v0",
@@ -1575,6 +1722,7 @@ def prepare_design_space(
             "template_metadata_summary": {"library_id": templates.get("library_id"), "templates": templates.get("templates", [])},
             "target_board_profile": board,
             "numeric_policy": numeric_policy,
+            "semantic_stream_contract": semantic_stream_contract(case_adapter, numeric_policy, board),
             "explicit_task_qor_targets": qor_targets,
         },
         output_schema=DESIGN_SPACE_SCHEMA,
@@ -1583,16 +1731,28 @@ def prepare_design_space(
             "Search parameters must be hardware parameters, not model semantics.",
             "Declare a finite, complete candidate universe containing only parameters that genuinely change generated RTL, Vivado FP IP, XPM BRAM/URAM topology, or board behavior. Exclude metadata-only tile, burst, pipeline-depth, and clock-target fields until they are wired into generated hardware.",
             "Include lanes, compute_array.rows, compute_array.cols, physical FIFO depth, activation-bank count, and optional physical_weight_layout_candidates. The two compute_array values are the physical MAC PE array dimensions; every PE must instantiate one fixed Vivado multiplier/DSP IP, so they must be real generated-hardware parameters rather than metadata. Keep compute_array.cols power-of-two for the trusted reduction tree and require both dimensions to tile the selected vector lanes. When supplied, each layout must bind every model-semantic weight-storage term declared by the current semantic adapter to a positive XPM URAM bank count. Do not use another model family's role names. If no explicit layouts are supplied, Stage 4 derives the complete all-URAM baseline from the same semantic contract.",
+            "For every numeric stream element width declared by the semantic_stream_contract, declare at least one lane candidate whose lane payload is no wider than the board AXI beat and divides that AXI width exactly. The contract may contain both activation and accumulator/residual streams; checking only the activation dtype is invalid. Candidates that cannot pack a declared stream width are ineligible and must not be described as legal, and the framework will reject a domain with no valid lane for any required width.",
             "The supplied explicit_task_qor_targets are immutable user constraints. Repeat them accurately, but do not add, delete, weaken, or replace them.",
             "The design must bind Vivado floating-point/DSP IP and XPM physical memories from the first implementation candidate; do not select a software arithmetic or ideal-memory backend.",
             "Do not choose parameters that require changing model semantics or bypassing DDR/AXI/runtime constraints.",
             "Do not provide resource, power, frequency, or performance estimates. Stage 4 will use only real target-board app-shell Vivado and hardware-counter measurements for those four metrics.",
         ],
     )
-    return bind_task_qor_targets(
-        llm_json("design_space_agent", prompt, DESIGN_SPACE_SCHEMA, fallback, out_dir),
-        qor_targets,
-    )
+    result = llm_json("design_space_agent", prompt, DESIGN_SPACE_SCHEMA, fallback, out_dir)
+    stream_contract = semantic_stream_contract(case_adapter, numeric_policy, board)
+    packing_errors = design_space_stream_packing_errors(result, stream_contract)
+    if packing_errors:
+        raise InputPreparationError("design_space stream packing validation failed: " + "; ".join(packing_errors))
+    result = bind_task_qor_targets(result, qor_targets)
+    sources = result.setdefault("sources", {})
+    if isinstance(sources, dict) and stream_contract.get("status") == "ready":
+        sources["stream_packing_contract"] = {
+            "required_numeric_roles": stream_contract.get("required_numeric_roles", []),
+            "required_stream_bits": stream_contract.get("required_stream_bits", []),
+            "axi_data_width_bits": stream_contract.get("axi_data_width_bits"),
+            "binding": "deterministic_semantic_stream_contract",
+        }
+    return result
 
 
 def tool_by_name(tool_profile: dict[str, Any], name: str) -> dict[str, Any] | None:
@@ -3048,9 +3208,11 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
 
     if llm_workers == 1:
         model_config = prepare_model_config(task_text, model_source, model_fallback, llm_dir)
+        model_config = {**model_config, "model_dir": str(model_dir)}
         numeric_policy = prepare_numeric_policy(quantization_materials_text, llm_dir)
         target_board_profile = prepare_board_profile(board_summary, field_evidence_summary, sample_project_summary_data, llm_dir)
         task_card = prepare_task_card(task_text, model_config, llm_dir)
+        case_adapter = build_case_adapter(model_config, run_dir, args.tool_materials_dir)
         tool_profile = prepare_tool_profile(tool_summary, target_board_profile, field_evidence_summary, llm_dir)
         design_space = prepare_design_space(
             model_config,
@@ -3059,6 +3221,7 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             numeric_policy,
             qor_targets,
             llm_dir,
+            case_adapter,
         )
     else:
         first_wave: dict[str, Any] = {}
@@ -3072,8 +3235,10 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 first_wave[futures[future]] = future.result()
 
         model_config = first_wave["model_config"]
+        model_config = {**model_config, "model_dir": str(model_dir)}
         numeric_policy = first_wave["numeric_policy"]
         target_board_profile = first_wave["target_board_profile"]
+        case_adapter = build_case_adapter(model_config, run_dir, args.tool_materials_dir)
 
         second_wave: dict[str, Any] = {}
         with ThreadPoolExecutor(max_workers=llm_workers) as pool:
@@ -3088,6 +3253,7 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                     numeric_policy,
                     qor_targets,
                     llm_dir,
+                    case_adapter,
                 ): "design_space",
             }
             for future in as_completed(futures):
@@ -3098,10 +3264,8 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         design_space = second_wave["design_space"]
     # The checkpoint is an explicit run input.  Do not let a shared environment
     # variable select another parallel run's model material.
-    model_config = {**model_config, "model_dir": str(model_dir)}
     tool_availability = prepare_tool_availability(tool_profile, input_dir, target_board_profile)
     target_board_profile = bind_discovered_board_resource_budget(target_board_profile, tool_availability)
-    case_adapter = build_case_adapter(model_config, run_dir, args.tool_materials_dir)
     write_json(input_dir / "case_adapter.json", case_adapter)
     tool_protocols = prepare_tool_protocols(
         target_board_profile,

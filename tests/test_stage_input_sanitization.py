@@ -8,6 +8,7 @@ from accagent.framework import stage_input
 from accagent.framework.stage_input import (
     bind_task_qor_targets,
     bind_discovered_board_resource_budget,
+    design_space_stream_packing_errors,
     parse_vivado_resource_budget,
     redact_sensitive_text,
     remote_probe_workdir_expr,
@@ -18,6 +19,23 @@ from accagent.framework.stage_input import (
 
 
 class StageInputSanitizationTest(unittest.TestCase):
+    def test_design_space_rejects_lane_domain_without_fp32_stream_coverage(self) -> None:
+        errors = design_space_stream_packing_errors(
+            {"search_params": {"lanes": [32]}},
+            {"status": "ready", "required_stream_bits": [16, 32], "axi_data_width_bits": 512},
+        )
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("stream element width 32", errors[0])
+
+    def test_design_space_accepts_lane_domain_covering_mixed_stream_widths(self) -> None:
+        errors = design_space_stream_packing_errors(
+            {"search_params": {"lanes": [8, 16, 32]}},
+            {"status": "ready", "required_stream_bits": [16, 32], "axi_data_width_bits": 512},
+        )
+
+        self.assertEqual(errors, [])
+
     def test_sensitive_material_lines_are_removed_from_stage0_prompts(self) -> None:
         secret = "example-secret-value"
         text = f"remote host: build@example.org\npassword is {secret}\npasswordless login: true\n"
