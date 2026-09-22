@@ -178,7 +178,7 @@ def _legacy_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
     lanes_values = _values(search.get("lanes"))
     row_values = _values(array.get("rows"))
     col_values = _values(array.get("cols"))
-    fifo_values = _values(search.get("fifo_depth")) or _values(
+    fifo_values = _values(search.get("physical_fifo_depth")) or _values(search.get("fifo_depth")) or _values(
         (search.get("fifo_depths") or {}).get("module_stream_fifo_depth_entries")
         if isinstance(search.get("fifo_depths"), dict)
         else None
@@ -219,6 +219,8 @@ def physical_candidate_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
     """
 
     explicit = search.get("hardware_parameter_tuples")
+    if not explicit and isinstance(search.get("candidate_universe"), list):
+        explicit = search["candidate_universe"]
     if isinstance(explicit, list) and explicit:
         tuples = [
             _normal_tuple(row, index)

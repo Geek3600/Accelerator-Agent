@@ -166,6 +166,7 @@ IMPLEMENTATION_PARAM_SOURCES = {
     "compute_array_rows",
     "compute_array_cols",
     "batch_size",
+    "token_count",
     "max_seq_len",
     "input_bits",
     "elem_bits",

@@ -983,6 +983,7 @@ def generate_chisel_package(run_dir: Path, state: dict[str, Any], manifest: dict
             "compute_array_rows": compute_array_rows,
             "compute_array_cols": compute_array_cols,
             "batch_size": batch_size,
+            "token_count": batch_size,
             "max_seq_len": max_seq,
             "input_bits": input_bits,
             "elem_bits": elem_bits,

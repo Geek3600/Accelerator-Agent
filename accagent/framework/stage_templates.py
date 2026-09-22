@@ -429,7 +429,7 @@ def bind_param(
         "num_kv_heads": "constraint.shape.model.num_kv_heads",
         "head_dim": "constraint.shape.model.head_dim",
         "seq_len": "constraint.shape.model.target_max_seq_len",
-        "batch_size": "constraint.shape.model.target_max_seq_len",
+        "token_count": "constraint.shape.model.target_max_seq_len (one streamed token per sequence position)",
         "max_seq_len": "constraint.shape.model.target_max_seq_len",
     }
     shape_keys = {
@@ -439,7 +439,7 @@ def bind_param(
         "num_kv_heads": "num_kv_heads",
         "head_dim": "head_dim",
         "seq_len": "target_max_seq_len",
-        "batch_size": "target_max_seq_len",
+        "token_count": "target_max_seq_len",
         "max_seq_len": "target_max_seq_len",
     }
     if param in shape_keys:
@@ -754,6 +754,8 @@ def attention_semantics(
             "required": required,
             "status": status,
             "source": source,
+            "source_sha256": sha256_file(Path(str(template_facts.get("template_dir") or "")) / source),
+            "evidence_type": "hash_bound_template_source",
             "evidence_pattern": pattern,
         }
         if name == "gqa_head_mapping":
@@ -831,6 +833,7 @@ def stage2_gate_policy() -> dict[str, Any]:
             "LLM sub-agent output reports a concrete contradiction in the candidate selection for this stage",
         ],
         "not_current_stage_blocks": [
+            "lanes, compute_array_rows, or compute_array_cols has not yet been selected from a Stage-2-validated candidate_bound domain; Stage 4 is the sole concrete DSE selection authority",
             "VCS/Verilator simulation has not been run yet",
             "Vivado synthesis, implementation, timing closure, or bitstream generation has not been run yet",
             "final generated accelerator code has not been emitted yet",
@@ -839,8 +842,11 @@ def stage2_gate_policy() -> dict[str, Any]:
         ],
         "classification_rule": (
             "Put only unresolved current_stage_blocks in risks. Put not_current_stage_blocks in proposed_actions "
-            "or approval_required_for. If all deterministic checker_results pass and no current_stage_blocks remain, "
-            "return status='ready' and risks=[]."
+            "or approval_required_for. The supplied checker evidence is computed from the current source tree: "
+            "template source/interface records and attention components carry source hashes, while the mandatory "
+            "FPGA-IP checker scans the complete template directory. Do not require a second future code-generation, "
+            "simulation, or synthesis audit to accept those current Stage-2 facts. If all deterministic checker_results "
+            "pass and no concrete contradiction in their current evidence remains, return status='ready' and risks=[]."
         ),
     }
 
@@ -907,6 +913,10 @@ def build_selection(state: dict[str, Any]) -> dict[str, Any]:
         template_facts.get("source_files", []),
     )
     ip_errors = [str(error) for error in ip_contract.get("errors", [])]
+    ip_contract["checked_source_hashes"] = {
+        source: sha256_file(Path(str(template_facts.get("template_dir") or "")) / source)
+        for source in ip_contract.get("checked_sources", [])
+    }
     attention, attention_errors, adapters = attention_semantics(selected, model_facts, model_config, template_facts)
     trace, trace_errors = cross_layer_trace(state)
     coverage_errors = [f"missing template for op: {op}" for op in missing_ops]
@@ -1094,8 +1104,10 @@ def select_templates(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 "Review strict template bindings, source/interface checks, attention semantics, team decomposition, "
                 "and cross-layer gate risks. Apply candidate_template_selection.stage_gate_policy exactly: report "
                 "only unresolved current Stage 2 blockers in risks, move later simulation/synthesis/code-generation/"
-                "board bring-up obligations to proposed_actions or approval_required_for, and return status='ready' "
-                "with risks=[] only when all current Stage 2 blocks are closed."
+                "board bring-up obligations to proposed_actions or approval_required_for. candidate_bound means the "
+                "complete legal domain is validated and deliberately awaits Stage 4 DSE; it is not an unbound Stage 2 "
+                "parameter. Treat current source_sha256 and checked_source_hashes as the immutable source identity for "
+                "this review. Return status='ready' with risks=[] when all current Stage 2 blocks are closed."
             ),
             inputs={
                 "candidate_template_selection": selection,

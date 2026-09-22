@@ -70,6 +70,10 @@ class SemanticTemplateBindingTest(TestCase):
         self.assertNotIn("num_kv_heads", wrapper["required_params"])
         self.assertNotIn("rope_theta", wrapper["required_params"])
         self.assertEqual(selection["implementation_contract"]["params"]["class"], "DecoderBlockParams")
+        self.assertEqual(
+            selection["implementation_contract"]["params"]["bindings"]["batchSize"],
+            "token_count",
+        )
         self.assertEqual(selection["status"], "ready")
         self.assertTrue(
             all(
@@ -96,6 +100,8 @@ class SemanticTemplateBindingTest(TestCase):
         llama_wrapper = next(item for item in llama_selection["selected_templates"] if item["role"] == "block_wrapper")
         self.assertIn("num_kv_heads", qwen_wrapper["required_params"])
         self.assertIn("num_kv_heads", llama_wrapper["required_params"])
+        self.assertIn("token_count", qwen_wrapper["required_params"])
+        self.assertNotIn("batch_size", qwen_wrapper["required_params"])
         self.assertEqual(qwen_selection["status"], "ready")
         self.assertEqual(llama_selection["status"], "ready")
 

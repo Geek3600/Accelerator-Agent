@@ -141,6 +141,31 @@ class SemanticParameterBindingTest(TestCase):
             ],
         )
 
+    def test_explicit_candidate_universe_list_preserves_declared_correlations(self) -> None:
+        search = {
+            "candidate_universe": [
+                {
+                    "lanes": 16,
+                    "compute_array": {"rows": 4, "cols": 4},
+                    "physical_fifo_depth": 16,
+                    "activation_bank_count": 2,
+                },
+                {
+                    "lanes": 32,
+                    "compute_array": {"rows": 4, "cols": 8},
+                    "physical_fifo_depth": 32,
+                    "activation_bank_count": 4,
+                },
+            ]
+        }
+
+        tuples = physical_candidate_tuples(search)
+        self.assertEqual(len(tuples), 2)
+        self.assertEqual(
+            {(row["lanes"], row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
+            {(16, 4, 4), (32, 4, 8)},
+        )
+
     def test_candidate_universe_expands_only_declared_legal_array_tuples(self) -> None:
         search = {
             "candidate_universe": {
@@ -180,6 +205,17 @@ class SemanticParameterBindingTest(TestCase):
             {(row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
             {(8, 8), (16, 32)},
         )
+
+    def test_legacy_axes_accept_physical_fifo_depth_name(self) -> None:
+        tuples = physical_candidate_tuples(
+            {
+                "lanes": [4],
+                "compute_array": {"rows": [2], "cols": [2]},
+                "physical_fifo_depth": [16],
+                "activation_bank_count": [2],
+            }
+        )
+        self.assertEqual(tuples[0]["fifo_depth"], 16)
 
     def test_global_params_come_from_current_bound_physical_tuple(self) -> None:
         with TemporaryDirectory() as temp:
