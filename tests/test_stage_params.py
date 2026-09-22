@@ -8,6 +8,7 @@ from accagent.framework.stage_params import (
     architecture_candidate_space,
     build_dse_search,
     build_parameter_bindings,
+    dse_llm_constraint_report,
     select_dse_candidate,
 )
 from accagent.framework.stage_pipeline import build_pipeline_plan
@@ -25,6 +26,39 @@ def prepare_state(family: str, root: Path) -> dict:
 
 
 class SemanticParameterBindingTest(TestCase):
+    def test_dse_llm_constraint_report_omits_repeated_infeasible_rows(self) -> None:
+        report = {
+            "schema_version": "full",
+            "status": "pass",
+            "candidate_count": 12,
+            "feasible_candidate_count": 4,
+            "infeasible_candidates": [
+                {
+                    "candidate_id": "bad_a",
+                    "hard_constraint_errors": ["width mismatch", "width mismatch"],
+                },
+                {
+                    "candidate_id": "bad_b",
+                    "hard_constraint_errors": ["width mismatch"],
+                },
+            ],
+            "policy": {"candidate_universe_is_complete_and_unsampled": True},
+            "candidate_materialization": {
+                "status": "pass",
+                "candidate_count": 12,
+                "candidate_signatures": {"bad_a": {"lanes": 32}},
+                "generated_fields": {"lanes": "GeneratedDesignParams.lanes"},
+            },
+        }
+
+        projected = dse_llm_constraint_report(report)
+
+        self.assertEqual(projected["infeasible_candidate_count"], 2)
+        self.assertEqual(projected["hard_constraint_error_counts"], {"width mismatch": 3})
+        self.assertNotIn("infeasible_candidates", projected)
+        self.assertNotIn("candidate_signatures", projected["candidate_materialization"])
+        self.assertEqual(projected["candidate_materialization"]["status"], "pass")
+
     def test_dse_requires_an_explicit_llm_candidate_selection(self) -> None:
         dse = {
             "records": [

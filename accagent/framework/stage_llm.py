@@ -8886,6 +8886,49 @@ def compact_for_retry(value: Any, depth: int = 0) -> Any:
         return items
     if isinstance(value, dict):
         schema = str(value.get("schema_version") or "")
+        if "dse_selection_evidence" in value:
+            # Stage-4 selection evidence is already a bounded, lossless
+            # projection of the eligible candidate set.  The generic retry
+            # compactor must not truncate it to the first few candidates.
+            result: dict[str, Any] = {}
+            for key in (
+                "stage",
+                "agent",
+                "dse_search_space",
+                "dse_selection_evidence",
+                "formal_dse_campaign",
+                "dse_constraint_report",
+                "dse_constraint_report_path",
+                "current_sacg_memory_truth",
+                "source_sacg_state",
+            ):
+                if key not in value:
+                    continue
+                if key == "dse_selection_evidence":
+                    result[key] = copy.deepcopy(value[key])
+                elif key == "dse_constraint_report":
+                    report = value[key]
+                    if isinstance(report, dict):
+                        result[key] = {
+                            field: copy.deepcopy(report[field])
+                            for field in (
+                                "schema_version",
+                                "source_schema_version",
+                                "status",
+                                "candidate_count",
+                                "feasible_candidate_count",
+                                "infeasible_candidate_count",
+                                "hard_constraint_error_counts",
+                                "policy",
+                                "candidate_materialization",
+                            )
+                            if field in report
+                        }
+                    else:
+                        result[key] = compact_for_retry(report, depth + 1)
+                else:
+                    result[key] = compact_for_retry(value[key], depth + 1)
+            return result
         if schema == "spatialaccagent.checkpoint_hook_specialist_package.v1":
             return compact_checkpoint_hook_specialist_package(value)
         if "verification_capability_repair_package" in value:

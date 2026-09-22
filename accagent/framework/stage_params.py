@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 from itertools import product
 from pathlib import Path
 from typing import Any
@@ -1138,6 +1139,57 @@ def dse_llm_selection_evidence(
     }
 
 
+def dse_llm_constraint_report(report: dict[str, Any]) -> dict[str, Any]:
+    """Project the persisted constraint report into selector-relevant facts.
+
+    The complete report remains an on-disk audit artifact.  The selector
+    already receives every eligible candidate, so repeating thousands of
+    infeasible candidate rows only consumes provider context and can hide the
+    actual decision set.
+    """
+
+    source = report if isinstance(report, dict) else {}
+    infeasible = source.get("infeasible_candidates", [])
+    infeasible = infeasible if isinstance(infeasible, list) else []
+    error_counts: Counter[str] = Counter()
+    for row in infeasible:
+        if not isinstance(row, dict):
+            continue
+        errors = row.get("hard_constraint_errors", [])
+        if not isinstance(errors, list):
+            continue
+        for error in errors:
+            if error:
+                error_counts[str(error)] += 1
+
+    materialization = source.get("candidate_materialization", {})
+    materialization = materialization if isinstance(materialization, dict) else {}
+    materialization_view = {
+        key: materialization.get(key)
+        for key in (
+            "schema_version",
+            "status",
+            "candidate_count",
+            "physical_dimensions",
+            "generated_fields",
+            "errors",
+            "policy",
+        )
+        if materialization.get(key) is not None
+    }
+    return {
+        "schema_version": "spatialaccagent.stage4_dse_constraint_report_projection.v1",
+        "source_schema_version": source.get("schema_version"),
+        "status": source.get("status"),
+        "candidate_count": source.get("candidate_count"),
+        "feasible_candidate_count": source.get("feasible_candidate_count"),
+        "infeasible_candidate_count": len(infeasible),
+        "hard_constraint_error_counts": dict(sorted(error_counts.items())),
+        "policy": source.get("policy", {}),
+        "candidate_materialization": materialization_view,
+    }
+
+
 def build_parameter_bindings(state: dict[str, Any], selected_architecture: dict[str, Any] | None = None) -> dict[str, Any]:
     plan = read_json(artifact_path(state, "artifact.stage3.pipeline_plan"))
     shape = constraint_facts(state, "constraint.shape.model")
@@ -1576,7 +1628,8 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                     "candidate_count": len(pareto_records),
                 },
             },
-            "dse_constraint_report": dse_constraint_report,
+            "dse_constraint_report": dse_llm_constraint_report(dse_constraint_report),
+            "dse_constraint_report_path": str(dse_constraint_path),
             "current_sacg_memory_truth": memory_truth,
             "source_sacg_state": str(source_state),
         },

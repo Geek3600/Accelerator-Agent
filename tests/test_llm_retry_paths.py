@@ -82,6 +82,49 @@ class LlmRetryPathTests(unittest.TestCase):
             lock,
         )
 
+    def test_dse_compact_retry_preserves_complete_selection_evidence(self) -> None:
+        candidates = [
+            {
+                "candidate_id": f"candidate_{index}",
+                "parameters": {"lanes": 8 + index},
+                "feasible": True,
+                "measurement_status": "unmeasured",
+            }
+            for index in range(24)
+        ]
+        prompt = stage_llm.compact_retry_prompt(
+            "dse_parameter_agent",
+            "parameter_binding",
+            "Select one legal candidate.",
+            {
+                "dse_selection_evidence": {
+                    "candidate_count": 100,
+                    "eligible_candidates": candidates,
+                    "measured_pareto_candidates": [],
+                },
+                "dse_constraint_report": {
+                    "candidate_count": 100,
+                    "infeasible_candidates": [
+                        {"candidate_id": f"bad_{index}"} for index in range(100)
+                    ],
+                },
+                "formal_dse_campaign": {"campaign_complete": False},
+            },
+            {"type": "object", "properties": {"status": {"type": "string"}}},
+        )
+
+        compact_block = prompt.split("<compact_inputs>\n", 1)[1].split(
+            "\n</compact_inputs>", 1
+        )[0]
+        compact = json.loads(compact_block)
+
+        self.assertEqual(
+            [row["candidate_id"] for row in compact["dse_selection_evidence"]["eligible_candidates"]],
+            [row["candidate_id"] for row in candidates],
+        )
+        self.assertNotIn("infeasible_candidates", compact["dse_constraint_report"])
+        self.assertEqual(compact["formal_dse_campaign"]["campaign_complete"], False)
+
     def test_explicit_403_capacity_limit_retries_but_other_403_does_not(self) -> None:
         capacity = urllib.error.HTTPError(
             "https://example.invalid",
