@@ -1048,10 +1048,11 @@ def stage_worker_output_cacheable(output: dict[str, Any]) -> bool:
     status = str(output.get("status") or "").strip().lower()
     if not status:
         return False
-    # Cache transport-successful decisions by exact prompt hash. A blocked or
-    # refinement decision is still valid LLM evidence; its Stage gate, not a
-    # repeated identical request, decides whether the workflow may advance.
-    return not status.startswith(("llm_error", "fallback"))
+    # A non-promoting review is diagnostic evidence for its own attempt only.
+    # Reusing it on a same-stage retry replays an old decision without any new
+    # observation or repair artifact, which can create an endless controller
+    # loop. Cache only conclusions that may advance their public stage.
+    return status in {"ready", "pass", "proceed", "accepted", "complete", "completed"}
 
 
 def llm_mode() -> str:

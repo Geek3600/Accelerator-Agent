@@ -206,6 +206,37 @@ class SemanticParameterBindingTest(TestCase):
             {(8, 8), (16, 32)},
         )
 
+    def test_summary_universe_uses_top_level_declared_physical_axes(self) -> None:
+        search = {
+            "candidate_universe": {
+                "candidate_count": 81,
+                "complete": True,
+                "finite": True,
+                "no_unlisted_candidates_permitted": True,
+            },
+            "lanes": {"candidate_values": [32]},
+            "compute_array": {
+                "rows": {"candidate_values": [8, 16, 32]},
+                "cols": {"candidate_values": [8, 16, 32]},
+                "valid_candidate_pairs": [
+                    {"rows": rows, "cols": cols}
+                    for rows in (8, 16, 32)
+                    for cols in (8, 16, 32)
+                ],
+            },
+            "physical_fifo_depth": {"candidate_values": [16, 32, 64]},
+            "activation_bank_count": {"candidate_values": [1, 2, 4]},
+        }
+
+        tuples = physical_candidate_tuples(search)
+
+        self.assertEqual(len(tuples), 81)
+        self.assertEqual(
+            {(row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
+            {(rows, cols) for rows in (8, 16, 32) for cols in (8, 16, 32)},
+        )
+        self.assertTrue(all(row["lanes"] == 32 for row in tuples))
+
     def test_legacy_axes_accept_physical_fifo_depth_name(self) -> None:
         tuples = physical_candidate_tuples(
             {

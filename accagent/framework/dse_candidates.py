@@ -92,7 +92,11 @@ def _candidate_universe_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
     fifo_values = _values(universe.get("physical_fifo_depth"))
     activation_values = _values(universe.get("activation_bank_count"))
     if not fifo_values or not activation_values:
-        raise ValueError("candidate_universe must declare physical FIFO and activation-bank values")
+        # Some Stage-0 producers use candidate_universe only as a complete-
+        # universe declaration and keep the actual physical axes beside it in
+        # search_params.  That is a valid declarative form, so let the legacy
+        # top-level-axis parser consume those exact axes below.
+        return []
 
     tuples: list[dict[str, int]] = []
     if isinstance(declared, list) and declared:
@@ -190,7 +194,42 @@ def _legacy_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
     )
     if not all((lanes_values, row_values, col_values, fifo_values, activation_values)):
         raise ValueError("design space has no complete physical DSE candidate declaration")
+
+    # Stage-0 may declare the legal PE array pairs while retaining rows and
+    # columns as individually documented axes.  Preserve that correlation;
+    # never recreate a wider Cartesian space from those descriptive axes.
+    declared_pairs = array.get("valid_candidate_pairs") or array.get("legal_pairs")
     tuples: list[dict[str, int]] = []
+    if isinstance(declared_pairs, list) and declared_pairs:
+        for index, pair in enumerate(declared_pairs):
+            if isinstance(pair, dict):
+                rows = _positive(_field(pair, "rows", "compute_array_rows"))
+                cols = _positive(_field(pair, "cols", "compute_array_cols"))
+            elif isinstance(pair, (list, tuple)) and len(pair) == 2:
+                rows, cols = _positive(pair[0]), _positive(pair[1])
+            else:
+                raise ValueError(f"compute_array valid_candidate_pairs[{index}] is malformed")
+            if rows is None or cols is None:
+                raise ValueError(f"compute_array valid_candidate_pairs[{index}] is incomplete")
+            for lanes, fifo_depth, activation_banks in product(
+                lanes_values, fifo_values, activation_values
+            ):
+                try:
+                    tuples.append(
+                        _normal_tuple(
+                            {
+                                "lanes": lanes,
+                                "compute_array": {"rows": rows, "cols": cols},
+                                "fifo_depth": fifo_depth,
+                                "activation_banks": activation_banks,
+                            },
+                            index,
+                        )
+                    )
+                except ValueError:
+                    continue
+        return tuples
+
     for index, values in enumerate(product(lanes_values, row_values, col_values, fifo_values, activation_values)):
         lanes, rows, cols, fifo_depth, activation_banks = values
         try:

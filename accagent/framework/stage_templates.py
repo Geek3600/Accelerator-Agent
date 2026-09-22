@@ -443,7 +443,10 @@ def bind_param(
         "max_seq_len": "target_max_seq_len",
     }
     if param in shape_keys:
-        if param == "hidden_size" and op == "activation_mul":
+        if param == "hidden_size" and op in {"activation", "activation_mul"}:
+            # Activation templates call this constructor field hiddenSize, but
+            # both dense and gated decoder MLP activations operate on the
+            # expanded intermediate vector, not on the residual hidden width.
             value = shape.get("intermediate_size")
             return {
                 "value": value,

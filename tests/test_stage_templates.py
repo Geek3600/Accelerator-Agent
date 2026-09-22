@@ -82,6 +82,14 @@ class SemanticTemplateBindingTest(TestCase):
                 if "lanes" in binding["bound_params"]
             )
         )
+        activation = next(
+            row for row in selection["parameter_bindings"] if row["op"] == "activation"
+        )
+        self.assertEqual(activation["bound_params"]["hidden_size"]["value"], 256)
+        self.assertEqual(
+            activation["bound_params"]["hidden_size"]["source"],
+            "constraint.shape.model.intermediate_size",
+        )
 
     def test_qwen2_and_llama_wrappers_use_llama_style_params(self) -> None:
         with TemporaryDirectory() as temp:

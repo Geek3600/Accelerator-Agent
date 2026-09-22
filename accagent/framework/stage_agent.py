@@ -256,6 +256,21 @@ class GenericStageAgent:
         run_dir = sacg.parents[1]
         path = run_dir / self.out_dir / self.report
         if not res.passed:
+            # Stage commands write a structured report and SACG state before
+            # returning a nonzero gate result.  Surface that current evidence
+            # to the flow controller instead of reducing the next decision to
+            # an old command log alone.
+            if path.exists():
+                try:
+                    return StageResult(
+                        name=self.name,
+                        passed=False,
+                        command_result=res,
+                        output_path=str(path),
+                        summary=read_report(path),
+                    )
+                except Exception:
+                    pass
             return StageResult(
                 name=self.name,
                 passed=False,

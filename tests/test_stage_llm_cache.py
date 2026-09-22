@@ -11,9 +11,12 @@ from accagent.framework.stage_llm import stage_worker_output_cacheable
 
 
 class StageLlmCacheTests(unittest.TestCase):
-    def test_exact_prompt_business_decisions_are_cacheable(self) -> None:
+    def test_only_promoting_business_decisions_are_cacheable(self) -> None:
+        for status in ("ready", "pass", "proceed", "accepted", "complete", "completed"):
+            with self.subTest(status=status):
+                self.assertTrue(stage_worker_output_cacheable({"status": status}))
+
         for status in (
-            "ready",
             "conditional_ready_downstream_blocked",
             "needs_refinement",
             "blocked_specific_nodes_for_repair",
@@ -21,7 +24,7 @@ class StageLlmCacheTests(unittest.TestCase):
             "failed_real_tool_gate",
         ):
             with self.subTest(status=status):
-                self.assertTrue(stage_worker_output_cacheable({"status": status}))
+                self.assertFalse(stage_worker_output_cacheable({"status": status}))
 
     def test_transport_fallback_outputs_are_not_cacheable(self) -> None:
         for status in ("", "llm_error", "llm_error_provider", "fallback", "fallback_diagnostic"):
