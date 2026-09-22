@@ -88,8 +88,13 @@ def _candidate_universe_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
 
     array = universe.get("compute_array") if isinstance(universe.get("compute_array"), dict) else {}
     declared = array.get("legal_compute_array_tuples")
+    declared_shapes = array.get("valid_physical_shapes")
     declared_pairs = array.get("legal_pairs")
-    fifo_values = _values(universe.get("physical_fifo_depth"))
+    fifo_values = (
+        _values(universe.get("physical_fifo_depth"))
+        or _values(universe.get("physical_fifo_depth_entries"))
+        or _values(universe.get("fifo_depth"))
+    )
     activation_values = _values(universe.get("activation_bank_count"))
     if not fifo_values or not activation_values:
         # Some Stage-0 producers use candidate_universe only as a complete-
@@ -120,6 +125,43 @@ def _candidate_universe_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
                         index,
                     )
                 )
+        return tuples
+
+    # Current Stage-0 design-space agents describe PE geometry as physical
+    # shapes and keep the lane axis at the enclosing universe level.  This is
+    # the same finite Cartesian declaration as legal_pairs, just with optional
+    # PE-count metadata retained for reporting.
+    if isinstance(declared_shapes, list) and declared_shapes:
+        lanes_values = _values(universe.get("lanes"))
+        if not lanes_values:
+            raise ValueError("candidate_universe valid_physical_shapes requires declared lane values")
+        for index, raw in enumerate(declared_shapes):
+            if not isinstance(raw, dict):
+                raise ValueError(f"candidate_universe valid_physical_shapes[{index}] must be an object")
+            rows = _positive(_field(raw, "rows", "compute_array_rows"))
+            cols = _positive(_field(raw, "cols", "compute_array_cols"))
+            shape_lanes = _positive(raw.get("lanes"))
+            if rows is None or cols is None:
+                raise ValueError(f"candidate_universe valid_physical_shapes[{index}] is incomplete")
+            for lanes, fifo_depth, activation_banks in product(
+                [shape_lanes] if shape_lanes is not None else lanes_values,
+                fifo_values,
+                activation_values,
+            ):
+                try:
+                    tuples.append(
+                        _normal_tuple(
+                            {
+                                "lanes": lanes,
+                                "compute_array": {"rows": rows, "cols": cols},
+                                "fifo_depth": fifo_depth,
+                                "activation_banks": activation_banks,
+                            },
+                            index,
+                        )
+                    )
+                except ValueError:
+                    continue
         return tuples
 
     if isinstance(declared_pairs, list) and declared_pairs:

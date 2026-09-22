@@ -206,6 +206,33 @@ class SemanticParameterBindingTest(TestCase):
             {(8, 8), (16, 32)},
         )
 
+    def test_candidate_universe_supports_stage0_physical_shape_schema(self) -> None:
+        search = {
+            "candidate_universe": {
+                "lanes": [32],
+                "compute_array": {
+                    "valid_physical_shapes": [
+                        {"rows": 8, "cols": 8, "pe_count": 64},
+                        {"rows": 8, "cols": 16, "pe_count": 128},
+                        {"rows": 16, "cols": 8, "pe_count": 128},
+                        {"rows": 16, "cols": 16, "pe_count": 256},
+                    ]
+                },
+                "physical_fifo_depth_entries": [16, 32],
+                "activation_bank_count": [1, 2, 4],
+            }
+        }
+
+        tuples = physical_candidate_tuples(search)
+
+        self.assertEqual(len(tuples), 24)
+        self.assertEqual(
+            {(row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
+            {(8, 8), (8, 16), (16, 8), (16, 16)},
+        )
+        self.assertEqual({row["fifo_depth"] for row in tuples}, {16, 32})
+        self.assertEqual({row["activation_banks"] for row in tuples}, {1, 2, 4})
+
     def test_summary_universe_uses_top_level_declared_physical_axes(self) -> None:
         search = {
             "candidate_universe": {
