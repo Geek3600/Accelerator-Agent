@@ -1437,7 +1437,72 @@ def prepare_tool_profile(tool_summary: dict[str, Any], board: dict[str, Any], fi
             "For remote tools, record host and any required environment variables. For Vivado, executable must identify the Vivado binary when provided.",
         ],
     )
-    return llm_json("tool_profile_agent", prompt, TOOL_PROFILE_SCHEMA, fallback, out_dir)
+    profile = llm_json("tool_profile_agent", prompt, TOOL_PROFILE_SCHEMA, fallback, out_dir)
+    return merge_tool_profile_bindings(profile, board, field_evidence_summary)
+
+
+def merge_tool_profile_bindings(
+    profile: dict[str, Any],
+    board: dict[str, Any],
+    field_evidence_summary: dict[str, Any],
+) -> dict[str, Any]:
+    """Complete blank tool endpoint fields from current-run, source-bound inputs.
+
+    The tool-profile LLM owns semantic extraction, but an otherwise valid response
+    may omit an operational field that is already present in the current-run
+    evidence.  Fill only blank fields; never overwrite an explicit LLM value or
+    invent a tool path/host.  The board runtime endpoint is the shared remote EDA
+    endpoint when the tool-specific host was omitted.
+    """
+
+    result = copy.deepcopy(profile)
+    tools = result.get("tools")
+    if not isinstance(tools, list):
+        return result
+
+    runtime = board.get("runtime_interface", {})
+    if not isinstance(runtime, dict):
+        runtime = {}
+    shared_remote_host = summary_field_value(field_evidence_summary, "runtime_interface.remote_host")
+    if blank_profile_value(shared_remote_host):
+        shared_remote_host = runtime.get("remote_host")
+    shared_remote_port = runtime.get("remote_port")
+
+    bound_fields: list[str] = []
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        name = str(tool.get("name") or "").lower()
+        if name not in {"vcs", "vivado"}:
+            continue
+
+        host_field = f"tool.{name}.host"
+        executable_field = f"tool.{name}.executable"
+        host = summary_field_value(field_evidence_summary, host_field)
+        executable = summary_field_value(field_evidence_summary, executable_field)
+        if blank_profile_value(host):
+            host = shared_remote_host
+        if blank_profile_value(executable):
+            executable = None
+
+        before = (tool.get("host"), tool.get("executable"), tool.get("scope"), tool.get("port"))
+        fill_if_blank(tool, "host", host)
+        fill_if_blank(tool, "executable", executable)
+        if blank_profile_value(tool.get("scope")) and evidence_value_present(tool.get("host")):
+            tool["scope"] = "remote"
+        if blank_profile_value(tool.get("port")) and evidence_value_present(tool.get("host")):
+            fill_if_blank(tool, "port", shared_remote_port or 22)
+        after = (tool.get("host"), tool.get("executable"), tool.get("scope"), tool.get("port"))
+        if before != after:
+            bound_fields.append(name)
+
+    if bound_fields:
+        notes = result.setdefault("notes", [])
+        if isinstance(notes, list):
+            notes.append(
+                "Blank VCS/Vivado endpoint fields were completed from current-run source-bound board/tool evidence; explicit LLM values were preserved."
+            )
+    return result
 
 
 def prepare_numeric_policy(materials_text: str, out_dir: Path) -> dict[str, Any]:

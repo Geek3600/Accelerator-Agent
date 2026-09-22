@@ -9,6 +9,7 @@ from accagent.framework.stage_input import (
     bind_task_qor_targets,
     bind_discovered_board_resource_budget,
     design_space_stream_packing_errors,
+    merge_tool_profile_bindings,
     parse_vivado_resource_budget,
     redact_sensitive_text,
     remote_probe_workdir_expr,
@@ -156,6 +157,72 @@ class StageInputSanitizationTest(unittest.TestCase):
             "$HOME/workspace/spatialacc_stage0_tool_probe/vivado/formal_qwen2",
         )
         self.assertNotEqual(first, second)
+
+    def test_blank_remote_tool_endpoint_fields_bind_from_current_run_evidence(self) -> None:
+        profile = {
+            "schema_version": "spatialaccagent.tool_profile.v0",
+            "tools": [
+                {
+                    "name": "vivado",
+                    "role": "synthesis",
+                    "scope": None,
+                    "host": None,
+                    "port": None,
+                    "executable": "/home/EDA/Xilinx/Vivado/2021.1/bin/vivado",
+                    "env": {},
+                    "workdir": None,
+                    "constraints": [],
+                    "source": "tool materials",
+                }
+            ],
+            "notes": [],
+        }
+        board = {"runtime_interface": {"remote_host": "eda@example.org", "remote_port": 22}}
+        evidence = {
+            "selected_fields": [
+                {
+                    "field": "tool.vivado.executable",
+                    "evidence": [{"value": "/home/EDA/Xilinx/Vivado/2021.1/bin/vivado"}],
+                }
+            ]
+        }
+
+        result = merge_tool_profile_bindings(profile, board, evidence)
+        vivado = result["tools"][0]
+
+        self.assertEqual(vivado["host"], "eda@example.org")
+        self.assertEqual(vivado["port"], 22)
+        self.assertEqual(vivado["scope"], "remote")
+        self.assertEqual(vivado["executable"], profile["tools"][0]["executable"])
+
+    def test_explicit_tool_endpoint_fields_are_preserved(self) -> None:
+        profile = {
+            "tools": [
+                {
+                    "name": "vcs",
+                    "scope": "remote",
+                    "host": "existing@example.org",
+                    "port": 2200,
+                    "executable": "/eda/vcs",
+                }
+            ],
+            "notes": [],
+        }
+
+        result = merge_tool_profile_bindings(
+            profile,
+            {"runtime_interface": {"remote_host": "other@example.org", "remote_port": 22}},
+            {
+                "selected_fields": [
+                    {"field": "tool.vcs.host", "evidence": [{"value": "evidence@example.org"}]},
+                    {"field": "tool.vcs.executable", "evidence": [{"value": "/evidence/vcs"}]},
+                ]
+            },
+        )
+
+        self.assertEqual(result["tools"][0]["host"], "existing@example.org")
+        self.assertEqual(result["tools"][0]["port"], 2200)
+        self.assertEqual(result["tools"][0]["executable"], "/eda/vcs")
 
 
 if __name__ == "__main__":
