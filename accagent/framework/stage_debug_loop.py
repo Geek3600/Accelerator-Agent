@@ -843,7 +843,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=0,
         help="outer real-tool wall-clock timeout in seconds; <=0 waits without a wall-clock limit",
     )
-    parser.add_argument("--include-remote", action="store_true")
+    parser.add_argument(
+        "--include-remote",
+        dest="include_remote",
+        action="store_true",
+        default=True,
+        help="execute required remote verification tools (default)",
+    )
+    parser.add_argument(
+        "--no-include-remote",
+        dest="include_remote",
+        action="store_false",
+        help="skip remote repair reruns for an explicitly local-only diagnostic run",
+    )
     parser.add_argument("--stop-after-failed-repair", action="store_true")
     return parser.parse_args(argv)
 

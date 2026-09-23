@@ -8,6 +8,7 @@ from unittest.mock import patch
 from accagent.framework.stage_debug_loop import (
     agent_transaction_retry_key,
     deterministic_repair_followup_key,
+    parse_args,
     pending_repair_execution_resume,
     repair_execution_requires_fresh_agent_planning,
     repair_execution_has_new_real_tool_evidence,
@@ -17,6 +18,20 @@ from accagent.framework.stage_debug_loop import (
 
 
 class DebugLoopResumeTest(TestCase):
+    def test_debug_loop_enables_remote_reruns_by_default(self) -> None:
+        args = parse_args(["--sacg-state", "state.json"])
+
+        self.assertTrue(args.include_remote)
+
+    def test_debug_loop_allows_explicit_local_only_diagnostics(self) -> None:
+        args = parse_args([
+            "--sacg-state",
+            "state.json",
+            "--no-include-remote",
+        ])
+
+        self.assertFalse(args.include_remote)
+
     def test_initial_layer3_verification_receives_required_checkpoint_environment(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
