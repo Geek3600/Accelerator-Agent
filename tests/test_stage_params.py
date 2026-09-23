@@ -331,6 +331,35 @@ class SemanticParameterBindingTest(TestCase):
             {(4, 8), (8, 16)},
         )
 
+    def test_nested_candidate_dimensions_preserve_declared_pe_pairs(self) -> None:
+        search = {
+            "candidate_universe": {
+                "candidate_dimensions": {
+                    "lanes": {"legal_values": [8, 16]},
+                    "compute_array": {
+                        "legal_row_col_pairs": [
+                            {"rows": 2, "cols": 4},
+                            {"rows": 4, "cols": 8},
+                        ]
+                    },
+                    "physical_fifo_depth": {"legal_values": [2, 4]},
+                    "activation_bank_count": {"legal_values": [1, 2]},
+                }
+            }
+        }
+
+        tuples = physical_candidate_tuples(search)
+
+        self.assertEqual(len(tuples), 16)
+        self.assertEqual(
+            {(row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
+            {(2, 4), (4, 8)},
+        )
+        self.assertNotIn(
+            (2, 8),
+            {(row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
+        )
+
     def test_summary_universe_uses_top_level_declared_physical_axes(self) -> None:
         search = {
             "candidate_universe": {

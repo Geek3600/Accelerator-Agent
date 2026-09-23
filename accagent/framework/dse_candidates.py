@@ -23,6 +23,7 @@ def _values(value: Any) -> list[int]:
             "entries_candidates",
             "candidates",
             "values",
+            "legal_values",
         ):
             if key in value:
                 values = value[key]
@@ -219,30 +220,34 @@ def _candidate_universe_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
     return tuples
 
 
-def _candidate_dimension_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
-    """Normalize an explicit finite Stage-0 candidate-dimensions declaration."""
+def _dimension_tuples(dimensions: dict[str, Any], name: str) -> list[dict[str, int]]:
+    """Normalize one explicit finite candidate-dimensions declaration."""
 
-    dimensions = search.get("candidate_dimensions")
-    if not isinstance(dimensions, dict):
-        return []
     lanes_values = _values(dimensions.get("lanes"))
     fifo_values = _values(dimensions.get("physical_fifo_depth"))
     activation_values = _values(dimensions.get("activation_bank_count"))
     raw_arrays = dimensions.get("compute_array")
-    shapes = raw_arrays.get("values") if isinstance(raw_arrays, dict) else raw_arrays
+    shape_name = "values"
+    shapes = raw_arrays.get(shape_name) if isinstance(raw_arrays, dict) else raw_arrays
+    if not isinstance(shapes, list) and isinstance(raw_arrays, dict):
+        shape_name = "legal_row_col_pairs"
+        shapes = raw_arrays.get(shape_name)
     if not isinstance(shapes, list):
         shapes = []
     if not all((lanes_values, fifo_values, activation_values, shapes)):
-        raise ValueError("candidate_dimensions has no complete physical DSE candidate declaration")
+        raise ValueError(f"{name} has no complete physical DSE candidate declaration")
 
     tuples: list[dict[str, int]] = []
     for index, raw in enumerate(shapes):
-        if not isinstance(raw, dict):
-            raise ValueError(f"candidate_dimensions compute_array.values[{index}] must be an object")
-        rows = _positive(_field(raw, "rows", "compute_array_rows"))
-        cols = _positive(_field(raw, "cols", "compute_array_cols"))
+        if isinstance(raw, dict):
+            rows = _positive(_field(raw, "rows", "compute_array_rows"))
+            cols = _positive(_field(raw, "cols", "compute_array_cols"))
+        elif isinstance(raw, (list, tuple)) and len(raw) == 2:
+            rows, cols = _positive(raw[0]), _positive(raw[1])
+        else:
+            raise ValueError(f"{name} compute_array.{shape_name}[{index}] is malformed")
         if rows is None or cols is None:
-            raise ValueError(f"candidate_dimensions compute_array.values[{index}] is incomplete")
+            raise ValueError(f"{name} compute_array.{shape_name}[{index}] is incomplete")
         for lanes, fifo_depth, activation_banks in product(
             lanes_values, fifo_values, activation_values
         ):
@@ -261,6 +266,20 @@ def _candidate_dimension_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
             except ValueError:
                 continue
     return tuples
+
+
+def _candidate_dimension_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
+    """Normalize an explicit finite Stage-0 candidate-dimensions declaration."""
+
+    dimensions = search.get("candidate_dimensions")
+    if isinstance(dimensions, dict):
+        return _dimension_tuples(dimensions, "candidate_dimensions")
+
+    universe = search.get("candidate_universe")
+    nested = universe.get("candidate_dimensions") if isinstance(universe, dict) else None
+    if isinstance(nested, dict):
+        return _dimension_tuples(nested, "candidate_universe.candidate_dimensions")
+    return []
 
 
 def _legacy_tuples(search: dict[str, Any]) -> list[dict[str, int]]:

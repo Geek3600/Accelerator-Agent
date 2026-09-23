@@ -56,6 +56,46 @@ class StageInputSanitizationTest(unittest.TestCase):
 
         self.assertEqual(errors, [])
 
+    def test_design_space_accepts_nested_candidate_dimension_domain(self) -> None:
+        errors = design_space_physical_candidate_errors(
+            {
+                "search_params": {
+                    "candidate_universe": {
+                        "candidate_dimensions": {
+                            "lanes": {"legal_values": [8, 16]},
+                            "compute_array": {
+                                "legal_row_col_pairs": [{"rows": 2, "cols": 4}]
+                            },
+                            "physical_fifo_depth": {"legal_values": [2, 4]},
+                            "activation_bank_count": {"legal_values": [1, 2]},
+                        }
+                    }
+                }
+            }
+        )
+
+        self.assertEqual(errors, [])
+
+    def test_design_space_rejects_nested_candidate_dimension_domain_missing_axis(self) -> None:
+        errors = design_space_physical_candidate_errors(
+            {
+                "search_params": {
+                    "candidate_universe": {
+                        "candidate_dimensions": {
+                            "lanes": {"legal_values": [8, 16]},
+                            "compute_array": {
+                                "legal_row_col_pairs": [{"rows": 2, "cols": 4}]
+                            },
+                            "physical_fifo_depth": {"legal_values": [2, 4]},
+                        }
+                    }
+                }
+            }
+        )
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("candidate_universe.candidate_dimensions", errors[0])
+
     def test_design_space_rejects_lane_domain_without_fp32_stream_coverage(self) -> None:
         errors = design_space_stream_packing_errors(
             {"search_params": {"lanes": [32]}},
