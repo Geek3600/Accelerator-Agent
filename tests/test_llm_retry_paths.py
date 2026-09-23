@@ -1121,6 +1121,77 @@ class LlmRetryPathTests(unittest.TestCase):
         )
         self.assertTrue(repair_artifacts_exist)
 
+    def test_stage_agent_repair_names_missing_root_field_placement(self) -> None:
+        custom_schema = {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "operator_leaf_dag": {"type": "object"},
+                "executable_actions": {"type": "array"},
+                "approval_required_for": {"type": "array"},
+            },
+            "required": [
+                "status",
+                "executable_actions",
+                "approval_required_for",
+            ],
+        }
+        malformed = json.dumps(
+            {
+                "status": "blocked",
+                "operator_leaf_dag": {
+                    "executable_actions": [],
+                    "approval_required_for": [],
+                },
+            }
+        )
+        valid = json.dumps(
+            {
+                "status": "blocked",
+                "operator_leaf_dag": {},
+                "executable_actions": [],
+                "approval_required_for": [],
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                patch.dict(
+                    os.environ,
+                    {"SPATIALACC_LLM_AUTO_COMPACT_RETRY": "0"},
+                ),
+                patch.object(
+                    stage_llm,
+                    "resolved_llm_cfg",
+                    return_value=LlmCfg(
+                        model="test-model",
+                        endpoint="https://example.invalid",
+                        api_key="key",
+                        stream=True,
+                    ),
+                ),
+                patch.object(
+                    stage_llm,
+                    "call_llm_with_retry",
+                    side_effect=[(malformed, []), (valid, [])],
+                ) as call,
+            ):
+                record = stage_llm.run_stage_agent(
+                    agent="verification_agent",
+                    stage="verification_artifacts",
+                    task="return verification plan",
+                    inputs={"verification_contract": {}},
+                    out_dir=Path(tmp),
+                    fallback_summary="fallback",
+                    output_schema=custom_schema,
+                )
+
+        repair_prompt = call.call_args_list[1].args[3]
+        self.assertEqual(record["output"]["executable_actions"], [])
+        self.assertIn("Top-level placement correction", repair_prompt)
+        self.assertIn("executable_actions", repair_prompt)
+        self.assertIn("approval_required_for", repair_prompt)
+        self.assertIn("direct members of the returned root object", repair_prompt)
+
     def test_stage_agent_keeps_schema_repairing_after_configured_window(self) -> None:
         custom_schema = {
             "type": "object",
