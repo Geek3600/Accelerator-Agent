@@ -340,6 +340,38 @@ DESIGN_SPACE_SCHEMA = {
 }
 
 
+def framework_physical_candidate_domain_seed() -> dict[str, Any]:
+    """Return the read-only default topology domain available to Stage-0 agents.
+
+    This declares framework-supported generated-hardware topology, not a
+    case-specific architecture choice.  The LLM must still return the complete
+    current design-space domain, and Stage 4 remains the sole selector.
+    """
+
+    return {
+        "candidate_universe": {
+            "candidate_dimensions": {
+                "lanes": {"legal_values": [8, 16]},
+                "compute_array": {
+                    "legal_row_col_pairs": [
+                        {"rows": 4, "cols": 4},
+                        {"rows": 4, "cols": 8},
+                        {"rows": 4, "cols": 16},
+                        {"rows": 8, "cols": 4},
+                        {"rows": 8, "cols": 8},
+                        {"rows": 8, "cols": 16},
+                        {"rows": 16, "cols": 4},
+                        {"rows": 16, "cols": 8},
+                        {"rows": 16, "cols": 16},
+                    ]
+                },
+                "physical_fifo_depth": {"legal_values": [32, 64, 128]},
+                "activation_bank_count": {"legal_values": [2, 4]},
+            }
+        }
+    }
+
+
 def read_text(path: Path) -> str:
     if not path.exists():
         return ""
@@ -1786,6 +1818,7 @@ def prepare_design_space(
     out_dir: Path,
     case_adapter: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    physical_domain_seed = framework_physical_candidate_domain_seed()
     fallback = {
         "schema_version": "spatialaccagent.design_space.v0",
         "status": "generated_by_stage0_agent",
@@ -1794,18 +1827,7 @@ def prepare_design_space(
             "template_library_id": templates.get("library_id"),
             "board_id": board.get("board", {}).get("board_id"),
         },
-        "search_params": {
-            "lanes": {"global_lanes": {"candidates": [8, 16, 24]}},
-            "compute_array": {
-                "rows": {"candidates": [4, 8, 16]},
-                "cols": {"candidates": [4, 8, 16]},
-            },
-            "fifo_depths": {"stream_fifo_depth_entries": {"candidates": [32, 64, 128]}},
-            "bank_counts": {
-                "activation_sram_banks": {"candidates": [2, 4]},
-                "weight_sram_banks": {"candidates": [1, 2, 4]},
-            },
-        },
+        "search_params": copy.deepcopy(physical_domain_seed),
         "objectives": [
             "minimize_resources",
             "minimize_power_w",
@@ -1814,7 +1836,10 @@ def prepare_design_space(
         ],
         "qor_targets": qor_targets,
         "hard_constraints": task_qor_hard_constraints(qor_targets),
-        "notes": ["fallback formal DSE universe contains only parameters that change generated FPGA RTL/XPM topology"],
+        "notes": [
+            "fallback formal DSE universe contains only parameters that change generated FPGA RTL/XPM topology",
+            "framework physical-domain seed is a read-only topology boundary, not a selected architecture or QoR claim",
+        ],
     }
     prompt = build_prompt(
         agent="design_space_agent",
@@ -1826,6 +1851,7 @@ def prepare_design_space(
             "numeric_policy": numeric_policy,
             "semantic_stream_contract": semantic_stream_contract(case_adapter, numeric_policy, board),
             "explicit_task_qor_targets": qor_targets,
+            "framework_physical_domain_seed": physical_domain_seed,
         },
         output_schema=DESIGN_SPACE_SCHEMA,
         rules=[
@@ -1837,6 +1863,7 @@ def prepare_design_space(
             "The supplied explicit_task_qor_targets are immutable user constraints. Repeat them accurately, but do not add, delete, weaken, or replace them.",
             "The design must bind Vivado floating-point/DSP IP and XPM physical memories from the first implementation candidate; do not select a software arithmetic or ideal-memory backend.",
             "Do not choose parameters that require changing model semantics or bypassing DDR/AXI/runtime constraints.",
+            "framework_physical_domain_seed is read-only framework topology evidence. It is not a selected architecture, QoR estimate, or automatic fallback promotion. Return a complete current design-space universe; when current model/board/template evidence has no more specific PE geometry, state explicit legal tuples or correlated pairs from this seed rather than only a candidate count.",
             "Do not provide resource, power, frequency, or performance estimates. Stage 4 will use only real target-board app-shell Vivado and hardware-counter measurements for those four metrics.",
         ],
     )
@@ -1866,6 +1893,7 @@ def prepare_design_space(
                 "numeric_policy": numeric_policy,
                 "semantic_stream_contract": semantic_stream_contract(case_adapter, numeric_policy, board),
                 "explicit_task_qor_targets": qor_targets,
+                "framework_physical_domain_seed": physical_domain_seed,
             },
             output_schema=DESIGN_SPACE_SCHEMA,
             rules=[
@@ -1875,6 +1903,7 @@ def prepare_design_space(
                 "Use one of the accepted complete forms: hardware_parameter_tuples, candidate_universe legal tuples/pairs/shapes plus all physical axes, candidate_dimensions, or legacy axes with valid candidate pairs.",
                 "Candidate counts, composition descriptions, and unpaired descriptive axes are not a candidate universe and must not be returned alone.",
                 "Do not invent a candidate from a constructor default or from another model family; every value must be supported by the current model, board, and template evidence.",
+                "framework_physical_domain_seed is read-only framework topology evidence, not a concrete architecture selection or QoR result. When the failed result lacks literal PE tuples/pairs, return a complete correlated physical domain from this seed instead of deriving geometry from a candidate count. Stage 4 remains the only concrete selection authority.",
                 "Return exactly one valid JSON object matching the design-space schema.",
             ],
         )

@@ -10,6 +10,7 @@ from accagent.framework.stage_input import (
     bind_discovered_board_resource_budget,
     design_space_physical_candidate_errors,
     design_space_stream_packing_errors,
+    framework_physical_candidate_domain_seed,
     merge_tool_profile_bindings,
     parse_vivado_resource_budget,
     redact_sensitive_text,
@@ -21,6 +22,13 @@ from accagent.framework.stage_input import (
 
 
 class StageInputSanitizationTest(unittest.TestCase):
+    def test_framework_physical_domain_seed_is_complete_and_normalizable(self) -> None:
+        errors = design_space_physical_candidate_errors(
+            {"search_params": framework_physical_candidate_domain_seed()}
+        )
+
+        self.assertEqual(errors, [])
+
     def test_design_space_rejects_candidate_count_without_physical_domain(self) -> None:
         errors = design_space_physical_candidate_errors(
             {
@@ -212,16 +220,7 @@ class StageInputSanitizationTest(unittest.TestCase):
         }
         repaired = {
             **incomplete,
-            "search_params": {
-                "hardware_parameter_tuples": [
-                    {
-                        "lanes": 8,
-                        "compute_array": {"rows": 2, "cols": 4},
-                        "physical_fifo_depth": 16,
-                        "activation_bank_count": 2,
-                    }
-                ]
-            },
+            "search_params": framework_physical_candidate_domain_seed(),
         }
 
         with patch.object(stage_input, "llm_json", side_effect=[incomplete, repaired]) as llm:
@@ -235,6 +234,12 @@ class StageInputSanitizationTest(unittest.TestCase):
             )
 
         self.assertEqual(llm.call_count, 2)
+        initial_prompt = llm.call_args_list[0].args[1]
+        repair_prompt = llm.call_args_list[1].args[1]
+        self.assertIn("<framework_physical_domain_seed>", initial_prompt)
+        self.assertIn('"legal_row_col_pairs"', initial_prompt)
+        self.assertIn("<framework_physical_domain_seed>", repair_prompt)
+        self.assertIn('"legal_row_col_pairs"', repair_prompt)
         self.assertEqual(result["qor_targets"], targets)
         self.assertEqual(
             result["hard_constraints"], task_qor_hard_constraints(targets)
