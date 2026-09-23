@@ -83,6 +83,29 @@ def failed_command_summary(res: CommandResult, path: Path | None = None) -> dict
     return summary
 
 
+def failed_stage_result(name: str, res: CommandResult, path: Path) -> StageResult:
+    """Preserve current structured failure evidence for flow orchestration."""
+
+    if path.exists():
+        try:
+            return StageResult(
+                name=name,
+                passed=False,
+                command_result=res,
+                output_path=str(path),
+                summary=read_report(path),
+            )
+        except Exception:
+            pass
+    return StageResult(
+        name=name,
+        passed=False,
+        command_result=res,
+        output_path=str(path),
+        summary=failed_command_summary(res, path),
+    )
+
+
 @contextmanager
 def temporary_env(env: dict[str, str] | None):
     if not env:
@@ -138,13 +161,7 @@ class InputPreparationAgent:
         res = self.runner.run("input_preparation", cmd, self.env)
         path = out / "input" / "prepared_inputs.json"
         if not res.passed:
-            return StageResult(
-                name="input_preparation",
-                passed=False,
-                command_result=res,
-                output_path=str(path),
-                summary=failed_command_summary(res, path),
-            )
+            return failed_stage_result("input_preparation", res, path)
         data = read_report(path)
         return StageResult(
             name="input_preparation",
@@ -178,13 +195,7 @@ class ConstraintExtractionAgent:
         run_dir = prepared.parents[1]
         path = run_dir / "constraint_extraction" / "constraint_extraction_report.json"
         if not res.passed:
-            return StageResult(
-                name="constraint_extraction",
-                passed=False,
-                command_result=res,
-                output_path=str(path),
-                summary=failed_command_summary(res, path),
-            )
+            return failed_stage_result("constraint_extraction", res, path)
         data = read_report(path)
         return StageResult(
             name="constraint_extraction",
@@ -218,13 +229,7 @@ class TemplateSelectionAgent:
         run_dir = sacg.parents[1]
         path = run_dir / "template_selection" / "template_selection_report.json"
         if not res.passed:
-            return StageResult(
-                name="template_selection",
-                passed=False,
-                command_result=res,
-                output_path=str(path),
-                summary=failed_command_summary(res, path),
-            )
+            return failed_stage_result("template_selection", res, path)
         data = read_report(path)
         return StageResult(
             name="template_selection",

@@ -8,6 +8,7 @@ from accagent.framework import stage_input
 from accagent.framework.stage_input import (
     bind_task_qor_targets,
     bind_discovered_board_resource_budget,
+    design_space_physical_candidate_errors,
     design_space_stream_packing_errors,
     merge_tool_profile_bindings,
     parse_vivado_resource_budget,
@@ -20,6 +21,41 @@ from accagent.framework.stage_input import (
 
 
 class StageInputSanitizationTest(unittest.TestCase):
+    def test_design_space_rejects_candidate_count_without_physical_domain(self) -> None:
+        errors = design_space_physical_candidate_errors(
+            {
+                "search_params": {
+                    "candidate_universe": {
+                        "base_compute_array_candidate_count": 41,
+                        "physical_fifo_depth_values": [2, 4],
+                        "activation_bank_count_values": [1, 2],
+                    },
+                    "lanes": {"candidate_values": [8, 16]},
+                }
+            }
+        )
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("physical candidate domain is incomplete", errors[0])
+
+    def test_design_space_accepts_complete_stage4_candidate_domain(self) -> None:
+        errors = design_space_physical_candidate_errors(
+            {
+                "search_params": {
+                    "hardware_parameter_tuples": [
+                        {
+                            "lanes": 8,
+                            "compute_array": {"rows": 2, "cols": 4},
+                            "physical_fifo_depth": 16,
+                            "activation_bank_count": 2,
+                        }
+                    ]
+                }
+            }
+        )
+
+        self.assertEqual(errors, [])
+
     def test_design_space_rejects_lane_domain_without_fp32_stream_coverage(self) -> None:
         errors = design_space_stream_packing_errors(
             {"search_params": {"lanes": [32]}},
@@ -103,6 +139,52 @@ class StageInputSanitizationTest(unittest.TestCase):
         }
 
         with patch.object(stage_input, "llm_json", return_value=incomplete):
+            with self.assertRaises(stage_input.InputPreparationError) as raised:
+                stage_input.prepare_design_space(
+                    {"model_type": "generic"},
+                    {"library_id": "templates", "templates": []},
+                    {"board": {"board_id": "target"}},
+                    {"default_rules": {"weight_dtype": "fp16"}},
+                    targets,
+                    Path("unused"),
+                )
+
+        self.assertIn("physical candidate domain is incomplete", str(raised.exception))
+
+    def test_incomplete_physical_domain_uses_llm_repair_before_stage0_acceptance(self) -> None:
+        targets = task_qor_targets(
+            "Hard QoR constraints: achieved clock frequency must be at least 250 MHz; "
+            "measured performance must be strictly greater than 170 token/s; LUT, FF, BRAM, "
+            "URAM, and DSP usage must remain within the discovered target board resource budget. "
+            "Measure and report power, but do not impose a power limit."
+        )
+        incomplete = {
+            "schema_version": "spatialaccagent.design_space.v0",
+            "status": "ready_for_stage4",
+            "sources": {},
+            "search_params": {
+                "candidate_universe": {"base_compute_array_candidate_count": 41},
+                "lanes": {"candidate_values": [8, 16]},
+            },
+            "objectives": [],
+            "hard_constraints": [],
+            "notes": [],
+        }
+        repaired = {
+            **incomplete,
+            "search_params": {
+                "hardware_parameter_tuples": [
+                    {
+                        "lanes": 8,
+                        "compute_array": {"rows": 2, "cols": 4},
+                        "physical_fifo_depth": 16,
+                        "activation_bank_count": 2,
+                    }
+                ]
+            },
+        }
+
+        with patch.object(stage_input, "llm_json", side_effect=[incomplete, repaired]) as llm:
             result = stage_input.prepare_design_space(
                 {"model_type": "generic"},
                 {"library_id": "templates", "templates": []},
@@ -112,11 +194,10 @@ class StageInputSanitizationTest(unittest.TestCase):
                 Path("unused"),
             )
 
+        self.assertEqual(llm.call_count, 2)
         self.assertEqual(result["qor_targets"], targets)
-        self.assertEqual(result["hard_constraints"], task_qor_hard_constraints(targets))
         self.assertEqual(
-            result["sources"]["task_qor_targets"]["binding"],
-            "deterministic_user_constraint",
+            result["hard_constraints"], task_qor_hard_constraints(targets)
         )
 
     def test_real_vivado_capacity_report_binds_the_target_board_budget(self) -> None:

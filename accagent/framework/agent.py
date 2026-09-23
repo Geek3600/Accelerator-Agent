@@ -790,87 +790,25 @@ class TopAgent:
         self.initialize_run_counters()
         self.write_report(status="running")
 
-        input_report = self.out / "input" / "prepared_inputs.json"
-        input_module = "accagent.framework.stage_input"
-        input_result = self.reusable_stage_result(
-            stage="input_preparation",
-            module=input_module,
-            report_path=input_report,
-        )
-        if input_result is None:
-            input_agent = InputPreparationAgent(self.runner, self.tool_env)
-            input_result = input_agent.run(
-                out=self.out,
-                task=self.cfg.task_spec,
-                model_source=self.cfg.model_source,
-                model_dir=self.cfg.model_dir,
-                board_materials_dir=self.cfg.board_materials_dir,
-                quantization_materials_dir=self.cfg.quantization_materials_dir,
-                tool_materials_dir=self.cfg.tool_materials_dir,
-            )
-        self.record(input_result)
-        self.write_stage_checkpoint(
-            stage="input_preparation",
-            module=input_module,
-            result=input_result,
-            report_path=input_report,
-            sacg_state=None,
-        )
-        if not input_result.passed:
-            self.write_report(status="failed")
-            return False
-
-        prepared_inputs = self.out / "input" / "prepared_inputs.json"
-        constraint_module = "accagent.framework.stage_constraints"
-        constraint_report = self.out / "constraint_extraction" / "constraint_extraction_report.json"
-        constraint_state = self.out / "constraint_extraction" / "initial_design_graph.json"
-        constraint_result = self.reusable_stage_result(
-            stage="constraint_extraction",
-            module=constraint_module,
-            report_path=constraint_report,
-            sacg_state=constraint_state,
-        )
-        if constraint_result is None:
-            constraint_agent = ConstraintExtractionAgent(self.runner, self.tool_env)
-            constraint_result = constraint_agent.run(prepared_inputs, self.cfg.design)
-        self.record(constraint_result)
-        self.write_stage_checkpoint(
-            stage="constraint_extraction",
-            module=constraint_module,
-            result=constraint_result,
-            report_path=constraint_report,
-            sacg_state=constraint_state,
-        )
-        if not constraint_result.passed:
-            self.write_report(status="failed")
-            return False
-
-        sacg_state = constraint_state
-        template_module = "accagent.framework.stage_templates"
-        template_report = self.out / "template_selection" / "template_selection_report.json"
-        template_state = self.out / "template_selection" / "sacg_state.json"
-        template_result = self.reusable_stage_result(
-            stage="template_selection",
-            module=template_module,
-            report_path=template_report,
-            sacg_state=template_state,
-        )
-        if template_result is None:
-            template_agent = TemplateSelectionAgent(self.runner, self.tool_env)
-            template_result = template_agent.run(sacg_state)
-        self.record(template_result)
-        self.write_stage_checkpoint(
-            stage="template_selection",
-            module=template_module,
-            result=template_result,
-            report_path=template_report,
-            sacg_state=template_state,
-        )
-        if not template_result.passed:
-            self.write_report(status="failed")
-            return False
-
         stage_specs = [
+            (
+                "input_preparation",
+                "accagent.framework.stage_input",
+                "input",
+                "prepared_inputs.json",
+            ),
+            (
+                "constraint_extraction",
+                "accagent.framework.stage_constraints",
+                "constraint_extraction",
+                "constraint_extraction_report.json",
+            ),
+            (
+                "template_selection",
+                "accagent.framework.stage_templates",
+                "template_selection",
+                "template_selection_report.json",
+            ),
             (
                 "pipeline_planning",
                 "accagent.framework.stage_pipeline",
@@ -909,9 +847,10 @@ class TopAgent:
             ),
         ]
 
-        sacg_state = self.out / "template_selection" / "sacg_state.json"
+        sacg_state: Path | None = None
         stage_index = 0
-        self.hydrate_stage_attempts_from_logs([spec[0] for spec in stage_specs])
+        stage_names = [spec[0] for spec in stage_specs]
+        self.hydrate_stage_attempts_from_logs(stage_names)
         while stage_index < len(stage_specs):
             name, module, report_dir, report_file = stage_specs[stage_index]
             attempt_count = self.increment_stage_attempt(name, module)
@@ -924,13 +863,35 @@ class TopAgent:
                 sacg_state=expected_state,
             )
             if stage_result is None:
-                stage_agent = GenericStageAgent(self.runner, name, module, report_dir, report_file, self.tool_env)
-                stage_result = stage_agent.run(sacg_state)
+                if name == "input_preparation":
+                    stage_result = InputPreparationAgent(self.runner, self.tool_env).run(
+                        out=self.out,
+                        task=self.cfg.task_spec,
+                        model_source=self.cfg.model_source,
+                        model_dir=self.cfg.model_dir,
+                        board_materials_dir=self.cfg.board_materials_dir,
+                        quantization_materials_dir=self.cfg.quantization_materials_dir,
+                        tool_materials_dir=self.cfg.tool_materials_dir,
+                    )
+                elif name == "constraint_extraction":
+                    stage_result = ConstraintExtractionAgent(self.runner, self.tool_env).run(
+                        self.out / "input" / "prepared_inputs.json",
+                        self.cfg.design,
+                    )
+                elif name == "template_selection":
+                    upstream_state = sacg_state or self.out / "constraint_extraction" / "initial_design_graph.json"
+                    stage_result = TemplateSelectionAgent(self.runner, self.tool_env).run(upstream_state)
+                else:
+                    stage_agent = GenericStageAgent(self.runner, name, module, report_dir, report_file, self.tool_env)
+                    stage_result = stage_agent.run(sacg_state)
             self.record(stage_result)
             next_sacg_state = self.report_state_path(stage_result)
-            if next_sacg_state is None:
-                expected_state = self.stage_state_path(report_dir)
-                next_sacg_state = expected_state if stage_result.passed and expected_state.exists() else sacg_state
+            if name == "constraint_extraction" and stage_result.passed:
+                next_sacg_state = self.out / "constraint_extraction" / "initial_design_graph.json"
+            elif name == "template_selection" and stage_result.passed:
+                next_sacg_state = self.out / "template_selection" / "sacg_state.json"
+            elif next_sacg_state is None:
+                next_sacg_state = sacg_state
             self.write_stage_checkpoint(
                 stage=name,
                 module=module,
@@ -940,6 +901,28 @@ class TopAgent:
             )
             if stage_result.passed:
                 self.reset_stage_attempt(name, module)
+
+            # The first three stages have no architecture/workflow choice to
+            # make after a clean pass.  Avoid spending an extra LLM call on a
+            # no-op flow decision, but route every failure through the same
+            # flow-controller logic as later stages.
+            if stage_result.passed and stage_index < 3:
+                self.record_flow_event(
+                    {
+                        "stage": name,
+                        "stage_passed": True,
+                        "sacg_state": str(next_sacg_state) if next_sacg_state else None,
+                        "decision": "proceed_bootstrap_stage",
+                        "reason": "bootstrap stage passed its deterministic gate",
+                        "attempt_count": attempt_count,
+                        "flow_state_path": str(self.flow_state_path),
+                    }
+                )
+                self.write_report(status="running")
+                sacg_state = next_sacg_state
+                stage_index += 1
+                continue
+
             if stage_result.passed and stage_result.command_result.command[:2] == ["checkpoint", "reuse"]:
                 next_index = stage_index + 1
                 self.record_flow_event(

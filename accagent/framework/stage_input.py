@@ -22,6 +22,7 @@ from typing import Any, Callable
 
 from accagent.framework.agent_common import compact_json
 from accagent.framework.case_adapter import adapter_tool, build_case_adapter
+from accagent.framework.dse_candidates import physical_candidate_tuples
 from accagent.framework.llm_config import resolved_llm_cfg
 from accagent.framework.llm_io import (
     PROMPT_PROTOCOL,
@@ -1167,6 +1168,42 @@ def design_space_stream_packing_errors(
     return errors
 
 
+def design_space_physical_candidate_errors(design_space: dict[str, Any]) -> list[str]:
+    """Require Stage 0 to hand off a complete physical DSE domain.
+
+    Stage 4 may select a concrete point, but it cannot validate a domain that
+    contains only candidate counts or descriptive axes.  Keep this check
+    deterministic and reuse the same normalizer that Stage 4 uses so the two
+    stages cannot disagree about whether the domain exists.
+    """
+
+    search_params = design_space.get("search_params", {})
+    if not isinstance(search_params, dict):
+        return ["design_space.search_params must be an object"]
+    try:
+        candidates = physical_candidate_tuples(search_params)
+    except ValueError as exc:
+        return [f"design_space physical candidate domain is incomplete: {exc}"]
+    if not candidates:
+        return ["design_space physical candidate domain is empty"]
+    return []
+
+
+def mark_llm_semantic_failure(log_dir: Path, name: str, error: str) -> None:
+    """Keep invalid LLM evidence for audit while forcing a fresh retry."""
+
+    path = log_dir / f"{name}_result.json"
+    if not path.exists():
+        return
+    try:
+        record = read_json(path)
+    except Exception:
+        return
+    record["semantic_validation_error"] = error
+    record["error"] = error
+    write_json(path, record)
+
+
 def load_model_source(path: Path, target_seq: int) -> dict[str, Any]:
     source = read_json(path)
     if {"model_type", "block", "attention", "mlp"} <= set(source):
@@ -1808,6 +1845,51 @@ def prepare_design_space(
     packing_errors = design_space_stream_packing_errors(result, stream_contract)
     if packing_errors:
         raise InputPreparationError("design_space stream packing validation failed: " + "; ".join(packing_errors))
+    candidate_errors = design_space_physical_candidate_errors(result)
+    if candidate_errors:
+        repair_prompt = build_prompt(
+            agent="design_space_candidate_domain_repair_agent",
+            task=(
+                "Repair the current Stage-0 design-space JSON because its physical DSE domain is not "
+                "complete. Return the same design-space schema with a finite, explicit, legal candidate "
+                "domain that downstream Stage 4 can normalize without inventing any candidate."
+            ),
+            inputs={
+                "current_design_space": result,
+                "validation_errors": candidate_errors,
+                "model_config": model,
+                "template_metadata_summary": {
+                    "library_id": templates.get("library_id"),
+                    "templates": templates.get("templates", []),
+                },
+                "target_board_profile": board,
+                "numeric_policy": numeric_policy,
+                "semantic_stream_contract": semantic_stream_contract(case_adapter, numeric_policy, board),
+                "explicit_task_qor_targets": qor_targets,
+            },
+            output_schema=DESIGN_SPACE_SCHEMA,
+            rules=[
+                "Preserve model semantics, numeric policy, board facts, and explicit task QoR constraints.",
+                "Do not select one architecture point; Stage 4 owns concrete selection.",
+                "Declare the complete physical candidate universe, including lanes, compute_array rows and cols, physical FIFO depth, and activation-bank count.",
+                "Use one of the accepted complete forms: hardware_parameter_tuples, candidate_universe legal tuples/pairs/shapes plus all physical axes, candidate_dimensions, or legacy axes with valid candidate pairs.",
+                "Candidate counts, composition descriptions, and unpaired descriptive axes are not a candidate universe and must not be returned alone.",
+                "Do not invent a candidate from a constructor default or from another model family; every value must be supported by the current model, board, and template evidence.",
+                "Return exactly one valid JSON object matching the design-space schema.",
+            ],
+        )
+        result = llm_json(
+            "design_space_candidate_domain_repair_agent",
+            repair_prompt,
+            DESIGN_SPACE_SCHEMA,
+            result,
+            out_dir,
+        )
+        candidate_errors = design_space_physical_candidate_errors(result)
+        if candidate_errors:
+            detail = "; ".join(candidate_errors)
+            mark_llm_semantic_failure(out_dir, "design_space_candidate_domain_repair_agent", detail)
+            raise InputPreparationError(detail)
     result = bind_task_qor_targets(result, qor_targets)
     sources = result.setdefault("sources", {})
     if isinstance(sources, dict) and stream_contract.get("status") == "ready":
