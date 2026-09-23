@@ -8,6 +8,7 @@ from accagent.framework.stage_verification import (
     check_pipeline_plan,
     check_case_functional_sim_preconditions,
     check_stage6_action_audit,
+    check_verification_artifact_contract,
     check_verification_plan,
     build_stage6_gate_execution_plan,
     gate_tool_roles,
@@ -31,6 +32,71 @@ from accagent.framework.stage_verification_plan import (
 
 
 class ThirdLayerProducerOrderTest(TestCase):
+    def test_stage6_accepts_stage5_contract_provenance_and_retry_semantics(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            contract_path = Path(temp_dir) / "verification_artifact_contract.json"
+            policy = {
+                name: True
+                for name in [
+                    "smoke_is_not_acceptance",
+                    "real_weight_artifacts_required",
+                    "complete_transformer_block_weight_consumption_required",
+                    "transformer_blocks_are_the_only_accelerator_scope",
+                    "real_target_model_reference_required",
+                    "random_or_rtl_derived_expected_output_forbidden",
+                    "explicit_numeric_comparison_policy_required",
+                    "real_axi_ddr_runtime_required",
+                    "real_functional_sim_required",
+                    "board_runtime_required_for_final_pass",
+                    "contract_guided_debug_closure_required",
+                    "downstream_failure_requires_failure_slice",
+                    "later_stage_missing_gate_or_tool_requires_stage5_backtrack",
+                    "same_stage_retry_can_supersede_prior_stage5_barriers_after_promotion",
+                    "lower_layer_pass_evidence_is_reusable_not_absolute",
+                    "higher_layer_trace_can_trigger_targeted_lower_layer_backtrack",
+                    "do_not_reopen_passed_lower_layer_without_contradicting_boundary_trace",
+                ]
+            }
+            contract_path.write_text(
+                json.dumps(
+                    {
+                        "status": "pass",
+                        "policy": policy,
+                        "backtrack_contract": {
+                            "target_stage": "stage5.verification_artifacts"
+                        },
+                        "debug_loop_contract": {
+                            "layer_order": [
+                                "operator_leaf_modules",
+                                "single_transformer_layer_kernel",
+                                "board_axi_ddr_wrapped_system",
+                            ],
+                            "anti_spin_policy": {
+                                "lower_layer_pass_evidence_is_reusable_not_absolute": True,
+                                "passed_lower_layer_can_be_challenged_by_current_layer_trace": True,
+                                "do_not_reopen_passed_lower_layer_without_contradicting_current_layer_trace": True,
+                            },
+                        },
+                        "retry_reconciliation_contract": {
+                            "stage": "stage5.verification_artifacts"
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            state = {
+                "artifacts": [
+                    {
+                        "id": "artifact.stage5.verification_artifact_contract",
+                        "path": str(contract_path),
+                    }
+                ]
+            }
+
+            status, summary = check_verification_artifact_contract(state)
+
+        self.assertEqual(status, "pass", summary)
+
     def test_stage6_reads_promoted_stage5_verification_inputs_without_relabeling(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

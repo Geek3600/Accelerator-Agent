@@ -373,8 +373,8 @@ def check_verification_artifact_contract(state: dict[str, Any]) -> tuple[str, st
         "board_runtime_required_for_final_pass",
         "contract_guided_debug_closure_required",
         "downstream_failure_requires_failure_slice",
-        "later_stage_missing_gate_or_tool_requires_stage6_backtrack",
-        "same_stage_retry_can_supersede_prior_stage6_barriers_after_promotion",
+        "later_stage_missing_gate_or_tool_requires_stage5_backtrack",
+        "same_stage_retry_can_supersede_prior_stage5_barriers_after_promotion",
         "lower_layer_pass_evidence_is_reusable_not_absolute",
         "higher_layer_trace_can_trigger_targeted_lower_layer_backtrack",
         "do_not_reopen_passed_lower_layer_without_contradicting_boundary_trace",
@@ -383,7 +383,7 @@ def check_verification_artifact_contract(state: dict[str, Any]) -> tuple[str, st
     if missing:
         return "fail", f"verification artifact contract missing policy flags: {missing}"
     backtrack_contract = contract.get("backtrack_contract", {})
-    if not isinstance(backtrack_contract, dict) or backtrack_contract.get("target_stage") != "stage6.verification_artifacts":
+    if not isinstance(backtrack_contract, dict) or backtrack_contract.get("target_stage") != "stage5.verification_artifacts":
         return "fail", "verification artifact contract missing Stage6 backtrack contract"
     debug_loop_contract = contract.get("debug_loop_contract", {})
     if not isinstance(debug_loop_contract, dict):
@@ -400,7 +400,7 @@ def check_verification_artifact_contract(state: dict[str, Any]) -> tuple[str, st
         if anti_spin.get(flag) is not True:
             return "fail", f"verification artifact contract missing anti-spin policy flag: {flag}"
     retry_contract = contract.get("retry_reconciliation_contract", {})
-    if not isinstance(retry_contract, dict) or retry_contract.get("stage") != "stage6.verification_artifacts":
+    if not isinstance(retry_contract, dict) or retry_contract.get("stage") != "stage5.verification_artifacts":
         return "fail", "verification artifact contract missing Stage6 retry reconciliation contract"
     return "pass", contract.get("summary", "verification artifact contract passed")
 
