@@ -1,6 +1,8 @@
 import hashlib
 import json
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -11,6 +13,86 @@ from accagent.framework.stage_llm import stage_worker_output_cacheable
 
 
 class StageLlmCacheTests(unittest.TestCase):
+    def test_llm_inflight_slot_serves_persisted_waiters_fifo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            limiter_dir = Path(tmp) / "limiter"
+            first_acquired = threading.Event()
+            second_acquired = threading.Event()
+            release_first = threading.Event()
+            release_second = threading.Event()
+            acquired_order: list[str] = []
+
+            def wait_for(predicate) -> None:
+                deadline = time.monotonic() + 3.0
+                while time.monotonic() < deadline:
+                    if predicate():
+                        return
+                    time.sleep(0.01)
+                self.fail("timed out waiting for limiter state")
+
+            def worker(
+                schema_name: str,
+                acquired_event: threading.Event,
+                release_event: threading.Event,
+            ) -> None:
+                with stage_llm.llm_inflight_slot(schema_name):
+                    acquired_order.append(schema_name)
+                    acquired_event.set()
+                    release_event.wait(timeout=3.0)
+
+            with patch.dict(
+                "os.environ",
+                {
+                    "SPATIALACC_LLM_LIMITER_DIR": str(limiter_dir),
+                    "SPATIALACC_LLM_MAX_INFLIGHT": "1",
+                    "SPATIALACC_LLM_SLOT_WAIT_SEC": "0.01",
+                },
+                clear=False,
+            ):
+                with stage_llm.llm_inflight_slot("holder"):
+                    first = threading.Thread(
+                        target=worker,
+                        args=("first", first_acquired, release_first),
+                    )
+                    first.start()
+                    state_path = limiter_dir / "inflight.json"
+                    wait_for(
+                        lambda: [
+                            waiter.get("schema_name")
+                            for waiter in stage_llm.read_limiter_state(state_path)["waiters"]
+                        ]
+                        == ["first"]
+                    )
+
+                    second = threading.Thread(
+                        target=worker,
+                        args=("second", second_acquired, release_second),
+                    )
+                    second.start()
+                    wait_for(
+                        lambda: [
+                            waiter.get("schema_name")
+                            for waiter in stage_llm.read_limiter_state(state_path)["waiters"]
+                        ]
+                        == ["first", "second"]
+                    )
+
+                wait_for(first_acquired.is_set)
+                self.assertEqual(acquired_order, ["first"])
+                self.assertFalse(second_acquired.is_set())
+                release_first.set()
+                wait_for(second_acquired.is_set)
+                release_second.set()
+                first.join(timeout=3.0)
+                second.join(timeout=3.0)
+
+            self.assertFalse(first.is_alive())
+            self.assertFalse(second.is_alive())
+            self.assertEqual(acquired_order, ["first", "second"])
+            state = stage_llm.read_limiter_state(state_path)
+            self.assertEqual(state["leases"], {})
+            self.assertEqual(state["waiters"], [])
+
     def test_only_promoting_business_decisions_are_cacheable(self) -> None:
         for status in ("ready", "pass", "proceed", "accepted", "complete", "completed"):
             with self.subTest(status=status):

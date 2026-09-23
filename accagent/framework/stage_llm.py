@@ -1209,17 +1209,33 @@ def timeout_like_exception(exc: BaseException | None) -> bool:
 
 def read_limiter_state(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return {"schema_version": "spatialaccagent.llm_inflight_limiter.v0", "leases": {}}
+        return {
+            "schema_version": "spatialaccagent.llm_inflight_limiter.v1",
+            "leases": {},
+            "waiters": [],
+        }
     try:
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception:
-        return {"schema_version": "spatialaccagent.llm_inflight_limiter.v0", "leases": {}}
+        return {
+            "schema_version": "spatialaccagent.llm_inflight_limiter.v1",
+            "leases": {},
+            "waiters": [],
+        }
     if not isinstance(data, dict):
-        return {"schema_version": "spatialaccagent.llm_inflight_limiter.v0", "leases": {}}
+        return {
+            "schema_version": "spatialaccagent.llm_inflight_limiter.v1",
+            "leases": {},
+            "waiters": [],
+        }
     leases = data.get("leases")
     if not isinstance(leases, dict):
         data["leases"] = {}
+    waiters = data.get("waiters")
+    if not isinstance(waiters, list):
+        data["waiters"] = []
+    data["schema_version"] = "spatialaccagent.llm_inflight_limiter.v1"
     return data
 
 
@@ -1229,6 +1245,58 @@ def write_limiter_state(path: Path, data: dict[str, Any]) -> None:
         json.dump(data, f, indent=2, sort_keys=True)
         f.write("\n")
     tmp.replace(path)
+
+
+def prune_limiter_state(state: dict[str, Any], now: float) -> bool:
+    """Drop stale limiter leases and FIFO waiters from a persisted state."""
+
+    changed = False
+    leases = state.setdefault("leases", {})
+    for key, lease in list(leases.items()):
+        if (
+            not isinstance(lease, dict)
+            or float(lease.get("expires_at", 0.0)) <= now
+            or not process_alive(lease.get("pid"))
+        ):
+            leases.pop(key, None)
+            changed = True
+
+    waiters = state.setdefault("waiters", [])
+    valid_waiters: list[dict[str, Any]] = []
+    seen_waiter_ids: set[str] = set()
+    for waiter in waiters:
+        if not isinstance(waiter, dict):
+            changed = True
+            continue
+        waiter_id = str(waiter.get("waiter_id") or "")
+        if (
+            not waiter_id
+            or waiter_id in seen_waiter_ids
+            or not process_alive(waiter.get("pid"))
+        ):
+            changed = True
+            continue
+        seen_waiter_ids.add(waiter_id)
+        valid_waiters.append(waiter)
+    if valid_waiters != waiters:
+        state["waiters"] = valid_waiters
+        changed = True
+    return changed
+
+
+def remove_limiter_waiter(state: dict[str, Any], waiter_id: str) -> bool:
+    waiters = state.setdefault("waiters", [])
+    retained = [
+        waiter
+        for waiter in waiters
+        if not (
+            isinstance(waiter, dict) and waiter.get("waiter_id") == waiter_id
+        )
+    ]
+    if retained == waiters:
+        return False
+    state["waiters"] = retained
+    return True
 
 
 @contextmanager
@@ -1246,32 +1314,59 @@ def llm_inflight_slot(schema_name: str):
     state_path = limiter_dir / "inflight.json"
     lease_id = f"{os.getpid()}-{uuid.uuid4().hex}"
     acquired = False
-    while not acquired:
-        now = time.time()
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            state = read_limiter_state(state_path)
-            leases = state.setdefault("leases", {})
-            for key, lease in list(leases.items()):
+    queued = False
+    try:
+        while not acquired:
+            now = time.time()
+            with lock_path.open("a+", encoding="utf-8") as lock_file:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                state = read_limiter_state(state_path)
+                changed = prune_limiter_state(state, now)
+                leases = state.setdefault("leases", {})
+                waiters = state.setdefault("waiters", [])
+                if not queued:
+                    waiters.append(
+                        {
+                            "waiter_id": lease_id,
+                            "pid": os.getpid(),
+                            "schema_name": schema_name,
+                            "enqueued_at": now,
+                        }
+                    )
+                    queued = True
+                    changed = True
                 if (
-                    not isinstance(lease, dict)
-                    or float(lease.get("expires_at", 0.0)) <= now
-                    or not process_alive(lease.get("pid"))
+                    waiters
+                    and waiters[0].get("waiter_id") == lease_id
+                    and len(leases) < llm_max_inflight()
                 ):
-                    leases.pop(key, None)
-            if len(leases) < llm_max_inflight():
-                leases[lease_id] = {
-                    "pid": os.getpid(),
-                    "schema_name": schema_name,
-                    "started_at": now,
-                    "expires_at": now + max(60.0, llm_timeout_sec() + llm_timeout_slot_hold_sec()),
-                }
-                state["max_inflight"] = llm_max_inflight()
-                write_limiter_state(state_path, state)
-                acquired = True
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-        if not acquired:
-            time.sleep(llm_slot_wait_sec())
+                    waiters.pop(0)
+                    leases[lease_id] = {
+                        "pid": os.getpid(),
+                        "schema_name": schema_name,
+                        "started_at": now,
+                        "expires_at": now
+                        + max(60.0, llm_timeout_sec() + llm_timeout_slot_hold_sec()),
+                    }
+                    state["max_inflight"] = llm_max_inflight()
+                    changed = True
+                    acquired = True
+                if changed:
+                    write_limiter_state(state_path, state)
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            if not acquired:
+                time.sleep(llm_slot_wait_sec())
+    except BaseException:
+        if queued and not acquired:
+            with lock_path.open("a+", encoding="utf-8") as lock_file:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                state = read_limiter_state(state_path)
+                changed = prune_limiter_state(state, time.time())
+                changed = remove_limiter_waiter(state, lease_id) or changed
+                if changed:
+                    write_limiter_state(state_path, state)
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        raise
     exc: BaseException | None = None
     try:
         yield
