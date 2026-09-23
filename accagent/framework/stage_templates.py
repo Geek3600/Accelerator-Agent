@@ -722,6 +722,8 @@ def attention_semantics(
     selected_template_ids = {str(item.get("template_id")) for item in selected}
     attention_cfg = model_config.get("attention") or {}
     position = attention_cfg.get("position_encoding") or model_facts.get("position_encoding") or {}
+    position = position if isinstance(position, dict) else {}
+    position_type = str(position.get("type") or "none")
     causal = bool(attention_cfg.get("causal", True))
     q_heads = model_facts.get("num_q_heads")
     kv_heads = model_facts.get("num_kv_heads")
@@ -761,6 +763,12 @@ def attention_semantics(
             "evidence_type": "hash_bound_template_source",
             "evidence_pattern": pattern,
         }
+        if name == "rope" and not required:
+            component["status"] = "not_applicable"
+            component["activation_policy"] = (
+                "template support alone is not activation; no rotary path may be bound when the model positional encoding is not rope"
+            )
+            component["model_position_encoding_type"] = position_type
         if name == "gqa_head_mapping":
             component["params"] = {"num_q_heads": q_heads, "num_kv_heads": kv_heads}
             if isinstance(q_heads, int) and isinstance(kv_heads, int):

@@ -128,6 +128,30 @@ class LlmActionAuditTests(unittest.TestCase):
             ["functional_sim"],
         )
 
+    def test_real_tool_evidence_role_as_a_checker_normalizes_to_the_required_gate(self) -> None:
+        audit = build_audit_from_outputs(
+            [
+                (
+                    "planner",
+                    {
+                        "executable_actions": [
+                            {
+                                "id": "audit_exact_board_evidence",
+                                "tool_roles": ["case_vcs_functional_sim"],
+                                "acceptance_checkers": ["real_tool_evidence_check"],
+                            }
+                        ]
+                    },
+                )
+            ]
+        )
+
+        self.assertEqual(audit["status"], "pass")
+        self.assertEqual(
+            audit["actions"][0]["canonical_acceptance_checkers"],
+            ["required_real_tool_evidence_check"],
+        )
+
     def test_registered_tool_base_name_is_normalized(self) -> None:
         audit = build_audit_from_outputs(
             [

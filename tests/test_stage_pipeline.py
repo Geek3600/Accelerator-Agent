@@ -188,6 +188,14 @@ class SemanticPipelinePlanTest(TestCase):
 
         self.assertEqual(plan["status"], "ready")
         self.assertEqual(plan["attention_contract"]["attention_kind"], "mha")
+        self.assertEqual(
+            plan["attention_contract"]["position_encoding_scope"]["placement"],
+            "pre_dut_input_boundary",
+        )
+        self.assertEqual(
+            plan["attention_contract"]["position_encoding_scope"]["dut_weight_binding"],
+            "forbidden",
+        )
         self.assertEqual([stage["op"] for stage in plan["stages"]][4:7], ["mlp_fc", "activation", "mlp_proj"])
         self.assertEqual(len(plan["data_edges"]), 11)
         joins = {row["node"] for row in plan["branch_join_contracts"]["join_contracts"]}
@@ -203,6 +211,10 @@ class SemanticPipelinePlanTest(TestCase):
 
         self.assertEqual(plan["status"], "ready")
         self.assertEqual(plan["attention_contract"]["attention_kind"], "mqa")
+        self.assertEqual(
+            plan["attention_contract"]["position_encoding_scope"]["placement"],
+            "self_attention_qk_transform",
+        )
         self.assertEqual(len(plan["data_edges"]), 13)
         joins = {row["node"] for row in plan["branch_join_contracts"]["join_contracts"]}
         self.assertEqual(

@@ -70,6 +70,9 @@ class SemanticTemplateBindingTest(TestCase):
         self.assertNotIn("num_kv_heads", wrapper["required_params"])
         self.assertNotIn("rope_theta", wrapper["required_params"])
         self.assertEqual(selection["implementation_contract"]["params"]["class"], "DecoderBlockParams")
+        rope = next(item for item in selection["attention_semantics"]["components"] if item["component"] == "rope")
+        self.assertEqual(rope["status"], "not_applicable")
+        self.assertIn("no rotary path may be bound", rope["activation_policy"])
         self.assertEqual(
             selection["implementation_contract"]["params"]["bindings"]["batchSize"],
             "token_count",
@@ -112,6 +115,10 @@ class SemanticTemplateBindingTest(TestCase):
         self.assertNotIn("batch_size", qwen_wrapper["required_params"])
         self.assertEqual(qwen_selection["status"], "ready")
         self.assertEqual(llama_selection["status"], "ready")
+        qwen_rope = next(item for item in qwen_selection["attention_semantics"]["components"] if item["component"] == "rope")
+        llama_rope = next(item for item in llama_selection["attention_semantics"]["components"] if item["component"] == "rope")
+        self.assertEqual(qwen_rope["status"], "covered")
+        self.assertEqual(llama_rope["status"], "covered")
 
     def test_wrapper_parameter_class_comes_from_adapter_not_model_family(self) -> None:
         with TemporaryDirectory() as temp:

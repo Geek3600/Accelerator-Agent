@@ -657,6 +657,44 @@ def attention_contract(state: dict[str, Any]) -> dict[str, Any]:
     shape = constraint_facts(state, "constraint.shape.model")
     q_heads = scalar(shape.get("num_q_heads"), scalar(model.get("num_q_heads"), 1))
     kv_heads = scalar(shape.get("num_kv_heads"), scalar(model.get("num_kv_heads"), q_heads))
+    position_encoding = model.get("position_encoding", {})
+    position_encoding = position_encoding if isinstance(position_encoding, dict) else {}
+    position_type = str(position_encoding.get("type") or "none")
+    if position_type == "learned_absolute":
+        position_scope = {
+            "placement": "pre_dut_input_boundary",
+            "dut_operation": "none",
+            "dut_weight_binding": "forbidden",
+            "reference_requirement": "compose learned position contribution before the Transformer-block DUT input boundary",
+        }
+        stage_boundary = (
+            "logical self_attention stage covers QKV projection, causal attention, and output projection; "
+            "learned absolute positional embeddings are pre-DUT input/reference composition and are excluded from DUT weights and operations"
+        )
+    elif position_type == "rope":
+        position_scope = {
+            "placement": "self_attention_qk_transform",
+            "dut_operation": "rotate_q_and_k",
+            "dut_weight_binding": "not_applicable",
+            "reference_requirement": "bind the model-declared rotary parameters to the self-attention Q/K transform",
+        }
+        stage_boundary = "logical self_attention stage covers QKV projection, RoPE Q/K transform, causal attention, and output projection"
+    elif position_type == "none":
+        position_scope = {
+            "placement": "none",
+            "dut_operation": "none",
+            "dut_weight_binding": "forbidden",
+            "reference_requirement": "no positional transform is present at the Transformer-block DUT boundary",
+        }
+        stage_boundary = "logical self_attention stage covers QKV projection, causal attention, and output projection"
+    else:
+        position_scope = {
+            "placement": "explicit_template_binding_required",
+            "dut_operation": "unresolved",
+            "dut_weight_binding": "unresolved",
+            "reference_requirement": "the model-specific positional mechanism requires an explicit semantic placement before implementation",
+        }
+        stage_boundary = "logical self_attention stage scope is pending an explicit model-derived positional-semantic binding"
     return {
         "attention_kind": model.get("attention_kind"),
         "num_q_heads": q_heads,
@@ -665,8 +703,9 @@ def attention_contract(state: dict[str, Any]) -> dict[str, Any]:
         "gqa_group_size": q_heads // max(1, kv_heads) if kv_heads else None,
         "seq_len_bound": shape.get("target_max_seq_len"),
         "causal": True,
-        "position_encoding": model.get("position_encoding", {}),
-        "stage_boundary": "logical self_attention stage covers model-declared QKV projection, positional encoding, causal attention, and output projection",
+        "position_encoding": position_encoding,
+        "position_encoding_scope": position_scope,
+        "stage_boundary": stage_boundary,
         "kv_storage_policy": "bounded by target_max_seq_len inside the generated block; external KV-cache materialization requires a later memory-layout artifact",
     }
 
@@ -1206,8 +1245,26 @@ def check_attention_contract(plan: dict[str, Any]) -> dict[str, Any]:
         errors.append("GQA requires 1 < num_kv_heads < num_q_heads")
     if scalar(contract.get("head_dim"), 0) <= 0:
         errors.append("head_dim must be positive")
+    position_encoding = contract.get("position_encoding") if isinstance(contract.get("position_encoding"), dict) else {}
+    position_type = str(position_encoding.get("type") or "none")
+    position_scope = contract.get("position_encoding_scope") if isinstance(contract.get("position_encoding_scope"), dict) else {}
+    if position_type == "learned_absolute":
+        if position_scope.get("placement") != "pre_dut_input_boundary":
+            errors.append("learned absolute positional encoding must be composed at the pre-DUT input boundary")
+        if position_scope.get("dut_operation") != "none" or position_scope.get("dut_weight_binding") != "forbidden":
+            errors.append("learned absolute positional encoding must not become a Transformer-block DUT operation or weight binding")
+    elif position_type == "rope":
+        if position_scope.get("placement") != "self_attention_qk_transform":
+            errors.append("RoPE must be bound as a self-attention Q/K transform")
+        if position_scope.get("dut_operation") != "rotate_q_and_k":
+            errors.append("RoPE attention contract must declare Q/K rotation")
+    elif position_type == "none":
+        if position_scope.get("placement") != "none":
+            errors.append("positionless attention must declare no positional DUT operation")
+    elif position_scope.get("placement") != "explicit_template_binding_required":
+        errors.append("unrecognized positional encoding requires an explicit model-derived template binding")
     if not contract.get("stage_boundary"):
-        errors.append("attention stage_boundary must describe QKV/RoPE/attention/out-projection scope")
+        errors.append("attention stage_boundary must describe the model-derived QKV/position/attention/out-projection scope")
     if errors:
         return fail_row("attention_semantics_check", errors)
     return pass_row("attention_semantics_check", f"q={contract.get('num_q_heads')}, kv={contract.get('num_kv_heads')}, head_dim={contract.get('head_dim')}")

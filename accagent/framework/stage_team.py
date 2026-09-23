@@ -1274,7 +1274,7 @@ def acceptance_checkers_for(constraints: list[str], artifact_focus: list[str]) -
     if any(keyword in text for keyword in ["codegen", "chisel", "top_wrapper"]):
         checkers.append("codegen_package_static_check")
     if any(keyword in text for keyword in ["backend", "synthesis", "implementation", "timing", "board", "deployment"]):
-        checkers.extend(["implementation_package_static", "real_tool_evidence_check"])
+        checkers.extend(["implementation_package_static", "required_real_tool_evidence_check"])
     if any(keyword in text for keyword in ["human", "approval", "boundary", "repair"]):
         checkers.append("repair_boundary_check")
     return sorted(set(checkers))

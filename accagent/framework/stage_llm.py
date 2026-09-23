@@ -135,7 +135,6 @@ ACTION_GROUNDING_REGISTRY = {
         "case_tb_scaffold",
         "case_vcs_functional_sim",
         "functional_sim",
-        "functional_sim_contract_check",
         "case_verilator_functional_sim",
         "case_weight_manifest_generate",
         "case_tb_scaffold_generate",
