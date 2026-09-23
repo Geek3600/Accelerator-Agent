@@ -1030,6 +1030,62 @@ def build_selection(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def normalize_legacy_template_selection(selection: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
+    """Read old non-RoPE template evidence using the current inactive-path meaning.
+
+    The former Stage-2 representation recorded an available RoPE template as
+    ``covered`` even when the model did not require rotary position handling.
+    This compatibility path is deliberately exact: it accepts only that
+    historical record shape and leaves all explicit semantic contradictions
+    untouched for the normal deterministic comparison to reject.
+    """
+
+    normalized = copy.deepcopy(selection)
+    actual_semantics = normalized.get("attention_semantics")
+    expected_semantics = expected.get("attention_semantics")
+    if not isinstance(actual_semantics, dict) or not isinstance(expected_semantics, dict):
+        return normalized
+    actual_components = actual_semantics.get("components")
+    expected_components = expected_semantics.get("components")
+    if not isinstance(actual_components, list) or not isinstance(expected_components, list):
+        return normalized
+
+    expected_rope = next(
+        (
+            component
+            for component in expected_components
+            if isinstance(component, dict) and component.get("component") == "rope"
+        ),
+        None,
+    )
+    if not isinstance(expected_rope, dict) or expected_rope.get("required") is not False:
+        return normalized
+    if expected_rope.get("status") != "not_applicable":
+        return normalized
+
+    legacy_rope = next(
+        (
+            component
+            for component in actual_components
+            if isinstance(component, dict) and component.get("component") == "rope"
+        ),
+        None,
+    )
+    if not isinstance(legacy_rope, dict):
+        return normalized
+
+    historical_rope = dict(expected_rope)
+    historical_rope.pop("activation_policy", None)
+    historical_rope.pop("model_position_encoding_type", None)
+    historical_rope["status"] = "covered"
+    if legacy_rope != historical_rope:
+        return normalized
+
+    legacy_rope.clear()
+    legacy_rope.update(expected_rope)
+    return normalized
+
+
 def make_selection(
     role: str,
     op: str,
@@ -1184,7 +1240,7 @@ def revalidate_template_selection(report_path: Path) -> list[str]:
         return ["template selection report is missing source state, selection, or promoted SACG state"]
     try:
         expected = build_selection(read_json(source_path))
-        selection = read_json(selection_path)
+        selection = normalize_legacy_template_selection(read_json(selection_path), expected)
         promoted_state = SACGStore(state_path)
     except (OSError, ValueError, TemplateSelectionError) as exc:
         return [f"Stage-2 deterministic binding reconstruction failed: {exc}"]

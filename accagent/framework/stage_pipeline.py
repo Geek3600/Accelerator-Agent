@@ -1828,6 +1828,76 @@ def plan_pipeline(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     return report_path, report
 
 
+def revalidate_pipeline_planning(report_path: Path) -> list[str]:
+    """Re-run current Stage-3 deterministic checks without replaying its LLM team."""
+
+    try:
+        report = read_json(report_path)
+    except (OSError, ValueError) as exc:
+        return [f"pipeline planning report cannot be read: {exc}"]
+    if report.get("status") != "ready" or report.get("errors"):
+        return [
+            "pipeline planning is not a reusable passed stage: "
+            f"status={report.get('status')} errors={report.get('errors', [])}"
+        ]
+
+    outputs = report.get("outputs") if isinstance(report.get("outputs"), dict) else {}
+    source_path = Path(str(report.get("source_sacg_state") or ""))
+    required_paths = {
+        "pipeline_plan": outputs.get("pipeline_plan"),
+        "pipeline_static_checks": outputs.get("pipeline_static_checks"),
+        "sacg_state": outputs.get("sacg_state"),
+        "llm_agent": outputs.get("llm_agent"),
+        "team_subtask_plan": outputs.get("team_subtask_plan"),
+        "team_aggregate": outputs.get("team_aggregate"),
+    }
+    missing = [name for name, value in required_paths.items() if not value or not Path(str(value)).is_file()]
+    if not source_path.is_file() or missing:
+        return [
+            "pipeline planning report is missing source state or required outputs: "
+            f"source_state={source_path} missing={missing}"
+        ]
+
+    try:
+        source_state = read_json(source_path)
+        plan = read_json(Path(str(required_paths["pipeline_plan"])))
+        read_json(Path(str(required_paths["pipeline_static_checks"])))
+        promoted_state = SACGStore(Path(str(required_paths["sacg_state"])))
+        read_json(Path(str(required_paths["llm_agent"])))
+        read_json(Path(str(required_paths["team_subtask_plan"])))
+        read_json(Path(str(required_paths["team_aggregate"])))
+    except (OSError, ValueError) as exc:
+        return [f"Stage-3 deterministic reconstruction inputs cannot be read: {exc}"]
+
+    errors = promoted_state.validate()
+    transition_id = report.get("sacg_transition_id")
+    transition = next(
+        (
+            row
+            for row in promoted_state.state.get("transitions", [])
+            if isinstance(row, dict) and row.get("id") == transition_id
+        ),
+        None,
+    )
+    if not isinstance(transition, dict) or transition.get("status") != "promoted":
+        errors.append("pipeline planning SACG transition is not promoted")
+
+    design_team = report.get("design_team")
+    if not isinstance(design_team, dict):
+        errors.append("pipeline planning report is missing design_team acceptance record")
+    else:
+        errors.extend(team_failure_errors(design_team))
+    llm_output = report.get("llm_agent")
+    errors.extend(stage_worker_errors(llm_output if isinstance(llm_output, dict) else {}))
+
+    normalized_plan = dict(plan)
+    attention = plan.get("attention_contract") if isinstance(plan.get("attention_contract"), dict) else {}
+    normalized_plan["attention_contract"] = normalize_attention_contract(attention)
+    checks = run_pipeline_static_checks(normalized_plan, source_state)
+    errors.extend((checks.get("summary") or {}).get("errors") or [])
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     return run_sacg_stage("Pipeline planning stage", plan_pipeline, argv)
 

@@ -191,6 +191,25 @@ class StageCheckpointReuseTests(unittest.TestCase):
         self.assertIsNone(result)
         revalidate.assert_called_once_with("pipeline_planning", report)
 
+    def test_stage3_and_stage4_dispatch_to_semantic_revalidators(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            agent = self._agent(Path(temp))
+            pipeline_report = agent.out / "pipeline_planning" / "pipeline_planning_report.json"
+            parameter_report = agent.out / "parameter_binding" / "parameter_binding_report.json"
+
+            with patch(
+                "accagent.framework.stage_pipeline.revalidate_pipeline_planning", return_value=[]
+            ) as pipeline_revalidate, patch(
+                "accagent.framework.stage_params.revalidate_parameter_binding", return_value=[]
+            ) as parameter_revalidate:
+                pipeline_errors = agent.semantic_revalidation_errors("pipeline_planning", pipeline_report)
+                parameter_errors = agent.semantic_revalidation_errors("parameter_binding", parameter_report)
+
+        self.assertEqual(pipeline_errors, [])
+        self.assertEqual(parameter_errors, [])
+        pipeline_revalidate.assert_called_once_with(pipeline_report)
+        parameter_revalidate.assert_called_once_with(parameter_report)
+
 
 class TopAgentBootstrapRecoveryTests(unittest.TestCase):
     @staticmethod

@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -6,6 +7,7 @@ from unittest import TestCase
 from accagent.framework.stage_templates import (
     build_selection,
     implementation_contract_for_state,
+    normalize_legacy_template_selection,
     template_source_checks,
 )
 from tests.test_stage_pipeline import ROOT, adapter_path, state_for
@@ -55,6 +57,32 @@ def stage2_selection(family: str, root: Path) -> dict:
 
 
 class SemanticTemplateBindingTest(TestCase):
+    def test_legacy_non_rope_component_normalizes_read_only_only_for_exact_old_shape(self) -> None:
+        with TemporaryDirectory() as temp:
+            expected = stage2_selection("gpt2", Path(temp))
+
+        legacy = deepcopy(expected)
+        legacy_rope = next(
+            item for item in legacy["attention_semantics"]["components"] if item["component"] == "rope"
+        )
+        legacy_rope.pop("activation_policy")
+        legacy_rope.pop("model_position_encoding_type")
+        legacy_rope["status"] = "covered"
+        normalized = normalize_legacy_template_selection(legacy, expected)
+
+        self.assertEqual(legacy_rope["status"], "covered")
+        self.assertNotIn("activation_policy", legacy_rope)
+        self.assertEqual(normalized, expected)
+
+        contradictory = deepcopy(legacy)
+        contradictory_rope = next(
+            item
+            for item in contradictory["attention_semantics"]["components"]
+            if item["component"] == "rope"
+        )
+        contradictory_rope["required"] = True
+        self.assertEqual(normalize_legacy_template_selection(contradictory, expected), contradictory)
+
     def test_gpt2_wrapper_uses_decoder_block_params_without_rope_or_gqa_requirements(self) -> None:
         with TemporaryDirectory() as temp:
             contract, check = wrapper_check("gpt2", Path(temp))

@@ -1331,6 +1331,32 @@ def stage4_measurement_request_ready(
     return bool(requested and selected and requested == selected)
 
 
+def normalize_legacy_dse_handoff(
+    output: dict[str, Any],
+    selected_architecture: dict[str, Any],
+    campaign_complete: bool,
+) -> dict[str, Any]:
+    """Map the historical exact-measurement handoff spelling only during reuse.
+
+    ``measurement_pending`` used to describe both the campaign and the LLM
+    handoff.  The latter is now explicitly named
+    ``next_exact_measurement_selected``.  A legacy status can be accepted
+    only for an incomplete campaign whose persisted selected candidate still
+    exactly matches the current legal candidate selected by the LLM.
+    """
+
+    normalized = dict(output)
+    if campaign_complete:
+        return normalized
+    if str(normalized.get("status") or "").strip().lower() != "measurement_pending":
+        return normalized
+    requested = str(normalized.get("selected_candidate_id") or "")
+    selected = str(selected_architecture.get("candidate_id") or "")
+    if requested and selected and requested == selected:
+        normalized["status"] = DSE_NEXT_EXACT_MEASUREMENT_STATUS
+    return normalized
+
+
 def stage4_llm_errors(
     output: dict[str, Any],
     selected_architecture: dict[str, Any],
@@ -1803,6 +1829,113 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     }
     write_json(report_path, report)
     return report_path, report
+
+
+def revalidate_parameter_binding(report_path: Path) -> list[str]:
+    """Re-run current Stage-4 DSE/binding checks without replaying its LLM team."""
+
+    try:
+        report = read_json(report_path)
+    except (OSError, ValueError) as exc:
+        return [f"parameter binding report cannot be read: {exc}"]
+    if report.get("status") != "ready" or report.get("errors"):
+        return [
+            "parameter binding is not a reusable passed stage: "
+            f"status={report.get('status')} errors={report.get('errors', [])}"
+        ]
+
+    outputs = report.get("outputs") if isinstance(report.get("outputs"), dict) else {}
+    source_path = Path(str(report.get("source_sacg_state") or ""))
+    required_paths = {
+        "parameter_binding": outputs.get("parameter_binding"),
+        "parameter_static_checks": outputs.get("parameter_static_checks"),
+        "dse_search_space": outputs.get("dse_search_space"),
+        "dse_candidate_records": outputs.get("dse_candidate_records"),
+        "dse_constraint_report": outputs.get("dse_constraint_report"),
+        "dse_pareto_frontier": outputs.get("dse_pareto_frontier"),
+        "dse_measurements": outputs.get("dse_measurements"),
+        "selected_architecture": outputs.get("selected_architecture"),
+        "dse_selection_rationale": outputs.get("dse_selection_rationale"),
+        "sacg_state": outputs.get("sacg_state"),
+        "llm_agent": outputs.get("llm_agent"),
+        "team_subtask_plan": outputs.get("team_subtask_plan"),
+        "team_aggregate": outputs.get("team_aggregate"),
+    }
+    missing = [name for name, value in required_paths.items() if not value or not Path(str(value)).is_file()]
+    if not source_path.is_file() or missing:
+        return [
+            "parameter binding report is missing source state or required outputs: "
+            f"source_state={source_path} missing={missing}"
+        ]
+
+    try:
+        source_state = read_json(source_path)
+        persisted_bindings = read_json(Path(str(required_paths["parameter_binding"])))
+        read_json(Path(str(required_paths["parameter_static_checks"])))
+        read_json(Path(str(required_paths["dse_search_space"])))
+        read_json(Path(str(required_paths["dse_constraint_report"])))
+        read_json(Path(str(required_paths["dse_pareto_frontier"])))
+        persisted_selected = read_json(Path(str(required_paths["selected_architecture"])))
+        read_json(Path(str(required_paths["dse_selection_rationale"])))
+        promoted_state = SACGStore(Path(str(required_paths["sacg_state"])))
+        read_json(Path(str(required_paths["llm_agent"])))
+        read_json(Path(str(required_paths["team_subtask_plan"])))
+        read_json(Path(str(required_paths["team_aggregate"])))
+    except (OSError, ValueError) as exc:
+        return [f"Stage-4 deterministic reconstruction inputs cannot be read: {exc}"]
+
+    errors = promoted_state.validate()
+    transition_id = report.get("sacg_transition_id")
+    transition = next(
+        (
+            row
+            for row in promoted_state.state.get("transitions", [])
+            if isinstance(row, dict) and row.get("id") == transition_id
+        ),
+        None,
+    )
+    if not isinstance(transition, dict) or transition.get("status") != "promoted":
+        errors.append("parameter binding SACG transition is not promoted")
+
+    design_team = report.get("design_team")
+    if not isinstance(design_team, dict):
+        errors.append("parameter binding report is missing design_team acceptance record")
+    else:
+        errors.extend(team_failure_errors(design_team))
+
+    try:
+        run_dir = report_path.resolve().parents[1]
+        dse = build_dse_search(source_state, run_dir)
+        campaign_complete = bool((dse.get("measurement_summary") or {}).get("complete"))
+        llm_output = report.get("llm_agent") if isinstance(report.get("llm_agent"), dict) else {}
+        normalized_llm = normalize_legacy_dse_handoff(
+            llm_output,
+            persisted_selected if isinstance(persisted_selected, dict) else {},
+            campaign_complete,
+        )
+        selected_architecture, _ = select_dse_candidate(dse, normalized_llm)
+        persisted_candidate_id = str((persisted_selected or {}).get("candidate_id") or "")
+        if persisted_candidate_id != str(selected_architecture.get("candidate_id") or ""):
+            errors.append("persisted selected architecture does not match the current legal DSE selection")
+        if (persisted_selected or {}).get("parameters") != selected_architecture.get("parameters"):
+            errors.append("persisted selected architecture parameters differ from the current legal DSE selection")
+        errors.extend(
+            stage4_llm_errors(
+                normalized_llm,
+                selected_architecture,
+                campaign_complete,
+                sacg_memory_truth(source_state),
+            )
+        )
+        bindings = build_parameter_bindings(source_state, selected_architecture.get("parameters", {}))
+        checks = run_parameter_static_checks(source_state, bindings)
+        errors.extend(bindings.get("legality_errors", []))
+        errors.extend((checks.get("summary") or {}).get("errors") or [])
+        if persisted_bindings.get("selected_architecture_parameters") != selected_architecture.get("parameters"):
+            errors.append("persisted parameter bindings do not name the current legal DSE parameters")
+    except (OSError, ValueError, KeyError) as exc:
+        errors.append(f"Stage-4 deterministic DSE/binding reconstruction failed: {exc}")
+    return errors
 
 
 def main(argv: list[str] | None = None) -> int:

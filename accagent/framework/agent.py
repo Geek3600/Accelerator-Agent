@@ -463,6 +463,14 @@ class TopAgent:
                 from accagent.framework.stage_templates import revalidate_template_selection
 
                 return revalidate_template_selection(report_path)
+            if stage == "pipeline_planning":
+                from accagent.framework.stage_pipeline import revalidate_pipeline_planning
+
+                return revalidate_pipeline_planning(report_path)
+            if stage == "parameter_binding":
+                from accagent.framework.stage_params import revalidate_parameter_binding
+
+                return revalidate_parameter_binding(report_path)
         except Exception as exc:
             return [f"{stage} semantic checkpoint revalidation failed: {exc}"]
         return [f"{stage} has no semantic checkpoint revalidator"]

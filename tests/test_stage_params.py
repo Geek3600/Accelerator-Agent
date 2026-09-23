@@ -10,6 +10,7 @@ from accagent.framework.stage_params import (
     build_dse_search,
     build_parameter_bindings,
     dse_llm_constraint_report,
+    normalize_legacy_dse_handoff,
     select_dse_candidate,
     stage4_llm_errors,
     stage4_measurement_request_ready,
@@ -29,6 +30,23 @@ def prepare_state(family: str, root: Path) -> dict:
 
 
 class SemanticParameterBindingTest(TestCase):
+    def test_legacy_measurement_handoff_normalizes_only_for_exact_incomplete_selection(self) -> None:
+        legacy = {
+            "status": "measurement_pending",
+            "selected_candidate_id": "candidate_b",
+        }
+        selected = {"candidate_id": "candidate_b", "parameters": {"lanes": 16}}
+
+        normalized = normalize_legacy_dse_handoff(legacy, selected, campaign_complete=False)
+
+        self.assertEqual(legacy["status"], "measurement_pending")
+        self.assertEqual(normalized["status"], "next_exact_measurement_selected")
+        self.assertEqual(
+            normalize_legacy_dse_handoff(legacy, {**selected, "candidate_id": "candidate_a"}, campaign_complete=False),
+            legacy,
+        )
+        self.assertEqual(normalize_legacy_dse_handoff(legacy, selected, campaign_complete=True), legacy)
+
     def test_dse_llm_constraint_report_omits_repeated_infeasible_rows(self) -> None:
         report = {
             "schema_version": "full",
