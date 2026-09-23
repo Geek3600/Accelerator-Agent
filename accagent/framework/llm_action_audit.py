@@ -165,6 +165,10 @@ def normalize_ref(value: str, known: set[str], aliases: dict[str, str], planned_
     canonical = aliases.get(value)
     if canonical and (canonical in known or canonical.startswith(planned_prefix)):
         return canonical, value
+    canonical = aliases.get(value, value)
+    qualified = f"real_tool.{canonical}"
+    if qualified in known:
+        return qualified, value
     if value.endswith("_check"):
         trimmed = value[: -len("_check")]
         canonical = aliases.get(trimmed, trimmed)
