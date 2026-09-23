@@ -1903,7 +1903,6 @@ def stage_worker_errors(
         ("stage5" in status or has_stage5_refinement_actions)
         and "refinement" in status
         and ("required" in status or "need" in status)
-        and ("stage6" in status or "before_stage6" in status)
     )
     status_accepted = (
         status in accepted_statuses
@@ -1959,6 +1958,18 @@ def stage_worker_errors(
                 continue
             if "vcs" in text or "vivado" in text or "bitstream" in text or "board" in text:
                 if "current-stage" not in text and "blocking" not in text:
+                    continue
+            if current_stage5_refinements_cover_planner:
+                materialization_failure = (
+                    "unmaterialized" in text
+                    or "materialization failed" in text
+                    or "failed to materialize" in text
+                    or "materialization incomplete" in text
+                    or "action coverage failed" in text
+                    or "current-stage static check failed" in text
+                    or "current stage static check failed" in text
+                )
+                if not materialization_failure:
                     continue
             if status_accepted and not explicit_current_stage_blocker:
                 continue

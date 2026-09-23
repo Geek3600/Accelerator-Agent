@@ -470,6 +470,72 @@ class ThirdLayerProducerOrderTest(TestCase):
             errors = stage_worker_errors(planner_output, {}, materialization)
             self.assertEqual(errors, [], Path(materialization["manifest"]).read_text(encoding="utf-8"))
 
+    def test_materialized_stage5_refinement_accepts_stage7_status_and_resolves_covered_risks(self) -> None:
+        actions = [
+            {"id": "stage5.semantic", "stage": "verification_artifacts", "action_type": "cross_layer_semantic_gate_refinement"},
+            {"id": "stage5.board", "stage": "verification_artifacts", "action_type": "board_functional_gate_dag_refinement"},
+            {"id": "stage5.promote", "stage": "verification_artifacts", "action_type": "verification_contract_promotion"},
+        ]
+        planner_output = {
+            "status": "refinement_required_before_stage7",
+            "risks": [
+                "Current-stage semantic coverage risk is resolved by the materialized refinement artifacts.",
+                "Current-stage third-layer sequencing risk is resolved by the materialized refinement artifacts.",
+            ],
+            "executable_actions": actions,
+        }
+        with TemporaryDirectory() as temp_dir:
+            out_dir = Path(temp_dir) / "verification_artifacts"
+            dag = build_verification_gate_dag({}, Path(temp_dir))
+            materialization = write_stage5_refinement_artifacts(
+                out_dir,
+                {},
+                {},
+                {
+                    "verification_gate_dag": dag,
+                    "functional_sim_candidates": [
+                        {"name": "case_vcs_functional_sim", "kind": "vcs_real_functional_sim"}
+                    ],
+                    "debug_closure_contract": {},
+                },
+                planner_output,
+                {"status": "ready"},
+                {},
+            )
+            self.assertEqual(materialization["status"], "ready")
+            self.assertEqual(stage_worker_errors(planner_output, {}, materialization), [])
+
+    def test_materialized_stage5_refinement_keeps_materialization_failure_blocking(self) -> None:
+        actions = [
+            {"id": "stage5.semantic", "stage": "verification_artifacts", "action_type": "cross_layer_semantic_gate_refinement"},
+            {"id": "stage5.promote", "stage": "verification_artifacts", "action_type": "verification_contract_promotion"},
+        ]
+        planner_output = {
+            "status": "refinement_required",
+            "risks": ["Current-stage blocking risk: action coverage failed during materialization."],
+            "executable_actions": actions,
+        }
+        with TemporaryDirectory() as temp_dir:
+            out_dir = Path(temp_dir) / "verification_artifacts"
+            dag = build_verification_gate_dag({}, Path(temp_dir))
+            materialization = write_stage5_refinement_artifacts(
+                out_dir,
+                {},
+                {},
+                {
+                    "verification_gate_dag": dag,
+                    "functional_sim_candidates": [
+                        {"name": "case_vcs_functional_sim", "kind": "vcs_real_functional_sim"}
+                    ],
+                    "debug_closure_contract": {},
+                },
+                planner_output,
+                {"status": "ready"},
+                {},
+            )
+            self.assertEqual(materialization["status"], "ready")
+            self.assertTrue(stage_worker_errors(planner_output, {}, materialization))
+
     def test_current_planner_refinement_types_mutate_and_validate_canonical_dag(self) -> None:
         planner_output = {
             "status": "refinement_required_before_stage6_consumption",
