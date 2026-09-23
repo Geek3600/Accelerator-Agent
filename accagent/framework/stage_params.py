@@ -1313,6 +1313,33 @@ def stage_worker_errors(output: dict[str, Any], memory_truth: dict[str, Any] | N
     return errors
 
 
+def stage4_measurement_request_ready(
+    output: dict[str, Any],
+    selected_architecture: dict[str, Any],
+    campaign_complete: bool,
+) -> bool:
+    """Permit only a validated unmeasured-candidate handoff to the real-tool chain."""
+
+    if campaign_complete:
+        return False
+    if str(output.get("status") or "").strip().lower() != "measurement_pending":
+        return False
+    requested = str(output.get("selected_candidate_id") or "")
+    selected = str(selected_architecture.get("candidate_id") or "")
+    return bool(requested and selected and requested == selected)
+
+
+def stage4_llm_errors(
+    output: dict[str, Any],
+    selected_architecture: dict[str, Any],
+    campaign_complete: bool,
+    memory_truth: dict[str, Any] | None = None,
+) -> list[str]:
+    if stage4_measurement_request_ready(output, selected_architecture, campaign_complete):
+        return []
+    return stage_worker_errors(output, memory_truth)
+
+
 def update_sacg(
     source_state: Path,
     target_state: Path,
@@ -1646,6 +1673,11 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         ],
     )
     selected_architecture, selection_rationale = select_dse_candidate(dse, llm["output"])
+    measurement_request_ready = stage4_measurement_request_ready(
+        llm["output"],
+        selected_architecture,
+        campaign_complete,
+    )
     write_json(selected_architecture_path, selected_architecture)
     write_json(selection_rationale_path, selection_rationale)
     bindings = build_parameter_bindings(source_data, selected_architecture.get("parameters", {}))
@@ -1675,7 +1707,14 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     errors = list((checks.get("summary") or {}).get("errors") or [])
     errors.extend(bindings.get("legality_errors", []))
     errors.extend(team_failure_errors(design_team))
-    errors.extend(stage_worker_errors(llm["output"], memory_truth))
+    errors.extend(
+        stage4_llm_errors(
+            llm["output"],
+            selected_architecture,
+            campaign_complete,
+            memory_truth,
+        )
+    )
     inactive_memory_blocker_claim = status_claims_inactive_sacg_memory_blocker(
         (llm.get("output") or {}).get("status"),
         memory_truth,
@@ -1734,6 +1773,22 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "global_params": bindings["global_params"],
         "selected_architecture": bindings.get("selected_architecture", {}),
         "dse_measurement_summary": dse.get("measurement_summary", {}),
+        "formal_dse_campaign": {
+            "status": "measurement_pending" if measurement_request_ready else ("complete" if campaign_complete else "incomplete"),
+            "campaign_complete": campaign_complete,
+            "selected_candidate_requires_exact_measurement": measurement_request_ready,
+            "promotion_scope": (
+                "candidate_binding_for_exact_target_board_app_shell_measurement"
+                if measurement_request_ready
+                else "measured_pareto_candidate"
+                if campaign_complete
+                else "none"
+            ),
+            "policy": {
+                "no_qor_or_hardware_pass_claim_before_measurement": True,
+                "next_required_evidence": "exact_target_board_app_shell" if measurement_request_ready else None,
+            },
+        },
         "dse_selection_rationale": selection_rationale,
         "checker_summary": checks.get("summary", {}),
         "numeric_binding_plan": bindings.get("numeric_binding_plan", {}),

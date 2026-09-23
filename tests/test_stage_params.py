@@ -10,6 +10,8 @@ from accagent.framework.stage_params import (
     build_parameter_bindings,
     dse_llm_constraint_report,
     select_dse_candidate,
+    stage4_llm_errors,
+    stage4_measurement_request_ready,
 )
 from accagent.framework.stage_pipeline import build_pipeline_plan
 from tests.test_stage_pipeline import state_for
@@ -96,6 +98,45 @@ class SemanticParameterBindingTest(TestCase):
         self.assertEqual(selected["candidate_id"], "candidate_b")
         self.assertEqual(rationale["selection_source"], "llm_measurement_order")
         self.assertNotIn("deterministic_reason", rationale)
+
+    def test_unmeasured_dse_selection_can_only_handoff_the_exact_llm_candidate(self) -> None:
+        output = {
+            "status": "measurement_pending",
+            "selected_candidate_id": "candidate_b",
+        }
+        selected = {"candidate_id": "candidate_b", "parameters": {"lanes": 16}}
+
+        self.assertTrue(stage4_measurement_request_ready(output, selected, campaign_complete=False))
+        self.assertFalse(
+            stage4_measurement_request_ready(
+                {**output, "selected_candidate_id": "candidate_a"},
+                selected,
+                campaign_complete=False,
+            )
+        )
+        self.assertFalse(stage4_measurement_request_ready(output, selected, campaign_complete=True))
+
+    def test_unmeasured_dse_selection_does_not_become_a_stage_failure(self) -> None:
+        output = {
+            "status": "measurement_pending",
+            "selected_candidate_id": "candidate_b",
+            "risks": ["real QoR measurement is still required"],
+        }
+        selected = {"candidate_id": "candidate_b", "parameters": {"lanes": 16}}
+
+        self.assertEqual(stage4_llm_errors(output, selected, campaign_complete=False), [])
+        self.assertIn(
+            "dse_parameter_agent status is measurement_pending",
+            stage4_llm_errors(output, selected, campaign_complete=True),
+        )
+        self.assertIn(
+            "dse_parameter_agent status is measurement_pending",
+            stage4_llm_errors(
+                {**output, "selected_candidate_id": "candidate_a"},
+                selected,
+                campaign_complete=False,
+            ),
+        )
 
     def test_gpt2_uses_dense_mlp_dimensions_and_its_own_weight_terms(self) -> None:
         with TemporaryDirectory() as temp:
