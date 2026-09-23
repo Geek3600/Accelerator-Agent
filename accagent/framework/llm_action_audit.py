@@ -165,20 +165,36 @@ def normalize_ref(value: str, known: set[str], aliases: dict[str, str], planned_
     canonical = aliases.get(value)
     if canonical and (canonical in known or canonical.startswith(planned_prefix)):
         return canonical, value
-    canonical = aliases.get(value, value)
-    qualified = f"real_tool.{canonical}"
+    qualified = f"real_tool.{value}"
     if qualified in known:
         return qualified, value
-    if value.endswith("_check"):
-        trimmed = value[: -len("_check")]
-        canonical = aliases.get(trimmed, trimmed)
+    if planned_prefix == "planned_checker.":
+        for suffix in ("_check", "_checker"):
+            if value.endswith(suffix):
+                trimmed = value[: -len(suffix)]
+                canonical = aliases.get(trimmed, trimmed)
+                if canonical in known:
+                    return canonical, value
+                if suffix == "_checker":
+                    canonical = aliases.get(f"{trimmed}_check", f"{trimmed}_check")
+                    if canonical in known:
+                        return canonical, value
+                qualified = f"real_tool.{canonical}"
+                if qualified in known:
+                    return qualified, value
+    suffixes = ("_check", "_checker")
+    if planned_prefix == "planned_tool.":
+        suffixes += ("_runner",)
+    for suffix in suffixes:
+        candidate = f"{value}{suffix}"
+        if candidate in known:
+            return candidate, value
+        canonical = aliases.get(candidate)
         if canonical in known:
             return canonical, value
-    if value.endswith("_checker"):
-        trimmed = value[: -len("_checker")]
-        canonical = aliases.get(trimmed, trimmed)
-        if canonical in known:
-            return canonical, value
+        qualified = f"real_tool.{candidate}"
+        if qualified in known:
+            return qualified, value
     return value, None
 
 
