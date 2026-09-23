@@ -424,9 +424,9 @@ class TopAgent:
             "summary_status": (result.summary or {}).get("status"),
             "reuse_policy": {
                 "only_reuse_passed_stage": True,
-                "require_matching_stage_code_hash": True,
-                "require_matching_stage_input_hash": True,
+                "require_matching_stage_code_and_input_hash_or_early_stage_semantic_revalidation": True,
                 "require_ready_report": True,
+                "allow_early_stage_semantic_revalidation_on_code_change": True,
                 "failed_or_stale_artifacts_are_never_promoted": True,
             },
         }
@@ -441,6 +441,31 @@ class TopAgent:
                 "sacg_state": checkpoint["sacg_state"],
             },
         )
+
+    def semantic_revalidation_errors(self, stage: str, report_path: Path) -> list[str]:
+        """Return current deterministic gate failures for code-change reuse.
+
+        Early stages are closed artifacts with current deterministic rebuild
+        checks.  Their LLM reviews are not replayed when those checks prove
+        the same input graph and trusted-template bindings remain valid.
+        """
+
+        try:
+            if stage == "input_preparation":
+                from accagent.framework.stage_input import revalidate_prepared_inputs
+
+                return revalidate_prepared_inputs(report_path)
+            if stage == "constraint_extraction":
+                from accagent.framework.stage_constraints import revalidate_constraint_extraction
+
+                return revalidate_constraint_extraction(report_path)
+            if stage == "template_selection":
+                from accagent.framework.stage_templates import revalidate_template_selection
+
+                return revalidate_template_selection(report_path)
+        except Exception as exc:
+            return [f"{stage} semantic checkpoint revalidation failed: {exc}"]
+        return [f"{stage} has no semantic checkpoint revalidator"]
 
     def reusable_stage_result(
         self,
@@ -462,20 +487,24 @@ class TopAgent:
             return None
         if checkpoint.get("status") != "pass":
             return None
-        if checkpoint.get("stage_code_hash") != self.stage_code_hash(module):
-            return None
-        if checkpoint.get("stage_input_hash") != self.stage_input_hash(stage):
-            return None
         if report.get("status") not in {"ready", "pass"}:
             return None
         if sacg_state is not None and not sacg_state.exists():
             return None
+        reuse_kind = "exact_code_hash"
+        code_hash_matches = checkpoint.get("stage_code_hash") == self.stage_code_hash(module)
+        input_hash_matches = checkpoint.get("stage_input_hash") == self.stage_input_hash(stage)
+        if not (code_hash_matches and input_hash_matches):
+            errors = self.semantic_revalidation_errors(stage, report_path)
+            if errors:
+                return None
+            reuse_kind = "semantic_revalidation"
         cmd = CommandResult(
-            name=f"{stage}_resume",
-            command=["checkpoint", "reuse", stage],
+            name=f"{stage}_resume_{reuse_kind}",
+            command=["checkpoint", "reuse", stage, reuse_kind],
             cwd=str(self.root),
             returncode=0,
-            stdout=f"reused checkpoint {checkpoint_path}\n",
+            stdout=f"reused checkpoint {checkpoint_path} ({reuse_kind})\n",
             stderr="",
             duration_sec=0.0,
             log_path=str(checkpoint_path),
@@ -545,6 +574,15 @@ class TopAgent:
 
     def stage_state_path(self, report_dir: str) -> Path:
         return self.out / report_dir / "sacg_state.json"
+
+    def expected_stage_sacg_state(self, stage: str, report_dir: str) -> Path | None:
+        """Return the promoted SACG artifact owned by one completed stage."""
+
+        if stage == "input_preparation":
+            return None
+        if stage == "constraint_extraction":
+            return self.out / report_dir / "initial_design_graph.json"
+        return self.stage_state_path(report_dir)
 
     def report_state_path(self, result: StageResult) -> Path | None:
         outputs = (result.summary or {}).get("outputs", {})
@@ -855,7 +893,7 @@ class TopAgent:
             name, module, report_dir, report_file = stage_specs[stage_index]
             attempt_count = self.increment_stage_attempt(name, module)
             report_path = self.out / report_dir / report_file
-            expected_state = self.stage_state_path(report_dir)
+            expected_state = self.expected_stage_sacg_state(name, report_dir)
             stage_result = self.reusable_stage_result(
                 stage=name,
                 module=module,

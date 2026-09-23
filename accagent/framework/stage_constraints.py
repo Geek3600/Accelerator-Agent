@@ -747,6 +747,65 @@ def extract_constraints(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]
     return report_path, report
 
 
+def revalidate_constraint_extraction(report_path: Path) -> list[str]:
+    """Rebuild the deterministic Stage-1 graph without replaying its LLM team."""
+
+    try:
+        report = read_json(report_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return [f"constraint extraction report cannot be read: {exc}"]
+    if report.get("status") != "ready" or report.get("errors"):
+        return [
+            "constraint extraction is not a reusable passed stage: "
+            f"status={report.get('status')} errors={report.get('errors', [])}"
+        ]
+
+    errors: list[str] = []
+    prepared_path = Path(str(report.get("prepared_inputs") or ""))
+    if not prepared_path.is_file():
+        return ["constraint extraction report is missing its prepared-input manifest"]
+    try:
+        prepared = read_json(prepared_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return [f"prepared inputs cannot be read during Stage-1 revalidation: {exc}"]
+    if prepared.get("status") != "ready" or prepared.get("errors"):
+        return ["Stage-1 prepared inputs are not ready and error-free"]
+
+    run_dir = Path(str(prepared.get("run_dir") or prepared_path.parents[1])).resolve()
+    try:
+        input_paths = {name: resolve_input(run_dir, prepared, name) for name in INPUT_NAMES}
+        inputs = {name: read_json(path) for name, path in input_paths.items()}
+        expected_nodes, expected_edges, expected_constraints = build_design_graph_nodes_edges(inputs)
+        errors.extend(validate_constraints(expected_nodes, expected_edges, expected_constraints))
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        return [f"Stage-1 deterministic graph reconstruction failed: {exc}"]
+
+    graph_path = Path(str((report.get("outputs") or {}).get("initial_design_graph") or ""))
+    if not graph_path.is_file():
+        return [*errors, "constraint extraction report is missing initial_design_graph"]
+    try:
+        graph = read_json(graph_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return [*errors, f"initial design graph cannot be read: {exc}"]
+    if graph.get("nodes") != expected_nodes:
+        errors.append("initial design graph nodes differ from current deterministic reconstruction")
+    if graph.get("edges") != expected_edges:
+        errors.append("initial design graph edges differ from current deterministic reconstruction")
+    if graph.get("constraints") != expected_constraints:
+        errors.append("initial design graph constraints differ from current deterministic reconstruction")
+    errors.extend(
+        validate_constraints(
+            graph.get("nodes", []), graph.get("edges", []), graph.get("constraints", [])
+        )
+    )
+    design_team = report.get("design_team")
+    if not isinstance(design_team, dict):
+        errors.append("constraint extraction report is missing design_team acceptance record")
+    else:
+        errors.extend(team_failure_errors(design_team))
+    return errors
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Constraint extraction stage")
     parser.add_argument("--prepared-inputs", type=Path, required=True)

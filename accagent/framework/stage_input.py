@@ -3344,6 +3344,94 @@ def validate_inputs(items: dict[str, dict[str, Any]]) -> tuple[list[str], list[s
     return errors, warnings
 
 
+PREPARED_INPUT_ARTIFACTS = (
+    "material_index",
+    "sample_project_index",
+    "field_evidence_candidates",
+    "field_evidence",
+    "task_card",
+    "model_config",
+    "numeric_policy",
+    "target_board_profile",
+    "tool_profile",
+    "tool_availability",
+    "case_adapter",
+    "template_library",
+    "template_metadata",
+    "design_space",
+    "tool_protocols",
+    "human_agent_boundary",
+)
+
+
+def revalidate_prepared_inputs(manifest_path: Path) -> list[str]:
+    """Re-run the Stage-0 deterministic gate for a passed input artifact.
+
+    This permits a framework-only Stage-0 implementation change to retain a
+    valid current-run intake without replaying its LLM team.  It is deliberately
+    fail-closed: all referenced artifacts, physical candidates, stream packing,
+    real-tool probes, and protocol evidence must still satisfy current checks.
+    """
+
+    errors: list[str] = []
+    try:
+        manifest = read_json(manifest_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return [f"prepared_inputs cannot be read for semantic revalidation: {exc}"]
+    if manifest.get("status") != "ready" or manifest.get("errors"):
+        return [
+            "prepared_inputs is not a reusable passed intake: "
+            f"status={manifest.get('status')} errors={manifest.get('errors', [])}"
+        ]
+
+    run_dir = Path(str(manifest.get("run_dir") or manifest_path.parents[1])).resolve()
+    if run_dir != manifest_path.parents[1].resolve():
+        errors.append("prepared_inputs run_dir does not match its artifact location")
+    refs = manifest.get("inputs")
+    if not isinstance(refs, dict):
+        return [*errors, "prepared_inputs missing inputs object"]
+
+    items: dict[str, dict[str, Any]] = {}
+    for name in PREPARED_INPUT_ARTIFACTS:
+        ref = refs.get(name)
+        if not ref:
+            errors.append(f"prepared_inputs missing artifact reference: {name}")
+            continue
+        path = Path(str(ref))
+        if not path.is_absolute():
+            path = run_dir / path
+        if not path.is_file():
+            errors.append(f"prepared_inputs artifact is missing: {name} -> {path}")
+            continue
+        try:
+            data = read_json(path)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"prepared_inputs artifact is unreadable: {name} -> {exc}")
+            continue
+        if not isinstance(data, dict):
+            errors.append(f"prepared_inputs artifact is not an object: {name}")
+            continue
+        items[name] = data
+
+    required_for_gate = set(PREPARED_INPUT_ARTIFACTS) - {"field_evidence_candidates"}
+    if required_for_gate <= set(items):
+        input_errors, _warnings = validate_inputs(items)
+        errors.extend(input_errors)
+        design_space = items["design_space"]
+        stream_contract = semantic_stream_contract(
+            items["case_adapter"], items["numeric_policy"], items["target_board_profile"]
+        )
+        errors.extend(design_space_stream_packing_errors(design_space, stream_contract))
+        errors.extend(design_space_physical_candidate_errors(design_space))
+
+    design_team = manifest.get("design_team")
+    if not isinstance(design_team, dict):
+        errors.append("prepared_inputs missing design_team acceptance record")
+    else:
+        errors.extend(team_failure_errors(design_team))
+    return errors
+
+
 def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     run_dir = args.run_dir.resolve()
     input_dir = run_dir / "input"

@@ -91,6 +91,7 @@ def _candidate_universe_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
     declared = array.get("legal_compute_array_tuples")
     declared_shapes = array.get("valid_physical_shapes")
     declared_pairs = array.get("legal_pairs")
+    lane_conditioned_pairs = array.get("legal_row_col_pairs_by_lanes")
     fifo_values = (
         _values(universe.get("physical_fifo_depth"))
         or _values(universe.get("physical_fifo_depth_entries"))
@@ -126,6 +127,51 @@ def _candidate_universe_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
                         index,
                     )
                 )
+        return tuples
+
+    # A design-space agent may state the PE geometry as lane-conditioned
+    # legal pairs.  This is more precise than independent row/column axes;
+    # preserve the declared correlation and never widen it into a Cartesian
+    # product across lanes.
+    if isinstance(lane_conditioned_pairs, dict) and lane_conditioned_pairs:
+        for lane_key, raw_pairs in lane_conditioned_pairs.items():
+            lanes = _positive(lane_key)
+            if lanes is None:
+                raise ValueError(
+                    "candidate_universe legal_row_col_pairs_by_lanes has an invalid lane key"
+                )
+            if not isinstance(raw_pairs, list) or not raw_pairs:
+                raise ValueError(
+                    f"candidate_universe legal_row_col_pairs_by_lanes[{lane_key!r}] must be a non-empty list"
+                )
+            for index, raw in enumerate(raw_pairs):
+                if isinstance(raw, dict):
+                    rows = _positive(_field(raw, "rows", "compute_array_rows"))
+                    cols = _positive(_field(raw, "cols", "compute_array_cols"))
+                elif isinstance(raw, (list, tuple)) and len(raw) == 2:
+                    rows, cols = _positive(raw[0]), _positive(raw[1])
+                else:
+                    raise ValueError(
+                        "candidate_universe legal_row_col_pairs_by_lanes"
+                        f"[{lane_key!r}][{index}] is malformed"
+                    )
+                if rows is None or cols is None:
+                    raise ValueError(
+                        "candidate_universe legal_row_col_pairs_by_lanes"
+                        f"[{lane_key!r}][{index}] is incomplete"
+                    )
+                for fifo_depth, activation_banks in product(fifo_values, activation_values):
+                    tuples.append(
+                        _normal_tuple(
+                            {
+                                "lanes": lanes,
+                                "compute_array": {"rows": rows, "cols": cols},
+                                "fifo_depth": fifo_depth,
+                                "activation_banks": activation_banks,
+                            },
+                            index,
+                        )
+                    )
         return tuples
 
     # Current Stage-0 design-space agents describe PE geometry as physical

@@ -1155,6 +1155,56 @@ def select_templates(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     return report_path, report
 
 
+def revalidate_template_selection(report_path: Path) -> list[str]:
+    """Re-run Stage-2 source and binding checks without replaying its LLM team."""
+
+    try:
+        report = read_json(report_path)
+    except (OSError, ValueError) as exc:
+        return [f"template selection report cannot be read: {exc}"]
+    if report.get("status") != "ready" or report.get("errors"):
+        return [
+            "template selection is not a reusable passed stage: "
+            f"status={report.get('status')} errors={report.get('errors', [])}"
+        ]
+
+    outputs = report.get("outputs") if isinstance(report.get("outputs"), dict) else {}
+    source_path = Path(str(report.get("source_sacg_state") or ""))
+    selection_path = Path(str(outputs.get("template_selection") or ""))
+    state_path = Path(str(outputs.get("sacg_state") or ""))
+    if not source_path.is_file() or not selection_path.is_file() or not state_path.is_file():
+        return ["template selection report is missing source state, selection, or promoted SACG state"]
+    try:
+        expected = build_selection(read_json(source_path))
+        selection = read_json(selection_path)
+        promoted_state = SACGStore(state_path)
+    except (OSError, ValueError, TemplateSelectionError) as exc:
+        return [f"Stage-2 deterministic binding reconstruction failed: {exc}"]
+
+    errors = list(expected.get("errors", []))
+    if selection != expected:
+        errors.append("template selection differs from current deterministic reconstruction")
+    errors.extend(promoted_state.validate())
+    transition_id = report.get("sacg_transition_id")
+    transition = next(
+        (
+            row
+            for row in promoted_state.state.get("transitions", [])
+            if isinstance(row, dict) and row.get("id") == transition_id
+        ),
+        None,
+    )
+    if not isinstance(transition, dict) or transition.get("status") != "promoted":
+        errors.append("template selection SACG transition is not promoted")
+    design_team = report.get("design_team")
+    if not isinstance(design_team, dict):
+        errors.append("template selection report is missing design_team acceptance record")
+    else:
+        errors.extend(team_failure_errors(design_team))
+    errors.extend(llm_blocking_errors(report.get("llm_agent") if isinstance(report.get("llm_agent"), dict) else {}))
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     return run_sacg_stage("Template selection stage", select_templates, argv)
 

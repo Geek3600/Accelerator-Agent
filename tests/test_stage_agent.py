@@ -50,6 +50,148 @@ class GenericStageAgentTests(unittest.TestCase):
         self.assertEqual(result.summary, current)
 
 
+class StageCheckpointReuseTests(unittest.TestCase):
+    def _agent(self, root: Path) -> TopAgent:
+        return TopAgent(
+            RunCfg(
+                root=root,
+                out=root / "run",
+                design="test",
+                task_spec=root / "task.md",
+                model_source=root / "model.json",
+                model_dir=root / "model",
+                board_materials_dir=root / "board",
+                quantization_materials_dir=root / "quantization",
+                tool_materials_dir=root / "tools",
+                resume_existing=True,
+            )
+        )
+
+    def test_stage0_reuses_passed_input_after_current_semantic_revalidation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            report = agent.out / "input" / "prepared_inputs.json"
+            write_json(report, {"status": "ready", "errors": []})
+            checkpoint = agent.checkpoint_path("input_preparation")
+            write_json(
+                checkpoint,
+                {
+                    "stage": "input_preparation",
+                    "status": "pass",
+                    "stage_code_hash": "old-stage-input-code",
+                    "stage_input_hash": agent.stage_input_hash("input_preparation"),
+                },
+            )
+
+            with patch.object(agent, "semantic_revalidation_errors", return_value=[]) as revalidate:
+                result = agent.reusable_stage_result(
+                    stage="input_preparation",
+                    module="accagent.framework.stage_input",
+                    report_path=report,
+                )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.command_result.command, ["checkpoint", "reuse", "input_preparation", "semantic_revalidation"])
+        revalidate.assert_called_once_with("input_preparation", report)
+
+    def test_constraint_extraction_uses_its_initial_graph_as_checkpoint_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+
+            state = agent.expected_stage_sacg_state(
+                "constraint_extraction", "constraint_extraction"
+            )
+
+        self.assertEqual(state, root / "run" / "constraint_extraction" / "initial_design_graph.json")
+
+    def test_stage0_does_not_reuse_incomplete_report_after_code_change(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            report = agent.out / "input" / "prepared_inputs.json"
+            write_json(report, {"status": "incomplete", "errors": ["missing physical domain"]})
+            write_json(
+                agent.checkpoint_path("input_preparation"),
+                {
+                    "stage": "input_preparation",
+                    "status": "pass",
+                    "stage_code_hash": "old-stage-input-code",
+                    "stage_input_hash": agent.stage_input_hash("input_preparation"),
+                },
+            )
+
+            with patch.object(agent, "semantic_revalidation_errors") as revalidate:
+                result = agent.reusable_stage_result(
+                    stage="input_preparation",
+                    module="accagent.framework.stage_input",
+                    report_path=report,
+                )
+
+        self.assertIsNone(result)
+        revalidate.assert_not_called()
+
+    def test_stage1_reuses_only_after_current_semantic_revalidation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            report = agent.out / "constraint_extraction" / "constraint_extraction_report.json"
+            state = agent.out / "constraint_extraction" / "sacg_state.json"
+            write_json(report, {"status": "ready", "errors": []})
+            write_json(state, {"sacg_version": "1.0", "nodes": [], "edges": [], "constraints": []})
+            write_json(
+                agent.checkpoint_path("constraint_extraction"),
+                {
+                    "stage": "constraint_extraction",
+                    "status": "pass",
+                    "stage_code_hash": "old-stage-constraint-code",
+                    "stage_input_hash": "old-stage1-input",
+                },
+            )
+
+            with patch.object(agent, "semantic_revalidation_errors", return_value=[]) as revalidate:
+                result = agent.reusable_stage_result(
+                    stage="constraint_extraction",
+                    module="accagent.framework.stage_constraints",
+                    report_path=report,
+                    sacg_state=state,
+                )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.command_result.command[-1], "semantic_revalidation")
+        revalidate.assert_called_once_with("constraint_extraction", report)
+
+    def test_later_stage_does_not_reuse_when_its_input_hash_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            report = agent.out / "pipeline_planning" / "pipeline_planning_report.json"
+            state = agent.out / "pipeline_planning" / "sacg_state.json"
+            write_json(report, {"status": "ready", "errors": []})
+            write_json(state, {"sacg_version": "1.0", "nodes": [], "edges": [], "constraints": []})
+            write_json(
+                agent.checkpoint_path("pipeline_planning"),
+                {
+                    "stage": "pipeline_planning",
+                    "status": "pass",
+                    "stage_code_hash": agent.stage_code_hash("accagent.framework.stage_pipeline"),
+                    "stage_input_hash": "old-stage3-input",
+                },
+            )
+
+            with patch.object(agent, "semantic_revalidation_errors") as revalidate:
+                result = agent.reusable_stage_result(
+                    stage="pipeline_planning",
+                    module="accagent.framework.stage_pipeline",
+                    report_path=report,
+                    sacg_state=state,
+                )
+
+        self.assertIsNone(result)
+        revalidate.assert_called_once_with("pipeline_planning", report)
+
+
 class TopAgentBootstrapRecoveryTests(unittest.TestCase):
     @staticmethod
     def result(name: str, passed: bool, root: Path) -> StageResult:

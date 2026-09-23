@@ -281,6 +281,28 @@ class SemanticParameterBindingTest(TestCase):
             {(8, 8), (16, 32)},
         )
 
+    def test_candidate_universe_preserves_lane_conditioned_pe_pairs(self) -> None:
+        search = {
+            "candidate_universe": {
+                "compute_array": {
+                    "legal_row_col_pairs_by_lanes": {
+                        "8": [{"rows": 4, "cols": 4}],
+                        "16": [{"rows": 8, "cols": 16}],
+                    }
+                },
+                "physical_fifo_depth": {"legal_values": [32, 64]},
+                "activation_bank_count": {"legal_values": [2, 4]},
+            }
+        }
+
+        tuples = physical_candidate_tuples(search)
+
+        self.assertEqual(len(tuples), 8)
+        self.assertEqual(
+            {(row["lanes"], row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
+            {(8, 4, 4), (16, 8, 16)},
+        )
+
     def test_candidate_universe_supports_stage0_physical_shape_schema(self) -> None:
         search = {
             "candidate_universe": {
