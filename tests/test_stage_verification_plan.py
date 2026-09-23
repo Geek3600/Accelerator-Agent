@@ -5,6 +5,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from accagent.framework.stage_verification import (
+    check_pipeline_plan,
     check_case_functional_sim_preconditions,
     build_stage6_gate_execution_plan,
     gate_tool_roles,
@@ -25,6 +26,46 @@ from accagent.framework.stage_verification_plan import (
 
 
 class ThirdLayerProducerOrderTest(TestCase):
+    def test_legacy_pipeline_plan_derives_position_scope_at_verification_consumer(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            plan_path = Path(temp_dir) / "pipeline_plan.json"
+            plan_path.write_text(
+                json.dumps(
+                    {
+                        "stages": [{"stage_id": "attention", "kind": "compute"}],
+                        "data_edges": [
+                            {"edge_id": "input", "src_stage": "block_input", "dst_stage": "attention"},
+                            {"edge_id": "output", "src_stage": "attention", "dst_stage": "block_output"},
+                        ],
+                        "stream_edges": [
+                            {"edge_id": "input", "src_stage": "block_input", "dst_stage": "attention"},
+                            {"edge_id": "output", "src_stage": "attention", "dst_stage": "block_output"},
+                        ],
+                        "checker_summary": {"errors": []},
+                        "attention_contract": {
+                            "attention_kind": "mha",
+                            "num_q_heads": 12,
+                            "num_kv_heads": 12,
+                            "head_dim": 64,
+                            "position_encoding": {"type": "learned_absolute"},
+                            "stage_boundary": (
+                                "logical self_attention stage covers model-declared QKV projection, "
+                                "positional encoding, causal attention, and output projection"
+                            ),
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            status, summary = check_pipeline_plan(
+                {"artifacts": [{"id": "artifact.stage3.pipeline_plan", "path": str(plan_path)}]}
+            )
+
+            stored_plan = json.loads(plan_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, "pass", summary)
+        self.assertNotIn("position_encoding_scope", stored_plan["attention_contract"])
+
     def test_validated_exact_board_identity_reuses_only_discovery_gate(self) -> None:
         with TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir)

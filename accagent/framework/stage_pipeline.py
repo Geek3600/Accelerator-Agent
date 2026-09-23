@@ -652,13 +652,7 @@ def branch_join_contracts(edges: list[dict[str, Any]]) -> dict[str, Any]:
     return {"split_contracts": split_contracts, "join_contracts": join_contracts}
 
 
-def attention_contract(state: dict[str, Any]) -> dict[str, Any]:
-    model = constraint_facts(state, "constraint.model.decoder")
-    shape = constraint_facts(state, "constraint.shape.model")
-    q_heads = scalar(shape.get("num_q_heads"), scalar(model.get("num_q_heads"), 1))
-    kv_heads = scalar(shape.get("num_kv_heads"), scalar(model.get("num_kv_heads"), q_heads))
-    position_encoding = model.get("position_encoding", {})
-    position_encoding = position_encoding if isinstance(position_encoding, dict) else {}
+def position_encoding_scope(position_encoding: dict[str, Any]) -> tuple[dict[str, Any], str]:
     position_type = str(position_encoding.get("type") or "none")
     if position_type == "learned_absolute":
         position_scope = {
@@ -695,6 +689,32 @@ def attention_contract(state: dict[str, Any]) -> dict[str, Any]:
             "reference_requirement": "the model-specific positional mechanism requires an explicit semantic placement before implementation",
         }
         stage_boundary = "logical self_attention stage scope is pending an explicit model-derived positional-semantic binding"
+    return position_scope, stage_boundary
+
+
+def normalize_attention_contract(contract: dict[str, Any]) -> dict[str, Any]:
+    """Add current derived positional semantics to legacy Stage-3 plans without mutating them."""
+
+    normalized = dict(contract)
+    position_encoding = normalized.get("position_encoding")
+    position_encoding = position_encoding if isinstance(position_encoding, dict) else {}
+    normalized["position_encoding"] = position_encoding
+    derived_scope, derived_boundary = position_encoding_scope(position_encoding)
+    if not isinstance(normalized.get("position_encoding_scope"), dict):
+        normalized["position_encoding_scope"] = derived_scope
+    if normalized.get("stage_boundary") == "logical self_attention stage covers model-declared QKV projection, positional encoding, causal attention, and output projection":
+        normalized["stage_boundary"] = derived_boundary
+    return normalized
+
+
+def attention_contract(state: dict[str, Any]) -> dict[str, Any]:
+    model = constraint_facts(state, "constraint.model.decoder")
+    shape = constraint_facts(state, "constraint.shape.model")
+    q_heads = scalar(shape.get("num_q_heads"), scalar(model.get("num_q_heads"), 1))
+    kv_heads = scalar(shape.get("num_kv_heads"), scalar(model.get("num_kv_heads"), q_heads))
+    position_encoding = model.get("position_encoding", {})
+    position_encoding = position_encoding if isinstance(position_encoding, dict) else {}
+    position_scope, stage_boundary = position_encoding_scope(position_encoding)
     return {
         "attention_kind": model.get("attention_kind"),
         "num_q_heads": q_heads,

@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
-from accagent.framework.stage_pipeline import PipelinePlanningError, build_pipeline_plan
+from accagent.framework.stage_pipeline import PipelinePlanningError, build_pipeline_plan, normalize_attention_contract
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -259,3 +259,16 @@ class SemanticPipelinePlanTest(TestCase):
 
             with self.assertRaisesRegex(PipelinePlanningError, "implementation_contract"):
                 build_pipeline_plan(state)
+
+    def test_legacy_attention_contract_gets_read_only_model_derived_position_scope(self) -> None:
+        legacy = {
+            "position_encoding": {"type": "learned_absolute"},
+            "stage_boundary": "logical self_attention stage covers model-declared QKV projection, positional encoding, causal attention, and output projection",
+        }
+
+        normalized = normalize_attention_contract(legacy)
+
+        self.assertNotIn("position_encoding_scope", legacy)
+        self.assertEqual(normalized["position_encoding_scope"]["placement"], "pre_dut_input_boundary")
+        self.assertEqual(normalized["position_encoding_scope"]["dut_weight_binding"], "forbidden")
+        self.assertNotIn("positional encoding", normalized["stage_boundary"])

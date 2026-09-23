@@ -37,6 +37,7 @@ from accagent.framework.sacg_utils import (
 )
 from accagent.framework.stage_entry import run_sacg_stage
 from accagent.framework.stage_llm import run_stage_agent
+from accagent.framework.stage_pipeline import check_attention_contract, normalize_attention_contract
 from accagent.framework.stage_team import run_design_team, team_failure_errors, team_summary
 from accagent.framework.tool_runner import run_tools
 from accagent.framework.verification_evidence_contract import (
@@ -211,6 +212,11 @@ def check_pipeline_plan(state: dict[str, Any]) -> tuple[str, str]:
     checker_summary = plan.get("checker_summary", {})
     if isinstance(checker_summary, dict) and checker_summary.get("errors"):
         return "fail", f"pipeline checker errors={checker_summary.get('errors')}"
+    attention = check_attention_contract(
+        {**plan, "attention_contract": normalize_attention_contract(plan.get("attention_contract", {}))}
+    )
+    if attention.get("status") != "pass":
+        return "fail", f"pipeline attention contract errors={attention.get('errors', [])}"
     return "pass", f"stages={len(stages)}, stream_edges={len(stream_edges)}"
 
 

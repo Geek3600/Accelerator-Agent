@@ -32,6 +32,7 @@ from accagent.framework.stage_entry import run_sacg_stage
 from accagent.framework.llm_action_audit import build_audit_from_outputs
 from accagent.framework.llm_io_quality import build_quality_report, rows_from_stage_records
 from accagent.framework.stage_llm import run_stage_agent
+from accagent.framework.stage_pipeline import normalize_attention_contract
 from accagent.framework.stage_team import (
     compact_prompt_value,
     compact_prompt_text,
@@ -564,6 +565,9 @@ def summarize_pipeline_plan(state: dict[str, Any]) -> dict[str, Any]:
     except KeyError as exc:
         return {"stage": "pipeline_planning", "status": "missing", "error": str(exc)}
     checks = plan.get("checker_summary", {}) if isinstance(plan.get("checker_summary"), dict) else {}
+    attention_semantics = normalize_attention_contract(
+        plan.get("attention_contract", {}) if isinstance(plan.get("attention_contract"), dict) else {}
+    )
     return {
         "stage": plan.get("stage"),
         "status": plan.get("status"),
@@ -571,7 +575,7 @@ def summarize_pipeline_plan(state: dict[str, Any]) -> dict[str, Any]:
         "stage_count": len(plan.get("stages", [])),
         "data_edge_count": len(plan.get("data_edges", [])),
         "stream_edge_count": len(plan.get("stream_edges", [])),
-        "attention_semantics": plan.get("attention_contract", {}),
+        "attention_semantics": attention_semantics,
         "numeric_stream_policy": plan.get("numeric_stream_policy", {}),
         "memory_policy": plan.get("memory_policy", {}),
     }
