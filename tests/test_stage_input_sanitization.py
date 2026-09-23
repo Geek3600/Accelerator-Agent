@@ -121,6 +121,28 @@ class StageInputSanitizationTest(unittest.TestCase):
 
         self.assertEqual(errors, [])
 
+    def test_design_space_stream_packing_accepts_lane_conditioned_candidate_universe(self) -> None:
+        errors = design_space_stream_packing_errors(
+            {
+                "search_params": {
+                    "candidate_universe": {
+                        "lanes": {"legal_values": [8, 16]},
+                        "compute_array": {
+                            "legal_row_col_pairs_by_lanes": {
+                                "8": [{"rows": 4, "cols": 4}],
+                                "16": [{"rows": 4, "cols": 4}],
+                            }
+                        },
+                        "physical_fifo_depth": {"legal_values": [2, 4]},
+                        "activation_bank_count": {"legal_values": [1, 2]},
+                    }
+                }
+            },
+            {"status": "ready", "required_stream_bits": [16, 32], "axi_data_width_bits": 512},
+        )
+
+        self.assertEqual(errors, [])
+
     def test_sensitive_material_lines_are_removed_from_stage0_prompts(self) -> None:
         secret = "example-secret-value"
         text = f"remote host: build@example.org\npassword is {secret}\npasswordless login: true\n"

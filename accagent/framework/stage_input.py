@@ -1184,6 +1184,11 @@ def design_space_stream_packing_errors(
         return ["design_space.search_params must be an object"]
     lanes = _declared_lane_candidates(search_params)
     if not lanes:
+        try:
+            lanes = sorted({candidate["lanes"] for candidate in physical_candidate_tuples(search_params)})
+        except ValueError:
+            lanes = []
+    if not lanes:
         return ["design_space does not declare any physical lanes candidates"]
     axi_bits = maybe_int(stream_contract.get("axi_data_width_bits"))
     stream_bits = [maybe_int(value) for value in stream_contract.get("required_stream_bits", [])]
