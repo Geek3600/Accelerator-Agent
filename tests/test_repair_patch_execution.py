@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 from accagent.framework.stage_repair_execute import (
     layer3_required_code_edit_errors,
     repair_loop_disposition,
+    repair_source_bundle,
 )
 
 
@@ -47,6 +49,20 @@ class RepairPatchExecutionTest(unittest.TestCase):
 
         self.assertEqual(result["status"], "continue")
         self.assertTrue(result["observation_replan_required"])
+
+    def test_source_bundle_reads_repair_closure_from_explicit_output_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            out_dir = run_dir / "repair_execution"
+            out_dir.mkdir()
+            closure = {"status": "ready", "scope": "operator_leaf_modules"}
+            (out_dir / "fpga_ip_repair_closure.json").write_text(
+                json.dumps(closure), encoding="utf-8"
+            )
+
+            bundle = repair_source_bundle({}, run_dir, out_dir)
+
+        self.assertEqual(bundle["fpga_ip_repair_closure"], closure)
 
 
 if __name__ == "__main__":

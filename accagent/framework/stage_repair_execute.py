@@ -6360,7 +6360,9 @@ def materialize_declared_template_documents(
     return documents
 
 
-def repair_source_bundle(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
+def repair_source_bundle(
+    state: dict[str, Any], run_dir: Path, out_dir: Path
+) -> dict[str, Any]:
     documents: list[dict[str, Any]] = []
     seen: set[Path] = set()
     total_chars = 0
@@ -30801,7 +30803,7 @@ def execute_verification_capability_repair(
     source_bundle = (
         copy.deepcopy(single_layer_compile_context.get("source_bundle", {}))
         if single_layer_compile_rtl_repair
-        else repair_source_bundle(state, run_dir)
+        else repair_source_bundle(state, run_dir, out_dir)
     )
     repair_agent_disposition = current_repair_agent_disposition(
         run_dir,
