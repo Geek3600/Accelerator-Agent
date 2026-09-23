@@ -69,6 +69,8 @@ DSE_OVERRIDE_KEYS = (
     "weight_banks_by_role",
 )
 
+DSE_NEXT_EXACT_MEASUREMENT_STATUS = "next_exact_measurement_selected"
+
 PHYSICAL_IMPLEMENTATION = {
     "compute_backend": "vivado_fp_ip",
     "weight_memory": "xpm_uram",
@@ -1322,7 +1324,7 @@ def stage4_measurement_request_ready(
 
     if campaign_complete:
         return False
-    if str(output.get("status") or "").strip().lower() != "measurement_pending":
+    if str(output.get("status") or "").strip().lower() != DSE_NEXT_EXACT_MEASUREMENT_STATUS:
         return False
     requested = str(output.get("selected_candidate_id") or "")
     selected = str(selected_architecture.get("candidate_id") or "")
@@ -1665,6 +1667,7 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         output_schema=DSE_SELECTION_SCHEMA,
         prompt_rules=[
             "Before all legal candidates are measured, choose only one supplied unmeasured legal candidate as the next app-shell measurement; do not call it optimal or Pareto-optimal.",
+            "Before the campaign is complete, set status to next_exact_measurement_selected for that measurement-only handoff; after completion, use ready only for a supplied measured Pareto candidate.",
             "After the campaign is complete, choose only a supplied measured Pareto candidate using the four real objectives: resources, power, clock frequency, and tokens per second.",
             "Never estimate, extrapolate, predict, or invent resources, power, clock, or performance. Only candidate-specific app-shell measurements are QoR evidence.",
             "Rank at least the selected candidate and state the assumptions that make the choice appropriate.",

@@ -104,6 +104,30 @@ class LlmActionAuditTests(unittest.TestCase):
             ["verification_action_audit_check"],
         )
 
+    def test_functional_sim_contract_alias_requires_the_real_functional_gate(self) -> None:
+        audit = build_audit_from_outputs(
+            [
+                (
+                    "planner",
+                    {
+                        "executable_actions": [
+                            {
+                                "id": "run_board_wrapped_functional_sim",
+                                "tool_roles": ["case_vcs_functional_sim"],
+                                "acceptance_checkers": ["functional_sim_contract_check"],
+                            }
+                        ]
+                    },
+                )
+            ]
+        )
+
+        self.assertEqual(audit["status"], "pass")
+        self.assertEqual(
+            audit["actions"][0]["canonical_acceptance_checkers"],
+            ["functional_sim"],
+        )
+
     def test_registered_tool_base_name_is_normalized(self) -> None:
         audit = build_audit_from_outputs(
             [

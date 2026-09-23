@@ -53,7 +53,7 @@ GENERIC_ACTION_ALIASES = {
     "data_order_trace_checker": "data_order_trace_check",
     "tool_protocol_static_checker": "tool_protocol_check",
     "functional_sim_result_check": "functional_sim",
-    "functional_sim_contract_check": "functional_sim_contract_check",
+    "functional_sim_contract_check": "functional_sim",
     "implementation_package_static_check": "implementation_package_static",
     "deployment_board_check": "deployment_board_check",
     "output_validity_check": "output_validity_check",

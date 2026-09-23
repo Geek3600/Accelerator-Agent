@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 
 from accagent.framework.dse_candidates import physical_candidate_tuples
+from accagent.framework.sacg_store import SACGStore, write_json
 from accagent.framework.stage_params import (
     architecture_candidate_space,
     build_dse_search,
@@ -101,7 +102,7 @@ class SemanticParameterBindingTest(TestCase):
 
     def test_unmeasured_dse_selection_can_only_handoff_the_exact_llm_candidate(self) -> None:
         output = {
-            "status": "measurement_pending",
+            "status": "next_exact_measurement_selected",
             "selected_candidate_id": "candidate_b",
         }
         selected = {"candidate_id": "candidate_b", "parameters": {"lanes": 16}}
@@ -115,10 +116,17 @@ class SemanticParameterBindingTest(TestCase):
             )
         )
         self.assertFalse(stage4_measurement_request_ready(output, selected, campaign_complete=True))
+        self.assertFalse(
+            stage4_measurement_request_ready(
+                {**output, "status": "measurement_pending"},
+                selected,
+                campaign_complete=False,
+            )
+        )
 
     def test_unmeasured_dse_selection_does_not_become_a_stage_failure(self) -> None:
         output = {
-            "status": "measurement_pending",
+            "status": "next_exact_measurement_selected",
             "selected_candidate_id": "candidate_b",
             "risks": ["real QoR measurement is still required"],
         }
@@ -126,17 +134,108 @@ class SemanticParameterBindingTest(TestCase):
 
         self.assertEqual(stage4_llm_errors(output, selected, campaign_complete=False), [])
         self.assertIn(
-            "dse_parameter_agent status is measurement_pending",
+            "dse_parameter_agent status is next_exact_measurement_selected",
             stage4_llm_errors(output, selected, campaign_complete=True),
         )
         self.assertIn(
-            "dse_parameter_agent status is measurement_pending",
+            "dse_parameter_agent status is next_exact_measurement_selected",
             stage4_llm_errors(
                 {**output, "selected_candidate_id": "candidate_a"},
                 selected,
                 campaign_complete=False,
             ),
         )
+
+    def test_stage4_successor_reconciles_its_retry_and_contamination_barrier(self) -> None:
+        with TemporaryDirectory() as temp:
+            state_path = Path(temp) / "sacg_state.json"
+            write_json(
+                state_path,
+                {
+                    "design_id": "stage4-retry-reconciliation",
+                    "nodes": [
+                        {
+                            "id": "node.parameter_binding",
+                            "type": "stage",
+                            "name": "parameter binding",
+                            "constraints": ["constraint.parameter.binding"],
+                            "artifacts": [],
+                        }
+                    ],
+                    "constraints": [
+                        {
+                            "id": "constraint.parameter.binding",
+                            "type": "parameter",
+                            "nodes": ["node.parameter_binding"],
+                            "edges": [],
+                            "artifacts": ["artifact.stage4.parameter_binding"],
+                            "facts": {},
+                        }
+                    ],
+                    "invariants": [
+                        {
+                            "id": "invariant.parameter_binding_static",
+                            "checker": "parameter_binding_static_check",
+                            "constraints": ["constraint.parameter.binding"],
+                            "status": "unknown",
+                            "latest_evidence": None,
+                        }
+                    ],
+                    "memory": {
+                        "retry_requests": [
+                            {
+                                "id": "retry_request.0001",
+                                "status": "open",
+                                "target_stage": "stage4.parameter_binding",
+                            }
+                        ],
+                        "contamination_barriers": [
+                            {
+                                "id": "contamination_barrier.0001",
+                                "artifact_id": "artifact.stage4.parameter_binding",
+                                "status": "active",
+                            }
+                        ],
+                    },
+                },
+            )
+            store = SACGStore(state_path)
+            transition = store.declare_transition(
+                action_type="parameter_binding",
+                touched_nodes=["node.parameter_binding"],
+                touched_edges=[],
+                touched_constraints=["constraint.parameter.binding"],
+            )
+            store.bind_artifact(
+                "artifact.stage4.parameter_binding",
+                str(Path(temp) / "parameter_binding.json"),
+                "stage.parameter_binding",
+                ["node.parameter_binding"],
+                [],
+                ["constraint.parameter.binding"],
+                transition["id"],
+            )
+            store.attach_evidence(
+                checker="parameter_binding_static_check",
+                status="pass",
+                invariant="invariant.parameter_binding_static",
+                constraints=["constraint.parameter.binding"],
+                artifacts=["artifact.stage4.parameter_binding"],
+                log_path=str(Path(temp) / "parameter_static_checks.json"),
+                transition_id=transition["id"],
+            )
+
+            store.promote(transition["id"])
+            store.record_stage_outcome(
+                stage="stage4.parameter_binding",
+                status="ready",
+                transition_id=transition["id"],
+                summary="measurement-only Stage-4 handoff is valid",
+            )
+
+            memory = store.state["memory"]
+            self.assertEqual(memory["retry_requests"][0]["status"], "closed")
+            self.assertEqual(memory["contamination_barriers"][0]["status"], "superseded")
 
     def test_gpt2_uses_dense_mlp_dimensions_and_its_own_weight_terms(self) -> None:
         with TemporaryDirectory() as temp:
