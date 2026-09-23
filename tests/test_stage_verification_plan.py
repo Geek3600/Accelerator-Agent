@@ -7,12 +7,17 @@ from unittest.mock import patch
 from accagent.framework.stage_verification import (
     check_pipeline_plan,
     check_case_functional_sim_preconditions,
+    check_stage6_action_audit,
+    check_verification_plan,
     build_stage6_gate_execution_plan,
     gate_tool_roles,
+    require_stage6_source_artifacts,
     reusable_exact_board_identity_evidence,
     reusable_stage6_certificate_evidence,
     reusable_dependency_tool_role_evidence,
     reusable_provider_gate_for_role,
+    stage6_source_artifact_id,
+    stage6_source_artifact_path,
     stage6_selector_blockers,
     stage6_selected_gate_names,
 )
@@ -26,6 +31,65 @@ from accagent.framework.stage_verification_plan import (
 
 
 class ThirdLayerProducerOrderTest(TestCase):
+    def test_stage6_reads_promoted_stage5_verification_inputs_without_relabeling(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan_path = root / "verification_plan.json"
+            contract_path = root / "verification_artifact_contract.json"
+            audit_path = root / "llm_action_audit.json"
+            plan_path.write_text(json.dumps({"checker_plan": [{"checker": "static"}]}), encoding="utf-8")
+            contract_path.write_text(json.dumps({"status": "pass"}), encoding="utf-8")
+            audit_path.write_text(json.dumps({"status": "pass", "summary": "grounded"}), encoding="utf-8")
+            state = {
+                "artifacts": [
+                    {
+                        "id": "artifact.stage5.verification_plan",
+                        "path": str(plan_path),
+                        "trust_status": "validated",
+                        "producer_transition": "transition.stage5",
+                    },
+                    {
+                        "id": "artifact.stage5.verification_artifact_contract",
+                        "path": str(contract_path),
+                        "trust_status": "validated",
+                        "producer_transition": "transition.stage5",
+                    },
+                    {
+                        "id": "artifact.stage5.llm_action_audit",
+                        "path": str(audit_path),
+                        "trust_status": "validated",
+                        "producer_transition": "transition.stage5",
+                    },
+                ],
+                "transitions": [{"id": "transition.stage5", "status": "promoted"}],
+            }
+            original = json.dumps(state, sort_keys=True)
+
+            self.assertEqual(
+                stage6_source_artifact_id(state, "artifact.stage6.verification_plan"),
+                "artifact.stage5.verification_plan",
+            )
+            self.assertEqual(
+                stage6_source_artifact_path(
+                    state, "artifact.stage6.verification_artifact_contract"
+                ),
+                contract_path,
+            )
+            self.assertEqual(
+                require_stage6_source_artifacts(
+                    state,
+                    [
+                        "artifact.stage6.verification_plan",
+                        "artifact.stage6.verification_artifact_contract",
+                        "artifact.stage6.llm_action_audit",
+                    ],
+                ),
+                [],
+            )
+            self.assertEqual(check_verification_plan(state)[0], "pass")
+            self.assertEqual(check_stage6_action_audit(state)[0], "pass")
+            self.assertEqual(json.dumps(state, sort_keys=True), original)
+
     def test_legacy_pipeline_plan_derives_position_scope_at_verification_consumer(self) -> None:
         with TemporaryDirectory() as temp_dir:
             plan_path = Path(temp_dir) / "pipeline_plan.json"

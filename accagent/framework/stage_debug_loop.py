@@ -784,12 +784,12 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         except Exception as exc:
             iteration["exception"] = str(exc)
             iterations.append(iteration)
-            iteration["fresh_stage6_agent_replan"] = True
-            iteration["fresh_stage6_agent_replan_reason"] = (
-                f"debug-loop execution raised {exc}; retain current evidence and retry"
+            status = "needs_repair"
+            summary = (
+                "debug-loop execution raised a local framework exception before "
+                f"producing verification evidence: {exc}"
             )
-            index += 1
-            continue
+            break
         index += 1
     if status != "pass" and args.max_iters > 0 and index >= args.max_iters:
         status = "needs_repair"

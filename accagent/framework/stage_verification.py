@@ -112,9 +112,55 @@ STABLE_PROMOTION_CERTIFICATE_NAMES = {
 
 BOARD_BRINGUP_CERTIFICATE_SCHEMA_VERSION = "spatialaccagent.stage6_board_bringup_certificate.v1"
 
+STAGE6_SOURCE_ARTIFACTS = {
+    "artifact.stage6.verification_plan": "artifact.stage5.verification_plan",
+    "artifact.stage6.verification_artifact_contract": "artifact.stage5.verification_artifact_contract",
+    "artifact.stage6.llm_action_audit": "artifact.stage5.llm_action_audit",
+}
+
 
 def empty(value: Any) -> bool:
     return value is None or value == "" or value == []
+
+
+def stage6_source_artifact_id(state: dict[str, Any], artifact_id: str) -> str:
+    """Resolve Stage-6 inputs without changing their Stage-5 provenance."""
+
+    try:
+        artifact_path(state, artifact_id)
+        return artifact_id
+    except KeyError:
+        source_id = STAGE6_SOURCE_ARTIFACTS.get(artifact_id)
+        if source_id is None:
+            raise
+        artifact_path(state, source_id)
+        return source_id
+
+
+def stage6_source_artifact_path(state: dict[str, Any], artifact_id: str) -> Path:
+    return artifact_path(state, stage6_source_artifact_id(state, artifact_id))
+
+
+def require_stage6_source_artifacts(
+    state: dict[str, Any], artifact_ids: list[str]
+) -> list[str]:
+    """Require promoted Stage-5 producers when Stage-6 aliases are absent."""
+
+    errors: list[str] = []
+    for artifact_id in artifact_ids:
+        try:
+            source_id = stage6_source_artifact_id(state, artifact_id)
+        except KeyError:
+            source_id = STAGE6_SOURCE_ARTIFACTS.get(artifact_id)
+            if source_id:
+                errors.append(
+                    f"{artifact_id} is missing; expected promoted source {source_id}"
+                )
+            else:
+                errors.append(f"{artifact_id} is missing")
+            continue
+        errors.extend(require_promoted_artifacts(state, [source_id]))
+    return errors
 
 
 def case_adapter_for_state(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
@@ -287,7 +333,7 @@ def check_backend_package(state: dict[str, Any]) -> tuple[str, str]:
 
 
 def check_verification_plan(state: dict[str, Any]) -> tuple[str, str]:
-    upstream_errors = require_promoted_artifacts(
+    upstream_errors = require_stage6_source_artifacts(
         state,
         [
             "artifact.stage6.verification_plan",
@@ -297,14 +343,18 @@ def check_verification_plan(state: dict[str, Any]) -> tuple[str, str]:
     )
     if upstream_errors:
         return "fail", "; ".join(upstream_errors)
-    plan = read_json(artifact_path(state, "artifact.stage6.verification_plan"))
+    plan = read_json(stage6_source_artifact_path(state, "artifact.stage6.verification_plan"))
     checkers = plan.get("checker_plan", [])
     return ("pass", f"checkers={len(checkers)}") if checkers else ("fail", "checker plan is empty")
 
 
 def check_verification_artifact_contract(state: dict[str, Any]) -> tuple[str, str]:
     try:
-        contract = read_json(artifact_path(state, "artifact.stage6.verification_artifact_contract"))
+        contract = read_json(
+            stage6_source_artifact_path(
+                state, "artifact.stage6.verification_artifact_contract"
+            )
+        )
     except KeyError:
         return "fail", "verification artifact contract is missing"
     if contract.get("status") != "pass":
@@ -356,8 +406,9 @@ def check_verification_artifact_contract(state: dict[str, Any]) -> tuple[str, st
 
 
 def check_hierarchical_verification_plan(state: dict[str, Any]) -> tuple[str, str]:
-    plan = read_json(artifact_path(state, "artifact.stage6.verification_plan"))
-    run_dir = artifact_path(state, "artifact.stage6.verification_plan").resolve().parents[1]
+    plan_path = stage6_source_artifact_path(state, "artifact.stage6.verification_plan")
+    plan = read_json(plan_path)
+    run_dir = plan_path.resolve().parents[1]
     case_adapter = case_adapter_for_state(state, run_dir)
     pipeline = read_json(artifact_path(state, "artifact.stage3.pipeline_plan"))
     hierarchy = plan.get("hierarchical_verification", {})
@@ -439,7 +490,7 @@ def stage6_gate_scope() -> str:
 
 def check_stage6_action_audit(state: dict[str, Any]) -> tuple[str, str]:
     try:
-        audit = read_json(artifact_path(state, "artifact.stage6.llm_action_audit"))
+        audit = read_json(stage6_source_artifact_path(state, "artifact.stage6.llm_action_audit"))
     except KeyError:
         return "fail", "Stage6 LLM action audit artifact is missing"
     if audit.get("status") != "pass":
@@ -448,7 +499,9 @@ def check_stage6_action_audit(state: dict[str, Any]) -> tuple[str, str]:
 
 
 def stage6_verification_contract(state: dict[str, Any]) -> dict[str, Any]:
-    return read_json(artifact_path(state, "artifact.stage6.verification_artifact_contract"))
+    return read_json(
+        stage6_source_artifact_path(state, "artifact.stage6.verification_artifact_contract")
+    )
 
 
 def stage6_selector_contract(state: dict[str, Any]) -> dict[str, Any]:
@@ -1663,10 +1716,22 @@ def build_stage6_gate_execution_plan(state: dict[str, Any], run_dir: Path) -> di
         "schema_version": "spatialaccagent.stage6_gate_execution_plan.v0",
         "status": "pass" if not blockers else "fail",
         "scope": stage6_gate_scope(),
-        "source_contract": str(artifact_path(state, "artifact.stage6.verification_artifact_contract")),
+        "source_contract": str(
+            stage6_source_artifact_path(
+                state, "artifact.stage6.verification_artifact_contract"
+            )
+        ),
         "selector_contract": selector_path,
         "debug_closure": debug_paths,
-        "action_audit": str(artifact_path(state, "artifact.stage6.llm_action_audit")) if any(a.get("id") == "artifact.stage6.llm_action_audit" for a in state.get("artifacts", [])) else None,
+        "action_audit": str(
+            stage6_source_artifact_path(state, "artifact.stage6.llm_action_audit")
+        ) if any(
+            a.get("id") in {
+                "artifact.stage6.llm_action_audit",
+                "artifact.stage5.llm_action_audit",
+            }
+            for a in state.get("artifacts", [])
+        ) else None,
         "selected_gates": selected_gates,
         "reused_promotion_certificates": reusable_evidence.get("certificates", []),
         "rejected_promotion_certificates": reusable_evidence.get("rejected_certificates", []),
@@ -1724,7 +1789,11 @@ def tool_selected_for_scope(tool: dict[str, Any], scope: str) -> bool:
 
 def stage6_gate_dependency_map(state: dict[str, Any]) -> dict[str, set[str]]:
     try:
-        contract = read_json(artifact_path(state, "artifact.stage6.verification_artifact_contract"))
+        contract = read_json(
+            stage6_source_artifact_path(
+                state, "artifact.stage6.verification_artifact_contract"
+            )
+        )
     except Exception:
         return {}
     dag = contract.get("verification_gate_dag", {}) if isinstance(contract.get("verification_gate_dag"), dict) else {}
@@ -2765,7 +2834,7 @@ def build_hierarchical_gate_summary(
     gate_execution_plan: dict[str, Any],
 ) -> dict[str, Any]:
     try:
-        plan = read_json(artifact_path(state, "artifact.stage6.verification_plan"))
+        plan = read_json(stage6_source_artifact_path(state, "artifact.stage6.verification_plan"))
     except KeyError:
         return {"required_gates": [], "missing_or_failed": []}
     hierarchy = plan.get("hierarchical_verification", {})
@@ -2895,7 +2964,7 @@ def build_hierarchical_maturity_report(
     gate_execution_plan: dict[str, Any],
 ) -> dict[str, Any]:
     try:
-        plan = read_json(artifact_path(state, "artifact.stage6.verification_plan"))
+        plan = read_json(stage6_source_artifact_path(state, "artifact.stage6.verification_plan"))
     except KeyError:
         return {
             "schema_version": "spatialaccagent.hierarchical_maturity_report.v0",
@@ -4196,7 +4265,10 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
             stage="stage6.verification",
             reason="Stage6 verification result did not pass all selected real-tool/checker gates",
             target_stage="stage6.verification",
-            required_inputs=["artifact.stage6.verification_artifact_contract", "artifact.stage6.llm_action_audit"],
+            required_inputs=[
+                "artifact.stage5.verification_artifact_contract",
+                "artifact.stage5.llm_action_audit",
+            ],
             blocked_artifacts=["artifact.stage6.verification_result"],
             context=memory_context,
         )
@@ -4207,7 +4279,10 @@ def update_sacg(source_state: Path, target_state: Path, result_path: Path, resul
                 target_stage="stage6.verification_artifacts",
                 reason="Stage6 could not execute the selected gates because the Stage5 verification contract is incomplete",
                 missing_or_invalid_contracts=gate_plan.get("blockers", []),
-                evidence=["artifact.stage6.verification_result", "artifact.stage6.verification_artifact_contract"],
+                evidence=[
+                    "artifact.stage6.verification_result",
+                    "artifact.stage5.verification_artifact_contract",
+                ],
                 context=memory_context,
             )
     store.record_stage_outcome(

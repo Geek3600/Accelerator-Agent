@@ -1,5 +1,6 @@
 import json
 import os
+from argparse import Namespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -8,6 +9,7 @@ from unittest.mock import patch
 from accagent.framework.stage_debug_loop import (
     agent_transaction_retry_key,
     deterministic_repair_followup_key,
+    debug_loop,
     parse_args,
     pending_repair_execution_resume,
     repair_execution_requires_fresh_agent_planning,
@@ -18,6 +20,32 @@ from accagent.framework.stage_debug_loop import (
 
 
 class DebugLoopResumeTest(TestCase):
+    def test_local_framework_exception_stops_current_debug_loop_without_spinning(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            state_path = run_dir / "verification_artifacts" / "sacg_state.json"
+            state_path.parent.mkdir()
+            state_path.write_text(json.dumps({"artifacts": [], "transitions": []}), encoding="utf-8")
+            with patch(
+                "accagent.framework.stage_debug_loop.run_stage6_verification",
+                side_effect=KeyError("missing Stage5 verification contract"),
+            ) as verification_mock:
+                _, report = debug_loop(
+                    Namespace(
+                        sacg_state=state_path,
+                        max_iters=0,
+                        target_scope="operator_leaf_closure",
+                        timeout_sec=0,
+                        include_remote=True,
+                        stop_after_failed_repair=False,
+                    )
+                )
+
+        self.assertEqual(report["status"], "needs_repair")
+        self.assertEqual(len(report["iterations"]), 1)
+        self.assertIn("missing Stage5 verification contract", report["summary"])
+        verification_mock.assert_called_once()
+
     def test_debug_loop_enables_remote_reruns_by_default(self) -> None:
         args = parse_args(["--sacg-state", "state.json"])
 

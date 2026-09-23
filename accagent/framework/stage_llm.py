@@ -334,7 +334,7 @@ ACTION_CONTRACT_EXAMPLES = [
         "action_type": "real_tool_execution",
         "rationale": "Run a real simulator after static hierarchy and artifact gates pass.",
         "consumes": [
-            "artifact.stage6.verification_artifact_contract",
+            "artifact.stage5.verification_artifact_contract",
             "verification/model_reference/reference_manifest.json",
             "verification/semantic_testbench/semantic_testbench_manifest.json",
             "generated/memory/dut_weight_binding_manifest.json",
@@ -366,7 +366,7 @@ ACTION_CONTRACT_EXAMPLES = [
         "stage": "verification",
         "action_type": "system_capability_gap",
         "rationale": "The design team needs a checker not yet implemented by the multi-agent system.",
-        "consumes": ["artifact.stage6.verification_plan"],
+        "consumes": ["artifact.stage5.verification_plan"],
         "produces": ["planned checker implementation task"],
         "tool_roles": ["planned_tool.formal_axi_property_runner"],
         "acceptance_checkers": ["planned_checker.formal_axi_property_check"],
