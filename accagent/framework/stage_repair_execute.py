@@ -3333,10 +3333,10 @@ def prior_resource_validation_resume_allowed(
     has_current_checkpoint_calibration_failure: bool,
     has_current_source_validation_evidence: bool = False,
 ) -> bool:
-    """Resume a current applied patch unless explicit maintenance supersedes it."""
+    """Resume only a passing current applied-patch validation."""
 
     return (
-        resource_resume_status != "not_run"
+        resource_resume_status == "pass"
         and not resume_requires_board_repair
         and not has_pending_checkpoint_executor_retry
         and not has_pending_checkpoint_calibration
@@ -13866,6 +13866,194 @@ def applied_patch_matches_repair_step(
     return True
 
 
+def post_validation_materialization_feedback(
+    run_dir: Path,
+    out_dir: Path,
+    step: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Bind a current failed binding materialization to its applied patch.
+
+    A successful compile/elaboration request proves only that an agent patch
+    can build.  The deterministic binding materializer can subsequently expose
+    a different interface or manifest failure.  That observation belongs to a
+    fresh implementation-agent turn and cannot be hidden by validation replay.
+    """
+
+    patch_path = out_dir / "agent_patch_application.json"
+    validation_path = out_dir / "agent_requested_validation.json"
+    materialization_path = out_dir / "dut_weight_binding_materialization.json"
+    patch = read_json_if_exists(patch_path)
+    validation = read_json_if_exists(validation_path)
+    materialization = read_json_if_exists(materialization_path)
+    if not (
+        patch_path.is_file()
+        and validation_path.is_file()
+        and materialization_path.is_file()
+        and patch.get("status") == "pass"
+        and validation.get("status") == "pass"
+        and applied_patch_matches_repair_step(patch, step)
+        and materialization_path.stat().st_mtime_ns
+        >= validation_path.stat().st_mtime_ns
+        >= patch_path.stat().st_mtime_ns
+    ):
+        return {
+            "schema_version": (
+                "spatialaccagent.post_validation_materialization_feedback.v1"
+            ),
+            "status": "not_run",
+            "summary": "no current post-validation binding materialization feedback exists",
+        }
+
+    scope = verification_scope_for_step(step) if step is not None else ""
+    blockers = [
+        str(value) for value in materialization.get("blockers", []) if str(value)
+    ]
+    requirements_path = (
+        run_dir
+        / "verification"
+        / "semantic_testbench"
+        / "dut_weight_binding_requirements.json"
+    )
+    requirements = read_json_if_exists(requirements_path)
+    expected_stage_count = len(
+        [
+            row
+            for row in requirements.get("stage_requirements", [])
+            if isinstance(row, dict)
+        ]
+    )
+    expected_board_only_incomplete = (
+        scope == "board_axi_ddr_closure"
+        and materialization.get("status") == "incomplete"
+        and bool(blockers)
+        and all(
+            blocker.startswith(("board_integration:", "board_preflight:"))
+            for blocker in blockers
+        )
+        and materialization.get("single_layer_harness_materialized") is True
+        and materialization.get("stage_harness_count") == expected_stage_count
+    )
+    if materialization.get("status") == "pass" or expected_board_only_incomplete:
+        return {
+            "schema_version": (
+                "spatialaccagent.post_validation_materialization_feedback.v1"
+            ),
+            "status": "not_run",
+            "summary": (
+                "post-validation binding materialization passed"
+                if materialization.get("status") == "pass"
+                else "post-validation materialization has only expected board-only prerequisites"
+            ),
+        }
+
+    manifest_path = Path(
+        str(
+            materialization.get("manifest")
+            or run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
+        )
+    )
+    if not manifest_path.is_absolute():
+        manifest_path = run_dir / manifest_path
+    manifest_path = manifest_path.resolve()
+    materialization_projection = {
+        key: copy.deepcopy(materialization.get(key))
+        for key in (
+            "schema_version",
+            "status",
+            "blockers",
+            "manifest",
+            "manifest_sha256",
+            "stage_harness_count",
+            "single_layer_harness_materialized",
+            "board_integration_harness_materialized",
+            "board_simulation_preflight_materialized",
+        )
+    }
+    feedback = {
+        "schema_version": "spatialaccagent.post_validation_materialization_feedback.v1",
+        "status": "ready",
+        "summary": (
+            "current post-validation binding materialization did not pass; "
+            "a fresh capability-repair Agent decision is required"
+        ),
+        "repair_checkpoint": repair_step_checkpoint(step) if step is not None else None,
+        "patch_application": {
+            "path": str(patch_path.resolve()),
+            "sha256": sha256_file(patch_path),
+        },
+        "requested_validation": {
+            "path": str(validation_path.resolve()),
+            "sha256": sha256_file(validation_path),
+        },
+        "materialization": {
+            "path": str(materialization_path.resolve()),
+            "sha256": sha256_file(materialization_path),
+            "value": materialization_projection,
+        },
+        "binding_manifest": {
+            "path": str(manifest_path),
+            "sha256": sha256_file(manifest_path) if manifest_path.is_file() else None,
+        },
+        "binding_requirements": {
+            "path": str(requirements_path.resolve()),
+            "sha256": (
+                sha256_file(requirements_path)
+                if requirements_path.is_file()
+                else None
+            ),
+        },
+    }
+    feedback["feedback_frontier_sha256"] = canonical_contract_sha256(feedback)
+    return feedback
+
+
+def capability_agent_consumed_materialization_feedback(
+    out_dir: Path,
+    step: dict[str, Any] | None,
+    feedback: dict[str, Any],
+) -> bool:
+    """Whether the current feedback frontier already reached the repair Agent."""
+
+    expected_frontier = str(feedback.get("feedback_frontier_sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_frontier):
+        return False
+    record_path = (
+        out_dir / "llm" / "verification_capability_repair_agent_result.json"
+    )
+    record = read_json_if_exists(record_path)
+    if record.get("agent") != "verification_capability_repair_agent":
+        return False
+    context = record.get("capability_repair_context", {})
+    if not isinstance(context, dict) or context.get("repair_step_id") != (
+        step.get("id") if isinstance(step, dict) else None
+    ):
+        return False
+    consumed = record.get("post_validation_materialization_feedback", {})
+    return bool(
+        isinstance(consumed, dict)
+        and consumed.get("feedback_frontier_sha256") == expected_frontier
+    )
+
+
+def stamp_capability_repair_materialization_feedback(
+    record: dict[str, Any],
+    feedback: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist the exact post-validation frontier consumed by an Agent turn."""
+
+    if feedback.get("status") != "ready":
+        return record
+    record["post_validation_materialization_feedback"] = copy.deepcopy(feedback)
+    result_path = Path(str(record.get("result_path") or ""))
+    if result_path.is_file():
+        persisted = read_json_if_exists(result_path)
+        persisted["post_validation_materialization_feedback"] = copy.deepcopy(
+            feedback
+        )
+        write_json(result_path, persisted)
+    return record
+
+
 def resume_prior_resource_failed_validation(
     run_dir: Path,
     out_dir: Path,
@@ -14194,6 +14382,28 @@ def resume_prior_resource_failed_validation(
         return report
     existing_resume = read_json_if_exists(resume_path)
     existing_blockers = patch_blockers()
+    materialization_feedback = post_validation_materialization_feedback(
+        run_dir,
+        out_dir,
+        step,
+    )
+    if materialization_feedback.get("status") == "ready":
+        feedback_consumed = capability_agent_consumed_materialization_feedback(
+            out_dir,
+            step,
+            materialization_feedback,
+        )
+        return {
+            "status": "blocked" if feedback_consumed else "not_run",
+            "summary": (
+                "the current post-validation binding materialization frontier was already "
+                "consumed by the capability-repair Agent without a new patch or tool result"
+                if feedback_consumed
+                else "current post-validation binding materialization requires a fresh capability-repair Agent decision"
+            ),
+            "post_validation_materialization_feedback": materialization_feedback,
+            "post_validation_materialization_feedback_consumed": feedback_consumed,
+        }
     if (
         existing_resume.get("status") == "pass"
         and existing_resume.get("source_patch_application_sha256") == patch_fingerprint
@@ -30617,6 +30827,12 @@ def execute_verification_capability_repair(
             step=step,
             case_adapter=case_adapter,
         )
+    post_validation_feedback = copy.deepcopy(
+        resource_resume.get(
+            "post_validation_materialization_feedback",
+            {"status": "not_run"},
+        )
+    )
     resumed_materialization_checkpoint: dict[str, Any] = {
         "status": "not_run",
         "summary": "no applied exact-board patch checkpoint requires early finalization",
@@ -30816,24 +31032,47 @@ def execute_verification_capability_repair(
             ),
         }
     elif resource_resume.get("status") == "not_run":
-        pre_patch_dependency_refresh = (
-            run_capability_probe(
-                case_adapter=case_adapter,
-                spec_role=dependency_role,
-                spec=dependency_spec,
-                run_dir=run_dir,
-                step=step,
-                out_dir=out_dir,
-                timeout_sec=timeout_sec,
-                label="dependency_refresh_pre_patch",
-            )
-            if dependency_spec
-            else {
+        if post_validation_feedback.get("status") == "ready":
+            # The deterministic materializer just consumed the current patch
+            # and validation outputs. Replaying the same capability tool before
+            # the Agent can react cannot add a new frontier.
+            pre_patch_dependency_refresh = {
                 "status": "not_run",
-                "summary": "current capability tool has no changed-input direct producer to refresh",
+                "reason": "post_validation_materialization_feedback_ready",
+                "summary": (
+                    "skipped redundant capability refresh; the current "
+                    "post-validation binding materialization feedback is ready "
+                    "for the capability-repair Agent"
+                ),
             }
-        )
-        capability_probe = run_current_capability_probe("pre_patch")
+            capability_probe = {
+                "status": "not_run",
+                "reason": "post_validation_materialization_feedback_ready",
+                "summary": (
+                    "skipped redundant pre-patch capability replay; the Agent "
+                    "must first repair the current binding materialization "
+                    "failure"
+                ),
+            }
+        else:
+            pre_patch_dependency_refresh = (
+                run_capability_probe(
+                    case_adapter=case_adapter,
+                    spec_role=dependency_role,
+                    spec=dependency_spec,
+                    run_dir=run_dir,
+                    step=step,
+                    out_dir=out_dir,
+                    timeout_sec=timeout_sec,
+                    label="dependency_refresh_pre_patch",
+                )
+                if dependency_spec
+                else {
+                    "status": "not_run",
+                    "summary": "current capability tool has no changed-input direct producer to refresh",
+                }
+            )
+            capability_probe = run_current_capability_probe("pre_patch")
     else:
         pre_patch_dependency_refresh = {
             "status": "not_run",
@@ -31001,6 +31240,7 @@ def execute_verification_capability_repair(
             ),
         },
         "capability_probe": capability_probe,
+        "post_validation_materialization_feedback": post_validation_feedback,
         "pre_patch_simulation_checkpoint_request": {
             key: pre_patch_checkpoint_preparation.get(key)
             for key in (
@@ -32113,6 +32353,40 @@ def execute_verification_capability_repair(
         else BOARD_INTEGRATION_REPAIR_SCHEMA
     )
     write_json(package_path, package)
+    if (
+        not board_integration_repair
+        and not localized_semantic_repair
+        and resource_resume.get(
+            "post_validation_materialization_feedback_consumed"
+        )
+        is True
+    ):
+        return {
+            "status": "fail",
+            "summary": (
+                "the current post-validation binding materialization frontier was "
+                "already consumed by the capability-repair Agent without a new "
+                "patch or tool result"
+            ),
+            "context_package": str(package_path),
+            "reference_builder_log": builder_probe.get("log_path"),
+            "capability_probe_log": capability_probe.get("log_path"),
+            "capability_reports": produced_reports,
+            "leaf_stage_report": str(leaf_report_path) if leaf_report_path else None,
+            "llm_record": None,
+            "agent_patch_application": str(
+                out_dir / "agent_patch_application.json"
+            ),
+            "agent_requested_validation": str(
+                out_dir / "agent_requested_validation.json"
+            ),
+            "dut_weight_binding_materialization": str(
+                out_dir / "dut_weight_binding_materialization.json"
+            ),
+            "post_validation_materialization_feedback": post_validation_feedback,
+            "stage_passed": False,
+            "target_modules": target_modules,
+        }
     # Always ask the Agent against the current evidence.  Saved responses are
     # useful history, but replaying an old transaction can hide a new signal
     # frontier and can repeatedly recreate an obsolete edit rejection.
@@ -32270,6 +32544,7 @@ def execute_verification_capability_repair(
                 )
             ),
             "When prior_capability_repair_evidence exists, treat its earliest failing real-tool result as the current repair-loop observation. Repair that concrete failure in the existing agent-created files before proposing broader changes; do not repeat a create operation for an existing path.",
+            "When post_validation_materialization_feedback.status=ready, it is the highest-priority current fact. Repair the concrete binding, interface, port, or manifest failure recorded in that feedback against the current agent-created sources; do not replay the earlier edit that only passed compilation or elaboration.",
             (
                 "When current_board_to_lower_layer_contradiction is status=proven, it is the authoritative current repair route. "
                 "Repair only its target_debug_layer and earliest named boundary; do not redirect to historical board audits "
@@ -32326,6 +32601,10 @@ def execute_verification_capability_repair(
             llm_record,
             step,
             verification_scope,
+        )
+        llm_record = stamp_capability_repair_materialization_feedback(
+            llm_record,
+            post_validation_feedback,
         )
     implementation_output = llm_record.get("output", {}) if isinstance(llm_record.get("output"), dict) else {}
     if board_integration_repair:

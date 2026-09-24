@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import unittest
 from argparse import Namespace
 from pathlib import Path
@@ -9,13 +11,154 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from accagent.framework.stage_repair_execute import (
+    capability_agent_consumed_materialization_feedback,
+    post_validation_materialization_feedback,
+    repair_step_checkpoint,
     board_integration_prompt_rules,
     repair_loop_disposition,
+    resume_prior_resource_failed_validation,
     run_repair_loop,
 )
 
 
 class RepairExecutionFeedbackTest(unittest.TestCase):
+    def _post_validation_fixture(
+        self,
+        root: Path,
+        *,
+        materialization_status: str,
+    ) -> tuple[Path, Path, dict[str, object]]:
+        run_dir = root / "run"
+        out_dir = run_dir / "repair_execution"
+        source_path = run_dir / "generated" / "semantic_harness.txt"
+        manifest_path = run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
+        requirements_path = (
+            run_dir
+            / "verification"
+            / "semantic_testbench"
+            / "dut_weight_binding_requirements.json"
+        )
+        for path in (out_dir, source_path.parent, manifest_path.parent, requirements_path.parent):
+            path.mkdir(parents=True, exist_ok=True)
+        source_path.write_text("current harness source\n", encoding="utf-8")
+        manifest_path.write_text('{"status": "incomplete"}\n', encoding="utf-8")
+        requirements_path.write_text(
+            '{"stage_requirements": [{"stage_id": "stage_00"}]}\n',
+            encoding="utf-8",
+        )
+        step: dict[str, object] = {
+            "id": "repair_step.00",
+            "scope": "verification_capability_repair",
+            "action": {
+                "repair_kind": "semantic_loader_harness_binding",
+                "violated_contract": "verification_capability_must_execute",
+            },
+        }
+        (out_dir / "agent_patch_application.json").write_text(
+            json.dumps(
+                {
+                    "status": "pass",
+                    "files": [
+                        {
+                            "path": str(source_path),
+                            "after_sha256": hashlib.sha256(
+                                source_path.read_bytes()
+                            ).hexdigest(),
+                        }
+                    ],
+                    "repair_checkpoint": repair_step_checkpoint(step),
+                }
+            ),
+            encoding="utf-8",
+        )
+        (out_dir / "agent_requested_validation.json").write_text(
+            '{"status": "pass", "results": []}\n', encoding="utf-8"
+        )
+        blockers = (
+            []
+            if materialization_status == "pass"
+            else ["stage_00: harness top does not declare required input valid port"]
+        )
+        (out_dir / "dut_weight_binding_materialization.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "spatialaccagent.dut_weight_binding_materialization.v1",
+                    "status": materialization_status,
+                    "blockers": blockers,
+                    "manifest": str(manifest_path),
+                    "stage_harness_count": 0,
+                    "single_layer_harness_materialized": False,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return run_dir, out_dir, step
+
+    def test_new_post_validation_materialization_failure_requires_fresh_agent(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir, out_dir, step = self._post_validation_fixture(
+                Path(temp_dir), materialization_status="incomplete"
+            )
+
+            result = resume_prior_resource_failed_validation(
+                run_dir, out_dir, 0, step=step
+            )
+
+        feedback = result["post_validation_materialization_feedback"]
+        self.assertEqual(result["status"], "not_run")
+        self.assertEqual(feedback["status"], "ready")
+        self.assertEqual(len(feedback["feedback_frontier_sha256"]), 64)
+        self.assertEqual(len(feedback["patch_application"]["sha256"]), 64)
+        self.assertEqual(len(feedback["requested_validation"]["sha256"]), 64)
+        self.assertEqual(len(feedback["materialization"]["sha256"]), 64)
+        self.assertEqual(len(feedback["binding_manifest"]["sha256"]), 64)
+        self.assertEqual(len(feedback["binding_requirements"]["sha256"]), 64)
+
+    def test_consumed_post_validation_materialization_failure_blocks_replay(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir, out_dir, step = self._post_validation_fixture(
+                Path(temp_dir), materialization_status="incomplete"
+            )
+            feedback = post_validation_materialization_feedback(run_dir, out_dir, step)
+            result_path = out_dir / "llm" / "verification_capability_repair_agent_result.json"
+            result_path.parent.mkdir()
+            result_path.write_text(
+                json.dumps(
+                    {
+                        "agent": "verification_capability_repair_agent",
+                        "capability_repair_context": {
+                            "repair_step_id": step["id"],
+                        },
+                        "post_validation_materialization_feedback": feedback,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = resume_prior_resource_failed_validation(
+                run_dir, out_dir, 0, step=step
+            )
+
+            self.assertTrue(
+                capability_agent_consumed_materialization_feedback(
+                    out_dir, step, feedback
+                )
+            )
+        self.assertEqual(result["status"], "blocked")
+        self.assertTrue(result["post_validation_materialization_feedback_consumed"])
+
+    def test_passing_materialization_keeps_validation_resume(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir, out_dir, step = self._post_validation_fixture(
+                Path(temp_dir), materialization_status="pass"
+            )
+
+            result = resume_prior_resource_failed_validation(
+                run_dir, out_dir, 0, step=step
+            )
+
+        self.assertEqual(result["status"], "pass")
+        self.assertTrue(result["applied_patch_checkpoint_reused"])
+
     def test_incomplete_empty_report_blocks_without_spinning(self) -> None:
         result = repair_loop_disposition({"status": "incomplete", "step_results": []})
 
