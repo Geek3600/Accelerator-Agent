@@ -21715,7 +21715,7 @@ def current_repair_action_execution_frontier(
             invalid_action_ids.append(action_id or "<unnamed>")
             continue
         eligible_actions.append(copy.deepcopy(action))
-    if not eligible_actions or invalid_action_ids or deferred_action_ids:
+    if not eligible_actions or invalid_action_ids:
         return None
 
     execution_context = repair_execution_context_for_step(step, verification_scope)
@@ -21787,7 +21787,6 @@ def repair_action_execution_frontier_is_valid(
         or not all(str(action_id) for action_id in action_ids)
         or not isinstance(actions, list)
         or not actions
-        or frontier.get("deferred_action_ids")
     ):
         return False
     observed_action_ids: list[str] = []

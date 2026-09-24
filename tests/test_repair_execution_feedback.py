@@ -325,6 +325,47 @@ class RepairExecutionFeedbackTest(unittest.TestCase):
                 self.assertIsNone(frontier)
                 self.assertEqual(result["status"], "pass")
 
+    def test_deferred_approval_action_preserves_checker_bound_auto_frontier(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir, out_dir, step = self._post_validation_fixture(
+                Path(temp_dir), materialization_status="pass"
+            )
+            self._write_repair_action_disposition(
+                run_dir,
+                step,
+                [
+                    {
+                        "id": "repair.auto_reconcile",
+                        "requires_approval": False,
+                        "acceptance_checkers": ["case_stage_leaf_static"],
+                    },
+                    {
+                        "id": "repair.escalate_if_needed",
+                        "requires_approval": True,
+                        "acceptance_checkers": ["repair_boundary_check"],
+                    },
+                ],
+            )
+            frontier = current_repair_action_execution_frontier(
+                run_dir,
+                step,
+                "operator_leaf_closure",
+            )
+            assert frontier is not None
+            result = resume_prior_resource_failed_validation(
+                run_dir,
+                out_dir,
+                0,
+                step=step,
+                action_execution_frontier=frontier,
+            )
+
+        self.assertEqual(frontier["action_ids"], ["repair.auto_reconcile"])
+        self.assertEqual(
+            frontier["deferred_action_ids"], ["repair.escalate_if_needed"]
+        )
+        self.assertEqual(result["status"], "not_run")
+
     def test_incomplete_empty_report_blocks_without_spinning(self) -> None:
         result = repair_loop_disposition({"status": "incomplete", "step_results": []})
 
