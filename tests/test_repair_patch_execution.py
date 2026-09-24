@@ -50,6 +50,42 @@ class RepairPatchExecutionTest(unittest.TestCase):
         self.assertEqual(result["status"], "continue")
         self.assertTrue(result["observation_replan_required"])
 
+    def test_hash_changing_agent_patch_continues_current_layer_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            patch_path = Path(temp_dir) / "agent_patch_application.json"
+            patch_path.write_text(
+                json.dumps(
+                    {
+                        "status": "pass",
+                        "files": [
+                            {
+                                "path": "generated/semantic_harness.scala",
+                                "before_sha256": "before",
+                                "after_sha256": "after",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = repair_loop_disposition(
+                {
+                    "status": "incomplete",
+                    "step_results": [
+                        {
+                            "result": {
+                                "status": "fail",
+                                "llm_record": "fresh-agent-result.json",
+                                "agent_patch_application": str(patch_path),
+                            }
+                        }
+                    ],
+                }
+            )
+
+        self.assertEqual(result["status"], "continue")
+        self.assertEqual(result["applied_files"][0]["path"], "generated/semantic_harness.scala")
+
     def test_source_bundle_reads_repair_closure_from_explicit_output_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir)

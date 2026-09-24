@@ -33240,10 +33240,38 @@ def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
     upstream_capability_replans: list[dict[str, Any]] = []
     completed_capability_producers: list[dict[str, Any]] = []
     applied_files: list[dict[str, Any]] = []
+    no_progress_failures: list[str] = []
     for item in report.get("step_results", []):
         if not isinstance(item, dict):
             continue
         result = item.get("result", {}) if isinstance(item.get("result"), dict) else {}
+        if result.get("status") == "fail":
+            instrumentation_evidence = (
+                result.get("instrumentation_evidence", {})
+                if isinstance(result.get("instrumentation_evidence"), dict)
+                else {}
+            )
+            has_new_agent_or_tool_observation = any(
+                (
+                    result.get("llm_record"),
+                    result.get("reference_builder_log"),
+                    result.get("capability_probe_log"),
+                    result.get("post_patch_capability_probe_log"),
+                    result.get("leaf_stage_report"),
+                    result.get("capability_reports"),
+                    result.get("instrumentation_evidence_collected") is True,
+                    instrumentation_evidence.get("status") not in {None, "not_run"},
+                    result.get("requires_agent_followup") is True,
+                    result.get("new_current_real_tool_failure_requires_agent") is True,
+                )
+            )
+            if not has_new_agent_or_tool_observation:
+                no_progress_failures.append(
+                    str(
+                        result.get("summary")
+                        or f"{item.get('step_id') or 'repair step'} failed without new Agent or tool observation"
+                    )
+                )
         # An Agent-requested producer is control-flow evidence, not a failed
         # patch transaction.  Capability-repair steps still persist their
         # blocked handoff as agent_patch_application, so route a supported
@@ -33459,6 +33487,27 @@ def repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any]:
             "applied_files": [],
             "capability_producer_replan_required": True,
             "completed_capability_producers": completed_capability_producers,
+        }
+    if no_progress_failures:
+        return {
+            "status": "blocked",
+            "summary": (
+                "the unchanged Stage 6 repair frontier failed without a new Agent "
+                "decision or real-tool observation; return to the flow controller for "
+                "a fresh bounded plan: "
+                + "; ".join(no_progress_failures)
+            ),
+            "applied_files": [],
+            "no_progress_failures": no_progress_failures,
+        }
+    if not step_results:
+        return {
+            "status": "blocked",
+            "summary": (
+                "the Stage 6 repair report is incomplete but contains no executable "
+                "step result; return to the flow controller for a fresh bounded plan"
+            ),
+            "applied_files": [],
         }
     return {
         "status": "continue",
