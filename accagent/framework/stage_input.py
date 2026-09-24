@@ -29,6 +29,7 @@ from accagent.framework.llm_io import (
     build_prompt,
     parse_json_object,
     read_response_text,
+    reroute_request,
     repair_prompt,
     response_payload,
     validate_schema,
@@ -52,6 +53,7 @@ from accagent.framework.stage_llm import (
     retry_sleep_seconds,
     stream_transport_fallback_error,
     transient_llm_error,
+    provider_capacity_error,
 )
 
 
@@ -757,6 +759,7 @@ def post_llm_json(
     max_attempts = None if llm_transient_retry_unbounded() else llm_transient_attempts()
     attempt = 1
     current_stream = stream
+    fallback_used = False
 
     def request_for_transport(use_stream: bool) -> urllib.request.Request:
         if callable(request_or_factory):
@@ -772,6 +775,29 @@ def post_llm_json(
             errors.append(f"attempt {attempt}: {exc}")
             if not transient_llm_error(exc):
                 raise LlmTransientFailure(str(exc), errors) from exc
+            cfg = resolved_llm_cfg()
+            if (
+                provider_capacity_error(exc)
+                and not fallback_used
+                and cfg.fallback_endpoint
+                and cfg.fallback_api_key
+            ):
+                original_factory = request_or_factory
+
+                def fallback_request(use_stream: bool) -> urllib.request.Request:
+                    original = (
+                        original_factory(use_stream)
+                        if callable(original_factory)
+                        else original_factory
+                    )
+                    return reroute_request(
+                        original, cfg.fallback_endpoint, cfg.fallback_api_key
+                    )
+
+                request_or_factory = fallback_request
+                fallback_used = True
+                attempt += 1
+                continue
             if max_attempts is not None and attempt >= max_attempts:
                 raise LlmTransientFailure(str(exc), errors) from exc
             delay = retry_sleep_seconds(exc, attempt)

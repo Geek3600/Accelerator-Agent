@@ -30,6 +30,7 @@ from accagent.framework.llm_io import (
     build_prompt,
     parse_json_object,
     read_response_text,
+    reroute_request,
     repair_prompt,
     response_payload,
     validate_schema,
@@ -44,6 +45,7 @@ from accagent.framework.stage_llm import (
     run_stage_agent,
     retry_sleep_seconds,
     transient_llm_error,
+    provider_capacity_error,
     llm_transient_attempts,
     llm_transient_retry_unbounded,
 )
@@ -2250,6 +2252,7 @@ def post_decomposer_json(req: urllib.request.Request, timeout_sec: int, label: s
     errors: list[str] = []
     max_attempts = None if llm_transient_retry_unbounded() else llm_transient_attempts()
     attempt = 1
+    fallback_used = False
     while True:
         try:
             return read_response_text(req, timeout_sec, stream), errors
@@ -2257,6 +2260,17 @@ def post_decomposer_json(req: urllib.request.Request, timeout_sec: int, label: s
             errors.append(f"attempt {attempt}: {exc}")
             if not transient_llm_error(exc):
                 raise
+            cfg = resolved_llm_cfg()
+            if (
+                provider_capacity_error(exc)
+                and not fallback_used
+                and cfg.fallback_endpoint
+                and cfg.fallback_api_key
+            ):
+                req = reroute_request(req, cfg.fallback_endpoint, cfg.fallback_api_key)
+                fallback_used = True
+                attempt += 1
+                continue
             if max_attempts is not None and attempt >= max_attempts:
                 raise
             delay = retry_sleep_seconds(exc, attempt)

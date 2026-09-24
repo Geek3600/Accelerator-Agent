@@ -34,6 +34,9 @@ class LlmCfg:
     stream: bool = True
     provider: str = ""
     base_url: str = ""
+    fallback_endpoint: str = ""
+    fallback_api_key: str = ""
+    fallback_base_url: str = ""
     wire_api: str = ""
     source: str = ""
     api_key_source: str = ""
@@ -211,6 +214,9 @@ def resolve_llm_cfg() -> LlmCfg:
     env_model = _clean_text(_env("SPATIALACC_LLM_MODEL"))
     env_endpoint = _clean_text(_env("SPATIALACC_LLM_ENDPOINT"))
     env_base_url = _clean_text(_env("SPATIALACC_LLM_BASE_URL"))
+    env_fallback_endpoint = _clean_text(_env("SPATIALACC_LLM_FALLBACK_ENDPOINT"))
+    env_fallback_base_url = _clean_text(_env("SPATIALACC_LLM_FALLBACK_BASE_URL"))
+    env_fallback_api_key = _clean_text(_env("SPATIALACC_LLM_FALLBACK_API_KEY"))
     env_wire_api = _clean_text(_env("SPATIALACC_LLM_WIRE_API"))
     env_api_key = _clean_text(_env("SPATIALACC_LLM_API_KEY"))
     env_reasoning = _clean_text(_env("SPATIALACC_LLM_REASONING_EFFORT"))
@@ -241,6 +247,10 @@ def resolve_llm_cfg() -> LlmCfg:
     cfg_base_url = env_base_url or _clean_text(provider_cfg.get("base_url"))
     cfg_wire_api = env_wire_api or _clean_text(provider_cfg.get("wire_api"))
     cfg_endpoint = env_endpoint or _normalize_responses_endpoint(cfg_base_url, cfg_wire_api)
+    cfg_fallback_base_url = env_fallback_base_url
+    cfg_fallback_endpoint = env_fallback_endpoint or _normalize_responses_endpoint(
+        cfg_fallback_base_url, cfg_wire_api
+    )
     cfg_reasoning = _agent_reasoning_effort(env_reasoning, _clean_text(codex_cfg.get("model_reasoning_effort")))
     cfg_store = _truthy(env_store, default=not _truthy(codex_cfg.get("disable_response_storage"), default=False))
     cfg_stream = _env_bool("SPATIALACC_LLM_STREAM", True) if env_stream is not None else True
@@ -318,6 +328,9 @@ def resolve_llm_cfg() -> LlmCfg:
         stream=cfg_stream,
         provider=provider_name,
         base_url=cfg_base_url,
+        fallback_endpoint=cfg_fallback_endpoint,
+        fallback_api_key=env_fallback_api_key,
+        fallback_base_url=cfg_fallback_base_url,
         wire_api=cfg_wire_api,
         source=source,
         api_key_source=api_key_source,

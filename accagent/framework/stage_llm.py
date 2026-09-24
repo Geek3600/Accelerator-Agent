@@ -1106,6 +1106,8 @@ def provider_capacity_error(exc: Exception) -> bool:
             "usage limit exceeded",
             "billing_error",
             "capacity exhausted",
+            "insufficient balance",
+            "insufficient_balance",
         )
     )
 
@@ -1644,6 +1646,10 @@ def call_llm_with_retry(
     )
     attempt = 1
     stream_override: bool | None = None
+    fallback = resolved_llm_cfg()
+    route_endpoint = endpoint
+    route_key = key
+    fallback_used = False
 
     def observe(kind: str, **fields: Any) -> None:
         if transaction_observer is None:
@@ -1665,8 +1671,8 @@ def call_llm_with_retry(
         )
         try:
             text = call_llm(
-                endpoint,
-                key,
+                route_endpoint,
+                route_key,
                 model,
                 prompt,
                 schema_name,
@@ -1693,6 +1699,29 @@ def call_llm_with_retry(
             )
             if not transient_llm_error(exc):
                 raise
+            if (
+                provider_capacity_error(exc)
+                and not fallback_used
+                and fallback.fallback_endpoint
+                and fallback.fallback_api_key
+            ):
+                route_endpoint = fallback.fallback_endpoint
+                route_key = fallback.fallback_api_key
+                fallback_used = True
+                observe(
+                    "route_switched",
+                    attempt=attempt,
+                    schema_name=schema_name,
+                    reason="provider_capacity_error",
+                    endpoint=route_endpoint,
+                )
+                print(
+                    f"[stage:llm] switching {schema_name} to configured fallback route after provider capacity error",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                attempt += 1
+                continue
             if max_attempts is not None and attempt >= max_attempts:
                 raise
             delay = retry_sleep_seconds(exc, attempt)

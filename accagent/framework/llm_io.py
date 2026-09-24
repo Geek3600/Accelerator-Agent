@@ -421,6 +421,23 @@ def read_response_text(req: urllib.request.Request, timeout_sec: int, stream: bo
     return response_text(body)
 
 
+def reroute_request(
+    req: urllib.request.Request,
+    endpoint: str,
+    api_key: str,
+) -> urllib.request.Request:
+    """Copy one request to the configured fallback route without changing its payload."""
+
+    headers = dict(req.header_items())
+    headers["Authorization"] = f"Bearer {api_key}"
+    return urllib.request.Request(
+        endpoint,
+        data=req.data,
+        headers=headers,
+        method=req.get_method(),
+    )
+
+
 def parse_json_object(text: str) -> dict[str, Any]:
     try:
         data = json.loads(text)
