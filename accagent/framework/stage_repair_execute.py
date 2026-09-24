@@ -171,6 +171,9 @@ REPAIR_EXECUTION_AGENT_CONTEXT_SCHEMA_VERSION = (
 REPAIR_FEEDBACK_ARTIFACT_REF_SCHEMA_VERSION = (
     "spatialaccagent.repair_feedback_artifact_ref.v1"
 )
+REPAIR_ACTION_EXECUTION_FRONTIER_SCHEMA_VERSION = (
+    "spatialaccagent.repair_action_execution_frontier.v1"
+)
 OPERATOR_LEAF_CERTIFICATE_CONTINUITY_SCHEMA_VERSION = (
     "spatialaccagent.operator_leaf_certificate_continuity.v1"
 )
@@ -14061,6 +14064,7 @@ def resume_prior_resource_failed_validation(
     *,
     step: dict[str, Any] | None = None,
     case_adapter: dict[str, Any] | None = None,
+    action_execution_frontier: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     validation_path = out_dir / "agent_requested_validation.json"
     resume_path = out_dir / "agent_requested_validation_resource_resume.json"
@@ -14403,6 +14407,30 @@ def resume_prior_resource_failed_validation(
             ),
             "post_validation_materialization_feedback": materialization_feedback,
             "post_validation_materialization_feedback_consumed": feedback_consumed,
+        }
+    if (
+        repair_action_execution_frontier_is_valid(action_execution_frontier)
+        and not repair_action_execution_frontier_is_consumed(
+            out_dir,
+            action_execution_frontier,
+        )
+        and patch_is_applied
+        and validation_is_current
+        and prior_validation.get("status") == "pass"
+        and not existing_blockers
+        and not missing_mandatory_requests(prior_validation)
+    ):
+        return {
+            "status": "not_run",
+            "summary": (
+                "a fresh checker-bound current-layer repair disposition requires "
+                "one capability probe through the existing case-adapter route"
+            ),
+            "fresh_action_execution_frontier": copy.deepcopy(
+                action_execution_frontier
+            ),
+            "source_patch_application": str(patch_path),
+            "source_patch_application_sha256": patch_fingerprint,
         }
     if (
         existing_resume.get("status") == "pass"
@@ -21642,6 +21670,174 @@ def current_repair_agent_disposition(
             disposition.get("deferred_approval_action_ids", [])
         ),
     }
+
+
+def current_repair_action_execution_frontier(
+    run_dir: Path,
+    step: dict[str, Any],
+    verification_scope: str,
+) -> dict[str, Any] | None:
+    """Return one checker-bound planner action set eligible for a fresh probe.
+
+    The repair planner retains ownership of action selection.  This helper only
+    establishes whether its current, non-approval actions are sufficient to
+    invalidate an otherwise reusable pre-patch probe cache.  It never converts
+    action tool roles or free-form text into commands.
+    """
+
+    disposition = current_repair_agent_disposition(
+        run_dir,
+        step,
+        verification_scope,
+    )
+    if disposition is None:
+        return None
+    if disposition.get("active_approval_action_ids"):
+        return None
+
+    eligible_actions: list[dict[str, Any]] = []
+    invalid_action_ids: list[str] = []
+    deferred_action_ids: list[str] = []
+    for action in disposition.get("executable_actions", []):
+        if not isinstance(action, dict):
+            invalid_action_ids.append("<non_object>")
+            continue
+        action_id = str(action.get("id") or action.get("action_type") or "")
+        if action.get("requires_approval") is not False:
+            deferred_action_ids.append(action_id or "<unnamed>")
+            continue
+        checkers = action.get("acceptance_checkers", [])
+        if (
+            not action_id
+            or not isinstance(checkers, list)
+            or not any(str(checker) for checker in checkers)
+        ):
+            invalid_action_ids.append(action_id or "<unnamed>")
+            continue
+        eligible_actions.append(copy.deepcopy(action))
+    if not eligible_actions or invalid_action_ids or deferred_action_ids:
+        return None
+
+    execution_context = repair_execution_context_for_step(step, verification_scope)
+    identity_payload = {
+        "repair_execution_context": execution_context,
+        "repair_step_checkpoint": repair_step_checkpoint(step).get(
+            "fingerprint_sha256"
+        ),
+        "actions": eligible_actions,
+    }
+    return {
+        "schema_version": REPAIR_ACTION_EXECUTION_FRONTIER_SCHEMA_VERSION,
+        "status": "ready",
+        "identity_sha256": canonical_contract_sha256(identity_payload),
+        "repair_execution_context": execution_context,
+        "repair_step_checkpoint": repair_step_checkpoint(step),
+        "repair_plan": copy.deepcopy(disposition.get("repair_plan", {})),
+        "action_ids": [
+            str(action.get("id") or action.get("action_type"))
+            for action in eligible_actions
+        ],
+        "actions": eligible_actions,
+        "deferred_action_ids": sorted(set(deferred_action_ids)),
+        "policy": {
+            "planner_actions_remain_context_only": True,
+            "existing_case_adapter_tool_route_required": True,
+            "approval_required_actions_not_auto_executed": True,
+            "same_identity_reuses_existing_probe_result": True,
+        },
+    }
+
+
+def repair_action_execution_frontier_is_consumed(
+    out_dir: Path,
+    frontier: dict[str, Any] | None,
+) -> bool:
+    if not repair_action_execution_frontier_is_valid(frontier):
+        return False
+    assert frontier is not None
+    identity = str(frontier.get("identity_sha256") or "")
+    record = read_json_if_exists(
+        out_dir / "action_frontiers" / "consumed.json"
+    )
+    return (
+        record.get("schema_version")
+        == REPAIR_ACTION_EXECUTION_FRONTIER_SCHEMA_VERSION
+        and record.get("identity_sha256") == identity
+    )
+
+
+def repair_action_execution_frontier_is_valid(
+    frontier: dict[str, Any] | None,
+) -> bool:
+    """Whether a planner-derived frontier can invalidate a cached probe."""
+
+    if (
+        not isinstance(frontier, dict)
+        or frontier.get("schema_version")
+        != REPAIR_ACTION_EXECUTION_FRONTIER_SCHEMA_VERSION
+        or frontier.get("status") != "ready"
+        or not is_sha256(frontier.get("identity_sha256"))
+    ):
+        return False
+    action_ids = frontier.get("action_ids", [])
+    actions = frontier.get("actions", [])
+    if (
+        not isinstance(action_ids, list)
+        or not action_ids
+        or not all(str(action_id) for action_id in action_ids)
+        or not isinstance(actions, list)
+        or not actions
+        or frontier.get("deferred_action_ids")
+    ):
+        return False
+    observed_action_ids: list[str] = []
+    for action in actions:
+        if not isinstance(action, dict) or action.get("requires_approval") is not False:
+            return False
+        action_id = str(action.get("id") or action.get("action_type") or "")
+        checkers = action.get("acceptance_checkers", [])
+        if (
+            not action_id
+            or not isinstance(checkers, list)
+            or not any(str(checker) for checker in checkers)
+        ):
+            return False
+        observed_action_ids.append(action_id)
+    return observed_action_ids == [str(action_id) for action_id in action_ids]
+
+
+def mark_repair_action_execution_frontier_consumed(
+    out_dir: Path,
+    frontier: dict[str, Any],
+    probe: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist the probe attempt that consumed a planner action frontier."""
+
+    if not repair_action_execution_frontier_is_valid(frontier):
+        raise ValueError("cannot consume an invalid repair action execution frontier")
+    identity = str(frontier["identity_sha256"])
+    path = out_dir / "action_frontiers" / "consumed.json"
+    record = {
+        "schema_version": REPAIR_ACTION_EXECUTION_FRONTIER_SCHEMA_VERSION,
+        "status": "consumed",
+        "identity_sha256": identity,
+        "repair_execution_context": copy.deepcopy(
+            frontier.get("repair_execution_context", {})
+        ),
+        "repair_step_checkpoint": copy.deepcopy(
+            frontier.get("repair_step_checkpoint", {})
+        ),
+        "repair_plan": copy.deepcopy(frontier.get("repair_plan", {})),
+        "action_ids": copy.deepcopy(frontier.get("action_ids", [])),
+        "probe": {
+            "status": probe.get("status"),
+            "summary": probe.get("summary"),
+            "log_path": probe.get("log_path"),
+            "produced_reports": copy.deepcopy(probe.get("produced_reports", [])),
+        },
+    }
+    write_json(path, record)
+    return {"path": str(path), "sha256": sha256_file(path), "value": record}
 
 
 def repair_feedback_artifact_reference(
@@ -30434,6 +30630,17 @@ def execute_verification_capability_repair(
     )
     target_modules = [str(item) for item in action.get("target_modules", []) if str(item)]
     case_adapter = case_adapter_for_state(state, run_dir)
+    repair_agent_disposition = current_repair_agent_disposition(
+        run_dir,
+        step,
+        verification_scope,
+    )
+    repair_action_frontier = current_repair_action_execution_frontier(
+        run_dir,
+        step,
+        verification_scope,
+    )
+    repair_action_frontier_consumption: dict[str, Any] | None = None
     builder_role, builder_spec = ("", None)
     builder_probe: dict[str, Any] = {"status": "not_run", "summary": "no reference builder required for this repair kind"}
     if str(action.get("repair_kind") or "") == "independent_golden_reference":
@@ -30826,6 +31033,7 @@ def execute_verification_capability_repair(
             timeout_sec,
             step=step,
             case_adapter=case_adapter,
+            action_execution_frontier=repair_action_frontier,
         )
     post_validation_feedback = copy.deepcopy(
         resource_resume.get(
@@ -31072,7 +31280,22 @@ def execute_verification_capability_repair(
                     "summary": "current capability tool has no changed-input direct producer to refresh",
                 }
             )
-            capability_probe = run_current_capability_probe("pre_patch")
+            action_frontier = resource_resume.get(
+                "fresh_action_execution_frontier"
+            )
+            capability_probe = run_current_capability_probe(
+                "action_disposition_pre_patch"
+                if isinstance(action_frontier, dict)
+                else "pre_patch"
+            )
+            if isinstance(action_frontier, dict):
+                repair_action_frontier_consumption = (
+                    mark_repair_action_execution_frontier_consumed(
+                        out_dir,
+                        action_frontier,
+                        capability_probe,
+                    )
+                )
     else:
         pre_patch_dependency_refresh = {
             "status": "not_run",
@@ -31101,6 +31324,10 @@ def execute_verification_capability_repair(
             "llm_record": None,
             "stage_passed": True,
             "target_modules": target_modules,
+            "repair_action_execution_frontier": repair_action_frontier,
+            "repair_action_execution_frontier_consumption": (
+                repair_action_frontier_consumption
+            ),
         }
     if str(action.get("repair_kind") or "") == "exact_board_interface_discovery":
         return {
@@ -31167,11 +31394,6 @@ def execute_verification_capability_repair(
         copy.deepcopy(single_layer_compile_context.get("source_bundle", {}))
         if single_layer_compile_rtl_repair
         else repair_source_bundle(state, run_dir, out_dir)
-    )
-    repair_agent_disposition = current_repair_agent_disposition(
-        run_dir,
-        step,
-        verification_scope,
     )
     package = {
         "schema_version": "spatialaccagent.verification_capability_repair_package.v0",
@@ -31240,6 +31462,10 @@ def execute_verification_capability_repair(
             ),
         },
         "capability_probe": capability_probe,
+        "repair_action_execution_frontier": repair_action_frontier,
+        "repair_action_execution_frontier_consumption": (
+            repair_action_frontier_consumption
+        ),
         "post_validation_materialization_feedback": post_validation_feedback,
         "pre_patch_simulation_checkpoint_request": {
             key: pre_patch_checkpoint_preparation.get(key)

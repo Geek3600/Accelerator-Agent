@@ -12,6 +12,8 @@ from unittest.mock import patch
 
 from accagent.framework.stage_repair_execute import (
     capability_agent_consumed_materialization_feedback,
+    current_repair_action_execution_frontier,
+    mark_repair_action_execution_frontier_consumed,
     post_validation_materialization_feedback,
     repair_step_checkpoint,
     board_integration_prompt_rules,
@@ -94,6 +96,62 @@ class RepairExecutionFeedbackTest(unittest.TestCase):
         )
         return run_dir, out_dir, step
 
+    def _write_repair_action_disposition(
+        self,
+        run_dir: Path,
+        step: dict[str, object],
+        actions: list[dict[str, object]],
+    ) -> None:
+        repair_path = run_dir / "repair" / "repair_plan.json"
+        repair_path.parent.mkdir(parents=True, exist_ok=True)
+        repair_path.write_text(
+            json.dumps(
+                {
+                    "repair_workflow": {
+                        "status": "ready",
+                        "steps": [{"id": step["id"]}],
+                        "llm_disposition": {
+                            "status": "ready",
+                            "summary": "checker-bound current-layer repair",
+                            "executable_actions": actions,
+                            "approval_action_ids": [],
+                            "active_approval_action_ids": [],
+                            "deferred_approval_action_ids": [],
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def _current_action_frontier(
+        self,
+        run_dir: Path,
+        step: dict[str, object],
+        *,
+        summary: str = "reconcile current leaf evidence",
+    ) -> dict[str, object]:
+        self._write_repair_action_disposition(
+            run_dir,
+            step,
+            [
+                {
+                    "id": "repair.current_leaf",
+                    "summary": summary,
+                    "requires_approval": False,
+                    "acceptance_checkers": ["case_stage_leaf_static"],
+                }
+            ],
+        )
+        frontier = current_repair_action_execution_frontier(
+            run_dir,
+            step,
+            "operator_leaf_closure",
+        )
+        self.assertIsNotNone(frontier)
+        assert frontier is not None
+        return frontier
+
     def test_new_post_validation_materialization_failure_requires_fresh_agent(self) -> None:
         with TemporaryDirectory() as temp_dir:
             run_dir, out_dir, step = self._post_validation_fixture(
@@ -158,6 +216,114 @@ class RepairExecutionFeedbackTest(unittest.TestCase):
 
         self.assertEqual(result["status"], "pass")
         self.assertTrue(result["applied_patch_checkpoint_reused"])
+
+    def test_fresh_checker_bound_action_frontier_invalidates_validation_cache(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir, out_dir, step = self._post_validation_fixture(
+                Path(temp_dir), materialization_status="pass"
+            )
+            frontier = self._current_action_frontier(run_dir, step)
+
+            result = resume_prior_resource_failed_validation(
+                run_dir,
+                out_dir,
+                0,
+                step=step,
+                action_execution_frontier=frontier,
+            )
+
+        self.assertEqual(result["status"], "not_run")
+        self.assertEqual(
+            result["fresh_action_execution_frontier"]["identity_sha256"],
+            frontier["identity_sha256"],
+        )
+
+    def test_consumed_action_frontier_reuses_validation_cache(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir, out_dir, step = self._post_validation_fixture(
+                Path(temp_dir), materialization_status="pass"
+            )
+            frontier = self._current_action_frontier(run_dir, step)
+            mark_repair_action_execution_frontier_consumed(
+                out_dir,
+                frontier,
+                {"status": "fail", "summary": "current probe failed"},
+            )
+
+            result = resume_prior_resource_failed_validation(
+                run_dir,
+                out_dir,
+                0,
+                step=step,
+                action_execution_frontier=frontier,
+            )
+
+        self.assertEqual(result["status"], "pass")
+        self.assertTrue(result["applied_patch_checkpoint_reused"])
+
+    def test_changed_action_frontier_requires_one_new_probe(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir, out_dir, step = self._post_validation_fixture(
+                Path(temp_dir), materialization_status="pass"
+            )
+            initial_frontier = self._current_action_frontier(run_dir, step)
+            mark_repair_action_execution_frontier_consumed(
+                out_dir,
+                initial_frontier,
+                {"status": "fail", "summary": "initial probe failed"},
+            )
+            changed_frontier = self._current_action_frontier(
+                run_dir,
+                step,
+                summary="reconcile current leaf evidence after new CCTG slice",
+            )
+
+            result = resume_prior_resource_failed_validation(
+                run_dir,
+                out_dir,
+                0,
+                step=step,
+                action_execution_frontier=changed_frontier,
+            )
+
+        self.assertNotEqual(
+            initial_frontier["identity_sha256"],
+            changed_frontier["identity_sha256"],
+        )
+        self.assertEqual(result["status"], "not_run")
+
+    def test_approval_or_malformed_action_cannot_invalidate_validation_cache(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir, out_dir, step = self._post_validation_fixture(
+                Path(temp_dir), materialization_status="pass"
+            )
+            for action in (
+                {
+                    "id": "repair.requires_approval",
+                    "requires_approval": True,
+                    "acceptance_checkers": ["case_stage_leaf_static"],
+                },
+                {
+                    "id": "repair.malformed",
+                    "requires_approval": False,
+                    "acceptance_checkers": [],
+                },
+            ):
+                self._write_repair_action_disposition(run_dir, step, [action])
+                frontier = current_repair_action_execution_frontier(
+                    run_dir,
+                    step,
+                    "operator_leaf_closure",
+                )
+                result = resume_prior_resource_failed_validation(
+                    run_dir,
+                    out_dir,
+                    0,
+                    step=step,
+                    action_execution_frontier=frontier,
+                )
+                self.assertIsNone(frontier)
+                self.assertEqual(result["status"], "pass")
 
     def test_incomplete_empty_report_blocks_without_spinning(self) -> None:
         result = repair_loop_disposition({"status": "incomplete", "step_results": []})
