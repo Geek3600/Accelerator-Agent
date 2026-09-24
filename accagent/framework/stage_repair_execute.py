@@ -114,6 +114,7 @@ from accagent.framework.stage_llm import (
     expanded_vcs_command_rewrite_authority,
     run_stage_agent,
 )
+from accagent.framework.stage_verification_plan import leaf_module_checks
 from accagent.framework.verification_evidence_contract import (
     certificate_contract_errors,
     promotion_evidence_binding_fingerprint,
@@ -164,6 +165,9 @@ CAPABILITY_REPAIR_AGENT_CONTEXT_SCHEMA_VERSION = (
 )
 BOUNDARY_SIGNAL_MAP_SCHEMA_VERSION = (
     "spatialaccagent.connected_kernel_boundary_signal_map.v1"
+)
+OPERATOR_LEAF_STATIC_INVENTORY_TRACE_SCHEMA_VERSION = (
+    "spatialaccagent.operator_leaf_static_inventory_trace.v1"
 )
 REPAIR_EXECUTION_AGENT_CONTEXT_SCHEMA_VERSION = (
     "spatialaccagent.repair_execution_agent_context.v1"
@@ -30451,6 +30455,242 @@ def execute_causal_slice_repair(
     }
 
 
+def operator_leaf_static_inventory_trace(
+    run_dir: Path,
+) -> dict[str, Any]:
+    """Bind the checker-visible generated RTL inventory to model semantics.
+
+    This is a read-only diagnostic. It neither regenerates generated RTL nor
+    executes the static gate; the latter remains owned by the configured case
+    adapter. Keeping this evidence separate lets a repair Agent distinguish a
+    stale checker contract from a genuinely absent generated module.
+    """
+
+    generated_dir = run_dir / "generated" / "chisel"
+    pipeline_path = run_dir / "pipeline_planning" / "pipeline_plan.json"
+    model_path = run_dir / "input" / "model_config.json"
+    checker_path = Path.cwd() / "scripts" / "verification" / "case_hierarchical_check.py"
+    blockers: list[str] = []
+    pipeline = read_json_if_exists(pipeline_path)
+    model_config = read_json_if_exists(model_path)
+    if not pipeline:
+        blockers.append(f"pipeline plan is unavailable: {pipeline_path}")
+    if not model_config:
+        blockers.append(f"model configuration is unavailable: {model_path}")
+
+    source_rows: list[dict[str, Any]] = []
+    source_text_by_module: dict[str, str] = {}
+    declared_modules: set[str] = set()
+    for path in sorted(generated_dir.glob("*.sv")):
+        try:
+            text = read_text(path)
+        except OSError:
+            blockers.append(f"generated RTL is unreadable: {path}")
+            continue
+        modules = re.findall(r"(?m)^module\s+([A-Za-z_][A-Za-z0-9_$]*)\b", text)
+        declared_modules.update(modules)
+        for module in modules:
+            source_text_by_module[module] = text
+        source_rows.append(
+            {
+                "path": str(path.resolve()),
+                "sha256": sha256_file(path),
+                "bytes": path.stat().st_size,
+                "modules": modules,
+            }
+        )
+    if not source_rows:
+        blockers.append(f"generated RTL inventory is empty: {generated_dir}")
+
+    def module_available(requirement: str) -> bool:
+        if ":" not in requirement or "." not in requirement:
+            return requirement in declared_modules
+        parent_role, module_base = requirement.split(":", 1)
+        parent, role = parent_role.split(".", 1)
+        parent_text = source_text_by_module.get(parent, "")
+        role_pattern = r"\w+" if role == "*" else re.escape(role)
+        return re.search(
+            rf"\b{re.escape(module_base)}(?:_\d+)?\s+{role_pattern}\s*\(",
+            parent_text,
+        ) is not None
+
+    stage_rows: list[dict[str, Any]] = []
+    for stage in pipeline.get("stages", []) if isinstance(pipeline.get("stages"), list) else []:
+        if not isinstance(stage, dict):
+            continue
+        required_modules = leaf_module_checks(stage, model_config)
+        stage_id = str(stage.get("stage_id") or "")
+        report_path = (
+            run_dir
+            / "verification"
+            / "real_tools"
+            / f"case_stage_leaf_static__leaf_stage_{stage_id}.json"
+        )
+        report = read_json_if_exists(report_path)
+        report_body = report.get("result") if isinstance(report.get("result"), dict) else report
+        stage_rows.append(
+            {
+                "stage_id": stage_id,
+                "op": stage.get("op"),
+                "kind": stage.get("kind"),
+                "required_modules": required_modules,
+                "missing_modules": [
+                    requirement
+                    for requirement in required_modules
+                    if not module_available(requirement)
+                ],
+                "static_report": {
+                    "path": str(report_path.resolve()),
+                    "sha256": sha256_file(report_path) if report_path.is_file() else None,
+                    "status": report_body.get("status") if isinstance(report_body, dict) else None,
+                    "blockers": (
+                        report_body.get("blockers", [])
+                        if isinstance(report_body, dict)
+                        else []
+                    ),
+                },
+            }
+        )
+    return {
+        "schema_version": OPERATOR_LEAF_STATIC_INVENTORY_TRACE_SCHEMA_VERSION,
+        "status": "pass" if not blockers else "fail",
+        "policy": {
+            "read_only": True,
+            "generated_rtl_write": False,
+            "static_gate_rerun": False,
+            "llm_call": False,
+        },
+        "run_dir": str(run_dir.resolve()),
+        "pipeline_plan": {
+            "path": str(pipeline_path.resolve()),
+            "sha256": sha256_file(pipeline_path) if pipeline_path.is_file() else None,
+        },
+        "model_config": {
+            "path": str(model_path.resolve()),
+            "sha256": sha256_file(model_path) if model_path.is_file() else None,
+        },
+        "checker": {
+            "path": str(checker_path.resolve()),
+            "sha256": sha256_file(checker_path) if checker_path.is_file() else None,
+        },
+        "generated_rtl": source_rows,
+        "declared_modules": sorted(declared_modules),
+        "stage_requirements": stage_rows,
+        "blockers": blockers,
+    }
+
+
+def _operator_leaf_inventory_cause_class(trace: dict[str, Any]) -> dict[str, Any]:
+    stage_rows = trace.get("stage_requirements", [])
+    stage_rows = stage_rows if isinstance(stage_rows, list) else []
+    missing = [
+        {
+            "stage_id": row.get("stage_id"),
+            "missing_modules": row.get("missing_modules", []),
+        }
+        for row in stage_rows
+        if isinstance(row, dict) and row.get("missing_modules")
+    ]
+    failed_reports = [
+        {
+            "stage_id": row.get("stage_id"),
+            "status": row.get("static_report", {}).get("status"),
+            "blockers": row.get("static_report", {}).get("blockers", []),
+        }
+        for row in stage_rows
+        if isinstance(row, dict)
+        and isinstance(row.get("static_report"), dict)
+        and row["static_report"].get("status") == "fail"
+    ]
+    if missing:
+        cause_class = "generated_rtl_module_missing"
+        summary = "the current model-derived leaf contract is absent from generated RTL"
+    elif failed_reports:
+        cause_class = "static_checker_inventory_inconsistency"
+        summary = (
+            "the current model-derived modules are present, while persisted static "
+            "reports still fail; rerun the configured static gate with the current checker"
+        )
+    else:
+        cause_class = "no_static_inventory_contradiction"
+        summary = "the current generated RTL inventory and available static reports agree"
+    return {
+        "status": "pass",
+        "cause_class": cause_class,
+        "summary": summary,
+        "missing_model_required_modules": missing,
+        "failed_static_reports": failed_reports,
+    }
+
+
+def produce_operator_leaf_static_inventory_trace(
+    *,
+    run_dir: Path,
+    out_dir: Path,
+    step: dict[str, Any],
+) -> dict[str, Any]:
+    trace = operator_leaf_static_inventory_trace(run_dir)
+    trace.update(
+        {
+            "repair_kind": "operator_leaf_static_inventory_trace",
+            "requested_capability_id": step.get("action", {}).get(
+                "requested_capability_id"
+            ),
+        }
+    )
+    path = out_dir / f"{safe_step_id(step)}_operator_leaf_static_inventory_trace.json"
+    write_json(path, trace)
+    return {
+        "status": trace["status"],
+        "summary": (
+            "recorded a hash-bound generated RTL inventory for the current operator-leaf contract"
+            if trace["status"] == "pass"
+            else "operator-leaf generated RTL inventory is incomplete"
+        ),
+        "stage_passed": False,
+        "repair_kind": "operator_leaf_static_inventory_trace",
+        "context_package": str(path),
+        "capability_reports": [str(path)],
+    }
+
+
+def check_operator_leaf_static_inventory_trace(
+    *,
+    run_dir: Path,
+    out_dir: Path,
+    step: dict[str, Any],
+) -> dict[str, Any]:
+    trace = operator_leaf_static_inventory_trace(run_dir)
+    classification = _operator_leaf_inventory_cause_class(trace)
+    package = {
+        **trace,
+        "repair_kind": "operator_leaf_static_inventory_trace_check",
+        "requested_capability_id": step.get("action", {}).get(
+            "requested_capability_id"
+        ),
+        "classification": classification,
+    }
+    path = out_dir / f"{safe_step_id(step)}_operator_leaf_static_inventory_trace_check.json"
+    write_json(path, package)
+    if trace["status"] != "pass":
+        return {
+            "status": "fail",
+            "summary": "operator-leaf static inventory cannot be classified from current sources",
+            "repair_kind": "operator_leaf_static_inventory_trace_check",
+            "context_package": str(path),
+            "capability_reports": [str(path)],
+        }
+    return {
+        "status": "pass",
+        "summary": classification["summary"],
+        "stage_passed": False,
+        "requires_agent_followup": True,
+        "repair_kind": "operator_leaf_static_inventory_trace_check",
+        "context_package": str(path),
+        "capability_reports": [str(path)],
+    }
+
+
 def execute_verification_capability_repair(
     step: dict[str, Any],
     source_state: Path,
@@ -30475,6 +30715,18 @@ def execute_verification_capability_repair(
         else None
     )
     repair_kind = str(action.get("repair_kind") or "")
+    if repair_kind == "operator_leaf_static_inventory_trace":
+        return produce_operator_leaf_static_inventory_trace(
+            run_dir=run_dir,
+            out_dir=out_dir,
+            step=step,
+        )
+    if repair_kind == "operator_leaf_static_inventory_trace_check":
+        return check_operator_leaf_static_inventory_trace(
+            run_dir=run_dir,
+            out_dir=out_dir,
+            step=step,
+        )
     if repair_kind == "repair.reconcile_exact_board_lifecycle_cctg_observation_contract":
         return reconcile_exact_board_lifecycle_cctg_observation_contract(
             run_dir=run_dir,
@@ -34086,7 +34338,7 @@ def repair_loop_disposition(
         # patch transaction.  Capability-repair steps still persist their
         # blocked handoff as agent_patch_application, so route a supported
         # request before that artifact can suppress the upstream replan.
-        if result.get("status") == "blocked":
+        if result.get("status") in {"blocked", "llm_waiting_for_current_evidence"}:
             required_capabilities = [
                 copy.deepcopy(value)
                 for value in result.get("required_capabilities", [])

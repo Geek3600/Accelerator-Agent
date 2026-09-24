@@ -100,15 +100,47 @@ def case_adapter_for_state(state: dict[str, Any], run_dir: Path) -> dict[str, An
         return build_case_adapter(model, run_dir, tool_materials_dir)
 
 
-def leaf_module_checks(stage: dict[str, Any]) -> list[str]:
+def leaf_module_checks(
+    stage: dict[str, Any], model_config: dict[str, Any] | None = None
+) -> list[str]:
+    """Return generated RTL modules required by one model-derived leaf stage."""
+
     kind = str(stage.get("kind", ""))
     op = str(stage.get("op", ""))
+    model_config = model_config if isinstance(model_config, dict) else {}
+    norm = model_config.get("norm", {})
+    norm = norm if isinstance(norm, dict) else {}
+    attention = model_config.get("attention", {})
+    attention = attention if isinstance(attention, dict) else {}
+    position_encoding = attention.get("position_encoding", {})
+    position_encoding = (
+        position_encoding if isinstance(position_encoding, dict) else {}
+    )
+    mlp = model_config.get("mlp", {})
+    mlp = mlp if isinstance(mlp, dict) else {}
+
     if kind == "norm":
-        return ["RMSNorm", "VectorNorm"]
+        return ["RMSNorm"] if norm.get("type") == "rms_norm" else ["VectorNorm"]
     if kind == "attention":
-        return ["QKVProjection", "RoPE", "AttentionGQA", "Linear_1"]
+        checks = ["QKVProjection"]
+        attention_kind = str(attention.get("kind") or "mha").lower()
+        checks.append(
+            {
+                "gqa": "AttentionGQA",
+                "mqa": "AttentionMQA",
+            }.get(attention_kind, "Attention")
+        )
+        if position_encoding.get("type") == "rope":
+            checks.append("RoPE")
+        checks.append("Linear_1")
+        return checks
     if kind == "residual":
-        return ["ResidualAdd", "Queue"]
+        return ["ResidualAdd", "PhysicalStreamFifo"]
+    if mlp.get("type") == "dense":
+        if kind == "mlp":
+            return ["DenseFFN"]
+        if kind == "activation":
+            return ["Activation"]
     if op == "mlp_gate_proj":
         return ["GatedMLP.gate:Linear"]
     if op == "mlp_up_proj":
@@ -122,7 +154,11 @@ def leaf_module_checks(stage: dict[str, Any]) -> list[str]:
     return []
 
 
-def build_hierarchical_verification_plan(pipeline: dict[str, Any], case_adapter: dict[str, Any]) -> dict[str, Any]:
+def build_hierarchical_verification_plan(
+    pipeline: dict[str, Any],
+    case_adapter: dict[str, Any],
+    model_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     stages = pipeline.get("stages", [])
     stage_leaf_gate = gate_name(case_adapter, "stage_leaf_static")
     leaf_functional_gate = gate_name(case_adapter, "leaf_functional")
@@ -163,7 +199,7 @@ def build_hierarchical_verification_plan(pipeline: dict[str, Any], case_adapter:
             "kind": stage.get("kind"),
             "input_shape": stage.get("input_shape", {}),
             "output_shape": stage.get("output_shape", {}),
-            "module_checks": leaf_module_checks(stage),
+            "module_checks": leaf_module_checks(stage, model_config),
             "required_evidence": [
                 real_weight_gate,
                 target_model_reference_gate,
@@ -517,7 +553,10 @@ def build_verification_plan(state: dict[str, Any]) -> dict[str, Any]:
     pipeline = read_json(artifact_path(state, "artifact.stage3.pipeline_plan"))
     run_dir = Path(str(artifact_path(state, "artifact.stage3.pipeline_plan"))).resolve().parents[1]
     case_adapter = case_adapter_for_state(state, run_dir)
-    hierarchy = build_hierarchical_verification_plan(pipeline, case_adapter)
+    model_config = read_json(artifact_path(state, "artifact.input.model_config"))
+    hierarchy = build_hierarchical_verification_plan(
+        pipeline, case_adapter, model_config
+    )
     return {
         "schema_version": "spatialaccagent.verification_plan.v0",
         "stage": "verification_artifacts",

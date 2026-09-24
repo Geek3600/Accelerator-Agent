@@ -29,6 +29,7 @@ from accagent.framework.board_validation_scope import (
     resolve_board_validation_scope,
     validation_scope_record_errors,
 )
+from accagent.framework.stage_verification_plan import leaf_module_checks
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -63,30 +64,6 @@ def safe_id(value: Any, default: str = "unknown") -> str:
     text = str(value or default).strip().lower()
     text = re.sub(r"[^a-z0-9]+", "_", text)
     return text.strip("_") or default
-
-
-def leaf_module_checks(stage: dict[str, Any]) -> list[str]:
-    kind = str(stage.get("kind", ""))
-    op = str(stage.get("op", ""))
-    if kind == "norm":
-        # LayerNorm and RMSNorm share the physical VectorNorm core.  The
-        # model-derived generated RTL, not a family name, selects mean/beta.
-        return ["VectorNorm"]
-    if kind == "attention":
-        return ["QKVProjection", "RoPE", "AttentionGQA", "Linear_1"]
-    if kind == "residual":
-        return ["ResidualAdd", "Queue"]
-    if op == "mlp_gate_proj":
-        return ["GatedMLP.gate:Linear"]
-    if op == "mlp_up_proj":
-        return ["GatedMLP.up:Linear"]
-    if op == "mlp_down_proj":
-        return ["GatedMLP.down:Linear"]
-    if op == "activation_mul" or kind in {"activation", "activation_mul"}:
-        return ["GatedMLP.act:Activation", "GatedMLP.mul:ElementwiseMul"]
-    if kind == "mlp":
-        return ["GatedMLP.*:Linear"]
-    return []
 
 
 def pipeline_plan_path(run_dir: Path) -> Path:
@@ -160,6 +137,8 @@ def check_stage_leaf_static(run_dir: Path) -> dict[str, Any]:
         blockers.append(f"pipeline plan missing: {plan_path}")
         return result("stage_leaf_static", checks, blockers, run_dir)
     plan = read_json(plan_path)
+    model_path = model_config_path(run_dir)
+    model_config = read_json(model_path) if model_path.exists() else {}
     stages = plan.get("stages", [])
     edges = plan.get("stream_edges", [])
     data_edges = plan.get("data_edges", [])
@@ -227,7 +206,12 @@ def check_stage_leaf_static(run_dir: Path) -> dict[str, Any]:
     if focus_stage_id and not stages_to_check:
         blockers.append(f"requested leaf stage not found in pipeline plan: {focus_stage_id}")
     for stage in stages_to_check:
-        missing = [name for name in leaf_module_checks(stage) if not module_available(name, paths, text_index)]
+        required_modules = leaf_module_checks(stage, model_config)
+        missing = [
+            name
+            for name in required_modules
+            if not module_available(name, paths, text_index)
+        ]
         status = "pass" if not missing else "fail"
         checks.append(
             {
@@ -235,7 +219,7 @@ def check_stage_leaf_static(run_dir: Path) -> dict[str, Any]:
                 "stage_id": stage.get("stage_id"),
                 "op": stage.get("op"),
                 "kind": stage.get("kind"),
-                "required_modules": leaf_module_checks(stage),
+                "required_modules": required_modules,
                 "missing_modules": missing,
                 "status": status,
             }

@@ -371,6 +371,35 @@ class RepairExecutionFeedbackTest(unittest.TestCase):
 
         self.assertEqual(result["status"], "blocked")
 
+    def test_waiting_agent_supported_capability_replans_upstream(self) -> None:
+        capability = {
+            "capability_id": "planned_tool.operator_leaf_static_inventory_trace",
+            "debug_layer": "operator_leaf_modules",
+            "producer_scope": "operator_leaf_closure",
+            "target_modules": ["stage_02_residual_add_1"],
+            "required_evidence": ["hash-bound generated RTL inventory"],
+            "rationale": "classify the checker-visible generated RTL inventory",
+        }
+        result = repair_loop_disposition(
+            {
+                "status": "incomplete",
+                "step_results": [
+                    {
+                        "result": {
+                            "status": "llm_waiting_for_current_evidence",
+                            "summary": "need a current generated RTL inventory",
+                            "framework_action_required": True,
+                            "required_capabilities": [capability],
+                        }
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(result["status"], "continue")
+        self.assertTrue(result["upstream_capability_replan_required"])
+        self.assertEqual(result["required_capabilities"], [capability])
+
     def test_unchanged_failure_without_new_observation_blocks(self) -> None:
         result = repair_loop_disposition(
             {

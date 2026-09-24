@@ -673,6 +673,30 @@ def required_capability_repair_actions(
                 "requested_capability_id": capability_id,
                 "read_only_evidence_reconciliation": True,
             }
+        elif (
+            capability_id
+            in {
+                "planned_tool.operator_leaf_static_inventory_trace",
+                "planned_checker.operator_leaf_static_inventory_trace_check",
+            }
+            and producer_scope == "operator_leaf_closure"
+            and debug_layer == "operator_leaf_modules"
+        ):
+            action_scope = "verification_capability_repair"
+            repair_kind = {
+                "planned_tool.operator_leaf_static_inventory_trace": (
+                    "operator_leaf_static_inventory_trace"
+                ),
+                "planned_checker.operator_leaf_static_inventory_trace_check": (
+                    "operator_leaf_static_inventory_trace_check"
+                ),
+            }[capability_id]
+            producer_binding = {
+                "repair_gate": "case_stage_leaf_static",
+                "requested_producer_scope": producer_scope,
+                "requested_capability_id": capability_id,
+                "read_only_generated_rtl_inventory": True,
+            }
         elif producer_scope == "verification_capability_repair":
             action_scope = producer_scope
             repair_kind = capability_id
@@ -3557,6 +3581,7 @@ def read_only_capability_action_is_auto_executable(
         for key in ("id", "action_type", "rationale")
     ).lower()
     read_only_capability_markers = {
+        "operator_leaf_static_inventory_trace",
         "vcs_compile_diagnostic_source_provenance",
         "connected_kernel_current_dag_boundary_port_provenance",
         "connected_kernel_current_dag_boundary_signal_provenance",
@@ -3575,6 +3600,8 @@ def read_only_capability_action_is_auto_executable(
         if (
             deterministic_action.get("repair_kind")
             in {
+                "operator_leaf_static_inventory_trace",
+                "operator_leaf_static_inventory_trace_check",
                 "vcs_compile_diagnostic_source_provenance",
                 "connected_kernel_current_dag_boundary_signal_map",
                 "repair.reconcile_exact_board_lifecycle_cctg_observation_contract",
@@ -3760,6 +3787,8 @@ def restore_persisted_read_only_capability_steps(
             continue
         action = step.get("action", {})
         if not isinstance(action, dict) or action.get("repair_kind") not in {
+            "operator_leaf_static_inventory_trace",
+            "operator_leaf_static_inventory_trace_check",
             "vcs_compile_diagnostic_source_provenance",
             "connected_kernel_current_dag_boundary_signal_map",
             "repair.reconcile_exact_board_lifecycle_cctg_observation_contract",
