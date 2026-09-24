@@ -14,6 +14,9 @@ from typing import Any
 
 
 SCHEMA_VERSION = "spatialaccagent.target_model_weight_manifest.v1"
+CHECKPOINT_INVENTORY_SCHEMA_VERSION = (
+    "spatialaccagent.target_model_checkpoint_inventory.v1"
+)
 
 
 class CatalogError(RuntimeError):
@@ -197,6 +200,99 @@ def validate_layer_coverage(rows: list[dict[str, Any]], num_layers: int) -> tupl
     return expected_layers, sorted(baseline)
 
 
+def adapter_pattern_match_facts(
+    tensor_names: list[str], patterns: list[str]
+) -> list[dict[str, Any]]:
+    """Record adapter-regex observations without treating them as validation."""
+
+    facts: list[dict[str, Any]] = []
+    for pattern in patterns:
+        try:
+            compiled = re.compile(pattern)
+        except re.error as exc:
+            facts.append(
+                {
+                    "pattern": pattern,
+                    "status": "invalid",
+                    "error": str(exc),
+                    "matched_tensor_names": [],
+                }
+            )
+            continue
+        matches = [name for name in tensor_names if compiled.fullmatch(name)]
+        facts.append(
+            {
+                "pattern": pattern,
+                "status": "matched" if matches else "no_match",
+                "named_groups": sorted(compiled.groupindex),
+                "matched_tensor_names": matches,
+            }
+        )
+    return facts
+
+
+def checkpoint_inventory(
+    *,
+    model_id: str,
+    snapshot: Path,
+    revision: str,
+    config_path: Path,
+    config: dict[str, Any],
+    checkpoint_fingerprint: str,
+    checkpoint_file_rows: list[dict[str, Any]],
+    tensor_names: list[str],
+    semantic_adapter_path: Path,
+    semantic_adapter_sha256: str,
+    decoder_layer_tensor_patterns: list[str],
+) -> dict[str, Any]:
+    """Return checkpoint facts for a bounded adapter-repair decision.
+
+    This diagnostic artifact is not a Transformer-block scope catalog or
+    evidence that a DUT consumed weights.
+    """
+
+    return {
+        "schema_version": CHECKPOINT_INVENTORY_SCHEMA_VERSION,
+        "status": "diagnostic",
+        "purpose": (
+            "checkpoint and adapter facts for repair diagnosis only; this is not "
+            "a Transformer-block scope manifest or verification-pass evidence"
+        ),
+        "model_id": model_id,
+        "snapshot": {"snapshot_dir": str(snapshot), "revision": revision},
+        "config": {
+            "path": str(config_path),
+            "sha256": sha256_file(config_path),
+            "model_type": config.get("model_type"),
+            "architectures": config.get("architectures"),
+            "num_hidden_layers": config.get("num_hidden_layers"),
+        },
+        "checkpoint": {
+            "fingerprint_sha256": checkpoint_fingerprint,
+            "shards": [
+                {
+                    "basename": Path(str(row["path"])).name,
+                    "size_bytes": row["size_bytes"],
+                    "sha256": row["sha256"],
+                    "header_len": row["header_len"],
+                    "tensor_count": row["tensor_count"],
+                }
+                for row in checkpoint_file_rows
+            ],
+            "header_tensor_names": tensor_names,
+        },
+        "semantic_adapter": {
+            "path": str(semantic_adapter_path),
+            "sha256": semantic_adapter_sha256,
+            "decoder_layer_tensor_patterns": decoder_layer_tensor_patterns,
+            "pattern_match_facts": adapter_pattern_match_facts(
+                tensor_names,
+                decoder_layer_tensor_patterns,
+            ),
+        },
+    }
+
+
 def generate(args: argparse.Namespace) -> dict[str, Any]:
     run_dir = args.run_dir.resolve()
     out_dir = (args.out_dir or run_dir / "verification" / "model_weights").resolve()
@@ -232,20 +328,39 @@ def generate(args: argparse.Namespace) -> dict[str, Any]:
     checkpoint_fingerprint = canonical_sha256(
         [{"path": Path(row["path"]).name, "size_bytes": row["size_bytes"], "sha256": row["sha256"]} for row in file_rows]
     )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = out_dir / "weight_manifest.json"
+    full_catalog_path = out_dir / "full_tensor_catalog.json"
+    accelerator_catalog_path = out_dir / "transformer_block_weight_catalog.json"
+    checkpoint_inventory_path = out_dir / "checkpoint_inventory.json"
+    hashes_path = out_dir / "artifact_hashes.json"
+    semantic_adapter_path = args.semantic_adapter.resolve()
+    semantic_adapter_hash = sha256_file(semantic_adapter_path)
+    patterns = [str(value) for value in adapter.get("decoder_layer_tensor_patterns", [])]
+    write_json(
+        checkpoint_inventory_path,
+        checkpoint_inventory(
+            model_id=args.model_id,
+            snapshot=snapshot,
+            revision=revision,
+            config_path=snapshot / "config.json",
+            config=config,
+            checkpoint_fingerprint=checkpoint_fingerprint,
+            checkpoint_file_rows=file_rows,
+            tensor_names=names,
+            semantic_adapter_path=semantic_adapter_path,
+            semantic_adapter_sha256=semantic_adapter_hash,
+            decoder_layer_tensor_patterns=patterns,
+        ),
+    )
     scoped, excluded, used_pattern = bind_transformer_scope(
         all_rows,
-        [str(value) for value in adapter.get("decoder_layer_tensor_patterns", [])],
+        patterns,
         num_layers,
     )
     scoped = hash_tensor_slices(scoped)
     layer_ids, suffixes = validate_layer_coverage(scoped, num_layers)
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = out_dir / "weight_manifest.json"
-    full_catalog_path = out_dir / "full_tensor_catalog.json"
-    accelerator_catalog_path = out_dir / "transformer_block_weight_catalog.json"
-    hashes_path = out_dir / "artifact_hashes.json"
-    semantic_adapter_hash = sha256_file(args.semantic_adapter.resolve())
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "status": "pass",
@@ -345,6 +460,7 @@ def generate(args: argparse.Namespace) -> dict[str, Any]:
         "manifest": str(manifest_path),
         "full_catalog": str(full_catalog_path),
         "accelerator_catalog": str(accelerator_catalog_path),
+        "checkpoint_inventory": str(checkpoint_inventory_path),
         "artifact_hashes": str(hashes_path),
     }
 

@@ -116,12 +116,17 @@ class RepairPatchExecutionTest(unittest.TestCase):
             script_path = tool_dir / "weight_catalog.py"
             argv_input_path = tool_dir / "semantic_adapter.json"
             output_path = verification_dir / "model_weights" / "partial_report.json"
+            checkpoint_inventory_path = verification_dir / "model_weights" / "checkpoint_inventory.json"
             case_adapter_path = input_dir / "case_adapter.json"
             pipeline_plan_path = pipeline_dir / "pipeline_plan.json"
             script_path.write_text("print('catalog')\n", encoding="utf-8")
             argv_input_path.write_text('{"adapter": "current"}\n', encoding="utf-8")
             output_path.parent.mkdir()
             output_path.write_text('{"status": "partial"}\n', encoding="utf-8")
+            checkpoint_inventory_path.write_text(
+                '{"status": "diagnostic", "header_tensor_names": ["h.0.attn.weight"]}\n',
+                encoding="utf-8",
+            )
             case_adapter_path.write_text('{"case": "current"}\n', encoding="utf-8")
             pipeline_plan_path.write_text('{"pipeline": "current"}\n', encoding="utf-8")
 
@@ -146,7 +151,10 @@ class RepairPatchExecutionTest(unittest.TestCase):
                             "payload": {"scripts": [{"path": str(script_path)}]}
                         },
                         "output_fingerprints": {
-                            "artifacts": [{"path": str(output_path)}]
+                            "artifacts": [
+                                {"path": str(output_path)},
+                                {"path": str(checkpoint_inventory_path)},
+                            ]
                         },
                     }
                 ),
@@ -178,6 +186,7 @@ class RepairPatchExecutionTest(unittest.TestCase):
                 str(script_path),
                 str(argv_input_path),
                 str(output_path),
+                str(checkpoint_inventory_path),
                 str(case_adapter_path),
                 str(pipeline_plan_path),
             }.issubset(document_paths)
@@ -185,7 +194,10 @@ class RepairPatchExecutionTest(unittest.TestCase):
         context = bundle["earliest_failed_real_tool_context"]
         self.assertEqual(context["tool_record"], str(tool_record_path))
         self.assertEqual(context["file_valued_argv_inputs"], [str(script_path), str(argv_input_path)])
-        self.assertEqual(context["produced_reports"], [str(output_path)])
+        self.assertEqual(
+            context["produced_reports"],
+            [str(output_path), str(checkpoint_inventory_path)],
+        )
         self.assertEqual(
             {entry["path"] for entry in context["semantic_authority"]},
             {str(case_adapter_path), str(pipeline_plan_path)},

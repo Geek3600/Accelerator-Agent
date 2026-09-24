@@ -157,6 +157,80 @@ class TransformerBlockWeightScopeTest(TestCase):
             self.assertTrue(catalog["scope_coverage_complete"])
             self.assertTrue(all(row["source_slice_sha256"] for row in catalog["tensors"]))
             self.assertEqual(len(json.loads(Path(outputs["manifest"]).read_text())["checkpoint_files"]), 2)
+            inventory = json.loads(
+                Path(outputs["checkpoint_inventory"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(inventory["status"], "diagnostic")
+            self.assertEqual(
+                [row["basename"] for row in inventory["checkpoint"]["shards"]],
+                ["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"],
+            )
+            self.assertEqual(
+                inventory["semantic_adapter"]["pattern_match_facts"][0]["status"],
+                "matched",
+            )
+
+    def test_inventory_persists_when_adapter_pattern_does_not_match(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            snapshot = root / "snapshot"
+            run_dir = root / "run"
+            snapshot.mkdir()
+            (run_dir / "input").mkdir(parents=True)
+            (snapshot / "config.json").write_text(
+                json.dumps({"model_type": "synthetic", "num_hidden_layers": 1}),
+                encoding="utf-8",
+            )
+            write_safetensors(
+                snapshot / "model.safetensors",
+                ["h.0.attn.c_attn.weight", "h.0.ln_1.weight"],
+            )
+            (run_dir / "input" / "model_config.json").write_text(
+                json.dumps({"model_type": "synthetic", "num_layers": 1}),
+                encoding="utf-8",
+            )
+            adapter_path = root / "semantic_adapter.json"
+            pattern = r"^transformer\.h\.(?P<layer>\d+)\.(?P<suffix>.+)$"
+            adapter_path.write_text(
+                json.dumps(
+                    {
+                        "accelerator_scope": "transformer_blocks_only",
+                        "decoder_layer_tensor_patterns": [pattern],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(CatalogError, "no checkpoint tensor matched"):
+                generate(
+                    Namespace(
+                        run_dir=run_dir,
+                        out_dir=None,
+                        model_id="synthetic/model",
+                        model_dir=snapshot,
+                        semantic_adapter=adapter_path,
+                    )
+                )
+
+            inventory_path = run_dir / "verification" / "model_weights" / "checkpoint_inventory.json"
+            inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(inventory["status"], "diagnostic")
+        self.assertEqual(
+            inventory["checkpoint"]["header_tensor_names"],
+            ["h.0.attn.c_attn.weight", "h.0.ln_1.weight"],
+        )
+        self.assertEqual(
+            inventory["semantic_adapter"]["pattern_match_facts"],
+            [
+                {
+                    "pattern": pattern,
+                    "status": "no_match",
+                    "named_groups": ["layer", "suffix"],
+                    "matched_tensor_names": [],
+                }
+            ],
+        )
 
     def test_semantic_tensor_selection_is_adapter_driven(self) -> None:
         stage_map = {

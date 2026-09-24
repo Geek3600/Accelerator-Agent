@@ -340,6 +340,7 @@ def built_in_transformer_case_adapter(
                 str(real_dir / "weight_manifest.json"),
                 str(real_dir / "full_tensor_catalog.json"),
                 str(real_dir / "transformer_block_weight_catalog.json"),
+                str(real_dir / "checkpoint_inventory.json"),
                 str(real_dir / "artifact_hashes.json"),
             ],
             capabilities=["real_model_weights", "complete_scope_weight_manifest", "artifact_hash_manifest"],

@@ -62,6 +62,10 @@ class BuiltinTransformerCaseAdapterTest(unittest.TestCase):
                     weight_tool["argv"][weight_tool["argv"].index("--model-dir") + 1],
                     str(model_dir),
                 )
+                self.assertIn(
+                    str(run_dir / "verification" / "model_weights" / "checkpoint_inventory.json"),
+                    weight_tool["produces"],
+                )
 
             self.assertNotEqual(
                 adapters["gpt2"]["model_semantic_adapter"]["checkpoint"]["model_dir"],
