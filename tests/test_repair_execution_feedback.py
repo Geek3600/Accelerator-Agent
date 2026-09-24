@@ -188,6 +188,152 @@ class RepairExecutionFeedbackTest(unittest.TestCase):
         self.assertEqual(result["status"], "blocked")
         self.assertEqual(result["no_progress_failures"], ["unchanged applied patch replay did not pass"])
 
+    def test_repeated_failed_probe_uses_content_not_runtime_duration(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            probe_path = Path(temp_dir) / "resource_resume.json"
+
+            def write_probe(*, duration_sec: float, stderr_tail: str) -> None:
+                probe_path.write_text(
+                    json.dumps(
+                        {
+                            "argv": ["python3", "case_hierarchical_check.py"],
+                            "case_adapter_tool": "case_stage_leaf_static",
+                            "duration_sec": duration_sec,
+                            "returncode": 1,
+                            "status": "fail",
+                            "summary": "returncode=1",
+                            "stderr_tail": stderr_tail,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            report = {
+                "status": "incomplete",
+                "step_results": [
+                    {
+                        "step_id": "repair_step.00",
+                        "scope": "verification_capability_repair",
+                        "result": {
+                            "status": "fail",
+                            "summary": "unchanged applied patch replay did not pass",
+                            "post_patch_capability_probe_log": str(probe_path),
+                            "llm_record": None,
+                            "capability_reports": [],
+                        },
+                    }
+                ],
+            }
+            write_probe(duration_sec=0.01, stderr_tail="same failure")
+            first = repair_loop_disposition(report)
+
+            write_probe(duration_sec=0.99, stderr_tail="same failure")
+            repeated = repair_loop_disposition(
+                report,
+                prior_failure_frontiers=first["observed_failure_frontiers"],
+            )
+
+            write_probe(duration_sec=0.02, stderr_tail="new failure observation")
+            changed = repair_loop_disposition(
+                report,
+                prior_failure_frontiers=first["observed_failure_frontiers"],
+            )
+
+        self.assertEqual(first["status"], "continue")
+        self.assertEqual(repeated["status"], "blocked")
+        self.assertEqual(changed["status"], "continue")
+
+    def test_repair_loop_reconstructs_legacy_archived_probe_frontier(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            state_path = run_dir / "verification_artifacts" / "sacg_state.json"
+            report_path = run_dir / "repair_execution" / "repair_execution_report.json"
+            loop_record_path = (
+                run_dir
+                / "repair_execution"
+                / "loop"
+                / "iteration_0001"
+                / "iteration_record.json"
+            )
+            snapshot_path = loop_record_path.parent / "00_post_patch_probe.json"
+            state_path.parent.mkdir(parents=True)
+            report_path.parent.mkdir(parents=True)
+            loop_record_path.parent.mkdir(parents=True)
+            state_path.write_text("{}", encoding="utf-8")
+            snapshot_path.write_text(
+                json.dumps(
+                    {
+                        "argv": ["python3", "case_hierarchical_check.py"],
+                        "case_adapter_tool": "case_stage_leaf_static",
+                        "duration_sec": 0.01,
+                        "returncode": 1,
+                        "status": "fail",
+                        "summary": "returncode=1",
+                        "stderr_tail": "same failure",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            current_probe = run_dir / "repair_execution" / "resource_resume.json"
+            current_probe.write_text(
+                json.dumps(
+                    {
+                        "argv": ["python3", "case_hierarchical_check.py"],
+                        "case_adapter_tool": "case_stage_leaf_static",
+                        "duration_sec": 0.99,
+                        "returncode": 1,
+                        "status": "fail",
+                        "summary": "returncode=1",
+                        "stderr_tail": "same failure",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = {
+                "status": "incomplete",
+                "errors": ["repair_step.00: unchanged replay"],
+                "step_results": [
+                    {
+                        "step_id": "repair_step.00",
+                        "scope": "verification_capability_repair",
+                        "result": {
+                            "status": "fail",
+                            "summary": "unchanged replay",
+                            "post_patch_capability_probe_log": str(current_probe),
+                            "llm_record": None,
+                            "capability_reports": [],
+                        },
+                    }
+                ],
+            }
+            loop_record_path.write_text(
+                json.dumps(
+                    {
+                        "repair_execution_report": report,
+                        "evidence_snapshots": [
+                            {
+                                "role": "post_patch_capability_probe_log",
+                                "snapshot_path": str(snapshot_path),
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "accagent.framework.stage_repair_execute.execute_repair",
+                return_value=(report_path, report),
+            ) as execute_mock, patch(
+                "accagent.framework.stage_repair_execute.archive_repair_loop_iteration",
+                return_value=run_dir / "iteration_record.json",
+            ):
+                _, result = run_repair_loop(
+                    Namespace(sacg_state=state_path, max_loop_iters=0)
+                )
+
+        execute_mock.assert_called_once()
+        self.assertEqual(result["repair_loop_disposition"]["status"], "blocked")
+
     def test_repair_loop_stops_after_unchanged_failure_without_new_observation(self) -> None:
         report = {
             "status": "incomplete",
