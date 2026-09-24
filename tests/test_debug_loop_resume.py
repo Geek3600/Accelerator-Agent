@@ -17,9 +17,156 @@ from accagent.framework.stage_debug_loop import (
     reusable_scope_checkpoint_prefix,
     run_stage6_verification,
 )
+from accagent.framework.flow_action_handoff import action_record_path
 
 
 class DebugLoopResumeTest(TestCase):
+    def test_debug_loop_consumes_one_current_flow_controller_handoff(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            state_path = run_dir / "verification_artifacts" / "sacg_state.json"
+            verification_state = run_dir / "verification" / "sacg_state.json"
+            repair_state = run_dir / "repair" / "sacg_state.json"
+            repair_plan_path = run_dir / "repair" / "repair_plan.json"
+            flow_result_path = (
+                run_dir
+                / "agent"
+                / "flow_controller"
+                / "001_debug_loop"
+                / "llm"
+                / "flow_controller_agent_result.json"
+            )
+            event_path = run_dir / "debug_loop" / "flow_events" / "001_retry.json"
+            action = {
+                "id": "debug_loop.run_current_leaf_gate",
+                "stage": "debug_loop",
+                "action_type": "real_tool_execution",
+                "acceptance_checkers": ["case_stage_leaf_static"],
+                "tool_roles": ["case_stage_leaf_static"],
+                "consumes": ["artifact.stage5.verification_artifact_contract"],
+                "produces": ["verification/operator_leaf/leaf_static_report.json"],
+                "rationale": "Run the current leaf static gate.",
+                "on_failure": "Keep the current layer blocked.",
+                "requires_approval": False,
+            }
+            for path in (state_path, verification_state, repair_state, repair_plan_path):
+                path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(json.dumps({"artifacts": [], "transitions": []}), encoding="utf-8")
+            verification_state.write_text("{}", encoding="utf-8")
+            repair_state.write_text("{}", encoding="utf-8")
+            flow_result_path.parent.mkdir(parents=True, exist_ok=True)
+            flow_result_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "spatialaccagent.stage_worker_record.v0",
+                        "agent": "flow_controller_agent",
+                        "stage": "flow_orchestration",
+                        "used_fallback": False,
+                        "error": None,
+                        "output": {
+                            "agent": "flow_controller_agent",
+                            "stage": "debug_loop",
+                            "status": "retry_current_stage",
+                            "summary": "retry the current leaf gate",
+                            "executable_actions": [action],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            import hashlib
+
+            event = {
+                "schema_version": "spatialaccagent.flow_event_action_record.v0",
+                "flow_event_index": 1,
+                "stage": "debug_loop",
+                "decision": "retry",
+                "sacg_state": str(state_path),
+                "llm_flow_controller": {"agent_record": str(flow_result_path)},
+                "executable_actions": [action],
+                "source_identities": {
+                    "source_sacg_state_sha256": hashlib.sha256(state_path.read_bytes()).hexdigest(),
+                    "flow_controller_result_sha256": hashlib.sha256(flow_result_path.read_bytes()).hexdigest(),
+                },
+            }
+            event_path.parent.mkdir(parents=True, exist_ok=True)
+            event_path.write_text(json.dumps(event), encoding="utf-8")
+            action_path = action_record_path(event_path, 1, action)
+            action_path.parent.mkdir(parents=True, exist_ok=True)
+            action_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "spatialaccagent.flow_action_record.v0",
+                        "source_flow_event": str(event_path),
+                        "action": action,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            repair_plan_path.write_text(
+                json.dumps(
+                    {
+                        "status": "needs_repair",
+                        "repair_workflow": {"status": "ready", "steps": [{"id": "repair_step.00"}]},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            observed: dict[str, object] = {}
+
+            def fake_plan_repair(args):
+                observed["handoff"] = args.flow_controller_handoff
+                return (
+                    run_dir / "repair" / "repair_report.json",
+                    {
+                        "status": "needs_repair",
+                        "outputs": {
+                            "sacg_state": str(repair_state),
+                            "repair_plan": str(repair_plan_path),
+                        },
+                    },
+                )
+
+            with patch(
+                "accagent.framework.stage_debug_loop.run_stage6_verification",
+                return_value=(
+                    run_dir / "verification" / "verification_result.json",
+                    {"status": "fail", "outputs": {"sacg_state": str(verification_state)}},
+                    {"status": "not_required"},
+                ),
+            ), patch(
+                "accagent.framework.stage_debug_loop.plan_repair",
+                side_effect=fake_plan_repair,
+            ), patch(
+                "accagent.framework.stage_debug_loop.run_repair_loop",
+                return_value=(
+                    run_dir / "repair_execution" / "repair_execution_report.json",
+                    {
+                        "status": "incomplete",
+                        "errors": ["unchanged repair frontier"],
+                        "repair_loop_disposition": {"status": "blocked", "summary": "unchanged repair frontier"},
+                    },
+                ),
+            ):
+                _, report = debug_loop(
+                    Namespace(
+                        sacg_state=state_path,
+                        max_iters=0,
+                        target_scope="operator_leaf_closure",
+                        timeout_sec=0,
+                        include_remote=True,
+                        stop_after_failed_repair=False,
+                    )
+                )
+            consumed_handoff = (
+                run_dir / "debug_loop" / "flow_handoffs" / "consumed.json"
+            ).is_file()
+
+        self.assertEqual(report["status"], "needs_repair")
+        self.assertEqual(observed["handoff"]["target_stage"], "debug_loop")
+        self.assertEqual(report["iterations"][0]["flow_controller_handoff"]["status"], "consumed")
+        self.assertTrue(consumed_handoff)
+
     def test_local_framework_exception_stops_current_debug_loop_without_spinning(self) -> None:
         with TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir)
@@ -44,6 +191,7 @@ class DebugLoopResumeTest(TestCase):
         self.assertEqual(report["status"], "needs_repair")
         self.assertEqual(len(report["iterations"]), 1)
         self.assertIn("missing Stage5 verification contract", report["summary"])
+        self.assertIn("KeyError", report["iterations"][0]["exception_traceback"])
         verification_mock.assert_called_once()
 
     def test_terminal_repair_loop_disposition_returns_to_flow_controller(self) -> None:

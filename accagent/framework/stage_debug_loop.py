@@ -10,9 +10,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import traceback
 from pathlib import Path
 from typing import Any
 
+from accagent.framework.flow_action_handoff import (
+    mark_stage6_flow_handoff_consumed,
+    pending_stage6_flow_handoff,
+)
 from accagent.framework.sacg_utils import artifact_path, run_dir_from_state, write_json
 from accagent.framework.stage_repair import plan_repair
 from accagent.framework.stage_repair_execute import (
@@ -536,6 +541,7 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     summary = ""
     scopes = scope_sequence(args.target_scope)
     initial_state_data = read_json(current_state)
+    pending_flow_handoff = pending_stage6_flow_handoff(run_dir, current_state)
     live_reusable_scopes = reusable_scope_prefix(initial_state_data, scopes)
     checkpoint_reusable_scopes = reusable_scope_checkpoint_prefix(
         initial_state_data,
@@ -561,6 +567,52 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     if scope_index >= len(scopes):
         status = "pass"
         summary = f"hierarchical debug loop reused validated certificates through target_scope={args.target_scope}"
+    if pending_flow_handoff.get("status") == "blocked":
+        report = {
+            "schema_version": "spatialaccagent.hierarchical_debug_loop_run.v0",
+            "stage": "debug_loop",
+            "status": "needs_repair",
+            "summary": str(pending_flow_handoff.get("summary") or "Stage-6 flow-controller handoff is invalid"),
+            "source_sacg_state": str(args.sacg_state.resolve()),
+            "final_sacg_state": str(current_state),
+            "max_iters": args.max_iters,
+            "target_scope": args.target_scope,
+            "scope_sequence": scopes,
+            "reused_scopes": reused_scopes,
+            "iterations": [],
+            "flow_controller_handoff": pending_flow_handoff,
+        }
+        report_path = out_dir / "debug_loop_report.json"
+        write_json(report_path, report)
+        return report_path, report
+
+    def plan_stage6_repair(verification_state: Path, iteration: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
+        nonlocal pending_flow_handoff
+        handoff = pending_flow_handoff if pending_flow_handoff.get("status") == "ready" else None
+        repair_path, repair_report = plan_repair(
+            ns(
+                sacg_state=verification_state,
+                flow_controller_handoff=handoff,
+            )
+        )
+        if handoff is not None:
+            consumed_path = mark_stage6_flow_handoff_consumed(
+                run_dir,
+                handoff,
+                Path(str(repair_report.get("outputs", {}).get("repair_plan") or "")),
+            )
+            iteration["flow_controller_handoff"] = {
+                "status": "consumed",
+                "handoff_identity": handoff.get("handoff_identity"),
+                "source_flow_event": handoff.get("source_flow_event"),
+                "consumption_path": str(consumed_path),
+            }
+            pending_flow_handoff = {
+                "status": "already_consumed",
+                "handoff_identity": handoff.get("handoff_identity"),
+            }
+        return repair_path, repair_report
+
     index = 0
     while args.max_iters <= 0 or index < args.max_iters:
         if scope_index >= len(scopes):
@@ -711,7 +763,7 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 )
                 continue
 
-            repair_path, repair_report = plan_repair(ns(sacg_state=verification_state))
+            repair_path, repair_report = plan_stage6_repair(verification_state, iteration)
             repair_state = Path(str(repair_report["outputs"]["sacg_state"]))
             iteration["repair_report"] = str(repair_path)
             iteration["repair_status"] = repair_report.get("status")
@@ -811,6 +863,7 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 continue
         except Exception as exc:
             iteration["exception"] = str(exc)
+            iteration["exception_traceback"] = traceback.format_exc()
             iterations.append(iteration)
             status = "needs_repair"
             summary = (
@@ -835,6 +888,10 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "scope_sequence": scopes,
         "reused_scopes": reused_scopes,
         "iterations": iterations,
+        "flow_controller_handoff": {
+            key: pending_flow_handoff.get(key)
+            for key in ("status", "handoff_identity", "summary")
+        },
         "policy": {
             "three_layer_order_required": True,
             "same_scope_repair_loop_until_pass": True,

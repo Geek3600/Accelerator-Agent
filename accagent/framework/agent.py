@@ -228,6 +228,18 @@ class TopAgent:
                 event_index = index
                 break
         event["flow_event_index"] = event_index
+        source_sacg_path = Path(str(event.get("sacg_state") or ""))
+        source_sacg_sha256 = ""
+        if source_sacg_path.is_file():
+            source_sacg_sha256 = hashlib.sha256(source_sacg_path.read_bytes()).hexdigest()
+        flow_controller_result = Path(
+            str(llm_review.get("agent_record") or "")
+        )
+        flow_controller_result_sha256 = ""
+        if flow_controller_result.is_file():
+            flow_controller_result_sha256 = hashlib.sha256(
+                flow_controller_result.read_bytes()
+            ).hexdigest()
         payload = {
             "schema_version": "spatialaccagent.flow_event_action_record.v0",
             "flow_event_index": event_index,
@@ -238,6 +250,10 @@ class TopAgent:
             "sacg_state": event.get("sacg_state"),
             "llm_flow_controller": llm_review,
             "executable_actions": [action for action in actions if isinstance(action, dict)],
+            "source_identities": {
+                "source_sacg_state_sha256": source_sacg_sha256,
+                "flow_controller_result_sha256": flow_controller_result_sha256,
+            },
         }
         record_paths: list[str] = []
         event_path = stage_dir / "flow_events" / f"{event_index:03d}_{decision}.json"
@@ -266,6 +282,7 @@ class TopAgent:
                     "sacg_state": event.get("sacg_state"),
                     "action": action,
                     "source_flow_event": str(event_path),
+                    "source_identities": payload["source_identities"],
                     "materialization_policy": {
                         "records_flow_controller_action": True,
                         "does_not_mark_stage_passed": True,

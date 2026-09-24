@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from accagent.framework.case_adapter import build_case_adapter, refresh_builtin_case_adapter
+from accagent.framework.flow_action_handoff import validate_stage6_flow_handoff
 from accagent.framework.board_backtrack_evidence import (
     board_to_lower_layer_contradiction_from_diagnosis,
 )
@@ -2850,7 +2851,11 @@ def build_repair_actions(
     return actions
 
 
-def build_repair_plan(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
+def build_repair_plan(
+    state: dict[str, Any],
+    run_dir: Path,
+    flow_controller_handoff: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     verification = read_json(artifact_path(state, "artifact.stage6.verification_result"))
     case_adapter = case_adapter_for_state(state, run_dir)
     verification = enrich_verification_with_tool_reports(verification, run_dir, case_adapter)
@@ -2950,6 +2955,13 @@ def build_repair_plan(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
         diagnostics["completed_lower_layer_capabilities"] = (
             completed_lower_layer_capabilities
         )
+    if flow_controller_handoff is not None:
+        handoff_errors = validate_stage6_flow_handoff(flow_controller_handoff, run_dir)
+        if handoff_errors:
+            raise ValueError(
+                "invalid Stage-6 flow-controller handoff: " + "; ".join(handoff_errors)
+            )
+        diagnostics["flow_controller_handoff"] = copy.deepcopy(flow_controller_handoff)
     return {
         "schema_version": "spatialaccagent.repair_plan.v0",
         "stage": "repair",
@@ -3906,7 +3918,16 @@ def plan_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     report_path = out_dir / "repair_report.json"
 
     source_data = read_json(source_state)
-    repair_plan = build_repair_plan(source_data, run_dir)
+    flow_controller_handoff = getattr(args, "flow_controller_handoff", None)
+    repair_plan = build_repair_plan(
+        source_data,
+        run_dir,
+        flow_controller_handoff=(
+            flow_controller_handoff
+            if isinstance(flow_controller_handoff, dict)
+            else None
+        ),
+    )
     write_json(repair_path, repair_plan)
     team_error = None
     try:
@@ -3965,6 +3986,11 @@ def plan_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                     "design_team": design_team_summary,
                     "source_sacg_state": str(source_state),
                     "completed_lower_layer_capabilities": completed_lower_layer_capabilities,
+                    "flow_controller_handoff": (
+                        repair_plan.get("diagnostics", {}).get("flow_controller_handoff")
+                        if isinstance(repair_plan.get("diagnostics"), dict)
+                        else None
+                    ),
                 },
                 out_dir=out_dir,
                 fallback_summary="Repair plan generated from failed verification results.",
