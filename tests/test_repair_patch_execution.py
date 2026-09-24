@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from accagent.framework.stage_repair_execute import (
+    capability_repair_source_bundle,
     layer3_required_code_edit_errors,
     repair_loop_disposition,
     repair_source_bundle,
@@ -99,6 +100,96 @@ class RepairPatchExecutionTest(unittest.TestCase):
             bundle = repair_source_bundle({}, run_dir, out_dir)
 
         self.assertEqual(bundle["fpga_ip_repair_closure"], closure)
+
+    def test_capability_bundle_preserves_earliest_failed_real_tool_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            out_dir = run_dir / "repair_execution"
+            tool_dir = run_dir / "local_tools"
+            verification_dir = run_dir / "verification"
+            real_tools_dir = verification_dir / "real_tools"
+            input_dir = run_dir / "input"
+            pipeline_dir = run_dir / "pipeline_planning"
+            for path in (out_dir, tool_dir, real_tools_dir, input_dir, pipeline_dir):
+                path.mkdir(parents=True, exist_ok=True)
+
+            script_path = tool_dir / "weight_catalog.py"
+            argv_input_path = tool_dir / "semantic_adapter.json"
+            output_path = verification_dir / "model_weights" / "partial_report.json"
+            case_adapter_path = input_dir / "case_adapter.json"
+            pipeline_plan_path = pipeline_dir / "pipeline_plan.json"
+            script_path.write_text("print('catalog')\n", encoding="utf-8")
+            argv_input_path.write_text('{"adapter": "current"}\n', encoding="utf-8")
+            output_path.parent.mkdir()
+            output_path.write_text('{"status": "partial"}\n', encoding="utf-8")
+            case_adapter_path.write_text('{"case": "current"}\n', encoding="utf-8")
+            pipeline_plan_path.write_text('{"pipeline": "current"}\n', encoding="utf-8")
+
+            tool_record_path = real_tools_dir / "weight_catalog.json"
+            tool_record_path.write_text(
+                json.dumps(
+                    {
+                        "status": "fail",
+                        "returncode": 1,
+                        "summary": "returncode=1",
+                        "stderr_tail": "no tensor matched\n",
+                        "execution": {
+                            "cwd": str(run_dir),
+                            "argv": [
+                                "python3",
+                                str(script_path.relative_to(run_dir)),
+                                "--semantic-adapter",
+                                str(argv_input_path.relative_to(run_dir)),
+                            ],
+                        },
+                        "execution_fingerprint": {
+                            "payload": {"scripts": [{"path": str(script_path)}]}
+                        },
+                        "output_fingerprints": {
+                            "artifacts": [{"path": str(output_path)}]
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            verification_result_path = verification_dir / "verification_result.json"
+            verification_result_path.write_text(
+                json.dumps(
+                    {
+                        "results": [
+                            {
+                                "status": "fail",
+                                "checker": "real_tool.weight_catalog",
+                                "log_path": str(tool_record_path),
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            bundle = capability_repair_source_bundle({}, run_dir, out_dir)
+
+        document_paths = {document["path"] for document in bundle["documents"]}
+        self.assertTrue(
+            {
+                str(verification_result_path),
+                str(tool_record_path),
+                str(script_path),
+                str(argv_input_path),
+                str(output_path),
+                str(case_adapter_path),
+                str(pipeline_plan_path),
+            }.issubset(document_paths)
+        )
+        context = bundle["earliest_failed_real_tool_context"]
+        self.assertEqual(context["tool_record"], str(tool_record_path))
+        self.assertEqual(context["file_valued_argv_inputs"], [str(script_path), str(argv_input_path)])
+        self.assertEqual(context["produced_reports"], [str(output_path)])
+        self.assertEqual(
+            {entry["path"] for entry in context["semantic_authority"]},
+            {str(case_adapter_path), str(pipeline_plan_path)},
+        )
 
 
 if __name__ == "__main__":

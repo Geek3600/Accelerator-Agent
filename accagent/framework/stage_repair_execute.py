@@ -21742,6 +21742,17 @@ def capability_repair_source_bundle(
         if keep:
             add_document(document)
 
+    # A lower-layer real tool can fail before semantic-testbench artifacts or
+    # module-level reports exist. Keep the current run's semantic authority in
+    # the repair package so that the Agent can diagnose that pre-semantic
+    # failure without guessing a model-specific tensor mapping.
+    current_semantic_authority_paths = (
+        run_dir / "input" / "case_adapter.json",
+        run_dir / "pipeline_planning" / "pipeline_plan.json",
+    )
+    for path in current_semantic_authority_paths:
+        add_path(path)
+
     semantic_manifest_path = run_dir / "verification" / "semantic_testbench" / "semantic_testbench_manifest.json"
     semantic_manifest = read_json_if_exists(semantic_manifest_path)
     if semantic_manifest:
@@ -22499,6 +22510,118 @@ def capability_repair_source_bundle(
         failure_context["failed_stage_ids"] = sorted(failed_stage_ids)
         failure_context["selection_policy"] = "current failed golden reports first, then current failed functional reports"
 
+    earliest_failed_real_tool_context: dict[str, Any] = {}
+    verification_result_path = run_dir / "verification" / "verification_result.json"
+    verification_result = read_json_if_exists(verification_result_path)
+    verification_results = (
+        verification_result.get("results", [])
+        if isinstance(verification_result.get("results"), list)
+        else []
+    )
+    for result in verification_results:
+        if not isinstance(result, dict) or result.get("status") != "fail":
+            continue
+        tool_record_path = repo_path(result.get("log_path"))
+        tool_record = read_json_if_exists(tool_record_path)
+        execution = (
+            tool_record.get("execution", {})
+            if isinstance(tool_record.get("execution"), dict)
+            else {}
+        )
+        if tool_record.get("status") != "fail" or not execution:
+            continue
+
+        add_path(verification_result_path)
+        add_path(tool_record_path)
+        execution_cwd = Path(str(execution.get("cwd") or Path.cwd()))
+        if not execution_cwd.is_absolute():
+            execution_cwd = (Path.cwd() / execution_cwd).resolve()
+
+        script_paths: list[Path] = []
+        fingerprint = (
+            tool_record.get("execution_fingerprint", {})
+            if isinstance(tool_record.get("execution_fingerprint"), dict)
+            else {}
+        )
+        payload = (
+            fingerprint.get("payload", {})
+            if isinstance(fingerprint.get("payload"), dict)
+            else {}
+        )
+        for script in payload.get("scripts", []):
+            if not isinstance(script, dict) or not script.get("path"):
+                continue
+            path = Path(str(script["path"]))
+            path = path if path.is_absolute() else execution_cwd / path
+            if path.is_file():
+                script_paths.append(path.resolve())
+
+        argv_input_paths: list[Path] = []
+        for value in execution.get("argv", []):
+            path = Path(str(value))
+            path = path if path.is_absolute() else execution_cwd / path
+            if path.is_file():
+                argv_input_paths.append(path.resolve())
+
+        produced_report_paths: list[Path] = []
+        output_fingerprints = (
+            tool_record.get("output_fingerprints", {})
+            if isinstance(tool_record.get("output_fingerprints"), dict)
+            else {}
+        )
+        for artifact in output_fingerprints.get("artifacts", []):
+            if not isinstance(artifact, dict) or not artifact.get("path"):
+                continue
+            path = repo_path(artifact["path"])
+            if path.is_file():
+                produced_report_paths.append(path.resolve())
+        for report in tool_record.get("produced_reports", []):
+            path_value = report.get("path") if isinstance(report, dict) else report
+            if not path_value:
+                continue
+            path = repo_path(path_value)
+            if path.is_file():
+                produced_report_paths.append(path.resolve())
+
+        for path in dict.fromkeys((*script_paths, *argv_input_paths, *produced_report_paths)):
+            add_path(path)
+        semantic_authority = [
+            {
+                "path": display_path(path),
+                "sha256": sha256_file(path),
+            }
+            for path in current_semantic_authority_paths
+            if path.is_file()
+        ]
+        earliest_failed_real_tool_context = {
+            "verification_result": display_path(verification_result_path),
+            "verification_result_sha256": sha256_file(verification_result_path),
+            "checker": result.get("checker"),
+            "tool_record": display_path(tool_record_path),
+            "tool_record_sha256": sha256_file(tool_record_path),
+            "returncode": tool_record.get("returncode"),
+            "summary": tool_record.get("summary"),
+            "stderr_tail": tool_record.get("stderr_tail"),
+            "script_sources": [display_path(path) for path in dict.fromkeys(script_paths)],
+            "file_valued_argv_inputs": [
+                display_path(path) for path in dict.fromkeys(argv_input_paths)
+            ],
+            "produced_reports": [
+                display_path(path) for path in dict.fromkeys(produced_report_paths)
+            ],
+            "semantic_authority": semantic_authority,
+            "selection_policy": (
+                "first failed verification result whose hash-bound log is a failed "
+                "real-tool execution record"
+            ),
+        }
+        add_projection(
+            f"{display_path(tool_record_path)}#earliest_failed_real_tool_context",
+            tool_record_path,
+            earliest_failed_real_tool_context,
+        )
+        break
+
     consumer_functions = (
         allowed_capability_edit_target,
         apply_agent_file_edits,
@@ -22611,6 +22734,7 @@ def capability_repair_source_bundle(
         "capability_probe_scope_selection": probe_scope_selection,
         "generated_module_inventory": source_bundle.get("generated_module_inventory", []),
         "focused_real_tool_failure_context": failure_context,
+        "earliest_failed_real_tool_context": earliest_failed_real_tool_context,
         "fpga_ip_repair_closure": source_bundle.get("fpga_ip_repair_closure", {}),
         "editable_contract": editable,
     }
