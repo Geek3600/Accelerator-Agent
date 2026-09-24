@@ -46,6 +46,87 @@ class DebugLoopResumeTest(TestCase):
         self.assertIn("missing Stage5 verification contract", report["summary"])
         verification_mock.assert_called_once()
 
+    def test_terminal_repair_loop_disposition_returns_to_flow_controller(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            state_path = run_dir / "verification_artifacts" / "sacg_state.json"
+            verification_state = run_dir / "verification" / "sacg_state.json"
+            repair_state = run_dir / "repair" / "sacg_state.json"
+            repair_plan_path = run_dir / "repair" / "repair_plan.json"
+            state_path.parent.mkdir()
+            verification_state.parent.mkdir()
+            repair_state.parent.mkdir()
+            state_path.write_text(json.dumps({"artifacts": [], "transitions": []}), encoding="utf-8")
+            verification_state.write_text("{}", encoding="utf-8")
+            repair_state.write_text("{}", encoding="utf-8")
+            repair_plan_path.write_text(
+                json.dumps(
+                    {
+                        "status": "needs_repair",
+                        "repair_workflow": {
+                            "status": "ready",
+                            "steps": [{"id": "repair_step.00"}],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "accagent.framework.stage_debug_loop.run_stage6_verification",
+                return_value=(
+                    run_dir / "verification" / "verification_result.json",
+                    {
+                        "status": "fail",
+                        "outputs": {"sacg_state": str(verification_state)},
+                    },
+                    {"status": "not_required"},
+                ),
+            ) as verification_mock, patch(
+                "accagent.framework.stage_debug_loop.plan_repair",
+                return_value=(
+                    run_dir / "repair" / "repair_report.json",
+                    {
+                        "outputs": {
+                            "sacg_state": str(repair_state),
+                            "repair_plan": str(repair_plan_path),
+                        }
+                    },
+                ),
+            ), patch(
+                "accagent.framework.stage_debug_loop.run_repair_loop",
+                return_value=(
+                    run_dir / "repair_execution" / "repair_execution_report.json",
+                    {
+                        "status": "incomplete",
+                        "errors": ["unchanged repair frontier"],
+                        "repair_loop_disposition": {
+                            "status": "blocked",
+                            "summary": "unchanged repair frontier",
+                        },
+                    },
+                ),
+            ) as repair_loop_mock:
+                _, report = debug_loop(
+                    Namespace(
+                        sacg_state=state_path,
+                        max_iters=0,
+                        target_scope="operator_leaf_closure",
+                        timeout_sec=0,
+                        include_remote=True,
+                        stop_after_failed_repair=False,
+                    )
+                )
+
+        self.assertEqual(report["status"], "needs_repair")
+        self.assertEqual(report["summary"], "unchanged repair frontier")
+        self.assertEqual(len(report["iterations"]), 1)
+        self.assertEqual(
+            report["iterations"][0]["repair_execution_disposition"]["status"],
+            "blocked",
+        )
+        verification_mock.assert_called_once()
+        repair_loop_mock.assert_called_once()
+
     def test_debug_loop_enables_remote_reruns_by_default(self) -> None:
         args = parse_args(["--sacg-state", "state.json"])
 

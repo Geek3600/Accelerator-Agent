@@ -517,6 +517,15 @@ def agent_transaction_retry_key(report: dict[str, Any]) -> str | None:
     return None
 
 
+def terminal_repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a Stage-6 executor stop signal that belongs to flow control."""
+
+    disposition = report.get("repair_loop_disposition", {})
+    if not isinstance(disposition, dict) or disposition.get("status") != "blocked":
+        return None
+    return disposition
+
+
 def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     current_state = args.sacg_state.resolve()
     run_dir = run_dir_from_state(current_state)
@@ -584,6 +593,16 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 iteration["repair_execution_report"] = str(execute_path)
                 iteration["repair_execution_status"] = execute_report.get("status")
                 iteration["repair_execution_errors"] = execute_report.get("errors", [])
+                terminal_disposition = terminal_repair_loop_disposition(execute_report)
+                if terminal_disposition is not None:
+                    iteration["repair_execution_disposition"] = terminal_disposition
+                    iterations.append(iteration)
+                    status = "needs_repair"
+                    summary = str(
+                        terminal_disposition.get("summary")
+                        or "Stage 6 repair loop stopped without a runnable follow-up"
+                    )
+                    break
                 iterations.append(iteration)
                 executor_resume = None
                 current_state = execute_state if execute_state.exists() else current_state
@@ -740,6 +759,15 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             iteration["repair_execution_status"] = execute_report.get("status")
             iteration["repair_execution_errors"] = execute_report.get("errors", [])
             iterations.append(iteration)
+            terminal_disposition = terminal_repair_loop_disposition(execute_report)
+            if terminal_disposition is not None:
+                iteration["repair_execution_disposition"] = terminal_disposition
+                status = "needs_repair"
+                summary = str(
+                    terminal_disposition.get("summary")
+                    or "Stage 6 repair loop stopped without a runnable follow-up"
+                )
+                break
             regenerated_stage6_states = [
                 Path(str(item.get("result", {}).get("stage6_sacg_state")))
                 for item in execute_report.get("step_results", [])
