@@ -3164,7 +3164,10 @@ endmodule
     def make_run(self, root: Path) -> tuple[Path, dict, dict]:
         run_dir = root / "run"
         sources = run_dir / "board_sources"
-        wrapper = write_file(sources / "wrapper.v", "module BoardWrapper; BoardBd bd(); endmodule\n")
+        wrapper = write_file(
+            sources / "wrapper.v",
+            "module BoardWrapper; BoardBd bd(); fp_add_sp_12 arithmetic_ip(); endmodule\n",
+        )
         wrapper.update(
             {
                 "source_id": "sample.wrapper",

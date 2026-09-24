@@ -1436,7 +1436,11 @@ class SemanticSimulatorTest(TestCase):
         self.assertEqual(report["status"], "pass")
         compile_command = launch.call_args_list[0].args[2]
         self.assertIn("gen_xilinx_fp_ips.tcl", compile_command)
-        self.assertIn("-f fpga_ip/vcs_sim_sources.f", compile_command)
+        self.assertIn("export_vcs_file_info.tcl", compile_command)
+        self.assertIn("bash fpga_ip/compile_ip_models.sh", compile_command)
+        self.assertIn("source fpga_ip/vcs_runtime.env", compile_command)
+        self.assertIn("mapfile -t fpga_ip_elab_args", compile_command)
+        self.assertIn('\"${fpga_ip_elab_args[@]}\" -o simv', compile_command)
         self.assertEqual(report["fpga_ip_simulation_binding"]["binding"]["status"], "ready")
 
     def test_missing_semantic_memory_initialization_dependency_fails_closed(self) -> None:

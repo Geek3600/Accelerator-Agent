@@ -23,7 +23,7 @@ from accagent.framework.fpga_ip_contract import (
     check_fpga_ip_simulation_closure,
 )
 from accagent.framework.fpga_ip_runtime import (
-    ip_vcs_filelist_argument,
+    fpga_ip_runtime_protocol_identity,
     stage_fpga_ip_runtime,
 )
 
@@ -368,16 +368,22 @@ def semantic_fpga_ip_static_binding(
             "FPGA IP simulation closure does not cover generated physical modules: "
             + ", ".join(missing_models)
         ]
+    try:
+        runtime_protocol = fpga_ip_runtime_protocol_identity()
+    except (OSError, ValueError, FileNotFoundError) as exc:
+        return {}, [f"FPGA IP runtime protocol is unavailable: {exc}"]
     staged_payload = {
         "fpga_ip/fpga_ip_simulation_closure.json": sha256_file(closure_path),
         "fpga_ip/gen_xilinx_fp_ips.tcl": sha256_file(tcl_path),
         "fpga_ip/fpga_ip_modules.txt": sha256_file(manifest_path),
+        **dict(runtime_protocol["files"]),
     }
     identity = {
         "fpga_part": str(closure["fpga_part"]),
         "required_module_references": references,
         "required_ip_modules": sorted(required_modules),
         "staged_payload": staged_payload,
+        "runtime_protocol": runtime_protocol,
     }
     return {
         "status": "ready",
@@ -3818,28 +3824,61 @@ def run_remote_vcs_semantic_harness(
     vcs_home = str(Path(executable).parent.parent)
     source_names = [path.name for path in copied_sources]
     compile_jobs = semantic_vcs_compile_jobs()
-    compile_command = " ".join(
+    environment_setup = " ".join(
         [
-            "set -euo pipefail;",
-            *(
-                [str(fpga_ip_runtime["provision_command"])]
-                if fpga_ip_runtime.get("status") == "ready"
-                else []
-            ),
             "export LANG=C LC_ALL=C;",
             f"export VCS_HOME={shlex.quote(vcs_home)};",
             f"export VCS_TARGET_ARCH={shlex.quote(target_arch)};",
             f"export PATH={shlex.quote(str(Path(executable).parent))}:/usr/bin:/bin:$PATH;",
-            shlex.quote(executable),
-            "-full64 -sverilog -timescale=1ns/1ps",
-            *(shlex.quote(value) for value in semantic_vcs_parallel_compile_args()),
-            *(shlex.quote(value) for value in semantic_vcs_compile_define_args(compile_defines)),
-            f"-top {shlex.quote(top_module)} -o simv",
-            *(shlex.quote(name) for name in source_names),
-            *( [ip_vcs_filelist_argument(".")] if fpga_ip_runtime.get("status") == "ready" else [] ),
-            "semantic_tb.sv -l vcs.log",
         ]
     )
+    if fpga_ip_runtime.get("status") == "ready":
+        vlogan_command = " ".join(
+            [
+                "vlogan -full64 -sverilog -timescale=1ns/1ps",
+                *(shlex.quote(value) for value in semantic_vcs_compile_define_args(compile_defines)),
+                '-work "$FPGA_IP_DEFAULT_LIBRARY"',
+                *(shlex.quote(name) for name in source_names),
+                "semantic_tb.sv",
+            ]
+        )
+        elaboration_command = " ".join(
+            [
+                shlex.quote(executable),
+                "-full64 -timescale=1ns/1ps",
+                *(shlex.quote(value) for value in semantic_vcs_parallel_compile_args()),
+                '"$FPGA_IP_DEFAULT_LIBRARY.' + safe_id(top_module) + '"',
+                '"$FPGA_IP_GLBL_UNIT"',
+                '"${fpga_ip_elab_args[@]}"',
+                "-o simv",
+            ]
+        )
+        compile_command = " ".join(
+            [
+                "set -euo pipefail;",
+                str(fpga_ip_runtime["provision_command"]),
+                environment_setup,
+                str(fpga_ip_runtime["compile_command"]) + " >> vcs.log 2>&1;",
+                "source fpga_ip/vcs_runtime.env;",
+                f"{vlogan_command} >> vcs.log 2>&1;",
+                "mapfile -t fpga_ip_elab_args < fpga_ip/vcs_elab_args.txt;",
+                f"{elaboration_command} >> vcs.log 2>&1;",
+            ]
+        )
+    else:
+        compile_command = " ".join(
+            [
+                "set -euo pipefail;",
+                environment_setup,
+                shlex.quote(executable),
+                "-full64 -sverilog -timescale=1ns/1ps",
+                *(shlex.quote(value) for value in semantic_vcs_parallel_compile_args()),
+                *(shlex.quote(value) for value in semantic_vcs_compile_define_args(compile_defines)),
+                f"-top {shlex.quote(top_module)} -o simv",
+                *(shlex.quote(name) for name in source_names),
+                "semantic_tb.sv -l vcs.log",
+            ]
+        )
     simulate_command = " ".join(
         [
             "set -euo pipefail;",
@@ -4049,6 +4088,15 @@ def run_remote_vcs_semantic_harness(
             work_dir,
             timeout_sec,
         )
+    if fpga_ip_runtime.get("status") == "ready":
+        downloads["fpga_ip_vcs_library_plan.json"] = copy_remote_file(
+            host,
+            port,
+            f"{remote_dir}/fpga_ip/vcs_library_plan.json",
+            work_dir / "fpga_ip_vcs_library_plan.json",
+            work_dir,
+            timeout_sec,
+        )
     if simulate_result.get("status") == "pass":
         output_capture.parent.mkdir(parents=True, exist_ok=True)
         downloads["rtl_output.memh"] = copy_remote_file(
@@ -4183,6 +4231,9 @@ def run_remote_vcs_semantic_harness(
                 for key, value in fpga_ip_runtime.items()
                 if key != "provision_command"
             },
+            "vcs_library_plan": str(work_dir / "fpga_ip_vcs_library_plan.json")
+            if fpga_ip_runtime.get("status") == "ready"
+            else "",
         },
         "source_files": [str(path) for path in sources],
         "testbench": str(testbench),

@@ -44,9 +44,9 @@ from accagent.framework.fast_replay import (
     validate_fast_replay_state,
 )
 from accagent.framework.fpga_ip_runtime import (
-    ip_vcs_filelist_argument,
     stage_fpga_ip_runtime,
 )
+from accagent.framework.fpga_ip_contract import FP_MODULE_NAME
 from accagent.framework.live_state import (
     activate_live_state_slot,
     board_run_binding,
@@ -5648,10 +5648,35 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
     fpga_ip_runtime: dict[str, Any] = {"status": "not_used"}
     if fast_replay.get("used") is not True:
         try:
+            physical_source_ids: set[str] = set()
+            for entry in resolved["source_entries"]:
+                text = entry["path"].read_text(encoding="utf-8", errors="ignore")
+                instantiated_names = re.findall(
+                    r"\b(fp_[A-Za-z0-9_]+)\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\(",
+                    text,
+                )
+                if any(FP_MODULE_NAME.fullmatch(name) for name in instantiated_names):
+                    physical_source_ids.add(str(entry["source_id"]))
+            generated_source_libraries = {
+                str(command.get("work_library") or "")
+                for command in compile_plan["commands"]
+                if str(command.get("phase") or "") == "compile"
+                and physical_source_ids.intersection(command.get("source_ids", []))
+                and str(command.get("work_library") or "")
+            }
+            if not physical_source_ids or len(generated_source_libraries) != 1:
+                raise ValueError(
+                    "physical FPGA IP sources must compile into exactly one explicit logical library"
+                )
             fpga_ip_runtime = stage_fpga_ip_runtime(
                 run_dir,
                 stage_dir,
                 read_json(run_dir / "input" / "tool_profile.json"),
+                compiler_workdirs=[
+                    cwd.as_posix()
+                    for cwd in command_cwds
+                ],
+                expected_default_library=next(iter(generated_source_libraries)),
             )
         except (OSError, ValueError, KeyError) as exc:
             return {
@@ -5700,16 +5725,6 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             and "+vcs+loopreport" not in argv
         ):
             argv.append("+vcs+loopreport")
-        if (
-            str(command.get("phase") or "") == "compile"
-            and Path(str(command.get("executable") or "")).name == "vlogan"
-            and "+incdir+../sources" in argv
-        ):
-            # The framework-owned generated-source compile is the one place
-            # where the current Vivado IP/XPM model filelist is added.  Other
-            # sample-project compile groups must not see it, or the same IP
-            # modules would be defined more than once.
-            argv.extend(shlex.split(ip_vcs_filelist_argument()))
         checkpoint_compile_defines = checkpoint_adapter_compile_define_args(
             checkpoint_plan,
             str(command.get("executable") or ""),
@@ -5733,9 +5748,48 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
                     cwd,
                 )
             )
+        command_text = " ".join(shlex.quote(value) for value in command_argv)
+        is_vcs_elaboration = (
+            fpga_ip_runtime.get("status") == "ready"
+            and str(command.get("phase") or "") == "elaborate"
+            and Path(str(command.get("executable") or "")).name == "vcs"
+        )
+        if is_vcs_elaboration:
+            runtime_env = os.path.relpath(
+                stage_dir / str(fpga_ip_runtime["remote_vcs_runtime_env"]),
+                start=stage_dir / cwd,
+            ).replace(os.sep, "/")
+            elab_args = os.path.relpath(
+                stage_dir / str(fpga_ip_runtime["remote_vcs_elab_args"]),
+                start=stage_dir / cwd,
+            ).replace(os.sep, "/")
+            output_indexes = [
+                index for index, value in enumerate(command_argv) if value == "-o"
+            ]
+            if len(output_indexes) != 1:
+                return {
+                    "schema_version": SCHEMA_VERSION,
+                    "status": "fail",
+                    "phase": "fpga_ip_runtime_staging",
+                    "failure_class": "fpga_ip_runtime_contract_failure",
+                    "errors": ["VCS elaboration must contain exactly one -o before FPGA IP binding"],
+                    "remote_tool_was_not_started": True,
+                }
+            insertion = output_indexes[0]
+            dynamic_args = ['"${fpga_ip_elab_args[@]}"']
+            if not any(value.endswith(".glbl") for value in argv):
+                dynamic_args.append('"$FPGA_IP_GLBL_UNIT"')
+            command_text = (
+                f"source {shlex.quote(runtime_env)}; "
+                f"mapfile -t fpga_ip_elab_args < {shlex.quote(elab_args)}; "
+                + " ".join(shlex.quote(value) for value in command_argv[:insertion])
+                + " "
+                + " ".join(dynamic_args)
+                + " "
+                + " ".join(shlex.quote(value) for value in command_argv[insertion:])
+            )
         command_shells.append(
-            f"(cd {shlex.quote(cwd.as_posix())} && "
-            f"{' '.join(shlex.quote(value) for value in command_argv)})"
+            f"(cd {shlex.quote(cwd.as_posix())} && {command_text})"
         )
     plusargs = []
     for key, artifact_name in vcs.get("runtime_plusargs", {}).items():
@@ -5851,6 +5905,14 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         + f": > {shlex.quote(compile_log_relative.as_posix())}; set -e; "
         + (
             fpga_ip_runtime.get("provision_command", "")
+            + " >> "
+            + shlex.quote(compile_log_relative.as_posix())
+            + " 2>&1; "
+            if fpga_ip_runtime.get("status") == "ready"
+            else ""
+        )
+        + (
+            fpga_ip_runtime.get("compile_command", "")
             + " >> "
             + shlex.quote(compile_log_relative.as_posix())
             + " 2>&1; "

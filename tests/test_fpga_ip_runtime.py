@@ -5,7 +5,6 @@ from pathlib import Path
 
 from accagent.framework.fpga_ip_contract import simulation_source_contract
 from accagent.framework.fpga_ip_runtime import (
-    ip_vcs_filelist_argument,
     stage_fpga_ip_runtime,
 )
 
@@ -60,14 +59,16 @@ class FpgaIpRuntimeTest(unittest.TestCase):
             self.assertIn('"$VIVADO_BIN" -mode batch', command)
             self.assertIn("xcvu9p_CIV-flgb2104-2-i", command)
             self.assertIn("fpga_ip/fpga_ip_modules.txt", command)
-            self.assertIn("-path '*/hdl/*_rfs.v'", command)
-            self.assertIn("head -n 1", command)
-            self.assertIn("-path '*/sim/*.v'", command)
-            self.assertIn('sed "s#^#$IP_SOURCE_PREFIX#"', command)
-            self.assertIn("IP_SOURCE_PREFIX=../", command)
-            self.assertIn("$VIVADO_ROOT/data/ip/xpm/xpm_memory/hdl/xpm_memory.sv", command)
-            self.assertIn("$VIVADO_ROOT/data/verilog/src/glbl.v", command)
-            self.assertEqual(ip_vcs_filelist_argument(), "-f ../fpga_ip/vcs_sim_sources.f")
+            self.assertIn("export_vcs_file_info.tcl", command)
+            self.assertIn("build_vcs_library_plan.py", command)
+            self.assertIn("--compiler-workdir .", command)
+            self.assertIn("--compiler-workdir vcs_work", command)
+            self.assertTrue((root / "stage" / "fpga_ip" / "export_vcs_file_info.tcl").is_file())
+            self.assertTrue((root / "stage" / "fpga_ip" / "build_vcs_library_plan.py").is_file())
+            self.assertEqual(staged["remote_vcs_compile_script"], "fpga_ip/compile_ip_models.sh")
+            self.assertEqual(staged["remote_vcs_runtime_env"], "fpga_ip/vcs_runtime.env")
+            self.assertEqual(staged["remote_vcs_elab_args"], "fpga_ip/vcs_elab_args.txt")
+            self.assertEqual(staged["compiler_workdirs"], [".", "vcs_work"])
 
             root_compile = stage_fpga_ip_runtime(
                 run_dir,
@@ -75,8 +76,45 @@ class FpgaIpRuntimeTest(unittest.TestCase):
                 {"tools": [{"name": "vivado", "executable": "/opt/Xilinx/Vivado/2021.1/bin/vivado"}]},
                 compiler_workdir=".",
             )
-            self.assertIn("IP_SOURCE_PREFIX=''", root_compile["provision_command"])
-            self.assertEqual(ip_vcs_filelist_argument("."), "-f fpga_ip/vcs_sim_sources.f")
+            self.assertEqual(root_compile["compiler_workdirs"], ["."])
+
+    def test_relative_closure_artifacts_resolve_from_closure_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            run_dir = root / "run"
+            simulation_dir = run_dir / "generated" / "chisel" / "simulation"
+            scripts_dir = simulation_dir / "scripts"
+            scripts_dir.mkdir(parents=True)
+            (scripts_dir / "gen.tcl").write_text("puts generation\n", encoding="utf-8")
+            (simulation_dir / "modules.txt").write_text("fp_add_sp_12\n", encoding="utf-8")
+            closure = {
+                "status": "ready",
+                "policy": simulation_source_contract(),
+                "ip_generation_tcl": "scripts/gen.tcl",
+                "ip_output_dir": "vivado_ip",
+                "ip_project_dir": "vivado_ip_project",
+                "ip_module_manifest": "modules.txt",
+                "fpga_part": "xcvu9p-flgb2104-2-i",
+                "required_ip_modules": ["fp_add_sp_12"],
+                "vcs_compile_requirements": {
+                    "generated_ip_simulation_sources": "generated IP sources",
+                    "xpm_library": "xpm",
+                    "unisims_library": "unisims_ver",
+                    "global_module": "glbl.v",
+                },
+            }
+            (simulation_dir / "fpga_ip_simulation_closure.json").write_text(
+                json.dumps(closure), encoding="utf-8"
+            )
+
+            staged = stage_fpga_ip_runtime(
+                run_dir,
+                root / "stage",
+                {"tools": [{"name": "vivado", "executable": "/opt/vivado"}]},
+            )
+
+            self.assertEqual(Path(staged["staged_tcl"]).read_text(), "puts generation\n")
+            self.assertEqual(Path(staged["staged_module_manifest"]).read_text(), "fp_add_sp_12\n")
 
     def test_formal_vivado_runner_uses_generated_manifest_and_board_part(self) -> None:
         root = Path(__file__).resolve().parents[1]
