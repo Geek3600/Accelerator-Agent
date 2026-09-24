@@ -63,10 +63,20 @@ class FpgaIpRuntimeTest(unittest.TestCase):
             self.assertIn("-path '*/hdl/*_rfs.v'", command)
             self.assertIn("head -n 1", command)
             self.assertIn("-path '*/sim/*.v'", command)
-            self.assertIn("sed 's#^#../#'", command)
+            self.assertIn('sed "s#^#$IP_SOURCE_PREFIX#"', command)
+            self.assertIn("IP_SOURCE_PREFIX=../", command)
             self.assertIn("$VIVADO_ROOT/data/ip/xpm/xpm_memory/hdl/xpm_memory.sv", command)
             self.assertIn("$VIVADO_ROOT/data/verilog/src/glbl.v", command)
             self.assertEqual(ip_vcs_filelist_argument(), "-f ../fpga_ip/vcs_sim_sources.f")
+
+            root_compile = stage_fpga_ip_runtime(
+                run_dir,
+                root / "stage_root_compile",
+                {"tools": [{"name": "vivado", "executable": "/opt/Xilinx/Vivado/2021.1/bin/vivado"}]},
+                compiler_workdir=".",
+            )
+            self.assertIn("IP_SOURCE_PREFIX=''", root_compile["provision_command"])
+            self.assertEqual(ip_vcs_filelist_argument("."), "-f fpga_ip/vcs_sim_sources.f")
 
     def test_formal_vivado_runner_uses_generated_manifest_and_board_part(self) -> None:
         root = Path(__file__).resolve().parents[1]

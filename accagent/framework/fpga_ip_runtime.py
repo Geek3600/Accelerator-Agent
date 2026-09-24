@@ -9,6 +9,7 @@ returns a shell fragment and staged files for the real-tool execution layer.
 from __future__ import annotations
 
 import json
+import posixpath
 import shlex
 import shutil
 from pathlib import Path
@@ -28,13 +29,16 @@ def stage_fpga_ip_runtime(
     run_dir: Path,
     stage_dir: Path,
     tool_profile: dict[str, Any],
+    *,
+    compiler_workdir: str = "vcs_work",
 ) -> dict[str, Any]:
     """Stage the IP generator and return the cold-compile provisioning command.
 
     Vivado runs on the configured remote host, so the command intentionally
     references the remote Vivado installation and writes all generated files
     inside the remote VCS work directory.  The generated file list is consumed
-    by the generated vlogan command; no behavioral fallback is allowed.
+    by the generated VCS command from ``compiler_workdir``; no behavioral
+    fallback is allowed.
     """
 
     closure_path = (
@@ -80,6 +84,17 @@ def stage_fpga_ip_runtime(
     filelist_q = shlex.quote(filelist)
     module_manifest_q = shlex.quote(module_manifest)
     fpga_part_q = shlex.quote(str(closure["fpga_part"]))
+    compiler_workdir = compiler_workdir.strip() or "."
+    if (
+        compiler_workdir.startswith("/")
+        or any(part == ".." for part in compiler_workdir.split("/"))
+    ):
+        raise ValueError("compiler_workdir must be a safe relative path")
+    relative_ip_dir = posixpath.relpath("fpga_ip", compiler_workdir)
+    source_root_prefix = posixpath.relpath(".", compiler_workdir)
+    relative_ip_prefix = (
+        "" if source_root_prefix == "." else source_root_prefix.rstrip("/") + "/"
+    )
     # Resolve this once on the remote host.  A tool profile may name Vivado by
     # its absolute path or via PATH, so deriving the installation root in
     # Python would make the execution handoff needlessly host-specific.
@@ -95,15 +110,15 @@ def stage_fpga_ip_runtime(
             "set -euo pipefail;",
             vivado_bin_assignment,
             vivado_root_assignment,
+            f"IP_SOURCE_PREFIX={shlex.quote(relative_ip_prefix)};",
             f"rm -rf -- {shlex.quote('fpga_ip/vivado_ip_project')} {shlex.quote('fpga_ip/vivado_ip')} {filelist_q};",
             f'"$VIVADO_BIN" -mode batch -nojournal -nolog -source {tcl} -tclargs {project} {output} {fpga_part_q} {module_manifest_q};',
             "{",
-            # The list is consumed from vcs_work, while the generated IP lives
-            # beside it under stage_dir/fpga_ip.  Keep generated RTL relative
-            # to that real compiler cwd; Vivado installation files stay
-            # absolute and therefore resolve independently of the workdir.
-            f"find {shlex.quote(ip_output)} -type f -path '*/hdl/*_rfs.v' -print | sort | head -n 1 | sed 's#^#../#';",
-            f"find {shlex.quote(ip_output)} -type f -path '*/sim/*.v' -print | sort | sed 's#^#../#';",
+            # Generated RTL must be relative to the actual VCS cwd. Vivado
+            # installation files remain absolute and therefore resolve
+            # independently of the chosen compiler work directory.
+            f"find {shlex.quote(ip_output)} -type f -path '*/hdl/*_rfs.v' -print | sort | head -n 1 | sed \"s#^#$IP_SOURCE_PREFIX#\";",
+            f"find {shlex.quote(ip_output)} -type f -path '*/sim/*.v' -print | sort | sed \"s#^#$IP_SOURCE_PREFIX#\";",
             'printf "%s\\n" "$VIVADO_ROOT/data/ip/xpm/xpm_cdc/hdl/xpm_cdc.sv" "$VIVADO_ROOT/data/ip/xpm/xpm_fifo/hdl/xpm_fifo.sv" "$VIVADO_ROOT/data/ip/xpm/xpm_memory/hdl/xpm_memory.sv" "$VIVADO_ROOT/data/verilog/src/glbl.v";',
             'printf "%s\\n" "-y" "$VIVADO_ROOT/data/verilog/src/unisims" "+libext+.v";',
             f"}} > {filelist_q};",
@@ -119,13 +134,22 @@ def stage_fpga_ip_runtime(
         "remote_ip_output_dir": ip_output,
         "remote_ip_project_dir": ip_project,
         "remote_vcs_filelist": filelist,
+        "compiler_workdir": compiler_workdir,
+        "compiler_relative_ip_dir": relative_ip_dir,
+        "compiler_relative_source_root": source_root_prefix,
         "vivado_executable": executable,
         "provision_command": command,
         "required_modules": list(closure.get("required_ip_modules", [])),
     }
 
 
-def ip_vcs_filelist_argument() -> str:
-    """Return the stable path used from the framework VCS command cwd."""
+def ip_vcs_filelist_argument(compiler_workdir: str = "vcs_work") -> str:
+    """Return the generated file list path relative to the VCS command cwd."""
 
-    return "-f ../fpga_ip/vcs_sim_sources.f"
+    compiler_workdir = compiler_workdir.strip() or "."
+    if (
+        compiler_workdir.startswith("/")
+        or any(part == ".." for part in compiler_workdir.split("/"))
+    ):
+        raise ValueError("compiler_workdir must be a safe relative path")
+    return f"-f {posixpath.relpath('fpga_ip/vcs_sim_sources.f', compiler_workdir)}"

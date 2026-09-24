@@ -400,6 +400,46 @@ class RepairExecutionFeedbackTest(unittest.TestCase):
         self.assertTrue(result["upstream_capability_replan_required"])
         self.assertEqual(result["required_capabilities"], [capability])
 
+    def test_repeated_no_edit_llm_wait_blocks_without_new_tool_evidence(self) -> None:
+        report = {
+            "status": "incomplete",
+            "step_results": [
+                {
+                    "step_id": "repair_step.00",
+                    "scope": "verification_capability_repair",
+                    "result": {
+                        "status": "llm_waiting_for_current_evidence",
+                        "repair_kind": "checkpoint_adapter_diagnosis",
+                        "summary": "need a different explanation",
+                        "framework_action_required": False,
+                        "required_capabilities": [
+                            {
+                                "capability_id": "unconfigured.checkpoint_adapter_observation",
+                                "producer_scope": "operator_leaf_closure",
+                                "target_modules": ["model_weight_catalog"],
+                                "rationale": "first wording",
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+        first = repair_loop_disposition(report)
+        report["step_results"][0]["result"]["summary"] = "same facts in new wording"
+        report["step_results"][0]["result"]["required_capabilities"][0]["rationale"] = "second wording"
+        repeated = repair_loop_disposition(
+            report,
+            prior_failure_frontiers=first["observed_failure_frontiers"],
+        )
+
+        self.assertEqual(first["status"], "continue")
+        self.assertEqual(repeated["status"], "blocked")
+        self.assertEqual(
+            repeated["no_progress_waiting_decisions"],
+            ["checkpoint_adapter_diagnosis"],
+        )
+
     def test_unchanged_failure_without_new_observation_blocks(self) -> None:
         result = repair_loop_disposition(
             {

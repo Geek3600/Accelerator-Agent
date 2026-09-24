@@ -34082,6 +34082,24 @@ _REPAIR_LOOP_ARTIFACT_FIELDS = (
     "leaf_stage_report",
     "dut_weight_binding_materialization",
 )
+_REPAIR_LOOP_WAITING_TOOL_EVIDENCE_FIELDS = (
+    "reference_builder_log",
+    "capability_probe_log",
+    "post_patch_capability_probe_log",
+    "leaf_stage_report",
+    "dut_weight_binding_materialization",
+)
+_REPAIR_LOOP_WAITING_VOLATILE_CONTROL_KEYS = {
+    "summary",
+    "rationale",
+    "reason",
+    "description",
+    "message",
+    "timestamp",
+    "path",
+    "log_path",
+    "result_path",
+}
 
 
 def repair_loop_stable_observation(value: Any) -> Any:
@@ -34186,6 +34204,132 @@ def repair_loop_failure_frontier(
     }
 
 
+def _repair_loop_waiting_control(value: Any) -> Any:
+    """Keep structural wait-decision facts while dropping mutable LLM prose."""
+
+    if isinstance(value, dict):
+        return {
+            str(key): _repair_loop_waiting_control(item)
+            for key, item in sorted(value.items())
+            if str(key) not in _REPAIR_LOOP_WAITING_VOLATILE_CONTROL_KEYS
+            and str(key) not in _REPAIR_LOOP_VOLATILE_OBSERVATION_KEYS
+        }
+    if isinstance(value, list):
+        return [_repair_loop_waiting_control(item) for item in value]
+    return value
+
+
+def repair_loop_waiting_frontier(
+    item: dict[str, Any],
+    result: dict[str, Any],
+    patch_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Identify a no-edit LLM wait without treating new prose as evidence.
+
+    A supported new capability is handled by the upstream-replan path before
+    this guard. This frontier only protects the remaining no-edit wait path,
+    where resubmitting an LLM request without a new tool fact cannot improve
+    the next decision.
+    """
+
+    patch_report = patch_report if isinstance(patch_report, dict) else {}
+    artifacts: dict[str, list[str]] = {}
+
+    def collect(role: str, value: Any) -> None:
+        candidates = value if isinstance(value, list) else [value]
+        identities = [
+            identity
+            for candidate in candidates
+            for identity in [repair_loop_observation_identity(candidate)]
+            if identity
+        ]
+        if identities:
+            artifacts[role] = sorted(set(identities))
+
+    for field in _REPAIR_LOOP_WAITING_TOOL_EVIDENCE_FIELDS:
+        collect(field, result.get(field))
+    collect("capability_report", result.get("capability_reports", []))
+    instrumentation = result.get("instrumentation_evidence")
+    if (
+        result.get("instrumentation_evidence_collected") is True
+        or (
+            isinstance(instrumentation, dict)
+            and instrumentation.get("status") not in {None, "not_run"}
+        )
+    ):
+        collect("instrumentation_evidence", instrumentation)
+    real_failure_identity = str(
+        result.get("new_current_real_tool_failure_identity_sha256") or ""
+    )
+    if is_sha256(real_failure_identity):
+        artifacts["new_current_real_tool_failure"] = [real_failure_identity]
+
+    actual_file_edits = [
+        {
+            key: file_record.get(key)
+            for key in ("path", "before_sha256", "after_sha256", "operation")
+            if file_record.get(key) is not None
+        }
+        for source in (result.get("file_edits", []), patch_report.get("files", []))
+        if isinstance(source, list)
+        for file_record in source
+        if isinstance(file_record, dict)
+    ]
+    required_capabilities = _repair_loop_waiting_control(
+        [
+            value
+            for value in result.get("required_capabilities", [])
+            if isinstance(value, dict)
+        ]
+    )
+    source_bound_blockers = _repair_loop_waiting_control(
+        {
+            "result": {
+                key: result.get(key)
+                for key in (
+                    "failure_class",
+                    "blocked_reasons",
+                    "agent_contract_blockers",
+                    "source_identity_sha256",
+                    "source_sha256",
+                )
+                if result.get(key) is not None
+            },
+            "patch": {
+                key: patch_report.get(key)
+                for key in (
+                    "failure_class",
+                    "blocked_reasons",
+                    "agent_contract_blockers",
+                    "agent_transaction_rejection",
+                )
+                if patch_report.get(key) is not None
+            },
+        }
+    )
+    control = {
+        "kind": "llm_waiting_for_current_evidence",
+        "step_id": item.get("step_id"),
+        "scope": item.get("scope"),
+        "repair_kind": result.get("repair_kind"),
+        "framework_action_required": result.get("framework_action_required") is True,
+        "required_capabilities": required_capabilities,
+        "actual_file_edits": actual_file_edits,
+        "source_bound_blockers": source_bound_blockers,
+    }
+    control_sha256 = canonical_contract_sha256(control)
+    frontier_sha256 = canonical_contract_sha256(
+        {"control_sha256": control_sha256, "artifacts": artifacts}
+    )
+    return {
+        "kind": control["kind"],
+        "control_sha256": control_sha256,
+        "frontier_sha256": frontier_sha256,
+        "artifact_identities": artifacts,
+        "actual_file_edits": actual_file_edits,
+    }
+
+
 def repair_loop_prior_failure_frontiers(loop_dir: Path) -> list[dict[str, Any]]:
     """Load failed observation frontiers from durable loop history.
 
@@ -34226,13 +34370,23 @@ def repair_loop_prior_failure_frontiers(loop_dir: Path) -> list[dict[str, Any]]:
             if not isinstance(item, dict):
                 continue
             result = item.get("result", {})
-            if isinstance(result, dict) and result.get("status") == "fail":
+            if not isinstance(result, dict):
+                continue
+            if result.get("status") == "fail":
                 frontiers.append(
                     repair_loop_failure_frontier(
                         item,
                         result,
                         artifact_overrides=snapshots_by_role,
                     )
+                )
+            elif result.get("status") == "llm_waiting_for_current_evidence":
+                patch_report: dict[str, Any] = {}
+                snapshots = snapshots_by_role.get("agent_patch_application", [])
+                if snapshots:
+                    patch_report = read_json_if_exists(snapshots[0])
+                frontiers.append(
+                    repair_loop_waiting_frontier(item, result, patch_report)
                 )
     return frontiers
 
@@ -34300,6 +34454,7 @@ def repair_loop_disposition(
     completed_capability_producers: list[dict[str, Any]] = []
     applied_files: list[dict[str, Any]] = []
     no_progress_failures: list[str] = []
+    no_progress_waiting_decisions: list[str] = []
     observed_failure_frontiers: list[dict[str, Any]] = []
     prior_frontier_hashes = {
         str(frontier.get("frontier_sha256"))
@@ -34316,6 +34471,12 @@ def repair_loop_disposition(
         if not isinstance(item, dict):
             continue
         result = item.get("result", {}) if isinstance(item.get("result"), dict) else {}
+        patch_path_value = result.get("agent_patch_application")
+        patch_report = (
+            read_json_if_exists(Path(str(patch_path_value)))
+            if patch_path_value
+            else {}
+        )
         if result.get("status") == "fail":
             instrumentation_evidence = (
                 result.get("instrumentation_evidence", {})
@@ -34362,6 +34523,23 @@ def repair_loop_disposition(
                 if len(supported_actions) == len(required_capabilities):
                     upstream_capability_replans.extend(required_capabilities)
                     continue
+            waiting_frontier = repair_loop_waiting_frontier(
+                item,
+                result,
+                patch_report,
+            )
+            observed_failure_frontiers.append(waiting_frontier)
+            if (
+                not waiting_frontier["actual_file_edits"]
+                and waiting_frontier["frontier_sha256"] in prior_frontier_hashes
+            ):
+                no_progress_waiting_decisions.append(
+                    str(
+                        result.get("repair_kind")
+                        or item.get("step_id")
+                        or "LLM wait decision"
+                    )
+                )
         if result.get("requires_agent_followup") is True:
             completed_capability_producers.append(
                 {
@@ -34392,14 +34570,12 @@ def repair_loop_disposition(
             )
             if re.fullmatch(r"[0-9a-f]{64}", identity):
                 new_real_tool_failure_identities.add(identity)
-        patch_path_value = result.get("agent_patch_application")
         if not patch_path_value:
             if result.get("status") == "blocked":
                 blocked_summaries.append(
                     str(result.get("summary") or "repair agent is blocked")
                 )
             continue
-        patch_report = read_json_if_exists(Path(str(patch_path_value)))
         llm_evidence_wait = patch_report.get("status") == "llm_waiting_for_current_evidence"
         retry_without_real_tool = (
             patch_report.get("status") in {"blocked", "llm_waiting_for_current_evidence"}
@@ -34458,6 +34634,18 @@ def repair_loop_disposition(
             if after_sha and after_sha != before_sha:
                 applied_files.append(copy.deepcopy(file_record))
 
+    if no_progress_waiting_decisions:
+        return with_observed_frontiers({
+            "status": "blocked",
+            "summary": (
+                "the same no-edit LLM wait decision recurred without new real-tool, "
+                "capability-producer, patch, or instrumentation evidence; return to "
+                "the flow controller for a fresh bounded plan: "
+                + "; ".join(no_progress_waiting_decisions)
+            ),
+            "applied_files": [],
+            "no_progress_waiting_decisions": no_progress_waiting_decisions,
+        })
     if blocked_summaries:
         return with_observed_frontiers({
             "status": "continue",

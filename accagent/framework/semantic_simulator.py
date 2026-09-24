@@ -18,12 +18,22 @@ from accagent.framework.board_progress import (
     adaptive_semantic_stall_evidence,
     read_complete_jsonl,
 )
+from accagent.framework.fpga_ip_contract import (
+    FP_MODULE_NAME,
+    check_fpga_ip_simulation_closure,
+)
+from accagent.framework.fpga_ip_runtime import (
+    ip_vcs_filelist_argument,
+    stage_fpga_ip_runtime,
+)
 
 
 SCHEMA_VERSION = "spatialaccagent.semantic_simulator_execution.v1"
 MAX_VCS_COMPILE_JOBS = 32
 MEMORY_INIT_DEFINE = "ENABLE_INITIAL_MEM_"
 READMEM_LITERAL_RE = re.compile(r'\$readmem[hb]\s*\(\s*"([^"]+)"')
+PHYSICAL_XPM_MODULE_NAMES = {"xpm_memory_sdpram", "xpm_memory_sprom"}
+PHYSICAL_SIMULATION_MODULE_RE = re.compile(r"\b(?:fp_[a-z0-9_]+|xpm_memory_[a-z0-9_]+)\b")
 SEMANTIC_STALL_EXIT_CODE = 86
 ZERO_TIME_LIVELOCK_EXIT_CODE = 87
 REMOTE_JOB_RETRY_REQUEST = "remote_job_retry_request.json"
@@ -280,6 +290,151 @@ def semantic_memory_init_payload(
     return sorted(defines), [dependencies[key] for key in sorted(dependencies)], errors
 
 
+def semantic_fpga_ip_module_references(sources: list[Path]) -> list[str]:
+    """Return physical FPGA simulation modules referenced by the DUT closure."""
+
+    references: set[str] = set()
+    for source in sources:
+        try:
+            text = source.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for name in PHYSICAL_SIMULATION_MODULE_RE.findall(text):
+            if FP_MODULE_NAME.fullmatch(name) or name in PHYSICAL_XPM_MODULE_NAMES:
+                references.add(name)
+    return sorted(references)
+
+
+def semantic_fpga_ip_static_binding(
+    run_dir: Path,
+    sources: list[Path],
+) -> tuple[dict[str, Any], list[str]]:
+    """Validate the generated-IP closure needed by a physical semantic harness."""
+
+    references = semantic_fpga_ip_module_references(sources)
+    if not references:
+        return {
+            "status": "not_required",
+            "required_module_references": [],
+        }, []
+
+    closure_path = (
+        run_dir
+        / "generated"
+        / "chisel"
+        / "simulation"
+        / "fpga_ip_simulation_closure.json"
+    )
+    closure_check = check_fpga_ip_simulation_closure(closure_path)
+    if closure_check.get("status") != "pass":
+        return {}, [
+            "physical semantic harness requires a valid FPGA IP simulation closure: "
+            + "; ".join(
+                str(value)
+                for value in closure_check.get("errors", [])
+                if str(value)
+            )
+        ]
+    closure = closure_check["closure"]
+
+    def closure_file(key: str) -> Path:
+        path = Path(str(closure[key])).expanduser()
+        return path if path.is_absolute() else closure_path.parent / path
+
+    tcl_path = closure_file("ip_generation_tcl")
+    manifest_path = closure_file("ip_module_manifest")
+    missing_paths = [
+        f"{label} is missing: {path}"
+        for label, path in (
+            ("FPGA IP generation TCL", tcl_path),
+            ("FPGA IP module manifest", manifest_path),
+        )
+        if not path.is_file()
+    ]
+    if missing_paths:
+        return {}, missing_paths
+    required_modules = {
+        str(name)
+        for name in closure.get("required_ip_modules", [])
+        if isinstance(name, str)
+    }
+    missing_models = sorted(
+        name
+        for name in references
+        if FP_MODULE_NAME.fullmatch(name) and name not in required_modules
+    )
+    if missing_models:
+        return {}, [
+            "FPGA IP simulation closure does not cover generated physical modules: "
+            + ", ".join(missing_models)
+        ]
+    staged_payload = {
+        "fpga_ip/fpga_ip_simulation_closure.json": sha256_file(closure_path),
+        "fpga_ip/gen_xilinx_fp_ips.tcl": sha256_file(tcl_path),
+        "fpga_ip/fpga_ip_modules.txt": sha256_file(manifest_path),
+    }
+    identity = {
+        "fpga_part": str(closure["fpga_part"]),
+        "required_module_references": references,
+        "required_ip_modules": sorted(required_modules),
+        "staged_payload": staged_payload,
+    }
+    return {
+        "status": "ready",
+        **identity,
+        "binding_sha256": hashlib.sha256(
+            json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest(),
+    }, []
+
+
+def semantic_fpga_ip_runtime_tool_profile(
+    run_dir: Path,
+    binding: dict[str, Any],
+    vcs_tool: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    """Resolve the Vivado producer that must share the remote VCS host."""
+
+    if binding.get("status") == "not_required":
+        return {}, {}, []
+    profile_path = run_dir / "input" / "tool_profile.json"
+    try:
+        profile = read_json(profile_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return {}, {}, [f"cannot read FPGA IP tool profile: {exc}"]
+    candidates = [
+        row
+        for row in profile.get("tools", [])
+        if isinstance(row, dict) and str(row.get("name") or "").lower() == "vivado"
+    ]
+    if len(candidates) != 1:
+        return {}, {}, [
+            f"physical semantic harness requires exactly one Vivado tool profile, found {len(candidates)}"
+        ]
+    vivado = candidates[0]
+    host = str(vivado.get("host") or "")
+    executable = str(vivado.get("executable") or "")
+    port = int(vivado.get("port") or 22)
+    errors: list[str] = []
+    if vivado.get("scope") != "remote":
+        errors.append("physical semantic harness requires a remote Vivado tool")
+    if not host or not executable:
+        errors.append("physical semantic harness Vivado tool is missing host or executable")
+    if host != str(vcs_tool.get("host") or "") or port != int(vcs_tool.get("port") or 22):
+        errors.append("Vivado IP generation must use the same remote host and port as VCS")
+    if errors:
+        return {}, {}, errors
+    identity = {
+        "name": str(vivado.get("name") or "vivado"),
+        "scope": str(vivado.get("scope") or ""),
+        "host": host,
+        "port": port,
+        "executable": executable,
+        "fpga_ip_binding_sha256": str(binding["binding_sha256"]),
+    }
+    return profile, identity, []
+
+
 def semantic_input_fingerprint(
     contract: dict[str, Any],
     run_dir: Path | None = None,
@@ -338,6 +493,11 @@ def semantic_input_fingerprint(
             paths[1 : 1 + len(source_rows)],
         )
         blockers.extend(init_errors)
+        fpga_ip_binding, fpga_ip_errors = semantic_fpga_ip_static_binding(
+            run_dir,
+            paths[1 : 1 + len(source_rows)],
+        )
+        blockers.extend(fpga_ip_errors)
         if blockers:
             return "", blockers
         if defines or dependencies:
@@ -350,6 +510,11 @@ def semantic_input_fingerprint(
                         for row in dependencies
                     ),
                 ]
+            )
+        if fpga_ip_binding.get("status") == "ready":
+            payload_hashes.append(
+                "fpga_ip_simulation_binding:"
+                + str(fpga_ip_binding["binding_sha256"])
             )
     return hashlib.sha256("".join(payload_hashes).encode("ascii")).hexdigest(), []
 
@@ -445,6 +610,15 @@ def _semantic_contract_identity(
 
     defines, dependencies, init_errors = semantic_memory_init_payload(run_dir, sources)
     errors.extend(init_errors)
+    fpga_ip_binding, fpga_ip_binding_errors = semantic_fpga_ip_static_binding(
+        run_dir,
+        sources,
+    )
+    errors.extend(fpga_ip_binding_errors)
+    _, fpga_ip_tool_identity, fpga_ip_tool_errors = (
+        semantic_fpga_ip_runtime_tool_profile(run_dir, fpga_ip_binding, tool)
+    )
+    errors.extend(fpga_ip_tool_errors)
     fingerprint, fingerprint_errors = semantic_input_fingerprint(contract, run_dir)
     errors.extend(fingerprint_errors)
     if errors:
@@ -478,6 +652,13 @@ def _semantic_contract_identity(
             errors.append(f"semantic payload path collision: {name}")
             continue
         payload[name] = digest
+    if fpga_ip_binding.get("status") == "ready":
+        for name, digest in fpga_ip_binding["staged_payload"].items():
+            previous = payload.get(name)
+            if previous and previous != digest:
+                errors.append(f"semantic payload path collision: {name}")
+                continue
+            payload[name] = digest
     if errors:
         return {}, errors
     plusargs = [
@@ -506,6 +687,11 @@ def _semantic_contract_identity(
             "executable": tool.get("executable"),
             "vcs_target_arch": target_arch,
             "compile_jobs": semantic_vcs_compile_jobs(),
+            **(
+                {"fpga_ip_runtime": fpga_ip_tool_identity}
+                if fpga_ip_tool_identity
+                else {}
+            ),
         },
     }, []
 
@@ -3518,6 +3704,16 @@ def run_remote_vcs_semantic_harness(
             "summary": "semantic VCS inputs failed closed before remote execution",
         }
 
+    fpga_ip_binding, fpga_ip_binding_errors = semantic_fpga_ip_static_binding(
+        run_dir,
+        sources,
+    )
+    blockers.extend(fpga_ip_binding_errors)
+    fpga_ip_tool_profile, fpga_ip_tool_identity, fpga_ip_tool_errors = (
+        semantic_fpga_ip_runtime_tool_profile(run_dir, fpga_ip_binding, tool)
+    )
+    blockers.extend(fpga_ip_tool_errors)
+
     fingerprint, fingerprint_errors = semantic_input_fingerprint(contract, run_dir)
     blockers.extend(fingerprint_errors)
     if progress_callback is not None:
@@ -3584,6 +3780,27 @@ def run_remote_vcs_semantic_harness(
             "summary": "semantic VCS staging failed closed",
         }
 
+    fpga_ip_runtime: dict[str, Any] = {"status": "not_required"}
+    if fpga_ip_binding.get("status") == "ready":
+        try:
+            fpga_ip_runtime = stage_fpga_ip_runtime(
+                run_dir,
+                staging,
+                fpga_ip_tool_profile,
+                compiler_workdir=".",
+            )
+        except (OSError, ValueError, FileNotFoundError) as exc:
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "status": "fail",
+                "simulator": "vcs",
+                "stage_id": stage_id,
+                "failure_class": "fpga_ip_simulation_binding_failure",
+                "blockers": [f"FPGA IP simulation runtime staging failed closed: {exc}"],
+                "fpga_ip_simulation_binding": fpga_ip_binding,
+                "summary": "semantic VCS FPGA IP simulation binding could not be staged",
+            }
+
     host = str(tool["host"])
     port = int(tool.get("port") or 22)
     executable = str(tool["executable"])
@@ -3604,6 +3821,11 @@ def run_remote_vcs_semantic_harness(
     compile_command = " ".join(
         [
             "set -euo pipefail;",
+            *(
+                [str(fpga_ip_runtime["provision_command"])]
+                if fpga_ip_runtime.get("status") == "ready"
+                else []
+            ),
             "export LANG=C LC_ALL=C;",
             f"export VCS_HOME={shlex.quote(vcs_home)};",
             f"export VCS_TARGET_ARCH={shlex.quote(target_arch)};",
@@ -3614,6 +3836,7 @@ def run_remote_vcs_semantic_harness(
             *(shlex.quote(value) for value in semantic_vcs_compile_define_args(compile_defines)),
             f"-top {shlex.quote(top_module)} -o simv",
             *(shlex.quote(name) for name in source_names),
+            *( [ip_vcs_filelist_argument(".")] if fpga_ip_runtime.get("status") == "ready" else [] ),
             "semantic_tb.sv -l vcs.log",
         ]
     )
@@ -3644,6 +3867,11 @@ def run_remote_vcs_semantic_harness(
             "executable": executable,
             "vcs_target_arch": target_arch,
             "compile_jobs": compile_jobs,
+            **(
+                {"fpga_ip_runtime": fpga_ip_tool_identity}
+                if fpga_ip_tool_identity
+                else {}
+            ),
         },
         compile_defines=compile_defines,
         source_names=source_names,
@@ -3931,6 +4159,11 @@ def run_remote_vcs_semantic_harness(
             "vcs_target_arch": target_arch,
             "compile_jobs": compile_jobs,
             "compile_defines": compile_defines,
+            **(
+                {"fpga_ip_runtime": fpga_ip_tool_identity}
+                if fpga_ip_tool_identity
+                else {}
+            ),
         },
         "input_fingerprint_sha256": fingerprint,
         "fresh_remote_vcs_execution_required": fresh_execution_required,
@@ -3942,6 +4175,14 @@ def run_remote_vcs_semantic_harness(
             "schema_version": "spatialaccagent.semantic_memory_initialization.v1",
             "compile_defines": compile_defines,
             "dependencies": memory_init_dependencies,
+        },
+        "fpga_ip_simulation_binding": {
+            "binding": fpga_ip_binding,
+            "runtime": {
+                key: value
+                for key, value in fpga_ip_runtime.items()
+                if key != "provision_command"
+            },
         },
         "source_files": [str(path) for path in sources],
         "testbench": str(testbench),

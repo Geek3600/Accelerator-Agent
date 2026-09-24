@@ -30,6 +30,33 @@ def write_safetensors(path: Path, tensors: list[str]) -> None:
 
 
 class TransformerBlockWeightScopeTest(TestCase):
+    def test_gpt2_adapter_accepts_supported_checkpoint_namespace_aliases(self) -> None:
+        adapter_path = (
+            Path(__file__).resolve().parents[1]
+            / "accagent"
+            / "framework"
+            / "case_adapters"
+            / "gpt2_transformer_block.json"
+        )
+        adapter = json.loads(adapter_path.read_text(encoding="utf-8"))
+        patterns = adapter["decoder_layer_tensor_patterns"]
+
+        for prefix in ("transformer.", ""):
+            selected, excluded, used_pattern = bind_transformer_scope(
+                [
+                    tensor(f"{prefix}h.0.ln_1.weight"),
+                    tensor(f"{prefix}h.1.ln_1.weight"),
+                    tensor(f"{prefix}wte.weight"),
+                ],
+                patterns,
+                num_layers=2,
+            )
+
+            self.assertEqual([row["layer_index"] for row in selected], [0, 1])
+            self.assertEqual([row["parameter_suffix"] for row in selected], ["ln_1.weight", "ln_1.weight"])
+            self.assertEqual(excluded, [f"{prefix}wte.weight"])
+            self.assertIn(used_pattern, patterns)
+
     def test_complete_scope_excludes_non_block_model_regions(self) -> None:
         tensors = [
             tensor("model.embed_tokens.weight"),

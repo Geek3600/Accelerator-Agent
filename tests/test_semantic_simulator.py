@@ -32,6 +32,7 @@ from accagent.framework.semantic_simulator import (
     run_remote_vcs_semantic_harness,
     semantic_input_fingerprint,
     semantic_memory_init_payload,
+    semantic_fpga_ip_static_binding,
     semantic_remote_job_contract,
     semantic_stall_termination_label_allowed,
     semantic_vcs_compile_jobs,
@@ -1303,6 +1304,140 @@ class SemanticSimulatorTest(TestCase):
             self.assertEqual(dependencies[0]["remote_relative_path"], "src/main/resources/table.memh")
             self.assertEqual(fingerprint_before, environment_bound_fingerprint)
             self.assertNotEqual(fingerprint_before, fingerprint_after)
+
+    def test_physical_semantic_sources_bind_generated_ip_closure_into_remote_vcs(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            input_dir = run_dir / "input"
+            simulation_dir = run_dir / "generated" / "chisel" / "simulation"
+            scripts_dir = run_dir / "generated" / "chisel" / "scripts"
+            payload_dir = run_dir / "payload"
+            for path in (input_dir, simulation_dir, scripts_dir, payload_dir):
+                path.mkdir(parents=True, exist_ok=True)
+            generator = scripts_dir / "gen_xilinx_fp_ips_23.tcl"
+            manifest = simulation_dir / "fpga_ip_modules.txt"
+            generator.write_text("puts generated-ip\n", encoding="ascii")
+            manifest.write_text("fp_add_sp_12\n", encoding="ascii")
+            closure = {
+                "status": "ready",
+                "policy": {
+                    "compute_models": "generated Vivado floating_point IP simulation models",
+                    "memory_models": "Xilinx XPM simulation library",
+                    "required_libraries": ["unisims_ver", "xpm"],
+                    "required_sources": ["glbl.v", "generated_ip_simulation_sources"],
+                    "same_module_names_as_implementation": True,
+                    "same_interface_and_cycle_latency_as_implementation": True,
+                    "behavioral_fallback_allowed": False,
+                },
+                "ip_generation_tcl": str(generator),
+                "ip_output_dir": str(simulation_dir / "vivado_ip"),
+                "ip_project_dir": str(simulation_dir / "vivado_ip_project"),
+                "ip_module_manifest": str(manifest),
+                "fpga_part": "xcvu9p_CIV-flgb2104-2-i",
+                "required_ip_modules": ["fp_add_sp_12"],
+                "vcs_compile_requirements": {
+                    "generated_ip_simulation_sources": "generated sources",
+                    "xpm_library": "xpm",
+                    "unisims_library": "unisims_ver",
+                    "global_module": "glbl.v",
+                },
+            }
+            (simulation_dir / "fpga_ip_simulation_closure.json").write_text(
+                json.dumps(closure), encoding="utf-8"
+            )
+            (input_dir / "tool_profile.json").write_text(
+                json.dumps(
+                    {
+                        "tools": [
+                            {
+                                "name": "vcs",
+                                "role": "functional_verification",
+                                "scope": "remote",
+                                "host": "builder",
+                                "port": 22,
+                                "executable": "/eda/vcs/bin/vcs",
+                            },
+                            {
+                                "name": "vivado",
+                                "role": "synthesis_implementation_bitstream_generation",
+                                "scope": "remote",
+                                "host": "builder",
+                                "port": 22,
+                                "executable": "/eda/vivado/bin/vivado",
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            source = payload_dir / "Harness.sv"
+            testbench = payload_dir / "semantic_tb.sv"
+            vector = payload_dir / "input.memh"
+            output = payload_dir / "rtl_output.memh"
+            source.write_text(
+                "module Harness; fp_add_sp_12 ip(); endmodule\n",
+                encoding="ascii",
+            )
+            testbench.write_text(
+                "module semantic_stage_physical_tb; endmodule\n",
+                encoding="ascii",
+            )
+            vector.write_text("00000000\n", encoding="ascii")
+            contract = {
+                "testbench": str(testbench),
+                "testbench_sha256": sha256_file(testbench),
+                "dut_harness": {"source_files": [{"path": str(source), "sha256": sha256_file(source)}]},
+                "input_vectors": [{"path": str(vector), "sha256": sha256_file(vector)}],
+                "rtl_output_capture": str(output),
+            }
+            tool = {
+                "name": "vcs",
+                "role": "functional_verification",
+                "scope": "remote",
+                "host": "builder",
+                "port": 22,
+                "executable": "/eda/vcs/bin/vcs",
+            }
+            binding, errors = semantic_fpga_ip_static_binding(run_dir, [source])
+            self.assertEqual(errors, [])
+            self.assertEqual(binding["status"], "ready")
+
+            def download(*args):
+                destination = Path(args[3])
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text("00000001\n", encoding="ascii")
+                return {"status": "pass", "returncode": 0}
+
+            passed = {"status": "pass", "returncode": 0, "stdout_tail": "", "stderr_tail": ""}
+            with patch(
+                "accagent.framework.semantic_simulator.recover_exact_remote_semantic_job",
+                return_value=None,
+            ), patch(
+                "accagent.framework.semantic_simulator.command_result",
+                return_value=passed,
+            ), patch(
+                "accagent.framework.semantic_simulator.run_remote_background_command",
+                return_value=passed,
+            ) as launch, patch(
+                "accagent.framework.semantic_simulator.copy_remote_file",
+                side_effect=download,
+            ), patch(
+                "accagent.framework.semantic_simulator.persist_remote_artifact_receipt",
+                return_value={"status": "pass"},
+            ):
+                report = run_remote_vcs_semantic_harness(
+                    run_dir,
+                    "stage_physical",
+                    contract,
+                    tool,
+                    60,
+                )
+
+        self.assertEqual(report["status"], "pass")
+        compile_command = launch.call_args_list[0].args[2]
+        self.assertIn("gen_xilinx_fp_ips.tcl", compile_command)
+        self.assertIn("-f fpga_ip/vcs_sim_sources.f", compile_command)
+        self.assertEqual(report["fpga_ip_simulation_binding"]["binding"]["status"], "ready")
 
     def test_missing_semantic_memory_initialization_dependency_fails_closed(self) -> None:
         with TemporaryDirectory() as temp_dir:
