@@ -1535,7 +1535,9 @@ def transient_llm_error(exc: Exception) -> bool:
             return True
         if provider_capacity_error(exc):
             return True
-        return exc.code in {408, 409, 425, 426, 429, 500, 502, 503, 504}
+        if exc.code == 302 and "redirect error that would lead to an infinite loop" in str(exc).lower():
+            return True
+        return exc.code in {408, 409, 425, 426, 429, 500, 502, 503, 504, 524, 530}
     if isinstance(exc, (TimeoutError, socket.timeout, ssl.SSLError, urllib.error.URLError)):
         return True
     text = str(exc).lower()

@@ -143,6 +143,38 @@ class LlmRetryPathTests(unittest.TestCase):
             self.assertEqual(stage_llm.retry_sleep_seconds(capacity, 1), 123.0)
         self.assertFalse(stage_llm.transient_llm_error(denied))
 
+    def test_gateway_errors_retry_within_team_decomposition(self) -> None:
+        def http_error(code: int, reason: str) -> urllib.error.HTTPError:
+            return urllib.error.HTTPError(
+                "https://example.invalid/v1/responses", code, reason, None, None
+            )
+
+        redirect_loop = http_error(
+            302, "The HTTP server returned a redirect error that would lead to an infinite loop."
+        )
+        gateway_timeout = http_error(524, "origin timeout")
+        gateway_route = http_error(530, "domain not configured")
+        for error in (redirect_loop, gateway_timeout, gateway_route):
+            self.assertTrue(stage_llm.transient_llm_error(error))
+        self.assertFalse(stage_llm.transient_llm_error(http_error(302, "Found")))
+
+        with (
+            patch.object(
+                stage_team,
+                "read_response_text",
+                side_effect=[redirect_loop, gateway_timeout, gateway_route, '{"ok":true}'],
+            ) as request,
+            patch.object(stage_team, "retry_sleep_seconds", return_value=0.0),
+            patch.object(stage_team.time, "sleep"),
+        ):
+            text, errors = stage_team.post_decomposer_json(
+                object(), 1, "team_decomposition_json", True
+            )
+
+        self.assertEqual(text, '{"ok":true}')
+        self.assertEqual(len(errors), 3)
+        self.assertEqual(request.call_count, 4)
+
     def test_websocket_upgrade_transport_error_is_transient(self) -> None:
         error = urllib.error.HTTPError(
             "https://example.invalid/v1/responses",
