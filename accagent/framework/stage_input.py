@@ -48,6 +48,7 @@ from accagent.framework.stage_input_common import (
 )
 from accagent.framework.stage_team import run_design_team, team_failure_errors, team_summary
 from accagent.framework.stage_llm import (
+    llm_inflight_slot,
     llm_transient_attempts,
     llm_transient_retry_unbounded,
     retry_sleep_seconds,
@@ -768,9 +769,10 @@ def post_llm_json(
 
     while True:
         try:
-            return read_response_text(
-                request_for_transport(current_stream), timeout_sec, current_stream
-            ), errors
+            with llm_inflight_slot(label):
+                return read_response_text(
+                    request_for_transport(current_stream), timeout_sec, current_stream
+                ), errors
         except Exception as exc:
             errors.append(f"attempt {attempt}: {exc}")
             if not transient_llm_error(exc):

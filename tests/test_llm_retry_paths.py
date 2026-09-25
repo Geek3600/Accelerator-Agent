@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 import urllib.error
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
@@ -166,6 +167,7 @@ class LlmRetryPathTests(unittest.TestCase):
             ) as request,
             patch.object(stage_team, "retry_sleep_seconds", return_value=0.0),
             patch.object(stage_team.time, "sleep"),
+            patch.object(stage_team, "llm_inflight_slot", return_value=nullcontext()),
         ):
             text, errors = stage_team.post_decomposer_json(
                 object(), 1, "team_decomposition_json", True
@@ -174,6 +176,28 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertEqual(text, '{"ok":true}')
         self.assertEqual(len(errors), 3)
         self.assertEqual(request.call_count, 4)
+
+    def test_direct_stage_requests_hold_the_shared_llm_slot(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "inflight.json"
+            observed: list[str] = []
+
+            def capture(*_args: object) -> str:
+                state = json.loads(state_path.read_text())
+                self.assertEqual(len(state["leases"]), 1)
+                observed.append(next(iter(state["leases"].values()))["schema_name"])
+                return '{"ok":true}'
+
+            with (
+                patch.dict(os.environ, {"SPATIALACC_LLM_LIMITER_DIR": directory}),
+                patch.object(stage_input, "read_response_text", side_effect=capture),
+                patch.object(stage_team, "read_response_text", side_effect=capture),
+            ):
+                stage_input.post_llm_json(object(), 1, "stage0_json", True)
+                stage_team.post_decomposer_json(object(), 1, "team_json", True)
+
+            self.assertEqual(observed, ["stage0_json", "team_json"])
+            self.assertEqual(json.loads(state_path.read_text())["leases"], {})
 
     def test_websocket_upgrade_transport_error_is_transient(self) -> None:
         error = urllib.error.HTTPError(
@@ -212,6 +236,7 @@ class LlmRetryPathTests(unittest.TestCase):
             patch.object(stage_input, "read_response_text", side_effect=fake_read),
             patch.object(stage_input, "retry_sleep_seconds", return_value=0.0),
             patch.object(stage_input.time, "sleep"),
+            patch.object(stage_input, "llm_inflight_slot", return_value=nullcontext()),
         ):
             text, errors = stage_input.post_llm_json(
                 request_factory, 1, "test", True
@@ -246,6 +271,7 @@ class LlmRetryPathTests(unittest.TestCase):
             patch.object(stage_team, "read_response_text", side_effect=self._transient_then_success()),
             patch.object(stage_team, "retry_sleep_seconds", return_value=0.0),
             patch.object(stage_team.time, "sleep"),
+            patch.object(stage_team, "llm_inflight_slot", return_value=nullcontext()),
         ):
             text, errors = stage_team.post_decomposer_json(object(), 1, "test", True)
 
@@ -615,6 +641,7 @@ class LlmRetryPathTests(unittest.TestCase):
             patch.object(stage_input, "read_response_text", side_effect=self._transient_then_success()),
             patch.object(stage_input, "retry_sleep_seconds", return_value=0.0),
             patch.object(stage_input.time, "sleep"),
+            patch.object(stage_input, "llm_inflight_slot", return_value=nullcontext()),
         ):
             text, errors = stage_input.post_llm_json(object(), 1, "test", True)
 

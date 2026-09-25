@@ -36,6 +36,7 @@ from accagent.framework.llm_io import (
     validate_schema,
 )
 from accagent.framework.stage_llm import (
+    llm_inflight_slot,
     ACTION_GROUNDING_REGISTRY,
     ACTION_CONTRACT_EXAMPLES,
     llm_mode,
@@ -2255,7 +2256,8 @@ def post_decomposer_json(req: urllib.request.Request, timeout_sec: int, label: s
     fallback_used = False
     while True:
         try:
-            return read_response_text(req, timeout_sec, stream), errors
+            with llm_inflight_slot(label):
+                return read_response_text(req, timeout_sec, stream), errors
         except Exception as exc:
             errors.append(f"attempt {attempt}: {exc}")
             if not transient_llm_error(exc):
