@@ -123,6 +123,47 @@ class WeightLayoutTest(TestCase):
             self.assertEqual(stream["word_count"], 4)
             self.assertEqual(stream["layout_contract_sha256"], contract["contract_sha256"])
 
+    def test_transposed_linear_stream_materializes_source_rows_in_dut_order(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            weight_path = root / "c_fc.weight.pt"
+            bias_path = root / "c_fc.bias.pt"
+            weight = torch.tensor(
+                [[1.0, 2.0, 3.0, 4.0],
+                 [5.0, 6.0, 7.0, 8.0],
+                 [9.0, 10.0, 11.0, 12.0],
+                 [13.0, 14.0, 15.0, 16.0]]
+            )
+            torch.save(weight, weight_path)
+            torch.save(torch.zeros(4), bias_path)
+            weight_row = binding("mlp.c_fc.weight", [4, 4], weight_path)
+            bias_row = binding("mlp.c_fc.bias", [4], bias_path)
+            contract = build_stage_weight_layout(
+                stage("mlp", "mlp_fc", lanes=2),
+                {},
+                [weight_row, bias_row],
+                NUMERIC_POLICY,
+            )
+
+            stream = materialize_stage_weight_stream(
+                root / "c_fc.memh", contract, [weight_row, bias_row]
+            )
+            actual = [int(line, 16) for line in Path(stream["path"]).read_text().splitlines()]
+            ordered = torch.tensor(
+                [1.0, 5.0, 2.0, 6.0,
+                 9.0, 13.0, 10.0, 14.0,
+                 3.0, 7.0, 4.0, 8.0,
+                 11.0, 15.0, 12.0, 16.0]
+            ).half()
+            bits = [int(value) & 0xFFFF for value in ordered.view(torch.int16).tolist()]
+            expected_weight = [
+                bits[index] | (bits[index + 1] << 16)
+                for index in range(0, len(bits), 2)
+            ]
+
+            self.assertEqual(actual[: len(expected_weight)], expected_weight)
+            self.assertEqual(stream["word_count"], 12)
+
     def test_norm_stream_rounds_to_fp16_then_casts_to_fp32(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -145,6 +186,67 @@ class WeightLayoutTest(TestCase):
             self.assertEqual(target["port"]["data_width_bits"], 64)
             self.assertEqual(target["value_conversion"]["kind"], "ieee754_value_preserving_cast")
             self.assertEqual(actual, expected)
+
+    def test_layer_norm_stream_binds_bias_before_scale(self) -> None:
+        rows = [
+            binding("ln_1.weight", [4]),
+            binding("ln_1.bias", [4]),
+        ]
+
+        contract = build_stage_weight_layout(
+            stage("norm", "layer_norm_1", lanes=2, input_bits=32),
+            {},
+            rows,
+            NUMERIC_POLICY,
+        )
+
+        self.assertEqual(contract["resolution"], "canonical_semantic_op_layout.v1")
+        self.assertEqual(
+            [(row["target_id"], row["compose"]["source_order"])
+             for row in contract["storage_targets"]],
+            [
+                ("norm.bias", ["ln_1.bias"]),
+                ("norm.scale", ["ln_1.weight"]),
+            ],
+        )
+        self.assertEqual(contract["stream_word_count"], 8)
+
+    def test_gpt2_conv1d_layout_transposes_attention_and_mlp_weights(self) -> None:
+        attention_rows = [
+            binding("attn.c_attn.weight", [4, 12]),
+            binding("attn.c_attn.bias", [12]),
+            binding("attn.c_proj.weight", [4, 4]),
+            binding("attn.c_proj.bias", [4]),
+        ]
+        attention = build_stage_weight_layout(
+            stage("attention", "self_attention", lanes=2, head_dim=2),
+            {},
+            attention_rows,
+            NUMERIC_POLICY,
+        )
+        self.assertEqual(
+            [row["target_id"] for row in attention["storage_targets"]],
+            [
+                "attention.qkv.weight",
+                "attention.qkv.bias",
+                "attention.out_proj.weight",
+                "attention.out_proj.bias",
+            ],
+        )
+        self.assertEqual(attention["storage_targets"][0]["logical_shape"], [12, 4])
+        self.assertEqual(
+            attention["storage_targets"][0]["source_axis_order"],
+            ["input_feature", "output_feature"],
+        )
+
+        mlp = build_stage_weight_layout(
+            stage("mlp", "mlp_fc", lanes=2),
+            {},
+            [binding("mlp.c_fc.weight", [4, 8]), binding("mlp.c_fc.bias", [8])],
+            NUMERIC_POLICY,
+        )
+        self.assertEqual(mlp["storage_targets"][0]["logical_shape"], [8, 4])
+        self.assertEqual(mlp["storage_targets"][1]["dut_port_role"], "weight_mlp_up_bias")
 
     def test_unknown_weighted_op_requires_explicit_adapter_layout(self) -> None:
         with self.assertRaisesRegex(ValueError, "no explicit adapter weight_layout"):

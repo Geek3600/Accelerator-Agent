@@ -116,16 +116,23 @@ def linear_weight_target(
     out_lanes: int,
     source_dtype: str,
     storage_dtype: str,
+    transpose_source: bool = False,
 ) -> dict[str, Any]:
     if not sources:
         raise ValueError(f"{target_id} has no source tensor")
     shapes = [[int(value) for value in source.get("shape", [])] for source in sources]
     if any(len(shape) != 2 for shape in shapes):
         raise ValueError(f"{target_id} requires rank-2 source tensors, got {shapes}")
-    in_features = shapes[0][1]
-    if any(shape[1] != in_features for shape in shapes):
-        raise ValueError(f"{target_id} source input dimensions disagree: {shapes}")
-    out_features = sum(shape[0] for shape in shapes)
+    if transpose_source:
+        in_features = shapes[0][0]
+        if any(shape[0] != in_features for shape in shapes):
+            raise ValueError(f"{target_id} source input dimensions disagree: {shapes}")
+        out_features = sum(shape[1] for shape in shapes)
+    else:
+        in_features = shapes[0][1]
+        if any(shape[1] != in_features for shape in shapes):
+            raise ValueError(f"{target_id} source input dimensions disagree: {shapes}")
+        out_features = sum(shape[0] for shape in shapes)
     if in_features % in_lanes or out_features % out_lanes:
         raise ValueError(
             f"{target_id} dimensions do not divide selected lanes: "
@@ -145,11 +152,16 @@ def linear_weight_target(
         "source_tensors": [tensor_record(source) for source in sources],
         "compose": {
             "kind": "identity" if len(sources) == 1 else "concat",
-            "axis": 0,
+            "axis": 1 if transpose_source else 0,
             "source_order": [source.get("parameter_suffix") for source in sources],
         },
         "logical_shape": [out_features, in_features],
-        "source_axis_order": ["output_feature", "input_feature"],
+        "source_axis_order": (
+            ["input_feature", "output_feature"]
+            if transpose_source
+            else ["output_feature", "input_feature"]
+        ),
+        "source_transform": {"kind": "transpose_2d"} if transpose_source else {"kind": "identity"},
         "storage_scalar_dtype": storage_dtype,
         "storage_scalar_bits": scalar_bits,
         "value_conversion": conversion_contract(source_dtype, storage_dtype),
@@ -268,9 +280,10 @@ def resolve_explicit_layout(
                     out_lanes=bound_int(stage, str(row.get("out_lanes_param") or "lanes")),
                     source_dtype=weight_dtype,
                     storage_dtype=storage,
+                    transpose_source=bool(row.get("transpose_source", False)),
                 )
             )
-        elif kind in {"norm_scale_vector", "linear_bias_vector"}:
+        elif kind in {"norm_scale_vector", "norm_bias_vector", "linear_bias_vector"}:
             targets.append(
                 vector_target(
                     target_id=str(row.get("target_id")),
@@ -319,6 +332,38 @@ def canonical_targets(
                 storage_dtype=storage_dtype,
             )
         ], "canonical_semantic_op_layout.v1"
+    if op.startswith("layer_norm"):
+        roles: dict[str, dict[str, Any]] = {}
+        for suffix, binding in by_suffix.items():
+            role = suffix.rsplit(".", 1)[-1]
+            if role in {"weight", "bias"}:
+                roles[role] = binding
+        if set(roles) != {"weight", "bias"} or len(bindings) != 2:
+            raise ValueError(
+                f"{stage.get('stage_id')}: LayerNorm requires exactly one weight and one bias tensor"
+            )
+        storage_dtype = storage_dtype_for_bits(acc_dtype, bound_int(stage, "input_bits"))
+        # VectorNorm consumes beta before gamma on its single weight stream.
+        return [
+            vector_target(
+                target_id="norm.bias",
+                target_kind="norm_bias_vector",
+                port_role="weight",
+                sources=[roles["bias"]],
+                elements_per_write=lanes,
+                source_dtype=weight_dtype,
+                storage_dtype=storage_dtype,
+            ),
+            vector_target(
+                target_id="norm.scale",
+                target_kind="norm_scale_vector",
+                port_role="weight",
+                sources=[roles["weight"]],
+                elements_per_write=lanes,
+                source_dtype=weight_dtype,
+                storage_dtype=storage_dtype,
+            ),
+        ], "canonical_semantic_op_layout.v1"
     if op in {"mlp_gate_proj", "mlp_up_proj", "mlp_down_proj"}:
         if len(bindings) != 1:
             raise ValueError(f"{stage.get('stage_id')}: standalone MLP projection requires one matrix")
@@ -339,11 +384,24 @@ def canonical_targets(
             role = projection_role(suffix)
             if role is not None:
                 roles[role] = binding
-        required_weight_roles = [(name, "weight") for name in ("q_proj", "k_proj", "v_proj", "o_proj")]
-        missing = [role for role in required_weight_roles if role not in roles]
-        if missing:
-            raise ValueError(f"{stage.get('stage_id')}: canonical attention layout is missing roles {missing}")
-        qkv_weights = [roles[(name, "weight")] for name in ("q_proj", "k_proj", "v_proj")]
+        standard_projection_names = ("q_proj", "k_proj", "v_proj", "o_proj")
+        fused_conv1d = ("c_attn", "weight") in roles and ("c_proj", "weight") in roles
+        if fused_conv1d:
+            qkv_weights = [roles[("c_attn", "weight")]]
+            out_weight = roles[("c_proj", "weight")]
+            qkv_biases = [roles[("c_attn", "bias")]] if ("c_attn", "bias") in roles else []
+            out_bias = roles.get(("c_proj", "bias"))
+            transpose_source = True
+        else:
+            required_weight_roles = [(name, "weight") for name in standard_projection_names]
+            missing = [role for role in required_weight_roles if role not in roles]
+            if missing:
+                raise ValueError(f"{stage.get('stage_id')}: canonical attention layout is missing roles {missing}")
+            qkv_weights = [roles[(name, "weight")] for name in ("q_proj", "k_proj", "v_proj")]
+            out_weight = roles[("o_proj", "weight")]
+            qkv_biases = [roles[(name, "bias")] for name in ("q_proj", "k_proj", "v_proj") if (name, "bias") in roles]
+            out_bias = roles.get(("o_proj", "bias"))
+            transpose_source = False
         targets = [
             linear_weight_target(
                 target_id="attention.qkv.weight",
@@ -353,10 +411,10 @@ def canonical_targets(
                 out_lanes=lanes,
                 source_dtype=weight_dtype,
                 storage_dtype=weight_dtype,
+                transpose_source=transpose_source,
             )
         ]
-        qkv_biases = [roles[(name, "bias")] for name in ("q_proj", "k_proj", "v_proj") if (name, "bias") in roles]
-        if qkv_biases and len(qkv_biases) != 3:
+        if qkv_biases and (not fused_conv1d and len(qkv_biases) != 3):
             raise ValueError(f"{stage.get('stage_id')}: Q/K/V bias coverage must be all-or-none")
         if qkv_biases:
             targets.append(
@@ -374,26 +432,61 @@ def canonical_targets(
             linear_weight_target(
                 target_id="attention.out_proj.weight",
                 port_role="out_proj_weight",
-                sources=[roles[("o_proj", "weight")]],
+                sources=[out_weight],
                 in_lanes=bound_int(stage, "head_dim"),
                 out_lanes=lanes,
                 source_dtype=weight_dtype,
                 storage_dtype=weight_dtype,
+                transpose_source=transpose_source,
             )
         )
-        if ("o_proj", "bias") in roles:
+        if out_bias is not None:
             targets.append(
                 vector_target(
                     target_id="attention.out_proj.bias",
                     target_kind="linear_bias_vector",
                     port_role="out_proj_bias",
-                    sources=[roles[("o_proj", "bias")]],
+                    sources=[out_bias],
                     elements_per_write=lanes,
                     source_dtype=weight_dtype,
                     storage_dtype=acc_dtype,
                 )
             )
         return targets, "canonical_semantic_op_layout.v1"
+    if op in {"mlp_fc", "mlp_proj"}:
+        prefix = "c_fc" if op == "mlp_fc" else "c_proj"
+        roles = {
+            suffix.rsplit(".", 1)[-1]: binding
+            for suffix, binding in by_suffix.items()
+            if f".{prefix}." in f".{suffix}"
+        }
+        if set(roles) != {"weight", "bias"}:
+            raise ValueError(
+                f"{stage.get('stage_id')}: {op} requires exactly one {prefix}.weight and {prefix}.bias tensor"
+            )
+        weight_role = "weight_mlp_up" if op == "mlp_fc" else "weight_mlp_down"
+        bias_role = f"{weight_role}_bias"
+        return [
+            linear_weight_target(
+                target_id="linear.weight",
+                port_role=weight_role,
+                sources=[roles["weight"]],
+                in_lanes=lanes,
+                out_lanes=lanes,
+                source_dtype=weight_dtype,
+                storage_dtype=weight_dtype,
+                transpose_source=True,
+            ),
+            vector_target(
+                target_id="linear.bias",
+                target_kind="linear_bias_vector",
+                port_role=bias_role,
+                sources=[roles["bias"]],
+                elements_per_write=lanes,
+                source_dtype=weight_dtype,
+                storage_dtype=acc_dtype,
+            ),
+        ], "canonical_semantic_op_layout.v1"
     raise ValueError(
         f"{stage.get('stage_id')}: weighted op {op!r} has no explicit adapter weight_layout "
         "and no canonical semantic-op layout"
@@ -470,7 +563,14 @@ def build_stage_weight_layout(
         ),
         "checker_rules": {
             "all_required_tensors_covered_exactly_once": True,
-            "source_matrix_axis_order": "checkpoint [output_feature, input_feature]",
+            "source_matrix_axis_order": (
+                "checkpoint [input_feature, output_feature] for transposed targets"
+                if any(
+                    target.get("source_transform", {}).get("kind") == "transpose_2d"
+                    for target in normalized_targets
+                )
+                else "checkpoint [output_feature, input_feature]"
+            ),
             "linear_storage_order": "out_beat, in_beat, out_lane, in_lane",
             "source_values_are_rounded_to_weight_dtype_before_storage_conversion": True,
             "padding": "forbidden because selected dimensions must divide selected lanes",
@@ -505,10 +605,13 @@ def target_scalars(target: dict[str, Any], by_suffix: dict[str, dict[str, Any]])
     source_dtype = str(conversion.get("source_dtype") or target.get("storage_scalar_dtype"))
     source_order = target.get("compose", {}).get("source_order", [])
     tensors = [load_target_tensor(by_suffix[str(suffix)], source_dtype) for suffix in source_order]
-    value = tensors[0] if len(tensors) == 1 else torch.cat(tensors, dim=0)
+    axis = int(target.get("compose", {}).get("axis", 0))
+    value = tensors[0] if len(tensors) == 1 else torch.cat(tensors, dim=axis)
     storage_dtype = str(target.get("storage_scalar_dtype") or "")
     value = value.to(torch.float16 if storage_dtype == "fp16" else torch.float32)
     if target.get("target_kind") == "linear_weight_matrix":
+        if target.get("source_transform", {}).get("kind") == "transpose_2d":
+            value = value.transpose(0, 1).contiguous()
         out_features, in_features = [int(item) for item in target["logical_shape"]]
         tile = target["tile"]
         out_lanes = int(tile["out_lanes"])
