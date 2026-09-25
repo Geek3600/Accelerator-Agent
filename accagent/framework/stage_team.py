@@ -2253,6 +2253,7 @@ def post_decomposer_json(req: urllib.request.Request, timeout_sec: int, label: s
     errors: list[str] = []
     max_attempts = None if llm_transient_retry_unbounded() else llm_transient_attempts()
     attempt = 1
+    primary_req = req
     fallback_used = False
     while True:
         try:
@@ -2277,6 +2278,14 @@ def post_decomposer_json(req: urllib.request.Request, timeout_sec: int, label: s
                 raise
             delay = retry_sleep_seconds(exc, attempt)
             retry_mode = "unbounded" if max_attempts is None else f"{attempt}/{max_attempts}"
+            if fallback_used:
+                req = primary_req
+                fallback_used = False
+                print(
+                    f"[team:decomposer] retrying {label} on the primary route after fallback transport failure",
+                    file=sys.stderr,
+                    flush=True,
+                )
             print(
                 f"[team:decomposer] retry {label} after transient error "
                 f"({retry_mode}): {exc}; sleep {delay:.1f}s",

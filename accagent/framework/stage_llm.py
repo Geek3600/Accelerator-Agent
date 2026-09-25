@@ -1728,6 +1728,21 @@ def call_llm_with_retry(
                 raise
             delay = retry_sleep_seconds(exc, attempt)
             retry_mode = "unbounded" if max_attempts is None else f"{attempt}/{max_attempts}"
+            if fallback_used:
+                route_endpoint = endpoint
+                route_key = key
+                fallback_used = False
+                observe(
+                    "route_retried",
+                    attempt=attempt,
+                    schema_name=schema_name,
+                    reason="fallback_transient_error",
+                )
+                print(
+                    f"[stage:llm] retrying {schema_name} on the primary route after fallback transport failure",
+                    file=sys.stderr,
+                    flush=True,
+                )
             print(
                 f"[stage:llm] retry {schema_name} after transient error "
                 f"({retry_mode}): {exc}; sleep {delay:.1f}s",

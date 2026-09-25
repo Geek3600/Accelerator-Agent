@@ -177,6 +177,122 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertEqual(len(errors), 3)
         self.assertEqual(request.call_count, 4)
 
+    def test_team_decomposer_retries_primary_after_fallback_transient_error(self) -> None:
+        primary = object()
+        fallback = object()
+        capacity = urllib.error.HTTPError(
+            "https://primary.invalid/v1/responses", 403, "INSUFFICIENT_BALANCE", None, None
+        )
+        redirect_loop = urllib.error.HTTPError(
+            "https://fallback.invalid/v1/responses", 302,
+            "The HTTP server returned a redirect error that would lead to an infinite loop.",
+            None,
+            None,
+        )
+        seen: list[object] = []
+
+        def read(request: object, *_args: object) -> str:
+            seen.append(request)
+            if len(seen) == 1:
+                raise capacity
+            if len(seen) == 2:
+                raise redirect_loop
+            return '{"ok":true}'
+
+        cfg = LlmCfg(fallback_endpoint="https://fallback.invalid/v1/responses", fallback_api_key="fallback-key")
+        with (
+            patch.object(stage_team, "read_response_text", side_effect=read),
+            patch.object(stage_team, "resolved_llm_cfg", return_value=cfg),
+            patch.object(stage_team, "reroute_request", return_value=fallback),
+            patch.object(stage_team, "retry_sleep_seconds", return_value=0.0),
+            patch.object(stage_team.time, "sleep"),
+            patch.object(stage_team, "llm_inflight_slot", return_value=nullcontext()),
+        ):
+            text, errors = stage_team.post_decomposer_json(primary, 1, "team_json", True)
+
+        self.assertEqual(text, '{"ok":true}')
+        self.assertEqual(len(errors), 2)
+        self.assertEqual(seen, [primary, fallback, primary])
+
+    def test_stage0_retries_primary_after_fallback_transient_error(self) -> None:
+        primary = object()
+        fallback = object()
+        capacity = urllib.error.HTTPError(
+            "https://primary.invalid/v1/responses", 403, "INSUFFICIENT_BALANCE", None, None
+        )
+        redirect_loop = urllib.error.HTTPError(
+            "https://fallback.invalid/v1/responses", 302,
+            "The HTTP server returned a redirect error that would lead to an infinite loop.",
+            None,
+            None,
+        )
+        seen: list[object] = []
+
+        def read(request: object, *_args: object) -> str:
+            seen.append(request)
+            if len(seen) == 1:
+                raise capacity
+            if len(seen) == 2:
+                raise redirect_loop
+            return '{"ok":true}'
+
+        cfg = LlmCfg(fallback_endpoint="https://fallback.invalid/v1/responses", fallback_api_key="fallback-key")
+        with (
+            patch.object(stage_input, "read_response_text", side_effect=read),
+            patch.object(stage_input, "resolved_llm_cfg", return_value=cfg),
+            patch.object(stage_input, "reroute_request", return_value=fallback),
+            patch.object(stage_input, "retry_sleep_seconds", return_value=0.0),
+            patch.object(stage_input.time, "sleep"),
+            patch.object(stage_input, "llm_inflight_slot", return_value=nullcontext()),
+        ):
+            text, errors = stage_input.post_llm_json(primary, 1, "stage0_json", True)
+
+        self.assertEqual(text, '{"ok":true}')
+        self.assertEqual(len(errors), 2)
+        self.assertEqual(seen, [primary, fallback, primary])
+
+    def test_stage_llm_retries_primary_after_fallback_transient_error(self) -> None:
+        capacity = urllib.error.HTTPError(
+            "https://primary.invalid/v1/responses", 403, "INSUFFICIENT_BALANCE", None, None
+        )
+        redirect_loop = urllib.error.HTTPError(
+            "https://fallback.invalid/v1/responses", 302,
+            "The HTTP server returned a redirect error that would lead to an infinite loop.",
+            None,
+            None,
+        )
+        endpoints: list[str] = []
+
+        def call(endpoint: str, *_args: object, **_kwargs: object) -> str:
+            endpoints.append(endpoint)
+            if len(endpoints) == 1:
+                raise capacity
+            if len(endpoints) == 2:
+                raise redirect_loop
+            return '{"ok":true}'
+
+        cfg = LlmCfg(fallback_endpoint="https://fallback.invalid/v1/responses", fallback_api_key="fallback-key")
+        with (
+            patch.object(stage_llm, "call_llm", side_effect=call),
+            patch.object(stage_llm, "resolved_llm_cfg", return_value=cfg),
+            patch.object(stage_llm, "retry_sleep_seconds", return_value=0.0),
+            patch.object(stage_llm.time, "sleep"),
+        ):
+            text, errors = stage_llm.call_llm_with_retry(
+                "https://primary.invalid/v1/responses", "primary-key", "model", "prompt", "schema", {}, 1
+            )
+
+        self.assertEqual(text, '{"ok":true}')
+        self.assertEqual(len(errors), 2)
+        self.assertEqual(
+            endpoints,
+            [
+                "https://primary.invalid/v1/responses",
+                "https://fallback.invalid/v1/responses",
+                "https://primary.invalid/v1/responses",
+            ],
+        )
+
     def test_direct_stage_requests_hold_the_shared_llm_slot(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "inflight.json"

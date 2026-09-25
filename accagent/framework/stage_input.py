@@ -760,6 +760,7 @@ def post_llm_json(
     max_attempts = None if llm_transient_retry_unbounded() else llm_transient_attempts()
     attempt = 1
     current_stream = stream
+    primary_request_or_factory = request_or_factory
     fallback_used = False
 
     def request_for_transport(use_stream: bool) -> urllib.request.Request:
@@ -804,6 +805,14 @@ def post_llm_json(
                 raise LlmTransientFailure(str(exc), errors) from exc
             delay = retry_sleep_seconds(exc, attempt)
             retry_mode = "unbounded" if max_attempts is None else f"{attempt}/{max_attempts}"
+            if fallback_used:
+                request_or_factory = primary_request_or_factory
+                fallback_used = False
+                print(
+                    f"[stage0:llm] retrying {label} on the primary route after fallback transport failure",
+                    file=sys.stderr,
+                    flush=True,
+                )
             print(
                 f"[stage0:llm] retry {label} after transient error "
                 f"({retry_mode}): {exc}; sleep {delay:.1f}s",
