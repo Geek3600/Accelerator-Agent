@@ -50,3 +50,9 @@ The Gemma and DeepSeek controllers were restarted as detached processes on 2026-
 - Initial source and run snapshot was pushed to GitHub `main` as commit `d341a46`; both original controllers remain active.
 - Gemma's Stage 2 bounded retry completed its model-shape provenance review; the numeric/template specialist is now running. The current retry has not passed or advanced. The `hidden_size`/head-geometry mismatch remains unresolved pending authoritative tensor/semantic evidence.
 - GPT-2/DeepSeek remains in Stage 6 verification-artifact planning; its single-layer-kernel planner request is active. Stage 5 compile/elaboration passed, while VCS/synthesis are still pending.
+
+## Progress checkpoint: 2026-10-20 21:13 CST
+
+- Gemma Stage 2 bounded retry completed the model-shape, strict numeric/template, attention/head-mapping, and verification-repair reviews, then failed again on the same `hidden_size=1152` versus `4*256=1024` checker errors. Flow controller attempt `009_template_selection` is deciding the next bounded action. No model facts, templates, or checker policy were changed, and there was no stage rollback.
+- GPT-2/DeepSeek remains in Stage 6 verification-artifact planning. Single-layer and board-AXI/DDR planning artifacts are being produced; VCS has not started.
+- This checkpoint and the new shared repair-experience record are included in the incremental GitHub backup.

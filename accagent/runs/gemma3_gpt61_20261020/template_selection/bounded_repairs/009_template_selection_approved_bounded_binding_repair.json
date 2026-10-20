@@ -1,0 +1,59 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "template_binding_static_check",
+      "parameter_binding_static_check",
+      "model_config_check",
+      "numeric_policy_check",
+      "sacg_static_check"
+    ],
+    "action_type": "bounded_template_repair",
+    "consumes": [
+      "artifact.stage2.template_selection (planning/debug evidence only)",
+      "review/template_selection/shape_fact_provenance.json",
+      "review/template_selection/model_shape_reconciliation.json",
+      "review/template_selection/strict_binding_audit.json",
+      "artifact.input.model_config",
+      "artifact.input.numeric_policy",
+      "artifact.input.template_library",
+      "artifact.input.template_metadata",
+      "state_summary.sacg_memory_truth"
+    ],
+    "id": "template_selection.approved_bounded_binding_repair",
+    "on_failure": "Keep the stage blocked and contamination barrier active. Preserve the failed binding evidence, do not change golden outputs or tolerance, and do not pass the refined candidate downstream.",
+    "produces": [
+      "review/template_selection/bounded_binding_repair.json",
+      "artifact.stage2.template_selection.refined",
+      "review/template_selection/cross_layer_gate_disposition.json",
+      "review/template_selection/blocker_to_constraint_map.json"
+    ],
+    "rationale": "This is conditional on authoritative shape reconciliation and the required approval for any geometry, architecture, or template-semantic change. Repair only the current candidate within that evidence and approval boundary, then rerun the relevant checks.",
+    "requires_approval": true,
+    "stage": "template_selection",
+    "tool_roles": [
+      "bounded_template_repair",
+      "template_binding_static_check",
+      "parameter_binding_static_check",
+      "model_config_check",
+      "numeric_policy_check",
+      "sacg_static_check"
+    ]
+  },
+  "attempt_count": 2,
+  "decision": "retry",
+  "flow_event_index": 9,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/flow_handoff_sources/009_26249cdd40112e68a2e7cb066b6ad50a84b09ffeaa29442bc42f7e09e8bc0cfb.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/flow_events/009_retry.json",
+  "source_identities": {
+    "flow_controller_result_sha256": "12173cd2635d937087a8bd1f01757f9d08f61403160fb3a32e9e851d7c01b31d",
+    "source_sacg_state_sha256": "26249cdd40112e68a2e7cb066b6ad50a84b09ffeaa29442bc42f7e09e8bc0cfb"
+  },
+  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/sacg_state.json",
+  "stage": "template_selection"
+}

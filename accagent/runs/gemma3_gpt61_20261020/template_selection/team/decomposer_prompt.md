@@ -313,9 +313,11 @@ SACG-guided, template-constrained, checker-verified design closure; not free-for
       {
         "artifact_id": "artifact.stage2.template_selection",
         "id": "contamination_barrier.0001",
-        "observation_count": 1,
+        "last_observed_at": "2026-10-20T13:13:37+00:00",
+        "observation_count": 2,
         "observed_transition_ids": [
-          "transition.0001"
+          "transition.0001",
+          "transition.0002"
         ],
         "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
         "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
@@ -331,9 +333,11 @@ SACG-guided, template-constrained, checker-verified design closure; not free-for
       {
         "artifact_id": "artifact.stage2.template_selection",
         "id": "contamination_barrier.0001",
-        "observation_count": 1,
+        "last_observed_at": "2026-10-20T13:13:37+00:00",
+        "observation_count": 2,
         "observed_transition_ids": [
-          "transition.0001"
+          "transition.0001",
+          "transition.0002"
         ],
         "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
         "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
@@ -352,9 +356,11 @@ SACG-guided, template-constrained, checker-verified design closure; not free-for
       {
         "artifact_id": "artifact.stage2.template_selection",
         "id": "contamination_barrier.0001",
-        "observation_count": 1,
+        "last_observed_at": "2026-10-20T13:13:37+00:00",
+        "observation_count": 2,
         "observed_transition_ids": [
-          "transition.0001"
+          "transition.0001",
+          "transition.0002"
         ],
         "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
         "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",

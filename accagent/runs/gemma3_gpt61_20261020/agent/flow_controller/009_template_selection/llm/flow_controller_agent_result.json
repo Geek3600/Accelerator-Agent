@@ -1,0 +1,160 @@
+{
+  "agent": "flow_controller_agent",
+  "duration_sec": 29.30422077496769,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "49d2519600bc417ea16fe2fdf8d3acc6",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/009_template_selection/llm/flow_controller_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "flow_controller_agent",
+    "approval_required_for": [
+      "Any change to authoritative hidden_size, num_q_heads, head_dim, or attention/GQA geometry; obtain trusted model-fact-owner evidence and designated approval.",
+      "Any template substitution, template-internal semantic change, or major architecture change proposed to resolve the binding mismatch.",
+      "Any change to the supplied numeric policy."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "stage_retry_request_check",
+          "model_config_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "retry_current_stage_evidence_review",
+        "consumes": [
+          "artifact.stage2.template_selection (planning/debug evidence only)",
+          "artifact.input.model_config",
+          "artifact.input.field_evidence",
+          "artifact.input.template_metadata",
+          "constraint.shape.model",
+          "constraint.template.library",
+          "sacg_memory_truth.active_contamination_barriers"
+        ],
+        "id": "template_selection.retry_and_reconcile_shape_facts",
+        "on_failure": "Keep template_selection incomplete and the contamination barrier active. Record unavailable or conflicting authoritative evidence; do not infer replacement dimensions, change numeric policy, or promote the candidate. Continue retrying this stage rather than rewinding hardware design stages.",
+        "produces": [
+          "SACG retry request for template_selection",
+          "review/template_selection/shape_fact_provenance.json",
+          "review/template_selection/model_shape_reconciliation.json",
+          "updated review/template_selection/strict_binding_audit.json"
+        ],
+        "rationale": "The current stage has concrete binding failures, while the supplied artifacts do not establish which shape fact is wrong. Retry this stage with a provenance and reconciliation review; do not alter facts or promote the barriered candidate.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "stage_retry_request",
+          "model_config_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "sacg_static_check"
+        ],
+        "action_type": "bounded_template_repair",
+        "consumes": [
+          "artifact.stage2.template_selection (planning/debug evidence only)",
+          "review/template_selection/shape_fact_provenance.json",
+          "review/template_selection/model_shape_reconciliation.json",
+          "review/template_selection/strict_binding_audit.json",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "template_selection.approved_bounded_binding_repair",
+        "on_failure": "Keep the stage blocked and contamination barrier active. Preserve the failed binding evidence, do not change golden outputs or tolerance, and do not pass the refined candidate downstream.",
+        "produces": [
+          "review/template_selection/bounded_binding_repair.json",
+          "artifact.stage2.template_selection.refined",
+          "review/template_selection/cross_layer_gate_disposition.json",
+          "review/template_selection/blocker_to_constraint_map.json"
+        ],
+        "rationale": "This is conditional on authoritative shape reconciliation and the required approval for any geometry, architecture, or template-semantic change. Repair only the current candidate within that evidence and approval boundary, then rerun the relevant checks.",
+        "requires_approval": true,
+        "stage": "template_selection",
+        "tool_roles": [
+          "bounded_template_repair",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The current stage failed with two explicit parameter-binding errors: gemma3_text_block and self_attention both bind hidden_size=1152 against num_q_heads*head_dim=4*256=1024.",
+      "Operator coverage, template source/interface, mandatory FPGA IP binding, attention semantic expansion, and cross-layer trace checks passed; these do not override the failed binding legality checks.",
+      "SACG truth reports one active contamination barrier for artifact.stage2.template_selection and no open retry or backtrack requests. Keep the barrier active until a refined candidate passes its checks.",
+      "The failed result is a current-stage binding issue, not cited evidence of an earlier-stage hardware-design failure. Do not backtrack or consume the candidate as a validated downstream input.",
+      "The supplied evidence does not establish which shape fact is authoritative. Do not guess dimensions or change numeric policy."
+    ],
+    "proposed_actions": [
+      "Retry template_selection and establish authoritative provenance for the model shape facts before deciding how to resolve the binding mismatch.",
+      "Only after source-backed reconciliation, consider a bounded candidate repair; require applicable approval for changes to model geometry, architecture, or template semantics.",
+      "Retain the contamination barrier and block downstream promotion unless the refined candidate passes the binding and SACG checks."
+    ],
+    "risks": [
+      "Promoting this candidate would propagate illegal attention and decoder-block bindings.",
+      "Changing head geometry, hidden size, template semantics, or architecture without source-backed facts and approval would contaminate the design.",
+      "The trace check reports required cross-layer constraint facts are present, but does not establish that all their values are mutually consistent. No separate numeric, data-order, memory, runtime, implementation, or board failure is evidenced here.",
+      "Keep the DUT scope limited to Transformer blocks; do not add model-tail work such as embedding/tokenization, final norm, LM head/logits, or sampling."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage2.template_selection",
+        "artifact.input.model_config",
+        "artifact.input.field_evidence",
+        "sacg_memory_truth.active_contamination_barriers",
+        "review/template_selection/shape_fact_provenance.json",
+        "review/template_selection/model_shape_reconciliation.json"
+      ],
+      "constraints": [
+        "The 1152 hidden size conflicts with 4 query heads times head dimension 256 (1024).",
+        "Do not change authoritative model facts or template semantics without evidence and applicable approval.",
+        "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only."
+      ],
+      "edges": [
+        "model_config -> template_selection",
+        "constraint.shape.model -> template_selection",
+        "constraint.template.library -> template_selection"
+      ],
+      "nodes": [
+        "template_selection",
+        "model_config",
+        "constraint.shape.model",
+        "constraint.template.library"
+      ]
+    },
+    "schema_version": "spatialaccagent.flow_controller_agent.v1",
+    "stage": "template_selection",
+    "status": "retry_current_stage",
+    "summary": "Retry template_selection. The latest candidate is incomplete because two bindings fail the same shape legality check; no evidence supports backtracking or downstream promotion. Preserve the active contamination barrier while the model-shape facts are reconciled."
+  },
+  "prompt_bytes": 59416,
+  "prompt_hash": "30d07c1fa859ed4fd3ef980159dc7651b8bf02376c161e37dfa41f603a4a8cd2",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.flow_controller_agent.v1\",\n  \"agent\": \"flow_controller_agent\",\n  \"stage\": \"template_selection\",\n  \"status\": \"retry_current_stage\",\n  \"summary\": \"Retry template_selection. The latest candidate is incomplete because two bindings fail the same shape legality check; no evidence supports backtracking or downstream promotion. Preserve the active contamination barrier while the model-shape facts are reconciled.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"template_selection\",\n      \"model_config\",\n      \"constraint.shape.model\",\n      \"constraint.template.library\"\n    ],\n    \"edges\": [\n      \"model_config -> template_selection\",\n      \"constraint.shape.model -> template_selection\",\n      \"constraint.template.library -> template_selection\"\n    ],\n    \"constraints\": [\n      \"The 1152 hidden size conflicts with 4 query heads times head dimension 256 (1024).\",\n      \"Do not change authoritative model facts or template semantics without evidence and applicable approval.\",\n      \"Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only.\"\n    ],\n    \"artifacts\": [\n      \"artifact.stage2.template_selection\",\n      \"artifact.input.model_config\",\n      \"artifact.input.field_evidence\",\n      \"sacg_memory_truth.active_contamination_barriers\",\n      \"review/template_selection/shape_fact_provenance.json\",\n      \"review/template_selection/model_shape_reconciliation.json\"\n    ]\n  },\n  \"observations\": [\n    \"The current stage failed with two explicit parameter-binding errors: gemma3_text_block and self_attention both bind hidden_size=1152 against num_q_heads*head_dim=4*256=1024.\",\n    \"Operator coverage, template source/interface, mandatory FPGA IP binding, attention semantic expansion, and cross-layer trace checks passed; these do not override the failed binding legality checks.\",\n    \"SACG truth reports one active contamination barrier for artifact.stage2.template_selection and no open retry or backtrack requests. Keep the barrier active until a refined candidate passes its checks.\",\n    \"The failed result is a current-stage binding issue, not cited evidence of an earlier-stage hardware-design failure. Do not backtrack or consume the candidate as a validated downstream input.\",\n    \"The supplied evidence does not establish which shape fact is authoritative. Do not guess dimensions or change numeric policy.\"\n  ],\n  \"risks\": [\n    \"Promoting this candidate would propagate illegal attention and decoder-block bindings.\",\n    \"Changing head geometry, hidden size, template semantics, or architecture without source-backed facts and approval would contaminate the design.\",\n    \"The trace check reports required cross-layer constraint facts are present, but does not establish that all their values are mutually consistent. No separate numeric, data-order, memory, runtime, implementation, or board failure is evidenced here.\",\n    \"Keep the DUT scope limited to Transformer blocks; do not add model-tail work such as embedding/tokenization, final norm, LM head/logits, or sampling.\"\n  ],\n  \"proposed_actions\": [\n    \"Retry template_selection and establish authoritative provenance for the model shape facts before deciding how to resolve the binding mismatch.\",\n    \"Only after source-backed reconciliation, consider a bounded candidate repair; require applicable approval for changes to model geometry, architecture, or template semantics.\",\n    \"Retain the contamination barrier and block downstream promotion unless the refined candidate passes the binding and SACG checks.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"template_selection.retry_and_reconcile_shape_facts\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"retry_current_stage_evidence_review\",\n      \"rationale\": \"The current stage has concrete binding failures, while the supplied artifacts do not establish which shape fact is wrong. Retry this stage with a provenance and reconciliation review; do not alter facts or promote the barriered candidate.\",\n      \"consumes\": [\n        \"artifact.stage2.template_selection (planning/debug evidence only)\",\n        \"artifact.input.model_config\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.template_metadata\",\n        \"constraint.shape.model\",\n        \"constraint.template.library\",\n        \"sacg_memory_truth.active_contamination_barriers\"\n      ],\n      \"produces\": [\n        \"SACG retry request for template_selection\",\n        \"review/template_selection/shape_fact_provenance.json\",\n        \"review/template_selection/model_shape_reconciliation.json\",\n        \"updated review/template_selection/strict_binding_audit.json\"\n      ],\n      \"tool_roles\": [\n        \"stage_retry_request\",\n        \"model_config_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\",\n        \"stage_artifact_trust_barrier\"\n      ],\n      \"acceptance_checkers\": [\n        \"stage_retry_request_check\",\n        \"model_config_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\",\n        \"stage_artifact_trust_barrier_check\"\n      ],\n      \"on_failure\": \"Keep template_selection incomplete and the contamination barrier active. Record unavailable or conflicting authoritative evidence; do not infer replacement dimensions, change numeric policy, or promote the candidate. Continue retrying this stage rather than rewinding hardware design stages.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"template_selection.approved_bounded_binding_repair\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"bounded_template_repair\",\n      \"rationale\": \"This is conditional on authoritative shape reconciliation and the required approval for any geometry, architecture, or template-semantic change. Repair only the current candidate within that evidence and approval boundary, then rerun the relevant checks.\",\n      \"consumes\": [\n        \"artifact.stage2.template_selection (planning/debug evidence only)\",\n        \"review/template_selection/shape_fact_provenance.json\",\n        \"review/template_selection/model_shape_reconciliation.json\",\n        \"review/template_selection/strict_binding_audit.json\",\n        \"artifact.input.model_config\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"state_summary.sacg_memory_truth\"\n      ],\n      \"produces\": [\n        \"review/template_selection/bounded_binding_repair.json\",\n        \"artifact.stage2.template_selection.refined\",\n        \"review/template_selection/cross_layer_gate_disposition.json\",\n        \"review/template_selection/blocker_to_constraint_map.json\"\n      ],\n      \"tool_roles\": [\n        \"bounded_template_repair\",\n        \"template_binding_static_check\",\n        \"parameter_binding_static_check\",\n        \"model_config_check\",\n        \"numeric_policy_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"template_binding_static_check\",\n        \"parameter_binding_static_check\",\n        \"model_config_check\",\n        \"numeric_policy_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Keep the stage blocked and contamination barrier active. Preserve the failed binding evidence, do not change golden outputs or tolerance, and do not pass the refined candidate downstream.\",\n      \"requires_approval\": true\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any change to authoritative hidden_size, num_q_heads, head_dim, or attention/GQA geometry; obtain trusted model-fact-owner evidence and designated approval.\",\n    \"Any template substitution, template-internal semantic change, or major architecture change proposed to resolve the binding mismatch.\",\n    \"Any change to the supplied numeric policy.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/009_template_selection/llm/flow_controller_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/009_template_selection/llm/flow_controller_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "flow_orchestration",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

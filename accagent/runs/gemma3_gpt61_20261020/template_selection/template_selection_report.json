@@ -262,13 +262,13 @@
   "design_team": {
     "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/team_aggregate.json",
     "approval_required_for": [
-      "Any change to hidden_size, head_dim, query-head mapping, or other model-shape values not directly established by authoritative model inputs",
-      "Any change to the numeric policy or template internals.",
-      "Any new adapter, template substitution, template-internal change, or architecture change to make the current bindings legal",
-      "Any proposed change to authoritative hidden_size, num_q_heads, num_kv_heads, or head_dim, or any attention architecture/template-internal change; obtain explicit approval and authoritative model evidence before making such a change.",
-      "Any proposed change to authoritative model dimensions, attention semantics, or a major template adaptation needed to resolve hidden_size=1152 versus num_q_heads=4 and head_dim=256.",
-      "Any proposed change to model hidden_size, num_q_heads, num_kv_heads, or head_dim.",
-      "Any proposed change to the template attention shape contract or its interpretation as an architecture change."
+      "Any change to model head counts, head dimension, attention architecture, or trusted template semantics proposed as a resolution to the 1152 versus 4\u00d7256 contradiction.",
+      "Any change to model hidden_size, num_q_heads, head_dim, or attention/GQA architecture that is not a source-backed correction of the supplied facts",
+      "Any change to model or attention geometry, architecture, template internals, or selection of a materially different template/adapter needed to resolve the 1152-versus-1024 binding; obtain authoritative evidence and designated approval before applying such a change.",
+      "Any change to the supplied numeric policy",
+      "Any proposed change to authoritative model shape facts or attention head geometry requires the responsible model-fact owner to provide the trusted correction; this specialist is not authorized to change those facts.",
+      "Any template substitution or major template/architecture change",
+      "Any template-internal or major architecture change intended to accommodate a different head geometry requires the applicable approval before implementation."
     ],
     "completed_subtasks": 4,
     "decomposer_error": null,
@@ -280,191 +280,203 @@
       {
         "acceptance_checkers": [
           "model_config_check",
-          "parameter_binding_static_check",
           "template_binding_static_check",
-          "template_coverage_check"
-        ],
-        "action_type": "bounded_evidence_reconciliation",
-        "consumes": [
-          "artifact.input.model_config",
-          "constraint.shape.model",
-          "artifact.stage.template_selection.attention_semantics",
-          "artifact.stage.template_selection.parameter_bindings",
-          "artifact.stage.template_selection.template_source_checks",
-          "artifact.stage.template_selection.checker_results"
-        ],
-        "id": "template_selection.reconcile_attention_shape_and_cache_evidence",
-        "on_failure": "Keep template selection blocked and report the exact unresolved authoritative dimension or KV-cache evidence. Do not alter model dimensions, template internals, or checker policy; request bounded architecture/model-owner clarification if the authoritative evidence remains contradictory.",
-        "produces": [
-          "artifact.stage.template_selection.attention_component_source_evidence_matrix",
-          "artifact.stage.template_selection.attention_shape_and_kv_cache_disposition",
-          "artifact.stage.template_selection.updated_checker_results"
-        ],
-        "rationale": "The current parameter checker identifies an illegal attention/block shape, and the candidate does not substantiate its KV-cache not-required disposition. Reconcile against authoritative model facts and existing hash-bound template evidence, then rerun current-stage checks; this is evidence review, not permission to alter the model or template.",
-        "requires_approval": false,
-        "stage": "template_selection",
-        "tool_roles": [
-          "model_config_check",
           "parameter_binding_static_check",
-          "template_binding_static_check",
-          "template_coverage_check"
-        ]
-      },
-      {
-        "acceptance_checkers": [
-          "parameter_binding_static_check",
-          "template_binding_static_check",
-          "numeric_policy_check"
-        ],
-        "action_type": "sacg_constraint_review",
-        "consumes": [
-          "candidate_stage_artifact.parameter_bindings",
-          "candidate_stage_artifact.unsupported_bindings",
-          "candidate_stage_artifact.checker_results",
-          "candidate_stage_artifact.template_source_checks",
-          "candidate_stage_artifact.selected_templates",
-          "artifact.input.model_config",
-          "artifact.input.template_metadata",
-          "constraint.shape.model",
-          "constraint.template.library"
-        ],
-        "id": "template_selection.reconcile_attention_shape_predicate",
-        "on_failure": "Keep template_selection incomplete and report the predicate as unresolved to template_selection.cross_layer_evidence_gate. Do not change hidden_size, head_dim, head counts, numeric policy, or template internals; any proposed architecture or model change requires separate approval.",
-        "produces": [
-          "template_selection.binding_numeric_audit",
-          "template_selection.shape_predicate_disposition"
-        ],
-        "rationale": "The binding values establish the 1152 versus 1024 arithmetic difference, but the supplied source/interface evidence does not establish the equality as a required architectural invariant. Adjudicate the predicate without editing any model, numeric, or template value, and preserve the checker failure unless its basis is resolved.",
-        "requires_approval": false,
-        "stage": "template_selection",
-        "tool_roles": [
-          "architecture_review",
-          "parameter_binding_static_check",
-          "template_binding_static_check",
-          "numeric_policy_check"
-        ]
-      },
-      {
-        "acceptance_checkers": [
-          "model_config_check",
-          "parameter_binding_static_check",
-          "template_binding_static_check",
+          "template_coverage_check",
           "sacg_static_check"
         ],
-        "action_type": "evidence_reconciliation",
+        "action_type": "evidence_and_repair_review",
+        "consumes": [
+          "artifact.stage2.template_selection.attention_semantics",
+          "artifact.stage2.template_selection.parameter_bindings",
+          "artifact.stage2.template_selection.checker_results",
+          "artifact.input.model_config",
+          "artifact.input.template_metadata",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.template.library",
+          "constraint.cross_layer.input_consistency",
+          "sacg_memory_truth.active_contamination_barriers"
+        ],
+        "id": "review_attention_semantics_and_head_mapping",
+        "on_failure": "Record checker failures and the unresolved 1152 != 4\u00d7256 contradiction in the review artifacts; keep self_attention and gemma3_text_block unapproved and preserve the active contamination barrier. Do not guess replacement dimensions or promote the candidate.",
+        "produces": [
+          "review/template_selection/attention_semantic_binding_review.json",
+          "review/template_selection/head_mapping_consistency.json"
+        ],
+        "rationale": "Create the specialist handoff findings from the supplied hash-bound attention evidence and parameter bindings, and validate the current contradiction against the named model, shape, template, and SACG constraints. This action reviews evidence only; it does not alter dimensions or architecture.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "model_config_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "template_coverage_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "evidence_review",
         "consumes": [
           "artifact.input.model_config",
           "artifact.input.field_evidence",
-          "artifact.input.task_card",
-          "constraint.shape.model",
-          "candidate_stage_artifact.parameter_bindings",
-          "candidate_stage_artifact.checker_results"
+          "artifact.stage2.template_selection (planning/debug evidence only)",
+          "state_summary.sacg_memory_truth"
         ],
-        "id": "reconcile_authoritative_shape_bindings",
-        "on_failure": "Keep the selection blocked, preserve all authoritative input values, and route any field-level conflict to the cross-layer evidence gate for source reconciliation. Do not alter dimensions, choose an adapter, or waive legality.",
+        "id": "template_selection.trace_shape_fact_provenance",
+        "on_failure": "Record any unavailable or conflicting source fields explicitly; do not infer replacement dimensions, alter model facts, assert a legal binding, or treat the barriered candidate as validated.",
         "produces": [
-          "template_selection/shape_source_reconciliation.json",
-          "template_selection/parameter_binding_checker_results.json"
+          "review/template_selection/shape_fact_provenance.json"
         ],
-        "rationale": "Compare the explicit parameter-binding citations with the field-level model_config and field_evidence, then rerun the applicable static checks. This action resolves evidence provenance without inventing or changing a model dimension.",
+        "rationale": "Establish field-level provenance for the four shape facts from the trusted model/configuration inputs. The visible candidate binding citations are not sufficient to independently verify upstream source values, and the active barrier makes the candidate artifact debug-only.",
         "requires_approval": false,
         "stage": "template_selection",
         "tool_roles": [
           "model_config_check",
-          "parameter_binding_static_check",
-          "template_binding_static_check",
-          "sacg_static_check"
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
         ]
       },
       {
         "acceptance_checkers": [
+          "model_config_check",
           "template_coverage_check",
-          "sacg_static_check"
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
         ],
-        "action_type": "coverage_and_order_review",
+        "action_type": "evidence_and_repair_review",
         "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.template_metadata",
+          "artifact.input.template_library",
+          "artifact.stage2.template_selection (planning/debug evidence only)",
+          "review/template_selection/shape_fact_provenance.json",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "template_selection.rerun_decoder_coverage_and_binding_review",
+        "on_failure": "Report coverage separately from binding legality. If the 1152-versus-1024 mismatch remains or the trusted facts cannot be established, keep template selection incomplete and request authoritative model-fact reconciliation; do not change facts or claim a legal binding.",
+        "produces": [
+          "review/template_selection/model_shape_coverage_review.json"
+        ],
+        "rationale": "Preserve the reported decoder order and template coverage while independently checking coverage and parameter legality against authoritative shape facts. This action reviews evidence only and does not modify templates or model configuration.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "model_config_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_policy_check",
+          "sacg_memory_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "evidence_and_repair_review",
+        "consumes": [
+          "artifact.stage2.template_selection",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
           "artifact.input.template_library",
           "artifact.input.template_metadata",
-          "candidate_stage_artifact.operator_sequence",
-          "candidate_stage_artifact.selected_templates",
-          "candidate_stage_artifact.coverage",
-          "candidate_stage_artifact.attention_semantics",
-          "candidate_stage_artifact.template_source_checks"
+          "artifact.input.design_space"
         ],
-        "id": "refresh_operator_template_coverage_record",
-        "on_failure": "Report any missing or untrusted mapping with its operator and source reference, preserve the supplied operator order, and keep promotion blocked until the checker-grounded discrepancy is resolved.",
+        "id": "numeric_template.persist_strict_binding_audit",
+        "on_failure": "Keep the candidate blocked; record any checker as failed or not_run, retain the unsupported disposition, and do not promote or treat the candidate as a validated design input.",
         "produces": [
-          "template_selection/operator_coverage_order_matrix.json",
-          "template_selection/residual_order_evidence_note.json"
+          "review/template_selection/strict_binding_audit.json",
+          "review/template_selection/unsupported_binding_disposition.json"
         ],
-        "rationale": "Produce a checker-grounded operator-to-template coverage record from the supplied sequence, selected templates, source checks, and attention expansion. Record residual sequence placement separately from operand wiring.",
+        "rationale": "Persist a checker-grounded audit of all supplied bindings. Preserve the two head-dimension legality errors; source/interface and numeric passes are evidence for their respective checks only and cannot establish strict binding.",
         "requires_approval": false,
         "stage": "template_selection",
         "tool_roles": [
-          "template_coverage_check",
-          "sacg_static_check"
-        ]
-      },
-      {
-        "acceptance_checkers": [
-          "model_config_check",
-          "task_card_check",
-          "sacg_static_check",
-          "human_boundary_check"
-        ],
-        "action_type": "authoritative_input_reconciliation",
-        "consumes": [
-          "artifact.input.model_config",
-          "artifact.input.task_card",
-          "candidate_stage_artifact.parameter_bindings",
-          "candidate_stage_artifact.checker_results",
-          "candidate_stage_artifact.cross_layer_trace",
-          "parallel template-selection operator-coverage, binding/numeric, and attention-semantic review findings when available"
-        ],
-        "id": "template_selection.reconcile_attention_block_dimensions",
-        "on_failure": "If authoritative evidence does not resolve the dimensions, preserve the failed binding and blocked disposition; request a bounded human decision rather than guessing or changing template/model semantics.",
-        "produces": [
-          "artifact.template_selection.dimension_authority_reconciliation"
-        ],
-        "rationale": "The current binding evidence establishes 1152 != 4*256 for both the block wrapper and attention. Review authoritative model/task inputs and available operator, binding/numeric, and attention reviews to identify whether the source facts or their interpretation conflict; do not choose replacement dimensions by inference.",
-        "requires_approval": false,
-        "stage": "template_selection",
-        "tool_roles": [
-          "architecture_review",
-          "model_config_check",
-          "task_card_check",
-          "sacg_validate"
-        ]
-      },
-      {
-        "acceptance_checkers": [
-          "parameter_binding_static_check",
           "template_binding_static_check",
-          "repair_boundary_check",
+          "parameter_binding_static_check",
+          "numeric_policy_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "evidence_and_repair_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.stage2.template_selection",
+          "constraint.shape.model",
+          "constraint.template.library",
+          "template_selection.model_shape_coverage_engineer findings"
+        ],
+        "id": "numeric_template.reconcile_authoritative_attention_shape",
+        "on_failure": "If authoritative evidence is unavailable or confirms the supplied 1152/4/256 values, keep both bindings unsupported and the stage blocked. Do not use defaults or change template internals; route any required model, architecture, or template decision for approval.",
+        "produces": [
+          "review/template_selection/model_shape_reconciliation.json",
+          "updated review/template_selection/strict_binding_audit.json",
+          "updated review/template_selection/unsupported_binding_disposition.json"
+        ],
+        "rationale": "Resolve whether the model-shape facts or the candidate bindings are inconsistent using authoritative model evidence and the model-shape coverage engineer's findings. This is a fact audit, not permission to select substitute dimensions or alter the architecture.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "model_config_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_policy_check",
           "sacg_static_check"
         ],
-        "action_type": "bounded_parameter_binding_repair",
+        "action_type": "bounded_template_repair",
         "consumes": [
-          "artifact.template_selection.dimension_authority_reconciliation",
-          "candidate_stage_artifact.parameter_bindings",
-          "candidate_stage_artifact.selected_templates",
-          "candidate_stage_artifact.template_source_checks",
+          "artifact.stage2.template_selection",
           "artifact.input.model_config",
-          "artifact.input.template_metadata"
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "state_summary.sacg_memory_truth",
+          "review/template_selection/model_shape_coverage_review.json",
+          "review/template_selection/strict_binding_audit.json",
+          "review/template_selection/attention_semantic_binding_review.json"
         ],
-        "id": "template_selection.repair_and_recheck_dimension_bindings",
-        "on_failure": "Keep template selection blocked if the authoritative values remain inconsistent, a repair exceeds the trusted-template boundary, approval is absent for a semantic change, or any required static checker fails; do not promote on partial evidence.",
+        "id": "template_selection.resolve_attention_binding_and_recheck",
+        "on_failure": "Keep template selection blocked and the contamination barrier active. Record the unresolved binding and affected constraints; do not modify golden outputs, loosen numeric policy, infer different model facts, or pass the candidate downstream.",
         "produces": [
-          "artifact.template_selection.revised_parameter_bindings",
-          "artifact.template_selection.refreshed_checker_results"
+          "review/template_selection/bounded_binding_repair.json",
+          "artifact.stage2.template_selection.refined",
+          "review/template_selection/cross_layer_gate_disposition.json",
+          "review/template_selection/blocker_to_constraint_map.json"
         ],
-        "rationale": "After the reconciliation artifact establishes an authoritative legal resolution, update only the affected parameter binding(s) within the trusted-template boundary and rerun the binding/static checks. Any semantic model-dimension, attention, or major-template change must wait for explicit approval.",
+        "rationale": "The current candidate has a concrete illegal binding for the block wrapper and self-attention. Obtain an evidence-backed resolution within the trusted-template boundary, then rerun static binding and numeric/SACG checks. Do not promote or release the contamination barrier unless the refined candidate passes.",
         "requires_approval": true,
         "stage": "template_selection",
         "tool_roles": [
           "bounded_template_repair",
-          "targeted_failed_checker_rerun",
-          "template_binding_static_check"
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_policy_check",
+          "sacg_static_check"
         ]
       }
     ],
@@ -474,12 +486,12 @@
     ],
     "llm_io_metrics": {
       "executable_action_count": 6,
-      "max_duration_sec": 58.09661331604002,
-      "max_prompt_bytes": 79913,
+      "max_duration_sec": 67.41587649000576,
+      "max_prompt_bytes": 82283,
       "result_count": 4,
       "subtasks_without_executable_actions": [],
-      "total_duration_sec": 208.05000108497916,
-      "total_prompt_bytes": 318497
+      "total_duration_sec": 183.6581523049972,
+      "total_prompt_bytes": 327498
     },
     "split_required": true,
     "status": "ready",
@@ -501,7 +513,7 @@
     "template_selection": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/template_selection.json"
   },
   "required_adapters": [],
-  "sacg_transition_id": "transition.0001",
+  "sacg_transition_id": "transition.0002",
   "schema_version": "spatialaccagent.template_selection_report.v0",
   "selected_template_ids": [
     "attention",
@@ -513,7 +525,7 @@
     "residual",
     "softmax"
   ],
-  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/initial_design_graph.json",
+  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/sacg_state.json",
   "stage": "template_selection",
   "status": "incomplete",
   "unsupported_bindings": [

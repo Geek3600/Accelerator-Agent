@@ -822,6 +822,112 @@
       "stage_passed": false,
       "target_index": 2,
       "target_stage": "template_selection"
+    },
+    {
+      "attempt_count": 2,
+      "decision": "retry",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/flow_events/009_retry.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/retry_requests/009_template_selection_retry_and_reconcile_shape_facts.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/bounded_repairs/009_template_selection_approved_bounded_binding_repair.json"
+      ],
+      "flow_event_index": 9,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_state.json",
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "stage_retry_request_check",
+              "model_config_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "sacg_static_check",
+              "stage_artifact_trust_barrier_check"
+            ],
+            "action_type": "retry_current_stage_evidence_review",
+            "consumes": [
+              "artifact.stage2.template_selection (planning/debug evidence only)",
+              "artifact.input.model_config",
+              "artifact.input.field_evidence",
+              "artifact.input.template_metadata",
+              "constraint.shape.model",
+              "constraint.template.library",
+              "sacg_memory_truth.active_contamination_barriers"
+            ],
+            "id": "template_selection.retry_and_reconcile_shape_facts",
+            "on_failure": "Keep template_selection incomplete and the contamination barrier active. Record unavailable or conflicting authoritative evidence; do not infer replacement dimensions, change numeric policy, or promote the candidate. Continue retrying this stage rather than rewinding hardware design stages.",
+            "produces": [
+              "SACG retry request for template_selection",
+              "review/template_selection/shape_fact_provenance.json",
+              "review/template_selection/model_shape_reconciliation.json",
+              "updated review/template_selection/strict_binding_audit.json"
+            ],
+            "rationale": "The current stage has concrete binding failures, while the supplied artifacts do not establish which shape fact is wrong. Retry this stage with a provenance and reconciliation review; do not alter facts or promote the barriered candidate.",
+            "requires_approval": false,
+            "stage": "template_selection",
+            "tool_roles": [
+              "stage_retry_request",
+              "model_config_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "sacg_static_check",
+              "stage_artifact_trust_barrier"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "template_binding_static_check",
+              "parameter_binding_static_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "sacg_static_check"
+            ],
+            "action_type": "bounded_template_repair",
+            "consumes": [
+              "artifact.stage2.template_selection (planning/debug evidence only)",
+              "review/template_selection/shape_fact_provenance.json",
+              "review/template_selection/model_shape_reconciliation.json",
+              "review/template_selection/strict_binding_audit.json",
+              "artifact.input.model_config",
+              "artifact.input.numeric_policy",
+              "artifact.input.template_library",
+              "artifact.input.template_metadata",
+              "state_summary.sacg_memory_truth"
+            ],
+            "id": "template_selection.approved_bounded_binding_repair",
+            "on_failure": "Keep the stage blocked and contamination barrier active. Preserve the failed binding evidence, do not change golden outputs or tolerance, and do not pass the refined candidate downstream.",
+            "produces": [
+              "review/template_selection/bounded_binding_repair.json",
+              "artifact.stage2.template_selection.refined",
+              "review/template_selection/cross_layer_gate_disposition.json",
+              "review/template_selection/blocker_to_constraint_map.json"
+            ],
+            "rationale": "This is conditional on authoritative shape reconciliation and the required approval for any geometry, architecture, or template-semantic change. Repair only the current candidate within that evidence and approval boundary, then rerun the relevant checks.",
+            "requires_approval": true,
+            "stage": "template_selection",
+            "tool_roles": [
+              "bounded_template_repair",
+              "template_binding_static_check",
+              "parameter_binding_static_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "sacg_static_check"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/009_template_selection/llm/flow_controller_agent_result.json",
+        "agent_status": "retry_current_stage",
+        "agent_summary": "Retry template_selection. The latest candidate is incomplete because two bindings fail the same shape legality check; no evidence supports backtracking or downstream promotion. Preserve the active contamination barrier while the model-shape facts are reconciled."
+      },
+      "reason": "Retry template_selection. The latest candidate is incomplete because two bindings fail the same shape legality check; no evidence supports backtracking or downstream promotion. Preserve the active contamination barrier while the model-shape facts are reconciled.",
+      "request_id": null,
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/flow_handoff_sources/009_26249cdd40112e68a2e7cb066b6ad50a84b09ffeaa29442bc42f7e09e8bc0cfb.json",
+      "source": "llm_flow_controller",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/sacg_state.json",
+      "stage": "template_selection",
+      "stage_passed": false,
+      "target_index": 2,
+      "target_stage": "template_selection"
     }
   ],
   "flow_state": {
@@ -829,7 +935,7 @@
     "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_state.json",
     "stage_attempts": {
       "template_selection": {
-        "count": 1,
+        "count": 2,
         "epoch": {
           "module": "accagent.framework.stage_templates",
           "orchestration_hash": "5cbeb239573f138f7bb7441486e824e0a7adc4ec894fc4368ca6eb163a9c00db",
@@ -3187,6 +3293,574 @@
           "softmax"
         ],
         "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/initial_design_graph.json",
+        "stage": "template_selection",
+        "status": "incomplete",
+        "unsupported_bindings": [
+          {
+            "kind": "parameter_binding",
+            "legality_errors": [
+              "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+            ],
+            "missing_params": [],
+            "op": "gemma3_text_block",
+            "template_id": "decoder_block"
+          },
+          {
+            "kind": "parameter_binding",
+            "legality_errors": [
+              "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+            ],
+            "missing_params": [],
+            "op": "self_attention",
+            "template_id": "attention"
+          }
+        ]
+      }
+    },
+    {
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "accagent.framework.stage_templates",
+        "--sacg-state",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/sacg_state.json"
+      ],
+      "command_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/logs/09_template_selection.json",
+      "name": "template_selection",
+      "output_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/template_selection_report.json",
+      "passed": false,
+      "public_stage": {
+        "id": 2,
+        "name": "trusted_templates_and_fpga_ip_binding"
+      },
+      "summary": {
+        "checker_results": [
+          {
+            "checker": "operator_coverage_check",
+            "errors": [],
+            "evidence": {
+              "missing_ops": [],
+              "required_ops": 11
+            },
+            "status": "pass",
+            "warnings": []
+          },
+          {
+            "checker": "template_parameter_binding_check",
+            "errors": [
+              "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024",
+              "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+            ],
+            "evidence": {
+              "binding_count": 14
+            },
+            "status": "fail",
+            "warnings": []
+          },
+          {
+            "checker": "template_source_and_interface_check",
+            "errors": [],
+            "evidence": {
+              "checked_templates": 14
+            },
+            "status": "pass",
+            "warnings": []
+          },
+          {
+            "checker": "mandatory_fpga_ip_binding_check",
+            "errors": [],
+            "evidence": {
+              "checked_source_hashes": {
+                "Activation.scala": "c77e42c70db8b3fb74c9563970edc90cd3a79a144d959eaa8a253008ae5f24ce",
+                "Attention.scala": "c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e",
+                "Common.scala": "f358026cf47764dcc732f6c8550b17ab759d089bc9ad6cccbca814143e899b73",
+                "DecoderBlock.scala": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+                "Elementwise.scala": "53f25bee2ff7dc030db606d1842a45ddd856b475c388ee82d6260779d4ec8870",
+                "FFN.scala": "1896b7ea12ac548124a1a25266baa7d9ea087af21ee60d57633f6843db91a58c",
+                "KVCache.scala": "727e172cfdfe380e30b9976ef77c443086ef088427eef31a84aa3a9e0da20069",
+                "Linear.scala": "cf74d94c7857b2bbb55b0447bffad0c261824fdbd534e118675f90b8b0430fe8",
+                "Mask.scala": "bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a",
+                "Norm.scala": "f3319af0d66c9e8c19e7cc789b9fc5799b62e0ad49811ef7da43ceb6dc2eeddf",
+                "PhysicalResources.scala": "8479cbbaf57cbd85912037dc807694623b1b9a754825a47d084b1b5be59dcdd4",
+                "QKVProjection.scala": "3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1",
+                "Residual.scala": "8bef8dac50264c2278438a18e5be48328ed1fd1bfb3f9bbee3c522f11258aca3",
+                "RoPE.scala": "ad42db5781d4f0906d4f28864570fc72f3763f94926144dc5a27275f129209f8",
+                "Softmax.scala": "4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2",
+                "WeightTileCache.scala": "ba0f85a03ce3ff2fd56fc28f07ed40ce6ce1327508222fe67b64d32108156873"
+              },
+              "checked_sources": [
+                "Activation.scala",
+                "Attention.scala",
+                "Common.scala",
+                "DecoderBlock.scala",
+                "Elementwise.scala",
+                "FFN.scala",
+                "KVCache.scala",
+                "Linear.scala",
+                "Mask.scala",
+                "Norm.scala",
+                "PhysicalResources.scala",
+                "QKVProjection.scala",
+                "Residual.scala",
+                "RoPE.scala",
+                "Softmax.scala",
+                "WeightTileCache.scala"
+              ],
+              "errors": [],
+              "physical_resource_source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/templates/operator_chisel/PhysicalResources.scala",
+              "required_bindings": {
+                "activations": "XPM BRAM",
+                "arithmetic": "signed integer DSP MAC/reduction inference",
+                "fifo": "XPM BRAM",
+                "large_cache": "XPM URAM",
+                "weights": "XPM URAM"
+              },
+              "schema_version": "spatialaccagent.fpga_ip_contract.v1",
+              "simulation": {
+                "behavioral_fallback_allowed": false,
+                "compute_models": "signed integer DSP arithmetic inferred from current Chisel sources; no floating-point IP",
+                "memory_models": "Xilinx XPM simulation library",
+                "required_libraries": [
+                  "unisims_ver",
+                  "xpm"
+                ],
+                "required_sources": [
+                  "glbl.v",
+                  "XPM simulation sources"
+                ],
+                "same_interface_and_cycle_latency_as_implementation": true,
+                "same_module_names_as_implementation": true
+              },
+              "status": "pass",
+              "violations": []
+            },
+            "status": "pass",
+            "warnings": []
+          },
+          {
+            "checker": "attention_semantic_expansion_check",
+            "errors": [],
+            "evidence": {
+              "components": [
+                {
+                  "component": "qkv_projection",
+                  "evidence_pattern": "Module(new QKVProjection",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": true,
+                  "source": "DecoderBlock.scala",
+                  "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+                  "status": "covered"
+                },
+                {
+                  "component": "rope",
+                  "evidence_pattern": "Module(new RoPE",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": true,
+                  "source": "DecoderBlock.scala",
+                  "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+                  "status": "covered"
+                },
+                {
+                  "component": "gqa_head_mapping",
+                  "evidence_pattern": "kvGroupSize",
+                  "evidence_type": "hash_bound_template_source",
+                  "gqa_group_size": 4,
+                  "params": {
+                    "num_kv_heads": 1,
+                    "num_q_heads": 4
+                  },
+                  "required": true,
+                  "source": "QKVProjection.scala",
+                  "source_sha256": "3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1",
+                  "status": "covered"
+                },
+                {
+                  "component": "softmax",
+                  "evidence_pattern": "template_id=softmax",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": true,
+                  "source": "Softmax.scala",
+                  "source_sha256": "4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2",
+                  "status": "covered"
+                },
+                {
+                  "component": "output_projection",
+                  "evidence_pattern": "val outputProjection = Module(new Linear(p.outLinear))",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": true,
+                  "source": "Attention.scala",
+                  "source_sha256": "c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e",
+                  "status": "covered"
+                },
+                {
+                  "component": "kv_cache",
+                  "evidence_pattern": "Module(new KVCache",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": false,
+                  "source": "DecoderBlock.scala",
+                  "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+                  "status": "not_required"
+                },
+                {
+                  "component": "causal_mask",
+                  "evidence_pattern": "template_id=mask",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": true,
+                  "source": "Mask.scala",
+                  "source_sha256": "bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a",
+                  "status": "covered"
+                }
+              ],
+              "required": true
+            },
+            "status": "pass",
+            "warnings": []
+          },
+          {
+            "checker": "cross_layer_trace_check",
+            "errors": [],
+            "evidence": {
+              "constraints": [
+                {
+                  "constraint": "constraint.numeric.policy",
+                  "fact_keys": [
+                    "_llm_provenance",
+                    "_numeric_comparison_resolution",
+                    "default_rules",
+                    "notes",
+                    "policy_id",
+                    "schema_version",
+                    "tolerance"
+                  ],
+                  "present": true
+                },
+                {
+                  "constraint": "constraint.memory.board",
+                  "fact_keys": [
+                    "memory_system"
+                  ],
+                  "present": true
+                },
+                {
+                  "constraint": "constraint.runtime.board",
+                  "fact_keys": [
+                    "board_run_command",
+                    "c2h_device_template",
+                    "control_base",
+                    "control_protocol",
+                    "ctrl_base",
+                    "ddr_base",
+                    "ddr_image_default",
+                    "device_id",
+                    "h2c_device_template",
+                    "image_path",
+                    "mimic_dir",
+                    "output_abs",
+                    "output_address",
+                    "runtime_directory",
+                    "xdma_id_default"
+                  ],
+                  "present": true
+                },
+                {
+                  "constraint": "constraint.deployment.board",
+                  "fact_keys": [
+                    "board",
+                    "board_pass_criteria",
+                    "shell"
+                  ],
+                  "present": true
+                },
+                {
+                  "constraint": "constraint.cross_layer.input_consistency",
+                  "fact_keys": [
+                    "acceptance_boundary",
+                    "board",
+                    "conflict_rules",
+                    "evidence_by_field",
+                    "evidence_fields",
+                    "field_resolution",
+                    "materials",
+                    "model",
+                    "numeric_policy",
+                    "tools"
+                  ],
+                  "present": true
+                }
+              ],
+              "status": "pass"
+            },
+            "status": "pass",
+            "warnings": []
+          }
+        ],
+        "design_team": {
+          "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/team_aggregate.json",
+          "approval_required_for": [
+            "Any change to model head counts, head dimension, attention architecture, or trusted template semantics proposed as a resolution to the 1152 versus 4\u00d7256 contradiction.",
+            "Any change to model hidden_size, num_q_heads, head_dim, or attention/GQA architecture that is not a source-backed correction of the supplied facts",
+            "Any change to model or attention geometry, architecture, template internals, or selection of a materially different template/adapter needed to resolve the 1152-versus-1024 binding; obtain authoritative evidence and designated approval before applying such a change.",
+            "Any change to the supplied numeric policy",
+            "Any proposed change to authoritative model shape facts or attention head geometry requires the responsible model-fact owner to provide the trusted correction; this specialist is not authorized to change those facts.",
+            "Any template substitution or major template/architecture change",
+            "Any template-internal or major architecture change intended to accommodate a different head geometry requires the applicable approval before implementation."
+          ],
+          "completed_subtasks": 4,
+          "decomposer_error": null,
+          "decomposer_used_fallback": false,
+          "decomposition_source": "llm",
+          "errors": [],
+          "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/event_log.jsonl",
+          "executable_actions": [
+            {
+              "acceptance_checkers": [
+                "model_config_check",
+                "template_binding_static_check",
+                "parameter_binding_static_check",
+                "template_coverage_check",
+                "sacg_static_check"
+              ],
+              "action_type": "evidence_and_repair_review",
+              "consumes": [
+                "artifact.stage2.template_selection.attention_semantics",
+                "artifact.stage2.template_selection.parameter_bindings",
+                "artifact.stage2.template_selection.checker_results",
+                "artifact.input.model_config",
+                "artifact.input.template_metadata",
+                "constraint.model.decoder",
+                "constraint.shape.model",
+                "constraint.template.library",
+                "constraint.cross_layer.input_consistency",
+                "sacg_memory_truth.active_contamination_barriers"
+              ],
+              "id": "review_attention_semantics_and_head_mapping",
+              "on_failure": "Record checker failures and the unresolved 1152 != 4\u00d7256 contradiction in the review artifacts; keep self_attention and gemma3_text_block unapproved and preserve the active contamination barrier. Do not guess replacement dimensions or promote the candidate.",
+              "produces": [
+                "review/template_selection/attention_semantic_binding_review.json",
+                "review/template_selection/head_mapping_consistency.json"
+              ],
+              "rationale": "Create the specialist handoff findings from the supplied hash-bound attention evidence and parameter bindings, and validate the current contradiction against the named model, shape, template, and SACG constraints. This action reviews evidence only; it does not alter dimensions or architecture.",
+              "requires_approval": false,
+              "stage": "template_selection",
+              "tool_roles": [
+                "model_config_check",
+                "template_binding_static_check",
+                "parameter_binding_static_check",
+                "template_coverage_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "model_config_check",
+                "sacg_static_check",
+                "stage_artifact_trust_barrier_check"
+              ],
+              "action_type": "evidence_review",
+              "consumes": [
+                "artifact.input.model_config",
+                "artifact.input.field_evidence",
+                "artifact.stage2.template_selection (planning/debug evidence only)",
+                "state_summary.sacg_memory_truth"
+              ],
+              "id": "template_selection.trace_shape_fact_provenance",
+              "on_failure": "Record any unavailable or conflicting source fields explicitly; do not infer replacement dimensions, alter model facts, assert a legal binding, or treat the barriered candidate as validated.",
+              "produces": [
+                "review/template_selection/shape_fact_provenance.json"
+              ],
+              "rationale": "Establish field-level provenance for the four shape facts from the trusted model/configuration inputs. The visible candidate binding citations are not sufficient to independently verify upstream source values, and the active barrier makes the candidate artifact debug-only.",
+              "requires_approval": false,
+              "stage": "template_selection",
+              "tool_roles": [
+                "model_config_check",
+                "sacg_static_check",
+                "stage_artifact_trust_barrier_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "model_config_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check",
+                "sacg_static_check",
+                "stage_artifact_trust_barrier_check"
+              ],
+              "action_type": "evidence_and_repair_review",
+              "consumes": [
+                "artifact.input.model_config",
+                "artifact.input.template_metadata",
+                "artifact.input.template_library",
+                "artifact.stage2.template_selection (planning/debug evidence only)",
+                "review/template_selection/shape_fact_provenance.json",
+                "state_summary.sacg_memory_truth"
+              ],
+              "id": "template_selection.rerun_decoder_coverage_and_binding_review",
+              "on_failure": "Report coverage separately from binding legality. If the 1152-versus-1024 mismatch remains or the trusted facts cannot be established, keep template selection incomplete and request authoritative model-fact reconciliation; do not change facts or claim a legal binding.",
+              "produces": [
+                "review/template_selection/model_shape_coverage_review.json"
+              ],
+              "rationale": "Preserve the reported decoder order and template coverage while independently checking coverage and parameter legality against authoritative shape facts. This action reviews evidence only and does not modify templates or model configuration.",
+              "requires_approval": false,
+              "stage": "template_selection",
+              "tool_roles": [
+                "model_config_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check",
+                "sacg_static_check",
+                "stage_artifact_trust_barrier_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "template_binding_static_check",
+                "parameter_binding_static_check",
+                "numeric_policy_check",
+                "sacg_memory_check",
+                "stage_artifact_trust_barrier_check"
+              ],
+              "action_type": "evidence_and_repair_review",
+              "consumes": [
+                "artifact.stage2.template_selection",
+                "artifact.input.model_config",
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.design_space"
+              ],
+              "id": "numeric_template.persist_strict_binding_audit",
+              "on_failure": "Keep the candidate blocked; record any checker as failed or not_run, retain the unsupported disposition, and do not promote or treat the candidate as a validated design input.",
+              "produces": [
+                "review/template_selection/strict_binding_audit.json",
+                "review/template_selection/unsupported_binding_disposition.json"
+              ],
+              "rationale": "Persist a checker-grounded audit of all supplied bindings. Preserve the two head-dimension legality errors; source/interface and numeric passes are evidence for their respective checks only and cannot establish strict binding.",
+              "requires_approval": false,
+              "stage": "template_selection",
+              "tool_roles": [
+                "template_binding_static_check",
+                "parameter_binding_static_check",
+                "numeric_policy_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "model_config_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ],
+              "action_type": "evidence_and_repair_review",
+              "consumes": [
+                "artifact.input.model_config",
+                "artifact.stage2.template_selection",
+                "constraint.shape.model",
+                "constraint.template.library",
+                "template_selection.model_shape_coverage_engineer findings"
+              ],
+              "id": "numeric_template.reconcile_authoritative_attention_shape",
+              "on_failure": "If authoritative evidence is unavailable or confirms the supplied 1152/4/256 values, keep both bindings unsupported and the stage blocked. Do not use defaults or change template internals; route any required model, architecture, or template decision for approval.",
+              "produces": [
+                "review/template_selection/model_shape_reconciliation.json",
+                "updated review/template_selection/strict_binding_audit.json",
+                "updated review/template_selection/unsupported_binding_disposition.json"
+              ],
+              "rationale": "Resolve whether the model-shape facts or the candidate bindings are inconsistent using authoritative model evidence and the model-shape coverage engineer's findings. This is a fact audit, not permission to select substitute dimensions or alter the architecture.",
+              "requires_approval": false,
+              "stage": "template_selection",
+              "tool_roles": [
+                "model_config_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "template_binding_static_check",
+                "parameter_binding_static_check",
+                "numeric_policy_check",
+                "sacg_static_check"
+              ],
+              "action_type": "bounded_template_repair",
+              "consumes": [
+                "artifact.stage2.template_selection",
+                "artifact.input.model_config",
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.design_space",
+                "artifact.input.target_board_profile",
+                "state_summary.sacg_memory_truth",
+                "review/template_selection/model_shape_coverage_review.json",
+                "review/template_selection/strict_binding_audit.json",
+                "review/template_selection/attention_semantic_binding_review.json"
+              ],
+              "id": "template_selection.resolve_attention_binding_and_recheck",
+              "on_failure": "Keep template selection blocked and the contamination barrier active. Record the unresolved binding and affected constraints; do not modify golden outputs, loosen numeric policy, infer different model facts, or pass the candidate downstream.",
+              "produces": [
+                "review/template_selection/bounded_binding_repair.json",
+                "artifact.stage2.template_selection.refined",
+                "review/template_selection/cross_layer_gate_disposition.json",
+                "review/template_selection/blocker_to_constraint_map.json"
+              ],
+              "rationale": "The current candidate has a concrete illegal binding for the block wrapper and self-attention. Obtain an evidence-backed resolution within the trusted-template boundary, then rerun static binding and numeric/SACG checks. Do not promote or release the contamination barrier unless the refined candidate passes.",
+              "requires_approval": true,
+              "stage": "template_selection",
+              "tool_roles": [
+                "bounded_template_repair",
+                "template_binding_static_check",
+                "parameter_binding_static_check",
+                "numeric_policy_check",
+                "sacg_static_check"
+              ]
+            }
+          ],
+          "execution_groups": [
+            0,
+            1
+          ],
+          "llm_io_metrics": {
+            "executable_action_count": 6,
+            "max_duration_sec": 67.41587649000576,
+            "max_prompt_bytes": 82283,
+            "result_count": 4,
+            "subtasks_without_executable_actions": [],
+            "total_duration_sec": 183.6581523049972,
+            "total_prompt_bytes": 327498
+          },
+          "split_required": true,
+          "status": "ready",
+          "subtask_count": 4,
+          "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/subtask_plan.json",
+          "used_fallback_count": 0
+        },
+        "errors": [
+          "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024",
+          "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+        ],
+        "llm_agent": {},
+        "missing_ops": [],
+        "outputs": {
+          "llm_agent": null,
+          "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/sacg_state.json",
+          "team_aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/team_aggregate.json",
+          "team_subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/subtask_plan.json",
+          "template_selection": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/template_selection.json"
+        },
+        "required_adapters": [],
+        "sacg_transition_id": "transition.0002",
+        "schema_version": "spatialaccagent.template_selection_report.v0",
+        "selected_template_ids": [
+          "attention",
+          "decoder_block",
+          "elementwise",
+          "ffn",
+          "mask",
+          "norm",
+          "residual",
+          "softmax"
+        ],
+        "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/sacg_state.json",
         "stage": "template_selection",
         "status": "incomplete",
         "unsupported_bindings": [
