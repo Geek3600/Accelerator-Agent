@@ -44,3 +44,9 @@ The Gemma and DeepSeek controllers were restarted as detached processes on 2026-
 - GPT-2/DeepSeek passed Stage 5 `code_generation`: compile, both generated-top elaborations, contract, and package gates passed. Stage 6 `verification_artifacts` is active; operator-leaf planning completed and single-layer planning is running. VCS and synthesis have not run yet; DSE remains `insufficient_evidence`.
 - Gemma/GPT-6.1-Sol passed Stage 1. Its first Stage 2 parameter-binding check failed because a checker requires `hidden_size == num_q_heads * head_dim` (1152 != 4*256=1024). The controller started bounded reconciliation within Stage 2, without backtracking. Verify the model's actual query-projection/attention tensor shapes before deciding whether this generic checker assumption is valid; do not promote while the checker fails.
 - Snapshot both current run states in Git, excluding dependency caches, compile targets, PID/lock files, and old-run deletions.
+
+## Progress checkpoint: 2026-10-20 21:11 CST
+
+- Initial source and run snapshot was pushed to GitHub `main` as commit `d341a46`; both original controllers remain active.
+- Gemma's Stage 2 bounded retry completed its model-shape provenance review; the numeric/template specialist is now running. The current retry has not passed or advanced. The `hidden_size`/head-geometry mismatch remains unresolved pending authoritative tensor/semantic evidence.
+- GPT-2/DeepSeek remains in Stage 6 verification-artifact planning; its single-layer-kernel planner request is active. Stage 5 compile/elaboration passed, while VCS/synthesis are still pending.

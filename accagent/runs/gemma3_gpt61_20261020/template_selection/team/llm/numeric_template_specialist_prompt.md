@@ -3,7 +3,7 @@ numeric_template_specialist
 </agent>
 
 <task>
-Review every selected template's required parameter bindings, value provenance, legality, source/interface evidence, and numeric-policy mapping. Determine whether the two reported legality failures are supported by the binding evidence, without silently changing any value.
+Audit every selected template's concrete parameter bindings, source identity, constructor metadata, numeric policy, and legality errors. Determine whether the current candidate can be strictly bound; do not use defaults or change template internals to mask the head-dimension mismatch.
 </task>
 
 <rules>
@@ -83,92 +83,86 @@ Review every selected template's required parameter bindings, value provenance, 
 <subtask>
 {
   "acceptance_checkers": [
-    "parameter_binding_static_check",
     "template_binding_static_check",
-    "numeric_policy_check",
-    "numeric_compare"
+    "parameter_binding_static_check",
+    "numeric_policy_check"
   ],
-  "action_type": "sacg_constraint_review",
+  "action_type": "evidence_and_repair_review",
   "agent": "numeric_template_specialist",
   "artifact_focus": [
     "parameter_bindings",
     "template_source_checks",
     "unsupported_bindings",
-    "checker_results",
-    "selected_templates"
+    "selected_templates",
+    "forbidden_edits"
   ],
   "constraints": [
     "constraint.shape.model",
     "constraint.numeric.policy",
     "constraint.template.library",
-    "constraint.arch.design_space",
-    "constraint.cross_layer.input_consistency"
+    "constraint.arch.design_space"
   ],
   "expected_artifacts": [
-    "parameter-to-source binding audit for all selected templates",
-    "source hash, constructor/interface, and numeric-policy binding findings",
-    "legality findings and bounded resolution requirements for unsupported bindings"
+    "review/template_selection/strict_binding_audit.json",
+    "review/template_selection/unsupported_binding_disposition.json"
   ],
   "handoff_rule": {
     "completion_criteria": [],
     "evidence_rule": "Do not claim pass unless evidence is bound to SACG constraints or explicitly recorded as not_run.",
     "produces": [
-      "sacg_focus",
-      "observations",
-      "risks",
-      "proposed_actions",
-      "approval_required_for"
+      "review/template_selection/strict_binding_audit.json",
+      "review/template_selection/unsupported_binding_disposition.json"
     ]
   },
   "handoff_to": [
-    "template_selection.cross_layer_evidence_gate"
+    "template_selection.cross_layer_gate_engineer",
+    "template_selection.model_shape_coverage_engineer",
+    "template_selection.attention_semantic_engineer"
   ],
-  "id": "template_selection.binding_numeric_engineer",
-  "objective": "Review every selected template's required parameter bindings, value provenance, legality, source/interface evidence, and numeric-policy mapping. Determine whether the two reported legality failures are supported by the b...<len=273>",
-  "role": "numeric and template binding engineer",
+  "id": "template_selection.template_binding_engineer",
+  "objective": "Audit every selected template's concrete parameter bindings, source identity, constructor metadata, numeric policy, and legality errors. Determine whether the current candidate can be strictly bound; do not use defaults ...<len=285>",
+  "role": "strict template-binding and numeric-policy engineer",
   "role_assignment": {
     "collaboration_interfaces": {
       "acceptance_checkers": [
-        "parameter_binding_static_check",
         "template_binding_static_check",
-        "numeric_policy_check",
-        "numeric_compare"
+        "parameter_binding_static_check",
+        "numeric_policy_check"
       ],
       "consumes": [
-        "artifact.input.model_config",
+        "artifact.stage2.template_selection",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
         "artifact.input.numeric_policy",
         "artifact.input.design_space",
-        "artifact.input.template_library",
-        "candidate parameter_bindings, template_source_checks, and checker_results",
-        "operator and shape findings from template_selection.operator_coverage_shape_engineer"
+        "template_selection.model_shape_coverage_engineer findings"
       ],
       "downstream_consumers": [
-        "template_selection.cross_layer_evidence_gate"
-      ],
-      "handoff_to": [
-        "template_selection.cross_layer_evidence_gate"
+        "template_selection.cross_layer_gate_engineer",
+        "template-selection stage gate"
       ],
       "produces": [
-        "parameter binding audit with source provenance",
-        "template source/interface evidence findings",
-        "legality and unresolved-binding disposition"
+        "strict binding audit",
+        "source and constructor consistency findings",
+        "unsupported binding disposition"
       ]
     },
     "decision_authority": [
-      "May classify bindings as supported, incomplete, candidate-bound, or illegal based on evidence.",
-      "May recommend a bounded evidence or approval path for a concrete conflict.",
-      "May not choose Stage-4 DSE values or alter model/numeric inputs."
+      "May classify bindings as supported, unsupported, or unresolved based on supplied evidence.",
+      "May block strict binding when parameters are illegal or unsupported.",
+      "May not select substitute model dimensions, rely on implicit defaults, or edit template internals."
     ],
-    "mission": "Verify that template bindings are explicit, legal, and consistent with authoritative model, numeric, and design-space inputs.",
+    "mission": "Establish whether template sources and their parameters are bound strictly to trusted model, numeric, and design-space facts.",
     "out_of_scope": [
-      "Selecting lanes or compute-array dimensions reserved for the later DSE stage.",
-      "Editing template internals or repairing the mismatch by changing model or numeric inputs.",
-      "Generating RTL or claiming downstream simulation, synthesis, or deployment evidence."
+      "Free-form RTL generation or template-internal changes.",
+      "Overriding model or numeric-policy inputs.",
+      "Selecting final lanes or compute-array dimensions reserved for the later DSE stage."
     ],
     "primary_responsibilities": [
-      "Audit required parameters, concrete values, provenance, and candidate-bound domains.",
-      "Check template source hashes and constructor/interface metadata evidence.",
-      "Reconcile binding legality reports with numeric-policy and model-shape evidence without guessing a repair."
+      "Review all parameter bindings, including the two reported head-dimension legality errors.",
+      "Check source hashes and constructor/interface metadata in the candidate evidence.",
+      "Verify numeric bindings against the supplied numeric policy.",
+      "Keep candidate-bound design-space values distinct from concrete selections made in later stages."
     ]
   },
   "role_profile": {
@@ -180,7 +174,7 @@ Review every selected template's required parameter bindings, value provenance, 
     "constraint_focus": [
       "constraint.numeric.policy",
       "constraint.template.library",
-      "constraint.parameter.binding"
+      "constraint.arch.design_space"
     ],
     "family": "numeric_template"
   },
@@ -250,6 +244,10 @@ Review every selected template's required parameter bindings, value provenance, 
     {
       "id": "artifact.input.human_agent_boundary",
       "type": "input.human_agent_boundary"
+    },
+    {
+      "id": "artifact.stage2.template_selection",
+      "type": "stage.template_selection"
     }
   ],
   "constraints": [
@@ -347,18 +345,60 @@ Review every selected template's required parameter bindings, value provenance, 
   },
   "nodes": 23,
   "sacg_memory": {
-    "active_contamination_barriers": [],
+    "active_contamination_barriers": [
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0001",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0001"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:09:12+00:00",
+        "transition_id": "transition.0001"
+      }
+    ],
     "open_backtrack_requests": [],
     "open_retry_requests": [],
     "policy": "SACG memory is the long-context design memory for preserving goals, failures, lessons, retry needs, and cross-layer consistency across stages.",
-    "recent_contamination_barriers": [],
+    "recent_contamination_barriers": [
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0001",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0001"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:09:12+00:00",
+        "transition_id": "transition.0001"
+      }
+    ],
     "recent_failure_lessons": [],
     "recent_stage_outcomes": [],
     "schema_version": "spatialaccagent.sacg_memory.v0"
   },
   "sacg_memory_truth": {
-    "active_contamination_barrier_count": 0,
-    "active_contamination_barriers": [],
+    "active_contamination_barrier_count": 1,
+    "active_contamination_barriers": [
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0001",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0001"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:09:12+00:00",
+        "transition_id": "transition.0001"
+      }
+    ],
     "active_contamination_barriers_truncated": false,
     "open_backtrack_request_count": 0,
     "open_backtrack_requests": [],

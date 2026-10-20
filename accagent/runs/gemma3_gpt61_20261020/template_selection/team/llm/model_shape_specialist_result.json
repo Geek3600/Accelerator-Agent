@@ -1,9 +1,9 @@
 {
   "agent": "model_shape_specialist",
-  "duration_sec": 52.63231964199804,
+  "duration_sec": 52.64918330201181,
   "error": null,
   "http_transport": "urllib",
-  "live_transaction_id": "74d9f1d222df4e48ac22ad81acc75f41",
+  "live_transaction_id": "2e9a39886f5d4f55920c7c151f166087",
   "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/model_shape_specialist_live_transaction.json",
   "max_output_tokens": null,
   "mode": "llm",
@@ -11,96 +11,96 @@
   "output": {
     "agent": "model_shape_specialist",
     "approval_required_for": [
-      "Any change to hidden_size, head_dim, query-head mapping, or other model-shape values not directly established by authoritative model inputs",
-      "Any new adapter, template substitution, template-internal change, or architecture change to make the current bindings legal"
+      "Any proposed change to authoritative model shape facts or attention head geometry requires the responsible model-fact owner to provide the trusted correction; this specialist is not authorized to change those facts.",
+      "Any template-internal or major architecture change intended to accommodate a different head geometry requires the applicable approval before implementation."
     ],
     "executable_actions": [
       {
         "acceptance_checkers": [
           "model_config_check",
-          "parameter_binding_static_check",
-          "template_binding_static_check",
-          "sacg_static_check"
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
         ],
-        "action_type": "evidence_reconciliation",
+        "action_type": "evidence_review",
         "consumes": [
           "artifact.input.model_config",
           "artifact.input.field_evidence",
-          "artifact.input.task_card",
-          "constraint.shape.model",
-          "candidate_stage_artifact.parameter_bindings",
-          "candidate_stage_artifact.checker_results"
+          "artifact.stage2.template_selection (planning/debug evidence only)",
+          "state_summary.sacg_memory_truth"
         ],
-        "id": "reconcile_authoritative_shape_bindings",
-        "on_failure": "Keep the selection blocked, preserve all authoritative input values, and route any field-level conflict to the cross-layer evidence gate for source reconciliation. Do not alter dimensions, choose an adapter, or waive legality.",
+        "id": "template_selection.trace_shape_fact_provenance",
+        "on_failure": "Record any unavailable or conflicting source fields explicitly; do not infer replacement dimensions, alter model facts, assert a legal binding, or treat the barriered candidate as validated.",
         "produces": [
-          "template_selection/shape_source_reconciliation.json",
-          "template_selection/parameter_binding_checker_results.json"
+          "review/template_selection/shape_fact_provenance.json"
         ],
-        "rationale": "Compare the explicit parameter-binding citations with the field-level model_config and field_evidence, then rerun the applicable static checks. This action resolves evidence provenance without inventing or changing a model dimension.",
+        "rationale": "Establish field-level provenance for the four shape facts from the trusted model/configuration inputs. The visible candidate binding citations are not sufficient to independently verify upstream source values, and the active barrier makes the candidate artifact debug-only.",
         "requires_approval": false,
         "stage": "template_selection",
         "tool_roles": [
           "model_config_check",
-          "parameter_binding_static_check",
-          "template_binding_static_check",
-          "sacg_static_check"
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
         ]
       },
       {
         "acceptance_checkers": [
+          "model_config_check",
           "template_coverage_check",
-          "sacg_static_check"
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
         ],
-        "action_type": "coverage_and_order_review",
+        "action_type": "evidence_and_repair_review",
         "consumes": [
-          "artifact.input.template_library",
+          "artifact.input.model_config",
           "artifact.input.template_metadata",
-          "candidate_stage_artifact.operator_sequence",
-          "candidate_stage_artifact.selected_templates",
-          "candidate_stage_artifact.coverage",
-          "candidate_stage_artifact.attention_semantics",
-          "candidate_stage_artifact.template_source_checks"
+          "artifact.input.template_library",
+          "artifact.stage2.template_selection (planning/debug evidence only)",
+          "review/template_selection/shape_fact_provenance.json",
+          "state_summary.sacg_memory_truth"
         ],
-        "id": "refresh_operator_template_coverage_record",
-        "on_failure": "Report any missing or untrusted mapping with its operator and source reference, preserve the supplied operator order, and keep promotion blocked until the checker-grounded discrepancy is resolved.",
+        "id": "template_selection.rerun_decoder_coverage_and_binding_review",
+        "on_failure": "Report coverage separately from binding legality. If the 1152-versus-1024 mismatch remains or the trusted facts cannot be established, keep template selection incomplete and request authoritative model-fact reconciliation; do not change facts or claim a legal binding.",
         "produces": [
-          "template_selection/operator_coverage_order_matrix.json",
-          "template_selection/residual_order_evidence_note.json"
+          "review/template_selection/model_shape_coverage_review.json"
         ],
-        "rationale": "Produce a checker-grounded operator-to-template coverage record from the supplied sequence, selected templates, source checks, and attention expansion. Record residual sequence placement separately from operand wiring.",
+        "rationale": "Preserve the reported decoder order and template coverage while independently checking coverage and parameter legality against authoritative shape facts. This action reviews evidence only and does not modify templates or model configuration.",
         "requires_approval": false,
         "stage": "template_selection",
         "tool_roles": [
+          "model_config_check",
           "template_coverage_check",
-          "sacg_static_check"
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
         ]
       }
     ],
     "observations": [
-      "Coverage reports 11 required operators and 11 covered operators, with a block wrapper and no missing operators. The listed order maps as follows: rms_norm_input -> Norm.scala/norm; self_attention -> Attention.scala/attention; rms_norm_post_attention -> Norm.scala/norm; residual_add_1 -> Residual.scala/residual; rms_norm_pre_ffn -> Norm.scala/norm; mlp_gate_proj, mlp_up_proj, and mlp_down_proj -> FFN.scala/ffn; activation_mul -> Elementwise.scala/elementwise; rms_norm_post_ffn -> Norm.scala/norm; residual_add_2 -> Residual.scala/residual. The selected block wrapper is DecoderBlock.scala/decoder_block.",
-      "Required attention coverage is reported for QKV projection and RoPE in DecoderBlock.scala (SHA-256 ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785), GQA mapping in QKVProjection.scala (3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1), softmax in Softmax.scala (4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2), output projection in Attention.scala (c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e), and causal mask in Mask.scala (bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a). KV cache is explicitly not required. GQA values are 4 query heads, 1 KV head, group size 4.",
-      "The supplied operator_sequence places residual_add_1 after rms_norm_post_attention and residual_add_2 after rms_norm_post_ffn, with the pre-FFN norm before the MLP operators. This confirms the listed sequence order; explicit residual operand/dataflow edges are not included in the supplied artifact, so this review does not claim to verify operand wiring.",
-      "The parameter bindings cite constraint.shape.model.hidden_size=1152, head_dim=256, and num_q_heads=4. Those represented values yield 1024 projected query dimensions, a 128-dimension discrepancy. The checker reports the same incompatibility for gemma3_text_block and self_attention. This supports the reported mismatch as currently bound, but the underlying model_config and field_evidence rows are not shown for an independent source-value comparison.",
-      "Other cited bindings include intermediate_size=6912, target_max_seq_len=16, num_kv_heads=1, and norm epsilon 1e-6. Numeric policy, board memory, runtime, deployment, and cross-layer consistency are present in the trace, which reports pass. No model-tail operators appear in the listed Transformer-block sequence.",
-      "operator_coverage_check, template_source_and_interface_check, mandatory_fpga_ip_binding_check, attention_semantic_expansion_check, and cross_layer_trace_check report pass. template_parameter_binding_check reports fail on the two hidden-size/head-dimension legality errors; the wrapper and attention bindings are incomplete."
+      "The candidate lists this decoder order: rms_norm_input, self_attention, rms_norm_post_attention, residual_add_1, rms_norm_pre_ffn, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, rms_norm_post_ffn, residual_add_2. It reports operator_coverage_check pass, 11/11 required ops covered, a block wrapper present, and no missing ops. This is coverage evidence, not a successful parameter binding.",
+      "Reported attention submodule coverage includes QKV projection, RoPE, GQA mapping, softmax, output projection, and causal mask. KV cache is marked not required. The listed block does not add embedding/tokenization, final model norm, LM head/logits, or sampling.",
+      "The candidate's parameter-binding records attribute hidden_size=1152, num_q_heads=4, num_kv_heads=1, and head_dim=256 to constraint.shape.model. In those reported values, num_q_heads * head_dim = 4 * 256 = 1024, which is 128 less than hidden_size. The binding checker reports this same mismatch for both gemma3_text_block and self_attention.",
+      "The reported GQA group size is 4 (4 query heads per KV head). That mapping does not change the query-width product of 4 * 256 and therefore does not resolve the reported 1152-versus-1024 discrepancy.",
+      "The supplied summary names artifact.input.model_config and artifact.input.field_evidence but does not expose their field-level contents, source locations, or hashes for these shape facts. The binding records cite constraint.shape.model; this prompt alone does not establish the upstream provenance or independently confirm the raw model-config values.",
+      "SACG memory truth lists active contamination_barrier.0001 on artifact.stage2.template_selection, caused by this strict-binding failure. That artifact must remain planning/debug evidence only, not a validated design input. There are no open retry or backtrack requests.",
+      "The candidate reports template source/interface, attention expansion, mandatory FPGA-IP, and cross-layer trace checks as passing. Those reported results do not override the parameter-binding failure or establish a legal binding."
     ],
     "proposed_actions": [
-      "Have the binding/numeric and cross-layer evidence peers reconcile the cited shape bindings against the field-level authoritative model inputs; retain the current dimensions unless that evidence establishes a different binding.",
-      "Hand the listed operator/template mapping and the residual-order evidence limitation to the attention-semantic and cross-layer evidence peers. Do not treat sequence order as proof of residual operand wiring.",
-      "Do not promote the selection while the parameter-binding checker reports the hidden-size/head-dimension legality errors."
+      "Trace hidden_size, num_q_heads, num_kv_heads, and head_dim back to their authoritative input fields and record source evidence without editing model facts.",
+      "Retain the listed operator order and coverage as reported evidence, then rerun static binding checks against the authoritative shape facts. Keep the candidate incomplete if the contradiction persists or provenance remains unresolved."
     ],
     "risks": [
-      "Current-stage blocker: the bound wrapper and self-attention parameters are illegal under the stated relation hidden_size = num_q_heads * head_dim. The supplied evidence does not authorize choosing a corrected hidden size or head dimension.",
-      "The field-level model_config and field_evidence values are not visible in this summary, limiting an independent provenance cross-check of the shape bindings.",
-      "Explicit residual operand/dataflow connections are not present in the artifact; sequence ordering alone does not establish residual wiring."
+      "Current-stage strict binding remains incomplete: the supplied parameter-binding checker reports hidden_size=1152 but num_q_heads*head_dim=1024 for the block and attention templates.",
+      "The shape-fact provenance is not independently auditable from the visible prompt because raw trusted model-config/field-evidence details are not included. Do not choose a replacement head dimension, head count, or hidden size by inference.",
+      "The active contamination barrier prevents treating the rejected candidate artifact as a validated downstream input; do not clear or bypass it based on coverage results."
     ],
     "sacg_focus": {
       "artifacts": [
-        "operator coverage matrix with source/template references",
-        "shape and operator-order findings",
-        "hidden-size/head-dimension mismatch disposition",
-        "template_selection checker results"
+        "artifact.stage2.template_selection",
+        "review/template_selection/model_shape_coverage_review.json",
+        "review/template_selection/shape_fact_provenance.json"
       ],
       "constraints": [
         "constraint.model.decoder",
@@ -109,37 +109,42 @@
         "constraint.cross_layer.input_consistency"
       ],
       "edges": [
-        "constraint.shape.model -> candidate_stage_artifact.parameter_bindings",
-        "constraint.model.decoder -> candidate_stage_artifact.operator_sequence",
-        "constraint.template.library -> candidate_stage_artifact.selected_templates",
-        "candidate_stage_artifact.operator_sequence -> candidate_stage_artifact.coverage"
+        "trusted model and shape facts -> decoder parameter bindings",
+        "decoder operator sequence -> selected template coverage",
+        "active contamination barrier -> downstream artifact trust"
       ],
       "nodes": [
         "artifact.input.model_config",
         "artifact.input.field_evidence",
-        "artifact.input.task_card",
-        "candidate_stage_artifact.operator_sequence",
-        "candidate_stage_artifact.selected_templates",
-        "candidate_stage_artifact.coverage",
-        "candidate_stage_artifact.parameter_bindings",
-        "candidate_stage_artifact.checker_results"
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "artifact.stage2.template_selection",
+        "state_summary.sacg_memory_truth"
       ]
     },
-    "schema_version": "spatialaccagent.model_shape_specialist.v0",
+    "schema_version": "spatialaccagent.model_shape_specialist.v1",
     "stage": "template_selection",
     "status": "blocked",
-    "summary": "All 11 listed decoder operators have selected trusted templates, and required attention subcomponents are covered. The bound model-shape values support the reported hidden-size/head-dimension mismatch: 1152 != 4 * 256 (1024). The raw model_config and field_evidence values are not expanded in the supplied summary, so the cited authoritative shape bindings cannot be independently cross-checked here. Do not change dimensions or select an adapter by inference."
+    "summary": "The listed 11-op decoder sequence has complete reported template coverage, but strict template binding is blocked by the reported 1152-versus-1024 shape mismatch. The candidate artifact is under an active SACG contamination barrier and is planning/debug evidence only; the raw field-level model-config provenance is not included here, so the shape facts cannot be independently certified from this prompt."
   },
-  "prompt_bytes": 79452,
-  "prompt_hash": "339b534d0aca36fa92cbf71764c20943619ad0e2e95d406ae409b02d4572669d",
+  "prompt_bytes": 81631,
+  "prompt_hash": "6c6a9f73d2b891c229a525ca7b3c0aae9b617da1e5400655acd0c494d23d9b74",
   "prompt_protocol": "spatialaccagent.llm_io.v0",
-  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.model_shape_specialist.v0\",\n  \"agent\": \"model_shape_specialist\",\n  \"stage\": \"template_selection\",\n  \"status\": \"blocked\",\n  \"summary\": \"All 11 listed decoder operators have selected trusted templates, and required attention subcomponents are covered. The bound model-shape values support the reported hidden-size/head-dimension mismatch: 1152 != 4 * 256 (1024). The raw model_config and field_evidence values are not expanded in the supplied summary, so the cited authoritative shape bindings cannot be independently cross-checked here. Do not change dimensions or select an adapter by inference.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"artifact.input.model_config\",\n      \"artifact.input.field_evidence\",\n      \"artifact.input.task_card\",\n      \"candidate_stage_artifact.operator_sequence\",\n      \"candidate_stage_artifact.selected_templates\",\n      \"candidate_stage_artifact.coverage\",\n      \"candidate_stage_artifact.parameter_bindings\",\n      \"candidate_stage_artifact.checker_results\"\n    ],\n    \"edges\": [\n      \"constraint.shape.model -> candidate_stage_artifact.parameter_bindings\",\n      \"constraint.model.decoder -> candidate_stage_artifact.operator_sequence\",\n      \"constraint.template.library -> candidate_stage_artifact.selected_templates\",\n      \"candidate_stage_artifact.operator_sequence -> candidate_stage_artifact.coverage\"\n    ],\n    \"constraints\": [\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.template.library\",\n      \"constraint.cross_layer.input_consistency\"\n    ],\n    \"artifacts\": [\n      \"operator coverage matrix with source/template references\",\n      \"shape and operator-order findings\",\n      \"hidden-size/head-dimension mismatch disposition\",\n      \"template_selection checker results\"\n    ]\n  },\n  \"observations\": [\n    \"Coverage reports 11 required operators and 11 covered operators, with a block wrapper and no missing operators. The listed order maps as follows: rms_norm_input -> Norm.scala/norm; self_attention -> Attention.scala/attention; rms_norm_post_attention -> Norm.scala/norm; residual_add_1 -> Residual.scala/residual; rms_norm_pre_ffn -> Norm.scala/norm; mlp_gate_proj, mlp_up_proj, and mlp_down_proj -> FFN.scala/ffn; activation_mul -> Elementwise.scala/elementwise; rms_norm_post_ffn -> Norm.scala/norm; residual_add_2 -> Residual.scala/residual. The selected block wrapper is DecoderBlock.scala/decoder_block.\",\n    \"Required attention coverage is reported for QKV projection and RoPE in DecoderBlock.scala (SHA-256 ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785), GQA mapping in QKVProjection.scala (3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1), softmax in Softmax.scala (4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2), output projection in Attention.scala (c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e), and causal mask in Mask.scala (bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a). KV cache is explicitly not required. GQA values are 4 query heads, 1 KV head, group size 4.\",\n    \"The supplied operator_sequence places residual_add_1 after rms_norm_post_attention and residual_add_2 after rms_norm_post_ffn, with the pre-FFN norm before the MLP operators. This confirms the listed sequence order; explicit residual operand/dataflow edges are not included in the supplied artifact, so this review does not claim to verify operand wiring.\",\n    \"The parameter bindings cite constraint.shape.model.hidden_size=1152, head_dim=256, and num_q_heads=4. Those represented values yield 1024 projected query dimensions, a 128-dimension discrepancy. The checker reports the same incompatibility for gemma3_text_block and self_attention. This supports the reported mismatch as currently bound, but the underlying model_config and field_evidence rows are not shown for an independent source-value comparison.\",\n    \"Other cited bindings include intermediate_size=6912, target_max_seq_len=16, num_kv_heads=1, and norm epsilon 1e-6. Numeric policy, board memory, runtime, deployment, and cross-layer consistency are present in the trace, which reports pass. No model-tail operators appear in the listed Transformer-block sequence.\",\n    \"operator_coverage_check, template_source_and_interface_check, mandatory_fpga_ip_binding_check, attention_semantic_expansion_check, and cross_layer_trace_check report pass. template_parameter_binding_check reports fail on the two hidden-size/head-dimension legality errors; the wrapper and attention bindings are incomplete.\"\n  ],\n  \"risks\": [\n    \"Current-stage blocker: the bound wrapper and self-attention parameters are illegal under the stated relation hidden_size = num_q_heads * head_dim. The supplied evidence does not authorize choosing a corrected hidden size or head dimension.\",\n    \"The field-level model_config and field_evidence values are not visible in this summary, limiting an independent provenance cross-check of the shape bindings.\",\n    \"Explicit residual operand/dataflow connections are not present in the artifact; sequence ordering alone does not establish residual wiring.\"\n  ],\n  \"proposed_actions\": [\n    \"Have the binding/numeric and cross-layer evidence peers reconcile the cited shape bindings against the field-level authoritative model inputs; retain the current dimensions unless that evidence establishes a different binding.\",\n    \"Hand the listed operator/template mapping and the residual-order evidence limitation to the attention-semantic and cross-layer evidence peers. Do not treat sequence order as proof of residual operand wiring.\",\n    \"Do not promote the selection while the parameter-binding checker reports the hidden-size/head-dimension legality errors.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"reconcile_authoritative_shape_bindings\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"evidence_reconciliation\",\n      \"rationale\": \"Compare the explicit parameter-binding citations with the field-level model_config and field_evidence, then rerun the applicable static checks. This action resolves evidence provenance without inventing or changing a model dimension.\",\n      \"consumes\": [\n        \"artifact.input.model_config\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.task_card\",\n        \"constraint.shape.model\",\n        \"candidate_stage_artifact.parameter_bindings\",\n        \"candidate_stage_artifact.checker_results\"\n      ],\n      \"produces\": [\n        \"template_selection/shape_source_reconciliation.json\",\n        \"template_selection/parameter_binding_checker_results.json\"\n      ],\n      \"tool_roles\": [\n        \"model_config_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"model_config_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Keep the selection blocked, preserve all authoritative input values, and route any field-level conflict to the cross-layer evidence gate for source reconciliation. Do not alter dimensions, choose an adapter, or waive legality.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"refresh_operator_template_coverage_record\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"coverage_and_order_review\",\n      \"rationale\": \"Produce a checker-grounded operator-to-template coverage record from the supplied sequence, selected templates, source checks, and attention expansion. Record residual sequence placement separately from operand wiring.\",\n      \"consumes\": [\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"candidate_stage_artifact.operator_sequence\",\n        \"candidate_stage_artifact.selected_templates\",\n        \"candidate_stage_artifact.coverage\",\n        \"candidate_stage_artifact.attention_semantics\",\n        \"candidate_stage_artifact.template_source_checks\"\n      ],\n      \"produces\": [\n        \"template_selection/operator_coverage_order_matrix.json\",\n        \"template_selection/residual_order_evidence_note.json\"\n      ],\n      \"tool_roles\": [\n        \"template_coverage_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"template_coverage_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Report any missing or untrusted mapping with its operator and source reference, preserve the supplied operator order, and keep promotion blocked until the checker-grounded discrepancy is resolved.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any change to hidden_size, head_dim, query-head mapping, or other model-shape values not directly established by authoritative model inputs\",\n    \"Any new adapter, template substitution, template-internal change, or architecture change to make the current bindings legal\"\n  ]\n}",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.model_shape_specialist.v1\",\n  \"agent\": \"model_shape_specialist\",\n  \"stage\": \"template_selection\",\n  \"status\": \"blocked\",\n  \"summary\": \"The listed 11-op decoder sequence has complete reported template coverage, but strict template binding is blocked by the reported 1152-versus-1024 shape mismatch. The candidate artifact is under an active SACG contamination barrier and is planning/debug evidence only; the raw field-level model-config provenance is not included here, so the shape facts cannot be independently certified from this prompt.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"artifact.input.model_config\",\n      \"artifact.input.field_evidence\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"artifact.stage2.template_selection\",\n      \"state_summary.sacg_memory_truth\"\n    ],\n    \"edges\": [\n      \"trusted model and shape facts -> decoder parameter bindings\",\n      \"decoder operator sequence -> selected template coverage\",\n      \"active contamination barrier -> downstream artifact trust\"\n    ],\n    \"constraints\": [\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.template.library\",\n      \"constraint.cross_layer.input_consistency\"\n    ],\n    \"artifacts\": [\n      \"artifact.stage2.template_selection\",\n      \"review/template_selection/model_shape_coverage_review.json\",\n      \"review/template_selection/shape_fact_provenance.json\"\n    ]\n  },\n  \"observations\": [\n    \"The candidate lists this decoder order: rms_norm_input, self_attention, rms_norm_post_attention, residual_add_1, rms_norm_pre_ffn, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, rms_norm_post_ffn, residual_add_2. It reports operator_coverage_check pass, 11/11 required ops covered, a block wrapper present, and no missing ops. This is coverage evidence, not a successful parameter binding.\",\n    \"Reported attention submodule coverage includes QKV projection, RoPE, GQA mapping, softmax, output projection, and causal mask. KV cache is marked not required. The listed block does not add embedding/tokenization, final model norm, LM head/logits, or sampling.\",\n    \"The candidate's parameter-binding records attribute hidden_size=1152, num_q_heads=4, num_kv_heads=1, and head_dim=256 to constraint.shape.model. In those reported values, num_q_heads * head_dim = 4 * 256 = 1024, which is 128 less than hidden_size. The binding checker reports this same mismatch for both gemma3_text_block and self_attention.\",\n    \"The reported GQA group size is 4 (4 query heads per KV head). That mapping does not change the query-width product of 4 * 256 and therefore does not resolve the reported 1152-versus-1024 discrepancy.\",\n    \"The supplied summary names artifact.input.model_config and artifact.input.field_evidence but does not expose their field-level contents, source locations, or hashes for these shape facts. The binding records cite constraint.shape.model; this prompt alone does not establish the upstream provenance or independently confirm the raw model-config values.\",\n    \"SACG memory truth lists active contamination_barrier.0001 on artifact.stage2.template_selection, caused by this strict-binding failure. That artifact must remain planning/debug evidence only, not a validated design input. There are no open retry or backtrack requests.\",\n    \"The candidate reports template source/interface, attention expansion, mandatory FPGA-IP, and cross-layer trace checks as passing. Those reported results do not override the parameter-binding failure or establish a legal binding.\"\n  ],\n  \"risks\": [\n    \"Current-stage strict binding remains incomplete: the supplied parameter-binding checker reports hidden_size=1152 but num_q_heads*head_dim=1024 for the block and attention templates.\",\n    \"The shape-fact provenance is not independently auditable from the visible prompt because raw trusted model-config/field-evidence details are not included. Do not choose a replacement head dimension, head count, or hidden size by inference.\",\n    \"The active contamination barrier prevents treating the rejected candidate artifact as a validated downstream input; do not clear or bypass it based on coverage results.\"\n  ],\n  \"proposed_actions\": [\n    \"Trace hidden_size, num_q_heads, num_kv_heads, and head_dim back to their authoritative input fields and record source evidence without editing model facts.\",\n    \"Retain the listed operator order and coverage as reported evidence, then rerun static binding checks against the authoritative shape facts. Keep the candidate incomplete if the contradiction persists or provenance remains unresolved.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"template_selection.trace_shape_fact_provenance\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"evidence_review\",\n      \"rationale\": \"Establish field-level provenance for the four shape facts from the trusted model/configuration inputs. The visible candidate binding citations are not sufficient to independently verify upstream source values, and the active barrier makes the candidate artifact debug-only.\",\n      \"consumes\": [\n        \"artifact.input.model_config\",\n        \"artifact.input.field_evidence\",\n        \"artifact.stage2.template_selection (planning/debug evidence only)\",\n        \"state_summary.sacg_memory_truth\"\n      ],\n      \"produces\": [\n        \"review/template_selection/shape_fact_provenance.json\"\n      ],\n      \"tool_roles\": [\n        \"model_config_check\",\n        \"sacg_static_check\",\n        \"stage_artifact_trust_barrier_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"model_config_check\",\n        \"sacg_static_check\",\n        \"stage_artifact_trust_barrier_check\"\n      ],\n      \"on_failure\": \"Record any unavailable or conflicting source fields explicitly; do not infer replacement dimensions, alter model facts, assert a legal binding, or treat the barriered candidate as validated.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"template_selection.rerun_decoder_coverage_and_binding_review\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"evidence_and_repair_review\",\n      \"rationale\": \"Preserve the reported decoder order and template coverage while independently checking coverage and parameter legality against authoritative shape facts. This action reviews evidence only and does not modify templates or model configuration.\",\n      \"consumes\": [\n        \"artifact.input.model_config\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.template_library\",\n        \"artifact.stage2.template_selection (planning/debug evidence only)\",\n        \"review/template_selection/shape_fact_provenance.json\",\n        \"state_summary.sacg_memory_truth\"\n      ],\n      \"produces\": [\n        \"review/template_selection/model_shape_coverage_review.json\"\n      ],\n      \"tool_roles\": [\n        \"model_config_check\",\n        \"template_coverage_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\",\n        \"stage_artifact_trust_barrier_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"model_config_check\",\n        \"template_coverage_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\",\n        \"stage_artifact_trust_barrier_check\"\n      ],\n      \"on_failure\": \"Report coverage separately from binding legality. If the 1152-versus-1024 mismatch remains or the trusted facts cannot be established, keep template selection incomplete and request authoritative model-fact reconciliation; do not change facts or claim a legal binding.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any proposed change to authoritative model shape facts or attention head geometry requires the responsible model-fact owner to provide the trusted correction; this specialist is not authorized to change those facts.\",\n    \"Any template-internal or major architecture change intended to accommodate a different head geometry requires the applicable approval before implementation.\"\n  ]\n}",
   "reasoning_effort": "medium",
   "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/model_shape_specialist_prompt.md",
   "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/model_shape_specialist_result.json",
   "schema_version": "spatialaccagent.stage_worker_record.v0",
-  "stage": "template_selection.operator coverage and model-shape engineer",
+  "stage": "template_selection.model-shape and operator-coverage engineer",
   "stream": false,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/history/model_shape_specialist_result.52d0e67f9e033c76.f46fe39dba6e0ef5.6c6a9f73d2b891c2.snapshot.json",
+    "replaced_prompt_hash": "339b534d0aca36fa92cbf71764c20943619ad0e2e95d406ae409b02d4572669d",
+    "replaced_result_sha256": "52d0e67f9e033c76d985379a23d41440d0a736c870e21b5a1b42fb9dd1fe10ae",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "52d0e67f9e033c76.f46fe39dba6e0ef5.6c6a9f73d2b891c2"
+  },
   "transport": "responses_json",
   "used_fallback": false
 }

@@ -3,7 +3,7 @@ model_shape_specialist
 </agent>
 
 <task>
-Verify that the model operator sequence, residual ordering, shapes, and all required operators map to trusted selected templates. Independently identify whether the reported hidden-size/head-dimension mismatch is supported by the authoritative model inputs; do not invent a shape correction.
+Independently check decoder operator order, coverage, and the provenance of model shape facts. Explain the 1152-versus-1024 head-dimension contradiction using trusted inputs, without changing model facts or asserting a legal binding when evidence does not support one.
 </task>
 
 <rules>
@@ -93,39 +93,37 @@ Verify that the model operator sequence, residual ordering, shapes, and all requ
     "operator_sequence",
     "selected_templates",
     "coverage",
-    "missing_ops",
     "parameter_bindings",
-    "checker_results"
+    "checker_results",
+    "artifact.input.model_config",
+    "artifact.stage2.template_selection"
   ],
   "constraints": [
     "constraint.model.decoder",
     "constraint.shape.model",
-    "constraint.template.library"
+    "constraint.template.library",
+    "constraint.cross_layer.input_consistency"
   ],
   "expected_artifacts": [
-    "operator coverage matrix with source/template references",
-    "model-shape and operator-order findings citing authoritative input fields",
-    "bounded disposition of the hidden-size/head-dimension mismatch, including unresolved evidence conflicts"
+    "review/template_selection/model_shape_coverage_review.json",
+    "review/template_selection/shape_fact_provenance.json"
   ],
   "handoff_rule": {
     "completion_criteria": [],
     "evidence_rule": "Do not claim pass unless evidence is bound to SACG constraints or explicitly recorded as not_run.",
     "produces": [
-      "sacg_focus",
-      "observations",
-      "risks",
-      "proposed_actions",
-      "approval_required_for"
+      "review/template_selection/model_shape_coverage_review.json",
+      "review/template_selection/shape_fact_provenance.json"
     ]
   },
   "handoff_to": [
-    "template_selection.binding_numeric_engineer",
-    "template_selection.attention_semantic_engineer",
-    "template_selection.cross_layer_evidence_gate"
+    "template_selection.cross_layer_gate_engineer",
+    "template_selection.template_binding_engineer",
+    "template_selection.attention_semantic_engineer"
   ],
-  "id": "template_selection.operator_coverage_shape_engineer",
-  "objective": "Verify that the model operator sequence, residual ordering, shapes, and all required operators map to trusted selected templates. Independently identify whether the reported hidden-size/head-dimension mismatch is support...<len=291>",
-  "role": "operator coverage and model-shape engineer",
+  "id": "template_selection.model_shape_coverage_engineer",
+  "objective": "Independently check decoder operator order, coverage, and the provenance of model shape facts. Explain the 1152-versus-1024 head-dimension contradiction using trusted inputs, without changing model facts or asserting a l...<len=268>",
+  "role": "model-shape and operator-coverage engineer",
   "role_assignment": {
     "collaboration_interfaces": {
       "acceptance_checkers": [
@@ -135,39 +133,37 @@ Verify that the model operator sequence, residual ordering, shapes, and all requ
       ],
       "consumes": [
         "artifact.input.model_config",
-        "artifact.input.task_card",
-        "candidate selected_templates, operator_sequence, coverage, and parameter_bindings"
+        "artifact.input.template_metadata",
+        "artifact.stage2.template_selection",
+        "state_summary.sacg_memory_truth"
       ],
       "downstream_consumers": [
-        "template_selection.binding_numeric_engineer",
+        "template_selection.template_binding_engineer",
         "template_selection.attention_semantic_engineer",
-        "template_selection.cross_layer_evidence_gate"
-      ],
-      "handoff_to": [
-        "template_selection.binding_numeric_engineer",
-        "template_selection.attention_semantic_engineer",
-        "template_selection.cross_layer_evidence_gate"
+        "template_selection.cross_layer_gate_engineer"
       ],
       "produces": [
-        "operator coverage matrix",
-        "shape and ordering findings with source references",
-        "explicit unresolved mismatch disposition"
+        "model-shape fact provenance",
+        "operator coverage review",
+        "identified shape contradictions"
       ]
     },
     "decision_authority": [
-      "May report a coverage or shape inconsistency and identify its cited source.",
-      "May not alter model dimensions, choose an unapproved adapter, or waive template legality."
+      "May identify unsupported or contradictory model-shape coverage.",
+      "May recommend that the candidate remain incomplete when trusted facts do not establish a legal binding.",
+      "May not alter model configuration, template internals, or approval boundaries."
     ],
-    "mission": "Establish evidence-backed correspondence between the decoder model graph and the selected trusted operator templates.",
+    "mission": "Establish whether the model facts and operator coverage are faithfully represented and identify the exact shape inconsistency blocking strict template binding.",
     "out_of_scope": [
-      "Changing model or template parameters to force legality.",
-      "Free-form RTL generation or template-internal edits.",
-      "Later-stage simulation, synthesis, or board-readiness claims."
+      "Changing model facts or inferring replacement dimensions.",
+      "Generating free-form RTL or modifying trusted templates.",
+      "Claiming simulation, synthesis, or deployment readiness."
     ],
     "primary_responsibilities": [
-      "Check complete operator coverage and preserve the supplied operator and residual order.",
-      "Compare model shapes and attention dimensions with the selected wrapper and operator requirements.",
-      "Trace shape findings to authoritative model/configuration facts rather than inferred defaults."
+      "Check the listed decoder operator sequence and trusted-template coverage.",
+      "Trace hidden_size, num_q_heads, num_kv_heads, and head_dim to their trusted source facts.",
+      "Report the dimensional contradiction without silently changing inputs or template parameters.",
+      "Treat the active SACG contamination-barrier artifact as planning/debug evidence only."
     ]
   },
   "role_profile": {
@@ -182,7 +178,7 @@ Verify that the model operator sequence, residual ordering, shapes, and all requ
     ],
     "family": "model_shape"
   },
-  "title": "Audit decoder operator coverage and model-shape mapping"
+  "title": "Reconcile model shape with operator coverage"
 }
 </subtask>
 
@@ -248,6 +244,10 @@ Verify that the model operator sequence, residual ordering, shapes, and all requ
     {
       "id": "artifact.input.human_agent_boundary",
       "type": "input.human_agent_boundary"
+    },
+    {
+      "id": "artifact.stage2.template_selection",
+      "type": "stage.template_selection"
     }
   ],
   "constraints": [
@@ -345,18 +345,60 @@ Verify that the model operator sequence, residual ordering, shapes, and all requ
   },
   "nodes": 23,
   "sacg_memory": {
-    "active_contamination_barriers": [],
+    "active_contamination_barriers": [
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0001",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0001"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:09:12+00:00",
+        "transition_id": "transition.0001"
+      }
+    ],
     "open_backtrack_requests": [],
     "open_retry_requests": [],
     "policy": "SACG memory is the long-context design memory for preserving goals, failures, lessons, retry needs, and cross-layer consistency across stages.",
-    "recent_contamination_barriers": [],
+    "recent_contamination_barriers": [
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0001",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0001"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:09:12+00:00",
+        "transition_id": "transition.0001"
+      }
+    ],
     "recent_failure_lessons": [],
     "recent_stage_outcomes": [],
     "schema_version": "spatialaccagent.sacg_memory.v0"
   },
   "sacg_memory_truth": {
-    "active_contamination_barrier_count": 0,
-    "active_contamination_barriers": [],
+    "active_contamination_barrier_count": 1,
+    "active_contamination_barriers": [
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0001",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0001"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:09:12+00:00",
+        "transition_id": "transition.0001"
+      }
+    ],
     "active_contamination_barriers_truncated": false,
     "open_backtrack_request_count": 0,
     "open_backtrack_requests": [],
