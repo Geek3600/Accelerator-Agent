@@ -1,0 +1,150 @@
+{
+  "agent": "model_shape_specialist",
+  "duration_sec": 52.64918330201181,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "2e9a39886f5d4f55920c7c151f166087",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/model_shape_specialist_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "model_shape_specialist",
+    "approval_required_for": [
+      "Any proposed change to authoritative model shape facts or attention head geometry requires the responsible model-fact owner to provide the trusted correction; this specialist is not authorized to change those facts.",
+      "Any template-internal or major architecture change intended to accommodate a different head geometry requires the applicable approval before implementation."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "evidence_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.field_evidence",
+          "artifact.stage2.template_selection (planning/debug evidence only)",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "template_selection.trace_shape_fact_provenance",
+        "on_failure": "Record any unavailable or conflicting source fields explicitly; do not infer replacement dimensions, alter model facts, assert a legal binding, or treat the barriered candidate as validated.",
+        "produces": [
+          "review/template_selection/shape_fact_provenance.json"
+        ],
+        "rationale": "Establish field-level provenance for the four shape facts from the trusted model/configuration inputs. The visible candidate binding citations are not sufficient to independently verify upstream source values, and the active barrier makes the candidate artifact debug-only.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "model_config_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "evidence_and_repair_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.template_metadata",
+          "artifact.input.template_library",
+          "artifact.stage2.template_selection (planning/debug evidence only)",
+          "review/template_selection/shape_fact_provenance.json",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "template_selection.rerun_decoder_coverage_and_binding_review",
+        "on_failure": "Report coverage separately from binding legality. If the 1152-versus-1024 mismatch remains or the trusted facts cannot be established, keep template selection incomplete and request authoritative model-fact reconciliation; do not change facts or claim a legal binding.",
+        "produces": [
+          "review/template_selection/model_shape_coverage_review.json"
+        ],
+        "rationale": "Preserve the reported decoder order and template coverage while independently checking coverage and parameter legality against authoritative shape facts. This action reviews evidence only and does not modify templates or model configuration.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "model_config_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The candidate lists this decoder order: rms_norm_input, self_attention, rms_norm_post_attention, residual_add_1, rms_norm_pre_ffn, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, rms_norm_post_ffn, residual_add_2. It reports operator_coverage_check pass, 11/11 required ops covered, a block wrapper present, and no missing ops. This is coverage evidence, not a successful parameter binding.",
+      "Reported attention submodule coverage includes QKV projection, RoPE, GQA mapping, softmax, output projection, and causal mask. KV cache is marked not required. The listed block does not add embedding/tokenization, final model norm, LM head/logits, or sampling.",
+      "The candidate's parameter-binding records attribute hidden_size=1152, num_q_heads=4, num_kv_heads=1, and head_dim=256 to constraint.shape.model. In those reported values, num_q_heads * head_dim = 4 * 256 = 1024, which is 128 less than hidden_size. The binding checker reports this same mismatch for both gemma3_text_block and self_attention.",
+      "The reported GQA group size is 4 (4 query heads per KV head). That mapping does not change the query-width product of 4 * 256 and therefore does not resolve the reported 1152-versus-1024 discrepancy.",
+      "The supplied summary names artifact.input.model_config and artifact.input.field_evidence but does not expose their field-level contents, source locations, or hashes for these shape facts. The binding records cite constraint.shape.model; this prompt alone does not establish the upstream provenance or independently confirm the raw model-config values.",
+      "SACG memory truth lists active contamination_barrier.0001 on artifact.stage2.template_selection, caused by this strict-binding failure. That artifact must remain planning/debug evidence only, not a validated design input. There are no open retry or backtrack requests.",
+      "The candidate reports template source/interface, attention expansion, mandatory FPGA-IP, and cross-layer trace checks as passing. Those reported results do not override the parameter-binding failure or establish a legal binding."
+    ],
+    "proposed_actions": [
+      "Trace hidden_size, num_q_heads, num_kv_heads, and head_dim back to their authoritative input fields and record source evidence without editing model facts.",
+      "Retain the listed operator order and coverage as reported evidence, then rerun static binding checks against the authoritative shape facts. Keep the candidate incomplete if the contradiction persists or provenance remains unresolved."
+    ],
+    "risks": [
+      "Current-stage strict binding remains incomplete: the supplied parameter-binding checker reports hidden_size=1152 but num_q_heads*head_dim=1024 for the block and attention templates.",
+      "The shape-fact provenance is not independently auditable from the visible prompt because raw trusted model-config/field-evidence details are not included. Do not choose a replacement head dimension, head count, or hidden size by inference.",
+      "The active contamination barrier prevents treating the rejected candidate artifact as a validated downstream input; do not clear or bypass it based on coverage results."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage2.template_selection",
+        "review/template_selection/model_shape_coverage_review.json",
+        "review/template_selection/shape_fact_provenance.json"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.template.library",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "trusted model and shape facts -> decoder parameter bindings",
+        "decoder operator sequence -> selected template coverage",
+        "active contamination barrier -> downstream artifact trust"
+      ],
+      "nodes": [
+        "artifact.input.model_config",
+        "artifact.input.field_evidence",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "artifact.stage2.template_selection",
+        "state_summary.sacg_memory_truth"
+      ]
+    },
+    "schema_version": "spatialaccagent.model_shape_specialist.v1",
+    "stage": "template_selection",
+    "status": "blocked",
+    "summary": "The listed 11-op decoder sequence has complete reported template coverage, but strict template binding is blocked by the reported 1152-versus-1024 shape mismatch. The candidate artifact is under an active SACG contamination barrier and is planning/debug evidence only; the raw field-level model-config provenance is not included here, so the shape facts cannot be independently certified from this prompt."
+  },
+  "prompt_bytes": 81631,
+  "prompt_hash": "6c6a9f73d2b891c229a525ca7b3c0aae9b617da1e5400655acd0c494d23d9b74",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.model_shape_specialist.v1\",\n  \"agent\": \"model_shape_specialist\",\n  \"stage\": \"template_selection\",\n  \"status\": \"blocked\",\n  \"summary\": \"The listed 11-op decoder sequence has complete reported template coverage, but strict template binding is blocked by the reported 1152-versus-1024 shape mismatch. The candidate artifact is under an active SACG contamination barrier and is planning/debug evidence only; the raw field-level model-config provenance is not included here, so the shape facts cannot be independently certified from this prompt.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"artifact.input.model_config\",\n      \"artifact.input.field_evidence\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"artifact.stage2.template_selection\",\n      \"state_summary.sacg_memory_truth\"\n    ],\n    \"edges\": [\n      \"trusted model and shape facts -> decoder parameter bindings\",\n      \"decoder operator sequence -> selected template coverage\",\n      \"active contamination barrier -> downstream artifact trust\"\n    ],\n    \"constraints\": [\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.template.library\",\n      \"constraint.cross_layer.input_consistency\"\n    ],\n    \"artifacts\": [\n      \"artifact.stage2.template_selection\",\n      \"review/template_selection/model_shape_coverage_review.json\",\n      \"review/template_selection/shape_fact_provenance.json\"\n    ]\n  },\n  \"observations\": [\n    \"The candidate lists this decoder order: rms_norm_input, self_attention, rms_norm_post_attention, residual_add_1, rms_norm_pre_ffn, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, rms_norm_post_ffn, residual_add_2. It reports operator_coverage_check pass, 11/11 required ops covered, a block wrapper present, and no missing ops. This is coverage evidence, not a successful parameter binding.\",\n    \"Reported attention submodule coverage includes QKV projection, RoPE, GQA mapping, softmax, output projection, and causal mask. KV cache is marked not required. The listed block does not add embedding/tokenization, final model norm, LM head/logits, or sampling.\",\n    \"The candidate's parameter-binding records attribute hidden_size=1152, num_q_heads=4, num_kv_heads=1, and head_dim=256 to constraint.shape.model. In those reported values, num_q_heads * head_dim = 4 * 256 = 1024, which is 128 less than hidden_size. The binding checker reports this same mismatch for both gemma3_text_block and self_attention.\",\n    \"The reported GQA group size is 4 (4 query heads per KV head). That mapping does not change the query-width product of 4 * 256 and therefore does not resolve the reported 1152-versus-1024 discrepancy.\",\n    \"The supplied summary names artifact.input.model_config and artifact.input.field_evidence but does not expose their field-level contents, source locations, or hashes for these shape facts. The binding records cite constraint.shape.model; this prompt alone does not establish the upstream provenance or independently confirm the raw model-config values.\",\n    \"SACG memory truth lists active contamination_barrier.0001 on artifact.stage2.template_selection, caused by this strict-binding failure. That artifact must remain planning/debug evidence only, not a validated design input. There are no open retry or backtrack requests.\",\n    \"The candidate reports template source/interface, attention expansion, mandatory FPGA-IP, and cross-layer trace checks as passing. Those reported results do not override the parameter-binding failure or establish a legal binding.\"\n  ],\n  \"risks\": [\n    \"Current-stage strict binding remains incomplete: the supplied parameter-binding checker reports hidden_size=1152 but num_q_heads*head_dim=1024 for the block and attention templates.\",\n    \"The shape-fact provenance is not independently auditable from the visible prompt because raw trusted model-config/field-evidence details are not included. Do not choose a replacement head dimension, head count, or hidden size by inference.\",\n    \"The active contamination barrier prevents treating the rejected candidate artifact as a validated downstream input; do not clear or bypass it based on coverage results.\"\n  ],\n  \"proposed_actions\": [\n    \"Trace hidden_size, num_q_heads, num_kv_heads, and head_dim back to their authoritative input fields and record source evidence without editing model facts.\",\n    \"Retain the listed operator order and coverage as reported evidence, then rerun static binding checks against the authoritative shape facts. Keep the candidate incomplete if the contradiction persists or provenance remains unresolved.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"template_selection.trace_shape_fact_provenance\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"evidence_review\",\n      \"rationale\": \"Establish field-level provenance for the four shape facts from the trusted model/configuration inputs. The visible candidate binding citations are not sufficient to independently verify upstream source values, and the active barrier makes the candidate artifact debug-only.\",\n      \"consumes\": [\n        \"artifact.input.model_config\",\n        \"artifact.input.field_evidence\",\n        \"artifact.stage2.template_selection (planning/debug evidence only)\",\n        \"state_summary.sacg_memory_truth\"\n      ],\n      \"produces\": [\n        \"review/template_selection/shape_fact_provenance.json\"\n      ],\n      \"tool_roles\": [\n        \"model_config_check\",\n        \"sacg_static_check\",\n        \"stage_artifact_trust_barrier_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"model_config_check\",\n        \"sacg_static_check\",\n        \"stage_artifact_trust_barrier_check\"\n      ],\n      \"on_failure\": \"Record any unavailable or conflicting source fields explicitly; do not infer replacement dimensions, alter model facts, assert a legal binding, or treat the barriered candidate as validated.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"template_selection.rerun_decoder_coverage_and_binding_review\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"evidence_and_repair_review\",\n      \"rationale\": \"Preserve the reported decoder order and template coverage while independently checking coverage and parameter legality against authoritative shape facts. This action reviews evidence only and does not modify templates or model configuration.\",\n      \"consumes\": [\n        \"artifact.input.model_config\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.template_library\",\n        \"artifact.stage2.template_selection (planning/debug evidence only)\",\n        \"review/template_selection/shape_fact_provenance.json\",\n        \"state_summary.sacg_memory_truth\"\n      ],\n      \"produces\": [\n        \"review/template_selection/model_shape_coverage_review.json\"\n      ],\n      \"tool_roles\": [\n        \"model_config_check\",\n        \"template_coverage_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\",\n        \"stage_artifact_trust_barrier_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"model_config_check\",\n        \"template_coverage_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\",\n        \"stage_artifact_trust_barrier_check\"\n      ],\n      \"on_failure\": \"Report coverage separately from binding legality. If the 1152-versus-1024 mismatch remains or the trusted facts cannot be established, keep template selection incomplete and request authoritative model-fact reconciliation; do not change facts or claim a legal binding.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any proposed change to authoritative model shape facts or attention head geometry requires the responsible model-fact owner to provide the trusted correction; this specialist is not authorized to change those facts.\",\n    \"Any template-internal or major architecture change intended to accommodate a different head geometry requires the applicable approval before implementation.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/model_shape_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/model_shape_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "template_selection.model-shape and operator-coverage engineer",
+  "stream": false,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/history/model_shape_specialist_result.52d0e67f9e033c76.f46fe39dba6e0ef5.6c6a9f73d2b891c2.snapshot.json",
+    "replaced_prompt_hash": "339b534d0aca36fa92cbf71764c20943619ad0e2e95d406ae409b02d4572669d",
+    "replaced_result_sha256": "52d0e67f9e033c76d985379a23d41440d0a736c870e21b5a1b42fb9dd1fe10ae",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "52d0e67f9e033c76.f46fe39dba6e0ef5.6c6a9f73d2b891c2"
+  },
+  "transport": "responses_json",
+  "used_fallback": false
+}

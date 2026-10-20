@@ -1,0 +1,215 @@
+{
+  "agent": "board_axi_ddr_verification_planner",
+  "duration_sec": 101.70716435799841,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "21bcbc20bb5f4ecf85eb8991255ee3ab",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/team/llm/board_axi_ddr_verification_planner_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "board_axi_ddr_verification_planner",
+    "approval_required_for": [
+      "Reorder functional_sim before case_board_interface_discovery or before case_axi_ddr_interface",
+      "Promote case_vivado_synthesis, case_vivado_implementation, case_runtime_bitstream, or board_runtime before current verification closure evidence",
+      "Change Transformer-block-only scope or golden boundaries to include embedding/tokenization, final model norm, LM head/logits, or sampling",
+      "Make a major change to board memory layout, runtime config, AXI address map, or numeric tolerance derived from DUT output",
+      "Accept a board target discovery guess without cited sample-project or Vivado evidence"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "required_real_tool_evidence_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check"
+        ],
+        "action_type": "verification_planning",
+        "consumes": [
+          "artifact.stage6.board_axi_ddr_verification_dag",
+          "artifact.stage6.board_axi_ddr_gate_contract_map",
+          "artifact.stage6.downstream_backend_gate_declarations",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols",
+          "artifact.input.human_agent_boundary"
+        ],
+        "id": "stage6.refine_board_axi_ddr_dag",
+        "on_failure": "If gate order, downstream/backend separation, exact sample-wrapper identity, or Transformer-block-only scope fails a current-stage static check, edit the DAG/gate contract within planner authority and rerun; do not promote an invalid refinement.",
+        "produces": [
+          "artifact.stage6.board_axi_ddr_verification_dag",
+          "artifact.stage6.board_axi_ddr_gate_contract_map",
+          "artifact.stage6.downstream_backend_gate_declarations",
+          "artifact.stage6.board_axi_ddr_static_validation_report"
+        ],
+        "rationale": "Run current-stage static planning checkers over the refined layer-3 DAG to bind gate order, exact-wrapper identity, Transformer-block-only scope, and downstream backend separation before auditor handoff.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "targeted_replay_plan": {},
+        "tool_roles": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_action_audit_check",
+          "required_real_tool_evidence_check",
+          "sacg_memory_check",
+          "hierarchical_verification_plan_check"
+        ],
+        "action_type": "verification_planning",
+        "consumes": [
+          "artifact.stage6.board_axi_ddr_verification_dag",
+          "artifact.stage6.board_axi_ddr_gate_contract_map",
+          "artifact.stage6.downstream_backend_gate_declarations",
+          "artifact.stage6.board_axi_ddr_static_validation_report"
+        ],
+        "id": "stage6.audit_board_axi_ddr_dag_handoff",
+        "on_failure": "If the audit finds missing evidence binding, downstream gate leakage, or out-of-scope claims, return the DAG/gate map to this planner for bounded correction before any auditor promotion.",
+        "produces": [
+          "artifact.stage6.board_axi_ddr_audit_handoff",
+          "artifact.stage6.verification_action_audit_report"
+        ],
+        "rationale": "Run the verification action auditor against the validated DAG and hand off checker-grounded evidence to verification_artifacts.verification_dag_auditor so a peer role validates the planner output instead of self-certifying.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "targeted_replay_plan": {},
+        "tool_roles": [
+          "verification_action_audit",
+          "required_real_tool_evidence_check",
+          "sacg_memory_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "verification_action_audit_check"
+        ],
+        "action_type": "verification_planning",
+        "consumes": [
+          "artifact.stage6.board_axi_ddr_verification_dag",
+          "artifact.stage6.board_axi_ddr_gate_contract_map",
+          "artifact.stage6.downstream_backend_gate_declarations",
+          "artifact.stage6.verification_action_audit_report"
+        ],
+        "id": "stage6.record_board_dag_sacg_memory",
+        "on_failure": "If SACG memory update fails or fails sacg_memory_check, keep the stage handoff blocked and rerun the memory update after correcting the stage summary or artifact references.",
+        "produces": [
+          "sacg_memory.stage6.board_axi_ddr_verification_dag_outcome"
+        ],
+        "rationale": "Record the refined DAG outcome and preserved downstream gate declarations in shared SACG memory so later stages consume the planner decision, risks, and audit evidence.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "targeted_replay_plan": {},
+        "tool_roles": [
+          "sacg_memory_update",
+          "sacg_memory_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The current candidate verification_artifact_contract is present and its checker_summary reports no current-stage errors; tool_protocol_check, human_boundary_check, hierarchical_verification_plan_check, verification_artifact_contract_check, required_real_tool_evidence_check, and data_order_trace_check pass at static planning scope.",
+      "The layer-3 DAG order matches the role assignment: case_board_interface_discovery and case_multilayer_pipeline precede case_axi_ddr_interface and functional_sim, followed by case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence.",
+      "Vivado synthesis/implementation, runtime bitstream, runtime ABI, and board_runtime are declared as downstream nodes after board bring-up readiness and are not promoted as current verifier responsibilities.",
+      "The existing case_vcs_functional_sim tool mode is compile-only VCS compilation/elaboration/linking evidence for the exact discovered board wrapper; simulator execution, runtime weight loading, golden comparison, and waveform/numerical outputs are not verification acceptance prerequisites.",
+      "sacg_memory_truth shows zero active contamination barriers, zero open retry requests, and zero open backtrack requests; hierarchical_learning_context has no validated lower-layer certificates, so lower-layer verification remains a downstream execution obligation rather than a current DAG plan blocker.",
+      "The DAG preserves Transformer-block-only accelerator scope and excludes embedding/tokenization, final model norm, LM head/logits, and sampling from DUT implementation, weight coverage, and golden boundaries.",
+      "Board interface discovery must synthesize the target discovery contract from supplied sample-project/Vivado evidence; framework-core actions must not hardcode model, board, module, or path names."
+    ],
+    "proposed_actions": [
+      "Promote the refined board AXI/DDR DAG only after current-stage static validators pass and downstream backend gates remain after verification closure.",
+      "Keep case_board_interface_discovery as a mandatory predecessor to case_multilayer_pipeline and case_axi_ddr_interface.",
+      "Bind case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence to functional_sim evidence with required trace-related checker roles.",
+      "Declare Vivado synthesis, implementation, runtime bitstream, runtime ABI, and board_runtime as later-stage obligations and make no current-stage pass claim for them.",
+      "Hand off checker-grounded outputs to verification_artifacts.verification_dag_auditor instead of self-certifying the DAG."
+    ],
+    "risks": [
+      "If case_board_interface_discovery guesses compute-slot, AXI, clock/reset, or calibration names before cited sample-project/Vivado evidence, the downstream exact wrapper identity can be wrong.",
+      "If functional_sim is treated as runtime numerical acceptance instead of the compile-only VCS acceptance mode, the gate could be prematurely promoted without current-source compile/elaborate/link evidence.",
+      "Derived checks such as data_order_trace_check, transfer_count_check, addr_map_check, and deadlock_watchdog depend on functional_sim instrumentation/trace evidence; missing trace fields would leave them not_run rather than pass.",
+      "Missing operator-leaf and single-layer promotion certificates are not current-stage blockers under stage_gate_policy, but they become mandatory Stage7 bottom-up execution obligations before board closure.",
+      "Cross-layer consistency risk remains between Stage5 memory/runtime layout and the exact discovered AXI/DDR wrapper image layout; it must be reconciled after case_board_interface_discovery.",
+      "Any tolerance or golden-boundary change derived from DUT output, or any expansion of DUT scope beyond Transformer blocks, would require approval and reversion."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage6.board_axi_ddr_verification_dag",
+        "artifact.stage6.board_axi_ddr_gate_contract_map",
+        "artifact.stage6.downstream_backend_gate_declarations",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_protocols",
+        "artifact.input.human_agent_boundary"
+      ],
+      "constraints": [
+        "constraint.verification.hierarchy",
+        "constraint.pipeline.structure",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.protocols",
+        "constraint.human.boundary",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "case_board_interface_discovery -> case_multilayer_pipeline",
+        "case_multilayer_pipeline -> case_axi_ddr_interface",
+        "case_axi_ddr_interface -> functional_sim",
+        "functional_sim -> case_multilayer_functional",
+        "functional_sim -> case_pipeline_deadlock_check",
+        "functional_sim -> case_axi_protocol_check",
+        "functional_sim -> case_ddr_image_roundtrip",
+        "case_multilayer_functional/case_pipeline_deadlock_check/case_axi_protocol_check/case_ddr_image_roundtrip -> case_board_semantic_evidence",
+        "case_board_semantic_evidence -> case_board_bringup_ready",
+        "case_board_bringup_ready -> case_vivado_synthesis -> case_vivado_implementation -> case_runtime_bitstream -> case_runtime_abi_check -> board_runtime"
+      ],
+      "nodes": [
+        "case_board_interface_discovery",
+        "case_multilayer_pipeline",
+        "case_axi_ddr_interface",
+        "functional_sim",
+        "case_multilayer_functional",
+        "case_pipeline_deadlock_check",
+        "case_axi_protocol_check",
+        "case_ddr_image_roundtrip",
+        "case_board_semantic_evidence",
+        "case_board_bringup_ready",
+        "case_vivado_synthesis",
+        "case_vivado_implementation",
+        "case_runtime_bitstream",
+        "case_runtime_abi_check",
+        "board_runtime"
+      ]
+    },
+    "schema_version": "spatialaccagent.verification_planning.v0",
+    "stage": "verification_artifacts",
+    "status": "ready",
+    "summary": "Refined the layer-3 board AXI/DDR verification DAG with the required order: board interface discovery -> multilayer pipeline -> AXI/DDR interface -> functional_sim -> derived multilayer/deadlock/AXI/DDR-image classifiers -> board semantic evidence. Vivado synthesis/implementation, runtime bitstream, runtime ABI, and board_runtime remain declared as downstream gates after verification closure and are not claimed in this stage."
+  },
+  "prompt_bytes": 93878,
+  "prompt_hash": "1ce37a275e600894f33622495da5bfd34b94cce05ccc70886417a6d220449dfa",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.verification_planning.v0\",\n  \"agent\": \"board_axi_ddr_verification_planner\",\n  \"stage\": \"verification_artifacts\",\n  \"status\": \"ready\",\n  \"summary\": \"Refined the layer-3 board AXI/DDR verification DAG with the required order: board interface discovery -> multilayer pipeline -> AXI/DDR interface -> functional_sim -> derived multilayer/deadlock/AXI/DDR-image classifiers -> board semantic evidence. Vivado synthesis/implementation, runtime bitstream, runtime ABI, and board_runtime remain declared as downstream gates after verification closure and are not claimed in this stage.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"case_board_interface_discovery\",\n      \"case_multilayer_pipeline\",\n      \"case_axi_ddr_interface\",\n      \"functional_sim\",\n      \"case_multilayer_functional\",\n      \"case_pipeline_deadlock_check\",\n      \"case_axi_protocol_check\",\n      \"case_ddr_image_roundtrip\",\n      \"case_board_semantic_evidence\",\n      \"case_board_bringup_ready\",\n      \"case_vivado_synthesis\",\n      \"case_vivado_implementation\",\n      \"case_runtime_bitstream\",\n      \"case_runtime_abi_check\",\n      \"board_runtime\"\n    ],\n    \"edges\": [\n      \"case_board_interface_discovery -> case_multilayer_pipeline\",\n      \"case_multilayer_pipeline -> case_axi_ddr_interface\",\n      \"case_axi_ddr_interface -> functional_sim\",\n      \"functional_sim -> case_multilayer_functional\",\n      \"functional_sim -> case_pipeline_deadlock_check\",\n      \"functional_sim -> case_axi_protocol_check\",\n      \"functional_sim -> case_ddr_image_roundtrip\",\n      \"case_multilayer_functional/case_pipeline_deadlock_check/case_axi_protocol_check/case_ddr_image_roundtrip -> case_board_semantic_evidence\",\n      \"case_board_semantic_evidence -> case_board_bringup_ready\",\n      \"case_board_bringup_ready -> case_vivado_synthesis -> case_vivado_implementation -> case_runtime_bitstream -> case_runtime_abi_check -> board_runtime\"\n    ],\n    \"constraints\": [\n      \"constraint.verification.hierarchy\",\n      \"constraint.pipeline.structure\",\n      \"constraint.stream.order\",\n      \"constraint.beat.pipeline\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.tool.protocols\",\n      \"constraint.human.boundary\",\n      \"constraint.deployment.board\"\n    ],\n    \"artifacts\": [\n      \"artifact.stage6.board_axi_ddr_verification_dag\",\n      \"artifact.stage6.board_axi_ddr_gate_contract_map\",\n      \"artifact.stage6.downstream_backend_gate_declarations\",\n      \"artifact.stage5.memory_layout\",\n      \"artifact.stage5.runtime_config\",\n      \"artifact.input.target_board_profile\",\n      \"artifact.input.tool_protocols\",\n      \"artifact.input.human_agent_boundary\"\n    ]\n  },\n  \"observations\": [\n    \"The current candidate verification_artifact_contract is present and its checker_summary reports no current-stage errors; tool_protocol_check, human_boundary_check, hierarchical_verification_plan_check, verification_artifact_contract_check, required_real_tool_evidence_check, and data_order_trace_check pass at static planning scope.\",\n    \"The layer-3 DAG order matches the role assignment: case_board_interface_discovery and case_multilayer_pipeline precede case_axi_ddr_interface and functional_sim, followed by case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence.\",\n    \"Vivado synthesis/implementation, runtime bitstream, runtime ABI, and board_runtime are declared as downstream nodes after board bring-up readiness and are not promoted as current verifier responsibilities.\",\n    \"The existing case_vcs_functional_sim tool mode is compile-only VCS compilation/elaboration/linking evidence for the exact discovered board wrapper; simulator execution, runtime weight loading, golden comparison, and waveform/numerical outputs are not verification acceptance prerequisites.\",\n    \"sacg_memory_truth shows zero active contamination barriers, zero open retry requests, and zero open backtrack requests; hierarchical_learning_context has no validated lower-layer certificates, so lower-layer verification remains a downstream execution obligation rather than a current DAG plan blocker.\",\n    \"The DAG preserves Transformer-block-only accelerator scope and excludes embedding/tokenization, final model norm, LM head/logits, and sampling from DUT implementation, weight coverage, and golden boundaries.\",\n    \"Board interface discovery must synthesize the target discovery contract from supplied sample-project/Vivado evidence; framework-core actions must not hardcode model, board, module, or path names.\"\n  ],\n  \"risks\": [\n    \"If case_board_interface_discovery guesses compute-slot, AXI, clock/reset, or calibration names before cited sample-project/Vivado evidence, the downstream exact wrapper identity can be wrong.\",\n    \"If functional_sim is treated as runtime numerical acceptance instead of the compile-only VCS acceptance mode, the gate could be prematurely promoted without current-source compile/elaborate/link evidence.\",\n    \"Derived checks such as data_order_trace_check, transfer_count_check, addr_map_check, and deadlock_watchdog depend on functional_sim instrumentation/trace evidence; missing trace fields would leave them not_run rather than pass.\",\n    \"Missing operator-leaf and single-layer promotion certificates are not current-stage blockers under stage_gate_policy, but they become mandatory Stage7 bottom-up execution obligations before board closure.\",\n    \"Cross-layer consistency risk remains between Stage5 memory/runtime layout and the exact discovered AXI/DDR wrapper image layout; it must be reconciled after case_board_interface_discovery.\",\n    \"Any tolerance or golden-boundary change derived from DUT output, or any expansion of DUT scope beyond Transformer blocks, would require approval and reversion.\"\n  ],\n  \"proposed_actions\": [\n    \"Promote the refined board AXI/DDR DAG only after current-stage static validators pass and downstream backend gates remain after verification closure.\",\n    \"Keep case_board_interface_discovery as a mandatory predecessor to case_multilayer_pipeline and case_axi_ddr_interface.\",\n    \"Bind case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence to functional_sim evidence with required trace-related checker roles.\",\n    \"Declare Vivado synthesis, implementation, runtime bitstream, runtime ABI, and board_runtime as later-stage obligations and make no current-stage pass claim for them.\",\n    \"Hand off checker-grounded outputs to verification_artifacts.verification_dag_auditor instead of self-certifying the DAG.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"stage6.refine_board_axi_ddr_dag\",\n      \"stage\": \"verification_artifacts\",\n      \"action_type\": \"verification_planning\",\n      \"rationale\": \"Run current-stage static planning checkers over the refined layer-3 DAG to bind gate order, exact-wrapper identity, Transformer-block-only scope, and downstream backend separation before auditor handoff.\",\n      \"consumes\": [\n        \"artifact.stage6.board_axi_ddr_verification_dag\",\n        \"artifact.stage6.board_axi_ddr_gate_contract_map\",\n        \"artifact.stage6.downstream_backend_gate_declarations\",\n        \"artifact.stage5.memory_layout\",\n        \"artifact.stage5.runtime_config\",\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.tool_protocols\",\n        \"artifact.input.human_agent_boundary\"\n      ],\n      \"produces\": [\n        \"artifact.stage6.board_axi_ddr_verification_dag\",\n        \"artifact.stage6.board_axi_ddr_gate_contract_map\",\n        \"artifact.stage6.downstream_backend_gate_declarations\",\n        \"artifact.stage6.board_axi_ddr_static_validation_report\"\n      ],\n      \"tool_roles\": [\n        \"verification_plan_static_check\",\n        \"hierarchical_verification_plan_check\",\n        \"verification_artifact_contract_check\",\n        \"tool_protocol_check\",\n        \"human_boundary_check\",\n        \"memory_runtime_plan_check\",\n        \"stream_plan_check\",\n        \"sacg_reference_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"hierarchical_verification_plan_check\",\n        \"verification_artifact_contract_check\",\n        \"tool_protocol_check\",\n        \"human_boundary_check\",\n        \"required_real_tool_evidence_check\",\n        \"memory_runtime_plan_check\",\n        \"stream_plan_check\"\n      ],\n      \"targeted_replay_plan\": {},\n      \"on_failure\": \"If gate order, downstream/backend separation, exact sample-wrapper identity, or Transformer-block-only scope fails a current-stage static check, edit the DAG/gate contract within planner authority and rerun; do not promote an invalid refinement.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"stage6.audit_board_axi_ddr_dag_handoff\",\n      \"stage\": \"verification_artifacts\",\n      \"action_type\": \"verification_planning\",\n      \"rationale\": \"Run the verification action auditor against the validated DAG and hand off checker-grounded evidence to verification_artifacts.verification_dag_auditor so a peer role validates the planner output instead of self-certifying.\",\n      \"consumes\": [\n        \"artifact.stage6.board_axi_ddr_verification_dag\",\n        \"artifact.stage6.board_axi_ddr_gate_contract_map\",\n        \"artifact.stage6.downstream_backend_gate_declarations\",\n        \"artifact.stage6.board_axi_ddr_static_validation_report\"\n      ],\n      \"produces\": [\n        \"artifact.stage6.board_axi_ddr_audit_handoff\",\n        \"artifact.stage6.verification_action_audit_report\"\n      ],\n      \"tool_roles\": [\n        \"verification_action_audit\",\n        \"required_real_tool_evidence_check\",\n        \"sacg_memory_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"verification_action_audit_check\",\n        \"required_real_tool_evidence_check\",\n        \"sacg_memory_check\",\n        \"hierarchical_verification_plan_check\"\n      ],\n      \"targeted_replay_plan\": {},\n      \"on_failure\": \"If the audit finds missing evidence binding, downstream gate leakage, or out-of-scope claims, return the DAG/gate map to this planner for bounded correction before any auditor promotion.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"stage6.record_board_dag_sacg_memory\",\n      \"stage\": \"verification_artifacts\",\n      \"action_type\": \"verification_planning\",\n      \"rationale\": \"Record the refined DAG outcome and preserved downstream gate declarations in shared SACG memory so later stages consume the planner decision, risks, and audit evidence.\",\n      \"consumes\": [\n        \"artifact.stage6.board_axi_ddr_verification_dag\",\n        \"artifact.stage6.board_axi_ddr_gate_contract_map\",\n        \"artifact.stage6.downstream_backend_gate_declarations\",\n        \"artifact.stage6.verification_action_audit_report\"\n      ],\n      \"produces\": [\n        \"sacg_memory.stage6.board_axi_ddr_verification_dag_outcome\"\n      ],\n      \"tool_roles\": [\n        \"sacg_memory_update\",\n        \"sacg_memory_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_memory_check\",\n        \"verification_action_audit_check\"\n      ],\n      \"targeted_replay_plan\": {},\n      \"on_failure\": \"If SACG memory update fails or fails sacg_memory_check, keep the stage handoff blocked and rerun the memory update after correcting the stage summary or artifact references.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Reorder functional_sim before case_board_interface_discovery or before case_axi_ddr_interface\",\n    \"Promote case_vivado_synthesis, case_vivado_implementation, case_runtime_bitstream, or board_runtime before current verification closure evidence\",\n    \"Change Transformer-block-only scope or golden boundaries to include embedding/tokenization, final model norm, LM head/logits, or sampling\",\n    \"Make a major change to board memory layout, runtime config, AXI address map, or numeric tolerance derived from DUT output\",\n    \"Accept a board target discovery guess without cited sample-project or Vivado evidence\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/team/llm/board_axi_ddr_verification_planner_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/team/llm/board_axi_ddr_verification_planner_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "verification_artifacts.Board AXI/DDR wrapped-system verification gate planner",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

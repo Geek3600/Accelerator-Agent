@@ -1,26 +1,734 @@
 {
-  "approval_required_for": [],
-  "completed_subtasks": 0,
+  "approval_required_for": [
+    "Accept a board target discovery guess without cited sample-project or Vivado evidence",
+    "Change Transformer-block-only scope or golden boundaries to include embedding/tokenization, final model norm, LM head/logits, or sampling",
+    "Change numeric comparison policy/tolerance or broaden DUT scope beyond Transformer blocks",
+    "Make a major change to board memory layout, runtime config, AXI address map, or numeric tolerance derived from DUT output",
+    "Promote case_vivado_synthesis, case_vivado_implementation, case_runtime_bitstream, or board_runtime before current verification closure evidence",
+    "Promote layer-2 DAG before the operator-leaf prerequisite validation record is current-contract valid",
+    "Reorder functional_sim before case_board_interface_discovery or before case_axi_ddr_interface",
+    "Weaken bottom-up gate order or substitute real-weight/target-reference/semantic-testbench dependencies"
+  ],
+  "completed_subtasks": 4,
   "decomposition_source": "llm",
   "errors": [],
   "event_log_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/team/event_log.jsonl",
-  "executable_actions": [],
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "required_real_tool_evidence_check",
+        "memory_runtime_plan_check",
+        "stream_plan_check"
+      ],
+      "action_type": "verification_planning",
+      "consumes": [
+        "artifact.stage6.board_axi_ddr_verification_dag",
+        "artifact.stage6.board_axi_ddr_gate_contract_map",
+        "artifact.stage6.downstream_backend_gate_declarations",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_protocols",
+        "artifact.input.human_agent_boundary"
+      ],
+      "id": "stage6.refine_board_axi_ddr_dag",
+      "on_failure": "If gate order, downstream/backend separation, exact sample-wrapper identity, or Transformer-block-only scope fails a current-stage static check, edit the DAG/gate contract within planner authority and rerun; do not promote an invalid refinement.",
+      "produces": [
+        "artifact.stage6.board_axi_ddr_verification_dag",
+        "artifact.stage6.board_axi_ddr_gate_contract_map",
+        "artifact.stage6.downstream_backend_gate_declarations",
+        "artifact.stage6.board_axi_ddr_static_validation_report"
+      ],
+      "rationale": "Run current-stage static planning checkers over the refined layer-3 DAG to bind gate order, exact-wrapper identity, Transformer-block-only scope, and downstream backend separation before auditor handoff.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "targeted_replay_plan": {},
+      "tool_roles": [
+        "verification_plan_static_check",
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "memory_runtime_plan_check",
+        "stream_plan_check",
+        "sacg_reference_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "verification_action_audit_check",
+        "required_real_tool_evidence_check",
+        "sacg_memory_check",
+        "hierarchical_verification_plan_check"
+      ],
+      "action_type": "verification_planning",
+      "consumes": [
+        "artifact.stage6.board_axi_ddr_verification_dag",
+        "artifact.stage6.board_axi_ddr_gate_contract_map",
+        "artifact.stage6.downstream_backend_gate_declarations",
+        "artifact.stage6.board_axi_ddr_static_validation_report"
+      ],
+      "id": "stage6.audit_board_axi_ddr_dag_handoff",
+      "on_failure": "If the audit finds missing evidence binding, downstream gate leakage, or out-of-scope claims, return the DAG/gate map to this planner for bounded correction before any auditor promotion.",
+      "produces": [
+        "artifact.stage6.board_axi_ddr_audit_handoff",
+        "artifact.stage6.verification_action_audit_report"
+      ],
+      "rationale": "Run the verification action auditor against the validated DAG and hand off checker-grounded evidence to verification_artifacts.verification_dag_auditor so a peer role validates the planner output instead of self-certifying.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "targeted_replay_plan": {},
+      "tool_roles": [
+        "verification_action_audit",
+        "required_real_tool_evidence_check",
+        "sacg_memory_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_memory_check",
+        "verification_action_audit_check"
+      ],
+      "action_type": "verification_planning",
+      "consumes": [
+        "artifact.stage6.board_axi_ddr_verification_dag",
+        "artifact.stage6.board_axi_ddr_gate_contract_map",
+        "artifact.stage6.downstream_backend_gate_declarations",
+        "artifact.stage6.verification_action_audit_report"
+      ],
+      "id": "stage6.record_board_dag_sacg_memory",
+      "on_failure": "If SACG memory update fails or fails sacg_memory_check, keep the stage handoff blocked and rerun the memory update after correcting the stage summary or artifact references.",
+      "produces": [
+        "sacg_memory.stage6.board_axi_ddr_verification_dag_outcome"
+      ],
+      "rationale": "Record the refined DAG outcome and preserved downstream gate declarations in shared SACG memory so later stages consume the planner decision, risks, and audit evidence.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "targeted_replay_plan": {},
+      "tool_roles": [
+        "sacg_memory_update",
+        "sacg_memory_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "sacg_reference_check"
+      ],
+      "action_type": "verification_planning",
+      "consumes": [
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "artifact.stage5.codegen_compile_gate",
+        "artifact.stage5.codegen_contract_check"
+      ],
+      "id": "build_operator_leaf_verification_dag",
+      "on_failure": "Do not promote the operator-leaf DAG; return a bounded verification-plan repair action to remap missing leaf gate bindings or missing upstream references.",
+      "produces": [
+        "artifact.stage6.operator_leaf_verification_dag"
+      ],
+      "rationale": "Produce the canonical layer-1 DAG binding stage_00_layer_norm_1 through stage_07_residual_add_2 to case_stage_leaf_static, boundary_contract_check, case_leaf_functional, case_leaf_golden_compare, and case_operator_leaf_semantic_evidence before any layer merge. Encode VCS current-source compile/elaboration/link as the sole acceptance boundary.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "tool_roles": [
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "verification_plan_static_check",
+        "sacg_reference_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "sacg_reference_check"
+      ],
+      "action_type": "verification_planning",
+      "consumes": [
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.generated_code_package",
+        "artifact.input.case_adapter"
+      ],
+      "id": "build_leaf_gate_contract_map",
+      "on_failure": "Block layer-1 closure and hand off a bounded action that leaf gate mappings are incomplete to the single-layer and board DAG planners.",
+      "produces": [
+        "artifact.stage6.operator_leaf_gate_contract_map"
+      ],
+      "rationale": "Explicitly map each of the eight leaf stage IDs to per-leaf records for case_stage_leaf_static, boundary_contract_check, case_leaf_functional, case_leaf_golden_compare, and case_operator_leaf_semantic_evidence, including real-weight, target-model-reference, and semantic-testbench prerequisites.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "tool_roles": [
+        "verification_plan_static_check",
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "sacg_reference_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "verification_artifact_contract_check",
+        "required_real_tool_evidence_check",
+        "sacg_reference_check"
+      ],
+      "action_type": "verification_planning",
+      "consumes": [
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.input.numeric_policy",
+        "artifact.input.case_adapter"
+      ],
+      "id": "declare_leaf_evidence_prerequisites",
+      "on_failure": "Treat missing real-weight, target-model-reference, or semantic-testbench dependency binding as a verification-capability/blocking contract error; do not create a smoke gate or fallback golden.",
+      "produces": [
+        "verification/planning/layer1_leaf_prerequisite_bindings.json"
+      ],
+      "rationale": "Bind case_real_weight_artifacts, case_target_model_reference, and case_semantic_testbench as declared upstream dependencies for leaf functional/golden/semantic gates. Ensure default-weight, smoke-only, random, or RTL-derived expected outputs are excluded from layer-1 acceptance.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "tool_roles": [
+        "verification_plan_static_check",
+        "tool_protocol_check",
+        "sacg_reference_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check"
+      ],
+      "action_type": "verification_planning",
+      "consumes": [
+        "artifact.stage6.operator_leaf_verification_dag",
+        "artifact.stage6.operator_leaf_gate_contract_map",
+        "artifact.stage5.generated_code_package"
+      ],
+      "id": "encode_compile_only_vcs_leaf_order",
+      "on_failure": "Do not schedule downstream VCS certificate execution if the leaf gate order does not pass planning checks; route to verification_plan_static_check repair and preserve bottom-up layer order.",
+      "produces": [
+        "verification/planning/layer1_vcs_compile_only_gate_order.json"
+      ],
+      "rationale": "Record the bottom-up compile-only VCS execution order for layer-1 leaf gates using the existing leaf functional-mode tools. Historical functional/golden nodes are downstream execution obligations; no alternate compile-only runner is needed and no simulation execution is required as acceptance.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "tool_roles": [
+        "verification_plan_static_check",
+        "tool_protocol_check",
+        "hierarchical_verification_plan_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "verification_plan_static_check",
+        "stream_plan_check",
+        "numeric_policy_check"
+      ],
+      "action_type": "verification_planning",
+      "consumes": [
+        "artifact.input.case_adapter",
+        "artifact.input.numeric_policy",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.generated_code_package",
+        "candidate:verification_artifact_contract"
+      ],
+      "id": "single_layer.emit_refined_verification_dag",
+      "on_failure": "Do not hand off to the board_axi_ddr planner; return the violated edge or gate order to the DAG and rerun static checks until current-contract pass.",
+      "produces": [
+        "artifact.stage6.single_layer_verification_dag",
+        "artifact.stage6.single_layer_dag_static_check_report"
+      ],
+      "rationale": "Encode the corrected layer-2 DAG: case_tb_scaffold before single_transformer_layer; functional before golden_compare; golden_compare depends on case_target_model_reference; semantic evidence remains the final aggregate; every gate uses compile-only VCS acceptance.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "tool_roles": [
+        "verification_plan_static_check",
+        "hierarchical_verification_plan_check",
+        "verification_artifact_contract_check",
+        "stream_plan_check",
+        "numeric_policy_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "verification_artifact_contract_check",
+        "sacg_reference_check",
+        "tool_protocol_check",
+        "required_real_tool_evidence_check"
+      ],
+      "action_type": "verification_planning",
+      "consumes": [
+        "artifact.stage6.single_layer_verification_dag",
+        "artifact.stage6.operator_leaf_verification_dag",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "candidate:verification_artifact_contract"
+      ],
+      "id": "single_layer.emit_gate_contract_map",
+      "on_failure": "Keep single-layer execution queued but blocked; map each unbound tool/protocol/checker back to the contract and rerun verification_artifact_contract_check.",
+      "produces": [
+        "artifact.stage6.single_layer_gate_contract_map"
+      ],
+      "rationale": "Bind every layer-2 gate to immutable consumes/produces and existing compile-only VCS tool modes so downstream Stage7 executes real VCS compile/elaborate/link without invoking simulation.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "tool_roles": [
+        "verification_artifact_contract_check",
+        "sacg_reference_check",
+        "tool_protocol_check",
+        "required_real_tool_evidence_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "real_weight_semantic_evidence_check",
+        "case_operator_leaf_semantic_evidence",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "required_real_tool_evidence_check"
+      ],
+      "action_type": "verification_dependency_gate",
+      "consumes": [
+        "artifact.stage6.operator_leaf_verification_dag",
+        "evidence:case_operator_leaf_semantic_evidence",
+        "evidence:case_target_model_reference",
+        "evidence:case_semantic_testbench",
+        "artifact.input.case_adapter"
+      ],
+      "id": "single_layer.preflight_operator_leaf_closure",
+      "on_failure": "Block single-layer promotion and emit a named missing/stale dependency handoff to the operator-leaf, reference, or semantic-testbench owner; do not substitute generated weights or rerun the lower simulator without a contradicting trace.",
+      "produces": [
+        "artifact.stage6.single_layer_prerequisite_validation_record"
+      ],
+      "rationale": "Stage certificate policy records operator-leaf and single-layer promotion certificates missing_or_stale_for_current_contract. Validate that current operator-leaf semantic evidence and real-weight/target-reference/semantic-testbench dependencies are present and current before single-layer promotion.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "targeted_replay_plan": {
+        "on_missing": "hold layer-2 promotion and hand off the named stale or missing dependency",
+        "scope": "single_layer_prerequisite_certificate",
+        "target_nodes": [
+          "case_operator_leaf_semantic_evidence"
+        ]
+      },
+      "tool_roles": [
+        "real_tool_evidence_check",
+        "case_operator_leaf_semantic_evidence",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "sacg_reference_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "tool_protocol_check",
+        "verification_artifact_contract_check",
+        "required_real_tool_evidence_check",
+        "verification_action_audit_check"
+      ],
+      "action_type": "verification_contract_update",
+      "consumes": [
+        "artifact.stage6.single_layer_gate_contract_map",
+        "candidate:verification_artifact_contract",
+        "artifact.input.tool_protocols"
+      ],
+      "id": "single_layer.validate_compile_only_tool_binding",
+      "on_failure": "Do not promote the layer-2 DAG; correct the tool binding so each gate compiles/elaborates/links in real VCS and explicitly does not execute simulation.",
+      "produces": [
+        "artifact.stage6.layer2_compile_only_tool_binding"
+      ],
+      "rationale": "Existing case_single_layer_functional and case_single_layer_golden_compare role names retain functional_sim names, but the verification execution policy defines them as current-source VCS compile-only modes. Ensure the refined DAG binds those roles to compile-only acceptance and not simulation execution.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "tool_roles": [
+        "tool_protocol_check",
+        "verification_artifact_contract_check",
+        "required_real_tool_evidence_check",
+        "single_transformer_layer",
+        "case_single_layer_functional",
+        "case_single_layer_golden_compare"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "verification_artifact_contract_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "hierarchical_verification_plan_check",
+        "sacg_reference_check",
+        "required_real_tool_evidence_check",
+        "verification_action_audit_check"
+      ],
+      "action_type": "verification_gate_promotion",
+      "consumes": [
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage6.operator_leaf_verification_dag",
+        "artifact.stage6.single_layer_verification_dag",
+        "artifact.stage6.board_axi_ddr_verification_dag",
+        "artifact.stage6.verification_artifact_contract_review",
+        "artifact.stage6.verification_gate_dag_review"
+      ],
+      "id": "audit.promote_verification_artifacts_plan",
+      "on_failure": "If a required gate is missing or misordered, or downstream runtime evidence is claimed as a current-stage pass, block promotion and route the failure to Stage 6 contract-guided localization.",
+      "produces": [
+        "artifact.stage6.stage5_promotion_gate",
+        "artifact.stage6.verification_artifact_contract_review",
+        "artifact.stage6.verification_gate_dag_review"
+      ],
+      "rationale": "All current-stage static checks and gate-contract checks pass; required real-tool evidence is declared pending execution, downstream Vivado/board runtime obligations remain unclaimed, and the three-layer repair-loop order is respected.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "tool_roles": [
+        "verification_artifact_contract_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "hierarchical_verification_plan_check",
+        "sacg_reference_check",
+        "required_real_tool_evidence_check",
+        "verification_action_audit"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_reference_check",
+        "verification_action_audit_check"
+      ],
+      "action_type": "sacg_memory_update",
+      "consumes": [
+        "artifact.stage6.verification_gate_dag_review",
+        "artifact.stage6.verification_artifact_contract_review",
+        "artifact.stage6.stage5_promotion_gate"
+      ],
+      "id": "audit.record_downstream_verification_obligations",
+      "on_failure": "If the memory update fails or creates an active boundary/backtrack blocker, do not transition to Stage 7; rerun the SACG memory update and surface the blocker to the transition gate.",
+      "produces": [
+        "sacg_memory.verification_artifacts_promotion_record",
+        "sacg_memory.verification_artifacts_downstream_obligations"
+      ],
+      "rationale": "Persist the current promotion decision and the required pending real-tool gates so Stage 7 and transition peers consume them as downstream execution obligations rather than completed evidence.",
+      "requires_approval": false,
+      "stage": "verification_artifacts",
+      "tool_roles": [
+        "sacg_memory_update"
+      ]
+    }
+  ],
+  "execution_groups": [
+    0,
+    1
+  ],
   "llm_io_metrics": {
-    "executable_action_count": 0,
-    "max_duration_sec": 0.0,
-    "max_prompt_bytes": 0,
-    "result_count": 0,
+    "executable_action_count": 13,
+    "max_duration_sec": 154.24136956199072,
+    "max_prompt_bytes": 101072,
+    "result_count": 4,
     "subtasks_without_executable_actions": [],
-    "total_duration_sec": 0.0,
-    "total_prompt_bytes": 0
+    "total_duration_sec": 510.98235316801583,
+    "total_prompt_bytes": 386503
   },
-  "observations": [],
+  "observations": [
+    "The current candidate verification_artifact_contract is present and its checker_summary reports no current-stage errors; tool_protocol_check, human_boundary_check, hierarchical_verification_plan_check, verification_artifact_contract_check, required_real_tool_evidence_check, and data_order_trace_check pass at static planning scope.",
+    "The layer-3 DAG order matches the role assignment: case_board_interface_discovery and case_multilayer_pipeline precede case_axi_ddr_interface and functional_sim, followed by case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence.",
+    "Vivado synthesis/implementation, runtime bitstream, runtime ABI, and board_runtime are declared as downstream nodes after board bring-up readiness and are not promoted as current verifier responsibilities.",
+    "The existing case_vcs_functional_sim tool mode is compile-only VCS compilation/elaboration/linking evidence for the exact discovered board wrapper; simulator execution, runtime weight loading, golden comparison, and waveform/numerical outputs are not verification acceptance prerequisites.",
+    "sacg_memory_truth shows zero active contamination barriers, zero open retry requests, and zero open backtrack requests; hierarchical_learning_context has no validated lower-layer certificates, so lower-layer verification remains a downstream execution obligation rather than a current DAG plan blocker.",
+    "The DAG preserves Transformer-block-only accelerator scope and excludes embedding/tokenization, final model norm, LM head/logits, and sampling from DUT implementation, weight coverage, and golden boundaries.",
+    "Board interface discovery must synthesize the target discovery contract from supplied sample-project/Vivado evidence; framework-core actions must not hardcode model, board, module, or path names.",
+    "Stage 3, Stage 4, and Stage 5 upstream gates are visible as ready; Stage 5 reports six successful compile/elaboration commands.",
+    "sacg_memory_truth shows zero active contamination barriers, zero open backtrack requests, and zero open retry requests, so there is no current SACG-memory blocker for this planning stage.",
+    "All eight operator-leaf stage IDs are present in parameter_binding and stage_agent presence_summary, so the compact role slice is not treated as missing leaf coverage.",
+    "The candidate verification_gate_dag already declares the required gates, but case_stage_leaf_static is globally aggregated after leaf nodes; the Stage 6 artifact must explicitly bind each leaf through the five required checks before merge.",
+    "The layer-1 real-weight catalog, target-model reference, and semantic testbench are declared required pending execution and must remain upstream dependencies of leaf functional, golden, and semantic gates.",
+    "Layer-1 acceptance is planned as current-source VCS compile/elaborate/link only; runtime simulation execution and numerical comparison are downstream Stage 7 obligations and are not claimed here.",
+    "Learned absolute position encoding is pre-DUT reference composition and must remain outside the self-attention DUT weight and operation scope.",
+    "No default-generated-weight or smoke-only evidence may satisfy case_operator_leaf_semantic_evidence; complete Transformer-block weight-consumption evidence is required.",
+    "Current static checks pass: hierarchical_verification_plan_check and verification_artifact_contract_check report no errors and the candidate declares the layer-2 gate sequence in the required bottom-up order.",
+    "The candidate layer-2 order is case_tb_scaffold -> single_transformer_layer -> case_single_layer_functional -> case_single_layer_golden_compare -> case_single_layer_semantic_evidence, with case_operator_leaf_semantic_evidence declared as a prerequisite.",
+    "Current certificate validation shows operator-leaf and single-layer promotion certificates missing_or_stale_for_current_contract, so this planning stage must not claim operator-leaf closure or single-layer promotion.",
+    "The action grounding registry defines case_single_layer_functional and case_vcs_functional_sim as existing compile-only VCS evidence modes; simulation execution and numerical comparison are not acceptance prerequisites.",
+    "The candidate DAG edge case_target_model_reference -> case_single_layer_golden_compare is missing even though golden compare consumes golden/reference boundary values.",
+    "No active contamination barriers, backtrack requests, or retry requests are present in sacg_memory_truth; therefore no current SACG memory blocker applies to this stage.",
+    "Hierarchical learning context contains no validated lower-layer certificates, so operator-leaf readiness must be established by current contract validation, not inferred from prior ready stage outcomes.",
+    "Presence summaries indicate compact role-specific slices; missing-detail concerns should be treated as handoff/action items unless a visible checker status proves a current-stage blocker.",
+    "The DAG declares the three debug/repair layers in the required order: operator_leaf_modules -> single_transformer_layer_kernel -> board_axi_ddr_wrapped_system -> backend.",
+    "Required DAG nodes are present: real-weight artifacts, target-model reference, semantic testbench, operator-leaf static/functional/golden/semantic gates, single-layer kernel/functional/golden/semantic gates, board functional simulation, third-layer classifiers, board semantic evidence, Vivado synthesis/implementation, runtime bitstream/ABI, and board runtime.",
+    "Each required node is marked required_pending_execution; none of the current static checks claim VCS functional execution, Vivado bitstream success, or board runtime success as a current-stage pass.",
+    "The human boundary check passes: smoke/default generated weights are not acceptance, and final closure still requires real functional sim, real target-model reference, real weight consumption, bitstream, and board runtime.",
+    "The tool protocol check passes for the declared current planning scope; required tools are configured but their evidence remains future execution obligations.",
+    "Upstream Stage 3 pipeline plan, Stage 4 parameter binding, and Stage 5 code generation compile/contract/package static checks are visible and reported ready/passed.",
+    "No active contamination barriers, open retry requests, or open backtrack requests exist in sacg_memory_truth, so there are no current SACG-memory blockers for this review.",
+    "The DAG excludes embedding/tokenization, final model norm, LM head/logits, and sampling; learned absolute position contribution is pre-DUT/reference composition and is not added to DUT weight or operation scope.",
+    "Some real-weight and board-semantic dependencies are currently transitive or implicit in the plan. They should be made explicit direct edges before Stage 7 execution, but this does not block the current planning gate because all required gates are present and ordered."
+  ],
   "parallel_execution": true,
-  "proposed_actions": [],
-  "risks": [],
+  "proposed_actions": [
+    "Promote the refined board AXI/DDR DAG only after current-stage static validators pass and downstream backend gates remain after verification closure.",
+    "Keep case_board_interface_discovery as a mandatory predecessor to case_multilayer_pipeline and case_axi_ddr_interface.",
+    "Bind case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence to functional_sim evidence with required trace-related checker roles.",
+    "Declare Vivado synthesis, implementation, runtime bitstream, runtime ABI, and board_runtime as later-stage obligations and make no current-stage pass claim for them.",
+    "Hand off checker-grounded outputs to verification_artifacts.verification_dag_auditor instead of self-certifying the DAG.",
+    "Publish artifact.stage6.operator_leaf_verification_dag with explicit eight-leaf bottom-up gate expansion.",
+    "Publish artifact.stage6.operator_leaf_gate_contract_map listing required gates, consumed inputs, produced evidence, and acceptance checkers for stage_00..stage_07.",
+    "Declare case_real_weight_artifacts -> case_target_model_reference -> case_semantic_testbench as prerequisites to every leaf functional/golden/semantic gate.",
+    "Encode the VCS compile-only acceptance boundary for layer-1 gates and hand off the gate contract map to the single-layer and board DAG planners.",
+    "Refine the layer-2 DAG to add case_target_model_reference as a direct dependency of case_single_layer_golden_compare and preserve the strict compile-only acceptance policy.",
+    "Produce artifact.stage6.single_layer_gate_contract_map with exact consumes, produces, tool roles, and acceptance checkers for every layer-2 gate.",
+    "Run a dependency preflight for case_operator_leaf_semantic_evidence, case_real_weight_artifacts, case_target_model_reference, and case_semantic_testbench before queuing single-layer execution.",
+    "Queue downstream Stage7 layer-2 compile-only VCS execution in bottom-up order, explicitly excluding simulator execution and golden numerical comparison from acceptance.",
+    "Hand off to verification_artifacts.board_axi_ddr_verification_dag_planner and verification_artifacts.verification_dag_auditor only after the refined DAG and gate contract map pass static checks.",
+    "Promote the current verification_artifacts stage because all current-stage static checks and gate-contract checks pass.",
+    "Record downstream required evidence gates in SACG memory as pending execution obligations, not completed evidence.",
+    "In Stage 7, bind direct DAG edges for case_real_weight_artifacts to all semantic evidence aggregators and for case_board_semantic_evidence to case_board_bringup_ready before backend execution.",
+    "Before Vivado synthesis, require the bottom-up compile-only VCS evidence for leaf, connected-kernel, and exact-board wrapper to have been produced in order.",
+    "Keep Vivado implementation, runtime bitstream, ABI check, and board runtime as later-stage gates and do not fold them into a Stage 5/6 pass."
+  ],
+  "risks": [
+    "If case_board_interface_discovery guesses compute-slot, AXI, clock/reset, or calibration names before cited sample-project/Vivado evidence, the downstream exact wrapper identity can be wrong.",
+    "If functional_sim is treated as runtime numerical acceptance instead of the compile-only VCS acceptance mode, the gate could be prematurely promoted without current-source compile/elaborate/link evidence.",
+    "Derived checks such as data_order_trace_check, transfer_count_check, addr_map_check, and deadlock_watchdog depend on functional_sim instrumentation/trace evidence; missing trace fields would leave them not_run rather than pass.",
+    "Missing operator-leaf and single-layer promotion certificates are not current-stage blockers under stage_gate_policy, but they become mandatory Stage7 bottom-up execution obligations before board closure.",
+    "Cross-layer consistency risk remains between Stage5 memory/runtime layout and the exact discovered AXI/DDR wrapper image layout; it must be reconciled after case_board_interface_discovery.",
+    "Any tolerance or golden-boundary change derived from DUT output, or any expansion of DUT scope beyond Transformer blocks, would require approval and reversion.",
+    "If the DAG only contains a global case_stage_leaf_static aggregator, a leaf may be promoted without its own per-leaf static, boundary, functional, golden, and semantic evidence.",
+    "case_real_weight_artifacts, case_target_model_reference, and case_semantic_testbench are currently pending execution; absent or fake/default-weight versions would block leaf execution and semantic closure.",
+    "No layer-1 VCS compile certificates exist yet; these are downstream execution obligations and must not be reported as current pass evidence.",
+    "Cross-leaf stream/beat/numeric consistency failures could invalidate boundary contracts if int8/int32 Q31 policy, residual precision, or pipeline order are not bound per leaf.",
+    "case_operator_leaf_semantic_evidence must preserve immutable weight artifact hashes and complete Transformer-block weight-consumption proof; random or RTL-derived expected outputs are forbidden.",
+    "Layer-2 promotion could be attempted before case_operator_leaf_semantic_evidence is current-contract valid.",
+    "Single-layer golden compare could drift from target-model golden values if its direct dependency on case_target_model_reference is not encoded.",
+    "case_real_weight_artifacts, case_target_model_reference, and case_semantic_testbench remain required_pending_execution, so downstream layer-2 gates are not yet executable.",
+    "Stage5 Chisel codegen compile/elaboration evidence must not be substituted for layer-2 current-source VCS compile-only evidence.",
+    "Connected-kernel consistency must be rechecked across pipeline.structure, stream.order, and beat.pipeline constraints; parameter binding legality alone is not connected-kernel evidence.",
+    "Board AXI/DDR and backend actions are out of scope for this planner and must wait for the layer-2 contract map to pass handoff checks.",
+    "Functional_sim role names may be misread as simulation execution; the refined contract must explicitly bind them to compile-only VCS acceptance.",
+    "Downstream VCS/Vivado/board runtime certificates are still missing or stale for the current contract; this is expected at verification_artifacts planning and must be enforced bottom-up before backend synthesis in Stage 7.",
+    "The case_board_bringup_ready node currently depends on functional_sim, single-layer semantic evidence, and board discovery; it should explicitly bind case_board_semantic_evidence before Vivado synthesis in the Stage 7 executable DAG.",
+    "Semantic evidence aggregators must explicitly bind case_real_weight_artifacts during Stage 7 instantiation to prevent a tool-integration path from claiming complete Transformer-block weight consumption without the real source catalog.",
+    "A later stage could misread 'configured' or 'required_pending_execution' as executed evidence; the transition contract must preserve the pending status for all real tools."
+  ],
+  "role_assignments": [
+    {
+      "agent": "operator_leaf_verification_planner",
+      "role": "Operator-leaf verification gate planner",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "hierarchical_verification_plan_check",
+            "verification_artifact_contract_check",
+            "case_stage_leaf_static",
+            "boundary_contract_check",
+            "case_leaf_functional",
+            "case_leaf_golden_compare",
+            "case_operator_leaf_semantic_evidence",
+            "case_real_weight_artifacts",
+            "case_target_model_reference",
+            "case_semantic_testbench"
+          ],
+          "consumes": [
+            "artifact.stage3.pipeline_plan",
+            "artifact.stage4.parameter_binding",
+            "artifact.stage5.generated_code_package",
+            "artifact.input.case_adapter"
+          ],
+          "handoff_to": [
+            "verification_artifacts.single_layer_verification_dag_planner",
+            "verification_artifacts.board_axi_ddr_verification_dag_planner",
+            "verification_artifacts.verification_dag_auditor"
+          ],
+          "produces": [
+            "artifact.stage6.operator_leaf_verification_dag",
+            "artifact.stage6.operator_leaf_gate_contract_map"
+          ]
+        },
+        "decision_authority": [
+          "Promote the operator-leaf DAG only when all 8 stage leaves have canonical gate mappings",
+          "Block operator-leaf closure when required real-weight, semantic-testbench, or boundary-contract dependencies are missing"
+        ],
+        "mission": "Plan the layer-1 operator-leaf verification DAG bottom-up, binding every stage_00..stage_07 leaf to real-weight, semantic-testbench, boundary-contract, compile-only functional, golden compare, and semantic aggregate gates.",
+        "out_of_scope": [
+          "Do not execute VCS/Vivado tools or claim leaf simulation pass",
+          "Do not plan single-layer or board-wrapper merge gates",
+          "Do not alter Stage 3/4/5 generated artifacts beyond verification planning"
+        ],
+        "primary_responsibilities": [
+          "Map all eight pipeline leaf stages to case_stage_leaf_static, boundary_contract_check, case_leaf_functional, case_leaf_golden_compare, and case_operator_leaf_semantic_evidence",
+          "Declare dependency order from case_real_weight_artifacts, case_target_model_reference, and case_semantic_testbench into leaf verification",
+          "Use VCS compile/elaboration as the current-stage acceptance boundary; do not claim functional simulation completion at this planning stage",
+          "Block any default-weight or smoke-only evidence from becoming layer-1 acceptance"
+        ]
+      },
+      "subtask_id": "verification_artifacts.operator_leaf_verification_dag_planner"
+    },
+    {
+      "agent": "single_layer_verification_planner",
+      "role": "Single transformer-layer kernel verification gate planner",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "hierarchical_verification_plan_check",
+            "verification_artifact_contract_check",
+            "case_tb_scaffold",
+            "single_transformer_layer",
+            "case_single_layer_functional",
+            "case_single_layer_golden_compare",
+            "case_single_layer_semantic_evidence",
+            "case_target_model_reference",
+            "case_semantic_testbench"
+          ],
+          "consumes": [
+            "artifact.stage6.operator_leaf_verification_dag",
+            "artifact.stage5.generated_code_package",
+            "artifact.stage4.parameter_binding"
+          ],
+          "handoff_to": [
+            "verification_artifacts.board_axi_ddr_verification_dag_planner",
+            "verification_artifacts.verification_dag_auditor"
+          ],
+          "produces": [
+            "artifact.stage6.single_layer_verification_dag",
+            "artifact.stage6.single_layer_gate_contract_map"
+          ]
+        },
+        "decision_authority": [
+          "Promote layer-2 DAG only when case_operator_leaf_semantic_evidence and case_tb_scaffold dependencies are declared",
+          "Block single-layer promotion when real-weight or semantic-testbench dependencies are missing"
+        ],
+        "mission": "Plan the layer-2 single transformer-layer kernel verification DAG after operator-leaf closure, preserving strict bottom-up maturity before any board-wrapper gate.",
+        "out_of_scope": [
+          "Do not perform board interface discovery or AXI/DDR planning",
+          "Do not claim board-wrapped functional simulation or board semantic evidence",
+          "Do not reopen already passed operator-leaf evidence without a contradicting boundary trace"
+        ],
+        "primary_responsibilities": [
+          "Define single-layer gate order: case_tb_scaffold, single_transformer_layer, case_single_layer_functional, case_single_layer_golden_compare, case_single_layer_semantic_evidence",
+          "Require operator-leaf semantic evidence before connected-kernel promotion",
+          "Preserve real-weight and target-model-reference dependencies for the connected kernel",
+          "Keep layer-2 evidence reusable but not an absolute claim for board AXI/DDR closure"
+        ]
+      },
+      "subtask_id": "verification_artifacts.single_layer_verification_dag_planner"
+    },
+    {
+      "agent": "board_axi_ddr_verification_planner",
+      "role": "Board AXI/DDR wrapped-system verification gate planner",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "hierarchical_verification_plan_check",
+            "verification_artifact_contract_check",
+            "tool_protocol_check",
+            "human_boundary_check",
+            "required_real_tool_evidence_check",
+            "functional_sim",
+            "data_order_trace_check",
+            "transfer_count_check",
+            "addr_map_check",
+            "deadlock_watchdog",
+            "case_multilayer_functional",
+            "case_pipeline_deadlock_check",
+            "case_axi_protocol_check",
+            "case_ddr_image_roundtrip",
+            "case_board_semantic_evidence"
+          ],
+          "consumes": [
+            "artifact.stage6.single_layer_verification_dag",
+            "artifact.stage5.memory_layout",
+            "artifact.stage5.runtime_config",
+            "artifact.input.target_board_profile"
+          ],
+          "handoff_to": [
+            "verification_artifacts.verification_dag_auditor"
+          ],
+          "produces": [
+            "artifact.stage6.board_axi_ddr_verification_dag",
+            "artifact.stage6.board_axi_ddr_gate_contract_map",
+            "artifact.stage6.downstream_backend_gate_declarations"
+          ]
+        },
+        "decision_authority": [
+          "Promote the board DAG only when functional_sim precedes derived board semantic subgates",
+          "Block any current-stage pass that claims Vivado or board runtime evidence before verification closure"
+        ],
+        "mission": "Plan the layer-3 board AXI/DDR wrapped-system verification DAG and keep Vivado/bitstream/board runtime gates explicitly downstream after verification closure.",
+        "out_of_scope": [
+          "Do not execute Vivado synthesis/implementation or board runtime",
+          "Do not claim bitstream or board runtime evidence in this stage",
+          "Do not alter the runtime/memory layout without a later repair boundary"
+        ],
+        "primary_responsibilities": [
+          "Plan case_board_interface_discovery, case_multilayer_pipeline, and case_axi_ddr_interface before functional_sim",
+          "Define subgates after functional_sim: case_multilayer_functional, case_pipeline_deadlock_check, case_axi_protocol_check, case_ddr_image_roundtrip, and case_board_semantic_evidence",
+          "Declare data-order, transfer-count, address-map, and deadlock risks as checker gates",
+          "Mark Vivado synthesis/implementation/runtime bitstream and board_runtime as downstream gates, not current verifier responsibilities"
+        ]
+      },
+      "subtask_id": "verification_artifacts.board_axi_ddr_verification_dag_planner"
+    },
+    {
+      "agent": "verification_dag_auditor",
+      "role": "Cross-layer verification DAG auditor",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "hierarchical_verification_plan_check",
+            "verification_artifact_contract_check",
+            "tool_protocol_check",
+            "human_boundary_check",
+            "required_real_tool_evidence_check",
+            "sacg_reference_check"
+          ],
+          "consumes": [
+            "artifact.stage6.operator_leaf_verification_dag",
+            "artifact.stage6.single_layer_verification_dag",
+            "artifact.stage6.board_axi_ddr_verification_dag",
+            "artifact.stage3.pipeline_plan",
+            "artifact.stage4.parameter_binding",
+            "artifact.stage5.generated_code_package"
+          ],
+          "handoff_to": [
+            "stage_transition.verification_artifacts_promotion"
+          ],
+          "produces": [
+            "artifact.stage6.verification_artifact_contract_review",
+            "artifact.stage6.verification_gate_dag_review",
+            "artifact.stage6.stage5_promotion_gate"
+          ]
+        },
+        "decision_authority": [
+          "Promote verification_artifacts when all current-stage static checks and gate-contract checks pass with pending downstream obligations declared",
+          "Block promotion on any failed invariant, missing gate, or unsupported current-stage runtime/bitstream claim"
+        ],
+        "mission": "Audit the three layer DAG plans for cross-layer consistency, tool protocol binding, required real-tool declarations, and correct downstream boundaries before Stage 5 promotion.",
+        "out_of_scope": [
+          "Do not execute downstream VCS/Vivado/board runtime tools",
+          "Do not modify generated RTL or parameter binding",
+          "Do not create new verification gates outside the canonical registry"
+        ],
+        "primary_responsibilities": [
+          "Verify the complete gate DAG follows operator-leaf -> single-layer -> board AXI/DDR -> backend order",
+          "Reject any promotion where functional_sim, real weights, or target-model reference are missing/misordered",
+          "Confirm Vivado bitstream and board runtime remain declared downstream and are not claimed as current-stage pass",
+          "Confirm no human-boundary or required-real-tool evidence violation exists"
+        ]
+      },
+      "subtask_id": "verification_artifacts.verification_dag_auditor"
+    }
+  ],
   "schema_version": "spatialaccagent.team_aggregate.v0",
+  "split_reason": "The verification_artifacts stage plans three distinct repair-loop maturity layers with different gate boundaries: operator leaf modules, single transformer-layer kernel, and board AXI/DDR wrapped system. Each layer can be planned independently against the Stage 3/4/5 artifacts, followed by a cross-layer evidence-gate auditor. SACG memory has no active retry, backtrack, or contamination blockers, so parallel planning is safe.",
   "stage": "verification_artifacts",
-  "status": "running",
+  "status": "ready",
   "subtask_count": 4,
   "used_fallback_count": 0
 }

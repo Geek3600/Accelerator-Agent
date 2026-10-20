@@ -1,10 +1,10 @@
 {
-  "duration_sec": 54.39315705798799,
+  "duration_sec": 51.178163441014476,
   "error": null,
   "http_transport": "urllib",
   "mode": "llm",
   "output": {
-    "reason": "The candidate has a concrete strict-binding failure: hidden_size=1152 conflicts with num_q_heads*head_dim=1024 for both the decoder block and self_attention. Independent model-shape, template-binding, and attention-semantic reviews can isolate the cause and preserve the trusted-template boundary; a downstream gate should reconcile their evidence. SACG truth shows one active contamination barrier on the prior rejected template-selection artifact, so it is diagnostic evidence only, not a validated design input. There are no active retry or backtrack requests.",
+    "reason": "Independent model-shape/operator-coverage, strict parameter/numeric binding, and attention-semantic reviews can proceed in parallel; a downstream cross-layer evidence gate should reconcile their results. The current candidate has a concrete hidden-size/head-dimension legality failure. SACG memory also has an active contamination barrier on artifact.stage2.template_selection, so that artifact is usable only as planning/debug evidence, not as a validated design input. There are no active retry or backtrack requests. Do not alter model facts, template internals, or board assumptions to force a pass; leave unresolved bindings blocking promotion. Stage-4 selection remains authoritative for candidate-bound lanes and array dimensions.",
     "schema_version": "spatialaccagent.team_decomposition.v1",
     "split_required": true,
     "stage": "template_selection",
@@ -13,18 +13,19 @@
         "acceptance_checkers": [
           "model_config_check",
           "template_coverage_check",
+          "llm_semantic_extraction_check",
           "sacg_static_check"
         ],
         "action_type": "evidence_and_repair_review",
         "agent": "model_shape_specialist",
         "artifact_focus": [
-          "operator_sequence",
-          "selected_templates",
-          "coverage",
-          "parameter_bindings",
-          "checker_results",
           "artifact.input.model_config",
-          "artifact.stage2.template_selection"
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection.operator_sequence",
+          "artifact.stage2.template_selection.selected_templates",
+          "artifact.stage2.template_selection.coverage",
+          "artifact.stage2.template_selection.checker_results"
         ],
         "constraints": [
           "constraint.model.decoder",
@@ -33,81 +34,64 @@
           "constraint.cross_layer.input_consistency"
         ],
         "expected_artifacts": [
-          "review/template_selection/model_shape_coverage_review.json",
-          "review/template_selection/shape_fact_provenance.json"
+          "operator_coverage_review.json",
+          "model_shape_head_mapping_review.json",
+          "operator_coverage_findings.json"
         ],
         "handoff_required": true,
         "handoff_rule": {
-          "accepted_by": [
-            "model_config_check",
-            "template_coverage_check",
-            "sacg_static_check"
-          ],
-          "condition": "Hand off the source-traced operator and shape findings, including unresolved contradictions; do not label the rejected candidate as validated.",
-          "consumes": [
-            "artifact.input.model_config",
-            "artifact.input.template_metadata",
-            "artifact.stage2.template_selection"
-          ],
-          "downstream_consumers": [
-            "template_selection.template_binding_engineer",
-            "template_selection.attention_semantic_engineer",
-            "template_selection.cross_layer_gate_engineer"
-          ],
-          "produces": [
-            "review/template_selection/model_shape_coverage_review.json",
-            "review/template_selection/shape_fact_provenance.json"
-          ]
+          "acceptance": "Checker evidence and findings must be tied to current inputs and trusted template records; the cross-layer gate accepts the review only with explicit pass/fail status and cited evidence.",
+          "action": "The strict-binding and attention specialists consume relevant findings; the cross-layer gate consumes the complete review. A reported hidden-size/head-dimension mismatch remains a blocker until resolved from authoritative inputs and rechecked.",
+          "condition": "Hand off source-linked coverage and shape findings, including unresolved contradictions; do not mark the stage ready based on the rejected candidate artifact."
         },
         "handoff_to": [
-          "template_selection.cross_layer_gate_engineer",
-          "template_selection.template_binding_engineer",
-          "template_selection.attention_semantic_engineer"
+          "template_selection.strict_binding_numeric",
+          "template_selection.attention_semantics",
+          "template_selection.cross_layer_gate"
         ],
-        "id": "template_selection.model_shape_coverage_engineer",
-        "objective": "Independently check decoder operator order, coverage, and the provenance of model shape facts. Explain the 1152-versus-1024 head-dimension contradiction using trusted inputs, without changing model facts or asserting a legal binding when evidence does not support one.",
+        "id": "template_selection.operator_shape_coverage",
+        "objective": "Using authoritative model inputs and current trusted template metadata, verify decoder operator sequence, residual/order semantics, and shape/head mapping; report coverage gaps or contradictions without treating the contaminated candidate artifact as validated.",
         "parallel_group": 0,
-        "role": "model-shape and operator-coverage engineer",
+        "role": "model and operator coverage engineer",
         "role_assignment": {
           "collaboration_interfaces": {
             "acceptance_checkers": [
               "model_config_check",
               "template_coverage_check",
+              "llm_semantic_extraction_check",
               "sacg_static_check"
             ],
             "consumes": [
               "artifact.input.model_config",
+              "artifact.input.template_library",
               "artifact.input.template_metadata",
-              "artifact.stage2.template_selection",
-              "state_summary.sacg_memory_truth"
+              "artifact.stage2.template_selection as planning/debug evidence only"
             ],
             "downstream_consumers": [
-              "template_selection.template_binding_engineer",
-              "template_selection.attention_semantic_engineer",
-              "template_selection.cross_layer_gate_engineer"
+              "template_selection.strict_binding_numeric",
+              "template_selection.attention_semantics",
+              "template_selection.cross_layer_gate"
             ],
             "produces": [
-              "model-shape fact provenance",
-              "operator coverage review",
-              "identified shape contradictions"
+              "operator_coverage_review.json",
+              "model_shape_head_mapping_review.json",
+              "operator_coverage_findings.json"
             ]
           },
           "decision_authority": [
-            "May identify unsupported or contradictory model-shape coverage.",
-            "May recommend that the candidate remain incomplete when trusted facts do not establish a legal binding.",
-            "May not alter model configuration, template internals, or approval boundaries."
+            "Can classify coverage and shape evidence as consistent, inconsistent, or unresolved.",
+            "Cannot change source facts, template internals, or stage promotion policy."
           ],
-          "mission": "Establish whether the model facts and operator coverage are faithfully represented and identify the exact shape inconsistency blocking strict template binding.",
+          "mission": "Establish model/operator consistency against authoritative inputs and trusted template coverage.",
           "out_of_scope": [
-            "Changing model facts or inferring replacement dimensions.",
-            "Generating free-form RTL or modifying trusted templates.",
-            "Claiming simulation, synthesis, or deployment readiness."
+            "Free-form RTL generation or template repair.",
+            "Changing model/numeric/board inputs.",
+            "Treating the contaminated stage artifact as validated."
           ],
           "primary_responsibilities": [
-            "Check the listed decoder operator sequence and trusted-template coverage.",
-            "Trace hidden_size, num_q_heads, num_kv_heads, and head_dim to their trusted source facts.",
-            "Report the dimensional contradiction without silently changing inputs or template parameters.",
-            "Treat the active SACG contamination-barrier artifact as planning/debug evidence only."
+            "Audit operator coverage and order.",
+            "Audit hidden-size/head mapping and report contradictions.",
+            "Preserve the active contamination-barrier boundary."
           ]
         },
         "role_profile": {
@@ -116,113 +100,121 @@
             "audit shape and head mapping",
             "track residual/operator order"
           ],
+          "collaboration_interfaces": [
+            "Consumes model configuration, template metadata, and candidate data only as planning/debug evidence.",
+            "Produces source-linked shape and coverage findings for the binding specialist, attention specialist, and cross-layer gate.",
+            "template_coverage_check, model_config_check, and llm_semantic_extraction_check accept the corresponding evidence."
+          ],
           "constraint_focus": [
             "constraint.model.decoder",
-            "constraint.shape.model"
+            "constraint.shape.model",
+            "constraint.template.library"
           ],
-          "family": "model_shape"
+          "decision_authority": [
+            "May determine whether evidence supports operator coverage and shape consistency.",
+            "May not alter model configuration or approve a template adapter."
+          ],
+          "family": "model_shape",
+          "mission": "Establish that model semantics, dimensions, operator order, and trusted template coverage agree.",
+          "out_of_scope": [
+            "Changing model dimensions or attention configuration.",
+            "Editing trusted template internals or generating free-form RTL.",
+            "Selecting Stage-4 architecture dimensions."
+          ],
+          "primary_responsibilities": [
+            "Revalidate operator sequence and residual ordering against model inputs.",
+            "Check shape and head mapping using authoritative model facts.",
+            "Report missing coverage explicitly and distinguish it from candidate-artifact claims."
+          ]
         },
-        "title": "Reconcile model shape with operator coverage"
+        "title": "Revalidate model shape and operator-template coverage"
       },
       {
         "acceptance_checkers": [
           "template_binding_static_check",
           "parameter_binding_static_check",
-          "numeric_policy_check"
+          "numeric_policy_check",
+          "sacg_static_check"
         ],
-        "action_type": "evidence_and_repair_review",
+        "action_type": "sacg_constraint_review",
         "agent": "numeric_template_specialist",
         "artifact_focus": [
-          "parameter_bindings",
-          "template_source_checks",
-          "unsupported_bindings",
-          "selected_templates",
-          "forbidden_edits"
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.stage2.template_selection.parameter_bindings",
+          "artifact.stage2.template_selection.template_source_checks",
+          "artifact.stage2.template_selection.unsupported_bindings",
+          "artifact.stage2.template_selection.forbidden_edits"
         ],
         "constraints": [
           "constraint.shape.model",
           "constraint.numeric.policy",
           "constraint.template.library",
-          "constraint.arch.design_space"
+          "constraint.arch.design_space",
+          "constraint.human.boundary"
         ],
         "expected_artifacts": [
-          "review/template_selection/strict_binding_audit.json",
-          "review/template_selection/unsupported_binding_disposition.json"
+          "strict_template_binding_review.json",
+          "numeric_binding_provenance.json",
+          "binding_blocker_and_repair_boundary.json"
         ],
         "handoff_required": true,
         "handoff_rule": {
-          "accepted_by": [
-            "template_binding_static_check",
-            "parameter_binding_static_check",
-            "numeric_policy_check"
-          ],
-          "condition": "Hand off a binding-by-binding disposition with source evidence and explicit unresolved legality errors; any unsupported binding keeps the candidate incomplete.",
-          "consumes": [
-            "artifact.stage2.template_selection",
-            "artifact.input.template_library",
-            "artifact.input.template_metadata",
-            "artifact.input.numeric_policy",
-            "artifact.input.design_space"
-          ],
-          "downstream_consumers": [
-            "template_selection.cross_layer_gate_engineer",
-            "template-selection stage gate"
-          ],
-          "produces": [
-            "review/template_selection/strict_binding_audit.json",
-            "review/template_selection/unsupported_binding_disposition.json"
-          ]
+          "acceptance": "All bound values must cite authoritative sources; implicit defaults cannot replace available inputs. Candidate-bound lanes/array dimensions may remain for Stage 4, but illegal bindings may not.",
+          "action": "The cross-layer gate consumes the binding audit and determines stage disposition. If the discrepancy requires input, adapter, or template changes, route it through the applicable approval/repair boundary; do not make the change in this review.",
+          "condition": "Provide a parameter-by-parameter disposition and source/hash evidence; explicitly preserve unresolved legality errors as blockers."
         },
         "handoff_to": [
-          "template_selection.cross_layer_gate_engineer",
-          "template_selection.model_shape_coverage_engineer",
-          "template_selection.attention_semantic_engineer"
+          "template_selection.operator_shape_coverage",
+          "template_selection.cross_layer_gate"
         ],
-        "id": "template_selection.template_binding_engineer",
-        "objective": "Audit every selected template's concrete parameter bindings, source identity, constructor metadata, numeric policy, and legality errors. Determine whether the current candidate can be strictly bound; do not use defaults or change template internals to mask the head-dimension mismatch.",
+        "id": "template_selection.strict_binding_numeric",
+        "objective": "Revalidate every required template parameter, numeric binding, source/interface record, and legality rule from authoritative inputs and current trusted sources. Diagnose the reported hidden_size=1152 versus num_q_heads*head_dim=1024 contradiction without silently changing inputs or template internals.",
         "parallel_group": 0,
-        "role": "strict template-binding and numeric-policy engineer",
+        "role": "strict template and numeric binding engineer",
         "role_assignment": {
           "collaboration_interfaces": {
             "acceptance_checkers": [
               "template_binding_static_check",
               "parameter_binding_static_check",
-              "numeric_policy_check"
+              "numeric_policy_check",
+              "sacg_static_check"
             ],
             "consumes": [
-              "artifact.stage2.template_selection",
+              "artifact.input.model_config",
+              "artifact.input.numeric_policy",
               "artifact.input.template_library",
               "artifact.input.template_metadata",
-              "artifact.input.numeric_policy",
               "artifact.input.design_space",
-              "template_selection.model_shape_coverage_engineer findings"
+              "artifact.stage2.template_selection as planning/debug evidence only"
             ],
             "downstream_consumers": [
-              "template_selection.cross_layer_gate_engineer",
-              "template-selection stage gate"
+              "template_selection.operator_shape_coverage",
+              "template_selection.cross_layer_gate"
             ],
             "produces": [
-              "strict binding audit",
-              "source and constructor consistency findings",
-              "unsupported binding disposition"
+              "strict_template_binding_review.json",
+              "numeric_binding_provenance.json",
+              "binding_blocker_and_repair_boundary.json"
             ]
           },
           "decision_authority": [
-            "May classify bindings as supported, unsupported, or unresolved based on supplied evidence.",
-            "May block strict binding when parameters are illegal or unsupported.",
-            "May not select substitute model dimensions, rely on implicit defaults, or edit template internals."
+            "Can identify a failed or incomplete binding and block promotion on that basis.",
+            "Cannot resolve contradictions by guessing or modifying trusted inputs."
           ],
-          "mission": "Establish whether template sources and their parameters are bound strictly to trusted model, numeric, and design-space facts.",
+          "mission": "Verify that every required template parameter is explicitly and legally bound to authoritative model, numeric, or architecture inputs.",
           "out_of_scope": [
-            "Free-form RTL generation or template-internal changes.",
-            "Overriding model or numeric-policy inputs.",
-            "Selecting final lanes or compute-array dimensions reserved for the later DSE stage."
+            "Editing templates or model/numeric inputs.",
+            "Selecting candidate-bound architecture parameters.",
+            "Promoting a failed binding as validated."
           ],
           "primary_responsibilities": [
-            "Review all parameter bindings, including the two reported head-dimension legality errors.",
-            "Check source hashes and constructor/interface metadata in the candidate evidence.",
-            "Verify numeric bindings against the supplied numeric policy.",
-            "Keep candidate-bound design-space values distinct from concrete selections made in later stages."
+            "Recheck parameter bindings and legality errors.",
+            "Verify current template source and interface evidence.",
+            "Mark unsupported changes and bounded repair/approval needs."
           ]
         },
         "role_profile": {
@@ -231,29 +223,52 @@
             "audit numeric policy",
             "check resource-risk assumptions"
           ],
+          "collaboration_interfaces": [
+            "Consumes model, numeric, template, and design-space inputs; candidate artifact is debug evidence only.",
+            "Produces parameter provenance and bounded blocker/repair findings for the cross-layer gate.",
+            "template_binding_static_check, parameter_binding_static_check, and numeric_policy_check accept the relevant evidence."
+          ],
           "constraint_focus": [
             "constraint.numeric.policy",
             "constraint.template.library",
+            "constraint.shape.model",
             "constraint.arch.design_space"
           ],
-          "family": "numeric_template"
+          "decision_authority": [
+            "May report a binding as legal, illegal, or unresolved based on checkable evidence.",
+            "May not change numeric policy, model facts, template source, or DSE authority."
+          ],
+          "family": "numeric_template",
+          "mission": "Verify strict, traceable parameter binding and legality without relaxing template constraints.",
+          "out_of_scope": [
+            "Changing model dimensions, head counts, numeric policy, or template internals.",
+            "Choosing Stage-4 lanes or array dimensions.",
+            "Free-form RTL generation."
+          ],
+          "primary_responsibilities": [
+            "Audit parameter provenance and legality for selected templates.",
+            "Check numeric policy bindings and source/interface evidence.",
+            "Separate current blockers from dimensions reserved for later DSE."
+          ]
         },
-        "title": "Audit strict parameter and source bindings"
+        "title": "Audit parameter legality and trusted template binding"
       },
       {
         "acceptance_checkers": [
-          "template_binding_static_check",
           "template_coverage_check",
           "model_config_check",
-          "sacg_static_check"
+          "template_binding_static_check",
+          "llm_semantic_extraction_check"
         ],
         "action_type": "evidence_and_repair_review",
-        "agent": "attention_semantic_specialist",
+        "agent": "attention_semantics_specialist",
         "artifact_focus": [
-          "attention_semantics",
-          "parameter_bindings",
-          "checker_results",
-          "selected_templates"
+          "artifact.input.model_config",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection.attention_semantics",
+          "artifact.stage2.template_selection.parameter_bindings",
+          "artifact.stage2.template_selection.checker_results"
         ],
         "constraints": [
           "constraint.model.decoder",
@@ -263,83 +278,64 @@
           "constraint.cross_layer.input_consistency"
         ],
         "expected_artifacts": [
-          "review/template_selection/attention_semantic_binding_review.json",
-          "review/template_selection/head_mapping_consistency.json"
+          "attention_semantic_binding_review.json",
+          "attention_component_evidence_matrix.json",
+          "attention_semantic_blockers.json"
         ],
         "handoff_required": true,
         "handoff_rule": {
-          "accepted_by": [
-            "template_binding_static_check",
-            "template_coverage_check",
-            "model_config_check",
-            "sacg_static_check"
-          ],
-          "condition": "Hand off component-level coverage and head-mapping conclusions separately; explicitly preserve any head-dimension contradiction as a blocker rather than resolving it by assumption.",
-          "consumes": [
-            "artifact.stage2.template_selection.attention_semantics",
-            "artifact.stage2.template_selection.parameter_bindings",
-            "artifact.input.model_config",
-            "artifact.input.template_metadata"
-          ],
-          "downstream_consumers": [
-            "template_selection.template_binding_engineer",
-            "template_selection.model_shape_coverage_engineer",
-            "template_selection.cross_layer_gate_engineer"
-          ],
-          "produces": [
-            "review/template_selection/attention_semantic_binding_review.json",
-            "review/template_selection/head_mapping_consistency.json"
-          ]
+          "acceptance": "Required components must have trusted selected or embedded coverage and evidence tied to current sources; no missing component may be replaced by free-form RTL.",
+          "action": "The model-shape specialist consumes head-mapping observations, the binding specialist consumes parameter/source findings, and the cross-layer gate consumes the complete attention review.",
+          "condition": "Hand off a component-by-component evidence matrix and preserve any semantic or shape contradiction as unresolved."
         },
         "handoff_to": [
-          "template_selection.cross_layer_gate_engineer",
-          "template_selection.template_binding_engineer",
-          "template_selection.model_shape_coverage_engineer"
+          "template_selection.operator_shape_coverage",
+          "template_selection.strict_binding_numeric",
+          "template_selection.cross_layer_gate"
         ],
-        "id": "template_selection.attention_semantic_engineer",
-        "objective": "Independently verify that required attention components and GQA head mapping are covered by trusted templates and consistent with supplied model facts. Specifically assess whether the head-dimension contradiction invalidates the self_attention binding; do not infer an alternative architecture.",
+        "id": "template_selection.attention_semantics",
+        "objective": "Independently verify required attention components and their semantic bindings\u2014including Q/K/V projection, RoPE, GQA head mapping, softmax, output projection, required KV-cache behavior, and causal mask\u2014against authoritative model/configuration evidence and trusted template sources.",
         "parallel_group": 0,
-        "role": "attention-semantic and head-mapping engineer",
+        "role": "attention semantic binding engineer",
         "role_assignment": {
           "collaboration_interfaces": {
             "acceptance_checkers": [
-              "template_binding_static_check",
               "template_coverage_check",
               "model_config_check",
-              "sacg_static_check"
+              "template_binding_static_check",
+              "llm_semantic_extraction_check"
             ],
             "consumes": [
-              "artifact.stage2.template_selection.attention_semantics",
-              "artifact.stage2.template_selection.parameter_bindings",
               "artifact.input.model_config",
-              "artifact.input.template_metadata"
+              "artifact.input.template_library",
+              "artifact.input.template_metadata",
+              "artifact.stage2.template_selection.attention_semantics as planning/debug evidence only"
             ],
             "downstream_consumers": [
-              "template_selection.template_binding_engineer",
-              "template_selection.model_shape_coverage_engineer",
-              "template_selection.cross_layer_gate_engineer"
+              "template_selection.operator_shape_coverage",
+              "template_selection.strict_binding_numeric",
+              "template_selection.cross_layer_gate"
             ],
             "produces": [
-              "attention semantic binding review",
-              "head-mapping consistency findings"
+              "attention_semantic_binding_review.json",
+              "attention_component_evidence_matrix.json",
+              "attention_semantic_blockers.json"
             ]
           },
           "decision_authority": [
-            "May determine whether supplied evidence covers the required attention semantics.",
-            "May identify attention binding as unsupported when head mapping or dimensions conflict.",
-            "May not invent model-specific core names, alter model semantics, or generate RTL."
+            "Can report missing or inconsistent attention evidence.",
+            "Cannot waive required coverage or alter authoritative model inputs."
           ],
-          "mission": "Check semantic completeness and legality of the attention template closure, including the reported query-head dimension conflict.",
+          "mission": "Verify that every required attention semantic is represented by a trusted template and correctly bound.",
           "out_of_scope": [
-            "Changing attention semantics or choosing replacement head dimensions.",
-            "Treating component coverage as proof of legal parameter binding.",
-            "Synthesis, board integration, or runtime evidence generation."
+            "Inventing an attention implementation or relaxing semantics.",
+            "Editing templates or model configuration.",
+            "Claiming stage readiness from prior checker results alone."
           ],
           "primary_responsibilities": [
-            "Verify QKV projection, RoPE, GQA head mapping, softmax, output projection, required KV-cache behavior, and causal-mask evidence against the candidate.",
-            "Check the reported num_q_heads, num_kv_heads, head_dim, and hidden_size relationship against trusted model facts.",
-            "Distinguish component coverage from legal parameter binding; passing semantic coverage does not cure a binding error.",
-            "Report evidence-backed semantic gaps or contradictions to the final gate."
+            "Review QKV, RoPE, GQA, softmax, output projection, KV-cache scope, and causal mask.",
+            "Cross-check attention parameters with model configuration.",
+            "Identify unsupported semantics and blockers without proposing silent substitutions."
           ]
         },
         "role_profile": {
@@ -348,117 +344,129 @@
             "audit shape and head mapping",
             "track residual/operator order"
           ],
+          "collaboration_interfaces": [
+            "Consumes model configuration, template metadata, and candidate attention evidence as debug evidence only.",
+            "Produces a component evidence matrix for shape, binding, and gate reviewers.",
+            "template_coverage_check and template_binding_static_check accept the corresponding coverage and binding evidence."
+          ],
           "constraint_focus": [
             "constraint.model.decoder",
             "constraint.shape.model",
             "constraint.template.library"
           ],
-          "family": "model_shape"
+          "decision_authority": [
+            "May classify component coverage and semantic consistency from evidence.",
+            "May not change attention semantics or template implementation."
+          ],
+          "family": "model_shape",
+          "mission": "Establish semantic completeness and trusted template binding for the attention path.",
+          "out_of_scope": [
+            "Changing model attention configuration or head dimensions.",
+            "Changing template internals or generating RTL.",
+            "Making board/runtime or DSE decisions."
+          ],
+          "primary_responsibilities": [
+            "Check required attention components against model semantics and configuration.",
+            "Verify GQA mapping and head-related bindings against authoritative dimensions.",
+            "Report missing, optional, or unsupported components explicitly."
+          ]
         },
-        "title": "Verify attention expansion and head semantics"
+        "title": "Verify attention expansion and semantic bindings"
       },
       {
         "acceptance_checkers": [
           "sacg_static_check",
+          "sacg_memory_check",
+          "stage_artifact_trust_barrier_check",
           "template_binding_static_check",
-          "numeric_policy_check"
+          "numeric_policy_check",
+          "memory_runtime_plan_check"
         ],
-        "action_type": "evidence_and_repair_review",
+        "action_type": "cross_layer_evidence_gate",
         "agent": "verification_repair_specialist",
         "artifact_focus": [
-          "cross_layer_trace",
-          "checker_results",
-          "errors",
-          "unsupported_bindings",
-          "state_summary.sacg_memory_truth",
-          "review/template_selection/model_shape_coverage_review.json",
-          "review/template_selection/strict_binding_audit.json",
-          "review/template_selection/attention_semantic_binding_review.json"
+          "artifact.stage2.template_selection.cross_layer_trace",
+          "artifact.stage2.template_selection.checker_results",
+          "artifact.stage2.template_selection.errors",
+          "artifact.stage2.template_selection.unsupported_bindings",
+          "artifact.stage2.template_selection.status",
+          "artifact.input.target_board_profile",
+          "artifact.input.human_agent_boundary",
+          "artifact.stage2.template_selection.operator_coverage_review",
+          "artifact.stage2.template_selection.strict_template_binding_review",
+          "artifact.stage2.template_selection.attention_semantic_binding_review",
+          "artifact.stage2.template_selection contamination barrier"
         ],
         "constraints": [
           "constraint.numeric.policy",
+          "constraint.template.library",
           "constraint.memory.board",
           "constraint.runtime.board",
           "constraint.deployment.board",
           "constraint.cross_layer.input_consistency",
-          "constraint.template.library"
+          "constraint.human.boundary"
         ],
         "expected_artifacts": [
-          "review/template_selection/cross_layer_gate_disposition.json",
-          "review/template_selection/blocker_to_constraint_map.json"
+          "template_selection_cross_layer_gate.json",
+          "stage2_blocker_and_handoff_disposition.json",
+          "sacg_trust_boundary_disposition.json"
         ],
         "handoff_required": true,
         "handoff_rule": {
-          "accepted_by": [
-            "sacg_static_check",
-            "template_binding_static_check",
-            "numeric_policy_check"
-          ],
-          "condition": "Hand off a disposition only after reconciling all parallel reviews with current checker evidence. Promote only if strict bindings are legal, required coverage is supported, and cross-layer constraints remain consistent; otherwise retain the blocker and request an approved bounded repair or authoritative input resolution.",
-          "consumes": [
-            "review/template_selection/model_shape_coverage_review.json",
-            "review/template_selection/strict_binding_audit.json",
-            "review/template_selection/attention_semantic_binding_review.json",
-            "artifact.stage2.template_selection",
-            "state_summary.sacg_memory_truth"
-          ],
-          "downstream_consumers": [
-            "template-selection stage gate",
-            "bounded template-repair authority if approval is required"
-          ],
-          "produces": [
-            "review/template_selection/cross_layer_gate_disposition.json",
-            "review/template_selection/blocker_to_constraint_map.json"
-          ]
+          "acceptance": "The orchestrator consumes the gate report as the stage disposition. Rejected-transition artifacts remain planning/debug evidence; downstream promotion requires trusted, revalidated evidence and successful applicable checkers.",
+          "action": "Reconcile evidence and report ready only if applicable current-stage checks pass with no concrete contradiction. The supplied binding failure and active contamination barrier must remain blockers unless revalidated and resolved using trusted inputs. Do not block solely on Stage-4 candidate selection or downstream simulation/synthesis/runtime evidence listed as not-current-stage obligations.",
+          "condition": "Run only after the three parallel specialist reviews are available."
         },
         "handoff_to": [
-          "template-selection stage gate",
-          "bounded template-repair authority if approval is required"
+          "template_selection_stage_orchestrator"
         ],
-        "id": "template_selection.cross_layer_gate_engineer",
-        "objective": "After the independent reviews, reconcile their findings with current checker evidence and the numeric, memory, runtime, deployment, and input-consistency trace. Enforce the active contamination barrier and determine whether strict template-selection closure is supported; do not claim readiness while the concrete binding failure remains.",
+        "id": "template_selection.cross_layer_gate",
+        "objective": "After the parallel reviews, reconcile model, numeric, template, attention, board-memory, runtime, deployment, and input-consistency evidence. Enforce the active SACG contamination barrier and report a stage disposition that preserves concrete blockers and does not mistake downstream obligations for current Stage-2 failures.",
         "parallel_group": 1,
-        "role": "cross-layer template gate and evidence auditor",
+        "role": "cross-layer template evidence gate engineer",
         "role_assignment": {
           "collaboration_interfaces": {
             "acceptance_checkers": [
               "sacg_static_check",
+              "sacg_memory_check",
+              "stage_artifact_trust_barrier_check",
               "template_binding_static_check",
-              "numeric_policy_check"
+              "numeric_policy_check",
+              "memory_runtime_plan_check"
             ],
             "consumes": [
-              "all three parallel-group-0 review artifacts",
-              "artifact.stage2.template_selection",
+              "operator_coverage_review.json",
+              "strict_template_binding_review.json",
+              "attention_semantic_binding_review.json",
               "artifact.input.numeric_policy",
               "artifact.input.target_board_profile",
-              "state_summary.sacg_memory_truth"
+              "artifact.stage2.template_selection.cross_layer_trace",
+              "artifact.stage2.template_selection.checker_results"
             ],
             "downstream_consumers": [
-              "template-selection stage gate",
-              "bounded template-repair authority if an approved repair path is required"
+              "template_selection_stage_orchestrator"
             ],
             "produces": [
-              "cross-layer gate disposition",
-              "blocker-to-constraint map",
-              "stage promotion recommendation"
+              "template_selection_cross_layer_gate.json",
+              "stage2_blocker_and_handoff_disposition.json",
+              "sacg_trust_boundary_disposition.json"
             ]
           },
           "decision_authority": [
-            "May recommend stage disposition based only on current evidence and required checkers.",
-            "Must keep the stage incomplete if an illegal or unsupported binding remains.",
-            "May not approve edits or override the human boundary; route any required approval to the designated authority."
+            "Can recommend ready or blocked based only on current applicable evidence.",
+            "Cannot promote a design with an unresolved current-stage contradiction or treat planning evidence as validated."
           ],
-          "mission": "Produce an evidence-bounded stage disposition that reconciles specialist reviews, deterministic checker results, cross-layer trace, and SACG trust state.",
+          "mission": "Reconcile the independently reviewed evidence and issue a bounded stage-gate disposition consistent with SACG trust and closure rules.",
           "out_of_scope": [
-            "Claiming RTL, simulation, synthesis, board, or deployment closure.",
-            "Treating rejected transition artifacts as validated inputs.",
-            "Changing model facts, numeric policy, board assumptions, or template internals."
+            "Hardware synthesis, simulation, or board deployment.",
+            "Repairs that modify trusted templates or authoritative assumptions.",
+            "Treating missing downstream evidence as a Stage-2 blocker when the supplied gate policy classifies it as later-stage work."
           ],
           "primary_responsibilities": [
-            "Confirm which supplied checker results pass and fail, and map the strict binding failure to the affected constraints.",
-            "Verify the current trace includes numeric, board memory, runtime, deployment, and input-consistency facts.",
-            "Treat the artifact covered by the active contamination barrier as planning/debug evidence only, not a validated design input.",
-            "Do not require future simulation, synthesis, or deployment evidence to accept current Stage-2 facts, and do not overclaim downstream readiness."
+            "Check cross-layer trace presence and consistency.",
+            "Apply the active contamination barrier to the candidate artifact.",
+            "Keep the reported parameter-legality failure blocking until resolved and rechecked.",
+            "Defer lanes and array-dimension choices to Stage 4."
           ]
         },
         "role_profile": {
@@ -467,23 +475,40 @@
             "map failures to violated constraints",
             "enforce repair boundaries"
           ],
-          "constraint_focus": [
-            "constraint.template.library",
-            "constraint.numeric.policy",
-            "constraint.cross_layer.input_consistency",
-            "constraint.deployment.board",
-            "constraint.memory.board",
-            "constraint.runtime.board"
+          "collaboration_interfaces": [
+            "Consumes all parallel specialist reports, current input evidence, and checker results.",
+            "Produces a gate disposition for the stage orchestrator.",
+            "sacg_static_check, sacg_memory_check, stage_artifact_trust_barrier_check, and applicable binding/policy checks accept the evidence."
           ],
-          "family": "verification_repair"
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.human.boundary",
+            "constraint.cross_layer.input_consistency"
+          ],
+          "decision_authority": [
+            "May classify stage readiness and preserve blockers under the supplied gate policy.",
+            "May not waive failures, change model/template/board assumptions, or authorize unapproved repairs."
+          ],
+          "family": "verification_repair",
+          "mission": "Provide an evidence-grounded, SACG-consistent gate decision across independent template reviews and cross-layer inputs.",
+          "out_of_scope": [
+            "Performing synthesis or deployment evidence generation.",
+            "Changing source templates or authoritative inputs.",
+            "Treating prior rejected artifacts as validated design inputs."
+          ],
+          "primary_responsibilities": [
+            "Reconcile specialist findings with current checker evidence and constraint trace.",
+            "Enforce trust boundaries and classify current-stage versus downstream obligations.",
+            "Map unresolved contradictions to bounded repair or approval boundaries."
+          ]
         },
-        "title": "Reconcile reviews and determine stage disposition"
+        "title": "Reconcile template evidence and determine stage gate"
       }
     ]
   },
-  "prompt_hash": "ae98181b441136b4d7324d23aee31b82a24a9d6ac7945b87af99cef0dd83322b",
+  "prompt_hash": "7bd4b9d1b7a613d725b6da0282d6b4914554a1d517af634ea7ec1bb7c3f47508",
   "prompt_protocol": "spatialaccagent.llm_io.v0",
-  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.team_decomposition.v1\",\n  \"stage\": \"template_selection\",\n  \"split_required\": true,\n  \"reason\": \"The candidate has a concrete strict-binding failure: hidden_size=1152 conflicts with num_q_heads*head_dim=1024 for both the decoder block and self_attention. Independent model-shape, template-binding, and attention-semantic reviews can isolate the cause and preserve the trusted-template boundary; a downstream gate should reconcile their evidence. SACG truth shows one active contamination barrier on the prior rejected template-selection artifact, so it is diagnostic evidence only, not a validated design input. There are no active retry or backtrack requests.\",\n  \"subtasks\": [\n    {\n      \"id\": \"template_selection.model_shape_coverage_engineer\",\n      \"agent\": \"model_shape_specialist\",\n      \"role\": \"model-shape and operator-coverage engineer\",\n      \"title\": \"Reconcile model shape with operator coverage\",\n      \"objective\": \"Independently check decoder operator order, coverage, and the provenance of model shape facts. Explain the 1152-versus-1024 head-dimension contradiction using trusted inputs, without changing model facts or asserting a legal binding when evidence does not support one.\",\n      \"constraints\": [\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\",\n        \"constraint.template.library\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"artifact_focus\": [\n        \"operator_sequence\",\n        \"selected_templates\",\n        \"coverage\",\n        \"parameter_bindings\",\n        \"checker_results\",\n        \"artifact.input.model_config\",\n        \"artifact.stage2.template_selection\"\n      ],\n      \"parallel_group\": 0,\n      \"action_type\": \"evidence_and_repair_review\",\n      \"expected_artifacts\": [\n        \"review/template_selection/model_shape_coverage_review.json\",\n        \"review/template_selection/shape_fact_provenance.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"model_config_check\",\n        \"template_coverage_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"template_selection.cross_layer_gate_engineer\",\n        \"template_selection.template_binding_engineer\",\n        \"template_selection.attention_semantic_engineer\"\n      ],\n      \"role_profile\": {\n        \"family\": \"model_shape\",\n        \"capabilities\": [\n          \"extract model semantics\",\n          \"audit shape and head mapping\",\n          \"track residual/operator order\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.model.decoder\",\n          \"constraint.shape.model\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Establish whether the model facts and operator coverage are faithfully represented and identify the exact shape inconsistency blocking strict template binding.\",\n        \"primary_responsibilities\": [\n          \"Check the listed decoder operator sequence and trusted-template coverage.\",\n          \"Trace hidden_size, num_q_heads, num_kv_heads, and head_dim to their trusted source facts.\",\n          \"Report the dimensional contradiction without silently changing inputs or template parameters.\",\n          \"Treat the active SACG contamination-barrier artifact as planning/debug evidence only.\"\n        ],\n        \"decision_authority\": [\n          \"May identify unsupported or contradictory model-shape coverage.\",\n          \"May recommend that the candidate remain incomplete when trusted facts do not establish a legal binding.\",\n          \"May not alter model configuration, template internals, or approval boundaries.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.input.model_config\",\n            \"artifact.input.template_metadata\",\n            \"artifact.stage2.template_selection\",\n            \"state_summary.sacg_memory_truth\"\n          ],\n          \"produces\": [\n            \"model-shape fact provenance\",\n            \"operator coverage review\",\n            \"identified shape contradictions\"\n          ],\n          \"downstream_consumers\": [\n            \"template_selection.template_binding_engineer\",\n            \"template_selection.attention_semantic_engineer\",\n            \"template_selection.cross_layer_gate_engineer\"\n          ],\n          \"acceptance_checkers\": [\n            \"model_config_check\",\n            \"template_coverage_check\",\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Changing model facts or inferring replacement dimensions.\",\n          \"Generating free-form RTL or modifying trusted templates.\",\n          \"Claiming simulation, synthesis, or deployment readiness.\"\n        ]\n      },\n      \"handoff_rule\": {\n        \"condition\": \"Hand off the source-traced operator and shape findings, including unresolved contradictions; do not label the rejected candidate as validated.\",\n        \"consumes\": [\n          \"artifact.input.model_config\",\n          \"artifact.input.template_metadata\",\n          \"artifact.stage2.template_selection\"\n        ],\n        \"produces\": [\n          \"review/template_selection/model_shape_coverage_review.json\",\n          \"review/template_selection/shape_fact_provenance.json\"\n        ],\n        \"downstream_consumers\": [\n          \"template_selection.template_binding_engineer\",\n          \"template_selection.attention_semantic_engineer\",\n          \"template_selection.cross_layer_gate_engineer\"\n        ],\n        \"accepted_by\": [\n          \"model_config_check\",\n          \"template_coverage_check\",\n          \"sacg_static_check\"\n        ]\n      }\n    },\n    {\n      \"id\": \"template_selection.template_binding_engineer\",\n      \"agent\": \"numeric_template_specialist\",\n      \"role\": \"strict template-binding and numeric-policy engineer\",\n      \"title\": \"Audit strict parameter and source bindings\",\n      \"objective\": \"Audit every selected template's concrete parameter bindings, source identity, constructor metadata, numeric policy, and legality errors. Determine whether the current candidate can be strictly bound; do not use defaults or change template internals to mask the head-dimension mismatch.\",\n      \"constraints\": [\n        \"constraint.shape.model\",\n        \"constraint.numeric.policy\",\n        \"constraint.template.library\",\n        \"constraint.arch.design_space\"\n      ],\n      \"artifact_focus\": [\n        \"parameter_bindings\",\n        \"template_source_checks\",\n        \"unsupported_bindings\",\n        \"selected_templates\",\n        \"forbidden_edits\"\n      ],\n      \"parallel_group\": 0,\n      \"action_type\": \"evidence_and_repair_review\",\n      \"expected_artifacts\": [\n        \"review/template_selection/strict_binding_audit.json\",\n        \"review/template_selection/unsupported_binding_disposition.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"template_binding_static_check\",\n        \"parameter_binding_static_check\",\n        \"numeric_policy_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"template_selection.cross_layer_gate_engineer\",\n        \"template_selection.model_shape_coverage_engineer\",\n        \"template_selection.attention_semantic_engineer\"\n      ],\n      \"role_profile\": {\n        \"family\": \"numeric_template\",\n        \"capabilities\": [\n          \"bind trusted templates\",\n          \"audit numeric policy\",\n          \"check resource-risk assumptions\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.numeric.policy\",\n          \"constraint.template.library\",\n          \"constraint.arch.design_space\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Establish whether template sources and their parameters are bound strictly to trusted model, numeric, and design-space facts.\",\n        \"primary_responsibilities\": [\n          \"Review all parameter bindings, including the two reported head-dimension legality errors.\",\n          \"Check source hashes and constructor/interface metadata in the candidate evidence.\",\n          \"Verify numeric bindings against the supplied numeric policy.\",\n          \"Keep candidate-bound design-space values distinct from concrete selections made in later stages.\"\n        ],\n        \"decision_authority\": [\n          \"May classify bindings as supported, unsupported, or unresolved based on supplied evidence.\",\n          \"May block strict binding when parameters are illegal or unsupported.\",\n          \"May not select substitute model dimensions, rely on implicit defaults, or edit template internals.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.stage2.template_selection\",\n            \"artifact.input.template_library\",\n            \"artifact.input.template_metadata\",\n            \"artifact.input.numeric_policy\",\n            \"artifact.input.design_space\",\n            \"template_selection.model_shape_coverage_engineer findings\"\n          ],\n          \"produces\": [\n            \"strict binding audit\",\n            \"source and constructor consistency findings\",\n            \"unsupported binding disposition\"\n          ],\n          \"downstream_consumers\": [\n            \"template_selection.cross_layer_gate_engineer\",\n            \"template-selection stage gate\"\n          ],\n          \"acceptance_checkers\": [\n            \"template_binding_static_check\",\n            \"parameter_binding_static_check\",\n            \"numeric_policy_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Free-form RTL generation or template-internal changes.\",\n          \"Overriding model or numeric-policy inputs.\",\n          \"Selecting final lanes or compute-array dimensions reserved for the later DSE stage.\"\n        ]\n      },\n      \"handoff_rule\": {\n        \"condition\": \"Hand off a binding-by-binding disposition with source evidence and explicit unresolved legality errors; any unsupported binding keeps the candidate incomplete.\",\n        \"consumes\": [\n          \"artifact.stage2.template_selection\",\n          \"artifact.input.template_library\",\n          \"artifact.input.template_metadata\",\n          \"artifact.input.numeric_policy\",\n          \"artifact.input.design_space\"\n        ],\n        \"produces\": [\n          \"review/template_selection/strict_binding_audit.json\",\n          \"review/template_selection/unsupported_binding_disposition.json\"\n        ],\n        \"downstream_consumers\": [\n          \"template_selection.cross_layer_gate_engineer\",\n          \"template-selection stage gate\"\n        ],\n        \"accepted_by\": [\n          \"template_binding_static_check\",\n          \"parameter_binding_static_check\",\n          \"numeric_policy_check\"\n        ]\n      }\n    },\n    {\n      \"id\": \"template_selection.attention_semantic_engineer\",\n      \"agent\": \"attention_semantic_specialist\",\n      \"role\": \"attention-semantic and head-mapping engineer\",\n      \"title\": \"Verify attention expansion and head semantics\",\n      \"objective\": \"Independently verify that required attention components and GQA head mapping are covered by trusted templates and consistent with supplied model facts. Specifically assess whether the head-dimension contradiction invalidates the self_attention binding; do not infer an alternative architecture.\",\n      \"constraints\": [\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\",\n        \"constraint.numeric.policy\",\n        \"constraint.template.library\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"artifact_focus\": [\n        \"attention_semantics\",\n        \"parameter_bindings\",\n        \"checker_results\",\n        \"selected_templates\"\n      ],\n      \"parallel_group\": 0,\n      \"action_type\": \"evidence_and_repair_review\",\n      \"expected_artifacts\": [\n        \"review/template_selection/attention_semantic_binding_review.json\",\n        \"review/template_selection/head_mapping_consistency.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"template_binding_static_check\",\n        \"template_coverage_check\",\n        \"model_config_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"template_selection.cross_layer_gate_engineer\",\n        \"template_selection.template_binding_engineer\",\n        \"template_selection.model_shape_coverage_engineer\"\n      ],\n      \"role_profile\": {\n        \"family\": \"model_shape\",\n        \"capabilities\": [\n          \"extract model semantics\",\n          \"audit shape and head mapping\",\n          \"track residual/operator order\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.model.decoder\",\n          \"constraint.shape.model\",\n          \"constraint.template.library\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Check semantic completeness and legality of the attention template closure, including the reported query-head dimension conflict.\",\n        \"primary_responsibilities\": [\n          \"Verify QKV projection, RoPE, GQA head mapping, softmax, output projection, required KV-cache behavior, and causal-mask evidence against the candidate.\",\n          \"Check the reported num_q_heads, num_kv_heads, head_dim, and hidden_size relationship against trusted model facts.\",\n          \"Distinguish component coverage from legal parameter binding; passing semantic coverage does not cure a binding error.\",\n          \"Report evidence-backed semantic gaps or contradictions to the final gate.\"\n        ],\n        \"decision_authority\": [\n          \"May determine whether supplied evidence covers the required attention semantics.\",\n          \"May identify attention binding as unsupported when head mapping or dimensions conflict.\",\n          \"May not invent model-specific core names, alter model semantics, or generate RTL.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.stage2.template_selection.attention_semantics\",\n            \"artifact.stage2.template_selection.parameter_bindings\",\n            \"artifact.input.model_config\",\n            \"artifact.input.template_metadata\"\n          ],\n          \"produces\": [\n            \"attention semantic binding review\",\n            \"head-mapping consistency findings\"\n          ],\n          \"downstream_consumers\": [\n            \"template_selection.template_binding_engineer\",\n            \"template_selection.model_shape_coverage_engineer\",\n            \"template_selection.cross_layer_gate_engineer\"\n          ],\n          \"acceptance_checkers\": [\n            \"template_binding_static_check\",\n            \"template_coverage_check\",\n            \"model_config_check\",\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Changing attention semantics or choosing replacement head dimensions.\",\n          \"Treating component coverage as proof of legal parameter binding.\",\n          \"Synthesis, board integration, or runtime evidence generation.\"\n        ]\n      },\n      \"handoff_rule\": {\n        \"condition\": \"Hand off component-level coverage and head-mapping conclusions separately; explicitly preserve any head-dimension contradiction as a blocker rather than resolving it by assumption.\",\n        \"consumes\": [\n          \"artifact.stage2.template_selection.attention_semantics\",\n          \"artifact.stage2.template_selection.parameter_bindings\",\n          \"artifact.input.model_config\",\n          \"artifact.input.template_metadata\"\n        ],\n        \"produces\": [\n          \"review/template_selection/attention_semantic_binding_review.json\",\n          \"review/template_selection/head_mapping_consistency.json\"\n        ],\n        \"downstream_consumers\": [\n          \"template_selection.template_binding_engineer\",\n          \"template_selection.model_shape_coverage_engineer\",\n          \"template_selection.cross_layer_gate_engineer\"\n        ],\n        \"accepted_by\": [\n          \"template_binding_static_check\",\n          \"template_coverage_check\",\n          \"model_config_check\",\n          \"sacg_static_check\"\n        ]\n      }\n    },\n    {\n      \"id\": \"template_selection.cross_layer_gate_engineer\",\n      \"agent\": \"verification_repair_specialist\",\n      \"role\": \"cross-layer template gate and evidence auditor\",\n      \"title\": \"Reconcile reviews and determine stage disposition\",\n      \"objective\": \"After the independent reviews, reconcile their findings with current checker evidence and the numeric, memory, runtime, deployment, and input-consistency trace. Enforce the active contamination barrier and determine whether strict template-selection closure is supported; do not claim readiness while the concrete binding failure remains.\",\n      \"constraints\": [\n        \"constraint.numeric.policy\",\n        \"constraint.memory.board\",\n        \"constraint.runtime.board\",\n        \"constraint.deployment.board\",\n        \"constraint.cross_layer.input_consistency\",\n        \"constraint.template.library\"\n      ],\n      \"artifact_focus\": [\n        \"cross_layer_trace\",\n        \"checker_results\",\n        \"errors\",\n        \"unsupported_bindings\",\n        \"state_summary.sacg_memory_truth\",\n        \"review/template_selection/model_shape_coverage_review.json\",\n        \"review/template_selection/strict_binding_audit.json\",\n        \"review/template_selection/attention_semantic_binding_review.json\"\n      ],\n      \"parallel_group\": 1,\n      \"action_type\": \"evidence_and_repair_review\",\n      \"expected_artifacts\": [\n        \"review/template_selection/cross_layer_gate_disposition.json\",\n        \"review/template_selection/blocker_to_constraint_map.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"template_binding_static_check\",\n        \"numeric_policy_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"template-selection stage gate\",\n        \"bounded template-repair authority if approval is required\"\n      ],\n      \"role_profile\": {\n        \"family\": \"verification_repair\",\n        \"capabilities\": [\n          \"classify evidence\",\n          \"map failures to violated constraints\",\n          \"enforce repair boundaries\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.template.library\",\n          \"constraint.numeric.policy\",\n          \"constraint.cross_layer.input_consistency\",\n          \"constraint.deployment.board\",\n          \"constraint.memory.board\",\n          \"constraint.runtime.board\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Produce an evidence-bounded stage disposition that reconciles specialist reviews, deterministic checker results, cross-layer trace, and SACG trust state.\",\n        \"primary_responsibilities\": [\n          \"Confirm which supplied checker results pass and fail, and map the strict binding failure to the affected constraints.\",\n          \"Verify the current trace includes numeric, board memory, runtime, deployment, and input-consistency facts.\",\n          \"Treat the artifact covered by the active contamination barrier as planning/debug evidence only, not a validated design input.\",\n          \"Do not require future simulation, synthesis, or deployment evidence to accept current Stage-2 facts, and do not overclaim downstream readiness.\"\n        ],\n        \"decision_authority\": [\n          \"May recommend stage disposition based only on current evidence and required checkers.\",\n          \"Must keep the stage incomplete if an illegal or unsupported binding remains.\",\n          \"May not approve edits or override the human boundary; route any required approval to the designated authority.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"all three parallel-group-0 review artifacts\",\n            \"artifact.stage2.template_selection\",\n            \"artifact.input.numeric_policy\",\n            \"artifact.input.target_board_profile\",\n            \"state_summary.sacg_memory_truth\"\n          ],\n          \"produces\": [\n            \"cross-layer gate disposition\",\n            \"blocker-to-constraint map\",\n            \"stage promotion recommendation\"\n          ],\n          \"downstream_consumers\": [\n            \"template-selection stage gate\",\n            \"bounded template-repair authority if an approved repair path is required\"\n          ],\n          \"acceptance_checkers\": [\n            \"sacg_static_check\",\n            \"template_binding_static_check\",\n            \"numeric_policy_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Claiming RTL, simulation, synthesis, board, or deployment closure.\",\n          \"Treating rejected transition artifacts as validated inputs.\",\n          \"Changing model facts, numeric policy, board assumptions, or template internals.\"\n        ]\n      },\n      \"handoff_rule\": {\n        \"condition\": \"Hand off a disposition only after reconciling all parallel reviews with current checker evidence. Promote only if strict bindings are legal, required coverage is supported, and cross-layer constraints remain consistent; otherwise retain the blocker and request an approved bounded repair or authoritative input resolution.\",\n        \"consumes\": [\n          \"review/template_selection/model_shape_coverage_review.json\",\n          \"review/template_selection/strict_binding_audit.json\",\n          \"review/template_selection/attention_semantic_binding_review.json\",\n          \"artifact.stage2.template_selection\",\n          \"state_summary.sacg_memory_truth\"\n        ],\n        \"produces\": [\n          \"review/template_selection/cross_layer_gate_disposition.json\",\n          \"review/template_selection/blocker_to_constraint_map.json\"\n        ],\n        \"downstream_consumers\": [\n          \"template-selection stage gate\",\n          \"bounded template-repair authority if approval is required\"\n        ],\n        \"accepted_by\": [\n          \"sacg_static_check\",\n          \"template_binding_static_check\",\n          \"numeric_policy_check\"\n        ]\n      }\n    }\n  ]\n}",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.team_decomposition.v1\",\"stage\":\"template_selection\",\"split_required\":true,\"reason\":\"Independent model-shape/operator-coverage, strict parameter/numeric binding, and attention-semantic reviews can proceed in parallel; a downstream cross-layer evidence gate should reconcile their results. The current candidate has a concrete hidden-size/head-dimension legality failure. SACG memory also has an active contamination barrier on artifact.stage2.template_selection, so that artifact is usable only as planning/debug evidence, not as a validated design input. There are no active retry or backtrack requests. Do not alter model facts, template internals, or board assumptions to force a pass; leave unresolved bindings blocking promotion. Stage-4 selection remains authoritative for candidate-bound lanes and array dimensions.\",\"subtasks\":[{\"id\":\"template_selection.operator_shape_coverage\",\"agent\":\"model_shape_specialist\",\"role\":\"model and operator coverage engineer\",\"title\":\"Revalidate model shape and operator-template coverage\",\"objective\":\"Using authoritative model inputs and current trusted template metadata, verify decoder operator sequence, residual/order semantics, and shape/head mapping; report coverage gaps or contradictions without treating the contaminated candidate artifact as validated.\",\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.template.library\",\"constraint.cross_layer.input_consistency\"],\"artifact_focus\":[\"artifact.input.model_config\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection.operator_sequence\",\"artifact.stage2.template_selection.selected_templates\",\"artifact.stage2.template_selection.coverage\",\"artifact.stage2.template_selection.checker_results\"],\"parallel_group\":0,\"action_type\":\"evidence_and_repair_review\",\"expected_artifacts\":[\"operator_coverage_review.json\",\"model_shape_head_mapping_review.json\",\"operator_coverage_findings.json\"],\"acceptance_checkers\":[\"model_config_check\",\"template_coverage_check\",\"llm_semantic_extraction_check\",\"sacg_static_check\"],\"handoff_required\":true,\"handoff_to\":[\"template_selection.strict_binding_numeric\",\"template_selection.attention_semantics\",\"template_selection.cross_layer_gate\"],\"handoff_rule\":{\"condition\":\"Hand off source-linked coverage and shape findings, including unresolved contradictions; do not mark the stage ready based on the rejected candidate artifact.\",\"action\":\"The strict-binding and attention specialists consume relevant findings; the cross-layer gate consumes the complete review. A reported hidden-size/head-dimension mismatch remains a blocker until resolved from authoritative inputs and rechecked.\",\"acceptance\":\"Checker evidence and findings must be tied to current inputs and trusted template records; the cross-layer gate accepts the review only with explicit pass/fail status and cited evidence.\"},\"role_profile\":{\"family\":\"model_shape\",\"capabilities\":[\"extract model semantics\",\"audit shape and head mapping\",\"track residual/operator order\"],\"constraint_focus\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.template.library\"],\"mission\":\"Establish that model semantics, dimensions, operator order, and trusted template coverage agree.\",\"primary_responsibilities\":[\"Revalidate operator sequence and residual ordering against model inputs.\",\"Check shape and head mapping using authoritative model facts.\",\"Report missing coverage explicitly and distinguish it from candidate-artifact claims.\"],\"decision_authority\":[\"May determine whether evidence supports operator coverage and shape consistency.\",\"May not alter model configuration or approve a template adapter.\"],\"collaboration_interfaces\":[\"Consumes model configuration, template metadata, and candidate data only as planning/debug evidence.\",\"Produces source-linked shape and coverage findings for the binding specialist, attention specialist, and cross-layer gate.\",\"template_coverage_check, model_config_check, and llm_semantic_extraction_check accept the corresponding evidence.\"],\"out_of_scope\":[\"Changing model dimensions or attention configuration.\",\"Editing trusted template internals or generating free-form RTL.\",\"Selecting Stage-4 architecture dimensions.\"]},\"role_assignment\":{\"mission\":\"Establish model/operator consistency against authoritative inputs and trusted template coverage.\",\"primary_responsibilities\":[\"Audit operator coverage and order.\",\"Audit hidden-size/head mapping and report contradictions.\",\"Preserve the active contamination-barrier boundary.\"],\"decision_authority\":[\"Can classify coverage and shape evidence as consistent, inconsistent, or unresolved.\",\"Cannot change source facts, template internals, or stage promotion policy.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.input.model_config\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection as planning/debug evidence only\"],\"produces\":[\"operator_coverage_review.json\",\"model_shape_head_mapping_review.json\",\"operator_coverage_findings.json\"],\"downstream_consumers\":[\"template_selection.strict_binding_numeric\",\"template_selection.attention_semantics\",\"template_selection.cross_layer_gate\"],\"acceptance_checkers\":[\"model_config_check\",\"template_coverage_check\",\"llm_semantic_extraction_check\",\"sacg_static_check\"]},\"out_of_scope\":[\"Free-form RTL generation or template repair.\",\"Changing model/numeric/board inputs.\",\"Treating the contaminated stage artifact as validated.\"]}},{\"id\":\"template_selection.strict_binding_numeric\",\"agent\":\"numeric_template_specialist\",\"role\":\"strict template and numeric binding engineer\",\"title\":\"Audit parameter legality and trusted template binding\",\"objective\":\"Revalidate every required template parameter, numeric binding, source/interface record, and legality rule from authoritative inputs and current trusted sources. Diagnose the reported hidden_size=1152 versus num_q_heads*head_dim=1024 contradiction without silently changing inputs or template internals.\",\"constraints\":[\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.human.boundary\"],\"artifact_focus\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.stage2.template_selection.parameter_bindings\",\"artifact.stage2.template_selection.template_source_checks\",\"artifact.stage2.template_selection.unsupported_bindings\",\"artifact.stage2.template_selection.forbidden_edits\"],\"parallel_group\":0,\"action_type\":\"sacg_constraint_review\",\"expected_artifacts\":[\"strict_template_binding_review.json\",\"numeric_binding_provenance.json\",\"binding_blocker_and_repair_boundary.json\"],\"acceptance_checkers\":[\"template_binding_static_check\",\"parameter_binding_static_check\",\"numeric_policy_check\",\"sacg_static_check\"],\"handoff_required\":true,\"handoff_to\":[\"template_selection.operator_shape_coverage\",\"template_selection.cross_layer_gate\"],\"handoff_rule\":{\"condition\":\"Provide a parameter-by-parameter disposition and source/hash evidence; explicitly preserve unresolved legality errors as blockers.\",\"action\":\"The cross-layer gate consumes the binding audit and determines stage disposition. If the discrepancy requires input, adapter, or template changes, route it through the applicable approval/repair boundary; do not make the change in this review.\",\"acceptance\":\"All bound values must cite authoritative sources; implicit defaults cannot replace available inputs. Candidate-bound lanes/array dimensions may remain for Stage 4, but illegal bindings may not.\"},\"role_profile\":{\"family\":\"numeric_template\",\"capabilities\":[\"bind trusted templates\",\"audit numeric policy\",\"check resource-risk assumptions\"],\"constraint_focus\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.shape.model\",\"constraint.arch.design_space\"],\"mission\":\"Verify strict, traceable parameter binding and legality without relaxing template constraints.\",\"primary_responsibilities\":[\"Audit parameter provenance and legality for selected templates.\",\"Check numeric policy bindings and source/interface evidence.\",\"Separate current blockers from dimensions reserved for later DSE.\"],\"decision_authority\":[\"May report a binding as legal, illegal, or unresolved based on checkable evidence.\",\"May not change numeric policy, model facts, template source, or DSE authority.\"],\"collaboration_interfaces\":[\"Consumes model, numeric, template, and design-space inputs; candidate artifact is debug evidence only.\",\"Produces parameter provenance and bounded blocker/repair findings for the cross-layer gate.\",\"template_binding_static_check, parameter_binding_static_check, and numeric_policy_check accept the relevant evidence.\"],\"out_of_scope\":[\"Changing model dimensions, head counts, numeric policy, or template internals.\",\"Choosing Stage-4 lanes or array dimensions.\",\"Free-form RTL generation.\"]},\"role_assignment\":{\"mission\":\"Verify that every required template parameter is explicitly and legally bound to authoritative model, numeric, or architecture inputs.\",\"primary_responsibilities\":[\"Recheck parameter bindings and legality errors.\",\"Verify current template source and interface evidence.\",\"Mark unsupported changes and bounded repair/approval needs.\"],\"decision_authority\":[\"Can identify a failed or incomplete binding and block promotion on that basis.\",\"Cannot resolve contradictions by guessing or modifying trusted inputs.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.stage2.template_selection as planning/debug evidence only\"],\"produces\":[\"strict_template_binding_review.json\",\"numeric_binding_provenance.json\",\"binding_blocker_and_repair_boundary.json\"],\"downstream_consumers\":[\"template_selection.operator_shape_coverage\",\"template_selection.cross_layer_gate\"],\"acceptance_checkers\":[\"template_binding_static_check\",\"parameter_binding_static_check\",\"numeric_policy_check\",\"sacg_static_check\"]},\"out_of_scope\":[\"Editing templates or model/numeric inputs.\",\"Selecting candidate-bound architecture parameters.\",\"Promoting a failed binding as validated.\"]}},{\"id\":\"template_selection.attention_semantics\",\"agent\":\"attention_semantics_specialist\",\"role\":\"attention semantic binding engineer\",\"title\":\"Verify attention expansion and semantic bindings\",\"objective\":\"Independently verify required attention components and their semantic bindings\u2014including Q/K/V projection, RoPE, GQA head mapping, softmax, output projection, required KV-cache behavior, and causal mask\u2014against authoritative model/configuration evidence and trusted template sources.\",\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.cross_layer.input_consistency\"],\"artifact_focus\":[\"artifact.input.model_config\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection.attention_semantics\",\"artifact.stage2.template_selection.parameter_bindings\",\"artifact.stage2.template_selection.checker_results\"],\"parallel_group\":0,\"action_type\":\"evidence_and_repair_review\",\"expected_artifacts\":[\"attention_semantic_binding_review.json\",\"attention_component_evidence_matrix.json\",\"attention_semantic_blockers.json\"],\"acceptance_checkers\":[\"template_coverage_check\",\"model_config_check\",\"template_binding_static_check\",\"llm_semantic_extraction_check\"],\"handoff_required\":true,\"handoff_to\":[\"template_selection.operator_shape_coverage\",\"template_selection.strict_binding_numeric\",\"template_selection.cross_layer_gate\"],\"handoff_rule\":{\"condition\":\"Hand off a component-by-component evidence matrix and preserve any semantic or shape contradiction as unresolved.\",\"action\":\"The model-shape specialist consumes head-mapping observations, the binding specialist consumes parameter/source findings, and the cross-layer gate consumes the complete attention review.\",\"acceptance\":\"Required components must have trusted selected or embedded coverage and evidence tied to current sources; no missing component may be replaced by free-form RTL.\"},\"role_profile\":{\"family\":\"model_shape\",\"capabilities\":[\"extract model semantics\",\"audit shape and head mapping\",\"track residual/operator order\"],\"constraint_focus\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.template.library\"],\"mission\":\"Establish semantic completeness and trusted template binding for the attention path.\",\"primary_responsibilities\":[\"Check required attention components against model semantics and configuration.\",\"Verify GQA mapping and head-related bindings against authoritative dimensions.\",\"Report missing, optional, or unsupported components explicitly.\"],\"decision_authority\":[\"May classify component coverage and semantic consistency from evidence.\",\"May not change attention semantics or template implementation.\"],\"collaboration_interfaces\":[\"Consumes model configuration, template metadata, and candidate attention evidence as debug evidence only.\",\"Produces a component evidence matrix for shape, binding, and gate reviewers.\",\"template_coverage_check and template_binding_static_check accept the corresponding coverage and binding evidence.\"],\"out_of_scope\":[\"Changing model attention configuration or head dimensions.\",\"Changing template internals or generating RTL.\",\"Making board/runtime or DSE decisions.\"]},\"role_assignment\":{\"mission\":\"Verify that every required attention semantic is represented by a trusted template and correctly bound.\",\"primary_responsibilities\":[\"Review QKV, RoPE, GQA, softmax, output projection, KV-cache scope, and causal mask.\",\"Cross-check attention parameters with model configuration.\",\"Identify unsupported semantics and blockers without proposing silent substitutions.\"],\"decision_authority\":[\"Can report missing or inconsistent attention evidence.\",\"Cannot waive required coverage or alter authoritative model inputs.\"],\"collaboration_interfaces\":{\"consumes\":[\"artifact.input.model_config\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection.attention_semantics as planning/debug evidence only\"],\"produces\":[\"attention_semantic_binding_review.json\",\"attention_component_evidence_matrix.json\",\"attention_semantic_blockers.json\"],\"downstream_consumers\":[\"template_selection.operator_shape_coverage\",\"template_selection.strict_binding_numeric\",\"template_selection.cross_layer_gate\"],\"acceptance_checkers\":[\"template_coverage_check\",\"model_config_check\",\"template_binding_static_check\",\"llm_semantic_extraction_check\"]},\"out_of_scope\":[\"Inventing an attention implementation or relaxing semantics.\",\"Editing templates or model configuration.\",\"Claiming stage readiness from prior checker results alone.\"]}},{\"id\":\"template_selection.cross_layer_gate\",\"agent\":\"verification_repair_specialist\",\"role\":\"cross-layer template evidence gate engineer\",\"title\":\"Reconcile template evidence and determine stage gate\",\"objective\":\"After the parallel reviews, reconcile model, numeric, template, attention, board-memory, runtime, deployment, and input-consistency evidence. Enforce the active SACG contamination barrier and report a stage disposition that preserves concrete blockers and does not mistake downstream obligations for current Stage-2 failures.\",\"constraints\":[\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.cross_layer.input_consistency\",\"constraint.human.boundary\"],\"artifact_focus\":[\"artifact.stage2.template_selection.cross_layer_trace\",\"artifact.stage2.template_selection.checker_results\",\"artifact.stage2.template_selection.errors\",\"artifact.stage2.template_selection.unsupported_bindings\",\"artifact.stage2.template_selection.status\",\"artifact.input.target_board_profile\",\"artifact.input.human_agent_boundary\",\"artifact.stage2.template_selection.operator_coverage_review\",\"artifact.stage2.template_selection.strict_template_binding_review\",\"artifact.stage2.template_selection.attention_semantic_binding_review\",\"artifact.stage2.template_selection contamination barrier\"],\"parallel_group\":1,\"action_type\":\"cross_layer_evidence_gate\",\"expected_artifacts\":[\"template_selection_cross_layer_gate.json\",\"stage2_blocker_and_handoff_disposition.json\",\"sacg_trust_boundary_disposition.json\"],\"acceptance_checkers\":[\"sacg_static_check\",\"sacg_memory_check\",\"stage_artifact_trust_barrier_check\",\"template_binding_static_check\",\"numeric_policy_check\",\"memory_runtime_plan_check\"],\"handoff_required\":true,\"handoff_to\":[\"template_selection_stage_orchestrator\"],\"handoff_rule\":{\"condition\":\"Run only after the three parallel specialist reviews are available.\",\"action\":\"Reconcile evidence and report ready only if applicable current-stage checks pass with no concrete contradiction. The supplied binding failure and active contamination barrier must remain blockers unless revalidated and resolved using trusted inputs. Do not block solely on Stage-4 candidate selection or downstream simulation/synthesis/runtime evidence listed as not-current-stage obligations.\",\"acceptance\":\"The orchestrator consumes the gate report as the stage disposition. Rejected-transition artifacts remain planning/debug evidence; downstream promotion requires trusted, revalidated evidence and successful applicable checkers.\"},\"role_profile\":{\"family\":\"verification_repair\",\"capabilities\":[\"classify evidence\",\"map failures to violated constraints\",\"enforce repair boundaries\"],\"constraint_focus\":[\"constraint.verification.plan\",\"constraint.human.boundary\",\"constraint.cross_layer.input_consistency\"],\"mission\":\"Provide an evidence-grounded, SACG-consistent gate decision across independent template reviews and cross-layer inputs.\",\"primary_responsibilities\":[\"Reconcile specialist findings with current checker evidence and constraint trace.\",\"Enforce trust boundaries and classify current-stage versus downstream obligations.\",\"Map unresolved contradictions to bounded repair or approval boundaries.\"],\"decision_authority\":[\"May classify stage readiness and preserve blockers under the supplied gate policy.\",\"May not waive failures, change model/template/board assumptions, or authorize unapproved repairs.\"],\"collaboration_interfaces\":[\"Consumes all parallel specialist reports, current input evidence, and checker results.\",\"Produces a gate disposition for the stage orchestrator.\",\"sacg_static_check, sacg_memory_check, stage_artifact_trust_barrier_check, and applicable binding/policy checks accept the evidence.\"],\"out_of_scope\":[\"Performing synthesis or deployment evidence generation.\",\"Changing source templates or authoritative inputs.\",\"Treating prior rejected artifacts as validated design inputs.\"]},\"role_assignment\":{\"mission\":\"Reconcile the independently reviewed evidence and issue a bounded stage-gate disposition consistent with SACG trust and closure rules.\",\"primary_responsibilities\":[\"Check cross-layer trace presence and consistency.\",\"Apply the active contamination barrier to the candidate artifact.\",\"Keep the reported parameter-legality failure blocking until resolved and rechecked.\",\"Defer lanes and array-dimension choices to Stage 4.\"],\"decision_authority\":[\"Can recommend ready or blocked based only on current applicable evidence.\",\"Cannot promote a design with an unresolved current-stage contradiction or treat planning evidence as validated.\"],\"collaboration_interfaces\":{\"consumes\":[\"operator_coverage_review.json\",\"strict_template_binding_review.json\",\"attention_semantic_binding_review.json\",\"artifact.input.numeric_policy\",\"artifact.input.target_board_profile\",\"artifact.stage2.template_selection.cross_layer_trace\",\"artifact.stage2.template_selection.checker_results\"],\"produces\":[\"template_selection_cross_layer_gate.json\",\"stage2_blocker_and_handoff_disposition.json\",\"sacg_trust_boundary_disposition.json\"],\"downstream_consumers\":[\"template_selection_stage_orchestrator\"],\"acceptance_checkers\":[\"sacg_static_check\",\"sacg_memory_check\",\"stage_artifact_trust_barrier_check\",\"template_binding_static_check\",\"numeric_policy_check\",\"memory_runtime_plan_check\"]},\"out_of_scope\":[\"Hardware synthesis, simulation, or board deployment.\",\"Repairs that modify trusted templates or authoritative assumptions.\",\"Treating missing downstream evidence as a Stage-2 blocker when the supplied gate policy classifies it as later-stage work.\"]}}]}",
   "reasoning_effort": "medium",
   "schema_version": "spatialaccagent.team_decomposer_record.v0",
   "stream": false,
