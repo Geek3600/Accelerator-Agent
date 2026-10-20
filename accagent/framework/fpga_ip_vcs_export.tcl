@@ -48,6 +48,7 @@ if {[file exists $export_dir]} {
 }
 file mkdir $export_dir
 create_project fpga_ip_vcs_export [file join $export_dir project] -part $part_name -force
+set ip_user_files_dir [file normalize [file join $ip_dir ip_user_files]]
 
 foreach name $requested_modules {
   set xci [file join $ip_dir $name "$name.xci"]
@@ -60,9 +61,10 @@ foreach name $requested_modules {
 generate_target simulation [get_ips]
 foreach name $requested_modules {
   set target_dir [file join $export_dir $name]
+  file mkdir $ip_user_files_dir
   export_simulation -of_objects [get_ips $name] \
-    -directory [file normalize $target_dir] \
-    -ip_user_files_dir [file normalize [file join $ip_dir ip_user_files]] \
+    -directory [file normalize $export_dir] \
+    -ip_user_files_dir $ip_user_files_dir \
     -simulator vcs -force
   set file_info [file join $target_dir vcs file_info.txt]
   if {![file isfile $file_info]} {

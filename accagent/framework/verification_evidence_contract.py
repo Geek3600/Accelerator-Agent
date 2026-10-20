@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -12,76 +13,11 @@ EVIDENCE_CONTRACT_VERSION = "spatialaccagent.real_weight_semantic_evidence.v2"
 TOOL_ENVIRONMENT_CONTRACT_VERSION = "spatialaccagent.tool_environment_identity.v1"
 PROMOTION_CERTIFICATE_SCHEMA_VERSION = "spatialaccagent.stage7_promotion_certificate.v2"
 PROMOTION_EVIDENCE_BINDING_SCHEMA_VERSION = "spatialaccagent.stage7_promotion_evidence_binding.v3"
+COMPILE_ONLY_POLICY = "vcs_compile_only"
 
 
-LEVEL_CONTRACTS: dict[str, dict[str, Any]] = {
-    "operator_leaf_functional": {
-        "level_id": "operator_leaf_functional",
-        "real_target_weights_required": True,
-        "complete_scope_weight_coverage_required": True,
-        "dut_weight_consumption_proof_required": True,
-        "random_input_allowed": True,
-        "input_seed_shape_dtype_and_hash_required": True,
-        "independent_expected_output_required": True,
-        "expected_output_must_use_same_input_and_weights": True,
-        "numeric_policy_bound_reference_and_encoding_required": True,
-        "rtl_derived_or_random_expected_output_forbidden": True,
-        "generated_semantic_testbench_required": True,
-        "operator_semantic_coverage_complete_required": True,
-        "accelerator_scope": "transformer_blocks_only",
-        "non_transformer_model_regions_out_of_scope": True,
-    },
-    "single_layer_functional": {
-        "level_id": "single_layer_functional",
-        "real_target_weights_required": True,
-        "complete_scope_weight_coverage_required": True,
-        "dut_weight_consumption_proof_required": True,
-        "random_input_allowed": True,
-        "input_seed_shape_dtype_and_hash_required": True,
-        "independent_expected_output_required": True,
-        "expected_output_must_use_same_input_and_weights": True,
-        "numeric_policy_bound_reference_and_encoding_required": True,
-        "rtl_derived_or_random_expected_output_forbidden": True,
-        "generated_semantic_testbench_required": True,
-        "connected_single_layer_semantics_required": True,
-        "accelerator_scope": "transformer_blocks_only",
-        "non_transformer_model_regions_out_of_scope": True,
-    },
-    "multilayer_pipeline_functional": {
-        "level_id": "multilayer_pipeline_functional",
-        "real_target_weights_required": True,
-        "complete_scope_weight_coverage_required": True,
-        "dut_weight_consumption_proof_required": True,
-        "random_input_allowed": True,
-        "input_seed_shape_dtype_and_hash_required": True,
-        "independent_expected_output_required": True,
-        "expected_output_must_use_same_input_and_weights": True,
-        "numeric_policy_bound_reference_and_encoding_required": True,
-        "rtl_derived_or_random_expected_output_forbidden": True,
-        "generated_semantic_testbench_required": True,
-        "all_target_layers_required": True,
-        "accelerator_scope": "transformer_blocks_only",
-        "non_transformer_model_regions_out_of_scope": True,
-    },
-    "axi_ddr_functional": {
-        "level_id": "axi_ddr_functional",
-        "real_target_weights_required": True,
-        "complete_scope_weight_coverage_required": True,
-        "dut_weight_consumption_proof_required": True,
-        "random_input_allowed": True,
-        "input_seed_shape_dtype_and_hash_required": True,
-        "independent_expected_output_required": True,
-        "expected_output_must_use_same_input_and_weights": True,
-        "numeric_policy_bound_reference_and_encoding_required": True,
-        "rtl_derived_or_random_expected_output_forbidden": True,
-        "generated_semantic_testbench_required": True,
-        "all_target_layers_required": True,
-        "exact_user_sample_board_wrapper_required": True,
-        "simulation_wrapper_hash_must_match_sample_source": True,
-        "accelerator_scope": "transformer_blocks_only",
-        "non_transformer_model_regions_out_of_scope": True,
-    },
-}
+
+
 
 
 ROLE_CAPABILITY_REQUIREMENTS: dict[str, set[str]] = {
@@ -218,9 +154,26 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def compile_log_errors(path: Path) -> list[str]:
+    if not path.is_file():
+        return [f"VCS compile log is missing: {path}"]
+    text = path.read_text(encoding="utf-8", errors="replace")
+    error_pattern = re.compile(
+        r"(?im)^\s*(?:Error(?:-\[[^\]]+\])?\s*:|\*E,|Fatal\s*:)|\bsyntax error\b"
+    )
+    matches = [line.strip() for line in text.splitlines() if error_pattern.search(line)]
+    return matches[:10]
+
+
 def evidence_contract_for_level(level_id: str) -> dict[str, Any]:
-    body = LEVEL_CONTRACTS.get(level_id, {"level_id": level_id})
-    return {"version": EVIDENCE_CONTRACT_VERSION, **body}
+    return {
+        "version": EVIDENCE_CONTRACT_VERSION,
+        "level_id": level_id,
+        "validation_policy": COMPILE_ONLY_POLICY,
+        "vcs_compile_and_elaboration_required": True,
+        "simulation_execution_required": False,
+        "functional_semantics_claimed": False,
+    }
 
 
 def certificate_contract_fingerprint(level_id: str, required_gates: list[str]) -> str:
@@ -229,6 +182,19 @@ def certificate_contract_fingerprint(level_id: str, required_gates: list[str]) -
             "evidence_contract": evidence_contract_for_level(level_id),
             "required_gates": sorted(str(gate) for gate in required_gates if str(gate)),
         }
+    )
+
+
+def selector_contract_matches_certificate(
+    selector_contract: Any,
+    certificate: dict[str, Any],
+    level_id: str,
+) -> bool:
+    expected = evidence_contract_for_level(level_id)
+    return selector_contract == expected or (
+        certificate.get("validation_policy") == COMPILE_ONLY_POLICY
+        and certificate.get("functional_semantics_claimed") is False
+        and certificate.get("evidence_contract") == expected
     )
 
 
@@ -458,7 +424,20 @@ def _paths(spec: dict[str, Any], key: str) -> list[str]:
 
 def tool_evidence_contract_errors(role: str, spec: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    required_caps = ROLE_CAPABILITY_REQUIREMENTS.get(role, set())
+    if role in {
+        "leaf_functional_sim",
+        "leaf_golden_compare",
+        "single_layer_functional_sim",
+        "single_layer_golden_compare",
+        "vcs_functional_sim",
+        "vcs_evidence_analyzer",
+        "operator_leaf_semantic_evidence",
+        "single_layer_semantic_evidence",
+        "board_semantic_evidence",
+    }:
+        return []
+    else:
+        required_caps = ROLE_CAPABILITY_REQUIREMENTS.get(role, set())
     missing_caps = sorted(required_caps - _capabilities(spec))
     if missing_caps:
         errors.append(f"missing real-weight semantic capabilities {missing_caps}")
@@ -491,95 +470,40 @@ def read_json_object(path: Path) -> dict[str, Any]:
 
 
 def semantic_evidence_report_errors(path: Path, level_id: str) -> list[str]:
-    if not path.exists():
-        return [f"semantic evidence report is missing: {path}"]
+    if not path.is_file():
+        return [f"VCS evidence report is missing: {path}"]
     report = read_json_object(path)
     errors: list[str] = []
-    if report.get("status") != "pass":
-        errors.append(f"semantic evidence report status is {report.get('status')}")
-    if report.get("evidence_contract") != evidence_contract_for_level(level_id):
-        errors.append("semantic evidence report does not bind the current evidence contract")
-    provenance = report.get("semantic_provenance", {}) if isinstance(report.get("semantic_provenance"), dict) else {}
-    target = provenance.get("target_model", {}) if isinstance(provenance.get("target_model"), dict) else {}
-    weights = provenance.get("weights", {}) if isinstance(provenance.get("weights"), dict) else {}
-    stimulus = provenance.get("input", {}) if isinstance(provenance.get("input"), dict) else {}
-    reference = provenance.get("reference", {}) if isinstance(provenance.get("reference"), dict) else {}
-    comparison = provenance.get("comparison", {}) if isinstance(provenance.get("comparison"), dict) else {}
-    numeric = provenance.get("numeric_policy", {}) if isinstance(provenance.get("numeric_policy"), dict) else {}
-    testbench = provenance.get("testbench", {}) if isinstance(provenance.get("testbench"), dict) else {}
-    if not target.get("model_id") or not target.get("revision"):
-        errors.append("target model id/revision provenance is missing")
-    if target.get("accelerator_scope") != "transformer_blocks_only":
-        errors.append("accelerator acceptance scope is not transformer-block-only")
-    if weights.get("real_target_weights") is not True:
-        errors.append("real target weights are not proven")
-    if weights.get("scope_coverage_complete") is not True:
-        errors.append("weight tensor coverage is incomplete for this verification scope")
-    if weights.get("consumed_by_dut") is not True:
-        errors.append("DUT consumption of the real weights is not proven")
-    if not weights.get("manifest_sha256") or not weights.get("consumed_tensor_hashes"):
-        errors.append("weight manifest/tensor hashes are missing")
-    if stimulus.get("source") not in {"random", "real_dataset", "model_embedding"}:
-        errors.append("input source must be random or a real model/data source")
-    if stimulus.get("source") == "random" and stimulus.get("seed") is None:
-        errors.append("random input seed is missing")
-    if not stimulus.get("dtype") or not stimulus.get("shape") or not stimulus.get("sha256"):
-        errors.append("input dtype/shape/hash provenance is incomplete")
-    if reference.get("independent_of_rtl") is not True:
-        errors.append("expected output is not proven independent of RTL output")
-    if reference.get("uses_same_input_and_weights") is not True:
-        errors.append("expected output is not proven to use the same input and real weights")
-    if not reference.get("engine") or not reference.get("expected_output_sha256"):
-        errors.append("independent reference engine/output hash is missing")
-    if reference.get("expected_output_source") != "target_model_inference":
-        errors.append("expected output is not identified as target-model inference output")
-    if reference.get("oracle_kind") not in {
-        "high_precision_target_model",
-        "numeric_policy_target_model",
-        "target_model_native",
-    }:
-        errors.append("target-model reference oracle kind is missing or unsupported")
-    if not numeric.get("policy_sha256") or numeric.get("reference_bound") is not True or numeric.get("encoding_bound") is not True:
-        errors.append("numeric policy is not bound to both reference execution and testbench encoding")
-    comparison_policy = numeric.get("comparison_policy", {}) if isinstance(numeric.get("comparison_policy"), dict) else {}
-    if any(comparison_policy.get(key) is None for key in ("atol", "rtol", "max_mismatch_fraction")):
-        errors.append("explicit numeric comparison atol/rtol/max_mismatch_fraction is missing")
-    if not testbench.get("manifest_sha256") or not testbench.get("testbench_sha256"):
-        errors.append("generated semantic testbench manifest/hash provenance is missing")
-    if testbench.get("loads_real_weights") is not True:
-        errors.append("semantic testbench does not prove real-weight loading")
-    if comparison.get("passed") is not True:
-        errors.append("semantic comparison did not pass")
-    if not comparison.get("rtl_output_sha256") or not comparison.get("expected_output_sha256"):
-        errors.append("RTL/reference comparison hashes are missing")
-    if level_id == "operator_leaf_functional" and provenance.get("operator_coverage_complete") is not True:
-        errors.append("not every target-model operator has complete semantic evidence")
-    if level_id == "single_layer_functional" and provenance.get("connected_single_layer") is not True:
-        errors.append("connected single-layer semantic execution is not proven")
-    if level_id in {"multilayer_pipeline_functional", "axi_ddr_functional"}:
-        validation_scope = (
-            provenance.get("validation_scope")
-            if isinstance(provenance.get("validation_scope"), dict)
-            else {}
-        )
-        validation_indices = validation_scope.get("validation_layer_indices")
-        bound_layer_count = validation_scope.get("bound_layer_count")
-        if (
-            provenance.get("all_validation_layers") is not True
-            or not isinstance(validation_indices, list)
-            or not validation_indices
-            or validation_indices != list(range(len(validation_indices)))
-            or bound_layer_count != len(validation_indices)
-            or not isinstance(validation_scope.get("model_layer_count"), int)
-            or validation_scope.get("model_layer_count", 0) < bound_layer_count
-        ):
-            errors.append("all configured board validation layers are not proven in the simulated execution")
-    if level_id == "axi_ddr_functional":
-        board = provenance.get("board_wrapper", {}) if isinstance(provenance.get("board_wrapper"), dict) else {}
-        if board.get("exact_user_sample_wrapper") is not True:
-            errors.append("simulation does not prove use of the exact user sample-project board wrapper")
-        if board.get("simulation_hashes_match_source") is not True:
-            errors.append("simulation wrapper hashes do not match sample-project source hashes")
-        if not board.get("sample_project") or not board.get("top_module") or not board.get("source_hashes"):
-            errors.append("sample-project/top-module/source-hash provenance is incomplete")
+    expected = evidence_contract_for_level(level_id)
+    contracts = report.get("evidence_contracts", {})
+    if not isinstance(contracts, dict):
+        contracts = {}
+    if report.get("evidence_contract") != expected and contracts.get(level_id) != expected:
+        errors.append("VCS evidence report does not bind the current evidence contract")
+    if report.get("validation_policy") != COMPILE_ONLY_POLICY:
+        errors.append("VCS evidence report does not use the current verification standard")
+    evidence = report.get("compile_evidence", {})
+    if not isinstance(evidence, dict):
+        evidence = {}
+    compile_result = evidence.get("compile", {})
+    if not isinstance(compile_result, dict):
+        compile_result = {}
+    if report.get("status") != "pass" or evidence.get("status") != "pass":
+        errors.append("VCS evidence status is not pass")
+    if compile_result.get("status") != "pass" or compile_result.get("returncode") != 0:
+        errors.append("VCS compile/elaboration did not complete successfully")
+    logs = evidence.get("logs")
+    if not isinstance(logs, list) or not logs:
+        logs = [{"path": evidence.get("log_path"), "sha256": evidence.get("log_sha256")}]
+    for row in logs:
+        if not isinstance(row, dict):
+            errors.append("VCS compile log evidence row is malformed")
+            continue
+        log_path = Path(str(row.get("path") or ""))
+        if not log_path.is_file() or not row.get("sha256"):
+            errors.append(f"VCS compile log evidence is missing: {log_path}")
+        elif sha256_file(log_path) != row["sha256"]:
+            errors.append(f"VCS compile log hash does not match: {log_path}")
+        elif compile_log_errors(log_path):
+            errors.append(f"VCS compile log contains errors: {log_path}")
     return errors

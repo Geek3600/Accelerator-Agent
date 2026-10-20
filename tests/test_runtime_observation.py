@@ -11,12 +11,20 @@ from accagent.framework.runtime_observation import (
 )
 from accagent.framework.simulation_checkpoint import simulation_execution_identity
 from accagent.framework.stage_repair_execute import (
+    IMPLEMENTATION_REPAIR_SCHEMA,
     runtime_only_observation_output,
     validate_adaptive_observation_decision,
 )
 
 
 class RuntimeObservationTest(unittest.TestCase):
+    def test_adaptive_observation_rationale_is_optional_in_execution_schema(self) -> None:
+        required = IMPLEMENTATION_REPAIR_SCHEMA["properties"][
+            "adaptive_observation_decision"
+        ]["required"]
+
+        self.assertNotIn("rationale", required)
+
     def _run_dir(self, root: Path) -> tuple[Path, Path]:
         run_dir = root / "run"
         testbench = (
@@ -212,6 +220,8 @@ endmodule
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir, _ = self._run_dir(Path(temp_dir))
             diagnosis_sha = "a" * 64
+            decision = self._decision(diagnosis_sha)
+            decision.pop("rationale")
             package = {
                 "current_board_vcs_feedback": {
                     "status": "ready",
@@ -238,7 +248,7 @@ endmodule
                 {
                     "status": "ready_to_apply",
                     "file_edits": [],
-                    "adaptive_observation_decision": self._decision(diagnosis_sha),
+                    "adaptive_observation_decision": decision,
                 },
                 package,
                 run_dir,

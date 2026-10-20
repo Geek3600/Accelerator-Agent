@@ -1,0 +1,231 @@
+{
+  "attempt_count": 2,
+  "decision": "retry",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "tool_protocol_check",
+        "required_real_tool_evidence_check"
+      ],
+      "action_type": "prepared_input_error_triage",
+      "consumes": [
+        "prepared_inputs.errors",
+        "input/case_adapter.json",
+        "input/material_index.json",
+        "input/sample_project_index.json",
+        "input/tool_profile.json",
+        "input/tool_availability.json",
+        "input/tool_protocols.json"
+      ],
+      "id": "input_preparation.surface_and_classify_prepared_input_error",
+      "on_failure": "Preserve the exact error and unavailable or conflicting source references as unresolved. Do not suppress the error, synthesize adapter contents, or treat artifact presence as evidence that the adapter is ready.",
+      "produces": [
+        "input_preparation/prepared_input_error_triage.json",
+        "input_preparation/case_adapter_source_evidence.json"
+      ],
+      "rationale": "The stage result exposes one prepared-input error but not its full payload. Retrieve it verbatim and trace the missing adapter claim to the declared tool and sample-project materials; classify only from that evidence.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "sacg_validate",
+        "tool_protocol_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "task_card_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "template_binding_static_check",
+        "parameter_binding_static_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "boundary_contract_check",
+        "deployment_board_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "repair_boundary_check",
+        "verification_plan_static_check",
+        "required_real_tool_evidence_check"
+      ],
+      "action_type": "input_preparation_retry_after_evidence_repair",
+      "consumes": [
+        "input_preparation/prepared_input_error_triage.json",
+        "input_preparation/case_adapter_source_evidence.json",
+        "input/case_adapter.json",
+        "input/task_card.json",
+        "input/model_config.json",
+        "input/numeric_policy.json",
+        "input/template_library.json",
+        "input/template_metadata.json",
+        "input/design_space.json",
+        "input/target_board_profile.json",
+        "input/field_evidence.json",
+        "input/tool_profile.json",
+        "input/tool_availability.json",
+        "input/tool_protocols.json",
+        "input/human_agent_boundary.json",
+        "prepared_inputs.errors"
+      ],
+      "id": "input_preparation.resolve_adapter_and_retry_readiness",
+      "on_failure": "Keep input_preparation incomplete and downstream stages blocked. Record each failing or not-run checker and its source-bound gap; if no real adapter payload is available, request that specific input rather than guessing, changing design constraints, or backtracking hardware stages.",
+      "produces": [
+        "input_preparation/source_and_tool_evidence_audit.json",
+        "input_preparation/model_intake_audit.json",
+        "input_preparation/numeric_template_audit.json",
+        "input_preparation/board_memory_runtime_audit.json",
+        "input_preparation/checker_results.json",
+        "input_preparation/cross_layer_input_readiness.json",
+        "input_preparation/prepared_inputs.json",
+        "input_preparation/stage_result.json"
+      ],
+      "rationale": "After a real adapter is located or supplied, validate its tool declarations and evidence, then rerun the provided input_preparation command and integrate the registered cross-layer audits. The current failure is an input/readiness issue, not a hardware-design failure.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "team_aggregate",
+        "sacg_validate",
+        "sacg_static_check",
+        "task_card_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "template_binding_static_check",
+        "parameter_binding_static_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "boundary_contract_check",
+        "deployment_board_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "repair_boundary_check",
+        "verification_plan_static_check",
+        "real_tool_evidence_check"
+      ]
+    }
+  ],
+  "flow_event_index": 2,
+  "llm_flow_controller": {
+    "agent_executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "prepared_input_error_triage",
+        "consumes": [
+          "prepared_inputs.errors",
+          "input/case_adapter.json",
+          "input/material_index.json",
+          "input/sample_project_index.json",
+          "input/tool_profile.json",
+          "input/tool_availability.json",
+          "input/tool_protocols.json"
+        ],
+        "id": "input_preparation.surface_and_classify_prepared_input_error",
+        "on_failure": "Preserve the exact error and unavailable or conflicting source references as unresolved. Do not suppress the error, synthesize adapter contents, or treat artifact presence as evidence that the adapter is ready.",
+        "produces": [
+          "input_preparation/prepared_input_error_triage.json",
+          "input_preparation/case_adapter_source_evidence.json"
+        ],
+        "rationale": "The stage result exposes one prepared-input error but not its full payload. Retrieve it verbatim and trace the missing adapter claim to the declared tool and sample-project materials; classify only from that evidence.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_validate",
+          "tool_protocol_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "deployment_board_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "input_preparation_retry_after_evidence_repair",
+        "consumes": [
+          "input_preparation/prepared_input_error_triage.json",
+          "input_preparation/case_adapter_source_evidence.json",
+          "input/case_adapter.json",
+          "input/task_card.json",
+          "input/model_config.json",
+          "input/numeric_policy.json",
+          "input/template_library.json",
+          "input/template_metadata.json",
+          "input/design_space.json",
+          "input/target_board_profile.json",
+          "input/field_evidence.json",
+          "input/tool_profile.json",
+          "input/tool_availability.json",
+          "input/tool_protocols.json",
+          "input/human_agent_boundary.json",
+          "prepared_inputs.errors"
+        ],
+        "id": "input_preparation.resolve_adapter_and_retry_readiness",
+        "on_failure": "Keep input_preparation incomplete and downstream stages blocked. Record each failing or not-run checker and its source-bound gap; if no real adapter payload is available, request that specific input rather than guessing, changing design constraints, or backtracking hardware stages.",
+        "produces": [
+          "input_preparation/source_and_tool_evidence_audit.json",
+          "input_preparation/model_intake_audit.json",
+          "input_preparation/numeric_template_audit.json",
+          "input_preparation/board_memory_runtime_audit.json",
+          "input_preparation/checker_results.json",
+          "input_preparation/cross_layer_input_readiness.json",
+          "input_preparation/prepared_inputs.json",
+          "input_preparation/stage_result.json"
+        ],
+        "rationale": "After a real adapter is located or supplied, validate its tool declarations and evidence, then rerun the provided input_preparation command and integrate the registered cross-layer audits. The current failure is an input/readiness issue, not a hardware-design failure.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_validate",
+          "sacg_static_check",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "deployment_board_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check",
+          "real_tool_evidence_check"
+        ]
+      }
+    ],
+    "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/002_input_preparation/llm/flow_controller_agent_result.json",
+    "agent_status": "retry_current_stage",
+    "agent_summary": "Retry input_preparation after resolving and validating the missing case adapter from real supplied materials. The stage command exited 1 and reports that no verification case adapter was provided. This is an input/readiness failure, not evidence of a hardware-design defect, so do not backtrack or promote downstream stages."
+  },
+  "reason": "Retry input_preparation after resolving and validating the missing case adapter from real supplied materials. The stage command exited 1 and reports that no verification case adapter was provided. This is an input/readiness failure, not evidence of a hardware-design defect, so do not backtrack or promote downstream stages.",
+  "sacg_state": null,
+  "schema_version": "spatialaccagent.flow_event_action_record.v0",
+  "source_identities": {
+    "flow_controller_result_sha256": "37499fb37f21c8342fe7d3bfa18b3340b45db779ea0698ae11d613d900348df3",
+    "source_sacg_state_sha256": ""
+  },
+  "source_sacg_state": null,
+  "stage": "input_preparation"
+}

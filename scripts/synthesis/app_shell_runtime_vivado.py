@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Run the real app-shell compute-slot Vivado closure.
+"""Synthesize the generated kernel with external ports for Stage-7 QoR.
 
-The supplied board project is treated as immutable.  This tool makes a remote
-private copy, replaces the selected compute-slot implementation in its OOC
-synthesis run, then runs the copied app-shell's synthesis, implementation,
-reports, and bitstream steps.  Standalone wrapper synthesis is not part of
-this path.
+Board implementation, when requested, uses an immutable sample-project copy
+with its selected compute slot replaced. Kernel synthesis excludes that shell
+so inactive adapter connections cannot trim the measured accelerator.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
@@ -27,6 +26,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from accagent.framework.semantic_simulator import persistent_remote_tool_workdir
+from accagent.framework.dse_ledger import SYNTHESIS_KERNEL_SCOPE
+from scripts.synthesis.compute_slot_adapter_generator import _module_name, _module_port_directions
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -93,6 +94,48 @@ def parse_kv_report(path: Path) -> dict[str, str]:
             key, value = line.split("=", 1)
             result[key.strip()] = value.strip()
     return result
+
+
+def build_kernel_synthesis_tcl(top_module: str, clock_port: str, part: str, clock_target_mhz: float, jobs: int) -> str:
+    return f'''set work_dir [lindex $::argv 1]
+set generated_root [lindex $::argv 3]
+set fp_ip_root [lindex $::argv 4]
+set out_dir [file join $work_dir app_shell_runtime_bitstream]
+file mkdir $out_dir
+create_project -in_memory -part {tcl_quote(part)}
+set_param general.maxThreads {min(jobs, 32)}
+foreach source [lsort [glob -directory $generated_root *.sv]] {{ read_verilog -sv $source }}
+proc collect_xci {{root}} {{
+  set files [glob -nocomplain -types f -directory $root *.xci]
+  foreach child [glob -nocomplain -types d -directory $root *] {{
+    set files [concat $files [collect_xci $child]]
+  }}
+  return $files
+}}
+foreach source [collect_xci $fp_ip_root] {{
+  read_ip $source
+  set_property generate_synth_checkpoint false [get_files $source]
+}}
+if {{[llength [get_ips -quiet]] > 0}} {{ generate_target all [get_ips] }}
+set clock_xdc [file join $work_dir kernel_clock.xdc]
+set fh [open $clock_xdc w]
+puts $fh {{create_clock -name spatialacc_kernel_clock -period {1000.0 / clock_target_mhz:.6f} [get_ports {tcl_quote(clock_port)}]}}
+close $fh
+read_xdc -mode out_of_context $clock_xdc
+synth_design -top {tcl_quote(top_module)} -part {tcl_quote(part)} -mode out_of_context
+if {{[llength [get_cells -hierarchical -filter {{IS_BLACKBOX == 1}}]] > 0}} {{
+  error "Generated kernel synthesis contains unresolved black boxes"
+}}
+report_utilization -hierarchical -hierarchical_depth 9 -file [file join $out_dir app_shell_synth_utilization.rpt]
+report_timing_summary -delay_type max -max_paths 50 -nworst 3 -report_unconstrained -file [file join $out_dir app_shell_synth_timing.rpt]
+set fh [open [file join $work_dir app_shell_runtime_inspection.txt] w]
+puts $fh "kernel_synthesis_completed=1"
+puts $fh "kernel_top={top_module}"
+puts $fh "measurement_scope={SYNTHESIS_KERNEL_SCOPE}"
+puts $fh "integration_ready=1"
+close $fh
+close_project
+'''
 
 
 def build_tcl(
@@ -402,6 +445,18 @@ if {{![run_complete $top_synth]}} {{
   exit 1
 }}
 if {{$execution_mode eq "synth"}} {{
+  open_run $top_synth
+  report_utilization -hierarchical -hierarchical_depth 3 -file [file join $out_dir app_shell_synth_utilization.rpt]
+  report_timing_summary -delay_type max -max_paths 50 -nworst 3 -report_unconstrained -file [file join $out_dir app_shell_synth_timing.rpt]
+  report_power -file [file join $out_dir app_shell_synth_power.rpt]
+  record $fh synthesis_reports_ready [expr {{[file exists [file join $out_dir app_shell_synth_utilization.rpt]] && [file exists [file join $out_dir app_shell_synth_timing.rpt]]}}]
+  if {{![file exists [file join $out_dir app_shell_synth_utilization.rpt]] || ![file exists [file join $out_dir app_shell_synth_timing.rpt]]}} {{
+    record $fh integration_ready 0
+    record $fh integration_blocker "app-shell synthesis reports are missing"
+    close_project
+    close $fh
+    exit 1
+  }}
   record $fh integration_ready 1
   close_project
   close $fh
@@ -440,21 +495,149 @@ exit 0
 def create_source_closure_archive(
     archive: Path,
     generated_vivado_dir: Path,
-    ip_module_manifest: Path,
-    ip_generation_tcl: Path,
+    ip_module_manifest: Path | None,
+    ip_generation_tcl: Path | None,
 ) -> None:
     archive.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive, "w:gz") as bundle:
         bundle.add(generated_vivado_dir, arcname="generated_vivado")
+        chisel_root = generated_vivado_dir.parent
+        scala_sources = chisel_root / "src" / "main" / "scala"
+        runtime_config = chisel_root / "runtime" / "runtime_config.json"
+        if scala_sources.is_dir():
+            bundle.add(scala_sources, arcname="analysis_context/src/main/scala")
+        if runtime_config.is_file():
+            bundle.add(runtime_config, arcname="analysis_context/runtime/runtime_config.json")
         resources = generated_vivado_dir.parent / "src" / "main" / "resources"
         if resources.is_dir():
             bundle.add(resources, arcname="src/main/resources")
-        bundle.add(ip_module_manifest, arcname="fpga_ip_modules.txt")
-        bundle.add(ip_generation_tcl, arcname="gen_xilinx_fp_ips_23.tcl")
+        if ip_module_manifest is not None:
+            bundle.add(ip_module_manifest, arcname="fpga_ip_modules.txt")
+        if ip_generation_tcl is not None:
+            bundle.add(ip_generation_tcl, arcname="gen_xilinx_fp_ips_23.tcl")
+        closure = chisel_root / "simulation" / "fpga_ip_simulation_closure.json"
+        if closure.is_file():
+            bundle.add(closure, arcname="analysis_context/fpga_ip_simulation_closure.json")
+
+
+def requires_generated_ip(generated_vivado_dir: Path) -> bool:
+    """Only an explicit integer closure may omit generated arithmetic IP."""
+    closure_path = generated_vivado_dir.parent / "simulation" / "fpga_ip_simulation_closure.json"
+    if not closure_path.is_file():
+        return True
+    closure = read_json(closure_path)
+    return not (
+        closure.get("status") in {"ready", "pass"}
+        and closure.get("compute_backend") == "integer_dsp"
+        and closure.get("required_ip_modules") == []
+    )
+
+
+def kernel_synthesis_reuse_basis(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Reuse QoR only when every actual synthesis input is unchanged."""
+    if args.mode != "synth" or args.collect_only or not args.out.is_file():
+        return None
+    prior = read_json(args.out)
+    if (prior.get("status") != "pass" or prior.get("mode") != "synth"
+            or prior.get("measurement_scope") != SYNTHESIS_KERNEL_SCOPE
+            or prior.get("collect_only") is True or prior.get("fpga_part") != args.fpga_part
+            or prior.get("clock_target_mhz") != args.clock_target_mhz):
+        return None
+    archive = Path(str(prior.get("closure_archive") or ""))
+    digest = str(prior.get("synthesis_source_archive_sha256") or "")
+    preserved_archive = args.run_dir / "backend_board" / "measurements" / digest / archive.name
+    archive = next((candidate for candidate in (archive, preserved_archive)
+                    if candidate.is_file() and hashlib.sha256(candidate.read_bytes()).hexdigest() == digest), None)
+    reports = args.run_dir / "app_shell_runtime_bitstream"
+    if (archive is None
+            or any(not (reports / name).is_file() or not (reports / name).stat().st_size
+                   for name in ["app_shell_synth_utilization.rpt", "app_shell_synth_timing.rpt"])):
+        return None
+    root = args.generated_vivado_dir.parent
+    current = {}
+    for directory, prefix in [(args.generated_vivado_dir, "generated_vivado"),
+                              (root / "src/main/scala", "analysis_context/src/main/scala"),
+                              (root / "src/main/resources", "src/main/resources")]:
+        if directory.is_dir():
+            current.update({f"{prefix}/{p.relative_to(directory).as_posix()}": p
+                            for p in directory.rglob("*") if p.is_file()})
+    for path, name in [(root / "runtime/runtime_config.json", "analysis_context/runtime/runtime_config.json"),
+                       (root / "simulation/fpga_ip_simulation_closure.json", "analysis_context/fpga_ip_simulation_closure.json")]:
+        if path.is_file():
+            current[name] = path
+    if requires_generated_ip(args.generated_vivado_dir):
+        current["fpga_ip_modules.txt"] = args.ip_module_manifest
+        current["gen_xilinx_fp_ips_23.tcl"] = args.ip_generation_tcl
+    try:
+        with tarfile.open(archive, "r:gz") as bundle:
+            members = {member.name: member for member in bundle.getmembers() if member.isfile()}
+            generator_context = "analysis_context/src/main/scala/"
+            archived_inputs = {name: member for name, member in members.items()
+                               if not name.startswith(generator_context)}
+            current_inputs = {name: path for name, path in current.items()
+                              if not name.startswith(generator_context)}
+            if set(archived_inputs) != set(current_inputs):
+                return None
+            if not all(
+                current_inputs[name].is_file()
+                and bundle.extractfile(member).read() == current_inputs[name].read_bytes()
+                for name, member in archived_inputs.items()
+            ):
+                return None
+            complete_match = set(members) == set(current) and all(
+                current[name].is_file() and bundle.extractfile(member).read() == current[name].read_bytes()
+                for name, member in members.items()
+            )
+            return {
+                "complete_source_payload_matches": complete_match,
+                "synthesized_source_payload_matches": True,
+                "generator_source_context_matches": complete_match,
+                "closure_archive": str(archive),
+            }
+    except (OSError, tarfile.TarError):
+        return None
+
+
+def reusable_kernel_synthesis(args: argparse.Namespace) -> bool:
+    """Reuse a report only when the synthesized implementation payload matches."""
+    return kernel_synthesis_reuse_basis(args) is not None
+
+
+def preserve_successful_synthesis(run_dir: Path, report_path: Path) -> Path | None:
+    """Keep completed measurements before a changed design reuses output paths."""
+    if not report_path.is_file():
+        return None
+    prior = read_json(report_path)
+    digest = str(prior.get("synthesis_source_archive_sha256") or "")
+    if prior.get("status") != "pass" or len(digest) != 64:
+        return None
+    folder = run_dir / "backend_board/measurements" / digest
+    folder.mkdir(parents=True, exist_ok=True)
+    paths = [report_path, *sorted((run_dir / "app_shell_runtime_bitstream").glob("app_shell_synth*.rpt")),
+             run_dir / "backend_board/qor/qor_metrics.json", run_dir / "backend_board/qor/dse_cycle_estimate.json"]
+    archive = Path(str(prior.get("closure_archive") or ""))
+    archive_matches = archive.is_file() and hashlib.sha256(archive.read_bytes()).hexdigest() == digest
+    if archive_matches:
+        paths.append(archive)
+    for path in paths:
+        target = folder / path.name
+        if path.name in {"qor_metrics.json", "dse_cycle_estimate.json"} and path.is_file():
+            metric = read_json(path)
+            metric_digest = metric.get("synthesis_source_archive_sha256") or metric.get("performance_estimation", {}).get("synthesis_source_archive_sha256")
+            if metric_digest != digest:
+                continue
+        if path.suffix == ".rpt" and path.stat().st_mtime_ns > report_path.stat().st_mtime_ns:
+            continue
+        if path.is_file() and not target.exists():
+            shutil.copy2(path, target)
+    if not (folder / "snapshot.json").exists():
+        write_json(folder / "snapshot.json", {"synthesis_source_archive_sha256": digest,
+                   "original_archive_preserved": archive_matches, "measurement_report": report_path.name})
+    return folder
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run real app-shell compute-slot Vivado implementation.")
+    parser = argparse.ArgumentParser(description="Run real app-shell compute-slot Vivado synthesis or implementation.")
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--wrapper-rtl", type=Path, required=True)
@@ -463,14 +646,29 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--ip-generation-tcl", type=Path, required=True)
     parser.add_argument("--fpga-part", required=True)
     parser.add_argument("--clock-target-mhz", type=float, default=None)
-    parser.add_argument("--mode", choices=["preflight", "ooc", "synth", "bitstream"], default="bitstream")
+    parser.add_argument("--mode", choices=["preflight", "ooc", "synth", "bitstream"], default="synth")
+    parser.add_argument("--collect-only", action="store_true")
     parser.add_argument("--out", type=Path, required=True)
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    reuse_basis = kernel_synthesis_reuse_basis(args)
+    if reuse_basis is not None:
+        prior = read_json(args.out)
+        prior.setdefault("original_synthesis_report_sha256", hashlib.sha256(args.out.read_bytes()).hexdigest())
+        prior["closure_archive"] = reuse_basis.pop("closure_archive")
+        prior["synthesis_reuse"] = {
+            "validated_at_unix_ns": time.time_ns(),
+            **reuse_basis,
+            "new_synthesis_executed": False,
+        }
+        write_json(args.out, prior)
+        print("Reusing successful kernel synthesis: synthesis inputs, part, clock and reports match; no Vivado rerun.")
+        return 0
     run_dir = args.run_dir.resolve()
+    preserve_successful_synthesis(run_dir, args.out)
     contract = read_json(args.contract) if args.contract.is_file() else {}
     shell = contract.get("shell_project", {}) if isinstance(contract.get("shell_project"), dict) else {}
     target = contract.get("integration_target", {}) if isinstance(contract.get("integration_target"), dict) else {}
@@ -503,31 +701,54 @@ def main(argv: list[str] | None = None) -> int:
     inspection_path = out_dir / "app_shell_runtime_inspection.txt"
     checks: list[dict[str, Any]] = []
     blockers: list[str] = []
-    for label, path in [
-        ("contract", args.contract),
-        ("compute_slot_adapter", args.wrapper_rtl),
-        ("generated_vivado_dir", args.generated_vivado_dir),
-        ("fp_ip_module_manifest", args.ip_module_manifest),
-        ("fp_ip_generation_tcl", args.ip_generation_tcl),
-    ]:
+    kernel_top = ""
+    kernel_clock = ""
+    if args.mode == "synth":
+        top_path = args.generated_vivado_dir / "GeneratedAxiDdrTop.sv"
+        try:
+            top_text = top_path.read_text(encoding="utf-8")
+            kernel_top = _module_name(top_text)
+            kernel_clock = str(contract.get("generated_core", {}).get("clock_port") or "clock")
+            if _module_port_directions(top_text).get(kernel_clock) != "input":
+                raise ValueError(f"generated top has no input clock port {kernel_clock!r}")
+        except (OSError, ValueError) as exc:
+            blockers.append(str(exc))
+        if not args.clock_target_mhz or args.clock_target_mhz <= 0:
+            blockers.append("kernel synthesis requires a positive --clock-target-mhz")
+    generated_ip_required = requires_generated_ip(args.generated_vivado_dir)
+    required_sources = [("generated_vivado_dir", args.generated_vivado_dir)]
+    if generated_ip_required:
+        required_sources.extend([
+            ("fp_ip_module_manifest", args.ip_module_manifest),
+            ("fp_ip_generation_tcl", args.ip_generation_tcl),
+        ])
+    if args.mode != "synth":
+        required_sources.extend([("contract", args.contract), ("compute_slot_adapter", args.wrapper_rtl)])
+    for label, path in required_sources:
         ok, item = check_file(path, label) if path.is_file() else (path.is_dir() and any(path.iterdir()), {"name": label, "status": "pass" if path.is_dir() and any(path.iterdir()) else "fail", "path": str(path)})
         checks.append(item)
         if not ok:
             blockers.append(f"missing or empty {label}: {path}")
-    for name, value in [("shell_project.vivado_project_path", project_xpr), ("REMOTE_HOST", remote_host), ("VIVADO_BIN", vivado_bin), ("target compute IP", target_ip_name), ("target compute BD cell", target_bd_cell), ("target OOC run", target_ooc_run)]:
-        if not nonblank(value):
-            blockers.append(f"{name} is not configured")
-    if clock_domain_mismatch:
+    if not args.collect_only:
+        required_config = [("REMOTE_HOST", remote_host), ("VIVADO_BIN", vivado_bin)]
+        if args.mode != "synth":
+            required_config.extend([("shell_project.vivado_project_path", project_xpr), ("target compute IP", target_ip_name), ("target compute BD cell", target_bd_cell), ("target OOC run", target_ooc_run)])
+        for name, value in required_config:
+            if not nonblank(value):
+                blockers.append(f"{name} is not configured")
+    if clock_domain_mismatch and args.mode != "synth":
         blockers.append(f"board clock {board_clock!r} does not match compute-slot control clock {control_clock!r}")
     if args.clock_target_mhz is not None and args.clock_target_mhz <= 0:
         blockers.append("--clock-target-mhz must be positive")
 
     commands: list[dict[str, Any]] = []
     inspection: dict[str, str] = {}
-    if not blockers:
+    source_archive_sha256 = None
+    if not blockers and not args.collect_only:
         script_dir.mkdir(parents=True, exist_ok=True)
         tcl_path.write_text(
-            build_tcl(
+            build_kernel_synthesis_tcl(kernel_top, kernel_clock, args.fpga_part, args.clock_target_mhz, jobs)
+            if args.mode == "synth" else build_tcl(
                 target_ip_name,
                 target_ooc_run,
                 jobs,
@@ -537,7 +758,12 @@ def main(argv: list[str] | None = None) -> int:
             ),
             encoding="utf-8",
         )
-        create_source_closure_archive(archive, args.generated_vivado_dir, args.ip_module_manifest, args.ip_generation_tcl)
+        create_source_closure_archive(
+            archive, args.generated_vivado_dir,
+            args.ip_module_manifest if generated_ip_required else None,
+            args.ip_generation_tcl if generated_ip_required else None,
+        )
+        source_archive_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
         ssh_base = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", f"UserKnownHostsFile={remote_known_hosts}", "-p", remote_port, remote_host]
         scp_base = ["scp", "-q", "-P", remote_port, "-o", "StrictHostKeyChecking=no", "-o", f"UserKnownHostsFile={remote_known_hosts}"]
         def run_step(argv: list[str], timeout_sec: int | None) -> bool:
@@ -554,14 +780,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         ready = run_step([*ssh_base, remote_prepare], 300)
         if ready:
+            upload_sources = [tcl_path, archive]
+            if args.mode != "synth":
+                upload_sources.extend([args.contract, args.wrapper_rtl])
             ready = run_step(
-                [*scp_base, str(tcl_path), str(args.contract), str(args.wrapper_rtl), str(archive), f"{remote_host}:{remote_workdir}/"],
+                [*scp_base, *[str(path) for path in upload_sources], f"{remote_host}:{remote_workdir}/"],
                 600,
             )
         if ready:
             remote_unpack = f"cd {shlex.quote(remote_workdir)} && tar -xzf {shlex.quote(archive.name)}"
             ready = run_step([*ssh_base, remote_unpack], 300)
-        if ready and args.mode != "preflight":
+        if ready and args.mode != "preflight" and generated_ip_required:
             remote_ip = (
                 f"cd {shlex.quote(remote_workdir)} && {shlex.quote(vivado_bin)} -mode batch -nojournal -nolog "
                 f"-source gen_xilinx_fp_ips_23.tcl -tclargs fpga_ip_project fpga_ip/vivado_ip {shlex.quote(args.fpga_part)} fpga_ip_modules.txt"
@@ -582,6 +811,11 @@ def main(argv: list[str] | None = None) -> int:
         if ready:
             run_step([*scp_base, f"{remote_host}:{remote_workdir}/app_shell_runtime_inspection.txt", str(inspection_path)], 300)
         inspection = parse_kv_report(inspection_path)
+    elif args.collect_only and not blockers:
+        collected_inspection = inspection_path
+        if not collected_inspection.is_file():
+            collected_inspection = run_dir / "app_shell_runtime_inspection.txt"
+        inspection = parse_kv_report(collected_inspection)
 
     required_artifacts: list[tuple[Path, str]] = []
     if args.mode == "bitstream":
@@ -594,17 +828,27 @@ def main(argv: list[str] | None = None) -> int:
             (out_dir / "app_shell_routed.dcp", "routed_checkpoint"),
             (out_dir / "app_shell.bit", "app_shell_bitstream"),
         ]
+    elif args.mode == "synth":
+        required_artifacts = [
+            (out_dir / "app_shell_synth_utilization.rpt", "synthesis_utilization"),
+            (out_dir / "app_shell_synth_timing.rpt", "synthesis_timing"),
+        ]
     for path, label in required_artifacts:
         ok, item = check_file(path, label)
         checks.append(item)
         if not ok:
             blockers.append(f"missing or empty {label}: {path}")
     if inspection:
-        checks.append({"name": "app_shell_project_opened", "status": "pass" if inspection.get("open_project_status") == "0" else "fail", "summary": inspection.get("open_project_message", "")})
+        if args.mode != "synth":
+            checks.append({"name": "app_shell_project_opened", "status": "pass" if inspection.get("open_project_status") == "0" else "fail", "summary": inspection.get("open_project_message", "")})
         if args.mode == "preflight":
             checks.append({"name": "compute_slot_ooc_binding", "status": "pass" if inspection.get("ooc_adapter_copied") == "1" and inspection.get("ooc_pre_hook_bound") == "1" and inspection.get("ooc_pre_hook_in_script") == "1" else "fail", "summary": inspection.get("ooc_script", "")})
         elif args.mode == "ooc":
             checks.append({"name": "compute_slot_ooc", "status": "pass" if inspection.get("ooc_synthesis_completed") == "1" and inspection.get("ooc_adapter_active") == "1" else "fail", "summary": inspection.get("ooc_status", "")})
+        elif args.mode == "synth":
+            if inspection.get("kernel_synthesis_completed") != "1" or inspection.get("kernel_top") != kernel_top:
+                blockers.append("current generated kernel OOC synthesis evidence is missing")
+            checks.append({"name": "generated_kernel_synthesis", "status": "pass" if not blockers else "fail", "summary": kernel_top})
         else:
             checks.append({"name": "compute_slot_ooc", "status": "pass" if inspection.get("ooc_synthesis_completed") == "1" and inspection.get("ooc_adapter_active") == "1" else "fail", "summary": inspection.get("ooc_status", "")})
             checks.append({"name": "app_shell_top_synthesis", "status": "pass" if "Complete" in inspection.get("top_synth_status", "") else "fail", "summary": inspection.get("top_synth_status", "")})
@@ -618,9 +862,14 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "schema_version": "spatialaccagent.app_shell_runtime_vivado.v1",
         "status": "pass" if not blockers else "fail",
-        "summary": f"real app-shell Vivado {args.mode} flow passed" if not blockers else f"{len(list(dict.fromkeys(blockers)))} blocker(s)",
+        "summary": ("real generated-kernel OOC synthesis passed" if args.mode == "synth" else f"real app-shell Vivado {args.mode} flow passed") if not blockers else f"{len(list(dict.fromkeys(blockers)))} blocker(s)",
         "run_dir": str(run_dir),
         "mode": args.mode,
+        "measurement_scope": SYNTHESIS_KERNEL_SCOPE if args.mode == "synth" else "exact_target_board_app_shell",
+        "synthesis_top": kernel_top if args.mode == "synth" else target_ip_name,
+        "synthesis_boundary": "generated_top_with_external_ports" if args.mode == "synth" else "board_app_shell",
+        "timing_clock": "spatialacc_kernel_clock" if args.mode == "synth" else None,
+        "collect_only": args.collect_only,
         "contract": str(args.contract),
         "compute_slot_adapter": str(args.wrapper_rtl),
         "generated_vivado_dir": str(args.generated_vivado_dir),
@@ -628,6 +877,7 @@ def main(argv: list[str] | None = None) -> int:
         "ip_generation_tcl": str(args.ip_generation_tcl),
         "fpga_part": args.fpga_part,
         "closure_archive": str(archive),
+        "synthesis_source_archive_sha256": source_archive_sha256,
         "out_dir": str(out_dir),
         "tcl": str(tcl_path),
         "remote_host": remote_host,
@@ -637,7 +887,7 @@ def main(argv: list[str] | None = None) -> int:
         "target_ip_name": target_ip_name,
         "target_ooc_run": target_ooc_run,
         "target_bd_cell": target_bd_cell,
-        "clock_port": clock_port,
+        "clock_port": kernel_clock if args.mode == "synth" else clock_port,
         "control_clock": control_clock,
         "clock_target_mhz": args.clock_target_mhz,
         "clock_period_ns": (1000.0 / args.clock_target_mhz) if args.clock_target_mhz else None,
@@ -648,7 +898,7 @@ def main(argv: list[str] | None = None) -> int:
         "acceptance_policy": {
             "preflight": "Pass requires opening a private app-shell copy and patching the selected compute-slot OOC Tcl; it performs no synthesis or implementation.",
             "ooc": "Pass requires real selected compute-slot OOC synthesis with the generated adapter activated; it performs no app-shell top synthesis or implementation.",
-            "synth": "Pass requires real compute-slot OOC and app-shell top synthesis in the private project copy.",
+            "synth": "Pass requires real generated-kernel OOC synthesis with external input/output ports and resolved IP; excludes the sample board shell and unrelated compute slots.",
             "bitstream": "Pass requires real compute-slot OOC synthesis and app-shell implementation reports/bitstream. Timing and QoR are reported as measurements, not a tool-flow completion blocker.",
         }[args.mode],
     }

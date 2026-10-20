@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from accagent.framework.numeric_policy import canonical_dtype
 from accagent.framework.sacg_store import SACGStore
 from accagent.framework.sacg_utils import read_json, write_json
 from accagent.framework.dse_candidates import physical_candidate_tuples
@@ -58,6 +59,9 @@ PARAM_ALIASES = {
     "elem_bits": ["elemBits", "inputBits", "outputBits"],
     "input_bits": ["inputBits"],
     "output_bits": ["outputBits"],
+    "weight_bits": ["weightBits"],
+    "acc_bits": ["accBits"],
+    "integer_mode": ["integerMode"],
     "frac_bits": ["fracBits"],
     "rope_theta": ["ropeTheta", "theta"],
     "causal": ["causal"],
@@ -147,7 +151,7 @@ def sha256_file(path: Path) -> str | None:
 
 
 def dtype_bits(dtype: Any) -> int | None:
-    text = str(dtype or "").strip().upper().replace("_", "")
+    text = canonical_dtype(dtype or "").strip()
     if text in {"FP16", "FLOAT16", "BF16", "BFloat16".upper()}:
         return 16
     if text in {"FP32", "FLOAT32"}:
@@ -469,14 +473,30 @@ def bind_param(
     if param == "elem_bits":
         return numeric_elem_bits(numeric)
     if param == "input_bits":
-        return numeric_bits(numeric, "acc_dtype")
-    if param == "output_bits":
-        if is_decoder_block_op(op):
-            return {
-                **numeric_bits(numeric, "acc_dtype"),
-                "source": "constraint.numeric.policy.default_rules.acc_dtype (decoder block residual stream)",
-            }
+        # Operator activation inputs follow the signed activation stream
+        # policy. INT32 remains reserved for accumulators and bias storage.
         return numeric_bits(numeric, "activation_dtype")
+    if param == "output_bits":
+        # Decoder residual streams carry activations, not accumulators. Keep
+        # INT32 in the Linear accumulator/bias domain and bind the block
+        # ingress, residual path, and egress to the independent activation
+        # width selected by the numeric policy.
+        return numeric_bits(numeric, "activation_dtype")
+    if param == "weight_bits":
+        return numeric_bits(numeric, "weight_dtype")
+    if param == "acc_bits":
+        return numeric_bits(numeric, "acc_dtype")
+    if param == "integer_mode":
+        rules = numeric.get("default_rules", {}) if isinstance(numeric.get("default_rules"), dict) else {}
+        weight = canonical_dtype(rules.get("weight_dtype") or numeric.get("weight_dtype") or "")
+        activation = canonical_dtype(rules.get("activation_dtype") or numeric.get("activation_dtype") or "")
+        accumulator = canonical_dtype(rules.get("acc_dtype") or numeric.get("acc_dtype") or "")
+        value = weight in {"INT4", "I4"} and activation in {"INT8", "I8"} and accumulator in {"INT32", "I32"}
+        return {
+            "value": value,
+            "source": "constraint.numeric.policy.default_rules independent weight/activation/accumulator dtypes",
+            "status": "bound",
+        }
     if param == "frac_bits":
         value = (numeric.get("default_rules") or {}).get("frac_bits") or numeric.get("frac_bits")
         return {
@@ -919,9 +939,15 @@ def build_selection(state: dict[str, Any]) -> dict[str, Any]:
         implementation_contract,
         model_config,
     )
+    numeric_rules = numeric_facts.get("default_rules", {}) if isinstance(numeric_facts.get("default_rules"), dict) else {}
+    policy_weight = canonical_dtype(numeric_rules.get("weight_dtype") or numeric_facts.get("weight_dtype") or "")
+    policy_activation = canonical_dtype(numeric_rules.get("activation_dtype") or numeric_facts.get("activation_dtype") or "")
+    policy_acc = canonical_dtype(numeric_rules.get("acc_dtype") or numeric_facts.get("acc_dtype") or "")
+    selected_backend = "integer_dsp" if policy_weight in {"INT4", "I4"} and policy_activation in {"INT8", "I8"} and policy_acc in {"INT32", "I32"} else "vivado_fp_ip"
     ip_contract = check_fpga_ip_template_contract(
         Path(str(template_facts.get("template_dir") or "")),
         template_facts.get("source_files", []),
+        compute_backend=selected_backend,
     )
     ip_errors = [str(error) for error in ip_contract.get("errors", [])]
     ip_contract["checked_source_hashes"] = {
@@ -1148,6 +1174,9 @@ def select_templates(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     state_path = out_dir / "sacg_state.json"
     report_path = out_dir / "template_selection_report.json"
 
+    from accagent.framework.architecture_implementation import ensure_requested_architecture
+
+    ensure_requested_architecture(run_dir)
     source_data = read_json(source_state)
     selection = build_selection(source_data)
     write_json(selection_path, selection)

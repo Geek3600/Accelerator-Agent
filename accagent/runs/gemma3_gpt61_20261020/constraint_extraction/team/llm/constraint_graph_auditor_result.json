@@ -1,0 +1,183 @@
+{
+  "agent": "constraint_graph_auditor",
+  "duration_sec": 39.26678434002679,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "c291e1627f3d4cb5b5e3351e126588c0",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/team/llm/constraint_graph_auditor_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "constraint_graph_auditor",
+    "approval_required_for": [
+      "Any proposed change to accelerator architecture, pipeline structure, memory layout, numeric policy, or major template selection requires the applicable human approval before adoption.",
+      "Any unresolved human-boundary approval specified by the detailed boundary artifact must be recorded and obtained before adopting the affected delta."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "template_binding_static_check",
+          "repair_boundary_check",
+          "human_boundary_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "prepared_inputs_manifest",
+          "validation_errors",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.field_evidence",
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary"
+        ],
+        "id": "constraint_extraction.audit_candidate_graph",
+        "on_failure": "Record each failed or not_run checker against its relevant constraint and source artifact. Keep the audit incomplete, do not promote the graph, and route any required repair through the responsible specialist without changing golden outputs or relaxing constraints.",
+        "produces": [
+          "constraint_extraction/reviews/candidate_graph_checker_results.json",
+          "constraint_extraction/reviews/consolidated_graph_audit.json"
+        ],
+        "rationale": "The supplied summaries report no validation errors but do not establish reference integrity, template binding, or boundary compliance. Run the registered checks on the current graph and source inputs to produce checker-grounded evidence.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "template_binding_static_check",
+          "repair_boundary_check",
+          "human_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_reference_check",
+          "template_binding_static_check",
+          "repair_boundary_check",
+          "human_boundary_check"
+        ],
+        "action_type": "cross_layer_evidence_reconciliation",
+        "consumes": [
+          "prepared_inputs_manifest",
+          "constraint_extraction/reviews/candidate_graph_checker_results.json",
+          "model/shape review and deltas",
+          "numeric/template review and deltas",
+          "data/memory/runtime review and deltas",
+          "implementation/deployment review and deltas",
+          "verification/boundary review and deltas"
+        ],
+        "id": "constraint_extraction.reconcile_specialist_deltas",
+        "on_failure": "If specialist artifacts, required checker evidence, or detailed completion/non-fallback status cannot be verified, record the affected review as unresolved or not_run and withhold downstream handoff. Do not convert missing detail into a pass or silently rewrite specialist findings.",
+        "produces": [
+          "constraint_extraction/reviews/consolidated_graph_audit.json",
+          "constraint_extraction/proposed_deltas/consolidated_graph_deltas.json"
+        ],
+        "rationale": "The requested specialist findings and deltas are not visible in the supplied summary. Retrieve the detailed run artifacts, reconcile each proposal against source provenance and checker results, and preserve unresolved boundaries rather than inferring approval.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_reference_check",
+          "template_binding_static_check",
+          "repair_boundary_check",
+          "human_boundary_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The candidate summary reports 23 nodes, 16 constraints, 10 edges, and 119 evidence fields, but supplies no edge IDs, node-level evidence references, or evidence provenance. Counts alone do not establish graph integrity or semantic completeness.",
+      "The state summary lists 16 constraints, including the model, shape, numeric, template, architecture, board memory/runtime/deployment, tool, case-adapter, human-boundary, and cross-layer constraints. Their detailed bindings and inter-layer consistency are not visible in the supplied artifact summary.",
+      "The prepared-input summary reports zero errors, and the candidate validation_errors list is empty. These are reported structural facts, not evidence that the named acceptance checkers passed.",
+      "The parallel specialist review artifacts and proposed deltas are not included in the supplied summary. Their absence from this view prevents reconciliation; it does not establish that they are absent from the underlying run.",
+      "The design-team manifest is shown only as a compact field summary. Specialist completion, fallback status, aggregate contents, and approval boundaries therefore remain unverified.",
+      "The authoritative SACG memory truth reports zero active contamination barriers and zero open retry or backtrack requests. No SACG-memory blocker is identified by the supplied truth.",
+      "The hierarchical learning context reports no validated lower-layer certificates. No lower-layer pass or board-level readiness can be inferred."
+    ],
+    "proposed_actions": [
+      "Run the registered SACG reference, static, template-binding, repair-boundary, and human-boundary checks against the current candidate graph and its prepared source inputs; retain checker outputs as evidence and do not edit graph facts to make checks pass.",
+      "Obtain and reconcile the parallel specialist review artifacts and proposed deltas against source inputs and checker evidence. Record each delta as accepted, rejected, or unresolved with its provenance; mark unavailable evidence as not_run rather than as a pass.",
+      "Before downstream handoff, verify specialist completion and non-fallback status from the detailed prepared manifest, preserve the Transformer-only scope, and make unresolved human approval boundaries explicit."
+    ],
+    "risks": [
+      "Without detailed node/edge references and source-linked evidence, stale, dangling, or conflicting graph references cannot be ruled out.",
+      "Model and shape facts may not be consistently bound to numeric policy, data order, template parameters, transfer units, memory plan, runtime contract, implementation, and board facts; the summary does not expose those bindings.",
+      "Template-library and template-metadata compatibility, parameter binding, and design-space compliance remain unresolved until their source-linked details and checker results are reviewed.",
+      "Board memory/runtime/deployment details and exact sample-project wrapper/source identity are not visible here; do not infer they are missing or verified.",
+      "The Transformer-only DUT boundary, excluding embedding/tokenization, final model norm, LM head/logits, and sampling, must be preserved in any specialist delta and acceptance boundary.",
+      "The empty validation-error list and failed-invariant list do not substitute for reference, template-binding, repair-boundary, or human-boundary checker evidence."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_design_graph_summary",
+        "prepared_inputs_manifest",
+        "validation_errors",
+        "model/shape review and deltas",
+        "numeric/template review and deltas",
+        "data/memory/runtime review and deltas",
+        "implementation/deployment review and deltas",
+        "verification/boundary review and deltas"
+      ],
+      "constraints": [
+        "constraint.cross_layer.input_consistency",
+        "constraint.human.boundary",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.case.adapter"
+      ],
+      "edges": [],
+      "nodes": [
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.field_evidence",
+        "artifact.input.task_card",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary"
+      ]
+    },
+    "schema_version": "spatialaccagent.constraint_graph_audit.v0",
+    "stage": "constraint_extraction",
+    "status": "incomplete",
+    "summary": "The supplied summary reports a candidate graph with 23 nodes, 16 constraints, 10 edges, no validation errors, and no failed invariants. It does not expose the graph\u2019s detailed references or the parallel specialists\u2019 findings and proposed deltas, so provenance, template bindings, and cross-layer consistency cannot yet be adjudicated. No pass or downstream-readiness claim is made."
+  },
+  "prompt_bytes": 40313,
+  "prompt_hash": "287f652353c9216463111a984022e29e031482a75e6b03b32ef69505e59a95f7",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.constraint_graph_audit.v0\",\n  \"agent\": \"constraint_graph_auditor\",\n  \"stage\": \"constraint_extraction\",\n  \"status\": \"incomplete\",\n  \"summary\": \"The supplied summary reports a candidate graph with 23 nodes, 16 constraints, 10 edges, no validation errors, and no failed invariants. It does not expose the graph\u2019s detailed references or the parallel specialists\u2019 findings and proposed deltas, so provenance, template bindings, and cross-layer consistency cannot yet be adjudicated. No pass or downstream-readiness claim is made.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"artifact.input.material_index\",\n      \"artifact.input.sample_project_index\",\n      \"artifact.input.field_evidence\",\n      \"artifact.input.task_card\",\n      \"artifact.input.model_config\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"artifact.input.design_space\",\n      \"artifact.input.target_board_profile\",\n      \"artifact.input.tool_profile\",\n      \"artifact.input.tool_availability\",\n      \"artifact.input.tool_protocols\",\n      \"artifact.input.case_adapter\",\n      \"artifact.input.human_agent_boundary\"\n    ],\n    \"edges\": [],\n    \"constraints\": [\n      \"constraint.cross_layer.input_consistency\",\n      \"constraint.human.boundary\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.deployment.board\",\n      \"constraint.tool.profile\",\n      \"constraint.tool.protocols\",\n      \"constraint.case.adapter\"\n    ],\n    \"artifacts\": [\n      \"candidate_design_graph_summary\",\n      \"prepared_inputs_manifest\",\n      \"validation_errors\",\n      \"model/shape review and deltas\",\n      \"numeric/template review and deltas\",\n      \"data/memory/runtime review and deltas\",\n      \"implementation/deployment review and deltas\",\n      \"verification/boundary review and deltas\"\n    ]\n  },\n  \"observations\": [\n    \"The candidate summary reports 23 nodes, 16 constraints, 10 edges, and 119 evidence fields, but supplies no edge IDs, node-level evidence references, or evidence provenance. Counts alone do not establish graph integrity or semantic completeness.\",\n    \"The state summary lists 16 constraints, including the model, shape, numeric, template, architecture, board memory/runtime/deployment, tool, case-adapter, human-boundary, and cross-layer constraints. Their detailed bindings and inter-layer consistency are not visible in the supplied artifact summary.\",\n    \"The prepared-input summary reports zero errors, and the candidate validation_errors list is empty. These are reported structural facts, not evidence that the named acceptance checkers passed.\",\n    \"The parallel specialist review artifacts and proposed deltas are not included in the supplied summary. Their absence from this view prevents reconciliation; it does not establish that they are absent from the underlying run.\",\n    \"The design-team manifest is shown only as a compact field summary. Specialist completion, fallback status, aggregate contents, and approval boundaries therefore remain unverified.\",\n    \"The authoritative SACG memory truth reports zero active contamination barriers and zero open retry or backtrack requests. No SACG-memory blocker is identified by the supplied truth.\",\n    \"The hierarchical learning context reports no validated lower-layer certificates. No lower-layer pass or board-level readiness can be inferred.\"\n  ],\n  \"risks\": [\n    \"Without detailed node/edge references and source-linked evidence, stale, dangling, or conflicting graph references cannot be ruled out.\",\n    \"Model and shape facts may not be consistently bound to numeric policy, data order, template parameters, transfer units, memory plan, runtime contract, implementation, and board facts; the summary does not expose those bindings.\",\n    \"Template-library and template-metadata compatibility, parameter binding, and design-space compliance remain unresolved until their source-linked details and checker results are reviewed.\",\n    \"Board memory/runtime/deployment details and exact sample-project wrapper/source identity are not visible here; do not infer they are missing or verified.\",\n    \"The Transformer-only DUT boundary, excluding embedding/tokenization, final model norm, LM head/logits, and sampling, must be preserved in any specialist delta and acceptance boundary.\",\n    \"The empty validation-error list and failed-invariant list do not substitute for reference, template-binding, repair-boundary, or human-boundary checker evidence.\"\n  ],\n  \"proposed_actions\": [\n    \"Run the registered SACG reference, static, template-binding, repair-boundary, and human-boundary checks against the current candidate graph and its prepared source inputs; retain checker outputs as evidence and do not edit graph facts to make checks pass.\",\n    \"Obtain and reconcile the parallel specialist review artifacts and proposed deltas against source inputs and checker evidence. Record each delta as accepted, rejected, or unresolved with its provenance; mark unavailable evidence as not_run rather than as a pass.\",\n    \"Before downstream handoff, verify specialist completion and non-fallback status from the detailed prepared manifest, preserve the Transformer-only scope, and make unresolved human approval boundaries explicit.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"constraint_extraction.audit_candidate_graph\",\n      \"stage\": \"constraint_extraction\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"The supplied summaries report no validation errors but do not establish reference integrity, template binding, or boundary compliance. Run the registered checks on the current graph and source inputs to produce checker-grounded evidence.\",\n      \"consumes\": [\n        \"candidate_design_graph_summary\",\n        \"prepared_inputs_manifest\",\n        \"validation_errors\",\n        \"artifact.input.material_index\",\n        \"artifact.input.sample_project_index\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.task_card\",\n        \"artifact.input.model_config\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.design_space\",\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.tool_profile\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.tool_protocols\",\n        \"artifact.input.case_adapter\",\n        \"artifact.input.human_agent_boundary\"\n      ],\n      \"produces\": [\n        \"constraint_extraction/reviews/candidate_graph_checker_results.json\",\n        \"constraint_extraction/reviews/consolidated_graph_audit.json\"\n      ],\n      \"tool_roles\": [\n        \"sacg_static_check\",\n        \"sacg_reference_check\",\n        \"template_binding_static_check\",\n        \"repair_boundary_check\",\n        \"human_boundary_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"sacg_reference_check\",\n        \"template_binding_static_check\",\n        \"repair_boundary_check\",\n        \"human_boundary_check\"\n      ],\n      \"on_failure\": \"Record each failed or not_run checker against its relevant constraint and source artifact. Keep the audit incomplete, do not promote the graph, and route any required repair through the responsible specialist without changing golden outputs or relaxing constraints.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"constraint_extraction.reconcile_specialist_deltas\",\n      \"stage\": \"constraint_extraction\",\n      \"action_type\": \"cross_layer_evidence_reconciliation\",\n      \"rationale\": \"The requested specialist findings and deltas are not visible in the supplied summary. Retrieve the detailed run artifacts, reconcile each proposal against source provenance and checker results, and preserve unresolved boundaries rather than inferring approval.\",\n      \"consumes\": [\n        \"prepared_inputs_manifest\",\n        \"constraint_extraction/reviews/candidate_graph_checker_results.json\",\n        \"model/shape review and deltas\",\n        \"numeric/template review and deltas\",\n        \"data/memory/runtime review and deltas\",\n        \"implementation/deployment review and deltas\",\n        \"verification/boundary review and deltas\"\n      ],\n      \"produces\": [\n        \"constraint_extraction/reviews/consolidated_graph_audit.json\",\n        \"constraint_extraction/proposed_deltas/consolidated_graph_deltas.json\"\n      ],\n      \"tool_roles\": [\n        \"team_aggregate\",\n        \"sacg_reference_check\",\n        \"template_binding_static_check\",\n        \"repair_boundary_check\",\n        \"human_boundary_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_reference_check\",\n        \"template_binding_static_check\",\n        \"repair_boundary_check\",\n        \"human_boundary_check\"\n      ],\n      \"on_failure\": \"If specialist artifacts, required checker evidence, or detailed completion/non-fallback status cannot be verified, record the affected review as unresolved or not_run and withhold downstream handoff. Do not convert missing detail into a pass or silently rewrite specialist findings.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any proposed change to accelerator architecture, pipeline structure, memory layout, numeric policy, or major template selection requires the applicable human approval before adoption.\",\n    \"Any unresolved human-boundary approval specified by the detailed boundary artifact must be recorded and obtained before adopting the affected delta.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/team/llm/constraint_graph_auditor_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/team/llm/constraint_graph_auditor_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction.cross-layer constraint graph auditor",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

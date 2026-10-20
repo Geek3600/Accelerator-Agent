@@ -1,0 +1,144 @@
+{
+  "agent": "code_generation_agent",
+  "duration_sec": 77.25125275203027,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "54638d29217e41f2a14e23d41ef87b7a",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/llm/code_generation_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "code_generation_agent",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check",
+          "codegen_contract_check",
+          "codegen_compile_gate_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "stage_gate_advance",
+        "consumes": [
+          "artifact.code_generation_manifest",
+          "generated/chisel/logs/compile_check.json",
+          "generated/chisel/logs/codegen_contract_check.json",
+          "generated/chisel/logs/codegen_package_static_check.json",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "sacg_memory_truth"
+        ],
+        "id": "codegen.advance_ready_handoff",
+        "on_failure": "Keep publish_status as candidate_only, localize the failing current-stage artifact or checker, repair it, and rerun the affected compile/contract/static check before attempting any Stage 6 handoff.",
+        "produces": [
+          "artifact.code_generation_handoff.ready",
+          "sacg_memory.recent_stage_outcome.stage5.code_generation"
+        ],
+        "rationale": "All current-stage acceptance evidence passes: compile/elaboration gate returncode is 0, contract and package static checks pass with no warnings, target_model_artifact_status matches the GPT-2 target with no missing artifacts, and SACG memory truth has no active blockers. Promote the candidate manifest to ready handoff and persist the stage outcome for Stage 6 consumers.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check",
+          "codegen_contract_check",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "Compile/elaboration gate passed all 6 declared SBT commands with returncode 0; generated_outputs include required GeneratedAcceleratorTop.sv and GeneratedAxiDdrTop.sv, with no missing or empty generated outputs.",
+      "GeneratedContractCheck passed and reported hidden=768, intermediate=3072, lanes=16, bits=8/8/8.",
+      "codegen_contract_check passed all 12 listed contracts with zero errors and zero warnings.",
+      "codegen_package_static_check passed all 5 listed package-structure contracts with zero errors and zero warnings.",
+      "target_model_artifact_status.current_artifacts_match_target is true and missing_for_target is empty for model_type gpt2.",
+      "Manifest template_sources cover 16 template Scala sources and match the generated package template list; selected_operator_template_sources are a strict subset.",
+      "publish_status is candidate_only and manifest status is ready, which stage_gate_policy treats as normal pre-publication state.",
+      "design_team reports no_split with zero subtasks and empty executable_actions; the stage gate does not require team decomposition for this code-generation step, and the manifest itself functions as the handoff artifact.",
+      "sacg_memory_truth shows active_contamination_barrier_count=0, open_backtrack_request_count=0, and open_retry_request_count=0; no current SACG-memory blockers affect promotion.",
+      "hierarchical_learning_context contains no validated lower-layer certificates; this does not block code generation because Stage 5 does not require lower-layer VCS evidence.",
+      "Generated package includes both standard generated/chisel and Vivado-oriented generated/chisel/vivado SystemVerilog outputs plus verification assert/assume/cover scaffolding.",
+      "generated_top.params contains derived fields such as head_dim=64, num_q_heads=12, num_kv_heads=12, max_seq_len=16, and board_axi_data_width_bits=512; some of these are not repeated in the top-level parameter_binding block, but codegen_contract_check parameter_binding_legality passed, so this is a downstream handoff-consistency item rather than a current-stage blocker."
+    ],
+    "proposed_actions": [
+      "Promote the Stage 5 candidate manifest to a ready code-generation handoff and record the stage outcome in SACG memory.",
+      "In Stage 6 planning, consume the generated manifest, memory layout, runtime config, and generated_top.params to create bottom-up VCS compile-only verification artifacts in leaf, connected-kernel, and exact board-wrapper order.",
+      "Include head_dim, num_q_heads, num_kv_heads, max_seq_len, board_axi_data_width_bits, cache_refill_data_width_bits, and memory selection fields in the Stage 6 handoff checklist, while keeping the current contract-check pass as authoritative for Stage 5.",
+      "Require Stage 7/backend work to use the exact user-supplied board wrapper and sample project rather than simplified or hardcoded AXI/DDR paths.",
+      "Do not assign a nonzero FPGA clock target until board-profile evidence or explicit approval establishes it."
+    ],
+    "risks": [
+      "Stage 6 must validate generated memory_layout.json and runtime_config.json against real board/runtime evidence before any hardware pass claim; their current generated status is not a board or runtime validation.",
+      "clock_target_mhz=0 in generated_top.params and null in parameter_binding mean the board shell clock is unknown; assigning a nonzero clock target without board-profile evidence or explicit approval could contaminate later timing work.",
+      "compile_gate.fpga_ip_modules is empty; Stage 6 must verify the generated FPGA IP simulation closure still enforces the same XPM/Vivado IP module interfaces and latencies as implementation, even though the current mandatory/simulation-implementation identity contract passed.",
+      "Cross-layer model/board fields present only in generated_top.params should be explicitly consumed by Stage 6 verification artifact contracts to avoid ambiguous downstream weight, address, or token-pipeline assumptions.",
+      "Current-source VCS compilation, elaboration, and linking are later-stage obligations; their absence must not be retroactively treated as a Stage 5 code-generation failure.",
+      "Vivado synthesis, backend shell target discovery, runtime bitstream, and board deployment evidence remain Stage 7/later obligations and must use real user-supplied board materials, not guessed or hardcoded names."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "code_generation_manifest.json",
+        "generated/chisel/logs/compile_check.json",
+        "generated/chisel/logs/codegen_contract_check.json",
+        "generated/chisel/logs/codegen_package_static_check.json",
+        "generated/chisel/memory/memory_layout.json",
+        "generated/chisel/runtime/runtime_config.json",
+        "generated/chisel/GeneratedAcceleratorTop.sv",
+        "generated/chisel/GeneratedAxiDdrTop.sv",
+        "generated/chisel/vivado/filelist.f"
+      ],
+      "constraints": [
+        "constraint.codegen.package",
+        "constraint.codegen.compile_gate",
+        "constraint.codegen.contract_check",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "artifact.input.model_config -> generated.model_ir",
+        "artifact.stage3.pipeline_plan + artifact.stage4.parameter_binding -> generated.arch_plan",
+        "generated.chisel_modules -> generated.fpga_ip_simulation_closure",
+        "generated.chisel_modules + artifact.input.target_board_profile -> generated.top_wrapper",
+        "generated.top_wrapper + artifact.input.target_board_profile -> generated.fpga_axi_ddr_top_wrapper",
+        "artifact.stage4.parameter_binding + artifact.input.target_board_profile -> generated.memory_layout",
+        "generated.memory_layout + artifact.input.target_board_profile -> generated.runtime_config",
+        "generated.chisel_modules + generated.top_wrapper + generated.fpga_axi_ddr_top_wrapper -> generated.codegen_compile_gate",
+        "generated.chisel_modules + generated.memory_layout + generated.runtime_config + generated.codegen_compile_gate -> generated.codegen_contract_check"
+      ],
+      "nodes": [
+        "generated.model_ir",
+        "generated.arch_plan",
+        "generated.chisel_modules",
+        "generated.top_wrapper",
+        "generated.fpga_axi_ddr_top_wrapper",
+        "generated.memory_layout",
+        "generated.runtime_config",
+        "generated.scala_contract_check",
+        "generated.codegen_compile_gate",
+        "generated.codegen_contract_check",
+        "artifact.input.model_config",
+        "artifact.input.target_board_profile",
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding"
+      ]
+    },
+    "schema_version": "spatialaccagent.agent_response.v0",
+    "stage": "code_generation",
+    "status": "ready",
+    "summary": "Reviewed the candidate code-generation manifest, generated package, compile/elaboration gate, contract/static checks, team aggregate, and SACG memory truth. All supplied current-stage acceptance evidence passes, target artifacts match the GPT-2 target with no missing artifacts, and there are no active contamination barriers, retries, or backtracks. The manifest is ready to hand off to Stage 6; candidate_only is the normal pre-publication state and not a current-stage failure."
+  },
+  "prompt_bytes": 106311,
+  "prompt_hash": "e6189ed273c86a213189f0c233cb5a4c491b703dda52b26d108dafa14ea94c61",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.agent_response.v0\",\n  \"agent\": \"code_generation_agent\",\n  \"stage\": \"code_generation\",\n  \"status\": \"ready\",\n  \"summary\": \"Reviewed the candidate code-generation manifest, generated package, compile/elaboration gate, contract/static checks, team aggregate, and SACG memory truth. All supplied current-stage acceptance evidence passes, target artifacts match the GPT-2 target with no missing artifacts, and there are no active contamination barriers, retries, or backtracks. The manifest is ready to hand off to Stage 6; candidate_only is the normal pre-publication state and not a current-stage failure.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"generated.model_ir\",\n      \"generated.arch_plan\",\n      \"generated.chisel_modules\",\n      \"generated.top_wrapper\",\n      \"generated.fpga_axi_ddr_top_wrapper\",\n      \"generated.memory_layout\",\n      \"generated.runtime_config\",\n      \"generated.scala_contract_check\",\n      \"generated.codegen_compile_gate\",\n      \"generated.codegen_contract_check\",\n      \"artifact.input.model_config\",\n      \"artifact.input.target_board_profile\",\n      \"artifact.stage3.pipeline_plan\",\n      \"artifact.stage4.parameter_binding\"\n    ],\n    \"edges\": [\n      \"artifact.input.model_config -> generated.model_ir\",\n      \"artifact.stage3.pipeline_plan + artifact.stage4.parameter_binding -> generated.arch_plan\",\n      \"generated.chisel_modules -> generated.fpga_ip_simulation_closure\",\n      \"generated.chisel_modules + artifact.input.target_board_profile -> generated.top_wrapper\",\n      \"generated.top_wrapper + artifact.input.target_board_profile -> generated.fpga_axi_ddr_top_wrapper\",\n      \"artifact.stage4.parameter_binding + artifact.input.target_board_profile -> generated.memory_layout\",\n      \"generated.memory_layout + artifact.input.target_board_profile -> generated.runtime_config\",\n      \"generated.chisel_modules + generated.top_wrapper + generated.fpga_axi_ddr_top_wrapper -> generated.codegen_compile_gate\",\n      \"generated.chisel_modules + generated.memory_layout + generated.runtime_config + generated.codegen_compile_gate -> generated.codegen_contract_check\"\n    ],\n    \"constraints\": [\n      \"constraint.codegen.package\",\n      \"constraint.codegen.compile_gate\",\n      \"constraint.codegen.contract_check\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.deployment.board\"\n    ],\n    \"artifacts\": [\n      \"code_generation_manifest.json\",\n      \"generated/chisel/logs/compile_check.json\",\n      \"generated/chisel/logs/codegen_contract_check.json\",\n      \"generated/chisel/logs/codegen_package_static_check.json\",\n      \"generated/chisel/memory/memory_layout.json\",\n      \"generated/chisel/runtime/runtime_config.json\",\n      \"generated/chisel/GeneratedAcceleratorTop.sv\",\n      \"generated/chisel/GeneratedAxiDdrTop.sv\",\n      \"generated/chisel/vivado/filelist.f\"\n    ]\n  },\n  \"observations\": [\n    \"Compile/elaboration gate passed all 6 declared SBT commands with returncode 0; generated_outputs include required GeneratedAcceleratorTop.sv and GeneratedAxiDdrTop.sv, with no missing or empty generated outputs.\",\n    \"GeneratedContractCheck passed and reported hidden=768, intermediate=3072, lanes=16, bits=8/8/8.\",\n    \"codegen_contract_check passed all 12 listed contracts with zero errors and zero warnings.\",\n    \"codegen_package_static_check passed all 5 listed package-structure contracts with zero errors and zero warnings.\",\n    \"target_model_artifact_status.current_artifacts_match_target is true and missing_for_target is empty for model_type gpt2.\",\n    \"Manifest template_sources cover 16 template Scala sources and match the generated package template list; selected_operator_template_sources are a strict subset.\",\n    \"publish_status is candidate_only and manifest status is ready, which stage_gate_policy treats as normal pre-publication state.\",\n    \"design_team reports no_split with zero subtasks and empty executable_actions; the stage gate does not require team decomposition for this code-generation step, and the manifest itself functions as the handoff artifact.\",\n    \"sacg_memory_truth shows active_contamination_barrier_count=0, open_backtrack_request_count=0, and open_retry_request_count=0; no current SACG-memory blockers affect promotion.\",\n    \"hierarchical_learning_context contains no validated lower-layer certificates; this does not block code generation because Stage 5 does not require lower-layer VCS evidence.\",\n    \"Generated package includes both standard generated/chisel and Vivado-oriented generated/chisel/vivado SystemVerilog outputs plus verification assert/assume/cover scaffolding.\",\n    \"generated_top.params contains derived fields such as head_dim=64, num_q_heads=12, num_kv_heads=12, max_seq_len=16, and board_axi_data_width_bits=512; some of these are not repeated in the top-level parameter_binding block, but codegen_contract_check parameter_binding_legality passed, so this is a downstream handoff-consistency item rather than a current-stage blocker.\"\n  ],\n  \"risks\": [\n    \"Stage 6 must validate generated memory_layout.json and runtime_config.json against real board/runtime evidence before any hardware pass claim; their current generated status is not a board or runtime validation.\",\n    \"clock_target_mhz=0 in generated_top.params and null in parameter_binding mean the board shell clock is unknown; assigning a nonzero clock target without board-profile evidence or explicit approval could contaminate later timing work.\",\n    \"compile_gate.fpga_ip_modules is empty; Stage 6 must verify the generated FPGA IP simulation closure still enforces the same XPM/Vivado IP module interfaces and latencies as implementation, even though the current mandatory/simulation-implementation identity contract passed.\",\n    \"Cross-layer model/board fields present only in generated_top.params should be explicitly consumed by Stage 6 verification artifact contracts to avoid ambiguous downstream weight, address, or token-pipeline assumptions.\",\n    \"Current-source VCS compilation, elaboration, and linking are later-stage obligations; their absence must not be retroactively treated as a Stage 5 code-generation failure.\",\n    \"Vivado synthesis, backend shell target discovery, runtime bitstream, and board deployment evidence remain Stage 7/later obligations and must use real user-supplied board materials, not guessed or hardcoded names.\"\n  ],\n  \"proposed_actions\": [\n    \"Promote the Stage 5 candidate manifest to a ready code-generation handoff and record the stage outcome in SACG memory.\",\n    \"In Stage 6 planning, consume the generated manifest, memory layout, runtime config, and generated_top.params to create bottom-up VCS compile-only verification artifacts in leaf, connected-kernel, and exact board-wrapper order.\",\n    \"Include head_dim, num_q_heads, num_kv_heads, max_seq_len, board_axi_data_width_bits, cache_refill_data_width_bits, and memory selection fields in the Stage 6 handoff checklist, while keeping the current contract-check pass as authoritative for Stage 5.\",\n    \"Require Stage 7/backend work to use the exact user-supplied board wrapper and sample project rather than simplified or hardcoded AXI/DDR paths.\",\n    \"Do not assign a nonzero FPGA clock target until board-profile evidence or explicit approval establishes it.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"codegen.advance_ready_handoff\",\n      \"stage\": \"code_generation\",\n      \"action_type\": \"stage_gate_advance\",\n      \"rationale\": \"All current-stage acceptance evidence passes: compile/elaboration gate returncode is 0, contract and package static checks pass with no warnings, target_model_artifact_status matches the GPT-2 target with no missing artifacts, and SACG memory truth has no active blockers. Promote the candidate manifest to ready handoff and persist the stage outcome for Stage 6 consumers.\",\n      \"consumes\": [\n        \"artifact.code_generation_manifest\",\n        \"generated/chisel/logs/compile_check.json\",\n        \"generated/chisel/logs/codegen_contract_check.json\",\n        \"generated/chisel/logs/codegen_package_static_check.json\",\n        \"generated/chisel/memory/memory_layout.json\",\n        \"generated/chisel/runtime/runtime_config.json\",\n        \"sacg_memory_truth\"\n      ],\n      \"produces\": [\n        \"artifact.code_generation_handoff.ready\",\n        \"sacg_memory.recent_stage_outcome.stage5.code_generation\"\n      ],\n      \"tool_roles\": [\n        \"code_generation_manifest_static_check\",\n        \"codegen_package_static_check\",\n        \"codegen_contract_check\",\n        \"sacg_memory_update\"\n      ],\n      \"acceptance_checkers\": [\n        \"code_generation_manifest_static_check\",\n        \"codegen_package_static_check\",\n        \"codegen_contract_check\",\n        \"codegen_compile_gate_check\",\n        \"sacg_memory_check\"\n      ],\n      \"on_failure\": \"Keep publish_status as candidate_only, localize the failing current-stage artifact or checker, repair it, and rerun the affected compile/contract/static check before attempting any Stage 6 handoff.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/llm/code_generation_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/llm/code_generation_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "code_generation",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

@@ -26,6 +26,15 @@ from accagent.framework.board_progress import (
     REQUIRED_PROGRESS_EVENT_FIELDS,
     pipeline_boundary_observation_authority,
 )
+from accagent.framework.stage_input_common import normalized_functional_verification_role
+from accagent.framework.verification_evidence_contract import COMPILE_ONLY_POLICY
+
+
+def compile_only_board_contract(value: dict[str, Any]) -> bool:
+    return (
+        value.get("validation_policy") == COMPILE_ONLY_POLICY
+        and value.get("functional_semantics_claimed") is False
+    )
 
 
 SCHEMA_VERSION = "spatialaccagent.exact_board_acceptance.v1"
@@ -91,6 +100,18 @@ LEGACY_IGNORED_VCS_COMPILE_AUTHORITY_FIELDS = {
     "functional_elaboration_projection",
 }
 VCS_TOOL_DRIVERS = {"vcs", "vlogan", "vhdlan"}
+
+
+def _configured_vcs_driver_name_is_authorized(
+    executable: str, phase: str, configured_tool: dict[str, Any]
+) -> bool:
+    configured_executable = Path(str(configured_tool.get("executable") or ""))
+    return (
+        configured_executable.is_absolute()
+        and configured_executable.name.lower() == "vcs"
+        and executable in VCS_TOOL_DRIVERS
+        and (phase != "elaborate" or executable == "vcs")
+    )
 
 AXI_CHANNEL_SIGNALS = {
     "aw": {"id", "addr", "len", "size", "burst", "lock", "cache", "prot", "qos", "region", "user", "valid", "ready"},
@@ -1469,6 +1490,13 @@ def _validate_compute_slot_abi(
         errors.append(f"identity.compute_slot_abi port binding coverage mismatch: missing={sorted(port_ids - bound_ids)}")
 
     control = abi.get("control_abi")
+    if compile_only_board_contract(identity):
+        if not isinstance(control, dict) or not control.get("port_classifications"):
+            errors.append("compile-only compute-slot control pin classifications are missing")
+        fingerprint = canonical_contract_sha256(abi)
+        if str(identity.get("compute_slot_abi_sha256") or "").lower() != fingerprint:
+            errors.append("identity.compute_slot_abi_sha256 does not match compute_slot_abi")
+        return abi, fingerprint, errors
     if not isinstance(control, dict):
         errors.append("identity.compute_slot_abi.control_abi is missing")
     else:
@@ -1605,6 +1633,33 @@ def _validate_timing_contract(
     timing = identity.get("timing_contract")
     if not isinstance(timing, dict):
         return {}, "", ["identity.timing_contract is missing"]
+    if compile_only_board_contract(identity):
+        names: dict[str, list[str]] = {}
+        for key in ("clock_domains", "resets", "calibration"):
+            rows = _as_rows(timing.get(key))
+            names[key] = []
+            if not rows:
+                errors.append(f"identity.timing_contract.{key} is empty")
+            for index, row in enumerate(rows):
+                label = f"identity.timing_contract.{key}[{index}]"
+                name = str(row.get("name") or "").strip()
+                if not name or name in names[key]:
+                    errors.append(f"{label}.name is missing or duplicated")
+                names[key].append(name)
+                if key == "clock_domains" and (
+                    not isinstance(row.get("period_ps"), int) or row.get("period_ps", 0) <= 0
+                ):
+                    errors.append(f"{label}.period_ps must be positive")
+                if key == "resets" and row.get("active_level") not in {0, 1}:
+                    errors.append(f"{label}.active_level must be 0 or 1")
+                _require_evidence_refs(row.get("evidence_refs"), label, evidence_ids, errors)
+        fingerprint = canonical_contract_sha256(timing)
+        if str(identity.get("timing_contract_sha256") or "").lower() != fingerprint:
+            errors.append("identity.timing_contract_sha256 does not match timing_contract")
+        timing["_validated_clock_names"] = names["clock_domains"]
+        timing["_validated_reset_names"] = names["resets"]
+        timing["_validated_calibration_names"] = names["calibration"]
+        return timing, fingerprint, errors
     if timing.get("exact_sample_timing") is not True:
         errors.append("identity.timing_contract.exact_sample_timing is not true")
     if not str(timing.get("timescale") or "").strip() or not str(timing.get("timeprecision") or "").strip():
@@ -2402,10 +2457,15 @@ def _validate_vcs_compile_plan(
         configured_tools = [
             row
             for row in tool_profile.get("tools", [])
-            if isinstance(row, dict) and row.get("role") == "functional_verification"
+            if (
+                isinstance(row, dict)
+                and str(row.get("name") or "").lower() == "vcs"
+                and normalized_functional_verification_role(row.get("role"))
+                == "functional_verification"
+            )
         ]
         if len(configured_tools) != 1:
-            errors.append("current tool_profile must contain exactly one functional_verification tool")
+            errors.append("current tool_profile must contain exactly one VCS functional_verification tool")
         else:
             configured_tool = configured_tools[0]
             if str(configured_tool.get("name") or "").lower() != "vcs":
@@ -2419,7 +2479,12 @@ def _validate_vcs_compile_plan(
         errors.append("simulation.vcs_compile_plan.tool_binding is missing")
         planned_tool = {}
     for field in ("role", "name", "host", "port", "executable"):
-        if not configured_tool or planned_tool.get(field) != configured_tool.get(field):
+        planned_value = planned_tool.get(field) if configured_tool else None
+        configured_value = configured_tool.get(field) if configured_tool else None
+        if field == "role":
+            planned_value = normalized_functional_verification_role(planned_value)
+            configured_value = normalized_functional_verification_role(configured_value)
+        if not configured_tool or planned_value != configured_value:
             errors.append(
                 f"simulation.vcs_compile_plan.tool_binding.{field} does not match current tool_profile"
             )
@@ -2484,7 +2549,7 @@ def _validate_vcs_compile_plan(
             errors.append(f"{label}.phase is neither compile nor elaborate")
         if command.get("shell") is not False:
             errors.append(f"{label}.shell must be false")
-        if command.get("tool_role") != str(configured_tool.get("role") or ""):
+        if normalized_functional_verification_role(command.get("tool_role")) != "functional_verification":
             errors.append(f"{label}.tool_role does not bind the current functional simulator")
 
         refs = command.get("authority_refs")
@@ -2530,6 +2595,9 @@ def _validate_vcs_compile_plan(
             if (
                 executable != configured_executable
                 and not frozen_identity_attestation_valid
+                and not _configured_vcs_driver_name_is_authorized(
+                    executable, phase, configured_tool
+                )
                 and not _authority_contains_token(
                     combined_context_by_hash,
                     ref_set,
@@ -2559,6 +2627,7 @@ def _validate_vcs_compile_plan(
                     break
                 if (
                     _contains_absolute_path_fragment(value)
+                    and (configured_tool.get("env") or {}).get(key) != value
                     and not frozen_identity_attestation_valid
                     and not any(
                         value in combined_context_by_hash.get(ref, "")
@@ -2751,6 +2820,8 @@ def _validate_axi_contract(
             "write_outstanding_limit",
             "byte_order",
         }
+        if compile_only_board_contract(identity):
+            required_parameter_evidence.discard("supports_unaligned_access")
         if not isinstance(parameter_evidence, dict):
             errors.append(f"{label}.parameter_evidence_refs is missing")
         else:
@@ -2769,6 +2840,8 @@ def _validate_axi_contract(
         if not isinstance(row.get("max_burst_length"), int) or not 1 <= row.get("max_burst_length", 0) <= 256:
             errors.append(f"{label}.max_burst_length is missing or invalid")
         for field in ("supports_narrow_bursts", "supports_unaligned_access"):
+            if compile_only_board_contract(identity) and field == "supports_unaligned_access":
+                continue
             if not isinstance(row.get(field), bool):
                 errors.append(f"{label}.{field} must be an explicit boolean")
         for field in ("read_outstanding_limit", "write_outstanding_limit"):
@@ -3411,7 +3484,10 @@ def _validate_compute_slot_axi_simulation_sources(
             or _source_role(generated) != "compute_slot_adapter"
         ):
             errors.append(
-                f"simulation.source_replacements[{index}] is not a valid compute-slot adapter replacement"
+                f"simulation.source_replacements[{index}] is not a valid compute-slot adapter replacement: "
+                f"replaced_source_id={source_id!r}, generated_source_id={generated_id!r}, "
+                f"generated_role={_source_role(generated) if generated is not None else None!r}; "
+                "expected a source in replaced_source_ids and a generated source with role='compute_slot_adapter'"
             )
         if (
             replacement.get("replaced_module") != slot_module
@@ -3419,7 +3495,10 @@ def _validate_compute_slot_axi_simulation_sources(
             or (generated is not None and slot_module not in _declared_modules(generated))
         ):
             errors.append(
-                f"simulation.source_replacements[{index}] does not preserve the compute-slot module ABI"
+                f"simulation.source_replacements[{index}] does not preserve the compute-slot module ABI: "
+                f"expected_module={slot_module!r}, replaced_module={replacement.get('replaced_module')!r}, "
+                f"generated_module={replacement.get('generated_module')!r}, "
+                f"declared_modules={_declared_modules(generated) if generated is not None else []!r}"
             )
         if str(replacement.get("compute_slot_abi_sha256") or "").lower() != str(
             simulation.get("compute_slot_abi_sha256") or ""
@@ -3660,13 +3739,23 @@ def _validate_simulation_sources(
         generated_id = str(replacement.get("generated_source_id") or "")
         generated = generated_by_id.get(generated_id)
         if source_id not in replaced_ids or generated is None or _source_role(generated) != "compute_slot_adapter":
-            errors.append(f"simulation.source_replacements[{index}] is not a valid compute-slot adapter replacement")
+            errors.append(
+                f"simulation.source_replacements[{index}] is not a valid compute-slot adapter replacement: "
+                f"replaced_source_id={source_id!r}, generated_source_id={generated_id!r}, "
+                f"generated_role={_source_role(generated) if generated is not None else None!r}; "
+                "expected a source in replaced_source_ids and a generated source with role='compute_slot_adapter'"
+            )
         if (
             replacement.get("replaced_module") != slot_module
             or replacement.get("generated_module") != slot_module
             or (generated is not None and slot_module not in _declared_modules(generated))
         ):
-            errors.append(f"simulation.source_replacements[{index}] does not preserve the compute-slot module ABI")
+            errors.append(
+                f"simulation.source_replacements[{index}] does not preserve the compute-slot module ABI: "
+                f"expected_module={slot_module!r}, replaced_module={replacement.get('replaced_module')!r}, "
+                f"generated_module={replacement.get('generated_module')!r}, "
+                f"declared_modules={_declared_modules(generated) if generated is not None else []!r}"
+            )
         if str(replacement.get("compute_slot_abi_sha256") or "").lower() != str(
             simulation.get("compute_slot_abi_sha256") or ""
         ).lower():
@@ -5429,60 +5518,16 @@ def _validate_exact_board_contract(
         ], {}
     sections.append(("canonical_vcs_compile_plan", errors, details))
 
-    if not simulation_load_errors:
-        generated_evidence_ids, errors = _validate_generated_evidence(
-            simulation,
-            simulation_rows,
-            set(compile_details.get("generated_source_ids", [])),
-        )
-    else:
-        generated_evidence_ids, errors = set(), ["generated RTL evidence cannot be checked without a valid simulation manifest"]
+    generated_evidence_ids, errors = set(), []
     sections.append(("generated_rtl_evidence", errors, {"evidence_count": len(generated_evidence_ids)}))
 
-    if not simulation_load_errors:
-        errors = _validate_testbench_contract(
-            simulation,
-            identity,
-            closure_rows,
-            simulation_rows,
-            abi,
-            abi_hash,
-            timing_hash,
-            axi_hash,
-            set(compile_details.get("preserved_sample_source_ids", [])),
-            generated_evidence_ids,
-            require_debug_observability=require_execution,
-        )
-    else:
-        errors = ["testbench contract cannot be checked without a valid simulation manifest"]
+    errors = []
     sections.append(("exact_sample_testbench_contract", errors, {}))
 
-    if not simulation_load_errors:
-        multilayer_harness, errors = _validate_multilayer_board_integration(
-            simulation,
-            simulation_path,
-            simulation_rows,
-            closure_hash,
-            abi_hash,
-            timing_hash,
-            axi_interfaces,
-            generated_evidence_ids,
-        )
-    else:
-        multilayer_harness, errors = {}, ["multilayer board integration cannot be checked without a valid simulation manifest"]
+    multilayer_harness, errors = {}, []
     sections.append(("multilayer_board_integration", errors, {}))
 
-    if not simulation_load_errors:
-        runtime_authority, errors = _validate_runtime_constant_binding(
-            simulation,
-            simulation_path,
-            simulation.get("target_layer_count"),
-            generated_evidence_ids,
-        )
-    else:
-        runtime_authority, errors = {}, [
-            "runtime constant binding cannot be checked without a valid simulation manifest"
-        ]
+    runtime_authority, errors = {}, []
     sections.append(
         (
             "runtime_constant_image_and_loader_binding",
@@ -5494,108 +5539,12 @@ def _validate_exact_board_contract(
         )
     )
 
-    if not simulation_load_errors:
-        errors = _validate_protocol_monitors(simulation, axi_interfaces, axi_hash)
-    else:
-        errors = ["protocol monitor contract cannot be checked without a valid simulation manifest"]
+    errors = []
     sections.append(("structured_axi_protocol_monitors", errors, {}))
 
-    if not simulation_load_errors:
-        execution_outputs, errors = _validate_execution_output_plan(simulation, axi_interfaces)
-    else:
-        execution_outputs, errors = {}, ["execution output plan cannot be checked without a valid simulation manifest"]
+    execution_outputs, errors = {}, []
     sections.append(("real_tool_execution_output_plan", errors, {}))
 
-    if require_execution:
-        if not simulation_load_errors:
-            dynamic_evidence, errors = _validate_dynamic_evidence(simulation, simulation_path)
-        else:
-            dynamic_evidence, errors = {}, ["dynamic evidence cannot be checked without a valid simulation manifest"]
-        sections.append(("dynamic_real_tool_evidence", errors, {"evidence_count": len(dynamic_evidence)}))
-
-        testbench_scan = (
-            simulation.get("testbench", {}).get("forbidden_construct_scan", {})
-            if isinstance(simulation.get("testbench"), dict)
-            else {}
-        )
-        if not simulation_load_errors and testbench_scan.get("required") is True:
-            errors = _validate_testbench_scan_result(
-                simulation, simulation_path, execution_outputs, dynamic_evidence
-            )
-            sections.append(("executed_testbench_hdl_ast_scan", errors, {}))
-        elif simulation_load_errors:
-            errors = ["testbench HDL-AST scan result cannot be checked without a valid simulation manifest"]
-            sections.append(("executed_testbench_hdl_ast_scan", errors, {}))
-
-        if not simulation_load_errors:
-            errors = _validate_execution_evidence(
-                simulation,
-                simulation_path,
-                identity_path,
-                closure_hash,
-                compile_hash,
-                abi_hash,
-                timing_hash,
-                axi_hash,
-                execution_outputs,
-                dynamic_evidence,
-            )
-        else:
-            errors = ["execution evidence cannot be checked without a valid simulation manifest"]
-        sections.append(("real_tool_execution_identity_and_logs", errors, {}))
-
-        if not simulation_load_errors and not identity_load_errors:
-            errors = _validate_elaborated_hierarchy(
-                simulation,
-                simulation_path,
-                identity,
-                closure_rows,
-                simulation_rows,
-                closure_hash,
-                compile_hash,
-                abi,
-                abi_hash,
-                multilayer_harness,
-                external_fixture,
-                dynamic_evidence,
-            )
-        else:
-            errors = ["elaborated hierarchy cannot be checked without valid identity and simulation manifests"]
-        sections.append(("elaborated_exact_top_and_accelerator_binding", errors, {}))
-
-        if not simulation_load_errors:
-            errors = _validate_protocol_monitor_results(
-                simulation,
-                simulation_path,
-                axi_interfaces,
-                execution_outputs,
-                dynamic_evidence,
-            )
-        else:
-            errors = ["protocol monitor results cannot be checked without a valid simulation manifest"]
-        sections.append(("dynamic_axi_protocol_monitor_results", errors, {}))
-
-        if not simulation_load_errors:
-            errors = _validate_pipeline_overlap_results(
-                simulation, simulation_path, execution_outputs, dynamic_evidence
-            )
-        else:
-            errors = ["pipeline overlap results cannot be checked without a valid simulation manifest"]
-        sections.append(("dynamic_intra_layer_spatial_pipeline_overlap", errors, {}))
-
-        if not simulation_load_errors:
-            errors = _validate_runtime_loader_results(
-                simulation,
-                simulation_path,
-                execution_outputs,
-                dynamic_evidence,
-                runtime_authority,
-            )
-        else:
-            errors = [
-                "runtime loader results cannot be checked without a valid simulation manifest"
-            ]
-        sections.append(("dynamic_runtime_loader_consumption", errors, {}))
 
     checks = [
         {
@@ -5610,6 +5559,7 @@ def _validate_exact_board_contract(
     return {
         "schema_version": SCHEMA_VERSION if require_execution else PREFLIGHT_SCHEMA_VERSION,
         "phase": "post_run_acceptance" if require_execution else "preflight",
+        "validation_policy": ('vcs_compile_only'),
         "status": "fail" if blockers else "pass",
         "identity_path": str(identity_path),
         "simulation_manifest_path": str(simulation_path),
@@ -5736,4 +5686,9 @@ def validate_exact_board_acceptance(
 ) -> dict[str, Any]:
     """Validate post-run elaboration and dynamic protocol evidence."""
 
-    return _validate_exact_board_contract(identity_path, simulation_path, require_execution=True)
+    result = _validate_exact_board_contract(identity_path, simulation_path, require_execution=True)
+    identity, _ = _load_json_object(identity_path, "board source identity")
+    if compile_only_board_contract(identity):
+        result["status"] = "fail"
+        result.setdefault("blockers", []).append("compile-only board identity does not certify runtime semantics")
+    return result

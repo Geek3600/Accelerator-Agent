@@ -84,6 +84,7 @@ BUILTIN_SEMANTIC_ADAPTERS = {
     "gpt2": Path("accagent/framework/case_adapters/gpt2_transformer_block.json"),
     "llama": Path("accagent/framework/case_adapters/llama_transformer_block.json"),
     "qwen2": Path("accagent/framework/case_adapters/qwen2_transformer_block.json"),
+    "gemma3_text": Path("accagent/framework/case_adapters/gemma3_text_transformer_block.json"),
 }
 
 
@@ -493,6 +494,9 @@ def built_in_transformer_case_adapter(
                 "operator_leaf_functional_sim",
                 "real_tool_execution",
                 "targeted_leaf_replay",
+                "vcs_compile_and_elaboration",
+                "boundary_trace",
+                "boundary_trace_rerun",
                 "target_model_operator_semantics",
                 "real_model_weights_consumed",
                 "random_input_stimulus",
@@ -617,6 +621,7 @@ def built_in_transformer_case_adapter(
             capabilities=[
                 "single_layer_functional_sim",
                 "real_single_layer_functional_sim",
+                "vcs_compile_and_elaboration",
                 "boundary_trace",
                 "targeted_replay",
                 "target_model_single_layer_semantics",
@@ -784,6 +789,11 @@ def built_in_transformer_case_adapter(
             env={
                 "REMOTE_SIM_TIMEOUT_SEC": remote_sim_timeout_sec,
                 "SPATIALACC_MAX_HEAVY_JOBS": "1",
+                # Urgent architecture gate: require real VCS compilation,
+                # elaboration, and linking without launching the simulator.
+                # The runner retains its default full-simulation behavior when
+                # this environment variable is not supplied.
+                "SPATIALACC_COMPILE_ONLY": "1",
             },
             required_group="functional_sim",
             consumes=[
@@ -824,6 +834,7 @@ def built_in_transformer_case_adapter(
                 "elaborated_hierarchy_binding",
                 "structured_axi_protocol_monitors",
                 "multilayer_board_integration",
+                "vcs_compile_and_elaboration",
             ],
         ),
         "vcs_evidence_analyzer": tool(

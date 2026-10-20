@@ -1,12 +1,14 @@
 import json
+from argparse import Namespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest import TestCase
+from unittest import TestCase, mock
 
 from accagent.framework.dse_candidates import physical_candidate_tuples
 from accagent.framework.sacg_store import SACGStore, write_json
 from accagent.framework.stage_params import (
     architecture_candidate_space,
+    bind_parameters,
     build_dse_search,
     build_parameter_bindings,
     dse_llm_constraint_report,
@@ -14,6 +16,8 @@ from accagent.framework.stage_params import (
     select_dse_candidate,
     stage4_llm_errors,
     stage4_measurement_request_ready,
+    run_parameter_static_checks,
+    update_sacg,
 )
 from accagent.framework.stage_pipeline import build_pipeline_plan
 from tests.test_stage_pipeline import state_for
@@ -26,10 +30,126 @@ def prepare_state(family: str, root: Path) -> dict:
     plan_path = root / "pipeline_plan.json"
     plan_path.write_text(json.dumps(plan), encoding="utf-8")
     state["artifacts"].append({"id": "artifact.stage3.pipeline_plan", "path": str(plan_path)})
+    state["nodes"] = [
+        {"id": node_id}
+        for node_id in (
+            "node.design_space", "node.pipeline.block_input", "node.pipeline.block_output",
+            *(f"node.pipeline.{stage['stage_id']}" for stage in plan["stages"]),
+        )
+    ]
+    state["edges"] = [
+        {"id": edge["edge_id"], "src": f"node.pipeline.{edge['src_stage']}", "dst": f"node.pipeline.{edge['dst_stage']}"}
+        for edge in plan["stream_edges"]
+    ]
     return state
 
 
 class SemanticParameterBindingTest(TestCase):
+    def test_explicit_array_trial_updates_old_geometry_without_widening_other_axes(self) -> None:
+        search = {
+            "candidate_universe": {
+                "compute_array": {"legal_compute_array_tuples": [
+                    {"lanes": 16, "rows": 8, "cols": 16}]},
+                "physical_fifo_depth": {"candidate_values": [32]},
+                "activation_bank_count": {"candidate_values": [2]},
+            },
+            "board_axi_data_width_bits": 512,
+            "campaign_array_policy": {"preferred_rows": 16, "preferred_cols": 32,
+                                      "parallel_multiply_positions": 512,
+                                      "defer_array_positions_at_or_above": 1024},
+        }
+        space = architecture_candidate_space(search, {"projection_weight"})
+        points = space["physical_candidate_tuples"]
+        self.assertTrue(any((p["compute_array_rows"], p["compute_array_cols"]) == (16, 32) for p in points))
+        self.assertEqual({(p["lanes"], p["fifo_depth"], p["activation_banks"]) for p in points}, {(16, 32, 2)})
+        self.assertEqual(space["cache_refill_data_width_bits"], [512])
+        self.assertTrue(all(p["compute_array_rows"] * p["compute_array_cols"] < 1024 for p in points))
+        search["campaign_array_policy"].update(preferred_rows=32, parallel_multiply_positions=1024)
+        with self.assertRaises(ValueError):
+            architecture_candidate_space(search, {"projection_weight"})
+
+    def test_backtrack_attaches_current_numeric_check_evidence(self) -> None:
+        for numeric_valid in (True, False):
+            with self.subTest(numeric_valid=numeric_valid), TemporaryDirectory() as temp:
+                root = Path(temp)
+                state = prepare_state("gpt2", root / "inputs")
+                state["invariants"] = [{
+                    "id": "invariant.numeric_policy_check",
+                    "checker": "numeric_policy_check",
+                    "constraints": ["constraint.numeric.policy", "constraint.parameter.binding"],
+                    "status": "pass",
+                }]
+                source_path = root / "code_generation" / "sacg_state.json"
+                target_path = root / "parameter_binding" / "sacg_state.json"
+                write_json(source_path, state)
+                bindings = build_parameter_bindings(state)
+                if not numeric_valid:
+                    bindings["bindings"][0]["params"]["input_bits"] = 8
+                checks = run_parameter_static_checks(state, bindings)
+                dse_paths = {
+                    key: target_path.parent / f"{key}.json"
+                    for key in (
+                        "search_space", "candidate_records", "constraint_report",
+                        "pareto_frontier", "measurements", "selected_architecture",
+                        "selection_rationale",
+                    )
+                }
+
+                transition_id = update_sacg(
+                    source_path, target_path,
+                    target_path.parent / "parameter_binding.json",
+                    target_path.parent / "parameter_static_checks.json",
+                    dse_paths, bindings, {}, {}, checks, checks["summary"]["errors"],
+                )
+                store = SACGStore(target_path)
+                transition = next(
+                    row for row in store.state["transitions"] if row["id"] == transition_id
+                )
+                numeric_evidence = next(
+                    row for row in store.state["evidence"]
+                    if row["id"] in transition["evidence"] and row["checker"] == "numeric_policy_check"
+                )
+
+                self.assertIn("numeric_policy_check", transition["required_checkers"])
+                self.assertEqual(transition["status"], "promoted" if numeric_valid else "rejected")
+                self.assertEqual(numeric_evidence["status"], "pass" if numeric_valid else "fail")
+                self.assertEqual(numeric_evidence["log_path"], str(target_path.parent / "parameter_static_checks.json"))
+
+    def test_measurement_handoff_does_not_wait_for_auxiliary_team_audit(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            state = prepare_state("gpt2", root / "inputs")
+            state_path = root / "stage3" / "sacg_state.json"
+            write_json(state_path, state)
+            dse = build_dse_search(state, root)
+            candidate_id = dse["unmeasured_candidate_ids"][0]
+            result_path = root / "dse_agent_result.json"
+            write_json(result_path, {})
+            llm_result = {
+                "output": {
+                    "status": "next_exact_measurement_selected",
+                    "selected_candidate_id": candidate_id,
+                    "ranked_candidate_ids": [candidate_id],
+                    "selection_rationale": "Select the legal candidate for exact measurement.",
+                    "assumptions": [],
+                },
+                "result_path": str(result_path),
+            }
+            with mock.patch(
+                "accagent.framework.stage_params.run_dir_from_state", return_value=root
+            ), mock.patch(
+                "accagent.framework.stage_params.run_stage_agent", return_value=llm_result
+            ), mock.patch(
+                "accagent.framework.stage_team.run_design_team",
+                side_effect=AssertionError("auxiliary team audit must not block measurement"),
+            ):
+                _, report = bind_parameters(Namespace(sacg_state=state_path))
+
+        self.assertEqual(report["status"], "ready")
+        self.assertEqual(report["selected_architecture"]["candidate_id"], candidate_id)
+        self.assertEqual(report["checker_summary"]["errors"], [])
+        self.assertEqual(report["design_team"]["status"], "not_required_for_measurement_handoff")
+
     def test_legacy_measurement_handoff_normalizes_only_for_exact_incomplete_selection(self) -> None:
         legacy = {
             "status": "measurement_pending",
@@ -333,6 +453,38 @@ class SemanticParameterBindingTest(TestCase):
             ],
         )
 
+    def test_explicit_flattened_physical_tuples_keep_compute_array_binding(self) -> None:
+        tuples = physical_candidate_tuples({
+            "hardware_parameter_tuples": [{
+                "lanes": 16,
+                "compute_array_rows": 16,
+                "compute_array_cols": 32,
+                "fifo_depth": 8,
+                "activation_banks": 2,
+            }]
+        })
+
+        self.assertEqual(tuples, [{
+            "lanes": 16,
+            "compute_array_rows": 16,
+            "compute_array_cols": 32,
+            "fifo_depth": 8,
+            "activation_banks": 2,
+        }])
+
+    def test_internal_compute_columns_can_exceed_stream_lanes_by_whole_groups(self) -> None:
+        tuples = physical_candidate_tuples({
+            "hardware_parameter_tuples": [{
+                "lanes": 4,
+                "compute_array": {"rows": 4, "cols": 16},
+                "physical_fifo_depth_entries": 16,
+                "activation_bank_count": 2,
+            }]
+        })
+
+        self.assertEqual(len(tuples), 1)
+        self.assertEqual(tuples[0]["compute_array_cols"], 16)
+
     def test_explicit_candidate_universe_list_preserves_declared_correlations(self) -> None:
         search = {
             "candidate_universe": [
@@ -498,6 +650,47 @@ class SemanticParameterBindingTest(TestCase):
             (2, 8),
             {(row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
         )
+
+    def test_candidate_dimensions_preserve_lane_conditioned_array_tuples(self) -> None:
+        dimensions = {
+            "lanes": {"legal_values": [8, 16]},
+            "compute_array": {"legal_lane_row_col_tuples": [
+                {"lanes": 8, "rows": 4, "cols": 32},
+                {"lanes": 16, "rows": 16, "cols": 32},
+            ]},
+            "physical_fifo_depth": {"legal_values": [32, 64]},
+            "activation_bank_count": {"legal_values": [2]},
+        }
+        tuples = physical_candidate_tuples({"candidate_dimensions": dimensions})
+        self.assertEqual(len(tuples), 4)
+        self.assertEqual(
+            {(row["lanes"], row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
+            {(8, 4, 32), (16, 16, 32)},
+        )
+        dimensions["compute_array"]["legal_lane_row_col_tuples"][0]["lanes"] = 32
+        with self.assertRaisesRegex(ValueError, "undeclared lane"):
+            physical_candidate_tuples({"candidate_dimensions": dimensions})
+
+    def test_universe_correlated_tuples_with_separate_physical_axes(self) -> None:
+        universe = {
+            "legal_tuples": [
+                {"lanes": 8, "compute_array_rows": 4, "compute_array_cols": 32},
+                {"lanes": 16, "compute_array_rows": 16, "compute_array_cols": 32},
+            ],
+            "physical_axes": {
+                "physical_fifo_depth": {"legal_values": [32, 64]},
+                "activation_bank_count": {"legal_values": [2, 4]},
+            },
+        }
+        tuples = physical_candidate_tuples({"candidate_universe": universe})
+        self.assertEqual(len(tuples), 8)
+        self.assertEqual(
+            {(row["lanes"], row["compute_array_rows"], row["compute_array_cols"]) for row in tuples},
+            {(8, 4, 32), (16, 16, 32)},
+        )
+        del universe["physical_axes"]["physical_fifo_depth"]
+        with self.assertRaises(ValueError):
+            physical_candidate_tuples({"candidate_universe": universe})
 
     def test_summary_universe_uses_top_level_declared_physical_axes(self) -> None:
         search = {

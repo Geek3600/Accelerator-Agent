@@ -8,10 +8,12 @@ final case class ResidualParams(
   lanes: Int = 8,
   elemBits: Int = 32,
   batchSize: Int = 16,
-  maxSeqLen: Int = 16
+  maxSeqLen: Int = 16,
+  integerMode: Boolean = false
 ) {
   require(hiddenSize % lanes == 0, "hiddenSize must be divisible by lanes")
-  require(elemBits == 16 || elemBits == 32, "ResidualAdd elements must be IEEE FP16 or FP32")
+  if (integerMode) require(elemBits == 8, "integer residual stream must use signed INT8")
+  else require(elemBits == 16 || elemBits == 32, "ResidualAdd elements must be IEEE FP16 or FP32")
   val beats: Int = hiddenSize / lanes
   val beatBits: Int = lanes * elemBits
   val addrBits: Int = log2Ceil(batchSize * beats max 2)
@@ -37,6 +39,33 @@ class ResidualAdd(p: ResidualParams) extends Module {
 
   val a = residualQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
   val b = computedQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
+  if (p.integerMode) {
+    val pairReady = residualQ.io.deq.valid && computedQ.io.deq.valid && outputQ.io.enq.ready
+    residualQ.io.deq.ready := pairReady
+    computedQ.io.deq.ready := pairReady
+    outputQ.io.enq.valid := pairReady
+    val lhs = residualQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, SInt(8.W)))
+    val rhs = computedQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, SInt(8.W)))
+    val result = Wire(Vec(p.lanes, UInt(8.W)))
+    for (lane <- 0 until p.lanes) {
+      val sum = lhs(lane).pad(9) + rhs(lane).pad(9)
+      // Residual arithmetic is an explicit fixed-point requantization stage,
+      // even when the selected residual scale is unity. 0x80000000 is the
+      // declared unsigned Q31 representation of one; using the shift-aware
+      // helper preserves signed rounding and saturation for negative sums.
+      val residualScaleQ31 = "h80000000".U(32.W)
+      result(lane) := AccMath.requantizeQ31WithShift(
+        sum,
+        residualScaleQ31,
+        0.S(10.W),
+        8
+      )
+    }
+    outputQ.io.enq.bits.data := result.asUInt
+    outputQ.io.enq.bits.st := computedQ.io.deq.bits.st
+    outputQ.io.enq.bits.addr := computedQ.io.deq.bits.addr
+    outputQ.io.enq.bits.last := computedQ.io.deq.bits.last
+  } else {
   val adders = Seq.tabulate(p.lanes) { lane =>
     val add = Module(new PhysicalFp32Add)
     add.io.a := PhysicalMath.toFp32(a(lane), p.elemBits)
@@ -80,4 +109,5 @@ class ResidualAdd(p: ResidualParams) extends Module {
   }
 
   dontTouch(io.cfg)
+  }
 }

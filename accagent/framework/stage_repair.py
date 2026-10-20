@@ -11,7 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from accagent.framework.case_adapter import build_case_adapter, refresh_builtin_case_adapter
-from accagent.framework.flow_action_handoff import validate_stage6_flow_handoff
+from accagent.framework.flow_action_handoff import (
+    mark_stage6_flow_handoff_consumed,
+    validate_stage6_flow_handoff,
+)
 from accagent.framework.board_backtrack_evidence import (
     board_to_lower_layer_contradiction_from_diagnosis,
 )
@@ -28,6 +31,7 @@ from accagent.framework.sacg_utils import (
 from accagent.framework.stage_entry import run_sacg_stage
 from accagent.framework.stage_llm import llm_enforce, run_stage_agent
 from accagent.framework.stage_team import run_design_team, team_summary
+from accagent.framework.trace_identity import targeted_trace_env
 
 
 TOUCHED_CONSTRAINTS = [
@@ -674,6 +678,19 @@ def required_capability_repair_actions(
                 "read_only_evidence_reconciliation": True,
             }
         elif (
+            capability_id == "planned_tool.hash_bound_semantic_harness_contract_collector"
+            and producer_scope == "repair_execution"
+            and debug_layer == "operator_leaf_modules"
+        ):
+            action_scope = "verification_capability_repair"
+            repair_kind = "collect_hash_bound_semantic_harness_contract"
+            producer_binding = {
+                "repair_gate": "case_semantic_testbench",
+                "requested_producer_scope": producer_scope,
+                "requested_capability_id": capability_id,
+                "read_only_source_mapping": True,
+            }
+        elif (
             capability_id
             in {
                 "planned_tool.operator_leaf_static_inventory_trace",
@@ -696,6 +713,90 @@ def required_capability_repair_actions(
                 "requested_producer_scope": producer_scope,
                 "requested_capability_id": capability_id,
                 "read_only_generated_rtl_inventory": True,
+            }
+        elif (
+            (
+                capability_id
+                in {
+                    "stage5_target_model_intermediate_reference_capture",
+                    "stage5_target_model_reference_rebind_and_intermediate_capture",
+                }
+                and producer_scope == "case_target_model_reference"
+                and debug_layer == "reference_preparation"
+            )
+            or (
+                capability_id
+                in {
+                    "case_semantic_testbench_immutable_provenance_reconciliation",
+                    "case_adapter_immutable_reference_provenance_reconciliation",
+                }
+                and "upstream" in producer_scope
+                and "case-adapter" in producer_scope
+                and any(
+                    marker in producer_scope
+                    for marker in (
+                        "verification-preparation",
+                        "semantic-testbench/reference",
+                    )
+                )
+                and debug_layer == "operator_leaf_modules"
+            )
+        ):
+            action_scope = "verification_capability_repair"
+            repair_kind = "target_model_reference_regeneration"
+            action_debug_layer = "operator_leaf_modules"
+            producer_binding = {
+                "repair_tool_role": "target_model_reference_regeneration",
+                "repair_gate": "case_semantic_testbench",
+                "requested_producer_scope": producer_scope,
+                "requested_capability_id": capability_id,
+                "requested_debug_layer": debug_layer,
+                "producer_tools": [
+                    "case_weight_manifest_generate",
+                    "case_target_model_reference",
+                    "case_semantic_testbench",
+                    "framework_dut_weight_binding_materialization",
+                    "case_semantic_testbench",
+                ],
+                "independent_reference_regeneration": True,
+            }
+        elif (
+            capability_id
+            in {
+                "code_generation_package_recovery",
+                "contract_complete_codegen_package_regeneration",
+                "codegen_output_contract_repair_inputs",
+                "authorized_codegen_package_producer_mapping",
+                "code_generation_producer_recovery",
+                "operator_leaf_generated_axi_ddr_top_source_closure",
+            }
+            and debug_layer == "operator_leaf_modules"
+            and (
+                "codegen_contract_and_output_recovery" in producer_scope
+                or producer_scope
+                in {
+                    "existing authorized case-adapter code-generation package producer",
+                    "stage5_code_generation_package",
+                    "repair.localize_codegen_package_precondition",
+                    "current generated-code package and output-manifest producer",
+                    "authoritative generated/chisel code-generation producer/package configuration, not supplied in the current repair bundle",
+                }
+            )
+        ):
+            action_scope = "verification_capability_repair"
+            repair_kind = "code_generation_package_recovery"
+            producer_binding = {
+                "repair_tool_role": "stage5_codegen_package_recovery",
+                "repair_gate": "case_stage_leaf_static",
+                "requested_producer_scope": producer_scope,
+                "requested_capability_id": capability_id,
+                "frozen_upstream_artifacts": [
+                    "artifact.stage2.template_selection",
+                    "artifact.stage3.pipeline_plan",
+                    "artifact.stage4.parameter_binding",
+                ],
+                "generated_rtl_edits": False,
+                "numeric_or_reference_data_edits": False,
             }
         elif producer_scope == "verification_capability_repair":
             action_scope = producer_scope
@@ -1660,6 +1761,238 @@ def boundary_trace_scope_error(debug_layer: Any, capability_summary: dict[str, A
     return None
 
 
+def trace_record_for_flow_handoff(debug_localization: dict[str, Any]) -> dict[str, Any]:
+    context = (
+        debug_localization.get("minimal_repair_context", {})
+        if isinstance(debug_localization.get("minimal_repair_context"), dict)
+        else {}
+    )
+    record = context.get("trace_record", {})
+    if isinstance(record, dict) and record.get("stage_id"):
+        return copy.deepcopy(record)
+    for key in ("failed_boundaries", "boundary_trace"):
+        rows = debug_localization.get(key, [])
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, dict) and row.get("status") == "fail" and row.get("stage_id"):
+                return copy.deepcopy(row)
+    return {}
+
+
+def trace_tool_for_flow_handoff(
+    case_adapter: dict[str, Any],
+    debug_layer: str,
+    requested_roles: list[Any],
+) -> str:
+    tools = case_adapter.get("tools", {}) if isinstance(case_adapter.get("tools"), dict) else {}
+    requested = {str(value) for value in requested_roles if str(value)}
+    candidates: list[tuple[int, str]] = []
+    for role, spec in tools.items():
+        if not isinstance(spec, dict):
+            continue
+        capability = tool_capability_summary(spec)
+        if not capability["supports_boundary_trace"]:
+            continue
+        if boundary_trace_scope_error(debug_layer, capability) is not None:
+            continue
+        capabilities = tool_capabilities(spec)
+        targeted = spec.get("targeted_replay", {}) if isinstance(spec.get("targeted_replay"), dict) else {}
+        if debug_layer == "operator_leaf_modules" and (
+            "operator_leaf_functional_sim" not in capabilities
+            or "targeted_leaf_replay" not in capabilities
+            or not targeted.get("stage_id_arg")
+        ):
+            continue
+        names = {
+            str(role),
+            str(spec.get("name") or ""),
+            str(spec.get("legacy_name") or ""),
+            str(spec.get("kind") or ""),
+        }
+        score = len(requested.intersection(names | capabilities))
+        candidates.append((score, str(spec.get("name") or role)))
+    if not candidates:
+        return ""
+    return sorted(candidates, key=lambda item: (-item[0], item[1]))[0][1]
+
+
+def targeted_replay_plan_for_flow_handoff(
+    action: dict[str, Any],
+    debug_localization: dict[str, Any],
+    stage_id: str,
+) -> dict[str, Any]:
+    """Preserve the current evidence-bound trace plan through a flow handoff."""
+
+    localization_plan = debug_localization.get("targeted_replay_plan", {})
+    action_plan = action.get("targeted_replay_plan", {})
+    plan = copy.deepcopy(localization_plan) if isinstance(localization_plan, dict) else {}
+    if isinstance(action_plan, dict):
+        localization_env = (
+            plan.get("rerun_env", {}) if isinstance(plan.get("rerun_env"), dict) else {}
+        )
+        action_env = (
+            action_plan.get("rerun_env", {})
+            if isinstance(action_plan.get("rerun_env"), dict)
+            else {}
+        )
+        plan.update(copy.deepcopy(action_plan))
+        if localization_env or action_env:
+            plan["rerun_env"] = {**localization_env, **action_env}
+    plan["status"] = "ready" if stage_id else "incomplete"
+    plan["stage_id"] = stage_id or None
+    plan["source"] = "validated_flow_controller_handoff"
+    return plan
+
+
+def flow_handoff_repair_actions(
+    flow_controller_handoff: dict[str, Any],
+    case_adapter: dict[str, Any],
+    debug_localization: dict[str, Any],
+    repair_loop: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Translate validated Stage-6 actions into the bounded repair workflow."""
+
+    current_layer = (
+        repair_loop.get("current_layer", {})
+        if isinstance(repair_loop.get("current_layer"), dict)
+        else {}
+    )
+    trace_record = trace_record_for_flow_handoff(debug_localization)
+    actions = [
+        item.get("action", {})
+        for item in flow_controller_handoff.get("actions", [])
+        if isinstance(item, dict) and isinstance(item.get("action"), dict)
+    ]
+    routed: list[dict[str, Any]] = []
+    preflight_actions: list[dict[str, Any]] = []
+    deferred_before_trace: list[dict[str, Any]] = []
+    trace_action_types = {
+        "debug_trace_rerun",
+        "current_layer_boundary_trace_rerun",
+        "current_layer_causal_replay",
+        "cctg_current_layer_trace",
+        "real_tool_failure_localization",
+        "real_tool_targeted_replay",
+        "targeted_real_tool_replay",
+    }
+    trace_tool_roles = {
+        "boundary_trace",
+        "boundary_trace_rerun",
+        "contract_boundary_trace",
+    }
+    preflight_tool_roles = {
+        "artifact_hash_check",
+        "sacg_validate",
+        "sacg_memory_update",
+        "stage_retry_request",
+        "stage_artifact_trust_barrier",
+    }
+    preflight_action_types = {
+        "artifact_trust_control",
+        "artifact_provenance_reconciliation",
+        "retry_contract_validation",
+        "sacg_retry_state_update",
+        "contract_guided_failure_localization",
+        "contract_guided_replan",
+        "causal_repair_context_generation",
+        "hash_bound_failure_localization_plan",
+        "debug_observation_plan",
+        "causal_observation_planning",
+    }
+    deferred_action_types = {
+        "bounded_repair",
+        "bounded_causal_repair",
+        "bounded_leaf_or_harness_repair",
+        "bounded_leaf_harness_repair",
+        "real_tool_operator_leaf_verification",
+        "real_tool_operator_leaf_rerun",
+        "real_tool_verification_rerun",
+        "operator_leaf_golden_and_semantic_closure",
+        "current_scope_gate_rerun_and_sacg_reconciliation",
+    }
+    for index, action in enumerate(actions):
+        action_type = str(action.get("action_type") or "")
+        debug_layer = str(action.get("debug_layer") or current_layer.get("id") or "")
+        tool_roles = action.get("tool_roles", [])
+        requested_roles = {str(role) for role in tool_roles if str(role)} if isinstance(tool_roles, list) else set()
+        produces = action.get("produces", [])
+        produced_artifacts = {str(item) for item in produces if str(item)} if isinstance(produces, list) else set()
+        is_sacg_preflight = bool(requested_roles) and requested_roles.issubset(preflight_tool_roles)
+        is_targeted_boundary_trace_replay = (
+            "targeted_replay" in requested_roles
+            and any("boundary_trace" in artifact for artifact in produced_artifacts)
+        )
+        if action_type in preflight_action_types or is_sacg_preflight:
+            preflight_actions.append(copy.deepcopy(action))
+            continue
+        if action_type in deferred_action_types:
+            deferred_before_trace.append(copy.deepcopy(action))
+            continue
+        if (
+            action_type not in trace_action_types
+            and not requested_roles.intersection(trace_tool_roles)
+            and not is_targeted_boundary_trace_replay
+        ):
+            routed.append(
+                {
+                    "scope": "flow_controller_action_unroutable",
+                    "flow_action_type": action_type,
+                    "flow_action_id": action.get("id"),
+                    "reason": "validated flow-controller action has no bounded Stage-6 workflow mapping",
+                    "approval_required": True,
+                    "source": "flow_controller_handoff",
+                }
+            )
+            continue
+        stage_id = str(
+            action.get("stage_id")
+            or action.get("target_stage_id")
+            or trace_record.get("stage_id")
+            or ""
+        )
+        tool = trace_tool_for_flow_handoff(
+            case_adapter,
+            debug_layer,
+            action.get("tool_roles", []) if isinstance(action.get("tool_roles"), list) else [],
+        )
+        targeted_replay_plan = targeted_replay_plan_for_flow_handoff(
+            action,
+            debug_localization,
+            stage_id,
+        )
+        deferred_actions = [
+            *deferred_before_trace,
+            *[copy.deepcopy(candidate) for candidate in actions[index + 1 :]],
+        ]
+        routed.append(
+            {
+                "scope": "debug_trace_rerun",
+                "tool": tool,
+                "debug_layer": debug_layer,
+                "trace_target_stage_id": stage_id or None,
+                "targeted_replay_plan": targeted_replay_plan,
+                "minimal_repair_context": {
+                    "trace_record": trace_record,
+                    "flow_action_id": action.get("id"),
+                    "flow_action_type": action_type,
+                    "preflight_flow_actions": preflight_actions,
+                    "deferred_flow_actions": deferred_actions,
+                },
+                "failed_current_layer_gates": action.get("failed_current_layer_gates", []),
+                "lower_layer_pass_evidence": action.get("lower_layer_pass_evidence", []),
+                "reason": str(action.get("rationale") or "run the validated current-layer boundary trace replay"),
+                "approval_required": False,
+                "source": "flow_controller_handoff",
+                "flow_action": copy.deepcopy(action),
+            }
+        )
+        # A later repair or gate rerun consumes the trace's new artifacts.  It
+        # must be replanned from that evidence rather than executed speculatively.
+        return routed
+    return routed
+
+
 def is_targetless_read_only_lifecycle_reconciliation(
     action: dict[str, Any],
 ) -> bool:
@@ -1798,10 +2131,54 @@ def build_repair_workflow(
                 script_exists = False
                 step["resolved_protocol_name"] = None
                 step["execution"] = None
+            targeted_replay = (
+                action.get("targeted_replay_plan", {})
+                if isinstance(action.get("targeted_replay_plan"), dict)
+                else {}
+            )
+            trace_target_stage_id = str(
+                action.get("trace_target_stage_id")
+                or targeted_replay.get("stage_id")
+                or ""
+            )
+            trace_target_error = None
+            if trace_target_stage_id:
+                targeted = (
+                    adapter_spec.get("targeted_replay", {})
+                    if isinstance(adapter_spec, dict)
+                    and isinstance(adapter_spec.get("targeted_replay"), dict)
+                    else {}
+                )
+                stage_arg = str(targeted.get("stage_id_arg") or "")
+                if not stage_arg:
+                    trace_target_error = (
+                        f"{step['id']} tool {normalized_tool} cannot target the localized stage "
+                        f"{trace_target_stage_id}"
+                    )
+                elif isinstance(step.get("execution"), dict):
+                    execution = dict(step["execution"])
+                    execution_argv = [str(item) for item in execution.get("argv", [])]
+                    if stage_arg not in execution_argv:
+                        execution_argv.extend([stage_arg, trace_target_stage_id])
+                    execution["argv"] = execution_argv
+                    step["execution"] = execution
+                    argv = execution_argv
+                    step["trace_target"] = {
+                        "stage_id": trace_target_stage_id,
+                        "stage_id_arg": stage_arg,
+                    }
+            elif action.get("debug_layer") == "operator_leaf_modules":
+                trace_target_error = (
+                    f"{step['id']} operator-leaf trace rerun is missing a localized stage_id"
+                )
             capability_summary = tool_capability_summary(tool, adapter_spec)
             step["tool_capability"] = capability_summary
             scope_error = boundary_trace_scope_error(action.get("debug_layer"), capability_summary)
-            if scope_error:
+            if trace_target_error:
+                step["status"] = "blocked"
+                step["trace_target_error"] = trace_target_error
+                blockers.append(trace_target_error)
+            elif scope_error:
                 step["status"] = "blocked"
                 step["tool_scope_mismatch"] = {
                     "reason": scope_error,
@@ -1923,7 +2300,9 @@ def build_repair_workflow(
             "regression_reruns_must_use_case_tool_protocols": True,
             "repair_output_must_return_to_stage6": True,
             "same_debug_layer_must_rerun_until_functionally_correct_before_promotion": True,
-            "cctg_boundary_trace_or_localization_required_before_code_repair": True,
+            "cctg_boundary_trace_or_localization_required_before_code_repair": (
+                (False)
+            ),
             "lower_layer_pass_evidence_is_reusable_not_absolute": True,
             "targeted_lower_layer_backtrack_requires_contradicting_current_layer_trace": True,
             "do_not_reopen_passed_lower_layer_without_contradicting_current_layer_trace": True,
@@ -2545,6 +2924,62 @@ def build_repair_actions(
             }
         )
         return actions
+    compile_only_board_failure = (
+        (current_layer.get('id') == 'board_axi_ddr_wrapped_system' and any((isinstance(item, dict) and str(item.get('status') or '') == 'fail' and (str(item.get('name') or '') in {'functional_sim', 'case_vcs_functional_sim', 'vcs_functional_sim'}) for item in failed_current_layer_gates)) and any((marker in ' '.join((f"{item.get('checker', '')} {item.get('summary', '')}" for item in failures if isinstance(item, dict))).lower() for marker in ('vcs compile', 'compile/elaboration', 'compile-only', 'unresolved module', 'illegal combination of drivers', 'returncode=1'))))
+    )
+    # A failed discovery/preflight is not an executed VCS compiler failure.
+    # In particular, its generic returncode=1 must not select code generation
+    # while the selected compute-slot ABI is still unavailable.
+    compile_only_board_failure = compile_only_board_failure and any(
+        str(item.get("checker") or "") in {
+            "real_tool.case_vcs_functional_sim", "case_vcs_functional_sim", "vcs_functional_sim"
+        }
+        and any(marker in str(item.get("summary") or "").lower() for marker in (
+            "vcs compile", "compile/elaboration", "unresolved module", "illegal combination of drivers"
+        ))
+        for item in failures if isinstance(item, dict)
+    ) and not any(
+        isinstance(item, dict)
+        and item.get("name") == "case_board_interface_discovery"
+        and item.get("status") in {"fail", "not_run"}
+        for item in failed_current_layer_gates
+    )
+    if compile_only_board_failure:
+        actions.append(
+            {
+                "scope": "verification_capability_repair",
+                "repair_kind": "exact_board_integration_harness",
+                "debug_layer": "board_axi_ddr_wrapped_system",
+                "repair_gate": "case_vcs_functional_sim",
+                "failed_current_layer_gates": failed_current_layer_gates,
+                "root_candidate_module": None,
+                "target_modules": ["board_axi_ddr_wrapped_system"],
+                "violated_contract": "exact_board_vcs_compile_only",
+                "failure_signature": {
+                    "failure_kind": failure_kind,
+                    "compile_only": True,
+                    "summaries": [
+                        str(item.get("summary") or "")
+                        for item in failures[:8]
+                        if isinstance(item, dict)
+                    ],
+                },
+                "minimal_repair_context": {
+                    "compile_only_direct_repair": True,
+                    "current_layer_compile_failure": True,
+                    "failed_current_layer_gates": failed_current_layer_gates,
+                    "lower_layer_pass_evidence": lower_layer_pass_evidence,
+                },
+                "reason": (
+                    "compile-only board VCS diagnostics are the current-layer evidence; "
+                    "send them directly to the bounded board integration repair instead "
+                    "of requesting unavailable semantic boundary tracing"
+                ),
+                "approval_required": False,
+                "source": "compile_only_current_layer_diagnostic",
+            }
+        )
+        return actions
     if out_of_order:
         actions.append(
             {
@@ -2584,6 +3019,13 @@ def build_repair_actions(
                     "real-weight semantic evidence",
                 )
             )
+            codegen_source_closure_gap = (
+                "no planned code outputs" in failure_text
+                or (
+                    "required rtl file missing" in failure_text
+                    and "generatedaxiddrtop.sv" in failure_text
+                )
+            )
             board_integration_gap = (
                 current_layer.get("id") == "board_axi_ddr_wrapped_system"
                 and bool(
@@ -2595,6 +3037,35 @@ def build_repair_actions(
                     & set(failed_gate_names)
                 )
             )
+            board_identity_gap = (
+                current_layer.get("id") == "board_axi_ddr_wrapped_system"
+                and not exact_board_identity_contract_passed(run_dir)
+                and any(
+                    marker in failure_text
+                    for marker in (
+                        "board source identity is missing",
+                        "exact sample-project wrapper identity is not pass",
+                        "llm discovery provenance",
+                        "selected simulation source closure is empty",
+                    )
+                )
+            )
+            board_manifest_gap = (
+                current_layer.get("id") == "board_axi_ddr_wrapped_system"
+                and any(
+                    marker in failure_text
+                    for marker in (
+                        "board simulation manifest is missing",
+                        "board simulation preflight manifest",
+                        "multilayer_harness",
+                        "board_integration_contract",
+                        "board_simulation_preflight_plan",
+                        "full weight image manifest",
+                        "dut binding does not prove the configured board validation scope",
+                    )
+                )
+            )
+            board_integration_gap = board_integration_gap or board_manifest_gap
             if (
                 current_layer.get("id") == "board_axi_ddr_wrapped_system"
                 and exact_board_identity_contract_passed(run_dir)
@@ -2611,8 +3082,11 @@ def build_repair_actions(
                 )
             board_discovery_gap = (
                 current_layer.get("id") == "board_axi_ddr_wrapped_system"
-                and "case_board_interface_discovery" in set(failed_gate_names)
                 and not exact_board_identity_contract_passed(run_dir)
+                and (
+                    "case_board_interface_discovery" in set(failed_gate_names)
+                    or board_identity_gap
+                )
             )
             repair_kind = (
                 "remote_tool_transport_contract"
@@ -2620,11 +3094,15 @@ def build_repair_actions(
                 else ("tool_runtime_environment_contract"
                 if runtime_environment_gap
                 else (
+                    "code_generation_package_recovery"
+                    if codegen_source_closure_gap
+                    else (
                     "exact_board_interface_discovery"
                     if board_discovery_gap
                     else "exact_board_integration_harness"
                     if board_integration_gap
                     else ("semantic_loader_harness_binding" if semantic_binding_gap else "independent_golden_reference")
+                    )
                 )
                 )
             )
@@ -2647,6 +3125,9 @@ def build_repair_actions(
                         "current tool runtime does not satisfy the declared Python environment contract; repair tool execution before any hardware action"
                         if runtime_environment_gap
                         else (
+                        "current generated-code package lacks the checker-required outputs; recover Stage 5 from the frozen Stage 2-4 contract before verification"
+                        if codegen_source_closure_gap
+                        else (
                         "current layer lacks a valid semantic loader/harness, immutable numeric comparison contract, or executed weight-consumption evidence"
                         if semantic_binding_gap
                         else (
@@ -2655,6 +3136,7 @@ def build_repair_actions(
                             else "current board layer lacks a model-derived multi-layer scheduler and exact sample compute-slot integration; generate and bind the board integration harness before functional simulation"
                             if board_integration_gap
                             else "current layer lacks independent golden/checker capability; implement or bind the independent golden reference before hardware promotion"
+                        )
                         )
                         )
                         )
@@ -2676,7 +3158,7 @@ def build_repair_actions(
             )
         elif (
             status == "localized"
-            and failure_kind == "hardware_value_mismatch"
+            and failure_kind in {"hardware_value_mismatch", "hardware_liveness_or_handshake"}
             and current_layer.get("id") == "operator_leaf_modules"
         ):
             context = (
@@ -2700,10 +3182,16 @@ def build_repair_actions(
                 ),
                 None,
             )
-            localized_trace_ready = trace_record.get("evidence_type") == "semantic_numeric_compare" or (
+            liveness_failure = (
+                trace_record.get("evidence_type") == "semantic_liveness"
+                and trace_record.get("failure_class") == "semantic_ingress_stall"
+            )
+            internal_unknown_failure = (
                 trace_record.get("evidence_type") == "semantic_internal_boundary_trace"
                 and trace_record.get("failure_class") == "unknown_logic_value"
-                and numeric_failure is not None
+            )
+            localized_trace_ready = liveness_failure or trace_record.get("evidence_type") == "semantic_numeric_compare" or (
+                internal_unknown_failure
             )
             if localized_trace_ready and root_candidate:
                 actions.append(
@@ -2711,7 +3199,11 @@ def build_repair_actions(
                         "scope": "verification_capability_repair",
                         "repair_kind": "localized_semantic_dut_repair",
                         "debug_layer": current_layer.get("id"),
-                        "repair_gate": "case_leaf_golden_compare",
+                        "repair_gate": (
+                            "case_leaf_functional"
+                            if liveness_failure or internal_unknown_failure
+                            else "case_leaf_golden_compare"
+                        ),
                         "failed_current_layer_gates": failed_current_layer_gates,
                         "root_candidate_module": root_candidate,
                         "target_modules": [root_candidate],
@@ -2721,8 +3213,8 @@ def build_repair_actions(
                         "minimal_repair_context": context,
                         "corroborating_semantic_numeric_failure": numeric_failure,
                         "reason": (
-                            "current real-tool leaf output has a localized target-model semantic failure; "
-                            "run an agent-owned bounded DUT/harness repair and rerun the same golden gate"
+                            "current real-tool leaf execution has a localized functional failure; "
+                            "run an agent-owned bounded DUT/harness repair and rerun the same failed gate"
                         ),
                         "approval_required": False,
                         "source": "contract_guided_debug_closure",
@@ -2887,6 +3379,30 @@ def build_repair_plan(
     pending = [item for item in verification.get("results", []) if item.get("status") == "not_run"]
     diagnosis = load_vcs_diagnosis(state, run_dir)
     debug_localization = load_debug_closure_localization(state, run_dir)
+    try:
+        execution_report = read_json(artifact_path(state, "artifact.stage6.repair_execution_report"))
+    except (KeyError, OSError, ValueError):
+        execution_report = {}
+    replay_reports = [
+        Path(str(result["leaf_stage_report"]))
+        for step in execution_report.get("step_results", [])
+        if isinstance(step, dict)
+        and step.get("scope") in {"debug_trace_rerun", "verification_capability_repair"}
+        for result in [step.get("result", {})]
+        if isinstance(result, dict)
+        and result.get("requires_agent_followup") is True
+        and result.get("leaf_stage_report")
+        and Path(str(result["leaf_stage_report"])).is_file()
+    ]
+    if replay_reports:
+        from accagent.framework.debug_closure import build_debug_closure_artifacts
+
+        debug_localization = build_debug_closure_artifacts(
+            state,
+            run_dir,
+            verification,
+            trace_paths=replay_reports,
+        )["failure_localization"]
     repair_loop = build_repair_loop_report(
         verification_result=verification,
         debug_localization=debug_localization or {},
@@ -2896,6 +3412,21 @@ def build_repair_plan(
         if isinstance(repair_loop.get("current_layer"), dict)
         else {}
     )
+    flow_handoff_actions: list[dict[str, Any]] | None = None
+    if flow_controller_handoff is not None:
+        handoff_errors = validate_stage6_flow_handoff(flow_controller_handoff, run_dir)
+        if handoff_errors:
+            raise ValueError(
+                "invalid Stage-6 flow-controller handoff: " + "; ".join(handoff_errors)
+            )
+        flow_handoff_actions = flow_handoff_repair_actions(
+            flow_controller_handoff,
+            case_adapter,
+            debug_localization,
+            repair_loop,
+        )
+        if not flow_handoff_actions:
+            raise ValueError("validated Stage-6 flow-controller handoff has no routable actions")
     prior_execution_feedback = prior_repair_execution_feedback(
         state,
         run_dir,
@@ -2925,22 +3456,26 @@ def build_repair_plan(
         exact_board_diagnosis_repair_kind(diagnosis) == "exact_board_environment_retry"
     )
     repair_actions = (
-        []
-        if environment_retry_active
-        else required_capability_repair_actions(prior_execution_feedback)
+        flow_handoff_actions
+        if flow_handoff_actions is not None
+        else (
+            []
+            if environment_retry_active
+            else required_capability_repair_actions(prior_execution_feedback)
+        )
     )
     # A capability-refresh request can outlive its producer.  Once the current
     # exact-board identity is checker-valid, do not replay the obsolete
     # discovery action; rebuild actions from the live verification evidence so
     # the next step is the actual board integration/VCS repair.
-    if exact_board_identity_contract_passed(run_dir):
+    if flow_handoff_actions is None and exact_board_identity_contract_passed(run_dir):
         repair_actions = [
             action
             for action in repair_actions
             if str(action.get("repair_kind") or "")
             != "exact_board_interface_discovery"
         ]
-    if completed_lower_layer_capabilities:
+    if flow_handoff_actions is None and completed_lower_layer_capabilities:
         repair_actions = [
             action
             for action in repair_actions
@@ -2973,6 +3508,10 @@ def build_repair_plan(
         "contract_guided_debug_closure": debug_localization,
         "hierarchical_repair_loop": repair_loop,
     }
+    if isinstance(verification.get("verification_specialist_review"), dict):
+        diagnostics["verification_specialist_review"] = copy.deepcopy(
+            verification["verification_specialist_review"]
+        )
     if prior_execution_feedback is not None:
         diagnostics["prior_repair_execution_feedback"] = prior_execution_feedback
     if completed_lower_layer_capabilities:
@@ -2980,12 +3519,12 @@ def build_repair_plan(
             completed_lower_layer_capabilities
         )
     if flow_controller_handoff is not None:
-        handoff_errors = validate_stage6_flow_handoff(flow_controller_handoff, run_dir)
-        if handoff_errors:
-            raise ValueError(
-                "invalid Stage-6 flow-controller handoff: " + "; ".join(handoff_errors)
-            )
         diagnostics["flow_controller_handoff"] = copy.deepcopy(flow_controller_handoff)
+        diagnostics["flow_controller_handoff_routing"] = {
+            "status": "routed",
+            "repair_action_count": len(flow_handoff_actions or []),
+            "policy": "validated handoff actions take precedence over stale inferred repair actions",
+        }
     return {
         "schema_version": "spatialaccagent.repair_plan.v0",
         "stage": "repair",
@@ -3166,12 +3705,37 @@ def authoritative_repair_routing_priority(
 
 
 def exact_localized_repair_route(repair_plan: dict[str, Any]) -> bool:
-    if validation_llm_team_mode() != "conditional":
-        return False
     actions = [row for row in repair_plan.get("repair_actions", []) if isinstance(row, dict)]
     if len(actions) != 1:
         return False
     action = actions[0]
+    diagnosis = (
+        repair_plan.get("diagnostics", {}).get("case_vcs_functional")
+        if isinstance(repair_plan.get("diagnostics"), dict)
+        else None
+    )
+    diagnosis = diagnosis if isinstance(diagnosis, dict) else {}
+    handoff = (
+        diagnosis.get("repair_handoff", {})
+        if isinstance(diagnosis.get("repair_handoff"), dict)
+        else {}
+    )
+    failure_signature = (
+        action.get("failure_signature", {})
+        if isinstance(action.get("failure_signature"), dict)
+        else {}
+    )
+    if action.get("repair_kind") == "exact_board_environment_retry":
+        return (
+            action.get("scope") == "regression_rerun"
+            and action.get("tool") == "case_vcs_functional_sim"
+            and action.get("approval_required") is not True
+            and failure_signature.get("failure_class")
+            in {"vcs_execution_environment_failure", "vcs_tool_process_failure"}
+            and failure_signature.get("repair_scope") == "execution_environment_retry"
+        )
+    if validation_llm_team_mode() != "conditional":
+        return False
     routing_priority = authoritative_repair_routing_priority(repair_plan)
     if routing_priority.get("status") == "authoritative":
         # A current, hash-bound board trace can conclusively reopen a lower
@@ -3195,18 +3759,15 @@ def exact_localized_repair_route(repair_plan: dict[str, Any]) -> bool:
     # diagnostic, so route directly to that Agent.  The Agent still decides
     # whether the source contract supports a patch and the real VCS rerun
     # remains mandatory after any accepted transaction.
-    diagnosis = (
-        repair_plan.get("diagnostics", {}).get("case_vcs_functional", {})
-        if isinstance(repair_plan.get("diagnostics"), dict)
-        else {}
-    )
+    failure_evidence = diagnosis.get("failure_evidence")
+    failure_evidence = failure_evidence if isinstance(failure_evidence, dict) else {}
     if (
         action.get("repair_kind") == "exact_board_integration_harness"
         and action.get("scope") == "verification_capability_repair"
         and action.get("debug_layer") == "board_axi_ddr_wrapped_system"
         and action.get("approval_required") is not True
         and diagnosis.get("failure_class") == "vcs_compile_failure"
-        and diagnosis.get("failure_evidence", {}).get("first_real_error")
+        and failure_evidence.get("first_real_error")
     ):
         return True
     context = (
@@ -3231,6 +3792,10 @@ def exact_localized_repair_route(repair_plan: dict[str, Any]) -> bool:
         if isinstance(loop.get("lower_layer_evidence_challenge"), dict)
         else {}
     )
+    internal_failure = (
+        trace.get("evidence_type") == "semantic_internal_boundary_trace"
+        and trace.get("failure_class") == "unknown_logic_value"
+    )
     return bool(
         action.get("repair_kind") == "localized_semantic_dut_repair"
         and action.get("scope") == "verification_capability_repair"
@@ -3240,9 +3805,14 @@ def exact_localized_repair_route(repair_plan: dict[str, Any]) -> bool:
         and trace.get("stage_id")
         and trace.get("module")
         and trace.get("violated_contract")
-        and numeric.get("status") == "fail"
-        and numeric.get("evidence_type") == "semantic_numeric_compare"
-        and numeric.get("stage_id") == trace.get("stage_id")
+        and (
+            internal_failure
+            or (
+                numeric.get("status") == "fail"
+                and numeric.get("evidence_type") == "semantic_numeric_compare"
+                and numeric.get("stage_id") == trace.get("stage_id")
+            )
+        )
         and challenge.get("status") == "no_lower_layer_challenge"
     )
 
@@ -3253,6 +3823,48 @@ def deterministic_localized_repair_record(
 ) -> dict[str, Any]:
     action = repair_plan["repair_actions"][0]
     routing_priority = authoritative_repair_routing_priority(repair_plan)
+    if action.get("repair_kind") == "exact_board_environment_retry":
+        output = {
+            "schema_version": "spatialaccagent.stage_worker_output.v0",
+            "agent": "repair_agent",
+            "stage": "repair",
+            "status": "ready",
+            "summary": (
+                "The exact-board VCS tool failed internally. Retry the same fingerprint "
+                "without changing RTL or the verification inputs."
+            ),
+            "sacg_focus": {
+                "nodes": [action.get("debug_layer")],
+                "edges": [],
+                "constraints": TOUCHED_CONSTRAINTS,
+                "artifacts": ["artifact.stage6.repair_plan"],
+            },
+            "observations": [
+                "The VCS process failure is an execution-environment failure, not an RTL diagnostic."
+            ],
+            "risks": [
+                "Do not modify hardware sources or verification inputs for a tool-process failure."
+            ],
+            "proposed_actions": [
+                "Rerun the existing exact-board VCS job with the same input fingerprint."
+            ],
+            "executable_actions": [],
+            "approval_required_for": [],
+        }
+        path = out_dir / "llm" / "repair_agent_deterministic_environment_retry.json"
+        record = {
+            "schema_version": "spatialaccagent.stage_worker_record.v0",
+            "agent": "repair_agent",
+            "stage": "repair",
+            "mode": "deterministic_environment_retry",
+            "result_path": str(path),
+            "used_fallback": False,
+            "error": None,
+            "llm_skipped": True,
+            "output": output,
+        }
+        write_json(path, record)
+        return record
     if routing_priority.get("status") == "authoritative":
         target = routing_priority["required_repair_action"]
         output = {
@@ -3581,6 +4193,7 @@ def read_only_capability_action_is_auto_executable(
         for key in ("id", "action_type", "rationale")
     ).lower()
     read_only_capability_markers = {
+        "hash_bound_semantic_harness_contract",
         "operator_leaf_static_inventory_trace",
         "vcs_compile_diagnostic_source_provenance",
         "connected_kernel_current_dag_boundary_port_provenance",
@@ -3600,6 +4213,7 @@ def read_only_capability_action_is_auto_executable(
         if (
             deterministic_action.get("repair_kind")
             in {
+                "collect_hash_bound_semantic_harness_contract",
                 "operator_leaf_static_inventory_trace",
                 "operator_leaf_static_inventory_trace_check",
                 "vcs_compile_diagnostic_source_provenance",
@@ -3613,9 +4227,343 @@ def read_only_capability_action_is_auto_executable(
     return False
 
 
+_LLM_CURRENT_LAYER_OBSERVATION_ACTION_TYPES = {
+    "debug_trace_rerun",
+    "current_layer_diagnostic_replay",
+    "current_layer_boundary_trace_rerun",
+    "current_layer_causal_replay",
+    "same_layer_targeted_observation",
+    "same_layer_boundary_trace_rerun",
+    "targeted_boundary_replay",
+    "targeted_replay_and_failure_localization",
+    "diagnostic_boundary_replay",
+    "diagnostic_boundary_trace_replay",
+    "real_tool_failure_localization",
+    "real_tool_targeted_replay",
+    "targeted_real_tool_replay",
+}
+
+
+def _llm_current_layer_observation_action(action: dict[str, Any]) -> bool:
+    """Recognize an Agent action that must produce new current-layer evidence."""
+
+    if action.get("requires_approval") is not False:
+        return False
+    action_type = str(action.get("action_type") or "").strip().lower()
+    if action_type in _LLM_CURRENT_LAYER_OBSERVATION_ACTION_TYPES:
+        return True
+    roles = action.get("tool_roles", [])
+    roles = {str(value) for value in roles if str(value)} if isinstance(roles, list) else set()
+    return bool(
+        roles.intersection(
+            {
+                "boundary_trace",
+                "boundary_trace_rerun",
+                "contract_boundary_trace",
+                "targeted_replay",
+                "failure_slice_localization",
+            }
+        )
+        and any(token in action_type for token in ("replay", "observation", "rerun", "trace"))
+    )
+
+
+def _llm_observation_stage_id(
+    action: dict[str, Any],
+    workflow: dict[str, Any],
+) -> str:
+    targeted_plan = action.get("targeted_replay_plan", {})
+    targeted_plan = targeted_plan if isinstance(targeted_plan, dict) else {}
+    for value in (
+        action.get("stage_id"),
+        action.get("target_stage_id"),
+        targeted_plan.get("stage_id"),
+        targeted_plan.get("target_stage"),
+    ):
+        if str(value or "").strip():
+            return str(value).strip()
+    for step in workflow.get("steps", []):
+        if not isinstance(step, dict):
+            continue
+        for value in (
+            step.get("trace_target", {}).get("stage_id")
+            if isinstance(step.get("trace_target"), dict)
+            else None,
+            step.get("targeted_replay_plan", {}).get("stage_id")
+            if isinstance(step.get("targeted_replay_plan"), dict)
+            else None,
+            step.get("action", {}).get("minimal_repair_context", {}).get("trace_record", {}).get("stage_id")
+            if isinstance(step.get("action"), dict)
+            and isinstance(step["action"].get("minimal_repair_context"), dict)
+            and isinstance(step["action"]["minimal_repair_context"].get("trace_record"), dict)
+            else None,
+        ):
+            if str(value or "").strip():
+                return str(value).strip()
+    return ""
+
+
+def _llm_observation_replay_plan(action: dict[str, Any]) -> dict[str, Any]:
+    """Normalize equivalent Agent replay-environment field names."""
+
+    plan = action.get("targeted_replay_plan", {})
+    plan = copy.deepcopy(plan) if isinstance(plan, dict) else {}
+    plan_environment = plan.get("environment", {})
+    if not isinstance(plan_environment, dict):
+        plan_environment = {}
+    action_environment = action.get("environment", {})
+    if not isinstance(action_environment, dict):
+        action_environment = {}
+    rerun_environment = plan.get("rerun_env", {})
+    if not isinstance(rerun_environment, dict):
+        rerun_environment = {}
+    merged_environment = {
+        **(plan.get("effective_trace_env") if isinstance(plan.get("effective_trace_env"), dict) else {}),
+        **plan_environment,
+        **action_environment,
+        **rerun_environment,
+    }
+    if plan.get("target_boundary"):
+        merged_environment.setdefault("SPATIALACC_TARGET_BOUNDARY", str(plan["target_boundary"]))
+    if merged_environment:
+        plan["rerun_env"] = merged_environment
+    stage_id = str(
+        action.get("stage_id")
+        or action.get("target_stage_id")
+        or plan.get("stage_id")
+        or plan.get("target_stage")
+        or ""
+    ).strip()
+    if stage_id:
+        plan["stage_id"] = stage_id
+    return plan
+
+
+def _llm_observation_workflow_action(
+    action: dict[str, Any],
+    workflow: dict[str, Any],
+    case_adapter: dict[str, Any] | None,
+    verification_review: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Convert one validated LLM observation choice into an executable step."""
+
+    if not _llm_current_layer_observation_action(action):
+        return None, None
+    diagnostics = workflow.get("diagnostics", {})
+    current_layer = ""
+    if isinstance(diagnostics, dict):
+        repair_loop = diagnostics.get("hierarchical_repair_loop", {})
+        if isinstance(repair_loop, dict):
+            layer = repair_loop.get("current_layer", {})
+            if isinstance(layer, dict):
+                current_layer = str(layer.get("id") or "").strip()
+    if not current_layer:
+        for step in workflow.get("steps", []):
+            if not isinstance(step, dict):
+                continue
+            existing_action = step.get("action", {})
+            if not isinstance(existing_action, dict):
+                continue
+            current_layer = str(
+                action.get("debug_layer")
+                or step.get("debug_layer")
+                or existing_action.get("debug_layer")
+                or ""
+            ).strip()
+            if current_layer:
+                break
+    debug_layer = str(action.get("debug_layer") or current_layer or "").strip()
+    stage_id = _llm_observation_stage_id(action, workflow)
+    if not debug_layer or not stage_id:
+        return None, "LLM current-layer observation is missing debug_layer or stage_id"
+
+    tool = str(action.get("tool") or "").strip()
+    adapter = case_adapter if isinstance(case_adapter, dict) else {}
+    if not tool:
+        tool = trace_tool_for_flow_handoff(
+            adapter,
+            debug_layer,
+            action.get("tool_roles", [])
+            if isinstance(action.get("tool_roles"), list)
+            else [],
+        )
+    if not tool:
+        tool = (
+            "case_leaf_functional"
+            if debug_layer == "operator_leaf_modules"
+            else "case_single_layer_functional"
+            if debug_layer == "single_transformer_layer_kernel"
+            else "case_vcs_functional_sim"
+        )
+
+    existing_context: dict[str, Any] = {}
+    failed_gates: list[Any] = []
+    lower_layer_pass_evidence: list[Any] = []
+    for step in workflow.get("steps", []):
+        if not isinstance(step, dict):
+            continue
+        existing_action = step.get("action", {})
+        if not isinstance(existing_action, dict):
+            continue
+        context = existing_action.get("minimal_repair_context", {})
+        if isinstance(context, dict):
+            existing_context.update(copy.deepcopy(context))
+        if isinstance(existing_action.get("failed_current_layer_gates"), list):
+            failed_gates.extend(existing_action["failed_current_layer_gates"])
+        if isinstance(existing_action.get("lower_layer_pass_evidence"), list):
+            lower_layer_pass_evidence.extend(existing_action["lower_layer_pass_evidence"])
+
+    targeted_plan = _llm_observation_replay_plan(action)
+    review = verification_review if isinstance(verification_review, dict) else {}
+    review_output = review.get("output", {})
+    if (
+        review.get("debug_layer") == debug_layer
+        and isinstance(review_output, dict)
+        and "SPATIALACC_TARGET_BOUNDARY" not in targeted_plan.get("rerun_env", {})
+    ):
+        for observation in review_output.get("executable_actions", []):
+            if (
+                not isinstance(observation, dict)
+                or not _llm_current_layer_observation_action(observation)
+                or _llm_observation_stage_id(observation, {}) != stage_id
+            ):
+                continue
+            observation_environment = _llm_observation_replay_plan(observation).get("rerun_env", {})
+            if observation_environment.get("SPATIALACC_TARGET_BOUNDARY"):
+                targeted_plan["rerun_env"] = {
+                    **observation_environment,
+                    **targeted_plan.get("rerun_env", {}),
+                }
+                break
+    trace_action = {
+        "scope": "debug_trace_rerun",
+        "tool": tool,
+        "debug_layer": debug_layer,
+        "trace_target_stage_id": stage_id,
+        "targeted_replay_plan": targeted_plan,
+        "minimal_repair_context": {
+            **existing_context,
+            "llm_observation_action": copy.deepcopy(action),
+        },
+        "failed_current_layer_gates": copy.deepcopy(
+            action.get("failed_current_layer_gates")
+            if isinstance(action.get("failed_current_layer_gates"), list)
+            else failed_gates
+        ),
+        "lower_layer_pass_evidence": copy.deepcopy(
+            action.get("lower_layer_pass_evidence")
+            if isinstance(action.get("lower_layer_pass_evidence"), list)
+            else lower_layer_pass_evidence
+        ),
+        "reason": str(
+            action.get("rationale")
+            or action.get("reason")
+            or "run the current-layer observation selected by the Agent"
+        ),
+        "approval_required": False,
+        "source": "llm_repair_disposition",
+        "llm_action_type": str(action.get("action_type") or ""),
+        "flow_action": copy.deepcopy(action),
+    }
+    return trace_action, None
+
+
+def repeated_targeted_observation_evidence(
+    observation_action: dict[str, Any],
+    workflow: dict[str, Any],
+    localized_steps: list[dict[str, Any]],
+    run_dir: Path | None,
+) -> dict[str, Any] | None:
+    """Find a failed, source-bound trace that the current observation repeats."""
+
+    if run_dir is None or len(localized_steps) != 1:
+        return None
+    localized_action = localized_steps[0].get("action", {})
+    if not isinstance(localized_action, dict):
+        return None
+    localized_context = localized_action.get("minimal_repair_context", {})
+    localized_context = localized_context if isinstance(localized_context, dict) else {}
+    trace_record = localized_context.get("trace_record", {})
+    trace_record = trace_record if isinstance(trace_record, dict) else {}
+    if not (
+        localized_action.get("repair_kind") == "localized_semantic_dut_repair"
+        and localized_action.get("approval_required") is not True
+        and trace_record.get("stage_id")
+        and is_sha256(trace_record.get("input_fingerprint_sha256"))
+    ):
+        return None
+    plan = _llm_observation_replay_plan(observation_action)
+    stage_id = _llm_observation_stage_id(observation_action, workflow)
+    plan_environment = plan.get("rerun_env", {})
+    plan_environment = plan_environment if isinstance(plan_environment, dict) else {}
+    trace_env = targeted_trace_env(plan_environment)
+    if not stage_id or not trace_env["SPATIALACC_TARGET_BOUNDARY"]:
+        return None
+    semantic_fingerprint = str(
+        plan.get("semantic_input_fingerprint_sha256")
+        or observation_action.get("semantic_input_fingerprint_sha256")
+        or trace_record.get("input_fingerprint_sha256")
+        or ""
+    )
+    if not is_sha256(semantic_fingerprint):
+        return None
+    ledger_path = run_dir / "verification" / "debug_closure" / "targeted_replay_ledger.json"
+    if not ledger_path.is_file():
+        return None
+    try:
+        ledger = read_json(ledger_path)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    completed = ledger.get("completed", {}) if isinstance(ledger, dict) else {}
+    if not isinstance(completed, dict):
+        return None
+    matches: list[dict[str, Any]] = []
+    for identity, entry in completed.items():
+        if not isinstance(entry, dict) or not is_sha256(identity):
+            continue
+        execution_input = entry.get("execution_input", {})
+        if not isinstance(execution_input, dict):
+            continue
+        if execution_input.get("schema_version") != "spatialaccagent.targeted_leaf_trace_execution_input.v3":
+            continue
+        if (
+            execution_input.get("stage_id") != stage_id
+            or execution_input.get("trace_env") != trace_env
+            or execution_input.get("semantic_input_fingerprint_sha256") != semantic_fingerprint
+            or entry.get("result_status") != "fail"
+        ):
+            continue
+        input_record = entry.get("input", {})
+        contract = input_record.get("testbench_contract", {}) if isinstance(input_record, dict) else {}
+        if not isinstance(contract, dict) or not is_sha256(contract.get("sha256")):
+            continue
+        matches.append(
+            {
+                "identity_sha256": identity,
+                "completed_at_unix_sec": entry.get("completed_at_unix_sec"),
+                "result_status": entry.get("result_status"),
+            }
+        )
+    if not matches:
+        return None
+    return {
+        "status": "repeated_failed_observation",
+        "stage_id": stage_id,
+        "semantic_input_fingerprint_sha256": semantic_fingerprint,
+        "trace_env": trace_env,
+        "matching_replay_count": len(matches),
+        "matching_replays": matches,
+        "ledger_path": str(ledger_path),
+        "policy": "allow_one_bounded_functional_repair; retain all compile, VCS, and promotion gates",
+    }
+
+
 def reconcile_repair_workflow_with_llm(
     repair_plan: dict[str, Any],
     llm_output: dict[str, Any],
+    case_adapter: dict[str, Any] | None = None,
+    state: dict[str, Any] | None = None,
+    run_dir: Path | None = None,
 ) -> dict[str, Any]:
     workflow = repair_plan.get("repair_workflow", {}) if isinstance(repair_plan.get("repair_workflow"), dict) else {}
     actions = [action for action in llm_output.get("executable_actions", []) if isinstance(action, dict)]
@@ -3683,6 +4631,14 @@ def reconcile_repair_workflow_with_llm(
             "earliest causal boundary",
         )
     )
+    if localization_ambiguous_steps and not approvals and any(
+        _llm_current_layer_observation_action(action) for action in actions
+    ):
+        instrumentation_first = instrumentation_first or any(
+            step["action"].get("minimal_repair_context", {}).get("trace_record", {}).get("evidence_type")
+            == "semantic_liveness"
+            for step in localization_ambiguous_steps
+        )
     unresolved_approvals = set(approvals) - set(approved_approvals)
     textual_veto = any(
         token in disposition_text
@@ -3694,10 +4650,53 @@ def reconcile_repair_workflow_with_llm(
         )
     ) and not instrumentation_first and (not approvals or bool(unresolved_approvals))
     veto = bool(active_approvals) or textual_veto
+    observation_action = next(
+        (action for action in actions if _llm_current_layer_observation_action(action)),
+        None,
+    )
+    observation_workflow_action: dict[str, Any] | None = None
+    observation_route_error: str | None = None
+    if observation_action is not None and not active_approvals:
+        observation_workflow_action, observation_route_error = _llm_observation_workflow_action(
+            observation_action,
+            workflow,
+            case_adapter,
+            repair_plan.get("diagnostics", {}).get("verification_specialist_review"),
+        )
+        if observation_route_error:
+            veto = True
+            textual_veto = True
+    repeated_observation = (
+        repeated_targeted_observation_evidence(
+            observation_action,
+            workflow,
+            localized_steps,
+            run_dir,
+        )
+        if observation_action is not None and not active_approvals and not observation_route_error
+        else None
+    )
+    if repeated_observation is not None:
+        instrumentation_first = False
+        for step in localized_steps:
+            action = step["action"]
+            action["repair_phase"] = "functional_repair"
+            action.pop("template_repair_requires_internal_boundary_trace", None)
+            context = action.get("minimal_repair_context", {})
+            context = context if isinstance(context, dict) else {}
+            context["repeated_targeted_observation"] = copy.deepcopy(repeated_observation)
+            action["minimal_repair_context"] = context
+            step.pop("llm_disposition_constraint", None)
+        observation_workflow_action = None
     if instrumentation_first:
         for step in localization_ambiguous_steps:
             step["action"]["repair_phase"] = "instrumentation_first"
             step["action"]["template_repair_requires_internal_boundary_trace"] = True
+            if observation_workflow_action is not None:
+                step["action"]["targeted_replay_plan"] = copy.deepcopy(
+                    observation_workflow_action["targeted_replay_plan"]
+                )
+                step["action"]["minimal_repair_context"]["llm_observation_action"] = copy.deepcopy(observation_action)
             step["llm_disposition_constraint"] = (
                 "instrument the existing semantic harness and rerun the same real golden stage; "
                 "do not edit operator templates until the resulting internal trace identifies the earliest failure"
@@ -3713,7 +4712,56 @@ def reconcile_repair_workflow_with_llm(
         "deferred_approval_action_ids": deferred_approvals,
         "vetoed_pre_llm_execution": veto,
         "converted_to_instrumentation_first": instrumentation_first,
+        "repeated_targeted_observation_escalated": repeated_observation is not None,
+        "repeated_targeted_observation": copy.deepcopy(repeated_observation),
+        "routed_observation_action_id": (
+            str(observation_action.get("id") or observation_action.get("action_type") or "")
+            if observation_action is not None
+            else None
+        ),
+        "observation_route_error": observation_route_error,
     }
+    if observation_workflow_action is not None and not veto and not instrumentation_first:
+        superseded_repair_actions = copy.deepcopy(
+            repair_plan.get("repair_actions", [])
+        )
+        replacement_workflow = build_repair_workflow(
+            [observation_workflow_action],
+            state if isinstance(state, dict) else {},
+            run_dir or Path(str(workflow.get("run_dir") or Path.cwd())),
+            case_adapter if isinstance(case_adapter, dict) else {},
+        )
+        repair_plan["repair_actions"] = [copy.deepcopy(observation_workflow_action)]
+        deferred_actions = [
+            copy.deepcopy(action)
+            for action in actions
+            if action is not observation_action
+        ]
+        workflow["superseded_repair_actions"] = copy.deepcopy(
+            superseded_repair_actions
+        )
+        workflow["steps"] = replacement_workflow.get("steps", [])
+        workflow["status"] = replacement_workflow.get("status", "blocked")
+        workflow["blockers"] = replacement_workflow.get("blockers", [])
+        workflow["approval_steps"] = replacement_workflow.get("approval_steps", [])
+        workflow["observation_replan"] = {
+            "status": "ready" if not workflow["blockers"] else "blocked",
+            "step_id": workflow["steps"][0].get("id") if workflow["steps"] else None,
+            "deferred_llm_actions": deferred_actions,
+            "policy": (
+                "execute only this new current-layer observation; defer every repair or gate action "
+                "until the resulting real-tool evidence is replanned"
+            ),
+        }
+        workflow["llm_disposition"]["deferred_action_ids"] = [
+            str(action.get("id") or action.get("action_type") or "")
+            for action in deferred_actions
+        ]
+    elif observation_route_error:
+        blockers = list(workflow.get("blockers", []))
+        if observation_route_error not in blockers:
+            blockers.append(observation_route_error)
+        workflow["blockers"] = blockers
     if veto:
         workflow["pre_llm_status"] = workflow.get("status")
         workflow["status"] = "approval_required" if active_approvals else "blocked"
@@ -3787,6 +4835,7 @@ def restore_persisted_read_only_capability_steps(
             continue
         action = step.get("action", {})
         if not isinstance(action, dict) or action.get("repair_kind") not in {
+            "collect_hash_bound_semantic_harness_contract",
             "operator_leaf_static_inventory_trace",
             "operator_leaf_static_inventory_trace_check",
             "vcs_compile_diagnostic_source_provenance",
@@ -3947,6 +4996,7 @@ def plan_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     report_path = out_dir / "repair_report.json"
 
     source_data = read_json(source_state)
+    case_adapter = case_adapter_for_state(source_data, run_dir)
     flow_controller_handoff = getattr(args, "flow_controller_handoff", None)
     repair_plan = build_repair_plan(
         source_data,
@@ -3959,24 +5009,10 @@ def plan_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     )
     write_json(repair_path, repair_plan)
     team_error = None
-    try:
-        design_team_summary, team_paths = run_repair_review_team(
-            source_data,
-            repair_plan,
-            out_dir,
-            source_sacg_state=source_state,
-        )
-    except Exception as exc:
-        if llm_enforce():
-            raise
-        team_error = str(exc)
-        design_team_summary = {
-            "status": "unavailable",
-            "errors": [team_error],
-            "subtask_count": 0,
-            "completed_subtasks": 0,
-        }
-        team_paths = {"team_subtask_plan": None, "team_aggregate": None}
+    design_team_summary = no_split_repair_summary(
+        "compile-only evidence is sent directly to the primary repair agent"
+    )
+    team_paths = {"team_subtask_plan": None, "team_aggregate": None}
 
     llm_error = None
     deterministic_localized_route = exact_localized_repair_route(repair_plan)
@@ -3999,28 +5035,30 @@ def plan_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 if completed_lower_layer_capabilities
                 else ""
             )
+            repair_task = (
+                ('Make the bounded-repair decision directly from the current VCS compile failures and SACG/CCTG evidence. Compilation success is the only Stage-6 acceptance criterion under the active compile-only policy; do not infer functional simulation correctness or advance until the selected VCS compile gates pass. ')
+            )
+            repair_task += (
+                "Respect the hierarchical repair loop: if lower layers already passed and the current layer failed, "
+                "request current-layer evidence first; reopen lower-layer modules only when a current trace explicitly "
+                "contradicts their pass evidence. "
+                + replay_guard
+            )
+            repair_inputs = {
+                "candidate_repair_plan": repair_plan,
+                "source_sacg_state": str(source_state),
+                "completed_lower_layer_capabilities": completed_lower_layer_capabilities,
+                "flow_controller_handoff": (
+                    repair_plan.get("diagnostics", {}).get("flow_controller_handoff")
+                    if isinstance(repair_plan.get("diagnostics"), dict)
+                    else None
+                ),
+            }
             llm = run_stage_agent(
                 agent="repair_agent",
                 stage="repair",
-                task=(
-                    "Make the authoritative bounded-repair decision from verification failures, SACG/CCTG evidence, and the "
-                    "conditional specialist review when one was triggered, without bypassing checkers. "
-                    "Respect the hierarchical repair loop: if lower layers already passed and the current layer failed, "
-                    "request current-layer boundary trace/targeted replay first; reopen lower-layer modules only "
-                    "when the trace explicitly contradicts their pass evidence. "
-                    + replay_guard
-                ),
-                inputs={
-                    "candidate_repair_plan": repair_plan,
-                    "design_team": design_team_summary,
-                    "source_sacg_state": str(source_state),
-                    "completed_lower_layer_capabilities": completed_lower_layer_capabilities,
-                    "flow_controller_handoff": (
-                        repair_plan.get("diagnostics", {}).get("flow_controller_handoff")
-                        if isinstance(repair_plan.get("diagnostics"), dict)
-                        else None
-                    ),
-                },
+                task=repair_task,
+                inputs=repair_inputs,
                 out_dir=out_dir,
                 fallback_summary="Repair plan generated from failed verification results.",
             )
@@ -4072,8 +5110,21 @@ def plan_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             )
         ]
         llm["output"] = llm_output
-    repair_plan = reconcile_repair_workflow_with_llm(repair_plan, llm_output)
+    repair_plan = reconcile_repair_workflow_with_llm(
+        repair_plan,
+        llm_output,
+        case_adapter=case_adapter,
+        state=source_data,
+        run_dir=run_dir,
+    )
     write_json(repair_path, repair_plan)
+    handoff_consumption_path = None
+    if isinstance(flow_controller_handoff, dict):
+        handoff_consumption_path = mark_stage6_flow_handoff_consumed(
+            run_dir,
+            flow_controller_handoff,
+            repair_path,
+        )
     transition_id = update_sacg(source_state, state_path, repair_path, repair_plan)
     report_status = "ready" if repair_plan["status"] == "ready" else repair_plan["status"]
     report = {
@@ -4086,6 +5137,11 @@ def plan_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             "sacg_state": str(state_path),
             "llm_agent": llm["result_path"],
             **team_paths,
+            **(
+                {"flow_controller_handoff_consumption": str(handoff_consumption_path)}
+                if handoff_consumption_path is not None
+                else {}
+            ),
         },
         "llm_agent": llm["output"],
         "llm_executable_actions": llm["output"].get("executable_actions", []),

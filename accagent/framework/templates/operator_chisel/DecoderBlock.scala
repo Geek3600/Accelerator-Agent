@@ -3,6 +3,32 @@ package spatialaccagent.templates
 import chisel3._
 import chisel3.util._
 
+/**
+  * Common physical controls required by every Transformer block family that
+  * exposes bounded DDR tile refill. Keeping this contract explicit prevents a
+  * generated complete top from accidentally selecting a block parameter class
+  * without the selected refill width or reuse context.
+  */
+trait WideRefillParams {
+  /** Selected physical board payload, never an implicit scalar compatibility width. */
+  def refillDataWidthBits: Int
+  /** Bounded token context used by the elastic Linear schedule. */
+  def crossTokenReuseTokens: Int
+  /** Physical cache capacity shared by every block parameter family. */
+  def cacheTileWords: Int
+  def cacheTileCount: Int
+
+  final def selectedRefillDataWidthBits: Int = refillDataWidthBits
+  final def selectedCrossTokenReuseTokens: Int = crossTokenReuseTokens
+
+  final def requireWideRefillConfiguration(): Unit = {
+    require(PhysicalImplementation.isSupportedRefillDataWidth(refillDataWidthBits),
+      s"refill payload must be a physically supported full-beat payload, got $refillDataWidthBits")
+    require(crossTokenReuseTokens > 0, "cross-token reuse must be positive")
+    require(cacheTileWords > 0 && cacheTileCount > 0, "weight cache dimensions must be positive")
+  }
+}
+
 final case class DecoderBlockParams(
   hiddenSize: Int = 768,
   numHeads: Int = 12,
@@ -16,28 +42,48 @@ final case class DecoderBlockParams(
   outputBits: Int = 32,
   computeArrayRows: Int = 0,
   computeArrayCols: Int = 0,
+  cacheTileWords: Int = PhysicalImplementation.resolveCacheTileWords(256),
+  cacheTileCount: Int = PhysicalImplementation.resolveCacheTileCount(2),
+  override val refillDataWidthBits: Int = PhysicalImplementation.resolveRefillDataWidthBits(512),
+  override val crossTokenReuseTokens: Int = PhysicalImplementation.resolveCrossTokenReuseTokens(16),
   mlpActivation: String = "relu",
   qkvHasBias: Boolean = true,
-  attentionOutHasBias: Boolean = true
-) {
+  attentionOutHasBias: Boolean = true,
+  weightBits: Int = 0,
+  integerMode: Boolean = false,
+  accBits: Int = 32
+) extends WideRefillParams {
   require(inputBits == outputBits, "DecoderBlock inputBits and outputBits must match the residual stream width")
-  val norm = VectorNormParams(hiddenSize, lanes, inputBits = inputBits, outputBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
+  requireWideRefillConfiguration()
+  val norm = VectorNormParams(hiddenSize, lanes, inputBits = inputBits, outputBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen, integerMode = integerMode)
+  require(cacheTileWords > 0 && cacheTileCount > 0, "decoder cache dimensions must be positive")
+  require(PhysicalImplementation.isSupportedRefillDataWidth(refillDataWidthBits), "decoder refill payload must be a physically supported full-beat payload")
+  require(crossTokenReuseTokens > 0, "decoder cross-token reuse must be positive")
   val qkv = QKVProjectionParams(
     hiddenSize, numHeads, numHeads, headDim, lanes = lanes, elemBits = elemBits,
     batchSize = batchSize, maxSeqLen = maxSeqLen, hasBias = qkvHasBias,
-    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+    weightBits = weightBits, integerMode = integerMode, accBits = accBits,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords, cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits, crossTokenReuseTokens = crossTokenReuseTokens
   )
   val attn = AttentionParams(
     hiddenSize, numHeads, numHeads, headDim, maxSeqLen, lanes = lanes, elemBits = elemBits,
     batchSize = batchSize, outHasBias = attentionOutHasBias,
-    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+    weightBits = weightBits, integerMode = integerMode, accBits = accBits,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords, cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits, crossTokenReuseTokens = crossTokenReuseTokens
   )
   val outLinear: LinearParams = attn.outLinear
-  val residual = ResidualParams(hiddenSize, lanes = lanes, elemBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
+  val residual = ResidualParams(hiddenSize, lanes = lanes, elemBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen, integerMode = integerMode)
   val ffn = DenseFFNParams(
     hiddenSize, intermediateSize, lanes = lanes, elemBits = elemBits, outputBits = outputBits,
     batchSize = batchSize, maxSeqLen = maxSeqLen, activation = mlpActivation,
-    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+    weightBits = weightBits, integerMode = integerMode, accBits = accBits,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords, cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits, crossTokenReuseTokens = crossTokenReuseTokens
   )
 }
 
@@ -50,6 +96,10 @@ class DecoderBlock(p: DecoderBlockParams) extends Module {
     val cfg = Input(new StageConfig(log2Ceil(p.maxSeqLen + 1 max 2)))
     val cfgValid = Input(Bool())
     val norm1Weight = Flipped(Decoupled(UInt(p.norm.inputBeatBits.W)))
+    val qkvScale = Input(new LinearScaleMetadata(p.qkv.linear.outDim))
+    val attentionOutScale = Input(new LinearScaleMetadata(p.attn.outLinear.outDim))
+    val ffnUpScale = Input(new LinearScaleMetadata(p.ffn.up.outDim))
+    val ffnDownScale = Input(new LinearScaleMetadata(p.ffn.down.outDim))
     val qkvWeight = Flipped(Decoupled(new WeightWrite(p.qkv.linear.weightTileBits, p.qkv.linear.weightAddrBits)))
     val qkvBias = Flipped(Decoupled(new WeightWrite(p.qkv.linear.biasBeatBits, log2Ceil(p.qkv.linear.outBeats max 2))))
     val attentionOutWeight = Flipped(Decoupled(new WeightWrite(p.attn.outLinear.weightTileBits, p.attn.outLinear.weightAddrBits)))
@@ -59,6 +109,7 @@ class DecoderBlock(p: DecoderBlockParams) extends Module {
     val ffnUpBias = Flipped(Decoupled(new WeightWrite(p.ffn.up.biasBeatBits, log2Ceil(p.ffn.up.outBeats max 2))))
     val ffnDownWeight = Flipped(Decoupled(new WeightWrite(p.ffn.down.weightTileBits, p.ffn.down.weightAddrBits)))
     val ffnDownBias = Flipped(Decoupled(new WeightWrite(p.ffn.down.biasBeatBits, log2Ceil(p.ffn.down.outBeats max 2))))
+    val tile = Vec(4, new WeightTileServiceIO(p.selectedRefillDataWidthBits))
     val in = Flipped(Decoupled(new StreamBeat(inSpec)))
     val out = Decoupled(new StreamBeat(outSpec))
   })
@@ -91,9 +142,19 @@ class DecoderBlock(p: DecoderBlockParams) extends Module {
   qkv.io.cfgValid := io.cfgValid
   qkv.io.weight <> io.qkvWeight
   qkv.io.bias <> io.qkvBias
-  qkv.io.qScale := PhysicalMath.fp32One
-  qkv.io.kScale := PhysicalMath.fp32One
-  qkv.io.vScale := PhysicalMath.fp32One
+  qkv.io.tile <> io.tile(0)
+  qkv.io.qScale := (if (p.integerMode) "h80000000".U(32.W) else PhysicalMath.fp32One)
+  qkv.io.kScale := (if (p.integerMode) "h80000000".U(32.W) else PhysicalMath.fp32One)
+  qkv.io.vScale := (if (p.integerMode) "h80000000".U(32.W) else PhysicalMath.fp32One)
+  qkv.io.channelScale := io.qkvScale.channelScale
+  qkv.io.activationScale := io.qkvScale.activationScale
+  qkv.io.outputScale := io.qkvScale.outputScale
+  qkv.io.outputScaleShift := io.qkvScale.outputShift
+  qkv.io.channelScaleShift := io.qkvScale.channelShift
+  qkv.io.activationScaleShift := io.qkvScale.activationShift
+  qkv.io.qScaleShift := 0.S
+  qkv.io.kScaleShift := 0.S
+  qkv.io.vScaleShift := 0.S
   qkv.io.in <> ln1.io.out
 
   attn.io.cfg := io.cfg
@@ -105,6 +166,13 @@ class DecoderBlock(p: DecoderBlockParams) extends Module {
   attn.io.outInvScale := PhysicalMath.fp32One
   attn.io.outWeight <> io.attentionOutWeight
   attn.io.outBias <> io.attentionOutBias
+  attn.io.outChannelScale := io.attentionOutScale.channelScale
+  attn.io.outChannelScaleShift := io.attentionOutScale.channelShift
+  attn.io.outActivationScale := io.attentionOutScale.activationScale
+  attn.io.outActivationScaleShift := io.attentionOutScale.activationShift
+  attn.io.outOutputScale := io.attentionOutScale.outputScale
+  attn.io.outOutputScaleShift := io.attentionOutScale.outputShift
+  attn.io.tile <> io.tile(1)
   attn.io.in <> qkv.io.out
 
   add1.io.cfg := io.cfg
@@ -130,6 +198,20 @@ class DecoderBlock(p: DecoderBlockParams) extends Module {
   ffn.io.upBias <> io.ffnUpBias
   ffn.io.downWeight <> io.ffnDownWeight
   ffn.io.downBias <> io.ffnDownBias
+  ffn.io.upChannelScale := io.ffnUpScale.channelScale
+  ffn.io.upChannelScaleShift := io.ffnUpScale.channelShift
+  ffn.io.upActivationScale := io.ffnUpScale.activationScale
+  ffn.io.upActivationShift := io.ffnUpScale.activationShift
+  ffn.io.upOutputScale := io.ffnUpScale.outputScale
+  ffn.io.upOutputShift := io.ffnUpScale.outputShift
+  ffn.io.downChannelScale := io.ffnDownScale.channelScale
+  ffn.io.downChannelScaleShift := io.ffnDownScale.channelShift
+  ffn.io.downActivationScale := io.ffnDownScale.activationScale
+  ffn.io.downActivationShift := io.ffnDownScale.activationShift
+  ffn.io.downOutputScale := io.ffnDownScale.outputScale
+  ffn.io.downOutputShift := io.ffnDownScale.outputShift
+  ffn.io.upTile <> io.tile(2)
+  ffn.io.downTile <> io.tile(3)
   ffn.io.in <> ln2.io.out
 
   add2.io.cfg := io.cfg
@@ -155,28 +237,46 @@ final case class LlamaStyleBlockParams(
   outputBits: Int = 32,
   computeArrayRows: Int = 0,
   computeArrayCols: Int = 0,
+  cacheTileWords: Int = PhysicalImplementation.resolveCacheTileWords(256),
+  cacheTileCount: Int = PhysicalImplementation.resolveCacheTileCount(2),
+  override val refillDataWidthBits: Int = PhysicalImplementation.resolveRefillDataWidthBits(512),
+  override val crossTokenReuseTokens: Int = PhysicalImplementation.resolveCrossTokenReuseTokens(16),
   ropeTheta: Double = 10000.0,
-  qkvHasBias: Boolean = false
-) {
+  qkvHasBias: Boolean = false,
+  weightBits: Int = 0,
+  integerMode: Boolean = false,
+  accBits: Int = 32
+) extends WideRefillParams {
   require(inputBits == outputBits, "LlamaStyleBlock inputBits and outputBits must match the residual stream width")
+  require(cacheTileWords > 0 && cacheTileCount > 0, "LlamaStyleBlock cache dimensions must be positive")
+  requireWideRefillConfiguration()
   val inSpec = StreamSpec(lanes * inputBits, log2Ceil(batchSize * (hiddenSize / lanes) max 2))
-  val rms = RMSNormParams(hiddenSize, lanes, inputBits = inputBits, outputBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
+  val rms = RMSNormParams(hiddenSize, lanes, inputBits = inputBits, outputBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen, integerMode = integerMode)
   val qkv = QKVProjectionParams(
     hiddenSize, qHeads, kvHeads, headDim, lanes = lanes, elemBits = elemBits,
     batchSize = batchSize, maxSeqLen = maxSeqLen, hasBias = qkvHasBias,
-    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+    weightBits = weightBits, integerMode = integerMode, accBits = accBits,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords, cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits, crossTokenReuseTokens = crossTokenReuseTokens
   )
   val rope = RoPEParams(qkv, theta = ropeTheta)
   val attn = AttentionParams(
     hiddenSize, qHeads, kvHeads, headDim, maxSeqLen, lanes = lanes, elemBits = elemBits, batchSize = batchSize,
-    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+    weightBits = weightBits, integerMode = integerMode, accBits = accBits,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords, cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits, crossTokenReuseTokens = crossTokenReuseTokens
   )
   val outLinear: LinearParams = attn.outLinear
-  val residual = ResidualParams(hiddenSize, lanes = lanes, elemBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
+  val residual = ResidualParams(hiddenSize, lanes = lanes, elemBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen, integerMode = integerMode)
   val mlp = GatedMLPParams(
     hiddenSize, intermediateSize, lanes = lanes, elemBits = elemBits, outputBits = outputBits,
     batchSize = batchSize, maxSeqLen = maxSeqLen, activation = "silu", hasBias = false,
-    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+    weightBits = weightBits, integerMode = integerMode, accBits = accBits,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords, cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits, crossTokenReuseTokens = crossTokenReuseTokens
   )
 }
 
@@ -187,6 +287,11 @@ class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
     val cfgValid = Input(Bool())
     val position = Input(UInt(log2Ceil(p.maxSeqLen max 2).W))
     val rms1Weight = Flipped(Decoupled(UInt(p.rms.vector.inputBeatBits.W)))
+    val qkvScale = Input(new LinearScaleMetadata(p.qkv.linear.outDim))
+    val attentionOutScale = Input(new LinearScaleMetadata(p.attn.outLinear.outDim))
+    val mlpGateScale = Input(new LinearScaleMetadata(p.mlp.gate.outDim))
+    val mlpUpScale = Input(new LinearScaleMetadata(p.mlp.up.outDim))
+    val mlpDownScale = Input(new LinearScaleMetadata(p.mlp.down.outDim))
     val qkvWeight = Flipped(Decoupled(new WeightWrite(p.qkv.linear.weightTileBits, p.qkv.linear.weightAddrBits)))
     val qkvBias = Flipped(Decoupled(new WeightWrite(p.qkv.linear.biasBeatBits, log2Ceil(p.qkv.linear.outBeats max 2))))
     val ropeRuntime = Flipped(Decoupled(new WeightWrite(32, p.rope.runtimeAddrBits)))
@@ -197,6 +302,7 @@ class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
     val mlpGateWeight = Flipped(Decoupled(new WeightWrite(p.mlp.gate.weightTileBits, p.mlp.gate.weightAddrBits)))
     val mlpUpWeight = Flipped(Decoupled(new WeightWrite(p.mlp.up.weightTileBits, p.mlp.up.weightAddrBits)))
     val mlpDownWeight = Flipped(Decoupled(new WeightWrite(p.mlp.down.weightTileBits, p.mlp.down.weightAddrBits)))
+    val tile = Vec(5, new WeightTileServiceIO(p.selectedRefillDataWidthBits))
     val in = Flipped(Decoupled(new StreamBeat(p.inSpec)))
     val out = Decoupled(new StreamBeat(p.inSpec))
   })
@@ -230,9 +336,19 @@ class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
   qkv.io.cfgValid := io.cfgValid
   qkv.io.weight <> io.qkvWeight
   qkv.io.bias <> io.qkvBias
-  qkv.io.qScale := PhysicalMath.fp32One
-  qkv.io.kScale := PhysicalMath.fp32One
-  qkv.io.vScale := PhysicalMath.fp32One
+  qkv.io.tile <> io.tile(0)
+  qkv.io.qScale := (if (p.integerMode) "h80000000".U(32.W) else PhysicalMath.fp32One)
+  qkv.io.kScale := (if (p.integerMode) "h80000000".U(32.W) else PhysicalMath.fp32One)
+  qkv.io.vScale := (if (p.integerMode) "h80000000".U(32.W) else PhysicalMath.fp32One)
+  qkv.io.channelScale := io.qkvScale.channelScale
+  qkv.io.activationScale := io.qkvScale.activationScale
+  qkv.io.outputScale := io.qkvScale.outputScale
+  qkv.io.outputScaleShift := io.qkvScale.outputShift
+  qkv.io.channelScaleShift := io.qkvScale.channelShift
+  qkv.io.activationScaleShift := io.qkvScale.activationShift
+  qkv.io.qScaleShift := 0.S
+  qkv.io.kScaleShift := 0.S
+  qkv.io.vScaleShift := 0.S
   qkv.io.in <> rms1.io.out
 
   rope.io.cfg := io.cfg
@@ -251,6 +367,13 @@ class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
   attn.io.ctxZeroPoint := 0.U
   attn.io.outInvScale := PhysicalMath.fp32One
   attn.io.outWeight <> io.attentionOutWeight
+  attn.io.outChannelScale := io.attentionOutScale.channelScale
+  attn.io.outChannelScaleShift := io.attentionOutScale.channelShift
+  attn.io.outActivationScale := io.attentionOutScale.activationScale
+  attn.io.outActivationScaleShift := io.attentionOutScale.activationShift
+  attn.io.outOutputScale := io.attentionOutScale.outputScale
+  attn.io.outOutputScaleShift := io.attentionOutScale.outputShift
+  attn.io.tile <> io.tile(1)
   attn.io.outBias.valid := false.B
   attn.io.outBias.bits.addr := 0.U
   attn.io.outBias.bits.data := 0.U
@@ -278,12 +401,33 @@ class LlamaStyleBlock(p: LlamaStyleBlockParams) extends Module {
   mlp.io.gateWeight <> io.mlpGateWeight
   mlp.io.upWeight <> io.mlpUpWeight
   mlp.io.downWeight <> io.mlpDownWeight
+  mlp.io.gateTile <> io.tile(2)
+  mlp.io.upTile <> io.tile(3)
+  mlp.io.downTile <> io.tile(4)
   mlp.io.gateBias.valid := false.B
   mlp.io.gateBias.bits := 0.U.asTypeOf(mlp.io.gateBias.bits)
   mlp.io.upBias.valid := false.B
   mlp.io.upBias.bits := 0.U.asTypeOf(mlp.io.upBias.bits)
   mlp.io.downBias.valid := false.B
   mlp.io.downBias.bits := 0.U.asTypeOf(mlp.io.downBias.bits)
+  mlp.io.gateChannelScale := io.mlpGateScale.channelScale
+  mlp.io.gateChannelScaleShift := io.mlpGateScale.channelShift
+  mlp.io.gateActivationScale := io.mlpGateScale.activationScale
+  mlp.io.gateActivationShift := io.mlpGateScale.activationShift
+  mlp.io.gateOutputScale := io.mlpGateScale.outputScale
+  mlp.io.gateOutputShift := io.mlpGateScale.outputShift
+  mlp.io.upChannelScale := io.mlpUpScale.channelScale
+  mlp.io.upChannelScaleShift := io.mlpUpScale.channelShift
+  mlp.io.upActivationScale := io.mlpUpScale.activationScale
+  mlp.io.upActivationShift := io.mlpUpScale.activationShift
+  mlp.io.upOutputScale := io.mlpUpScale.outputScale
+  mlp.io.upOutputShift := io.mlpUpScale.outputShift
+  mlp.io.downChannelScale := io.mlpDownScale.channelScale
+  mlp.io.downChannelScaleShift := io.mlpDownScale.channelShift
+  mlp.io.downActivationScale := io.mlpDownScale.activationScale
+  mlp.io.downActivationShift := io.mlpDownScale.activationShift
+  mlp.io.downOutputScale := io.mlpDownScale.outputScale
+  mlp.io.downOutputShift := io.mlpDownScale.outputShift
   mlp.io.in <> rms2.io.out
 
   add2.io.cfg := io.cfg
@@ -306,20 +450,42 @@ final case class Gemma3TextBlockParams(
   inputBits: Int = 32,
   elemBits: Int = 16,
   outputBits: Int = 32,
+  computeArrayRows: Int = 0,
+  computeArrayCols: Int = 0,
+  cacheTileWords: Int = PhysicalImplementation.resolveCacheTileWords(256),
+  cacheTileCount: Int = PhysicalImplementation.resolveCacheTileCount(2),
+  override val refillDataWidthBits: Int = PhysicalImplementation.resolveRefillDataWidthBits(512),
+  override val crossTokenReuseTokens: Int = PhysicalImplementation.resolveCrossTokenReuseTokens(16),
   ropeTheta: Double = 1000000.0,
-  slidingWindow: Int = 512
-) {
+  slidingWindow: Int = 512,
+  weightBits: Int = 0,
+  integerMode: Boolean = false,
+  accBits: Int = 32
+) extends WideRefillParams {
   require(inputBits == outputBits, "Gemma3TextBlock inputBits and outputBits must match the residual stream width")
+  requireWideRefillConfiguration()
   val inSpec = StreamSpec(lanes * inputBits, log2Ceil(batchSize * (hiddenSize / lanes) max 2))
-  val rmsIn = RMSNormParams(hiddenSize, lanes, inputBits = inputBits, outputBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
-  val rmsFp = RMSNormParams(hiddenSize, lanes, inputBits = outputBits, outputBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
-  val qkv = QKVProjectionParams(hiddenSize, qHeads, kvHeads, headDim, lanes = lanes, elemBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
+  val rmsIn = RMSNormParams(hiddenSize, lanes, inputBits = inputBits, outputBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen, integerMode = integerMode)
+  val rmsFp = RMSNormParams(hiddenSize, lanes, inputBits = outputBits, outputBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen, integerMode = integerMode)
+  val qkv = QKVProjectionParams(hiddenSize, qHeads, kvHeads, headDim, lanes = lanes, elemBits = elemBits, batchSize = batchSize, maxSeqLen = maxSeqLen,
+    weightBits = weightBits, integerMode = integerMode, accBits = accBits,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords, cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits, crossTokenReuseTokens = crossTokenReuseTokens)
   val qkNorm = QKNormParams(qkv)
   val rope = RoPEParams(qkv, theta = ropeTheta, localTheta = Some(10000.0))
-  val attn = AttentionParams(hiddenSize, qHeads, kvHeads, headDim, maxSeqLen, lanes = lanes, elemBits = elemBits, batchSize = batchSize)
+  val attn = AttentionParams(hiddenSize, qHeads, kvHeads, headDim, maxSeqLen, lanes = lanes, elemBits = elemBits, batchSize = batchSize,
+    weightBits = weightBits, integerMode = integerMode, accBits = accBits,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords, cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits, crossTokenReuseTokens = crossTokenReuseTokens)
   val outLinear: LinearParams = attn.outLinear
-  val residual = ResidualParams(hiddenSize, lanes = lanes, elemBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen)
-  val mlp = GatedMLPParams(hiddenSize, intermediateSize, lanes = lanes, elemBits = elemBits, outputBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen, activation = "gelu_pytorch_tanh", hasBias = false)
+  val residual = ResidualParams(hiddenSize, lanes = lanes, elemBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen, integerMode = integerMode)
+  val mlp = GatedMLPParams(hiddenSize, intermediateSize, lanes = lanes, elemBits = elemBits, outputBits = outputBits, batchSize = batchSize, maxSeqLen = maxSeqLen, activation = "gelu_pytorch_tanh", hasBias = false,
+    weightBits = weightBits, integerMode = integerMode, accBits = accBits,
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords, cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits, crossTokenReuseTokens = crossTokenReuseTokens)
 }
 
 class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
@@ -329,6 +495,11 @@ class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
     val cfgValid = Input(Bool())
     val position = Input(UInt(log2Ceil(p.maxSeqLen max 2).W))
     val rmsInWeight = Flipped(Decoupled(UInt(p.rmsIn.vector.inputBeatBits.W)))
+    val qkvScale = Input(new LinearScaleMetadata(p.qkv.linear.outDim))
+    val attentionOutScale = Input(new LinearScaleMetadata(p.attn.outLinear.outDim))
+    val mlpGateScale = Input(new LinearScaleMetadata(p.mlp.gate.outDim))
+    val mlpUpScale = Input(new LinearScaleMetadata(p.mlp.up.outDim))
+    val mlpDownScale = Input(new LinearScaleMetadata(p.mlp.down.outDim))
     val qkvWeight = Flipped(Decoupled(new WeightWrite(p.qkv.linear.weightTileBits, p.qkv.linear.weightAddrBits)))
     val qkvBias = Flipped(Decoupled(new WeightWrite(p.qkv.linear.biasBeatBits, log2Ceil(p.qkv.linear.outBeats max 2))))
     val qNormWeight = Flipped(Decoupled(UInt(p.qkNorm.weightBits.W)))
@@ -343,6 +514,7 @@ class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
     val mlpUpWeight = Flipped(Decoupled(new WeightWrite(p.mlp.up.weightTileBits, p.mlp.up.weightAddrBits)))
     val mlpDownWeight = Flipped(Decoupled(new WeightWrite(p.mlp.down.weightTileBits, p.mlp.down.weightAddrBits)))
     val postFfnNormWeight = Flipped(Decoupled(UInt(p.rmsFp.vector.inputBeatBits.W)))
+    val tile = Vec(5, new WeightTileServiceIO(p.selectedRefillDataWidthBits))
     val in = Flipped(Decoupled(new StreamBeat(p.inSpec)))
     val out = Decoupled(new StreamBeat(p.inSpec))
   })
@@ -379,9 +551,19 @@ class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
   qkv.io.cfgValid := io.cfgValid
   qkv.io.weight <> io.qkvWeight
   qkv.io.bias <> io.qkvBias
-  qkv.io.qScale := PhysicalMath.fp32One
-  qkv.io.kScale := PhysicalMath.fp32One
-  qkv.io.vScale := PhysicalMath.fp32One
+  qkv.io.tile <> io.tile(0)
+  qkv.io.qScale := (if (p.integerMode) "h80000000".U(32.W) else PhysicalMath.fp32One)
+  qkv.io.kScale := (if (p.integerMode) "h80000000".U(32.W) else PhysicalMath.fp32One)
+  qkv.io.vScale := (if (p.integerMode) "h80000000".U(32.W) else PhysicalMath.fp32One)
+  qkv.io.channelScale := io.qkvScale.channelScale
+  qkv.io.activationScale := io.qkvScale.activationScale
+  qkv.io.outputScale := io.qkvScale.outputScale
+  qkv.io.outputScaleShift := io.qkvScale.outputShift
+  qkv.io.channelScaleShift := io.qkvScale.channelShift
+  qkv.io.activationScaleShift := io.qkvScale.activationShift
+  qkv.io.qScaleShift := 0.S
+  qkv.io.kScaleShift := 0.S
+  qkv.io.vScaleShift := 0.S
   qkv.io.in <> rmsIn.io.out
 
   qkNorm.io.cfg := io.cfg
@@ -406,6 +588,13 @@ class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
   attn.io.ctxZeroPoint := 0.U
   attn.io.outInvScale := PhysicalMath.fp32One
   attn.io.outWeight <> io.attentionOutWeight
+  attn.io.outChannelScale := io.attentionOutScale.channelScale
+  attn.io.outChannelScaleShift := io.attentionOutScale.channelShift
+  attn.io.outActivationScale := io.attentionOutScale.activationScale
+  attn.io.outActivationScaleShift := io.attentionOutScale.activationShift
+  attn.io.outOutputScale := io.attentionOutScale.outputScale
+  attn.io.outOutputScaleShift := io.attentionOutScale.outputShift
+  attn.io.tile <> io.tile(1)
   attn.io.outBias.valid := false.B
   attn.io.outBias.bits.addr := 0.U
   attn.io.outBias.bits.data := 0.U
@@ -440,12 +629,33 @@ class Gemma3TextBlock(p: Gemma3TextBlockParams) extends Module {
   mlp.io.gateWeight <> io.mlpGateWeight
   mlp.io.upWeight <> io.mlpUpWeight
   mlp.io.downWeight <> io.mlpDownWeight
+  mlp.io.gateTile <> io.tile(2)
+  mlp.io.upTile <> io.tile(3)
+  mlp.io.downTile <> io.tile(4)
   mlp.io.gateBias.valid := false.B
   mlp.io.gateBias.bits := 0.U.asTypeOf(mlp.io.gateBias.bits)
   mlp.io.upBias.valid := false.B
   mlp.io.upBias.bits := 0.U.asTypeOf(mlp.io.upBias.bits)
   mlp.io.downBias.valid := false.B
   mlp.io.downBias.bits := 0.U.asTypeOf(mlp.io.downBias.bits)
+  mlp.io.gateChannelScale := io.mlpGateScale.channelScale
+  mlp.io.gateChannelScaleShift := io.mlpGateScale.channelShift
+  mlp.io.gateActivationScale := io.mlpGateScale.activationScale
+  mlp.io.gateActivationShift := io.mlpGateScale.activationShift
+  mlp.io.gateOutputScale := io.mlpGateScale.outputScale
+  mlp.io.gateOutputShift := io.mlpGateScale.outputShift
+  mlp.io.upChannelScale := io.mlpUpScale.channelScale
+  mlp.io.upChannelScaleShift := io.mlpUpScale.channelShift
+  mlp.io.upActivationScale := io.mlpUpScale.activationScale
+  mlp.io.upActivationShift := io.mlpUpScale.activationShift
+  mlp.io.upOutputScale := io.mlpUpScale.outputScale
+  mlp.io.upOutputShift := io.mlpUpScale.outputShift
+  mlp.io.downChannelScale := io.mlpDownScale.channelScale
+  mlp.io.downChannelScaleShift := io.mlpDownScale.channelShift
+  mlp.io.downActivationScale := io.mlpDownScale.activationScale
+  mlp.io.downActivationShift := io.mlpDownScale.activationShift
+  mlp.io.downOutputScale := io.mlpDownScale.outputScale
+  mlp.io.downOutputShift := io.mlpDownScale.outputShift
   mlp.io.in <> preFfnNorm.io.out
 
   postFfnNorm.io.cfg := io.cfg

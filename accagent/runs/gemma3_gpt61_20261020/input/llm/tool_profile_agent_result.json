@@ -1,0 +1,107 @@
+{
+  "deterministic_candidate": {
+    "notes": [
+      "Fallback parser only records facts visible in user-provided tool and board materials.",
+      "Missing host/path fields must remain null until the user documents them or the tool profile agent extracts them."
+    ],
+    "schema_version": "spatialaccagent.tool_profile.v0",
+    "tools": [
+      {
+        "constraints": [],
+        "env": {},
+        "name": "verilator",
+        "role": "functional_verification",
+        "scope": "remote",
+        "source": "tool input materials deterministic parser"
+      },
+      {
+        "constraints": [],
+        "env": {},
+        "name": "vcs",
+        "role": "functional_verification",
+        "scope": "remote",
+        "source": "tool input materials deterministic parser"
+      },
+      {
+        "constraints": [],
+        "env": {},
+        "name": "vivado",
+        "role": "synthesis_place_route_bitstream",
+        "scope": "remote",
+        "source": "tool input materials deterministic parser"
+      }
+    ]
+  },
+  "duration_sec": 18.657626704021823,
+  "error": null,
+  "http_transport": "urllib",
+  "mode": "llm",
+  "output": {
+    "notes": [
+      "The remote-server document specifies passwordless SSH access via ssh hyyuan@10.12.133.23; it does not specify a port.",
+      "The supplied tool materials describe probe requirements but do not provide evidence of a new probe performed for this extraction."
+    ],
+    "schema_version": "spatialaccagent.tool_profile.v0",
+    "tools": [
+      {
+        "constraints": [
+          "Tool materials require an actual SSH probe of the version command before treating VCS as available: VCS_TARGET_ARCH=linux64 /home/EDA/Software/EDATools/Synopsys/VCSALL/v202206-OLD/bin/vcs -ID.",
+          "The materials record that VCS T-2022.06_Full64 completed compilation and linking of a generated design on 2026-10-16; this profile does not establish a new probe.",
+          "Use the specified HOME because its synopsys_sim.setup binds the VCS 2022.06-matched Vivado 2021.1 simulation libraries. Do not use the user's default HOME with 2021.09 precompiled libraries.",
+          "The materials report a VHDL code-generation native assertion with older 2021.09 libraries for the same source.",
+          "Existing Qwen smoke script: scripts/verification/run_qwen_generated_vcs_smoke_23.sh."
+        ],
+        "env": {
+          "HOME": "/home/hyyuan/workspace/spatialaccagent_artifacts/toolchains/vcs202206_vivado2021_1/home",
+          "REMOTE_HOST": "hyyuan@10.12.133.23",
+          "REMOTE_VCS_HOME": "/home/EDA/Software/EDATools/Synopsys/VCSALL/v202206-OLD",
+          "VCS_TARGET_ARCH": "linux64"
+        },
+        "executable": "/home/EDA/Software/EDATools/Synopsys/VCSALL/v202206-OLD/bin/vcs",
+        "host": "hyyuan@10.12.133.23",
+        "name": "vcs",
+        "role": "Functional verification: compile and run SystemVerilog testbenches.",
+        "scope": "remote",
+        "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools/vcs.md"
+      },
+      {
+        "constraints": [
+          "Tool materials require an actual SSH probe of /home/EDA/Xilinx/Vivado/2021.1/bin/vivado -version before treating Vivado as available; they report version v2021.1.",
+          "Vivado is required for final synthesis, implementation, and bitstream evidence; the materials state Stage 0 must fail if it is missing or the probe fails.",
+          "Existing Qwen bitstream script: scripts/synthesis/run_qwen_generated_bitstream_23.sh."
+        ],
+        "env": {
+          "REMOTE_HOST": "hyyuan@10.12.133.23",
+          "VIVADO_BIN": "/home/EDA/Xilinx/Vivado/2021.1/bin/vivado"
+        },
+        "executable": "/home/EDA/Xilinx/Vivado/2021.1/bin/vivado",
+        "host": "hyyuan@10.12.133.23",
+        "name": "vivado",
+        "role": "Synthesis, implementation, and bitstream generation.",
+        "scope": "remote",
+        "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools/vivado.md"
+      },
+      {
+        "constraints": [
+          "The materials state Verilator is on the local machine and is mainly used for functional verification.",
+          "Executable path, version, environment requirements, and workdir are not specified."
+        ],
+        "env": {},
+        "name": "verilator",
+        "role": "Functional verification.",
+        "scope": "local",
+        "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools/verilator.md"
+      }
+    ]
+  },
+  "prompt_hash": "ec98188cc6d8a1aa036c8395644b5f8103e4bde440d950aaa274a345db6fc559",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.tool_profile.v0\",\n  \"tools\": [\n    {\n      \"name\": \"vcs\",\n      \"role\": \"Functional verification: compile and run SystemVerilog testbenches.\",\n      \"scope\": \"remote\",\n      \"host\": \"hyyuan@10.12.133.23\",\n      \"port\": null,\n      \"executable\": \"/home/EDA/Software/EDATools/Synopsys/VCSALL/v202206-OLD/bin/vcs\",\n      \"env\": {\n        \"VCS_TARGET_ARCH\": \"linux64\",\n        \"REMOTE_HOST\": \"hyyuan@10.12.133.23\",\n        \"REMOTE_VCS_HOME\": \"/home/EDA/Software/EDATools/Synopsys/VCSALL/v202206-OLD\",\n        \"HOME\": \"/home/hyyuan/workspace/spatialaccagent_artifacts/toolchains/vcs202206_vivado2021_1/home\"\n      },\n      \"workdir\": null,\n      \"constraints\": [\n        \"Tool materials require an actual SSH probe of the version command before treating VCS as available: VCS_TARGET_ARCH=linux64 /home/EDA/Software/EDATools/Synopsys/VCSALL/v202206-OLD/bin/vcs -ID.\",\n        \"The materials record that VCS T-2022.06_Full64 completed compilation and linking of a generated design on 2026-10-16; this profile does not establish a new probe.\",\n        \"Use the specified HOME because its synopsys_sim.setup binds the VCS 2022.06-matched Vivado 2021.1 simulation libraries. Do not use the user's default HOME with 2021.09 precompiled libraries.\",\n        \"The materials report a VHDL code-generation native assertion with older 2021.09 libraries for the same source.\",\n        \"Existing Qwen smoke script: scripts/verification/run_qwen_generated_vcs_smoke_23.sh.\"\n      ],\n      \"source\": \"/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools/vcs.md\"\n    },\n    {\n      \"name\": \"vivado\",\n      \"role\": \"Synthesis, implementation, and bitstream generation.\",\n      \"scope\": \"remote\",\n      \"host\": \"hyyuan@10.12.133.23\",\n      \"port\": null,\n      \"executable\": \"/home/EDA/Xilinx/Vivado/2021.1/bin/vivado\",\n      \"env\": {\n        \"REMOTE_HOST\": \"hyyuan@10.12.133.23\",\n        \"VIVADO_BIN\": \"/home/EDA/Xilinx/Vivado/2021.1/bin/vivado\"\n      },\n      \"workdir\": null,\n      \"constraints\": [\n        \"Tool materials require an actual SSH probe of /home/EDA/Xilinx/Vivado/2021.1/bin/vivado -version before treating Vivado as available; they report version v2021.1.\",\n        \"Vivado is required for final synthesis, implementation, and bitstream evidence; the materials state Stage 0 must fail if it is missing or the probe fails.\",\n        \"Existing Qwen bitstream script: scripts/synthesis/run_qwen_generated_bitstream_23.sh.\"\n      ],\n      \"source\": \"/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools/vivado.md\"\n    },\n    {\n      \"name\": \"verilator\",\n      \"role\": \"Functional verification.\",\n      \"scope\": \"local\",\n      \"host\": null,\n      \"port\": null,\n      \"executable\": null,\n      \"env\": {},\n      \"workdir\": null,\n      \"constraints\": [\n        \"The materials state Verilator is on the local machine and is mainly used for functional verification.\",\n        \"Executable path, version, environment requirements, and workdir are not specified.\"\n      ],\n      \"source\": \"/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools/verilator.md\"\n    }\n  ],\n  \"notes\": [\n    \"The remote-server document specifies passwordless SSH access via ssh hyyuan@10.12.133.23; it does not specify a port.\",\n    \"The supplied tool materials describe probe requirements but do not provide evidence of a new probe performed for this extraction.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/llm/tool_profile_agent_request.md",
+  "schema_version": "spatialaccagent.stage0_llm_record.v1",
+  "stream": false,
+  "sub_agent": "tool_profile_agent",
+  "transport": "responses_json",
+  "used_fallback": false
+}

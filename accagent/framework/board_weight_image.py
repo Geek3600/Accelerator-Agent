@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -17,6 +18,7 @@ from accagent.framework.weight_layout import (
     SCHEMA_VERSION as WEIGHT_LAYOUT_SCHEMA_VERSION,
     sha256_file,
     sha256_json,
+    weight_layout_binding_matches,
 )
 from accagent.framework.board_validation_scope import (
     BoardValidationScopeError,
@@ -107,6 +109,28 @@ def _byte_range(byte_offset: int, byte_count: int) -> dict[str, int]:
 
 def _align_up(value: int, alignment: int) -> int:
     return ((value + alignment - 1) // alignment) * alignment
+
+
+def _q31_scale_encoding(scale: float) -> dict[str, int]:
+    """Represent a positive real checkpoint scale as unsigned Q31 times 2^shift."""
+
+    import math
+
+    value = float(scale)
+    if not math.isfinite(value) or value <= 0.0:
+        raise BoardWeightImageError(f"quantization scale must be finite and positive, got {value!r}")
+    mantissa, exponent = math.frexp(value)
+    multiplier = int(round(mantissa * (1 << 31)))
+    if multiplier >= (1 << 31):
+        multiplier >>= 1
+        exponent += 1
+    if multiplier <= 0 or multiplier >= (1 << 31):
+        raise BoardWeightImageError(f"cannot encode quantization scale in unsigned Q31: {value!r}")
+    return {"multiplier_unsigned_q31": multiplier, "binary_shift": int(exponent)}
+
+
+def _q31_scale_encoding_list(scales: list[float]) -> list[dict[str, int]]:
+    return [_q31_scale_encoding(scale) for scale in scales]
 
 
 def _tensor_elements(shape: list[Any], label: str) -> int:
@@ -297,9 +321,15 @@ def _validate_layouts(
             raise BoardWeightImageError(f"{stage_id}: canonical weight_layout is not pass")
         if layout.get("stage_id") != stage_id or layout.get("op") != op:
             raise BoardWeightImageError(f"{stage_id}: stage identity differs from canonical weight_layout")
-        layout_hash = _contract_hash(layout, f"{stage_id} weight layout")
-        if stage.get("weight_layout_contract_sha256") != layout_hash:
-            raise BoardWeightImageError(f"{stage_id}: requirement does not bind canonical weight_layout hash")
+        layout_hash = _hash(
+            layout.get("contract_sha256"),
+            f"{stage_id} weight layout.contract_sha256",
+        )
+        if not weight_layout_binding_matches(
+            layout,
+            stage.get("weight_layout_contract_sha256"),
+        ):
+            raise BoardWeightImageError(f"{stage_id} weight layout contract hash mismatch")
         layout_hashes.append(layout_hash)
 
         stage_word_count = _integer(layout.get("stream_word_count"), f"{stage_id}.stream_word_count")
@@ -322,10 +352,11 @@ def _validate_layouts(
             expected_range = _range(target_word_offset, word_count)
             if target.get("stream_range") != expected_range:
                 raise BoardWeightImageError(f"{stage_id}/{target_id}: canonical target stream_range is not contiguous")
-            if target.get("storage_scalar_dtype") not in {"fp16", "fp32"}:
+            if target.get("storage_scalar_dtype") not in {"fp16", "fp32", "int4", "int8", "int32"}:
                 raise BoardWeightImageError(f"{stage_id}/{target_id}: unsupported storage scalar dtype")
             scalar_bits = _integer(target.get("storage_scalar_bits"), f"{stage_id}/{target_id}.storage_scalar_bits", minimum=1)
-            if scalar_bits not in {16, 32} or scalar_bits != int(str(target.get("storage_scalar_dtype"))[2:]):
+            declared_dtype_bits = int(str(target.get("storage_scalar_dtype"))[2:])
+            if scalar_bits not in {4, 8, 16, 32} or scalar_bits != declared_dtype_bits:
                 raise BoardWeightImageError(f"{stage_id}/{target_id}: storage dtype/bits disagree")
             compose = target.get("compose")
             source_templates = target.get("source_tensors")
@@ -362,6 +393,7 @@ def _validate_layouts(
                 {
                     "target": target,
                     "target_id": target_id,
+                    "dut_port_role": target.get("dut_port_role"),
                     "source_suffixes": template_suffixes,
                     "local_word_range": expected_range,
                 }
@@ -436,6 +468,155 @@ def _validate_layouts(
             or segment.get("global_stream_range") != descriptor["layer_word_range"]
         ):
             raise BoardWeightImageError(f"{descriptor['stage_id']}: connected stream segment differs from layout")
+        materialized_targets = segment.get("targets")
+        if not isinstance(materialized_targets, list):
+            raise BoardWeightImageError(
+                f"{descriptor['stage_id']}: connected stream segment lacks materialized target metadata"
+            )
+        materialized_by_id = {
+            str(target.get("target_id")): target
+            for target in materialized_targets
+            if isinstance(target, dict) and target.get("target_id")
+        }
+        if len(materialized_by_id) != len(materialized_targets):
+            raise BoardWeightImageError(
+                f"{descriptor['stage_id']}: connected stream target ids are not unique"
+            )
+        for target_descriptor in descriptor["targets"]:
+            target_id = str(target_descriptor.get("target_id") or "")
+            materialized = materialized_by_id.get(target_id)
+            if materialized is None:
+                raise BoardWeightImageError(
+                    f"{descriptor['stage_id']}/{target_id}: connected stream target is missing"
+                )
+            # The canonical layout stores only the stage-global range and the
+            # target-local range. A target never owns a layer_word_range; derive
+            # its global range explicitly from those two authoritative records.
+            stage_range = descriptor.get("layer_word_range")
+            local_range = target_descriptor.get("local_word_range")
+            if not isinstance(stage_range, dict) or not isinstance(local_range, dict):
+                raise BoardWeightImageError(
+                    f"{descriptor['stage_id']}/{target_id}: canonical stage/target word ranges are missing"
+                )
+            stage_offset = _integer(
+                stage_range.get("word_offset"),
+                f"{descriptor['stage_id']}.layer_word_range.word_offset",
+            )
+            local_offset = _integer(
+                local_range.get("word_offset"),
+                f"{descriptor['stage_id']}/{target_id}.local_word_range.word_offset",
+            )
+            local_count = _integer(
+                local_range.get("word_count"),
+                f"{descriptor['stage_id']}/{target_id}.local_word_range.word_count",
+            )
+            expected_global_range = {
+                "word_offset": stage_offset + local_offset,
+                "word_count": local_count,
+                "word_end_exclusive": stage_offset + local_offset + local_count,
+            }
+            if materialized.get("global_stream_range") != expected_global_range:
+                raise BoardWeightImageError(
+                    f"{descriptor['stage_id']}/{target_id}: materialized target global range differs from stage/local layout ranges"
+                )
+            canonical_target = target_descriptor.get("target")
+            if not isinstance(canonical_target, dict):
+                raise BoardWeightImageError(
+                    f"{descriptor['stage_id']}/{target_id}: canonical target descriptor is malformed"
+                )
+            expected_role = canonical_target.get("dut_port_role")
+            if materialized.get("dut_port_role") != expected_role:
+                raise BoardWeightImageError(
+                    f"{descriptor['stage_id']}/{target_id}: materialized target route role differs from layout"
+                )
+            materialized_record = materialized.get("materialized_target")
+            if not isinstance(materialized_record, dict):
+                materialized_record = {}
+            # materialize_composite_weight_stream preserves the complete local
+            # target record at this boundary. Accept the explicit top-level
+            # fields when present, but recover quantization/scale payloads from
+            # that materialized record when an older stream serializer nested
+            # them there. This is a data-preserving normalization, not a
+            # recomputation or metadata-only placeholder.
+            materialized_quantization = materialized.get("quantization")
+            if materialized_quantization is None:
+                materialized_quantization = materialized_record.get("quantization")
+            materialized_scale_metadata = materialized.get("scale_metadata")
+            if materialized_scale_metadata is None:
+                materialized_scale_metadata = materialized_record.get("scale_metadata")
+            materialized_scale_payload = materialized.get("scale_payload")
+            if materialized_scale_payload is None:
+                materialized_scale_payload = materialized_record.get("scale_payload")
+            if isinstance(materialized_quantization, dict):
+                fixed_point = materialized_quantization.get("scale_fixed_point")
+                if materialized_scale_payload is None and isinstance(fixed_point, dict):
+                    materialized_scale_payload = fixed_point
+                if fixed_point is not None and not isinstance(fixed_point, dict):
+                    raise BoardWeightImageError(
+                        f"{descriptor['stage_id']}/{target_id}: materialized scale_fixed_point must be an object"
+                    )
+            storage_dtype = str(target_descriptor["target"].get("storage_scalar_dtype") or "")
+            if storage_dtype in {"int4", "int8", "int32"}:
+                if not isinstance(materialized_quantization, dict):
+                    raise BoardWeightImageError(
+                        f"{descriptor['stage_id']}/{target_id}: integer target lacks materialized quantization metadata"
+                    )
+                if not isinstance(materialized_scale_payload, dict):
+                    raise BoardWeightImageError(
+                        f"{descriptor['stage_id']}/{target_id}: integer target lacks materialized Q31 scale/shift payload"
+                    )
+                if materialized_scale_payload.get("representation") != "unsigned_q31_multiplier_times_power_of_two":
+                    raise BoardWeightImageError(
+                        f"{descriptor['stage_id']}/{target_id}: unsupported materialized scale representation"
+                    )
+                if materialized_scale_payload.get("fractional_bits") != 31:
+                    raise BoardWeightImageError(
+                        f"{descriptor['stage_id']}/{target_id}: materialized scale payload must use Q31 fractional bits"
+                    )
+            materialized_target_id = str(materialized.get("target_id") or "")
+            if materialized_target_id != target_id:
+                raise BoardWeightImageError(
+                    f"{descriptor['stage_id']}/{target_id}: materialized target identity is inconsistent"
+                )
+            nested_quantization = materialized.get("quantization")
+            if nested_quantization != materialized_quantization:
+                raise BoardWeightImageError(
+                    f"{descriptor['stage_id']}/{target_id}: materialized quantization differs between target records"
+                )
+            nested_scale_payload = materialized.get("scale_payload")
+            if nested_scale_payload is None and isinstance(nested_quantization, dict):
+                nested_fixed_point = nested_quantization.get("scale_fixed_point")
+                if isinstance(nested_fixed_point, dict):
+                    nested_scale_payload = nested_fixed_point
+            if nested_scale_payload != materialized_scale_payload:
+                raise BoardWeightImageError(
+                    f"{descriptor['stage_id']}/{target_id}: materialized Q31 scale payload differs between target records"
+                )
+            if isinstance(materialized_target_id, str) and materialized_target_id:
+                nested_role = materialized.get("dut_port_role")
+                if nested_role is not None and nested_role != expected_role:
+                    raise BoardWeightImageError(
+                        f"{descriptor['stage_id']}/{target_id}: nested materialized route role differs from layout"
+                    )
+            target_descriptor["materialized_quantization"] = materialized_quantization
+            target_descriptor["materialized_scale_metadata"] = materialized_scale_metadata
+            target_descriptor["materialized_scale_payload"] = materialized_scale_payload
+            # Keep the complete materialized record, not just layout-derived
+            # fields. The board image is a consumer of checkpoint-derived
+            # quantization and must preserve channel ordering and consumer
+            # bindings exactly as emitted by the canonical local stream.
+            target_descriptor["materialized_target"] = {
+                key: value
+                for key, value in materialized.items()
+                if key not in {"global_stream_range", "dut_port_role"}
+            }
+            # Normalize the complete record after validation so downstream
+            # image generation consumes the same exact quantization and scale
+            # payload regardless of whether the current stream serializer kept
+            # those fields top-level or nested in materialized_target.
+            target_descriptor["materialized_target"]["quantization"] = materialized_quantization
+            target_descriptor["materialized_target"]["scale_metadata"] = materialized_scale_metadata
+            target_descriptor["materialized_target"]["scale_payload"] = materialized_scale_payload
 
     layout_set_hash = sha256_json({"stage_weight_layout_contract_sha256s": layout_hashes})
     return stage_descriptors, local_word_offset, connected_hash, layout_hashes, layout_set_hash
@@ -451,7 +632,8 @@ def _validate_plan(
     layout_set_sha256: str,
     layer_ids: list[int],
     canonical_layer_bytes: int,
-) -> tuple[int, int, list[int]]:
+    stage_descriptors: list[dict[str, Any]],
+) -> tuple[int, int, list[int], int]:
     plan = document.value
     if plan.get("schema_version") != PLAN_SCHEMA_VERSION or plan.get("status") != "pass":
         raise BoardWeightImageError(f"board workload image plan must be pass {PLAN_SCHEMA_VERSION}")
@@ -498,13 +680,47 @@ def _validate_plan(
     )
     if bank_capacity % 4:
         raise BoardWeightImageError("weight_bank_capacity_bytes must be divisible by four")
-    padded_layer_bytes = _align_up(canonical_layer_bytes, alignment)
-    if padded_layer_bytes > bank_capacity:
+    # DDR contains the complete canonical layer image. On-chip bank capacity
+    # bounds the working tile, not a complete model layer. Derive the largest
+    # single target tile from the current canonical layout and reject only a
+    # tile that cannot fit in one working bank.
+    max_tile_bytes = 0
+    for stage in stage_descriptors:
+        for descriptor in stage.get("targets", []):
+            target = descriptor.get("target", {})
+            if not isinstance(target, dict):
+                raise BoardWeightImageError("canonical target descriptor is malformed")
+            scalar_bits = _integer(
+                target.get("storage_scalar_bits"),
+                f"{stage.get('stage_id')}/{descriptor.get('target_id')}.storage_scalar_bits",
+                minimum=1,
+            )
+            if target.get("target_kind") == "linear_weight_matrix":
+                tile = target.get("tile")
+                if not isinstance(tile, dict):
+                    raise BoardWeightImageError(
+                        f"{stage.get('stage_id')}/{descriptor.get('target_id')}: matrix tile contract is missing"
+                    )
+                tile_elements = (
+                    _integer(tile.get("out_lanes"), "tile.out_lanes", minimum=1)
+                    * _integer(tile.get("in_lanes"), "tile.in_lanes", minimum=1)
+                )
+            else:
+                tile = target.get("tile", {})
+                elements = tile.get("elements_per_write") if isinstance(tile, dict) else None
+                if elements is None:
+                    elements = tile.get("elements_per_write", 1) if isinstance(tile, dict) else 1
+                tile_elements = _integer(elements, "tile.elements_per_write", minimum=1)
+            max_tile_bytes = max(max_tile_bytes, (tile_elements * scalar_bits + 7) // 8)
+    max_tile_bytes = _align_up(max_tile_bytes, 4)
+    if max_tile_bytes <= 0:
+        raise BoardWeightImageError("canonical weight layouts contain no non-empty working tile")
+    if max_tile_bytes > bank_capacity:
         raise BoardWeightImageError(
-            "canonical layer weight payload exceeds weight bank capacity: "
-            f"required={padded_layer_bytes} capacity={bank_capacity} shortfall={padded_layer_bytes - bank_capacity} bytes"
+            "canonical weight tile exceeds one working-bank capacity: "
+            f"required={max_tile_bytes} capacity={bank_capacity} shortfall={max_tile_bytes - bank_capacity} bytes"
         )
-    return alignment, bank_capacity, selected_layer_ids
+    return alignment, bank_capacity, selected_layer_ids, max_tile_bytes
 
 
 class _SafetensorReader:
@@ -569,16 +785,35 @@ def _packed_u32_bytes(value: Any, storage_dtype: str) -> bytes:
     import numpy as np
     import torch
 
-    contiguous = value.detach().cpu().contiguous()
+    contiguous = value.detach().cpu().contiguous().reshape(-1)
     if storage_dtype == "fp16":
-        bits = contiguous.to(torch.float16).view(torch.int16).reshape(-1).numpy().view(np.uint16)
-        if bits.size % 2:
-            raise BoardWeightImageError("fp16 canonical target has an odd scalar count")
-        packed = bits[0::2].astype(np.uint32) | (bits[1::2].astype(np.uint32) << np.uint32(16))
-        return packed.astype("<u4", copy=False).tobytes(order="C")
+        bits = contiguous.to(torch.float16).view(torch.int16).numpy().view(np.uint16)
+        # A canonical tensor may end on a half-word. Preserve scalar lane
+        # order and zero-fill only the unused high half of the final u32 word.
+        packed_words: list[int] = []
+        for offset in range(0, int(bits.size), 2):
+            low = int(bits[offset])
+            high = int(bits[offset + 1]) if offset + 1 < int(bits.size) else 0
+            packed_words.append(low | (high << 16))
+        return np.asarray(packed_words, dtype="<u4").tobytes(order="C")
     if storage_dtype == "fp32":
-        bits = contiguous.to(torch.float32).view(torch.int32).reshape(-1).numpy().view(np.uint32)
+        bits = contiguous.to(torch.float32).view(torch.int32).numpy().view(np.uint32)
         return bits.astype("<u4", copy=False).tobytes(order="C")
+    if storage_dtype in {"int4", "int8", "int32"}:
+        bits_per_scalar = {"int4": 4, "int8": 8, "int32": 32}[storage_dtype]
+        scalars_per_word = 32 // bits_per_scalar
+        # Partial final words are legal image words. Pack the present signed
+        # two's-complement lanes in little-endian lane order and leave unused
+        # high lanes zero; do not reject arbitrary admitted matrix/vector tails.
+        integer_values = contiguous.to(torch.int64).tolist()
+        mask = (1 << bits_per_scalar) - 1
+        words: list[int] = []
+        for offset in range(0, len(integer_values), scalars_per_word):
+            word = 0
+            for lane, item in enumerate(integer_values[offset:offset + scalars_per_word]):
+                word |= (int(item) & mask) << (lane * bits_per_scalar)
+            words.append(word)
+        return np.asarray(words, dtype="<u4").tobytes(order="C")
     raise BoardWeightImageError(f"unsupported canonical storage dtype: {storage_dtype}")
 
 
@@ -586,7 +821,8 @@ def _target_bytes(
     target: dict[str, Any],
     source_rows: list[dict[str, Any]],
     reader: _SafetensorReader,
-) -> bytes:
+    canonical_quantization: dict[str, Any] | None = None,
+) -> tuple[bytes, dict[str, Any] | None]:
     import torch
 
     conversion = target.get("value_conversion")
@@ -601,14 +837,95 @@ def _target_bytes(
     if compose.get("kind") == "identity":
         value = tensors[0]
     else:
-        value = torch.cat(tensors, dim=0)
+        compose_axis = compose.get("axis", 0)
+        if compose_axis not in {0, 1}:
+            raise BoardWeightImageError(
+                f"{target.get('target_id')}: unsupported source composition axis {compose_axis}"
+            )
+        value = torch.cat(tensors, dim=int(compose_axis))
+    if target.get("source_transform", {}).get("kind") == "transpose_2d":
+        value = value.transpose(0, 1).contiguous()
     logical_shape = [int(item) for item in target.get("logical_shape", [])]
     if list(value.shape) != logical_shape:
         raise BoardWeightImageError(
             f"{target.get('target_id')}: composed shape {list(value.shape)} != logical_shape {logical_shape}"
         )
+
     storage_dtype = str(target.get("storage_scalar_dtype") or "")
-    value = value.to(torch.float16 if storage_dtype == "fp16" else torch.float32)
+    quantization: dict[str, Any] | None = None
+    if storage_dtype in {"int4", "int8", "int32"}:
+        bits = {"int4": 4, "int8": 8, "int32": 32}[storage_dtype]
+        qmin = -(1 << (bits - 1))
+        qmax = (1 << (bits - 1)) - 1
+        # The local materializer is the canonical checkpoint quantization
+        # boundary. Reuse its exact real-valued scale payload when composing
+        # the board image; recomputing scales here can differ at floating-point
+        # ties and silently change packed integer codes or channel ordering.
+        supplied = canonical_quantization if isinstance(canonical_quantization, dict) else None
+        if target.get("target_kind") == "linear_weight_matrix":
+            if value.ndim != 2:
+                raise BoardWeightImageError(f"{target.get('target_id')}: quantized matrix must have rank two")
+            supplied_scales = supplied.get("scale") if supplied is not None else None
+            if supplied_scales is not None:
+                if not isinstance(supplied_scales, list) or len(supplied_scales) != int(value.shape[0]):
+                    raise BoardWeightImageError(
+                        f"{target.get('target_id')}: canonical per-channel scale count does not match matrix output channels"
+                    )
+                scale_values = [float(scale) for scale in supplied_scales]
+                if any(not math.isfinite(scale) or scale <= 0.0 for scale in scale_values):
+                    raise BoardWeightImageError(
+                        f"{target.get('target_id')}: canonical per-channel scales are not finite and positive"
+                    )
+                scales = torch.tensor(scale_values, dtype=value.dtype, device=value.device)
+                integer_value = torch.round(value / scales[:, None]).clamp(qmin, qmax).to(torch.int64)
+                quantization = copy.deepcopy(supplied)
+            else:
+                maxima = value.abs().amax(dim=1)
+                scales = torch.where(maxima > 0, maxima / float(qmax), torch.ones_like(maxima))
+                integer_value = torch.round(value / scales[:, None]).clamp(qmin, qmax).to(torch.int64)
+                scale_values = [float(scale) for scale in scales.tolist()]
+                quantization = {
+                    "scheme": "symmetric_signed_per_output_channel",
+                    "rounding": "nearest_even",
+                    "saturation_range": [qmin, qmax],
+                    "zero_point": 0,
+                    "scale": scale_values,
+                    "scale_fixed_point": {
+                        "representation": "unsigned_q31_multiplier_times_power_of_two",
+                        "fractional_bits": 31,
+                        "channels": _q31_scale_encoding_list(scale_values),
+                    },
+                }
+        else:
+            supplied_scale = supplied.get("scale") if supplied is not None else None
+            if supplied_scale is not None:
+                scale = float(supplied_scale)
+                if not math.isfinite(scale) or scale <= 0.0:
+                    raise BoardWeightImageError(
+                        f"{target.get('target_id')}: canonical tensor scale is not finite and positive"
+                    )
+                integer_value = torch.round(value / scale).clamp(qmin, qmax).to(torch.int64)
+                quantization = copy.deepcopy(supplied)
+            else:
+                maximum = float(value.abs().max().item()) if value.numel() else 0.0
+                scale = maximum / float(qmax) if maximum > 0 else 1.0
+                integer_value = torch.round(value / scale).clamp(qmin, qmax).to(torch.int64)
+                quantization = {
+                    "scheme": "symmetric_signed_per_tensor",
+                    "rounding": "nearest_even",
+                    "saturation_range": [qmin, qmax],
+                    "zero_point": 0,
+                    "scale": float(scale),
+                    "scale_fixed_point": {
+                        "representation": "unsigned_q31_multiplier_times_power_of_two",
+                        "fractional_bits": 31,
+                        **_q31_scale_encoding(float(scale)),
+                    },
+                }
+        value = integer_value
+    else:
+        value = value.to(torch.float16 if storage_dtype == "fp16" else torch.float32)
+
     if target.get("target_kind") == "linear_weight_matrix":
         if len(logical_shape) != 2:
             raise BoardWeightImageError(f"{target.get('target_id')}: linear matrix logical shape must have rank two")
@@ -628,7 +945,7 @@ def _target_bytes(
         ).permute(0, 2, 1, 3).contiguous()
     elif len(logical_shape) != 1:
         raise BoardWeightImageError(f"{target.get('target_id')}: unsupported non-vector canonical target kind")
-    return _packed_u32_bytes(value.reshape(-1), storage_dtype)
+    return _packed_u32_bytes(value.reshape(-1), storage_dtype), quantization
 
 
 def _write_bytes(
@@ -674,7 +991,7 @@ def materialize_board_weight_image(
     )
     checkpoint_hash = _hash(catalog.get("source_checkpoint_sha256"), "catalog.source_checkpoint_sha256")
     canonical_layer_bytes = canonical_layer_words * 4
-    alignment, bank_capacity, selected_layer_ids = _validate_plan(
+    alignment, bank_capacity, selected_layer_ids, max_tile_bytes = _validate_plan(
         plan_document,
         catalog_sha256=catalog_document.identity_sha256,
         checkpoint_sha256=checkpoint_hash,
@@ -683,6 +1000,7 @@ def materialize_board_weight_image(
         layout_set_sha256=layout_set_hash,
         layer_ids=layer_ids,
         canonical_layer_bytes=canonical_layer_bytes,
+        stage_descriptors=stages,
     )
 
     final_image = Path(image_path).expanduser().resolve()
@@ -743,7 +1061,18 @@ def materialize_board_weight_image(
                                         f"layer {layer_index}/{target_descriptor['target_id']}/{row['parameter_suffix']}: "
                                         "catalog shape differs from canonical template"
                                     )
-                            packed = _target_bytes(target, source_rows, reader)
+                            materialized_quantization = target_descriptor.get("materialized_quantization")
+                            packed, quantization = _target_bytes(
+                                target,
+                                source_rows,
+                                reader,
+                                canonical_quantization=materialized_quantization,
+                            )
+                            if materialized_quantization is not None and materialized_quantization != quantization:
+                                raise BoardWeightImageError(
+                                    f"layer {layer_index}/{stage['stage_id']}/{target_descriptor['target_id']}: "
+                                    "checkpoint-derived quantization differs from the canonical materialized local stream"
+                                )
                             expected_words = target_descriptor["local_word_range"]["word_count"]
                             if len(packed) != expected_words * 4:
                                 raise BoardWeightImageError(
@@ -764,6 +1093,37 @@ def materialize_board_weight_image(
                                     "dut_port_role": target.get("dut_port_role"),
                                     "storage_scalar_dtype": target.get("storage_scalar_dtype"),
                                     "storage_scalar_bits": target.get("storage_scalar_bits"),
+                                    "quantization": (
+                                        target_descriptor.get("materialized_quantization")
+                                        if target_descriptor.get("materialized_quantization") is not None
+                                        else quantization
+                                    ),
+                                    "scale_metadata": (
+                                        target_descriptor.get("materialized_scale_metadata")
+                                        if target_descriptor.get("materialized_scale_metadata") is not None
+                                        else target.get("scale_metadata")
+                                    ),
+                                    "scale_payload": (
+                                        target_descriptor.get("materialized_scale_payload")
+                                        if target_descriptor.get("materialized_scale_payload") is not None
+                                        else (quantization or {}).get("scale_fixed_point")
+                                        if isinstance(quantization, dict)
+                                        else None
+                                    ),
+                                    "scale_consumer_binding": (
+                                        target_descriptor.get("materialized_target", {}).get("scale_consumer_binding")
+                                        if isinstance(target_descriptor.get("materialized_target"), dict)
+                                        else (
+                                            target.get("scale_metadata", {}).get("consumer_binding")
+                                            if isinstance(target.get("scale_metadata"), dict)
+                                            else None
+                                        )
+                                    ),
+                                    "materialized_target": (
+                                        dict(target_descriptor.get("materialized_target", {}))
+                                        if isinstance(target_descriptor.get("materialized_target"), dict)
+                                        else None
+                                    ),
                                     **_byte_range(target_start, len(packed)),
                                     **_range(target_start // 4, expected_words),
                                     "layer_word_offset": layer_word_offset + stage_word_offset,
@@ -885,6 +1245,9 @@ def materialize_board_weight_image(
                 "layer_alignment_bytes": alignment,
                 "weight_bank_count": 2,
                 "weight_bank_capacity_bytes": bank_capacity,
+                "weight_cache_tile_bytes": max_tile_bytes,
+                "weight_backing_store": "complete_model_semantic_image_in_external_ddr",
+                "weight_cache_policy": "bounded_active_shadow_tiles; layer payload size is not an on-chip capacity requirement",
                 "path": str(final_image),
                 "sha256": image_hash,
                 "image_sha256": image_hash,
@@ -893,6 +1256,17 @@ def materialize_board_weight_image(
                 "word_count": image_byte_offset // 4,
                 "packed_tensor_count": len(packed_tensor_hashes),
                 "packed_tensor_hashes": packed_tensor_hashes,
+                "scale_metadata_contract": {
+                    "representation": "unsigned_int32_q31_multiplier_times_signed_binary_shift",
+                    "fractional_bits": 31,
+                    "source": "checkpoint-derived matrix quantization plus the explicit numeric-policy code-domain scalar convention; no absent learned activation calibration is assumed",
+                    "consumers": ["LinearScalePorts.channelScale", "LinearScalePorts.activationScale", "QKVProjection qScale/kScale/vScale"],
+                    "target_segments_carry_scale_payload": True,
+                    "target_segments_carry_scale_consumer_binding": True,
+                    "matrix_weight_policy": "signed_int4_per_output_channel_scale_and_shift",
+                    "activation_policy": "signed_int8_per_tensor_scale_and_shift",
+                    "accumulator_policy": "signed_int32_bias_and_accumulator_domain",
+                },
                 "source_checkpoint_files": reader.source_files,
                 "layer_segments": layer_segments,
                 "padding_policy": {

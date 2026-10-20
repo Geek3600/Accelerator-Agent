@@ -1,0 +1,124 @@
+{
+  "agent": "numeric_template_engineer",
+  "duration_sec": 27.080797408998478,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "ee7be2a207fb42a6916574bae398a60c",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/team/llm/numeric_template_engineer_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "numeric_template_engineer",
+    "approval_required_for": [
+      "Any change to numeric formats, numeric policy, or tolerances.",
+      "Any change to architecture design-space limits.",
+      "Any major template selection or template parameter change that alters the architecture."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "constraint_extraction.audit_numeric_template_bindings",
+        "on_failure": "Record the failing checker and the exact unsupported, unbound, conflicting, or untraceable fact. Do not infer missing detail from this compact summary, invent a replacement binding, alter numeric policy, or claim closure. Produce only evidence-backed proposed graph deltas; request approval for numeric-policy, architecture-limit, or major-template changes.",
+        "produces": [
+          "constraint_extraction/reviews/numeric_template_review.json",
+          "constraint_extraction/proposed_deltas/numeric_template.json",
+          "constraint_extraction/checker_results/numeric_template_static_checks.json"
+        ],
+        "rationale": "The visible summary establishes structural presence but does not expose the detailed facts or checker results needed to verify numeric-policy consistency, trusted-template coverage, parameter bindings, design-space limits, or current-input traceability. Run the registered static checks and report supported bindings separately from unresolved choices.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The candidate summary reports 23 nodes, 16 constraints, 10 edges, and no validation errors or failed invariants. It identifies input, evidence, and tool groups, but does not expose the detailed numeric/template/design-space graph rows or their provenance.",
+      "The state summary lists the four relevant input artifacts and the corresponding numeric, template, architecture, and cross-layer constraints. This confirms reported artifact presence, not that graph facts trace to current input contents.",
+      "No results from numeric_policy_check, template_coverage_check, parameter_binding_static_check, template_binding_static_check, or sacg_static_check are supplied. Therefore, no individual binding can be certified as supported, and no specific choice can be established as open from the visible evidence. Treat both classifications as unresolved pending checker evidence, not as failures.",
+      "sacg_memory_truth reports zero active contamination barriers and zero open retry or backtrack requests relevant to this review."
+    ],
+    "proposed_actions": [
+      "Run the registered numeric, template coverage, parameter-binding, template-binding, and SACG static checks against the current graph and listed input artifacts. Record each binding as supported only when the checker ties it to supplied library/metadata and design-space evidence; separately record unresolved choices without filling them in.",
+      "If a checker finds a missing or mismatched provenance/binding edge, propose only an evidence-backed graph delta. Route any change to numeric policy, architecture limits, or a major template choice for approval before adoption."
+    ],
+    "risks": [
+      "Numeric formats and policy details cannot be compared with the input because their values and graph evidence rows are not shown; do not infer or alter numeric settings.",
+      "Template identity, coverage, metadata compatibility, and parameter bindings cannot be confirmed from the summary. Do not invent templates or bindings; distinguish checker-supported bindings from unbound or unresolved choices in the resulting review.",
+      "The reported edge count does not show whether provenance and binding edges connect current inputs to the governing constraints. Require static checker evidence before treating the graph as traceable.",
+      "Design-space bounds and resource assumptions are not visible, and no synthesis or measured resource evidence is supplied. Do not claim timing or resource closure.",
+      "Cross-layer consistency with shape, data order, and memory assumptions remains unverified where numeric or template choices depend on those facts."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_design_graph_summary",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space"
+      ],
+      "constraints": [
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "numeric-policy input provenance to constraint.numeric.policy",
+        "template-library and metadata provenance to constraint.template.library",
+        "design-space input provenance to constraint.arch.design_space",
+        "parameter and template binding evidence to their governing constraints",
+        "numeric, template, and design-space constraints to constraint.cross_layer.input_consistency"
+      ],
+      "nodes": [
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.cross_layer.input_consistency",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space"
+      ]
+    },
+    "schema_version": "spatialaccagent.numeric_template_review.v0",
+    "stage": "constraint_extraction",
+    "status": "needs_checker_evidence",
+    "summary": "The graph summary reports numeric-policy, template-library, design-space, and cross-layer consistency constraints, and the corresponding input artifacts are present. However, it omits their detailed values, binding rows, provenance edges, and checker results. Structural presence is not sufficient to certify consistency or classify any individual binding as supported or open."
+  },
+  "prompt_bytes": 39757,
+  "prompt_hash": "f77001a137efc6fd473511c3f5967c8d01d39ffacbd21d235fb8091e7d3da23f",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.numeric_template_review.v0\",\n  \"agent\": \"numeric_template_engineer\",\n  \"stage\": \"constraint_extraction\",\n  \"status\": \"needs_checker_evidence\",\n  \"summary\": \"The graph summary reports numeric-policy, template-library, design-space, and cross-layer consistency constraints, and the corresponding input artifacts are present. However, it omits their detailed values, binding rows, provenance edges, and checker results. Structural presence is not sufficient to certify consistency or classify any individual binding as supported or open.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.cross_layer.input_consistency\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"artifact.input.design_space\"\n    ],\n    \"edges\": [\n      \"numeric-policy input provenance to constraint.numeric.policy\",\n      \"template-library and metadata provenance to constraint.template.library\",\n      \"design-space input provenance to constraint.arch.design_space\",\n      \"parameter and template binding evidence to their governing constraints\",\n      \"numeric, template, and design-space constraints to constraint.cross_layer.input_consistency\"\n    ],\n    \"constraints\": [\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.cross_layer.input_consistency\"\n    ],\n    \"artifacts\": [\n      \"candidate_design_graph_summary\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"artifact.input.design_space\"\n    ]\n  },\n  \"observations\": [\n    \"The candidate summary reports 23 nodes, 16 constraints, 10 edges, and no validation errors or failed invariants. It identifies input, evidence, and tool groups, but does not expose the detailed numeric/template/design-space graph rows or their provenance.\",\n    \"The state summary lists the four relevant input artifacts and the corresponding numeric, template, architecture, and cross-layer constraints. This confirms reported artifact presence, not that graph facts trace to current input contents.\",\n    \"No results from numeric_policy_check, template_coverage_check, parameter_binding_static_check, template_binding_static_check, or sacg_static_check are supplied. Therefore, no individual binding can be certified as supported, and no specific choice can be established as open from the visible evidence. Treat both classifications as unresolved pending checker evidence, not as failures.\",\n    \"sacg_memory_truth reports zero active contamination barriers and zero open retry or backtrack requests relevant to this review.\"\n  ],\n  \"risks\": [\n    \"Numeric formats and policy details cannot be compared with the input because their values and graph evidence rows are not shown; do not infer or alter numeric settings.\",\n    \"Template identity, coverage, metadata compatibility, and parameter bindings cannot be confirmed from the summary. Do not invent templates or bindings; distinguish checker-supported bindings from unbound or unresolved choices in the resulting review.\",\n    \"The reported edge count does not show whether provenance and binding edges connect current inputs to the governing constraints. Require static checker evidence before treating the graph as traceable.\",\n    \"Design-space bounds and resource assumptions are not visible, and no synthesis or measured resource evidence is supplied. Do not claim timing or resource closure.\",\n    \"Cross-layer consistency with shape, data order, and memory assumptions remains unverified where numeric or template choices depend on those facts.\"\n  ],\n  \"proposed_actions\": [\n    \"Run the registered numeric, template coverage, parameter-binding, template-binding, and SACG static checks against the current graph and listed input artifacts. Record each binding as supported only when the checker ties it to supplied library/metadata and design-space evidence; separately record unresolved choices without filling them in.\",\n    \"If a checker finds a missing or mismatched provenance/binding edge, propose only an evidence-backed graph delta. Route any change to numeric policy, architecture limits, or a major template choice for approval before adoption.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"constraint_extraction.audit_numeric_template_bindings\",\n      \"stage\": \"constraint_extraction\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"The visible summary establishes structural presence but does not expose the detailed facts or checker results needed to verify numeric-policy consistency, trusted-template coverage, parameter bindings, design-space limits, or current-input traceability. Run the registered static checks and report supported bindings separately from unresolved choices.\",\n      \"consumes\": [\n        \"candidate_design_graph_summary\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.design_space\",\n        \"constraint.numeric.policy\",\n        \"constraint.template.library\",\n        \"constraint.arch.design_space\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"produces\": [\n        \"constraint_extraction/reviews/numeric_template_review.json\",\n        \"constraint_extraction/proposed_deltas/numeric_template.json\",\n        \"constraint_extraction/checker_results/numeric_template_static_checks.json\"\n      ],\n      \"tool_roles\": [\n        \"numeric_policy_check\",\n        \"template_coverage_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"numeric_policy_check\",\n        \"template_coverage_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Record the failing checker and the exact unsupported, unbound, conflicting, or untraceable fact. Do not infer missing detail from this compact summary, invent a replacement binding, alter numeric policy, or claim closure. Produce only evidence-backed proposed graph deltas; request approval for numeric-policy, architecture-limit, or major-template changes.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any change to numeric formats, numeric policy, or tolerances.\",\n    \"Any change to architecture design-space limits.\",\n    \"Any major template selection or template parameter change that alters the architecture.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/team/llm/numeric_template_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/team/llm/numeric_template_engineer_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction.numeric policy and template engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

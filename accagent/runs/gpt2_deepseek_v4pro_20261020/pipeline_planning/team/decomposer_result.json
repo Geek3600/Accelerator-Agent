@@ -1,0 +1,306 @@
+{
+  "duration_sec": 68.96192156203324,
+  "error": null,
+  "http_transport": "urllib",
+  "mode": "llm",
+  "output": {
+    "reason": "pipeline_planning spans three independent cross-layer specialist reviews: decoder/template structure, stream/beat data-transfer order, and memory/runtime dataflow. No active SACG contamination barrier, retry request, or backtrack request blocks decomposition, and the existing checker-passing candidate artifact does not require a duplicate evidence gate, so parallel_group=0 specialists are sufficient.",
+    "schema_version": "spatialaccagent.decomposition.v0",
+    "split_required": true,
+    "stage": "pipeline_planning",
+    "subtasks": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "pipeline_architect",
+        "artifact_focus": [
+          "stages",
+          "attention_contract",
+          "branch_join_contracts",
+          "buffer_plan"
+        ],
+        "constraints": [
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "artifact.stage3.pipeline_architect_review"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "condition": "No checker errors and stage/template/attention boundary observations are traceable to constraint.model.decoder, constraint.shape.model, constraint.template.library, and constraint.arch.design_space.",
+          "consumer": "team_aggregate consumes the review record only after acceptance checkers pass."
+        },
+        "handoff_to": [
+          "pipeline_planning.data_transfer_engineer",
+          "pipeline_planning.memory_dataflow_engineer",
+          "team_aggregate"
+        ],
+        "id": "pipeline_planning.pipeline_architect",
+        "objective": "Verify that the planned stages preserve GPT-2 decoder operator order and expose correct residual, attention, norm, and MLP template boundaries without free-form RTL generation.",
+        "parallel_group": 0,
+        "role": "pipeline architect",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "template_binding_static_check",
+              "boundary_contract_check"
+            ],
+            "consumes": [
+              "artifact.input.model_config",
+              "artifact.input.template_library",
+              "artifact.input.template_metadata",
+              "artifact.stage2.template_selection",
+              "candidate stage plan stages/attention_contract/branch_join_contracts"
+            ],
+            "handoff_to": [
+              "pipeline_planning.data_transfer_engineer",
+              "pipeline_planning.memory_dataflow_engineer",
+              "team_aggregate"
+            ],
+            "produces": [
+              "artifact.stage3.pipeline_architect_review"
+            ]
+          },
+          "decision_authority": [
+            "May flag Stage-3 planning blockers for model/shape/template boundary inconsistencies.",
+            "May request bounded artifact correction within pipeline_planning.",
+            "May not promote later-stage hardware timing, throughput, or board readiness claims."
+          ],
+          "mission": "Check whether pipeline stages preserve decoder operator order and expose residual, attention, and template boundaries.",
+          "out_of_scope": [
+            "Do not assign concrete DDR base addresses or XDMA ABI address translation.",
+            "Do not synthesize or simulate RTL.",
+            "Do not treat symbolic first-order latency as timing evidence."
+          ],
+          "primary_responsibilities": [
+            "Audit artifact.stage3.pipeline_plan stages against constraint.model.decoder operator order.",
+            "Audit attention/qkv/head mapping and position encoding boundary against constraint.shape.model.",
+            "Confirm every stage is bound to a trusted template id and no free-form RTL claim exists.",
+            "Detect residual-skip and branch/join boundary mismatches between the semantic graph and SACG constraints."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "extract model semantics",
+            "audit shape and head mapping",
+            "track residual/operator order"
+          ],
+          "constraint_focus": [
+            "constraint.model.decoder",
+            "constraint.shape.model"
+          ],
+          "family": "model_shape"
+        },
+        "title": "Review decoder stage decomposition and template boundaries"
+      },
+      {
+        "acceptance_checkers": [
+          "data_order_trace_check",
+          "transfer_count_check",
+          "deadlock_watchdog",
+          "sacg_static_check"
+        ],
+        "action_type": "cross_layer_rule_review",
+        "agent": "data_transfer_engineer",
+        "artifact_focus": [
+          "data_edges",
+          "stream_edges",
+          "flow_control",
+          "branch_join_contracts",
+          "buffer_plan"
+        ],
+        "constraints": [
+          "constraint.stream.order",
+          "constraint.beat.pipeline",
+          "constraint.memory.board",
+          "constraint.runtime.board"
+        ],
+        "expected_artifacts": [
+          "artifact.stage3.data_transfer_review"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "condition": "Data order traces, transfer counts, FIFO depth/branch joins, and deadlock/backpressure checkers all pass with no new errors.",
+          "consumer": "memory_dataflow_engineer and team_aggregate consume only checker-passing review records."
+        },
+        "handoff_to": [
+          "pipeline_planning.pipeline_architect",
+          "pipeline_planning.memory_dataflow_engineer",
+          "team_aggregate"
+        ],
+        "id": "pipeline_planning.data_transfer_engineer",
+        "objective": "Check token/tile/lane/word transfer order, ready/valid behavior, FIFO depths, and producer-consumer branch/join liveness risks across data_edges and stream_edges.",
+        "parallel_group": 0,
+        "role": "data transfer engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "data_order_trace_check",
+              "transfer_count_check",
+              "deadlock_watchdog",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "artifact.input.target_board_profile",
+              "artifact.input.numeric_policy",
+              "candidate stage plan data_edges/stream_edges/flow_control/branch_join_contracts/buffer_plan"
+            ],
+            "handoff_to": [
+              "pipeline_planning.pipeline_architect",
+              "pipeline_planning.memory_dataflow_engineer",
+              "team_aggregate"
+            ],
+            "produces": [
+              "artifact.stage3.data_transfer_review"
+            ]
+          },
+          "decision_authority": [
+            "May flag Stage-3 planning blockers for stream order, transfer count, branch/join, or liveness inconsistencies.",
+            "May require buffer-plan correction within pipeline_planning.",
+            "May not replace deadlock_watchdog evidence with symbolic latency estimates."
+          ],
+          "mission": "Check token/tile/lane/transfer-unit order, valid/ready assumptions, and producer-consumer handoff risks.",
+          "out_of_scope": [
+            "Do not allocate or bind concrete host/core address bases.",
+            "Do not generate RTL FIFOs.",
+            "Do not claim board-level DDR timing closure."
+          ],
+          "primary_responsibilities": [
+            "Mirror audit data_edges and stream_edges to ensure exact edge identity, tensor shape, transfer order, and byte count.",
+            "Verify all beats obey stream_beats_per_axi_beat and full_beats_only policies under the declared AXI width.",
+            "Check bounded FIFO depths for branch splits and joins under ready/valid backpressure.",
+            "Detect deadlock/liveness risks from split policy and join policy."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "audit data order",
+            "check transfer-count/liveness risks",
+            "bind DDR/runtime layout"
+          ],
+          "constraint_focus": [
+            "constraint.stream.order",
+            "constraint.beat.pipeline",
+            "constraint.memory.board",
+            "constraint.runtime.board"
+          ],
+          "family": "data_memory_runtime"
+        },
+        "title": "Review stream/beat order and liveness constraints"
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "boundary_contract_check",
+          "sacg_static_check"
+        ],
+        "action_type": "cross_layer_rule_review",
+        "agent": "memory_dataflow_engineer",
+        "artifact_focus": [
+          "memory_schedule",
+          "numeric_stream_policy",
+          "stages",
+          "flow_control"
+        ],
+        "constraints": [
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board",
+          "constraint.numeric.policy"
+        ],
+        "expected_artifacts": [
+          "artifact.stage3.memory_runtime_review"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "condition": "Memory/runtime plan check, address map check, and boundary contract check pass; region sizing formulas and runtime sequences remain traceable to input targets and numeric policy.",
+          "consumer": "team_aggregate consumes after all specialist reviews are accepted."
+        },
+        "handoff_to": [
+          "pipeline_planning.pipeline_architect",
+          "pipeline_planning.data_transfer_engineer",
+          "team_aggregate"
+        ],
+        "id": "pipeline_planning.memory_dataflow_engineer",
+        "objective": "Verify that pipeline planning leaves explicit, checker-backed hooks for activation/weight regions, DDR AXI layout, XDMA runtime configuration, and later implementation evidence without claiming concrete address assignment.",
+        "parallel_group": 0,
+        "role": "memory dataflow engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "memory_runtime_plan_check",
+              "addr_map_check",
+              "boundary_contract_check",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "artifact.input.target_board_profile",
+              "artifact.input.tool_profile",
+              "artifact.input.tool_protocols",
+              "artifact.input.numeric_policy",
+              "candidate stage plan memory_schedule/numeric_stream_policy/stages/flow_control"
+            ],
+            "handoff_to": [
+              "pipeline_planning.pipeline_architect",
+              "pipeline_planning.data_transfer_engineer",
+              "team_aggregate"
+            ],
+            "produces": [
+              "artifact.stage3.memory_runtime_review"
+            ]
+          },
+          "decision_authority": [
+            "May flag Stage-3 planning blockers for memory/runtime dataflow inconsistencies.",
+            "May require bounded correction of memory_schedule or runtime_config_requirements within pipeline_planning.",
+            "May not issue DDR timing closure or board deployment pass claims."
+          ],
+          "mission": "Check that pipeline planning leaves explicit hooks for weights, activations, DDR layout, runtime config, and later implementation evidence.",
+          "out_of_scope": [
+            "Do not assign concrete DDR base addresses or host/core address translation.",
+            "Do not generate/elaborate template-bound Chisel.",
+            "Do not claim implementation, synthesis, or board runtime readiness."
+          ],
+          "primary_responsibilities": [
+            "Audit required_regions against activation/weight size formulas and 64-byte alignment.",
+            "Audit board AXI width/protocol and runtime XDMA command sequences against constraint.memory.board, constraint.runtime.board, and constraint.deployment.board.",
+            "Confirm memory_schedule does not claim concrete host/core base addresses or output-header ABI details.",
+            "Check ping-pong weight policy, streamed activations, and runtime sequence length constraints are consistent with later Stage-5 obligations."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "audit data order",
+            "check transfer-count/liveness risks",
+            "bind DDR/runtime layout"
+          ],
+          "constraint_focus": [
+            "constraint.stream.order",
+            "constraint.beat.pipeline",
+            "constraint.memory.board",
+            "constraint.runtime.board"
+          ],
+          "family": "data_memory_runtime"
+        },
+        "title": "Review memory and runtime dataflow implications"
+      }
+    ]
+  },
+  "prompt_hash": "1b83a1ffa43e3b16f3de7162407d57ddddf3cd69d0941aa33e3f7378447ae5af",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.decomposition.v0\",\n  \"stage\": \"pipeline_planning\",\n  \"split_required\": true,\n  \"reason\": \"pipeline_planning spans three independent cross-layer specialist reviews: decoder/template structure, stream/beat data-transfer order, and memory/runtime dataflow. No active SACG contamination barrier, retry request, or backtrack request blocks decomposition, and the existing checker-passing candidate artifact does not require a duplicate evidence gate, so parallel_group=0 specialists are sufficient.\",\n  \"subtasks\": [\n    {\n      \"id\": \"pipeline_planning.pipeline_architect\",\n      \"agent\": \"pipeline_architect\",\n      \"role\": \"pipeline architect\",\n      \"title\": \"Review decoder stage decomposition and template boundaries\",\n      \"objective\": \"Verify that the planned stages preserve GPT-2 decoder operator order and expose correct residual, attention, norm, and MLP template boundaries without free-form RTL generation.\",\n      \"constraints\": [\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\",\n        \"constraint.template.library\",\n        \"constraint.arch.design_space\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"artifact_focus\": [\n        \"stages\",\n        \"attention_contract\",\n        \"branch_join_contracts\",\n        \"buffer_plan\"\n      ],\n      \"parallel_group\": 0,\n      \"handoff_required\": true,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"artifact.stage3.pipeline_architect_review\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"template_binding_static_check\",\n        \"boundary_contract_check\"\n      ],\n      \"handoff_to\": [\n        \"pipeline_planning.data_transfer_engineer\",\n        \"pipeline_planning.memory_dataflow_engineer\",\n        \"team_aggregate\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"No checker errors and stage/template/attention boundary observations are traceable to constraint.model.decoder, constraint.shape.model, constraint.template.library, and constraint.arch.design_space.\",\n        \"consumer\": \"team_aggregate consumes the review record only after acceptance checkers pass.\"\n      },\n      \"role_profile\": {\n        \"family\": \"model_shape\",\n        \"capabilities\": [\n          \"extract model semantics\",\n          \"audit shape and head mapping\",\n          \"track residual/operator order\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.model.decoder\",\n          \"constraint.shape.model\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Check whether pipeline stages preserve decoder operator order and expose residual, attention, and template boundaries.\",\n        \"primary_responsibilities\": [\n          \"Audit artifact.stage3.pipeline_plan stages against constraint.model.decoder operator order.\",\n          \"Audit attention/qkv/head mapping and position encoding boundary against constraint.shape.model.\",\n          \"Confirm every stage is bound to a trusted template id and no free-form RTL claim exists.\",\n          \"Detect residual-skip and branch/join boundary mismatches between the semantic graph and SACG constraints.\"\n        ],\n        \"decision_authority\": [\n          \"May flag Stage-3 planning blockers for model/shape/template boundary inconsistencies.\",\n          \"May request bounded artifact correction within pipeline_planning.\",\n          \"May not promote later-stage hardware timing, throughput, or board readiness claims.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.input.model_config\",\n            \"artifact.input.template_library\",\n            \"artifact.input.template_metadata\",\n            \"artifact.stage2.template_selection\",\n            \"candidate stage plan stages/attention_contract/branch_join_contracts\"\n          ],\n          \"produces\": [\n            \"artifact.stage3.pipeline_architect_review\"\n          ],\n          \"handoff_to\": [\n            \"pipeline_planning.data_transfer_engineer\",\n            \"pipeline_planning.memory_dataflow_engineer\",\n            \"team_aggregate\"\n          ],\n          \"acceptance_checkers\": [\n            \"sacg_static_check\",\n            \"template_binding_static_check\",\n            \"boundary_contract_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Do not assign concrete DDR base addresses or XDMA ABI address translation.\",\n          \"Do not synthesize or simulate RTL.\",\n          \"Do not treat symbolic first-order latency as timing evidence.\"\n        ]\n      }\n    },\n    {\n      \"id\": \"pipeline_planning.data_transfer_engineer\",\n      \"agent\": \"data_transfer_engineer\",\n      \"role\": \"data transfer engineer\",\n      \"title\": \"Review stream/beat order and liveness constraints\",\n      \"objective\": \"Check token/tile/lane/word transfer order, ready/valid behavior, FIFO depths, and producer-consumer branch/join liveness risks across data_edges and stream_edges.\",\n      \"constraints\": [\n        \"constraint.stream.order\",\n        \"constraint.beat.pipeline\",\n        \"constraint.memory.board\",\n        \"constraint.runtime.board\"\n      ],\n      \"artifact_focus\": [\n        \"data_edges\",\n        \"stream_edges\",\n        \"flow_control\",\n        \"branch_join_contracts\",\n        \"buffer_plan\"\n      ],\n      \"parallel_group\": 0,\n      \"handoff_required\": true,\n      \"action_type\": \"cross_layer_rule_review\",\n      \"expected_artifacts\": [\n        \"artifact.stage3.data_transfer_review\"\n      ],\n      \"acceptance_checkers\": [\n        \"data_order_trace_check\",\n        \"transfer_count_check\",\n        \"deadlock_watchdog\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_to\": [\n        \"pipeline_planning.pipeline_architect\",\n        \"pipeline_planning.memory_dataflow_engineer\",\n        \"team_aggregate\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"Data order traces, transfer counts, FIFO depth/branch joins, and deadlock/backpressure checkers all pass with no new errors.\",\n        \"consumer\": \"memory_dataflow_engineer and team_aggregate consume only checker-passing review records.\"\n      },\n      \"role_profile\": {\n        \"family\": \"data_memory_runtime\",\n        \"capabilities\": [\n          \"audit data order\",\n          \"check transfer-count/liveness risks\",\n          \"bind DDR/runtime layout\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.stream.order\",\n          \"constraint.beat.pipeline\",\n          \"constraint.memory.board\",\n          \"constraint.runtime.board\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Check token/tile/lane/transfer-unit order, valid/ready assumptions, and producer-consumer handoff risks.\",\n        \"primary_responsibilities\": [\n          \"Mirror audit data_edges and stream_edges to ensure exact edge identity, tensor shape, transfer order, and byte count.\",\n          \"Verify all beats obey stream_beats_per_axi_beat and full_beats_only policies under the declared AXI width.\",\n          \"Check bounded FIFO depths for branch splits and joins under ready/valid backpressure.\",\n          \"Detect deadlock/liveness risks from split policy and join policy.\"\n        ],\n        \"decision_authority\": [\n          \"May flag Stage-3 planning blockers for stream order, transfer count, branch/join, or liveness inconsistencies.\",\n          \"May require buffer-plan correction within pipeline_planning.\",\n          \"May not replace deadlock_watchdog evidence with symbolic latency estimates.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.input.target_board_profile\",\n            \"artifact.input.numeric_policy\",\n            \"candidate stage plan data_edges/stream_edges/flow_control/branch_join_contracts/buffer_plan\"\n          ],\n          \"produces\": [\n            \"artifact.stage3.data_transfer_review\"\n          ],\n          \"handoff_to\": [\n            \"pipeline_planning.pipeline_architect\",\n            \"pipeline_planning.memory_dataflow_engineer\",\n            \"team_aggregate\"\n          ],\n          \"acceptance_checkers\": [\n            \"data_order_trace_check\",\n            \"transfer_count_check\",\n            \"deadlock_watchdog\",\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Do not allocate or bind concrete host/core address bases.\",\n          \"Do not generate RTL FIFOs.\",\n          \"Do not claim board-level DDR timing closure.\"\n        ]\n      }\n    },\n    {\n      \"id\": \"pipeline_planning.memory_dataflow_engineer\",\n      \"agent\": \"memory_dataflow_engineer\",\n      \"role\": \"memory dataflow engineer\",\n      \"title\": \"Review memory and runtime dataflow implications\",\n      \"objective\": \"Verify that pipeline planning leaves explicit, checker-backed hooks for activation/weight regions, DDR AXI layout, XDMA runtime configuration, and later implementation evidence without claiming concrete address assignment.\",\n      \"constraints\": [\n        \"constraint.memory.board\",\n        \"constraint.runtime.board\",\n        \"constraint.deployment.board\",\n        \"constraint.numeric.policy\"\n      ],\n      \"artifact_focus\": [\n        \"memory_schedule\",\n        \"numeric_stream_policy\",\n        \"stages\",\n        \"flow_control\"\n      ],\n      \"parallel_group\": 0,\n      \"handoff_required\": true,\n      \"action_type\": \"cross_layer_rule_review\",\n      \"expected_artifacts\": [\n        \"artifact.stage3.memory_runtime_review\"\n      ],\n      \"acceptance_checkers\": [\n        \"memory_runtime_plan_check\",\n        \"addr_map_check\",\n        \"boundary_contract_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_to\": [\n        \"pipeline_planning.pipeline_architect\",\n        \"pipeline_planning.data_transfer_engineer\",\n        \"team_aggregate\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"Memory/runtime plan check, address map check, and boundary contract check pass; region sizing formulas and runtime sequences remain traceable to input targets and numeric policy.\",\n        \"consumer\": \"team_aggregate consumes after all specialist reviews are accepted.\"\n      },\n      \"role_profile\": {\n        \"family\": \"data_memory_runtime\",\n        \"capabilities\": [\n          \"audit data order\",\n          \"check transfer-count/liveness risks\",\n          \"bind DDR/runtime layout\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.stream.order\",\n          \"constraint.beat.pipeline\",\n          \"constraint.memory.board\",\n          \"constraint.runtime.board\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Check that pipeline planning leaves explicit hooks for weights, activations, DDR layout, runtime config, and later implementation evidence.\",\n        \"primary_responsibilities\": [\n          \"Audit required_regions against activation/weight size formulas and 64-byte alignment.\",\n          \"Audit board AXI width/protocol and runtime XDMA command sequences against constraint.memory.board, constraint.runtime.board, and constraint.deployment.board.\",\n          \"Confirm memory_schedule does not claim concrete host/core base addresses or output-header ABI details.\",\n          \"Check ping-pong weight policy, streamed activations, and runtime sequence length constraints are consistent with later Stage-5 obligations.\"\n        ],\n        \"decision_authority\": [\n          \"May flag Stage-3 planning blockers for memory/runtime dataflow inconsistencies.\",\n          \"May require bounded correction of memory_schedule or runtime_config_requirements within pipeline_planning.\",\n          \"May not issue DDR timing closure or board deployment pass claims.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.input.target_board_profile\",\n            \"artifact.input.tool_profile\",\n            \"artifact.input.tool_protocols\",\n            \"artifact.input.numeric_policy\",\n            \"candidate stage plan memory_schedule/numeric_stream_policy/stages/flow_control\"\n          ],\n          \"produces\": [\n            \"artifact.stage3.memory_runtime_review\"\n          ],\n          \"handoff_to\": [\n            \"pipeline_planning.pipeline_architect\",\n            \"pipeline_planning.data_transfer_engineer\",\n            \"team_aggregate\"\n          ],\n          \"acceptance_checkers\": [\n            \"memory_runtime_plan_check\",\n            \"addr_map_check\",\n            \"boundary_contract_check\",\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Do not assign concrete DDR base addresses or host/core address translation.\",\n          \"Do not generate/elaborate template-bound Chisel.\",\n          \"Do not claim implementation, synthesis, or board runtime readiness.\"\n        ]\n      }\n    }\n  ]\n}",
+  "reasoning_effort": "medium",
+  "schema_version": "spatialaccagent.team_decomposer_record.v0",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

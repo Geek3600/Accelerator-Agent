@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from accagent.framework.fpga_ip_vcs_plan import build
+from accagent.framework.fpga_ip_vcs_plan import build, parse_file_info
 
 
 class FpgaIpVcsPlanTest(unittest.TestCase):
@@ -122,6 +122,30 @@ class FpgaIpVcsPlanTest(unittest.TestCase):
             wrapper.unlink()
             with self.assertRaisesRegex(ValueError, "unavailable simulation source"):
                 self.build_in(root, args)
+
+    def test_file_info_relative_source_is_resolved_from_its_vcs_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            stage_root = Path(temp_dir)
+            source = stage_root / "fpga_ip" / "vivado_ip" / "fp_add" / "sim" / "fp_add.v"
+            info = (
+                stage_root
+                / "fpga_ip"
+                / "vivado_export"
+                / "fp_add"
+                / "vcs"
+                / "file_info.txt"
+            )
+            source.parent.mkdir(parents=True)
+            info.parent.mkdir(parents=True)
+            source.write_text("module fp_add; endmodule\n", encoding="utf-8")
+            info.write_text(
+                "fp_add.v,verilog,xil_defaultlib,../../../vivado_ip/fp_add/sim/fp_add.v\n",
+                encoding="utf-8",
+            )
+
+            rows = parse_file_info(info)
+
+        self.assertEqual(rows[0]["source"], str(source.resolve()))
 
 
 if __name__ == "__main__":

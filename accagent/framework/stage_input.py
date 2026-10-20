@@ -32,16 +32,18 @@ from accagent.framework.llm_io import (
     reroute_request,
     repair_prompt,
     response_payload,
+    responses_request_headers,
     validate_schema,
 )
 from accagent.framework.model_config_extractor import ConfigError, normalize
-from accagent.framework.numeric_policy import resolve_numeric_policy
+from accagent.framework.numeric_policy import canonical_dtype, resolve_numeric_policy
 from accagent.framework.stage_input_common import (
     DEFAULT_TEMPLATE_DIR,
     DEFAULT_BOARD_MATERIALS_DIR,
     DEFAULT_QUANTIZATION_MATERIALS_DIR,
     DEFAULT_TOOL_MATERIALS_DIR,
     InputPreparationError,
+    canonical_tool_role,
     read_json,
     rel,
     write_json,
@@ -55,6 +57,7 @@ from accagent.framework.stage_llm import (
     stream_transport_fallback_error,
     transient_llm_error,
     provider_capacity_error,
+    route_failover_error,
 )
 
 
@@ -360,12 +363,15 @@ def framework_physical_candidate_domain_seed() -> dict[str, Any]:
                         {"rows": 4, "cols": 4},
                         {"rows": 4, "cols": 8},
                         {"rows": 4, "cols": 16},
+                        {"rows": 4, "cols": 32},
                         {"rows": 8, "cols": 4},
                         {"rows": 8, "cols": 8},
                         {"rows": 8, "cols": 16},
+                        {"rows": 8, "cols": 32},
                         {"rows": 16, "cols": 4},
                         {"rows": 16, "cols": 8},
                         {"rows": 16, "cols": 16},
+                        {"rows": 16, "cols": 32},
                     ]
                 },
                 "physical_fifo_depth": {"legal_values": [32, 64, 128]},
@@ -738,12 +744,7 @@ def stage0_llm_request(
     return urllib.request.Request(
         endpoint,
         data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream" if stream else "application/json",
-            "Connection": "close",
-        },
+        headers=responses_request_headers(key, stream),
         method="POST",
     )
 
@@ -762,6 +763,7 @@ def post_llm_json(
     current_stream = stream
     primary_request_or_factory = request_or_factory
     fallback_used = False
+    primary_capacity_exhausted = False
 
     def request_for_transport(use_stream: bool) -> urllib.request.Request:
         if callable(request_or_factory):
@@ -776,11 +778,13 @@ def post_llm_json(
                 ), errors
         except Exception as exc:
             errors.append(f"attempt {attempt}: {exc}")
+            if provider_capacity_error(exc) and not fallback_used:
+                primary_capacity_exhausted = True
             if not transient_llm_error(exc):
                 raise LlmTransientFailure(str(exc), errors) from exc
             cfg = resolved_llm_cfg()
             if (
-                provider_capacity_error(exc)
+                (provider_capacity_error(exc) or route_failover_error(exc))
                 and not fallback_used
                 and cfg.fallback_endpoint
                 and cfg.fallback_api_key
@@ -805,7 +809,7 @@ def post_llm_json(
                 raise LlmTransientFailure(str(exc), errors) from exc
             delay = retry_sleep_seconds(exc, attempt)
             retry_mode = "unbounded" if max_attempts is None else f"{attempt}/{max_attempts}"
-            if fallback_used:
+            if fallback_used and not primary_capacity_exhausted:
                 request_or_factory = primary_request_or_factory
                 fallback_used = False
                 print(
@@ -1013,6 +1017,7 @@ def task_qor_targets(task_text: str) -> dict[str, Any]:
         [
             r"(?:measured\s+)?(?:performance|throughput)[^.;:]{0,100}?(?:strictly\s+greater\s+than|greater\s+than|>)\s*(\d+(?:\.\d+)?)\s*(?:tokens?\s*/\s*s|tokens?\s+per\s+second)",
             r"(?:measured\s+)?(?:performance|throughput)[^.;:]{0,100}?(?:at\s+least|>=|no\s+less\s+than)\s*(\d+(?:\.\d+)?)\s*(?:tokens?\s*/\s*s|tokens?\s+per\s+second)",
+            r"(?:measured\s+)?(?:performance|throughput)[^.;:]{0,100}?(?:approach|around|approximately)\s*(\d+(?:\.\d+)?)\s*(?:tokens?\s*/\s*s|tokens?\s+per\s+second)",
         ]
     )
     strict_performance = bool(
@@ -1051,8 +1056,26 @@ def task_qor_targets(task_text: str) -> dict[str, Any]:
         targets["clock_frequency_comparison"] = ">="
     if performance is not None:
         targets["performance_tokens_per_second"] = performance
-        targets["performance_comparison"] = ">" if strict_performance else ">="
+        approximate = bool(re.search(
+            r"(?:performance|throughput)[^.;:]{0,100}?(?:approach|around|approximately)\s*\d",
+            text, re.IGNORECASE,
+        ))
+        targets["performance_comparison"] = "target" if approximate else (">" if strict_performance else ">=")
     return {key: value for key, value in targets.items() if value is not None}
+
+
+def current_task_qor_targets(run_dir: Path, fallback: dict[str, Any]) -> dict[str, Any]:
+    """Use the latest user task when a resumed graph contains older QoR goals."""
+
+    prepared = run_dir / "input" / "prepared_inputs.json"
+    if not prepared.is_file():
+        return fallback
+    try:
+        manifest = json.loads(prepared.read_text(encoding="utf-8"))
+        task = Path(manifest["source_specs"]["task_spec"])
+        return task_qor_targets(task.read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return fallback
 
 
 def task_qor_hard_constraints(targets: dict[str, Any]) -> list[str]:
@@ -1061,7 +1084,7 @@ def task_qor_hard_constraints(targets: dict[str, Any]) -> list[str]:
     if isinstance(clock, (int, float)):
         constraints.append(f"clock_frequency_mhz {targets.get('clock_frequency_comparison', '>=')} {clock:g}")
     performance = targets.get("performance_tokens_per_second")
-    if isinstance(performance, (int, float)):
+    if isinstance(performance, (int, float)) and targets.get("performance_comparison") != "target":
         constraints.append(
             f"performance_tokens_per_second {targets.get('performance_comparison', '>=')} {performance:g}"
         )
@@ -1175,6 +1198,11 @@ def semantic_stream_contract(
         "UINT8": 8,
         "I8": 8,
         "U8": 8,
+        "INT4": 4,
+        "UINT4": 4,
+        "INT16": 16,
+        "INT32": 32,
+        "UINT32": 32,
     }
 
     def bits_for_role(role: Any) -> int | None:
@@ -1182,7 +1210,7 @@ def semantic_stream_contract(
         field = {"activation": "activation_dtype", "accumulator": "acc_dtype"}.get(role_name)
         if field is None:
             return None
-        dtype = str(rules.get(field) or "").strip().upper().replace("_", "")
+        dtype = canonical_dtype(rules.get(field) or "").strip()
         return dtype_bits.get(dtype)
 
     roles: list[str] = []
@@ -1524,7 +1552,7 @@ def infer_tool_profile_fallback(tool_text: str, board: dict[str, Any]) -> dict[s
     }
 
 
-def prepare_tool_profile(tool_summary: dict[str, Any], board: dict[str, Any], field_evidence_summary: dict[str, Any], out_dir: Path) -> dict[str, Any]:
+def prepare_tool_profile(tool_summary: dict[str, Any], board: dict[str, Any], field_evidence_summary: dict[str, Any], out_dir: Path, *, tool_materials_text: str = "") -> dict[str, Any]:
     fallback = infer_tool_profile_fallback(json.dumps(tool_summary, ensure_ascii=False), board)
     tool_field_evidence = filter_field_evidence_summary(field_evidence_summary, ("tool.",))
     prompt = build_prompt(
@@ -1532,12 +1560,14 @@ def prepare_tool_profile(tool_summary: dict[str, Any], board: dict[str, Any], fi
         task="Act as the EDA toolchain engineer. Extract the external EDA tool profile from current-run tool materials.",
         inputs={
             "tool_materials_summary": tool_summary,
+            "tool_materials_text": tool_materials_text,
             "target_board_profile": board,
             "field_evidence_summary": tool_field_evidence,
         },
         output_schema=TOOL_PROFILE_SCHEMA,
         rules=[
             "Treat the tool materials directory as the complete current-run tool input.",
+            "Read the supplied tool_materials_text directly. A missing field in the extracted evidence summary does not mean that field is absent from the original tool documents. Extract supported host, executable, scope and environment values from those documents; never invent them.",
             "Field evidence summary is the source-of-truth audit trail. Critical host, executable, environment, and script fields must match evidence when evidence exists.",
             "The formal framework needs VCS or Verilator for functional verification and Vivado for synthesis, implementation, and bitstream generation.",
             "Do not assume a fixed host, path, license server, version, or command unless it appears in the provided documents or target_board_profile.",
@@ -1583,6 +1613,9 @@ def merge_tool_profile_bindings(
     for tool in tools:
         if not isinstance(tool, dict):
             continue
+        normalized_role = canonical_tool_role(tool.get("role"))
+        if normalized_role:
+            tool["role"] = normalized_role
         name = str(tool.get("name") or "").lower()
         if name not in {"vcs", "vivado"}:
             continue
@@ -1735,6 +1768,8 @@ def merge_board_profile_field_evidence(profile: dict[str, Any], field_evidence_s
         "runtime_interface.remote_host": "remote_host",
         "runtime_interface.mimic_dir": "mimic_dir",
         "runtime_interface.xdma_id_default": "xdma_id_default",
+        "runtime_interface.h2c_device_template": "h2c_device_template",
+        "runtime_interface.c2h_device_template": "c2h_device_template",
         "runtime_interface.ctrl_base": "ctrl_base",
         "runtime_interface.ddr_base": "ddr_base",
         "runtime_interface.output_abs": "output_abs",
@@ -1749,6 +1784,13 @@ def merge_board_profile_field_evidence(profile: dict[str, Any], field_evidence_s
     fill_if_blank(address_map, "control_registers", runtime.get("ctrl_base"))
     fill_if_blank(address_map, "ddr_base", runtime.get("ddr_base"))
     fill_if_blank(address_map, "output_abs", runtime.get("output_abs"))
+    protocol = str(runtime.get("control_protocol") or "").strip()
+    xdma_id = runtime.get("xdma_id_default")
+    if xdma_id is None:
+        xdma_id = runtime.get("device_id_default", runtime.get("xdma_id"))
+    if protocol == "xdma_raw_register_and_ddr" and xdma_id is not None:
+        fill_if_blank(runtime, "h2c_device_template", f"/dev/xdma{xdma_id}_h2c_0")
+        fill_if_blank(runtime, "c2h_device_template", f"/dev/xdma{xdma_id}_c2h_0")
     return result
 
 
@@ -1786,6 +1828,8 @@ def prepare_board_profile(board_summary: dict[str, Any], field_evidence_summary:
             "vcs_path": inferred["vcs_path"],
             "mimic_dir": None,
             "xdma_id_default": None,
+            "h2c_device_template": None,
+            "c2h_device_template": None,
             "ctrl_base": None,
             "ddr_base": None,
             "output_abs": None,
@@ -1900,22 +1944,21 @@ def prepare_design_space(
             "The design space must be compatible with the extracted model facts, template library, numeric policy, and target board profile.",
             "Search parameters must be hardware parameters, not model semantics.",
             "Declare a finite, complete candidate universe containing only parameters that genuinely change generated RTL, Vivado FP IP, XPM BRAM/URAM topology, or board behavior. Exclude metadata-only tile, burst, pipeline-depth, and clock-target fields until they are wired into generated hardware.",
-            "Include lanes, compute_array.rows, compute_array.cols, physical FIFO depth, activation-bank count, and optional physical_weight_layout_candidates. The two compute_array values are the physical MAC PE array dimensions; every PE must instantiate one fixed Vivado multiplier/DSP IP, so they must be real generated-hardware parameters rather than metadata. Keep compute_array.cols power-of-two for the trusted reduction tree and require both dimensions to tile the selected vector lanes. When supplied, each layout must bind every model-semantic weight-storage term declared by the current semantic adapter to a positive XPM URAM bank count. Do not use another model family's role names. If no explicit layouts are supplied, Stage 4 derives the complete all-URAM baseline from the same semantic contract.",
+            "Include lanes, compute_array.rows, compute_array.cols, physical FIFO depth, activation-bank count, and optional physical_weight_layout_candidates. The two compute_array values are physical MAC PE dimensions that change generated hardware. Keep compute_array.cols power-of-two; rows must divide selected vector lanes, while columns may divide lanes or combine a whole number of lane groups, as supported by the current wide-column template. When supplied, each layout must bind every model-semantic weight-storage term declared by the current semantic adapter to a positive XPM URAM bank count. Do not use another model family's role names. If no explicit layouts are supplied, Stage 4 derives the complete all-URAM baseline from the same semantic contract.",
             "For every numeric stream element width declared by the semantic_stream_contract, declare at least one lane candidate whose lane payload is no wider than the board AXI beat and divides that AXI width exactly. The contract may contain both activation and accumulator/residual streams; checking only the activation dtype is invalid. Candidates that cannot pack a declared stream width are ineligible and must not be described as legal, and the framework will reject a domain with no valid lane for any required width.",
             "The supplied explicit_task_qor_targets are immutable user constraints. Repeat them accurately, but do not add, delete, weaken, or replace them.",
-            "The design must bind Vivado floating-point/DSP IP and XPM physical memories from the first implementation candidate; do not select a software arithmetic or ideal-memory backend.",
+            "Bind physical arithmetic to the supplied numeric policy: integer/fixed-point DSP MACs for integer quantization, Vivado floating-point IP only for a floating-point policy. Keep XPM physical memories and reject software arithmetic or ideal-memory backends. Never require floating-point IP for an integer-only design.",
             "Do not choose parameters that require changing model semantics or bypassing DDR/AXI/runtime constraints.",
             "framework_physical_domain_seed is read-only framework topology evidence. It is not a selected architecture, QoR estimate, or automatic fallback promotion. Return a complete current design-space universe; when current model/board/template evidence has no more specific PE geometry, state explicit legal tuples or correlated pairs from this seed rather than only a candidate count.",
+            "For the physical domain, retain the exact supplied framework_physical_domain_seed JSON structure and key names: search_params.candidate_universe.candidate_dimensions with lanes.legal_values, compute_array.legal_row_col_pairs, physical_fifo_depth.legal_values, and activation_bank_count.legal_values. Filter values using current evidence as necessary; do not rename or relocate these keys. Put explanatory constraints alongside the data.",
             "Do not provide resource, power, frequency, or performance estimates. Stage 4 will use only real target-board app-shell Vivado and hardware-counter measurements for those four metrics.",
         ],
     )
     result = llm_json("design_space_agent", prompt, DESIGN_SPACE_SCHEMA, fallback, out_dir)
     stream_contract = semantic_stream_contract(case_adapter, numeric_policy, board)
     packing_errors = design_space_stream_packing_errors(result, stream_contract)
-    if packing_errors:
-        raise InputPreparationError("design_space stream packing validation failed: " + "; ".join(packing_errors))
     candidate_errors = design_space_physical_candidate_errors(result)
-    if candidate_errors:
+    if candidate_errors or packing_errors:
         repair_prompt = build_prompt(
             agent="design_space_candidate_domain_repair_agent",
             task=(
@@ -1925,7 +1968,8 @@ def prepare_design_space(
             ),
             inputs={
                 "current_design_space": result,
-                "validation_errors": candidate_errors,
+                "validation_errors": candidate_errors + packing_errors,
+                "semantic_stream_contract": stream_contract,
                 "model_config": model,
                 "template_metadata_summary": {
                     "library_id": templates.get("library_id"),
@@ -1946,6 +1990,7 @@ def prepare_design_space(
                 "Candidate counts, composition descriptions, and unpaired descriptive axes are not a candidate universe and must not be returned alone.",
                 "Do not invent a candidate from a constructor default or from another model family; every value must be supported by the current model, board, and template evidence.",
                 "framework_physical_domain_seed is read-only framework topology evidence, not a concrete architecture selection or QoR result. When the failed result lacks literal PE tuples/pairs, return a complete correlated physical domain from this seed instead of deriving geometry from a candidate count. Stage 4 remains the only concrete selection authority.",
+                "Use the exact framework_physical_domain_seed structure and key names for search_params.candidate_universe.candidate_dimensions: lanes.legal_values, compute_array.legal_row_col_pairs, physical_fifo_depth.legal_values, and activation_bank_count.legal_values. Do not introduce a renamed or relocated encoding; keep explanations alongside these fields.",
                 "Return exactly one valid JSON object matching the design-space schema.",
             ],
         )
@@ -1956,7 +2001,7 @@ def prepare_design_space(
             result,
             out_dir,
         )
-        candidate_errors = design_space_physical_candidate_errors(result)
+        candidate_errors = design_space_physical_candidate_errors(result) + design_space_stream_packing_errors(result, stream_contract)
         if candidate_errors:
             detail = "; ".join(candidate_errors)
             mark_llm_semantic_failure(out_dir, "design_space_candidate_domain_repair_agent", detail)
@@ -2383,6 +2428,8 @@ def extract_field_evidence_candidates(
     add_regex_evidence(evidence, board_text, "runtime_interface.mimic_dir", r"\bmimic_dir[^/\n]{0,80}(/[^\s`'\"，。；;]+)")
     add_regex_evidence(evidence, board_text, "runtime_interface.xdma_id_default", r"\bXDMA_ID\s*=\s*(\d+)\b", transform=int)
     add_regex_evidence(evidence, board_text, "runtime_interface.xdma_id_default", r"\bxdma_id_default[^0-9]{0,40}(\d+)\b", transform=int)
+    add_regex_evidence(evidence, board_text, "runtime_interface.h2c_device_template", r"(/dev/xdma\$\{XDMA_ID\}_h2c_0)\b")
+    add_regex_evidence(evidence, board_text, "runtime_interface.c2h_device_template", r"(/dev/xdma\$\{XDMA_ID\}_c2h_0)\b")
     add_regex_evidence(evidence, board_text, "runtime_interface.ctrl_base", r"\bCTRL_BASE\s*=\s*(0x[0-9a-fA-F]+)\b")
     add_regex_evidence(evidence, board_text, "runtime_interface.ctrl_base", r"\bctrl_base[^0-9a-fA-Fx]{0,40}(0x[0-9a-fA-F]+)\b")
     add_regex_evidence(evidence, board_text, "runtime_interface.ddr_base", r"\bDDR_BASE\s*=\s*(0x[0-9a-fA-F]+)\b")
@@ -2508,7 +2555,7 @@ def prepare_field_evidence_domain(
         agent=f"field_evidence_{domain}_agent",
         task=(
             f"Act as the source-evidence engineer for the {domain} input domain. "
-            "Review compact current-run candidate excerpts and return only evidence supported by those excerpts."
+            "Read the complete supplied domain_materials_text and extract its supported fields; candidate excerpts are optional hints, not a limit on the evidence you can extract."
         ),
         inputs={
             "material_corpus_summary": {
@@ -2523,9 +2570,9 @@ def prepare_field_evidence_domain(
         rules=[
             "Deterministic regex candidates are hints only, not ground truth.",
             "Accept a field only when the cited excerpt semantically supports it.",
-            "Each evidence item must cite source, chunk_id when available, and a short excerpt from the supplied candidate summary.",
+            "Each evidence item must cite source, chunk_id when available, and a short excerpt from domain_materials_text or its candidate summary.",
             "Reject false positives, stale sample/scaffold interfaces, generic paths, or contradicted values.",
-            "If compact evidence is insufficient for a field, omit it rather than inventing it.",
+            "Extract every supported operational host, executable, scope and environment field in tool documents. Omit a field only if the complete supplied material does not establish it; never infer tool availability without the later real probes.",
         ],
     )
     result = llm_json(f"field_evidence_{domain}_agent", prompt, FIELD_EVIDENCE_SCHEMA, candidate_subset, out_dir)
@@ -2612,6 +2659,8 @@ def prompt_field_evidence_summary(field_evidence: dict[str, Any]) -> dict[str, A
         "runtime_interface.remote_host",
         "runtime_interface.mimic_dir",
         "runtime_interface.xdma_id_default",
+        "runtime_interface.h2c_device_template",
+        "runtime_interface.c2h_device_template",
         "runtime_interface.ctrl_base",
         "runtime_interface.ddr_base",
         "runtime_interface.output_abs",
@@ -3480,6 +3529,19 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     llm_dir = input_dir / "llm"
     input_dir.mkdir(parents=True, exist_ok=True)
     require_llm_configuration(input_dir)
+    # A requested numeric/backend change must finish before Stage-0 snapshots
+    # the template library; otherwise fresh runs bind the superseded sources.
+    from accagent.framework.architecture_implementation import ensure_requested_architecture
+    ensure_requested_architecture(run_dir)
+    architecture_request = input_dir / "architecture_implementation_request.json"
+    if architecture_request.is_file() and __name__ == "__main__":
+        shared_out = Path(read_json(architecture_request)["out"])
+        handoff = read_json(shared_out / "implementation_status.json")
+        handoff_id = str(shared_out) + ":" + str(handoff.get("validation", ""))
+        if os.environ.get("SPATIALACC_LOADED_ARCHITECTURE_HANDOFF") != handoff_id:
+            os.environ["SPATIALACC_LOADED_ARCHITECTURE_HANDOFF"] = handoff_id
+            # Reload imported helpers as well as this module after source edits.
+            os.execv(sys.executable, [sys.executable, "-m", "accagent.framework.stage_input", *sys.argv[1:]])
 
     task_text = read_text(args.task_spec)
     qor_targets = task_qor_targets(task_text)
@@ -3519,7 +3581,7 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         target_board_profile = prepare_board_profile(board_summary, field_evidence_summary, sample_project_summary_data, llm_dir)
         task_card = prepare_task_card(task_text, model_config, llm_dir)
         case_adapter = build_case_adapter(model_config, run_dir, args.tool_materials_dir)
-        tool_profile = prepare_tool_profile(tool_summary, target_board_profile, field_evidence_summary, llm_dir)
+        tool_profile = prepare_tool_profile(tool_summary, target_board_profile, field_evidence_summary, llm_dir, tool_materials_text=tool_materials_text)
         design_space = prepare_design_space(
             model_config,
             template_metadata,
@@ -3550,7 +3612,7 @@ def prepare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         with ThreadPoolExecutor(max_workers=llm_workers) as pool:
             futures = {
                 pool.submit(prepare_task_card, task_text, model_config, llm_dir): "task_card",
-                pool.submit(prepare_tool_profile, tool_summary, target_board_profile, field_evidence_summary, llm_dir): "tool_profile",
+                pool.submit(prepare_tool_profile, tool_summary, target_board_profile, field_evidence_summary, llm_dir, tool_materials_text=tool_materials_text): "tool_profile",
                 pool.submit(
                     prepare_design_space,
                     model_config,

@@ -1,0 +1,372 @@
+{
+  "duration_sec": 87.39463474502554,
+  "error": null,
+  "http_transport": "urllib",
+  "mode": "llm",
+  "output": {
+    "reason": "The initial design graph spans model/shape, source/evidence/tool, and template/platform/memory/runtime concerns, plus a cross-layer integrity audit. SACG memory truth shows no active retry, backtrack, or contamination blockers, so independent group-0 specialists with a group-1 auditor are the correct team structure.",
+    "schema_version": "spatialaccagent.subtask_plan.v0",
+    "split_required": true,
+    "stage": "constraint_extraction",
+    "subtasks": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "model_graph_engineer",
+        "artifact_focus": [
+          "candidate_design_graph_summary",
+          "model_operator_nodes"
+        ],
+        "constraints": [
+          "constraint.model.decoder",
+          "constraint.shape.model"
+        ],
+        "expected_artifacts": [
+          "constraint_extraction.model_shape_review_evidence.json",
+          "constraint_extraction.model_shape_graph_findings.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "accept_when": "Model/shape nodes and edges are explicit and review evidence is traceable to the candidate design graph",
+          "gate": "sacg_static_check",
+          "on_failure": "Return bounded missing-node/edge findings to the shared design graph; do not fabricate model facts or proceed"
+        },
+        "handoff_to": [
+          "constraint_extraction.input_evidence_engineer",
+          "constraint_extraction.template_platform_engineer",
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.model_graph_engineer",
+        "objective": "Check that model operators, residual order, attention facts, head mapping, hidden sizes, sequence facts, and decoder/shape constraints are explicit design-graph nodes and edges in the candidate graph.",
+        "parallel_group": 0,
+        "role": "model graph engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "template_binding_static_check"
+            ],
+            "consumes": [
+              "candidate_design_graph_summary",
+              "constraint.model.decoder",
+              "constraint.shape.model"
+            ],
+            "handoff_to": [
+              "constraint_extraction.input_evidence_engineer",
+              "constraint_extraction.template_platform_engineer",
+              "constraint_extraction.constraint_graph_auditor"
+            ],
+            "produces": [
+              "constraint_extraction.model_shape_review_evidence.json",
+              "constraint_extraction.model_shape_graph_findings.json"
+            ]
+          },
+          "decision_authority": [
+            "Mark model/shape facts as present or missing in the shared graph",
+            "Propose minimal graph node/edge additions for model/shape facts",
+            "Block handoff on unresolved model/shape ambiguity"
+          ],
+          "mission": "Independently audit model and shape facts in the candidate initial design graph for cross-layer consistency.",
+          "out_of_scope": [
+            "Selecting implementation templates",
+            "Running synthesis or backend tools",
+            "Changing numeric policy"
+          ],
+          "primary_responsibilities": [
+            "Trace model operators, residual order, attention facts, head mapping, hidden sizes, and sequence facts into explicit graph nodes and edges",
+            "Verify constraint.model.decoder and constraint.shape.model are represented without omission",
+            "Report missing or ambiguous model/shape facts as bounded findings; do not infer unsupported values"
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "extract model semantics",
+            "audit shape and head mapping",
+            "track residual/operator order"
+          ],
+          "constraint_focus": [
+            "constraint.model.decoder",
+            "constraint.shape.model"
+          ],
+          "family": "model_shape"
+        },
+        "title": "Review model and shape constraints"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "input_evidence_engineer",
+        "artifact_focus": [
+          "candidate_design_graph_summary",
+          "input_artifacts"
+        ],
+        "constraints": [
+          "constraint.source.materials",
+          "constraint.source.evidence",
+          "constraint.tool.profile",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "constraint_extraction.input_evidence_review_evidence.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "accept_when": "All current-run source/material, evidence, and tool-profile facts are represented as graph nodes or explicit artifacts",
+          "gate": "sacg_static_check",
+          "on_failure": "Return bounded missing-input findings; do not treat unextracted evidence as present or proceed"
+        },
+        "handoff_to": [
+          "constraint_extraction.model_graph_engineer",
+          "constraint_extraction.template_platform_engineer",
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.input_evidence_engineer",
+        "objective": "Check that user-provided board materials, quantization materials, sample projects, extracted field evidence, tool profiles, tool availability, and real tool probe results are represented in the initial design graph without omitted or dangling input references.",
+        "parallel_group": 0,
+        "role": "input evidence engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "candidate_design_graph_summary",
+              "input_artifacts",
+              "constraint.source.materials",
+              "constraint.source.evidence",
+              "constraint.tool.profile",
+              "constraint.cross_layer.input_consistency"
+            ],
+            "handoff_to": [
+              "constraint_extraction.model_graph_engineer",
+              "constraint_extraction.template_platform_engineer",
+              "constraint_extraction.constraint_graph_auditor"
+            ],
+            "produces": [
+              "constraint_extraction.input_evidence_review_evidence.json"
+            ]
+          },
+          "decision_authority": [
+            "Flag missing or contradictory input evidence representation",
+            "Propose graph node/edge additions for source, evidence, and tool facts",
+            "Block handoff when source/evidence cannot be traced"
+          ],
+          "mission": "Audit current-run source materials, extracted evidence, tool profile/availability, and input consistency in the initial design graph.",
+          "out_of_scope": [
+            "Model shape semantics",
+            "Template selection",
+            "Numeric policy decisions"
+          ],
+          "primary_responsibilities": [
+            "Map user-provided board materials, quantization materials, sample projects, extracted field evidence, tool profiles, and real tool availability/protocol results to explicit graph nodes",
+            "Verify source-material and source-evidence constraints are traceable",
+            "Flag missing or contradictory current-run input representation"
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "audit stage-local artifact",
+            "map observations to SACG constraints"
+          ],
+          "constraint_focus": [],
+          "family": "stage_specialist"
+        },
+        "title": "Review current-run materials and evidence"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check",
+          "addr_map_check",
+          "implementation_package_static",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "template_platform_engineer",
+        "artifact_focus": [
+          "candidate_design_graph_summary",
+          "input_artifacts"
+        ],
+        "constraints": [
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.numeric.policy",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.tool.protocols"
+        ],
+        "expected_artifacts": [
+          "constraint_extraction.template_platform_review_evidence.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "accept_when": "Template, board, runtime, numeric, and protocol constraints are traceable to the initial graph with no unsupported backend claim",
+          "gate": "template_binding_static_check",
+          "on_failure": "Return bounded template/platform findings; do not infer board AXI/DDR readiness from lower-layer or historical evidence"
+        },
+        "handoff_to": [
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.template_platform_engineer",
+        "objective": "Check that template library, design space, numeric policy, board DDR/AXI/runtime constraints, and tool protocols are represented as design-graph constraints with no unsupported resource-risk or backend claim.",
+        "parallel_group": 0,
+        "role": "template platform engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "template_binding_static_check",
+              "addr_map_check",
+              "implementation_package_static",
+              "required_real_tool_evidence_check"
+            ],
+            "consumes": [
+              "candidate_design_graph_summary",
+              "input_artifacts",
+              "constraint.template.library",
+              "constraint.arch.design_space",
+              "constraint.memory.board",
+              "constraint.runtime.board",
+              "constraint.tool.protocols"
+            ],
+            "handoff_to": [
+              "constraint_extraction.constraint_graph_auditor"
+            ],
+            "produces": [
+              "constraint_extraction.template_platform_review_evidence.json"
+            ]
+          },
+          "decision_authority": [
+            "Declare template/platform graph nodes present or missing",
+            "Propose bounded graph additions for template, board, runtime, and protocol facts",
+            "Block handoff when platform facts are ungrounded or unsupported"
+          ],
+          "mission": "Audit template, design-space, board, memory, runtime, numeric, and tool-protocol constraints in the initial design graph.",
+          "out_of_scope": [
+            "Selecting final DSE points",
+            "Running actual synthesis or placement",
+            "Changing the exact board wrapper"
+          ],
+          "primary_responsibilities": [
+            "Check trusted template library and design-space constraints are represented as explicit graph nodes",
+            "Verify board DDR/AXI/runtime and memory constraints are linked to deployment/tool evidence",
+            "Verify numeric policy and parameter binding prerequisites are not silently ignored"
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "bind trusted templates",
+            "audit numeric policy",
+            "check resource-risk assumptions"
+          ],
+          "constraint_focus": [
+            "constraint.numeric.policy",
+            "constraint.template.library",
+            "constraint.parameter.binding"
+          ],
+          "family": "numeric_template"
+        },
+        "title": "Review template/platform constraints"
+      },
+      {
+        "acceptance_checkers": [
+          "repair_boundary_check",
+          "sacg_static_check",
+          "human_boundary_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "constraint_graph_auditor",
+        "artifact_focus": [
+          "candidate_design_graph_summary",
+          "validation_errors"
+        ],
+        "constraints": [
+          "constraint.human.boundary",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "constraint_extraction.design_graph_audit_report.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "accept_when": "All group-0 specialist findings are reconciled and the shared graph has no unresolved missing edge or boundary violation",
+          "gate": "repair_boundary_check",
+          "on_failure": "Block next-stage handoff and route missing/contradictory references back through bounded specialist repair"
+        },
+        "handoff_to": [
+          "constraint_extraction.team_aggregate",
+          "next_stage"
+        ],
+        "id": "constraint_extraction.constraint_graph_auditor",
+        "objective": "Check whether the initial design graph can act as shared design state for later agent subtasks and checker evidence, with no missing cross-layer edges, broken artifact references, or human-boundary violations.",
+        "parallel_group": 1,
+        "role": "constraint graph auditor",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "repair_boundary_check",
+              "sacg_static_check",
+              "human_boundary_check"
+            ],
+            "consumes": [
+              "candidate_design_graph_summary",
+              "validation_errors",
+              "constraint_extraction.model_shape_review_evidence.json",
+              "constraint_extraction.input_evidence_review_evidence.json",
+              "constraint_extraction.template_platform_review_evidence.json"
+            ],
+            "handoff_to": [
+              "constraint_extraction.team_aggregate",
+              "next_stage"
+            ],
+            "produces": [
+              "constraint_extraction.design_graph_audit_report.json"
+            ]
+          },
+          "decision_authority": [
+            "Approve or block promotion of candidate_design_graph_summary as initial shared design graph",
+            "Require bounded remediation for missing or contradictory references",
+            "Authorize handoff to the next stage only after static checks pass"
+          ],
+          "mission": "Audit whether the initial design graph can serve as shared design state for later agents and checker evidence.",
+          "out_of_scope": [
+            "Free-form RTL generation",
+            "Executing downstream synthesis tools",
+            "Changing model or numeric policy without explicit contradiction evidence"
+          ],
+          "primary_responsibilities": [
+            "Check every constraint node and edge has a resolvable target artifact or evidence reference",
+            "Check cross-layer consistency across model, input, template/platform, tool, board, and human-boundary facts",
+            "Produce an audit report with pass/fail by grounded checkers"
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "classify evidence",
+            "map failures to violated constraints",
+            "enforce repair boundaries"
+          ],
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.human.boundary"
+          ],
+          "family": "verification_repair"
+        },
+        "title": "Review design graph reference integrity"
+      }
+    ]
+  },
+  "prompt_hash": "3a99df6a154f60e5a5331f6763bfd4d9e9c960e94d05af335873b0a42dc2c192",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.subtask_plan.v0\",\n  \"stage\": \"constraint_extraction\",\n  \"split_required\": true,\n  \"reason\": \"The initial design graph spans model/shape, source/evidence/tool, and template/platform/memory/runtime concerns, plus a cross-layer integrity audit. SACG memory truth shows no active retry, backtrack, or contamination blockers, so independent group-0 specialists with a group-1 auditor are the correct team structure.\",\n  \"subtasks\": [\n    {\n      \"id\": \"constraint_extraction.model_graph_engineer\",\n      \"agent\": \"model_graph_engineer\",\n      \"role\": \"model graph engineer\",\n      \"role_profile\": {\n        \"family\": \"model_shape\",\n        \"capabilities\": [\n          \"extract model semantics\",\n          \"audit shape and head mapping\",\n          \"track residual/operator order\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.model.decoder\",\n          \"constraint.shape.model\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Independently audit model and shape facts in the candidate initial design graph for cross-layer consistency.\",\n        \"primary_responsibilities\": [\n          \"Trace model operators, residual order, attention facts, head mapping, hidden sizes, and sequence facts into explicit graph nodes and edges\",\n          \"Verify constraint.model.decoder and constraint.shape.model are represented without omission\",\n          \"Report missing or ambiguous model/shape facts as bounded findings; do not infer unsupported values\"\n        ],\n        \"decision_authority\": [\n          \"Mark model/shape facts as present or missing in the shared graph\",\n          \"Propose minimal graph node/edge additions for model/shape facts\",\n          \"Block handoff on unresolved model/shape ambiguity\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"candidate_design_graph_summary\",\n            \"constraint.model.decoder\",\n            \"constraint.shape.model\"\n          ],\n          \"produces\": [\n            \"constraint_extraction.model_shape_review_evidence.json\",\n            \"constraint_extraction.model_shape_graph_findings.json\"\n          ],\n          \"handoff_to\": [\n            \"constraint_extraction.input_evidence_engineer\",\n            \"constraint_extraction.template_platform_engineer\",\n            \"constraint_extraction.constraint_graph_auditor\"\n          ],\n          \"acceptance_checkers\": [\n            \"sacg_static_check\",\n            \"template_binding_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Selecting implementation templates\",\n          \"Running synthesis or backend tools\",\n          \"Changing numeric policy\"\n        ]\n      },\n      \"title\": \"Review model and shape constraints\",\n      \"objective\": \"Check that model operators, residual order, attention facts, head mapping, hidden sizes, sequence facts, and decoder/shape constraints are explicit design-graph nodes and edges in the candidate graph.\",\n      \"constraints\": [\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\"\n      ],\n      \"artifact_focus\": [\n        \"candidate_design_graph_summary\",\n        \"model_operator_nodes\"\n      ],\n      \"parallel_group\": 0,\n      \"handoff_required\": true,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"constraint_extraction.model_shape_review_evidence.json\",\n        \"constraint_extraction.model_shape_graph_findings.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"template_binding_static_check\"\n      ],\n      \"handoff_to\": [\n        \"constraint_extraction.input_evidence_engineer\",\n        \"constraint_extraction.template_platform_engineer\",\n        \"constraint_extraction.constraint_graph_auditor\"\n      ],\n      \"handoff_rule\": {\n        \"gate\": \"sacg_static_check\",\n        \"accept_when\": \"Model/shape nodes and edges are explicit and review evidence is traceable to the candidate design graph\",\n        \"on_failure\": \"Return bounded missing-node/edge findings to the shared design graph; do not fabricate model facts or proceed\"\n      }\n    },\n    {\n      \"id\": \"constraint_extraction.input_evidence_engineer\",\n      \"agent\": \"input_evidence_engineer\",\n      \"role\": \"input evidence engineer\",\n      \"role_profile\": {\n        \"family\": \"stage_specialist\",\n        \"capabilities\": [\n          \"audit stage-local artifact\",\n          \"map observations to SACG constraints\"\n        ],\n        \"constraint_focus\": []\n      },\n      \"role_assignment\": {\n        \"mission\": \"Audit current-run source materials, extracted evidence, tool profile/availability, and input consistency in the initial design graph.\",\n        \"primary_responsibilities\": [\n          \"Map user-provided board materials, quantization materials, sample projects, extracted field evidence, tool profiles, and real tool availability/protocol results to explicit graph nodes\",\n          \"Verify source-material and source-evidence constraints are traceable\",\n          \"Flag missing or contradictory current-run input representation\"\n        ],\n        \"decision_authority\": [\n          \"Flag missing or contradictory input evidence representation\",\n          \"Propose graph node/edge additions for source, evidence, and tool facts\",\n          \"Block handoff when source/evidence cannot be traced\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"candidate_design_graph_summary\",\n            \"input_artifacts\",\n            \"constraint.source.materials\",\n            \"constraint.source.evidence\",\n            \"constraint.tool.profile\",\n            \"constraint.cross_layer.input_consistency\"\n          ],\n          \"produces\": [\n            \"constraint_extraction.input_evidence_review_evidence.json\"\n          ],\n          \"handoff_to\": [\n            \"constraint_extraction.model_graph_engineer\",\n            \"constraint_extraction.template_platform_engineer\",\n            \"constraint_extraction.constraint_graph_auditor\"\n          ],\n          \"acceptance_checkers\": [\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Model shape semantics\",\n          \"Template selection\",\n          \"Numeric policy decisions\"\n        ]\n      },\n      \"title\": \"Review current-run materials and evidence\",\n      \"objective\": \"Check that user-provided board materials, quantization materials, sample projects, extracted field evidence, tool profiles, tool availability, and real tool probe results are represented in the initial design graph without omitted or dangling input references.\",\n      \"constraints\": [\n        \"constraint.source.materials\",\n        \"constraint.source.evidence\",\n        \"constraint.tool.profile\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"artifact_focus\": [\n        \"candidate_design_graph_summary\",\n        \"input_artifacts\"\n      ],\n      \"parallel_group\": 0,\n      \"handoff_required\": true,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"constraint_extraction.input_evidence_review_evidence.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\"\n      ],\n      \"handoff_to\": [\n        \"constraint_extraction.model_graph_engineer\",\n        \"constraint_extraction.template_platform_engineer\",\n        \"constraint_extraction.constraint_graph_auditor\"\n      ],\n      \"handoff_rule\": {\n        \"gate\": \"sacg_static_check\",\n        \"accept_when\": \"All current-run source/material, evidence, and tool-profile facts are represented as graph nodes or explicit artifacts\",\n        \"on_failure\": \"Return bounded missing-input findings; do not treat unextracted evidence as present or proceed\"\n      }\n    },\n    {\n      \"id\": \"constraint_extraction.template_platform_engineer\",\n      \"agent\": \"template_platform_engineer\",\n      \"role\": \"template platform engineer\",\n      \"role_profile\": {\n        \"family\": \"numeric_template\",\n        \"capabilities\": [\n          \"bind trusted templates\",\n          \"audit numeric policy\",\n          \"check resource-risk assumptions\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.numeric.policy\",\n          \"constraint.template.library\",\n          \"constraint.parameter.binding\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Audit template, design-space, board, memory, runtime, numeric, and tool-protocol constraints in the initial design graph.\",\n        \"primary_responsibilities\": [\n          \"Check trusted template library and design-space constraints are represented as explicit graph nodes\",\n          \"Verify board DDR/AXI/runtime and memory constraints are linked to deployment/tool evidence\",\n          \"Verify numeric policy and parameter binding prerequisites are not silently ignored\"\n        ],\n        \"decision_authority\": [\n          \"Declare template/platform graph nodes present or missing\",\n          \"Propose bounded graph additions for template, board, runtime, and protocol facts\",\n          \"Block handoff when platform facts are ungrounded or unsupported\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"candidate_design_graph_summary\",\n            \"input_artifacts\",\n            \"constraint.template.library\",\n            \"constraint.arch.design_space\",\n            \"constraint.memory.board\",\n            \"constraint.runtime.board\",\n            \"constraint.tool.protocols\"\n          ],\n          \"produces\": [\n            \"constraint_extraction.template_platform_review_evidence.json\"\n          ],\n          \"handoff_to\": [\n            \"constraint_extraction.constraint_graph_auditor\"\n          ],\n          \"acceptance_checkers\": [\n            \"sacg_static_check\",\n            \"template_binding_static_check\",\n            \"addr_map_check\",\n            \"implementation_package_static\",\n            \"required_real_tool_evidence_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Selecting final DSE points\",\n          \"Running actual synthesis or placement\",\n          \"Changing the exact board wrapper\"\n        ]\n      },\n      \"title\": \"Review template/platform constraints\",\n      \"objective\": \"Check that template library, design space, numeric policy, board DDR/AXI/runtime constraints, and tool protocols are represented as design-graph constraints with no unsupported resource-risk or backend claim.\",\n      \"constraints\": [\n        \"constraint.template.library\",\n        \"constraint.arch.design_space\",\n        \"constraint.numeric.policy\",\n        \"constraint.memory.board\",\n        \"constraint.runtime.board\",\n        \"constraint.tool.protocols\"\n      ],\n      \"artifact_focus\": [\n        \"candidate_design_graph_summary\",\n        \"input_artifacts\"\n      ],\n      \"parallel_group\": 0,\n      \"handoff_required\": true,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"constraint_extraction.template_platform_review_evidence.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"template_binding_static_check\",\n        \"addr_map_check\",\n        \"implementation_package_static\",\n        \"required_real_tool_evidence_check\"\n      ],\n      \"handoff_to\": [\n        \"constraint_extraction.constraint_graph_auditor\"\n      ],\n      \"handoff_rule\": {\n        \"gate\": \"template_binding_static_check\",\n        \"accept_when\": \"Template, board, runtime, numeric, and protocol constraints are traceable to the initial graph with no unsupported backend claim\",\n        \"on_failure\": \"Return bounded template/platform findings; do not infer board AXI/DDR readiness from lower-layer or historical evidence\"\n      }\n    },\n    {\n      \"id\": \"constraint_extraction.constraint_graph_auditor\",\n      \"agent\": \"constraint_graph_auditor\",\n      \"role\": \"constraint graph auditor\",\n      \"role_profile\": {\n        \"family\": \"verification_repair\",\n        \"capabilities\": [\n          \"classify evidence\",\n          \"map failures to violated constraints\",\n          \"enforce repair boundaries\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.verification.plan\",\n          \"constraint.human.boundary\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Audit whether the initial design graph can serve as shared design state for later agents and checker evidence.\",\n        \"primary_responsibilities\": [\n          \"Check every constraint node and edge has a resolvable target artifact or evidence reference\",\n          \"Check cross-layer consistency across model, input, template/platform, tool, board, and human-boundary facts\",\n          \"Produce an audit report with pass/fail by grounded checkers\"\n        ],\n        \"decision_authority\": [\n          \"Approve or block promotion of candidate_design_graph_summary as initial shared design graph\",\n          \"Require bounded remediation for missing or contradictory references\",\n          \"Authorize handoff to the next stage only after static checks pass\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"candidate_design_graph_summary\",\n            \"validation_errors\",\n            \"constraint_extraction.model_shape_review_evidence.json\",\n            \"constraint_extraction.input_evidence_review_evidence.json\",\n            \"constraint_extraction.template_platform_review_evidence.json\"\n          ],\n          \"produces\": [\n            \"constraint_extraction.design_graph_audit_report.json\"\n          ],\n          \"handoff_to\": [\n            \"constraint_extraction.team_aggregate\",\n            \"next_stage\"\n          ],\n          \"acceptance_checkers\": [\n            \"repair_boundary_check\",\n            \"sacg_static_check\",\n            \"human_boundary_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Free-form RTL generation\",\n          \"Executing downstream synthesis tools\",\n          \"Changing model or numeric policy without explicit contradiction evidence\"\n        ]\n      },\n      \"title\": \"Review design graph reference integrity\",\n      \"objective\": \"Check whether the initial design graph can act as shared design state for later agent subtasks and checker evidence, with no missing cross-layer edges, broken artifact references, or human-boundary violations.\",\n      \"constraints\": [\n        \"constraint.human.boundary\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"artifact_focus\": [\n        \"candidate_design_graph_summary\",\n        \"validation_errors\"\n      ],\n      \"parallel_group\": 1,\n      \"handoff_required\": true,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"constraint_extraction.design_graph_audit_report.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"repair_boundary_check\",\n        \"sacg_static_check\",\n        \"human_boundary_check\"\n      ],\n      \"handoff_to\": [\n        \"constraint_extraction.team_aggregate\",\n        \"next_stage\"\n      ],\n      \"handoff_rule\": {\n        \"gate\": \"repair_boundary_check\",\n        \"accept_when\": \"All group-0 specialist findings are reconciled and the shared graph has no unresolved missing edge or boundary violation\",\n        \"on_failure\": \"Block next-stage handoff and route missing/contradictory references back through bounded specialist repair\"\n      }\n    }\n  ]\n}",
+  "reasoning_effort": "medium",
+  "schema_version": "spatialaccagent.team_decomposer_record.v0",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

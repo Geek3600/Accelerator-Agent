@@ -262,6 +262,28 @@ if {{![file exists $project_xpr]}} {{
 }}
 record $fh project_exists 1
 
+set source_open_status [catch {{open_project $project_xpr}} source_open_message]
+record $fh source_open_status $source_open_status
+record $fh source_open_message $source_open_message
+if {{$source_open_status != 0}} {{
+  close $fh
+  exit 0
+}}
+
+set project_name [file rootname [file tail $project_xpr]]
+set clone_root [file join [pwd] project]
+file delete -force $clone_root
+file mkdir $clone_root
+set clone_status [catch {{save_project_as -force -dir $clone_root $project_name}} clone_message]
+record $fh project_clone_status $clone_status
+record $fh project_clone_message $clone_message
+close_project
+if {{$clone_status != 0}} {{
+  close $fh
+  exit 0
+}}
+
+set project_xpr [file join $clone_root "${{project_name}}.xpr"]
 set open_status [catch {{open_project $project_xpr}} open_message]
 record $fh open_project_status $open_status
 record $fh open_project_message $open_message

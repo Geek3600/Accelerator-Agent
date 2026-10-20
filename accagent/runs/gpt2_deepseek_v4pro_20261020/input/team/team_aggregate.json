@@ -1,0 +1,574 @@
+{
+  "approval_required_for": [
+    "Adopting a planned_tool.<short_name> or planned_checker.<short_name> as an approved workaround for a missing checker-verified capability",
+    "Any change to artifact.input.design_space hard_constraints, objectives, or qor_targets",
+    "Any change to artifact.input.human_agent_boundary or constraint.human.boundary",
+    "Any major template_library/template_metadata binding override outside the already selected template set",
+    "Changing numeric precision/quantization policy, compare tolerance, or memory layout away from a case-adapter-supplied value.",
+    "Promoting to stage_sacg_extraction while unresolved numeric, DDR/AXI, runtime, or deployment facts remain open in artifact.stage0.board_open_risks.",
+    "Substituting missing numeric_policy or target_board_profile facts with inferred defaults, generic board names, DUT output, or generated expected values."
+  ],
+  "completed_subtasks": 4,
+  "decomposition_source": "llm",
+  "errors": [],
+  "event_log_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input/team/event_log.jsonl",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "boundary_contract_check"
+      ],
+      "action_type": "sacg_constraint_review",
+      "consumes": [
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.case_adapter",
+        "candidate_stage_artifact.prepared_inputs"
+      ],
+      "id": "input_preparation.input_evidence_engineer.reify_source_material_trace",
+      "on_failure": "Keep input-preparation readiness blocked, record the missing or conflicting source identity as not_run/gap in artifact.stage0.source_material_trace, and request upstream material_index/sample_project_index rows before SACG extraction.",
+      "produces": [
+        "artifact.stage0.source_material_trace"
+      ],
+      "rationale": "material_index and sample_project_index are not visible in the compact prepared_inputs.inputs slice, so the current run identity and source-project scope must be bound to the visible run_dir and case_adapter case_id before the evidence audit can pass.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "sacg_static_check",
+        "boundary_contract_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "tool_protocol_check",
+        "boundary_contract_check"
+      ],
+      "action_type": "tool_protocol_review",
+      "consumes": [
+        "artifact.input.case_adapter",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols"
+      ],
+      "id": "input_preparation.input_evidence_engineer.align_tool_capability_protocols",
+      "on_failure": "Mark tool capability alignment as not_run or conflicted in the audit, block promotion to SACG extraction, and request current-run tool_profile/tool_availability details from the upstream input registry.",
+      "produces": [
+        "artifact.stage0.input_evidence_audit.tool_alignment"
+      ],
+      "rationale": "case_adapter exposes acceptance and protocol-related keys, but tool_profile and tool_availability detailed rows are not visible in the compact slice; tool_protocol_check must confirm that case-adapter protocols are supported by the current tool set.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "tool_protocol_check",
+        "boundary_contract_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "tool_protocol_check",
+        "boundary_contract_check",
+        "sacg_static_check"
+      ],
+      "action_type": "evidence_gate_review",
+      "consumes": [
+        "artifact.input.case_adapter",
+        "artifact.input.field_evidence_candidates",
+        "artifact.input.field_evidence"
+      ],
+      "id": "input_preparation.input_evidence_engineer.gate_field_evidence",
+      "on_failure": "Keep field_evidence outside the accepted-evidence boundary, record the gate as not_run/failed, and do not allow downstream SACG extraction to consume it as accepted evidence.",
+      "produces": [
+        "artifact.stage0.input_evidence_audit"
+      ],
+      "rationale": "field_evidence_candidates and field_evidence are present, but the visible candidate artifact does not show checker evidence that the candidates were accepted through case_adapter.evidence_gates; this must be verified before accepted field evidence enters SACG extraction.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "tool_protocol_check",
+        "boundary_contract_check",
+        "sacg_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "model_config_check",
+        "task_card_check"
+      ],
+      "action_type": "static_evidence_gathering",
+      "consumes": [
+        "artifact.input.model_config",
+        "artifact.input.task_card",
+        "state_summary.sacg_memory_truth"
+      ],
+      "id": "stage0.run_model_task_checks",
+      "on_failure": "Do not pass stage0 or promote to SACG extraction; record missing model facts as artifact.stage0.model_open_facts and request case-adapter model_config/task_card evidence.",
+      "produces": [
+        "artifact.stage0.model_input_audit",
+        "artifact.stage0.model_open_facts"
+      ],
+      "rationale": "Run the registered model_config and task_card checkers on the declared input artifacts to determine whether decoder-block, shape, head, sequence, attention, residual, and operator-order facts are present and bound to model constraints rather than inferred from board or numeric artifacts.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "sacg_validate",
+        "model_config_check",
+        "task_card_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_memory_check"
+      ],
+      "action_type": "sacg_memory_handoff",
+      "consumes": [
+        "artifact.stage0.model_input_audit",
+        "artifact.stage0.model_open_facts"
+      ],
+      "id": "stage0.record_model_open_facts",
+      "on_failure": "Keep artifact.stage0.model_open_facts open and route to the toolchain boundary gate; do not treat missing model facts as hidden or inferred details.",
+      "produces": [
+        "sacg_memory.model_intake_open_facts_record"
+      ],
+      "rationale": "Persist the audit and open model facts in shared sacg_memory so downstream toolchain_boundary_engineer and stage_sacg_extraction consume only checker-bound model evidence.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "sacg_memory_update"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "artifact_hash_check",
+        "sacg_static_check"
+      ],
+      "action_type": "artifact_identity_verification",
+      "consumes": [
+        "artifact.input.numeric_policy",
+        "artifact.input.target_board_profile",
+        "artifact.input.case_adapter"
+      ],
+      "id": "verify.numeric_board_artifact_identity",
+      "on_failure": "If either artifact is absent or cannot be hash-bound to the current run_dir/prepared_inputs identity, record a board_open_risks entry and do not run numeric/board content checks against guessed paths; request the case adapter to re-emit the input artifact.",
+      "produces": [
+        "artifact.stage0.numeric_board_input_hashes"
+      ],
+      "rationale": "The compact prepared_inputs slice omits detailed keys for artifact.input.numeric_policy and artifact.input.target_board_profile even though the state summary declares them. Hash-check both current artifacts before any content audit to distinguish a missing input from an omitted detail row.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "artifact_hash_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "numeric_policy_check",
+        "addr_map_check"
+      ],
+      "action_type": "numeric_board_input_review",
+      "consumes": [
+        "artifact.input.numeric_policy",
+        "artifact.input.target_board_profile",
+        "constraint.numeric.policy",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "artifact.stage0.numeric_board_input_hashes"
+      ],
+      "id": "check.numeric_policy_and_board_facts",
+      "on_failure": "If numeric_policy_check or addr_map_check reports missing precision/quantization policy, DDR/AXI address map, transfer-width, burst, runtime, or deployment facts, do not derive defaults from DUT output or generic knowledge. Record each exact missing field in artifact.stage0.board_open_risks and hand off as a blocker to input_preparation.toolchain_boundary_engineer and stage_sacg_extraction. If checker execution raises an artifact-location exception, return to verify.numeric_board_artifact_identity.",
+      "produces": [
+        "artifact.stage0.numeric_board_audit",
+        "artifact.stage0.board_open_risks"
+      ],
+      "rationale": "Bind explicit facts from numeric_policy and target_board_profile to the named numeric, memory, runtime, and deployment constraints before downstream SACG extraction. Missing facts must become open risks, not inferred defaults.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "numeric_policy_check",
+        "addr_map_check",
+        "sacg_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_memory_check",
+        "sacg_static_check"
+      ],
+      "action_type": "sacg_memory_update",
+      "consumes": [
+        "artifact.stage0.numeric_board_audit",
+        "artifact.stage0.board_open_risks"
+      ],
+      "id": "record.numeric_board_open_risks",
+      "on_failure": "Do not clear the numeric/board gap. Keep stage_sacg_extraction gated for unresolved facts and mark the SACG memory update failed for replanning.",
+      "produces": [
+        "state_summary.sacg_memory.numeric_board_input_review_lesson"
+      ],
+      "rationale": "Persist checker-bound numeric/board gaps and evidence provenance in SACG memory so downstream toolchain-boundary and extraction agents receive the open-risk list without receiving invented board facts.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "sacg_memory_update"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "tool_protocol_check",
+        "template_binding_static_check",
+        "human_boundary_check",
+        "repair_boundary_check",
+        "sacg_static_check"
+      ],
+      "action_type": "input_artifact_validation",
+      "consumes": [
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.tool_protocols",
+        "artifact.input.human_agent_boundary",
+        "artifact.input.case_adapter"
+      ],
+      "id": "stage0.validate_tool_template_human_boundary",
+      "on_failure": "Block stage_sacg_extraction, record the violated constraint/artifact as an input-preparation blocker in sacg_memory, and return the bounded repair or approval item to the owning specialist; do not rewrite the inputs or bypass the checker.",
+      "produces": [
+        "artifact.stage0.toolchain_boundary_audit"
+      ],
+      "rationale": "The readiness gate must be grounded in checker evidence that template_library/template_metadata bind to the selected design_space and case_adapter, tool_protocols support checker-verified execution, and human_agent_boundary defines approval/forbidden actions without contradictory auto-allowed paths.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "tool_protocol_check",
+        "template_binding_static_check",
+        "human_boundary_check",
+        "repair_boundary_check",
+        "sacg_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "repair_boundary_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "template_binding_static_check"
+      ],
+      "action_type": "readiness_gate_aggregation",
+      "consumes": [
+        "artifact.stage0.model_input_audit",
+        "artifact.stage0.numeric_board_audit",
+        "artifact.stage0.input_evidence_audit",
+        "artifact.stage0.toolchain_boundary_audit"
+      ],
+      "id": "stage0.merge_peer_audits_to_readiness_gate",
+      "on_failure": "Keep artifact.stage0.input_readiness_gate unapproved, block stage_sacg_extraction, and route each failed invariant back to the responsible specialist with the consumed artifact and checker status; do not aggregate contradictory audit findings into a false ready state.",
+      "produces": [
+        "artifact.stage0.input_readiness_gate"
+      ],
+      "rationale": "The toolchain-boundary audit is necessary but not sufficient; model, numeric/board, and field-evidence specialist findings must be merged into one checker-verified readiness decision before SACG extraction can consume the aggregate.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "team_aggregate",
+        "sacg_validate",
+        "repair_boundary_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "template_binding_static_check",
+        "sacg_static_check"
+      ]
+    }
+  ],
+  "execution_groups": [
+    0,
+    1
+  ],
+  "llm_io_metrics": {
+    "executable_action_count": 10,
+    "max_duration_sec": 151.7565635360079,
+    "max_prompt_bytes": 39262,
+    "result_count": 4,
+    "subtasks_without_executable_actions": [],
+    "total_duration_sec": 417.2179059070768,
+    "total_prompt_bytes": 155605
+  },
+  "observations": [
+    "sacg_memory_truth reports zero active contamination barriers, zero open backtrack requests, and zero open retry requests, so no current SACG-memory blockers apply to this stage.",
+    "candidate_stage_artifact.prepared_inputs shows mode=independent_from_scratch_design and run_dir=/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020, creating a run-identity consistency risk because the supplied path mixes Qwen2-Accelerator workspace context with gpt2/deepseek run naming.",
+    "The visible prepared_inputs.inputs keys are case_adapter, design_space, field_evidence, field_evidence_candidates, and human_agent_boundary; material_index, sample_project_index, tool_profile, and tool_availability are not visible in this compact slice, so their detailed rows must be retrieved before readiness is claimed.",
+    "case_adapter is present at key level with acceptance, case_id, diagnosis, errors, and evidence_gates, but its values are not visible, so current-run target identity and evidence-gate acceptance cannot yet be verified.",
+    "field_evidence_candidates and field_evidence both expose policy and schema_version keys, and field_evidence additionally exposes _domain_result_paths, _regex_candidate_count, and evidence, but no visible checker result proves that candidates were accepted through case_adapter.evidence_gates.",
+    "tool_profile and tool_availability are listed as available input artifacts in the state summary, but no visible tool names, modes, or availability status are present in the candidate stage artifact, so tool-protocol alignment is undetermined.",
+    "The supplied action_grounding_registry includes registered sacg_static_check, tool_protocol_check, and boundary_contract_check roles, so these evidence-audit checks are executable without declaring a planned tool gap.",
+    "artifact.input.model_config and artifact.input.task_card are declared in state_summary.artifacts, but the supplied candidate_stage_artifact surfaces only prepared inputs and does not expose their field-level model facts in this prompt slice.",
+    "No model_config_check or task_card_check result is supplied, so decoder-block topology, shape, head count, hidden dimension, sequence facts, attention structure, residual connections, and operator order cannot yet be certified as SACG-extractable.",
+    "No active contamination barriers, open retry requests, or open backtrack requests are present in sacg_memory_truth; historical or empty memory records are not treated as active blockers.",
+    "hierarchical_learning_context is empty and contains no validated lower-layer evidence or certified invariants to preserve at this stage.",
+    "The model intake role is out of scope for numeric_policy audit, board/DDR/runtime audit, template binding audit, and tool/human-boundary audit; those must remain with the appropriate specialists.",
+    "Model facts must not be inferred from target_board_profile, numeric_policy, template_library, or other non-model artifacts because that would violate the model intake boundary.",
+    "artifact.input.numeric_policy and artifact.input.target_board_profile are declared in the artifact presence summary, so their absence cannot be concluded from the compact visible slice alone.",
+    "The visible prepared_inputs.inputs key list shows case_adapter, design_space, field_evidence, field_evidence_candidates, and human_agent_boundary, but it does not show numeric_policy or target_board_profile detail rows; this is a detail-visibility gap, not proof that the inputs were not injected.",
+    "No current SACG-memory blockers are active: active contamination barrier count, open backtrack request count, and open retry request count are all zero.",
+    "The named review constraints are present at the input level, but their detailed numeric, DDR/AXI, runtime, and deployment bodies are not exposed in the supplied compact slice.",
+    "No tool/checker result currently binds numeric_policy precision/quantization facts or target_board_profile DDR/AXI, address-map, runtime, and deployment facts to the named constraints.",
+    "Board facts such as AXI IDs, data widths, address width, burst capability, address regions, clock/reset behavior, and deployment board identity must be sourced from case-adapter/sample-project evidence; they must not be inferred from generic defaults.",
+    "Transformer-only scope is preserved for this audit: no embedding/tokenization, final model norm, LM head/logits, or sampling facts should be added to the DUT or board acceptance boundary.",
+    "sacg_memory_truth has active_contamination_barrier_count 0, open_backtrack_request_count 0, and open_retry_request_count 0; therefore no current SACG-memory blockers apply to this input-preparation gate.",
+    "No retry_reconciliation_contract was supplied for this stage, so there is no superseding-retry artifact distinction to enforce here.",
+    "hierarchical_learning_context is empty/status no_validated_lower_layer_evidence, so no lower-layer hash-bound invariant or timing semantics constrain this stage.",
+    "The candidate prepared_inputs slice reports mode independent_from_scratch_design and an empty errors list, which is positive but does not by itself prove template binding, tool protocol, or human-boundary checker status.",
+    "The visible candidate outputs include case_adapter, design_space, field_evidence, field_evidence_candidates, and human_agent_boundary; template_library and template_metadata are listed in the state summary but their detailed binding metadata is not visible in this prompt.",
+    "tool_protocols is listed as an input artifact, but its checker-verified coverage of the required compile-only VCS roles and the case-adapter acceptance/evidence gates is not visible in this slice.",
+    "The parallel specialist audits artifact.stage0.model_input_audit, artifact.stage0.numeric_board_audit, and artifact.stage0.input_evidence_audit are declared as consumed but their detailed pass/fail/blocker statuses are not visible; they must be merged by checker-backed aggregation."
+  ],
+  "parallel_execution": true,
+  "proposed_actions": [
+    "Retrieve and bind current-run material_index and sample_project_index with the visible run_dir and case_adapter case identity.",
+    "Run tool_protocol_check over case_adapter against tool_profile and tool_availability; if their detailed rows are absent from the compact slice, request them from the upstream registry.",
+    "Run boundary_contract_check and tool_protocol_check to verify field_evidence_candidates were gated into field_evidence through case_adapter.evidence_gates.",
+    "Emit artifact.stage0.input_evidence_audit and artifact.stage0.source_material_trace with each focus artifact explicitly marked pass/not_run/gap; do not promote until sacg_static_check, tool_protocol_check, and boundary_contract_check pass.",
+    "Run model_config_check and task_card_check against artifact.input.model_config and artifact.input.task_card and bind results to constraint.model.decoder, constraint.shape.model, and constraint.task.goal.",
+    "Produce artifact.stage0.model_input_audit with explicit present/gapped fields and artifact.stage0.model_open_facts for any missing or implicit decoder-block, shape, head, sequence, attention, residual, or operator-order facts.",
+    "If model facts are missing, implicit, or checker-blocked, request case-adapter model_config/task_card evidence and hand the open facts to input_preparation.toolchain_boundary_engineer and stage_sacg_extraction.",
+    "Persist checker-bound model open facts in sacg_memory without adding numeric, board, DDR, runtime, or template constraints to the model-intake record.",
+    "Hash-validate artifact.input.numeric_policy and artifact.input.target_board_profile to prove they are present and bound to the current prepared_inputs run_dir.",
+    "Run numeric_policy_check against artifact.input.numeric_policy under constraint.numeric.policy.",
+    "Run addr_map_check against artifact.input.target_board_profile under constraint.memory.board, constraint.runtime.board, and constraint.deployment.board.",
+    "Record only checker-backed facts in artifact.stage0.numeric_board_audit; route every missing fact to artifact.stage0.board_open_risks.",
+    "If board/numeric facts are missing or ambiguous, request case-adapter/sample-project evidence and keep stage_sacg_extraction gated until resolution.",
+    "Run the named static checkers on template_library, template_metadata, design_space, tool_protocols, and human_agent_boundary and record pass/fail/not_run in artifact.stage0.toolchain_boundary_audit.",
+    "Consume the peer model_input_audit, numeric_board_audit, and input_evidence_audit outputs together with the toolchain boundary audit and aggregate them into artifact.stage0.input_readiness_gate.",
+    "If any tool/template/human-boundary constraint fails, block stage_sacg_extraction and return the violated constraint to the owning specialist rather than patching it silently.",
+    "If a required checker or tool capability is absent, declare planned_tool.<short_name> or planned_checker.<short_name> and require approval before using an unregistered fallback.",
+    "Do not treat the absence of detailed rows in this prompt as a missing artifact; verify the actual artifact contents through the checker-backed action before declaring a blocker."
+  ],
+  "risks": [
+    "Run identity may be ambiguous because material_index/sample_project_index/case_adapter case_id are not fully bound to the visible run_dir, risking downstream extraction against the wrong transformer-block scope.",
+    "tool_profile/tool_availability may conflict with case_adapter acceptance or protocol expectations, but this cannot be checked from the visible slice.",
+    "field_evidence may be treated as accepted merely because it is present, even though no checker-grounded evidence shows the candidate-to-evidence gate was applied.",
+    "A compact-slice omission could be misread as a missing artifact class; the safer current-stage position is not_run/needs_evidence, not a hard blocker assertion.",
+    "Promoting input preparation without the focused artifacts bound to SACG constraints would violate the handoff evidence rule.",
+    "The supplied artifact summary may be compact and could omit model_config/task_card details that exist in the full case; this must be resolved by checker execution, not by guessing.",
+    "Decoder-block operator order, residual-connection naming, attention head mapping, and sequence-dimension facts may be only implicit in the case adapter and therefore insufficient for downstream SACG extraction unless explicitly recorded.",
+    "Declaring model-facing readiness without visible checker evidence would violate the evidence rule and could contaminate downstream model facts with board or numeric assumptions.",
+    "Missing model facts may later be misclassified as numeric/board or template issues unless the model intake audit explicitly separates model-open facts from other cross-layer gaps.",
+    "Holding all downstream stages on absence of visible details would also be incorrect if the detail exists in the full case; therefore checker-backed evidence gathering is the correct next step.",
+    "Cannot confirm that numeric_policy explicitly contains precision, quantization, rounding/saturation, accumulation width, and compare tolerance facts without a checker-bound result.",
+    "Cannot confirm that target_board_profile contains sufficient DDR and AXI facts for addr_map_check, including address regions, AXI widths/IDs, burst/length rules, and memory-map constraints.",
+    "Cannot confirm runtime/deployment facts such as board part, clock/reset, DDR configuration, and legal board wrapper identity are present and consistent with constraint.runtime.board and constraint.deployment.board.",
+    "Cross-layer consistency between numeric data types and board AXI/DDR transfer widths cannot be assessed from visible summary fields alone.",
+    "If prepared_inputs actually omitted artifact.input.numeric_policy or artifact.input.target_board_profile, downstream numeric/board gap analysis and stage_sacg_extraction would consume incomplete evidence.",
+    "Hallucinating missing board details could contaminate downstream addr_map_check, board wrapper generation, and deployment checks.",
+    "Template library/metadata may be present but not statically bindable to the selected case_adapter and design_space; without template_binding_static_check evidence this would become a downstream SACG extraction blocker.",
+    "tool_protocols may omit or misname required checker-verified compile-only VCS roles, causing later verification_artifacts planning to invent capabilities or skip real compile/elaborate/link evidence.",
+    "Human-agent boundary may conflict with tool_protocols by allowing auto actions that are not checker-grounded or by forbidding required repair loops; human_boundary_check must resolve this before promotion.",
+    "The parallel model, numeric/board, and evidence audits may disagree; aggregating them without checker evidence risks promoting inconsistent shape/numeric/data-order/memory/deployment constraints into SACG.",
+    "Historical functional/golden or runtime expectations could be accidentally re-introduced into the readiness gate; acceptance must remain compile-only current-source VCS compilation/elaboration/linking for hardware sources.",
+    "If a required checker/tool capability is missing, promotion without a planned_tool.<short_name> or planned_checker.<short_name> declaration would violate the bounded toolchain policy."
+  ],
+  "role_assignments": [
+    {
+      "agent": "model_intake_engineer",
+      "role": "model intake engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_by": [
+            "sacg_static_check",
+            "model_config_check",
+            "task_card_check"
+          ],
+          "consumes": [
+            "artifact.input.model_config",
+            "artifact.input.task_card",
+            "state_summary.sacg_memory_truth"
+          ],
+          "downstream_consumers": [
+            "input_preparation.toolchain_boundary_engineer",
+            "stage_sacg_extraction"
+          ],
+          "produces": [
+            "artifact.stage0.model_input_audit",
+            "artifact.stage0.model_open_facts"
+          ]
+        },
+        "decision_authority": [
+          "Declare model-facing inputs ready or gapped",
+          "Request case-adapter model_config/task_card evidence",
+          "Escalate model gaps to the toolchain boundary gate"
+        ],
+        "mission": "Audit model_config and task_card for SACG-extractable decoder model facts.",
+        "out_of_scope": [
+          "numeric_policy audit",
+          "board/DDR/runtime audit",
+          "template binding audit",
+          "tool or human-boundary audit"
+        ],
+        "primary_responsibilities": [
+          "Verify decoder-block topology and model configuration are present",
+          "Verify shape, head-count, hidden-dim, and sequence facts are explicit or safely inferable",
+          "Track residual connections and operator order for downstream SACG extraction",
+          "Produce a model input audit manifest and open-fact list",
+          "Prevent model facts from being inferred from board or numeric artifacts"
+        ]
+      },
+      "subtask_id": "input_preparation.model_intake_engineer"
+    },
+    {
+      "agent": "platform_numeric_engineer",
+      "role": "platform numeric engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_by": [
+            "sacg_static_check",
+            "numeric_policy_check",
+            "addr_map_check",
+            "numeric_compare"
+          ],
+          "consumes": [
+            "artifact.input.numeric_policy",
+            "artifact.input.target_board_profile",
+            "state_summary.sacg_memory_truth"
+          ],
+          "downstream_consumers": [
+            "input_preparation.toolchain_boundary_engineer",
+            "stage_sacg_extraction"
+          ],
+          "produces": [
+            "artifact.stage0.numeric_board_audit",
+            "artifact.stage0.board_open_risks"
+          ]
+        },
+        "decision_authority": [
+          "Declare numeric/board inputs ready or gapped",
+          "Request board or numeric policy evidence from the case adapter",
+          "Escalate unresolved board risks to the toolchain boundary gate"
+        ],
+        "mission": "Audit numeric_policy and target_board_profile for numeric, memory, runtime, and deployment facts.",
+        "out_of_scope": [
+          "model shape/decoder audit",
+          "template library binding audit",
+          "source material and field evidence audit",
+          "human-approval boundary audit"
+        ],
+        "primary_responsibilities": [
+          "Verify explicit precision/quantization policy is present",
+          "Verify board, memory, AXI, and runtime facts are represented",
+          "Flag missing numeric or board details rather than hallucinating defaults",
+          "Produce a numeric/board audit and open-risk list",
+          "Preserve board/numeric consistency with SACG constraints"
+        ]
+      },
+      "subtask_id": "input_preparation.platform_numeric_engineer"
+    },
+    {
+      "agent": "input_evidence_engineer",
+      "role": "input evidence engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_by": [
+            "sacg_static_check",
+            "tool_protocol_check",
+            "boundary_contract_check"
+          ],
+          "consumes": [
+            "artifact.input.material_index",
+            "artifact.input.sample_project_index",
+            "artifact.input.field_evidence_candidates",
+            "artifact.input.field_evidence",
+            "artifact.input.tool_profile",
+            "artifact.input.tool_availability",
+            "artifact.input.case_adapter",
+            "state_summary.sacg_memory_truth"
+          ],
+          "downstream_consumers": [
+            "input_preparation.toolchain_boundary_engineer",
+            "stage_sacg_extraction"
+          ],
+          "produces": [
+            "artifact.stage0.input_evidence_audit",
+            "artifact.stage0.source_material_trace"
+          ]
+        },
+        "decision_authority": [
+          "Declare input evidence sources ready or conflicted",
+          "Request current-run material or tool availability evidence",
+          "Escalate unresolved evidence conflicts to the toolchain boundary gate"
+        ],
+        "mission": "Audit current-run materials, case adapter, field evidence, and tool availability for consistent input evidence.",
+        "out_of_scope": [
+          "model shape/decoder audit",
+          "numeric policy and DDR/runtime audit",
+          "template library binding audit",
+          "human-approval boundary audit"
+        ],
+        "primary_responsibilities": [
+          "Verify material_index and sample_project_index identify reproducible source scope",
+          "Verify field_evidence_candidates and field_evidence are present and gated",
+          "Verify tool_profile and tool_availability align with case-adapter protocols",
+          "Produce an input evidence audit and source trace",
+          "Flag evidence conflicts without broadening current tool claims"
+        ]
+      },
+      "subtask_id": "input_preparation.input_evidence_engineer"
+    },
+    {
+      "agent": "toolchain_boundary_engineer",
+      "role": "toolchain boundary engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_by": [
+            "repair_boundary_check",
+            "sacg_static_check",
+            "template_binding_static_check",
+            "tool_protocol_check",
+            "human_boundary_check"
+          ],
+          "consumes": [
+            "artifact.input.template_library",
+            "artifact.input.template_metadata",
+            "artifact.input.design_space",
+            "artifact.input.tool_protocols",
+            "artifact.input.human_agent_boundary",
+            "artifact.stage0.model_input_audit",
+            "artifact.stage0.numeric_board_audit",
+            "artifact.stage0.input_evidence_audit"
+          ],
+          "downstream_consumers": [
+            "stage_sacg_extraction"
+          ],
+          "produces": [
+            "artifact.stage0.toolchain_boundary_audit",
+            "artifact.stage0.input_readiness_gate"
+          ]
+        },
+        "decision_authority": [
+          "Declare input preparation ready for SACG extraction",
+          "Block SACG extraction on unresolved cross-layer input gaps",
+          "Require planned_tool.<short_name> or planned_checker.<short_name> declaration when a capability is absent"
+        ],
+        "mission": "Gate the full input-preparation boundary before SACG extraction.",
+        "out_of_scope": [
+          "free-form RTL generation",
+          "board implementation or synthesis claims",
+          "model semantic extraction itself",
+          "modifying human approval boundaries"
+        ],
+        "primary_responsibilities": [
+          "Verify tool_protocols and tool_availability support checker-verified execution",
+          "Verify template_library and template_metadata are bindable to downstream design artifacts",
+          "Verify design_space provides bounded architecture intent",
+          "Verify human_agent_boundary defines approval and forbidden actions",
+          "Merge model, numeric/board, and evidence specialist findings into one readiness gate"
+        ]
+      },
+      "subtask_id": "input_preparation.toolchain_boundary_engineer"
+    }
+  ],
+  "schema_version": "spatialaccagent.team_aggregate.v0",
+  "split_reason": "input_preparation spans separable specialist audit domains: model semantics, numeric/board constraints, source/tool evidence, and toolchain/human/template boundary. SACG memory truth shows no active retry, backtrack, or contamination barriers, so independent specialists can audit in parallel and converge through a downstream evidence-gate auditor.",
+  "stage": "input_preparation",
+  "status": "ready",
+  "subtask_count": 4,
+  "used_fallback_count": 0
+}

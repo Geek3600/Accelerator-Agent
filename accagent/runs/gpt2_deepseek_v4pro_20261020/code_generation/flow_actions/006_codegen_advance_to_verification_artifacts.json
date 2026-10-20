@@ -1,0 +1,53 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "codegen_compile_gate_check",
+      "code_generation_manifest_static_check",
+      "codegen_package_static_check",
+      "codegen_contract_check",
+      "sacg_memory_check"
+    ],
+    "action_type": "stage_gate_advance",
+    "consumes": [
+      "artifact.code_generation_manifest",
+      "generated/chisel/logs/compile_check.json",
+      "generated/chisel/logs/codegen_contract_check.json",
+      "generated/chisel/logs/codegen_package_static_check.json",
+      "generated/chisel/memory/memory_layout.json",
+      "generated/chisel/runtime/runtime_config.json",
+      "sacg_memory_truth"
+    ],
+    "id": "codegen.advance_to_verification_artifacts",
+    "on_failure": "Keep publish_status as candidate_only, localize the failing current-stage artifact or checker, repair only the Stage 5 artifact or checker, and rerun the affected compile/contract/static checks before attempting verification_artifacts handoff. Do not rewind earlier hardware design stages for framework, hash, manifest, provenance, or stage-routing failures.",
+    "produces": [
+      "artifact.code_generation_handoff.ready",
+      "sacg_memory.recent_stage_outcome.stage5.code_generation"
+    ],
+    "rationale": "All current code-generation acceptance evidence passes: compile/elaboration returncode is 0, required SystemVerilog outputs are present, contract and package static checks pass with no errors or warnings, and sacg_memory_truth has no active contamination, retry, or backtrack barriers. Promote the ready handoff and proceed to verification_artifacts without rewinding hardware design stages.",
+    "requires_approval": false,
+    "stage": "code_generation",
+    "tool_roles": [
+      "code_generation_manifest_static_check",
+      "codegen_package_static_check",
+      "codegen_contract_check",
+      "sacg_memory_update"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "proceed",
+  "flow_event_index": 6,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/flow_handoff_sources/006_c2214e5c28a6b5c1fd919abebdaea72fd42cfea6d70f3b97fb4e045df29a2b83.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/flow_events/006_proceed.json",
+  "source_identities": {
+    "flow_controller_result_sha256": "f7bb4095db02ce482eedb5e2d02be97d7871f8766322f21489eed7f04fdd8b9d",
+    "source_sacg_state_sha256": "c2214e5c28a6b5c1fd919abebdaea72fd42cfea6d70f3b97fb4e045df29a2b83"
+  },
+  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/sacg_state.json",
+  "stage": "code_generation"
+}

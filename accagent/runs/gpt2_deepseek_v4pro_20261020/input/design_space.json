@@ -1,0 +1,192 @@
+{
+  "_llm_provenance": {
+    "mode": "llm",
+    "sub_agent": "design_space_agent",
+    "used_fallback": false
+  },
+  "hard_constraints": [],
+  "notes": [
+    "Model is GPT-2 decoder-only: 12 layers, hidden_size 768, intermediate_size 3072, target_max_seq_len 16.",
+    "Attention is MHA with 12 query heads, 12 KV heads, head_dim 64, learned absolute position encoding, and QKV bias and output bias present.",
+    "Block operator sequence is layer_norm_1 -> self_attention -> residual_add_1 -> layer_norm_2 -> mlp_fc -> activation -> mlp_proj -> residual_add_2.",
+    "MLP activation is gelu_new; MLP type is dense with up and down biases.",
+    "Numeric policy is current_run_numeric_policy: W4A8, INT32 accumulators/bias, INT32 scale, nearest-even rounding, saturating INT8 outputs.",
+    "Both lane candidates 8 and 16 satisfy the semantic stream contract for required 8-bit and 32-bit stream widths under the 512-bit AXI width.",
+    "No explicit physical_weight_layout_candidates were supplied; Stage 4 will derive the complete all-URAM baseline from the semantic contract.",
+    "Model semantic weight_layout terms are mlp c_fc_c_proj, norm weight_bias, out_proj dense, and qkv fused_qkv; these are retained for semantic consistency but do not define a physical layout candidate at this stage.",
+    "Board profile supplies FPGA part xcvu9p_CIV-flgb2104-2-i and 512-bit DDR4/AXI interface details, but no explicit board_pass_criteria or resource utilization numbers were present.",
+    "This design-space JSON intentionally contains no resource, power, frequency, or performance estimates.",
+    "Explicit task QoR targets are deterministically bound and cannot be weakened by DSE planning."
+  ],
+  "objectives": [
+    "Create a finite, complete physical design-space candidate universe for the GPT-2 decoder-only model on mimic_computer_v6.0 with the supplied template library, numeric policy, and board profile.",
+    "Ensure every retained candidate dimension genuinely changes generated RTL, Vivado integer DSP IP, XPM BRAM/URAM topology, or board behavior.",
+    "Preserve the integer-only W4A8 signed INT4/INT8/INT32 numeric policy and the 512-bit DDR4/AXI memory contract.",
+    "Keep the supplied immutable explicit_task_qor_targets exactly as provided.",
+    "Avoid producing resource, power, frequency, or performance estimates at this design-space stage."
+  ],
+  "qor_targets": {
+    "power_report_required": false,
+    "source": "task_spec"
+  },
+  "schema_version": "spatialaccagent.design_space.v0",
+  "search_params": {
+    "candidate_universe": {
+      "candidate_dimensions": {
+        "activation_bank_count": {
+          "legal_values": [
+            2,
+            4
+          ]
+        },
+        "compute_array": {
+          "legal_row_col_pairs": [
+            {
+              "cols": 4,
+              "rows": 4
+            },
+            {
+              "cols": 8,
+              "rows": 4
+            },
+            {
+              "cols": 16,
+              "rows": 4
+            },
+            {
+              "cols": 32,
+              "rows": 4
+            },
+            {
+              "cols": 4,
+              "rows": 8
+            },
+            {
+              "cols": 8,
+              "rows": 8
+            },
+            {
+              "cols": 16,
+              "rows": 8
+            },
+            {
+              "cols": 32,
+              "rows": 8
+            },
+            {
+              "cols": 4,
+              "rows": 16
+            },
+            {
+              "cols": 8,
+              "rows": 16
+            },
+            {
+              "cols": 16,
+              "rows": 16
+            },
+            {
+              "cols": 32,
+              "rows": 16
+            }
+          ]
+        },
+        "lanes": {
+          "legal_values": [
+            8,
+            16
+          ]
+        },
+        "physical_fifo_depth": {
+          "legal_values": [
+            32,
+            64,
+            128
+          ]
+        }
+      }
+    },
+    "constraints": [
+      "Candidate dimensions are hardware parameters only; no metadata-only tile, burst, pipeline-depth, or clock-target fields are included.",
+      "Board DDR/AXI width is 512 bits. Required numeric stream widths are 8 bits for activation and 32 bits for accumulator/residual streams.",
+      "Lane candidate 8 gives 64-bit and 256-bit payloads for 8-bit and 32-bit streams; lane candidate 16 gives 128-bit and 512-bit payloads. Both lane candidates satisfy lanes * stream_element_bits <= 512 and divide 512 exactly for both required stream widths.",
+      "compute_array.cols must be power-of-two. The retained legal cols are 4, 8, 16, and 32.",
+      "compute_array.rows must divide the selected vector lanes. Rows 4 and 8 are legal with lanes 8 or 16; row 16 is legal only with lanes 16.",
+      "All compute_array legal_row_col_pairs are retained from the supplied framework_physical_domain_seed; invalid row/lane cross-products are excluded by the row-lane correlation constraint.",
+      "Numeric binding for this integer-only policy is integer/fixed-point DSP MACs. No Vivado floating-point IP may be instantiated.",
+      "Memory binding is XPM BRAM/URAM physical memories only. Ideal-memory and software arithmetic backends are rejected.",
+      "Board/runtime binding must preserve the 512-bit DDR4/AXI shell, XDMA raw register/DDR control protocol, DDR base/control/output addresses, and calibration/reset/clock naming.",
+      "framework_physical_domain_seed is read-only topology evidence only; it is not a selected architecture, QoR estimate, or automatic promotion."
+    ]
+  },
+  "sources": {
+    "explicit_task_qor_targets": {
+      "input_section": "explicit_task_qor_targets",
+      "power_report_required": false,
+      "source": "task_spec"
+    },
+    "framework_physical_domain_seed": {
+      "input_section": "framework_physical_domain_seed",
+      "read_only_topology_evidence": true
+    },
+    "model_config": {
+      "input_section": "model_config",
+      "provenance_mode": "llm",
+      "sub_agent": "model_config_agent",
+      "used_fallback": false
+    },
+    "numeric_policy": {
+      "input_section": "numeric_policy",
+      "policy_id": "current_run_numeric_policy",
+      "provenance_mode": "llm",
+      "sub_agent": "numeric_policy_agent",
+      "used_fallback": false
+    },
+    "semantic_stream_contract": {
+      "axi_data_width_bits": 512,
+      "input_section": "semantic_stream_contract",
+      "required_numeric_roles": [
+        "activation",
+        "accumulator"
+      ],
+      "required_stream_bits": [
+        8,
+        32
+      ],
+      "status": "ready"
+    },
+    "stream_packing_contract": {
+      "axi_data_width_bits": 512,
+      "binding": "deterministic_semantic_stream_contract",
+      "required_numeric_roles": [
+        "accumulator",
+        "activation"
+      ],
+      "required_stream_bits": [
+        8,
+        32
+      ]
+    },
+    "target_board_profile": {
+      "board_name": "mimic_computer_v6.0",
+      "fpga_part": "xcvu9p_CIV-flgb2104-2-i",
+      "input_section": "target_board_profile",
+      "provenance_mode": "llm",
+      "sub_agent": "board_profile_agent",
+      "used_fallback": false
+    },
+    "task_qor_targets": {
+      "binding": "deterministic_user_constraint",
+      "source": "task_spec",
+      "values": {
+        "power_report_required": false,
+        "source": "task_spec"
+      }
+    },
+    "template_metadata_summary": {
+      "input_section": "template_metadata_summary",
+      "library_id": "spatialaccagent_chisel_templates_v0"
+    }
+  },
+  "status": "ready"
+}

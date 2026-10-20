@@ -1,0 +1,152 @@
+{
+  "agent": "dse_parameter_agent",
+  "duration_sec": 89.19051431096159,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "e1e2373b9df641708ee7c10e1542b3e8",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/parameter_binding/llm/dse_parameter_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "dse_parameter_agent",
+    "approval_required_for": [],
+    "assumptions": [
+      "estimated_ranked_candidate_ids is the calibrated structural estimator's measurement-priority order even though qor_estimate status is insufficient_evidence.",
+      "The selected candidate's parameters are exactly those in dse_selection_evidence and must not be changed.",
+      "No candidate has measured QoR yet, so no optimality or Pareto claim is made.",
+      "Resource budget is a capacity constraint; exact feasibility is determined by the app-shell synthesis measurement.",
+      "The deterministic evaluator remains the authority on legality, measured status, and Pareto membership."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "real_tool.case_vivado_synthesis",
+          "real_tool.case_vivado_synthesis_report_check",
+          "timing_resource_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "dse_selection_evidence.candidate.arch_08fc81fe6157",
+          "dse_constraint_report.json",
+          "materialized_refill_rate_contract.value=512"
+        ],
+        "id": "dse_measure.arch_08fc81fe6157.next_exact_synthesis",
+        "on_failure": "Record the actual synthesis failure or implementation infeasibility in dse_measurements.jsonl; do not modify candidate parameters, do not claim QoR or hardware pass, and advance measurement priority to the next supplied unmeasured legal candidate in estimated_ranked_candidate_ids unless the deterministic evaluator flags legality.",
+        "produces": [
+          "dse_measurements.jsonl.entry.arch_08fc81fe6157",
+          "vivado_utilization_report.arch_08fc81fe6157",
+          "vivado_timing_report.arch_08fc81fe6157",
+          "rtl_cycle_derived_throughput.arch_08fc81fe6157"
+        ],
+        "rationale": "No legal candidate is measured yet, so the campaign requires a measurement-order handoff. arch_08fc81fe6157 is the first supplied unmeasured legal candidate in estimated_ranked_candidate_ids and therefore has the highest measurement priority; resource budget remains a capacity check, not a reason to prefer a smaller array before measuring this candidate.",
+        "requires_approval": false,
+        "stage": "stage4_dse_search",
+        "targeted_replay_plan": {
+          "candidate_id": "arch_08fc81fe6157",
+          "parameters": {
+            "activation_banks": 4,
+            "cache_refill_data_width_bits": 512,
+            "cache_tile_count": 2,
+            "cache_tile_words": 256,
+            "compute_array_cols": 32,
+            "compute_array_rows": 16,
+            "cross_token_reuse_tokens": 8,
+            "fifo_depth": 128,
+            "lanes": 16
+          },
+          "scope": "target_board_app_shell_synthesis_measurement"
+        },
+        "tool_roles": [
+          "case_vivado_synthesis",
+          "case_vivado_synthesis_report_check",
+          "timing_resource_check"
+        ]
+      }
+    ],
+    "observations": [
+      "Campaign complete=false; measured_candidate_count=0 and unmeasured_candidate_count=360.",
+      "Supplied measured_pareto_candidates is empty, so Pareto-final selection is not permitted yet.",
+      "qor_estimator validation status is insufficient_independent_samples; every listed candidate has qor_estimate.status=insufficient_evidence.",
+      "The supplied estimated_ranked_candidate_ids list opens with arch_08fc81fe6157, so it is the measurement-priority candidate.",
+      "arch_08fc81fe6157 is legal and unmeasured in dse_selection_evidence.",
+      "arch_08fc81fe6157 parameters: activation_banks=4, cache_refill_data_width_bits=512, cache_tile_count=2, cache_tile_words=256, compute_array_cols=32, compute_array_rows=16, cross_token_reuse_tokens=8, fifo_depth=128, lanes=16.",
+      "Resource lower bound for arch_08fc81fe6157 is uram=30, below the discovered uram budget of 960, but all other resource usage remains unknown until measurement.",
+      "DSE constraint report status is pass with 360 feasible candidates and 0 infeasible candidates.",
+      "materialized_refill_rate_contract status is pass with value 512 bits/cycle."
+    ],
+    "proposed_actions": [
+      "Hand off arch_08fc81fe6157 to the exact target-board app-shell synthesis measurement tool.",
+      "Record resource counts, Vivado estimated clock, and RTL-cycle-derived tokens per second only if the measurement completes successfully.",
+      "After measurement, let the deterministic evaluator update measured/unmeasured status and recalibrate downstream estimates.",
+      "If arch_08fc81fe6157 fails or is infeasible, advance to the next supplied unmeasured legal candidate in estimated_ranked_candidate_ids without modifying its parameters."
+    ],
+    "ranked_candidate_ids": [
+      "arch_08fc81fe6157",
+      "arch_31c1198760c0",
+      "arch_3fd8f432a88e",
+      "arch_3fedd13a9880",
+      "arch_513408c9134d",
+      "arch_55b127fde887",
+      "arch_5b4f9ef48e3b",
+      "arch_63e2712b0d8c",
+      "arch_6e9d2e7c3ed7",
+      "arch_74c0530f0375"
+    ],
+    "risks": [
+      "Actual Vivado resource usage, timing, and derived throughput are unknown for arch_08fc81fe6157; the top estimated rank is not feasibility evidence.",
+      "The estimator has only one calibration sample and insufficient independent validation, so cross-model or cross-configuration extrapolation may be unreliable.",
+      "A 32x16 compute array with 16 lanes may stress DSP, FF, LUT, or BRAM resources even though the URAM lower bound is low.",
+      "Treating the rank as QoR would violate the rule that predictions never replace measured tool evidence.",
+      "Measurement may fail or be implementation-infeasible; this is a bounded learning outcome, not a license to alter parameters."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "dse_selection_evidence",
+        "dse_constraint_report",
+        "dse_measurements.jsonl",
+        "estimated_ranked_candidate_ids"
+      ],
+      "constraints": [
+        "Before all legal candidates are measured, select only one supplied unmeasured legal candidate for measurement.",
+        "Do not describe an unmeasured candidate as optimal or Pareto-optimal.",
+        "Resource budgets are capacity constraints, not minimization objectives.",
+        "Structural estimates rank measurement priority but never replace tool evidence.",
+        "Unknown or near-capacity resource usage is not final eligibility evidence.",
+        "Do not modify candidate parameters or claim hardware pass before measurement."
+      ],
+      "edges": [
+        "candidate_arch_08fc81fe6157 -> target_board_app_shell_synthesis_measurement",
+        "target_board_app_shell_synthesis_measurement -> dse_measurement_campaign",
+        "qor_estimator_calibration -> estimated_ranked_candidate_ids",
+        "estimated_ranked_candidate_ids -> candidate_arch_08fc81fe6157"
+      ],
+      "nodes": [
+        "dse_measurement_campaign",
+        "candidate_arch_08fc81fe6157",
+        "estimated_ranked_candidate_ids",
+        "qor_estimator_calibration",
+        "target_board_app_shell_synthesis_measurement"
+      ]
+    },
+    "schema_version": "spatialaccagent.stage4_dse_search.v2",
+    "selected_candidate_id": "arch_08fc81fe6157",
+    "selection_rationale": "No candidate has an exact app-shell measurement, so the deterministic rule requires selecting one supplied unmeasured legal candidate for next measurement. The supplied estimated_ranked_candidate_ids gives arch_08fc81fe6157 the highest measurement priority. It is legal, unmeasured, uses substantial compute parallelism within the discovered budget bounds, and therefore is the appropriate next exact measurement without implying measured QoR or Pareto membership.",
+    "stage": "stage4_dse_search",
+    "status": "next_exact_measurement_selected",
+    "summary": "Campaign is not complete and no legal candidates have target-board app-shell measurements. Selected the supplied estimated-rank-first unmeasured legal candidate arch_08fc81fe6157 as the next exact synthesis measurement; this is a measurement-order handoff only, not an optimality, Pareto, feasibility, or hardware-pass claim."
+  },
+  "prompt_bytes": 629934,
+  "prompt_hash": "1e264de3483e65ddf2ca4a552e6fd5c46e34b58f15ff5331c4dd71a5afcbf9a2",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.stage4_dse_search.v2\",\n  \"agent\": \"dse_parameter_agent\",\n  \"stage\": \"stage4_dse_search\",\n  \"status\": \"next_exact_measurement_selected\",\n  \"summary\": \"Campaign is not complete and no legal candidates have target-board app-shell measurements. Selected the supplied estimated-rank-first unmeasured legal candidate arch_08fc81fe6157 as the next exact synthesis measurement; this is a measurement-order handoff only, not an optimality, Pareto, feasibility, or hardware-pass claim.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"dse_measurement_campaign\",\n      \"candidate_arch_08fc81fe6157\",\n      \"estimated_ranked_candidate_ids\",\n      \"qor_estimator_calibration\",\n      \"target_board_app_shell_synthesis_measurement\"\n    ],\n    \"edges\": [\n      \"candidate_arch_08fc81fe6157 -> target_board_app_shell_synthesis_measurement\",\n      \"target_board_app_shell_synthesis_measurement -> dse_measurement_campaign\",\n      \"qor_estimator_calibration -> estimated_ranked_candidate_ids\",\n      \"estimated_ranked_candidate_ids -> candidate_arch_08fc81fe6157\"\n    ],\n    \"constraints\": [\n      \"Before all legal candidates are measured, select only one supplied unmeasured legal candidate for measurement.\",\n      \"Do not describe an unmeasured candidate as optimal or Pareto-optimal.\",\n      \"Resource budgets are capacity constraints, not minimization objectives.\",\n      \"Structural estimates rank measurement priority but never replace tool evidence.\",\n      \"Unknown or near-capacity resource usage is not final eligibility evidence.\",\n      \"Do not modify candidate parameters or claim hardware pass before measurement.\"\n    ],\n    \"artifacts\": [\n      \"dse_selection_evidence\",\n      \"dse_constraint_report\",\n      \"dse_measurements.jsonl\",\n      \"estimated_ranked_candidate_ids\"\n    ]\n  },\n  \"observations\": [\n    \"Campaign complete=false; measured_candidate_count=0 and unmeasured_candidate_count=360.\",\n    \"Supplied measured_pareto_candidates is empty, so Pareto-final selection is not permitted yet.\",\n    \"qor_estimator validation status is insufficient_independent_samples; every listed candidate has qor_estimate.status=insufficient_evidence.\",\n    \"The supplied estimated_ranked_candidate_ids list opens with arch_08fc81fe6157, so it is the measurement-priority candidate.\",\n    \"arch_08fc81fe6157 is legal and unmeasured in dse_selection_evidence.\",\n    \"arch_08fc81fe6157 parameters: activation_banks=4, cache_refill_data_width_bits=512, cache_tile_count=2, cache_tile_words=256, compute_array_cols=32, compute_array_rows=16, cross_token_reuse_tokens=8, fifo_depth=128, lanes=16.\",\n    \"Resource lower bound for arch_08fc81fe6157 is uram=30, below the discovered uram budget of 960, but all other resource usage remains unknown until measurement.\",\n    \"DSE constraint report status is pass with 360 feasible candidates and 0 infeasible candidates.\",\n    \"materialized_refill_rate_contract status is pass with value 512 bits/cycle.\"\n  ],\n  \"risks\": [\n    \"Actual Vivado resource usage, timing, and derived throughput are unknown for arch_08fc81fe6157; the top estimated rank is not feasibility evidence.\",\n    \"The estimator has only one calibration sample and insufficient independent validation, so cross-model or cross-configuration extrapolation may be unreliable.\",\n    \"A 32x16 compute array with 16 lanes may stress DSP, FF, LUT, or BRAM resources even though the URAM lower bound is low.\",\n    \"Treating the rank as QoR would violate the rule that predictions never replace measured tool evidence.\",\n    \"Measurement may fail or be implementation-infeasible; this is a bounded learning outcome, not a license to alter parameters.\"\n  ],\n  \"proposed_actions\": [\n    \"Hand off arch_08fc81fe6157 to the exact target-board app-shell synthesis measurement tool.\",\n    \"Record resource counts, Vivado estimated clock, and RTL-cycle-derived tokens per second only if the measurement completes successfully.\",\n    \"After measurement, let the deterministic evaluator update measured/unmeasured status and recalibrate downstream estimates.\",\n    \"If arch_08fc81fe6157 fails or is infeasible, advance to the next supplied unmeasured legal candidate in estimated_ranked_candidate_ids without modifying its parameters.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"dse_measure.arch_08fc81fe6157.next_exact_synthesis\",\n      \"stage\": \"stage4_dse_search\",\n      \"action_type\": \"real_tool_execution\",\n      \"rationale\": \"No legal candidate is measured yet, so the campaign requires a measurement-order handoff. arch_08fc81fe6157 is the first supplied unmeasured legal candidate in estimated_ranked_candidate_ids and therefore has the highest measurement priority; resource budget remains a capacity check, not a reason to prefer a smaller array before measuring this candidate.\",\n      \"consumes\": [\n        \"dse_selection_evidence.candidate.arch_08fc81fe6157\",\n        \"dse_constraint_report.json\",\n        \"materialized_refill_rate_contract.value=512\"\n      ],\n      \"produces\": [\n        \"dse_measurements.jsonl.entry.arch_08fc81fe6157\",\n        \"vivado_utilization_report.arch_08fc81fe6157\",\n        \"vivado_timing_report.arch_08fc81fe6157\",\n        \"rtl_cycle_derived_throughput.arch_08fc81fe6157\"\n      ],\n      \"tool_roles\": [\n        \"case_vivado_synthesis\",\n        \"case_vivado_synthesis_report_check\",\n        \"timing_resource_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"parameter_binding_static_check\",\n        \"real_tool.case_vivado_synthesis\",\n        \"real_tool.case_vivado_synthesis_report_check\",\n        \"timing_resource_check\"\n      ],\n      \"targeted_replay_plan\": {\n        \"candidate_id\": \"arch_08fc81fe6157\",\n        \"scope\": \"target_board_app_shell_synthesis_measurement\",\n        \"parameters\": {\n          \"activation_banks\": 4,\n          \"cache_refill_data_width_bits\": 512,\n          \"cache_tile_count\": 2,\n          \"cache_tile_words\": 256,\n          \"compute_array_cols\": 32,\n          \"compute_array_rows\": 16,\n          \"cross_token_reuse_tokens\": 8,\n          \"fifo_depth\": 128,\n          \"lanes\": 16\n        }\n      },\n      \"on_failure\": \"Record the actual synthesis failure or implementation infeasibility in dse_measurements.jsonl; do not modify candidate parameters, do not claim QoR or hardware pass, and advance measurement priority to the next supplied unmeasured legal candidate in estimated_ranked_candidate_ids unless the deterministic evaluator flags legality.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [],\n  \"selected_candidate_id\": \"arch_08fc81fe6157\",\n  \"ranked_candidate_ids\": [\n    \"arch_08fc81fe6157\",\n    \"arch_31c1198760c0\",\n    \"arch_3fd8f432a88e\",\n    \"arch_3fedd13a9880\",\n    \"arch_513408c9134d\",\n    \"arch_55b127fde887\",\n    \"arch_5b4f9ef48e3b\",\n    \"arch_63e2712b0d8c\",\n    \"arch_6e9d2e7c3ed7\",\n    \"arch_74c0530f0375\"\n  ],\n  \"selection_rationale\": \"No candidate has an exact app-shell measurement, so the deterministic rule requires selecting one supplied unmeasured legal candidate for next measurement. The supplied estimated_ranked_candidate_ids gives arch_08fc81fe6157 the highest measurement priority. It is legal, unmeasured, uses substantial compute parallelism within the discovered budget bounds, and therefore is the appropriate next exact measurement without implying measured QoR or Pareto membership.\",\n  \"assumptions\": [\n    \"estimated_ranked_candidate_ids is the calibrated structural estimator's measurement-priority order even though qor_estimate status is insufficient_evidence.\",\n    \"The selected candidate's parameters are exactly those in dse_selection_evidence and must not be changed.\",\n    \"No candidate has measured QoR yet, so no optimality or Pareto claim is made.\",\n    \"Resource budget is a capacity constraint; exact feasibility is determined by the app-shell synthesis measurement.\",\n    \"The deterministic evaluator remains the authority on legality, measured status, and Pareto membership.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/parameter_binding/llm/dse_parameter_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/parameter_binding/llm/dse_parameter_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "parameter_binding",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

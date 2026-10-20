@@ -1,0 +1,353 @@
+{
+  "backtrack_count": 0,
+  "flow_events": [
+    {
+      "attempt_count": 2,
+      "decision": "proceed_bootstrap_stage",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input_preparation/flow_events/001_proceed_bootstrap_stage.json"
+      ],
+      "flow_event_index": 1,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "reason": "bootstrap stage passed its deterministic gate",
+      "sacg_state": null,
+      "stage": "input_preparation",
+      "stage_passed": true
+    },
+    {
+      "attempt_count": 1,
+      "decision": "proceed_bootstrap_stage",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/flow_events/002_proceed_bootstrap_stage.json"
+      ],
+      "flow_event_index": 2,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "reason": "bootstrap stage passed its deterministic gate",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/flow_handoff_sources/002_b44c67b8ce05db91ccdc250b87414320df9c667dd13c21182df53a0fa7489b2f.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/initial_design_graph.json",
+      "stage": "constraint_extraction",
+      "stage_passed": true
+    },
+    {
+      "attempt_count": 1,
+      "decision": "proceed_bootstrap_stage",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/flow_events/003_proceed_bootstrap_stage.json"
+      ],
+      "flow_event_index": 3,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "reason": "bootstrap stage passed its deterministic gate",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/flow_handoff_sources/003_404a985ea119c4b6efd7521d1e9d76fd669497a56c6b8dff93545ce23e2eb6bf.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/sacg_state.json",
+      "stage": "template_selection",
+      "stage_passed": true
+    },
+    {
+      "attempt_count": 1,
+      "decision": "proceed",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/flow_events/004_proceed.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/flow_actions/004_flow_pipeline_planning_advance_to_parameter_binding.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/bounded_repairs/004_flow_sacg_record_deferred_stage5_address_repair.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/flow_actions/004_parameter_binding_preserve_stage3_contract.json"
+      ],
+      "flow_event_index": 4,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "boundary_contract_check"
+            ],
+            "action_type": "stage_transition",
+            "consumes": [
+              "artifact.stage3.promoted_pipeline_plan",
+              "artifact.stage3.promotion_decision",
+              "pipeline_static_checks",
+              "checker_summary",
+              "current_stage_evidence",
+              "sacg_memory_truth"
+            ],
+            "id": "flow.pipeline_planning.advance_to_parameter_binding",
+            "on_failure": "If transition evidence fails or a current Stage-3 contradiction is exposed, retry pipeline_planning with bounded repair; do not rewind template_selection or earlier stages.",
+            "produces": [
+              "artifact.stage4.transition_decision",
+              "candidate_stage_artifact.parameter_binding_plan"
+            ],
+            "rationale": "Stage 3 pipeline planning passed all supplied current checkers and SACG-memory truth contains no active blockers. Promote the accepted pipeline plan into Stage 4 while preserving the current checker-backed contract.",
+            "requires_approval": false,
+            "stage": "parameter_binding",
+            "tool_roles": [
+              "team_aggregate",
+              "sacg_static_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "sacg_memory_check",
+              "memory_runtime_plan_check",
+              "boundary_contract_check"
+            ],
+            "action_type": "bounded_repair_obligation_record",
+            "consumes": [
+              "candidate_stage_artifact.pipeline_plan",
+              "artifact.input.target_board_profile",
+              "constraint.memory.board",
+              "constraint.runtime.board"
+            ],
+            "id": "flow.sacg.record_deferred_stage5_address_repair",
+            "on_failure": "If the memory schedule contradicts the Stage-3 deferral boundary or SACG update fails, hold Stage-4 binding until the deferral record and checker evidence pass.",
+            "produces": [
+              "artifact.stage3.deferred_memory_layout_obligation",
+              "sacg_memory.stage5_symbolic_region_obligation"
+            ],
+            "rationale": "Preserve the design team's concrete XDMA/DDR/output-address removal as a Stage-5 memory-layout obligation rather than a current Stage-3 blocker, preventing Stage-4 from binding concrete ABI values before exact board-wrapper discovery.",
+            "requires_approval": false,
+            "stage": "pipeline_planning",
+            "tool_roles": [
+              "sacg_memory_update",
+              "memory_runtime_plan_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "boundary_contract_check",
+              "stream_plan_check"
+            ],
+            "action_type": "contract_handoff",
+            "consumes": [
+              "artifact.stage3.promoted_pipeline_plan",
+              "artifact.input.template_library",
+              "artifact.stage2.template_selection"
+            ],
+            "id": "parameter_binding.preserve_stage3_contract",
+            "on_failure": "Return any unresolved constraint to Stage-4 DSE with the specific template or checker mismatch; do not alter Stage-3 operator order, numeric policy, or stream/data contracts.",
+            "produces": [
+              "artifact.stage4.template_binding_input_contract"
+            ],
+            "rationale": "Stage 4 must bind per-template candidate parameters without changing the accepted Stage-3 operator order, numeric policy, shape, transfer order, transfer counts, or stream/data edge contracts.",
+            "requires_approval": false,
+            "stage": "parameter_binding",
+            "tool_roles": [
+              "architecture_review",
+              "parameter_binding_static_check",
+              "template_binding_static_check"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/004_pipeline_planning/llm/flow_controller_agent_result.json",
+        "agent_status": "proceed",
+        "agent_summary": "Pipeline planning passed with command returncode 0, stage_passed=true, all 11 supplied deterministic checkers passing, and sacg_memory_truth showing zero active blockers. Proceed to parameter_binding while treating the concrete XDMA/DDR/address removal as a deferred Stage-5 memory-layout obligation, not a current Stage-3 blocker."
+      },
+      "reason": "stage passed and no open backtrack request",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/flow_handoff_sources/004_1e830a689a093202538d0bb2abb2636afc89d28a2d8719c2ecdfab54f162126a.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/sacg_state.json",
+      "stage": "pipeline_planning",
+      "stage_passed": true
+    },
+    {
+      "attempt_count": 1,
+      "decision": "proceed",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/parameter_binding/flow_events/005_proceed.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/parameter_binding/flow_actions/005_advance_parameter_binding_to_code_generation.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/parameter_binding/flow_actions/005_dse_measure_arch_08fc81fe6157_downstream_exact_synthesis.json"
+      ],
+      "flow_event_index": 5,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "parameter_binding_static_check",
+              "sacg_static_check",
+              "sacg_memory_check"
+            ],
+            "action_type": "real_tool_execution",
+            "consumes": [
+              "artifact.stage4.parameter_binding",
+              "artifact.stage4.selected_architecture",
+              "artifact.stage4.dse_selection_rationale",
+              "artifact.stage4.parameter_static_checks"
+            ],
+            "id": "advance.parameter_binding.to.code_generation",
+            "on_failure": "Retry the current parameter_binding stage for any framework/hash/provenance/route failure without rewinding design stages; if code_generation_manifest_static_check fails, block RTL generation until the stage-input/manifest contract is corrected.",
+            "produces": [
+              "stage_transition.parameter_binding_to_code_generation",
+              "sacg_memory.stage_outcome.code_generation_ready"
+            ],
+            "rationale": "parameter_binding static checks passed 6/6, the stage command returned 0, and SACG memory truth shows zero active blockers. Promote the validated selected architecture into code generation while preserving DSE exact measurement as downstream.",
+            "requires_approval": false,
+            "stage": "code_generation",
+            "tool_roles": [
+              "sacg_memory_update",
+              "code_generation_manifest_static_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "parameter_binding_static_check",
+              "timing_resource_check"
+            ],
+            "action_type": "real_tool_execution",
+            "consumes": [
+              "artifact.stage4.selected_architecture",
+              "artifact.stage4.dse_selection_rationale",
+              "artifact.stage4.dse_constraint_report",
+              "materialized_refill_rate_contract"
+            ],
+            "id": "dse_measure.arch_08fc81fe6157.downstream_exact_synthesis",
+            "on_failure": "Record actual synthesis failure or implementation infeasibility in dse_measurements.jsonl; do not modify candidate parameters or claim QoR/hardware pass; advance to the next supplied unmeasured legal candidate unless the deterministic evaluator flags legality, and raise a bounded backtrack request only if a cited hardware-design failure category with linked tool evidence applies.",
+            "produces": [
+              "dse_measurements.jsonl.entry.arch_08fc81fe6157",
+              "vivado_utilization_report.arch_08fc81fe6157",
+              "vivado_timing_report.arch_08fc81fe6157",
+              "rtl_cycle_derived_throughput.arch_08fc81fe6157"
+            ],
+            "rationale": "The formal DSE campaign remains incomplete and the selected legal candidate requires exact target-board app-shell synthesis measurement. Queue this real tool action for backend_board after code generation and board-accurate wrapper availability; it is not a current parameter_binding blocker and must not become a QoR or hardware-pass claim.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "case_vivado_synthesis",
+              "case_vivado_synthesis_report_check",
+              "timing_resource_check"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/005_parameter_binding/llm/flow_controller_agent_result.json",
+        "agent_status": "proceed",
+        "agent_summary": "Parameter binding passed all static checks with returncode 0, and SACG memory truth shows zero active contamination, retry, or backtrack blockers. Proceed to code_generation using selected legal candidate arch_08fc81fe6157 while preserving exact target-board app-shell Vivado measurement as a downstream backend_board/DSE-campaign obligation. No QoR, Pareto, feasibility, or hardware-pass claim is authorized from current evidence."
+      },
+      "reason": "stage passed and no open backtrack request",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/parameter_binding/flow_handoff_sources/005_e20488ca584ddb2bf9927adcefe42240cd428f7343d2249d506a695177d96de1.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/parameter_binding/sacg_state.json",
+      "stage": "parameter_binding",
+      "stage_passed": true
+    },
+    {
+      "attempt_count": 1,
+      "decision": "proceed",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/flow_events/006_proceed.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/flow_actions/006_codegen_advance_to_verification_artifacts.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/flow_actions/006_verification_artifacts_plan_compile_only_hierarchy.json"
+      ],
+      "flow_event_index": 6,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "codegen_compile_gate_check",
+              "code_generation_manifest_static_check",
+              "codegen_package_static_check",
+              "codegen_contract_check",
+              "sacg_memory_check"
+            ],
+            "action_type": "stage_gate_advance",
+            "consumes": [
+              "artifact.code_generation_manifest",
+              "generated/chisel/logs/compile_check.json",
+              "generated/chisel/logs/codegen_contract_check.json",
+              "generated/chisel/logs/codegen_package_static_check.json",
+              "generated/chisel/memory/memory_layout.json",
+              "generated/chisel/runtime/runtime_config.json",
+              "sacg_memory_truth"
+            ],
+            "id": "codegen.advance_to_verification_artifacts",
+            "on_failure": "Keep publish_status as candidate_only, localize the failing current-stage artifact or checker, repair only the Stage 5 artifact or checker, and rerun the affected compile/contract/static checks before attempting verification_artifacts handoff. Do not rewind earlier hardware design stages for framework, hash, manifest, provenance, or stage-routing failures.",
+            "produces": [
+              "artifact.code_generation_handoff.ready",
+              "sacg_memory.recent_stage_outcome.stage5.code_generation"
+            ],
+            "rationale": "All current code-generation acceptance evidence passes: compile/elaboration returncode is 0, required SystemVerilog outputs are present, contract and package static checks pass with no errors or warnings, and sacg_memory_truth has no active contamination, retry, or backtrack barriers. Promote the ready handoff and proceed to verification_artifacts without rewinding hardware design stages.",
+            "requires_approval": false,
+            "stage": "code_generation",
+            "tool_roles": [
+              "code_generation_manifest_static_check",
+              "codegen_package_static_check",
+              "codegen_contract_check",
+              "sacg_memory_update"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "verification_plan_static_check",
+              "hierarchical_verification_plan_check",
+              "verification_artifact_contract_check",
+              "tool_protocol_check",
+              "human_boundary_check",
+              "sacg_memory_check"
+            ],
+            "action_type": "verification_planning",
+            "consumes": [
+              "artifact.code_generation_handoff.ready",
+              "artifact.code_generation_manifest",
+              "generated/chisel/memory/memory_layout.json",
+              "generated/chisel/runtime/runtime_config.json",
+              "generated/chisel/GeneratedAcceleratorTop.sv",
+              "generated/chisel/GeneratedAxiDdrTop.sv",
+              "sacg_memory_truth"
+            ],
+            "id": "verification_artifacts.plan_compile_only_hierarchy",
+            "on_failure": "Stay in verification_artifacts and repair the verification plan or artifact contract against the failing static/checker evidence. Do not rewind to code_generation for verification-planning, contract, protocol, or audit failures; do not promote any verification layer without current-source VCS compile-only evidence.",
+            "produces": [
+              "artifact.stage6.verification_plan",
+              "artifact.stage6.verification_artifact_contract",
+              "sacg_memory.recent_stage_outcome.stage6.verification_planning"
+            ],
+            "rationale": "With code_generation promoted, the next bounded action is to plan verification artifacts in bottom-up order: operator/leaf modules, connected single-transformer-layer kernel, then the exact board-accurate AXI/DDR wrapper. The plan must use the existing compile-only VCS execution modes and make successful current-source VCS compilation, elaboration, and linking the sole acceptance standard; it must not require simulation execution, runtime weight loading, golden comparisons, or numerical correctness.",
+            "requires_approval": false,
+            "stage": "verification_artifacts",
+            "tool_roles": [
+              "verification_plan_static_check",
+              "hierarchical_verification_plan_check",
+              "verification_artifact_contract_check",
+              "tool_protocol_check",
+              "human_boundary_check",
+              "sacg_memory_check",
+              "sacg_memory_update"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/006_code_generation/llm/flow_controller_agent_result.json",
+        "agent_status": "ready",
+        "agent_summary": "Code generation passed all supplied current-stage gates: the stage worker returned returncode 0, all six compile/elaboration commands passed, required GeneratedAcceleratorTop.sv and GeneratedAxiDdrTop.sv are present, codegen contract and package static checks pass with zero errors and zero warnings, and sacg_memory_truth reports zero active contamination barriers, retries, or backtracks. The design team should proceed to verification_artifacts and plan bottom-up current-source VCS compile-only evidence, without re-entering code_generation."
+      },
+      "reason": "stage passed and no open backtrack request",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/flow_handoff_sources/006_c2214e5c28a6b5c1fd919abebdaea72fd42cfea6d70f3b97fb4e045df29a2b83.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/sacg_state.json",
+      "stage": "code_generation",
+      "stage_passed": true
+    }
+  ],
+  "legacy_stage_failures": {},
+  "schema_version": "spatialaccagent.flow_state.v0",
+  "stage_attempts": {
+    "parameter_binding": {
+      "count": 1,
+      "epoch": {
+        "module": "accagent.framework.stage_params",
+        "orchestration_hash": "5cbeb239573f138f7bb7441486e824e0a7adc4ec894fc4368ca6eb163a9c00db",
+        "stage": "parameter_binding",
+        "stage_code_hash": "53d8460b719a1c617e42e4e842596cfd1a21592e046f2c34af3767db5f702f27",
+        "stage_input_hash": "598b16322df1338f1b85956628991d9654c0e0f2eac5edf7e46acc7fac178dea"
+      },
+      "epoch_hash": "ecf4b73dfea42c1fcd7c678a813b5695f067f6e55661fcee019657bc4b9f9dc0"
+    },
+    "verification_artifacts": {
+      "count": 1,
+      "epoch": {
+        "module": "accagent.framework.stage_verification_plan",
+        "orchestration_hash": "5cbeb239573f138f7bb7441486e824e0a7adc4ec894fc4368ca6eb163a9c00db",
+        "stage": "verification_artifacts",
+        "stage_code_hash": "70bf757f2a97efb86fd132e395c0c45909ca5ed9446db4b77e33ffeed9e441d6",
+        "stage_input_hash": "f37712f8f1677be3845391f7b2f9ae50c24f4d7e31969e076169bd374994353f"
+      },
+      "epoch_hash": "4267b400dc541d52fb945b3baa6651aa963414953520044e382b669f0f984b16"
+    }
+  }
+}

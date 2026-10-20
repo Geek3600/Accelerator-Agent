@@ -1,0 +1,374 @@
+{
+  "checker_summary": {
+    "errors": [],
+    "failed": 0,
+    "passed": 11,
+    "warnings": []
+  },
+  "design_team": {
+    "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/team/team_aggregate.json",
+    "approval_required_for": [
+      "stage3.memory_runtime_remove_concrete_address_claims"
+    ],
+    "completed_subtasks": 3,
+    "decomposer_error": null,
+    "decomposer_used_fallback": false,
+    "decomposition_source": "llm",
+    "errors": [],
+    "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/team/event_log.jsonl",
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "stream_plan_check"
+        ],
+        "action_type": "cross_layer_rule_review",
+        "consumes": [
+          "artifact.input.target_board_profile",
+          "artifact.input.numeric_policy",
+          "candidate_stage_artifact.pipeline_plan"
+        ],
+        "id": "pipeline_planning.data_transfer_engineer.publish_review",
+        "on_failure": "If team_aggregate or a peer identifies a cross-layer contradiction, return the specific edge/order/FIFO/join contract to pipeline_planning and block Stage-4 binding on that edge until corrected.",
+        "produces": [
+          "artifact.stage3.data_transfer_review"
+        ],
+        "rationale": "Hand off the ready data-transfer review to team_aggregate so peer specialists consume checker-grounded Stage-3 observations. The reviewed plan has exact data/stream edge mirroring, correct transfer counts and full AXI beat alignment, atomic ready/valid split behavior, all-input join behavior, and bounded acyclic FIFO liveness with no current Stage-3 contradiction.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "boundary_contract_check",
+          "sacg_static_check"
+        ],
+        "action_type": "bounded_repair",
+        "consumes": [
+          "candidate pipeline_plan memory_schedule",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board"
+        ],
+        "id": "stage3.memory_runtime_remove_concrete_address_claims",
+        "on_failure": "Keep pipeline_planning blocked; do not promote to Stage-4 until symbolic region handles replace concrete unverified XDMA/DDR addresses and all listed checkers pass.",
+        "produces": [
+          "corrected pipeline_plan memory_schedule.runtime_config_requirements",
+          "artifact.stage3.memory_runtime_review"
+        ],
+        "rationale": "The current memory_schedule violates the Stage-3 memory/runtime deferral boundary by embedding concrete c2h/h2c target base addresses and a concrete output_tokens address before exact board-wrapper discovery. The repair must preserve board AXI/XDMA hooks but convert assigned bases into symbolic region handles.",
+        "requires_approval": true,
+        "stage": "pipeline_planning",
+        "targeted_replay_plan": {
+          "focus": "runtime_config_requirements concrete base removal",
+          "preserve": "board_axi width/protocol facts, required_regions roles, double-buffer/streamed activation policy, target_seq_len compile-time bound"
+        },
+        "tool_roles": [
+          "memory_runtime_repair",
+          "memory_runtime_plan_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "boundary_contract_check",
+          "sacg_static_check"
+        ],
+        "action_type": "checker_execution",
+        "consumes": [
+          "corrected pipeline_plan memory_schedule.runtime_config_requirements",
+          "artifact.stage3.memory_runtime_review"
+        ],
+        "id": "stage3.memory_runtime_checker_gate",
+        "on_failure": "Treat any failure as a current pipeline_planning blocker and return the tool output into bounded memory_runtime_repair localization; do not advance to Stage-4.",
+        "produces": [
+          "checker evidence memory_runtime_plan_check",
+          "checker evidence addr_map_check",
+          "checker evidence boundary_contract_check"
+        ],
+        "rationale": "Run the two missing subtask-acceptance checks on the corrected plan to produce checker-backed evidence that no concrete address/ABI assignment remains and the region hooks are valid.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "boundary_contract_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "specialist_review_handoff",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection",
+          "candidate_stage_artifact.pipeline_plan"
+        ],
+        "id": "pipeline_planning.pipeline_architect.review_handoff",
+        "on_failure": "Do not aggregate the pipeline plan; return the review to pipeline_planning with the failed checker evidence and preserve the current stage boundary.",
+        "produces": [
+          "artifact.stage3.pipeline_architect_review"
+        ],
+        "rationale": "Promote the pipeline architect review as a checker-backed Stage-3 specialist output for downstream specialists and team aggregation.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "architecture_review"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "stream_plan_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "handoff",
+        "consumes": [
+          "artifact.stage3.pipeline_architect_review",
+          "candidate_stage_artifact.pipeline_plan",
+          "artifact.input.numeric_policy"
+        ],
+        "id": "pipeline_planning.data_transfer_engineer.review_stream_edges",
+        "on_failure": "Keep data-transfer binding blocked until stream/data edge mirroring, transfer_count_bytes, transfer_order, element_bits, and FIFO depth are reconciled without changing the preserved operator order.",
+        "produces": [
+          "artifact.stage3.data_transfer_engineer_review"
+        ],
+        "rationale": "Peer data-transfer specialist must validate stream/data edge mirroring, transfer order, element widths, transfer counts, and FIFO depth before Stage 4 template parameter binding.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "stream_plan_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "handoff",
+        "consumes": [
+          "artifact.stage3.pipeline_architect_review",
+          "candidate_stage_artifact.pipeline_plan",
+          "artifact.input.target_board_profile"
+        ],
+        "id": "pipeline_planning.memory_dataflow_engineer.review_memory_schedule",
+        "on_failure": "Do not promote memory/runtime base-address, XDMA ABI, region-base, or output-header allocation claims; defer to exact board-wrapper discovery and code generation.",
+        "produces": [
+          "artifact.stage3.memory_dataflow_engineer_review"
+        ],
+        "rationale": "Peer memory/dataflow specialist must reconcile buffer plan, memory regions, double-buffered weights, and board/XDMA address hints while keeping concrete address/ABI claims deferred to exact wrapper discovery.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "memory_runtime_plan_check"
+        ]
+      }
+    ],
+    "execution_groups": [
+      0
+    ],
+    "llm_io_metrics": {
+      "executable_action_count": 6,
+      "max_duration_sec": 167.72476451197872,
+      "max_prompt_bytes": 76101,
+      "result_count": 3,
+      "subtasks_without_executable_actions": [],
+      "total_duration_sec": 386.58881059195846,
+      "total_prompt_bytes": 227575
+    },
+    "split_required": true,
+    "status": "ready",
+    "subtask_count": 3,
+    "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/team/subtask_plan.json",
+    "used_fallback_count": 0
+  },
+  "errors": [],
+  "llm_agent": {
+    "agent": "pipeline_architect_agent",
+    "approval_required_for": [
+      "template_binding.stage4_bind_final_template_params",
+      "memory_layout.stage5_symbolic_region_base_assignment"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "handoff",
+        "consumes": [
+          "candidate_stage_artifact.pipeline_plan",
+          "pipeline_static_checks",
+          "checker_summary",
+          "current_stage_evidence"
+        ],
+        "id": "pipeline_planning.promote_stage3_to_stage4",
+        "on_failure": "If a later peer review or checker exposes a current Stage-3 contradiction, hold Stage-4 binding and return the specific edge/contract to pipeline_planning for bounded repair.",
+        "produces": [
+          "artifact.stage3.promotion_decision",
+          "artifact.stage3.promoted_pipeline_plan"
+        ],
+        "rationale": "Promote the accepted Stage-3 pipeline plan into the Stage-4 handoff. All 11 current deterministic checkers pass, the specialist bundle is complete with no errors, and address/output-header/wrapper discovery plus VCS/Vivado evidence are later-stage obligations rather than current blockers.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "specialist_review_handoff",
+        "consumes": [
+          "artifact.stage3.promoted_pipeline_plan",
+          "artifact.input.template_library",
+          "artifact.stage2.template_selection"
+        ],
+        "id": "template_binding.stage4_bind_final_template_params",
+        "on_failure": "Return unresolved parameters to Stage-4 DSE with the specific template or checker mismatch; do not alter Stage-3 operator order, numeric policy, or stream/data edge contracts.",
+        "produces": [
+          "artifact.stage4.template_binding_decision"
+        ],
+        "rationale": "Stage 4 must bind final per-template parameters from the accepted pipeline contract. Candidate-bound values such as lanes and compute-array geometry require DSE resolution, but the semantic shapes, numeric policy, operator order, and stream contracts must remain immutable.",
+        "requires_approval": true,
+        "stage": "template_binding",
+        "tool_roles": [
+          "architecture_review",
+          "parameter_binding_static_check",
+          "template_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "bounded_repair",
+        "consumes": [
+          "artifact.stage3.promoted_pipeline_plan",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_protocols",
+          "constraint.memory.board",
+          "constraint.runtime.board"
+        ],
+        "id": "memory_layout.stage5_symbolic_region_base_assignment",
+        "on_failure": "Keep Stage-5 memory layout blocked until symbolic region handles replace unverified concrete addresses and all listed checkers pass; do not guess wrapper or ABI names.",
+        "produces": [
+          "artifact.stage5.memory_layout_symbolic_handles",
+          "corrected_pipeline_plan_memory_schedule.runtime_config_requirements"
+        ],
+        "rationale": "Convert board-supplied XDMA/DDR base and output-address hints into symbolic region handles and assign concrete aligned bases only after exact board-wrapper discovery. This preserves board AXI/XDMA hooks and complies with the Stage-3 deferral boundary.",
+        "requires_approval": true,
+        "stage": "memory_layout",
+        "targeted_replay_plan": {
+          "focus": "runtime_config_requirements concrete base removal",
+          "preserve": "board_axi width/protocol facts, required_regions roles, double-buffered weights and streamed activations policy, target_seq_len compile-time bound"
+        },
+        "tool_roles": [
+          "memory_runtime_repair",
+          "memory_runtime_plan_check"
+        ]
+      }
+    ],
+    "observations": [
+      "All 11 supplied deterministic Stage-3 checkers report pass with failed=0, errors=[], and warnings=[].",
+      "The completed specialist-review bundle is ready and reports no errors.",
+      "SACG-memory truth reports zero active contamination barriers, zero open backtrack requests, and zero open retry requests.",
+      "No displayed model/numeric/stream contradiction exists for shape and dataflow: hidden_size=768, target_seq_len=16, q_heads=12, kv_heads=12, head_dim=64, activation_bits=8, weight_bits=4, accumulator_bits=32, and edge transfer counts align with tensor bytes and AXI alignment.",
+      "Transformer-block scope is preserved: learned absolute position composition is placed before the DUT input boundary, and embedding/tokenization, final model norm, LM head/logits, and sampling are excluded from DUT implementation/golden boundaries.",
+      "Concrete XDMA/DDR base-address and output-address hints remain in runtime_config_requirements, but under the supplied stage_gate_policy these are deferred address/wrapper-discovery obligations and are not current Stage-3 blockers; the listed memory/runtime repair action is treated as a later implementation suggestion."
+    ],
+    "proposed_actions": [
+      "Stage 4 DSE: bind final per-template parameters from this contract, including lanes and compute-array candidate values, without changing the checker-backed operator order, shapes, numeric policy, or stream contracts.",
+      "Stage 5 memory layout: replace concrete XDMA/DDR base and output-address values in runtime_config_requirements with symbolic region handles and assign aligned addresses only after exact board-wrapper discovery.",
+      "Stage 6+ verification planning: schedule bottom-up VCS compile-only evidence for operator leaves, the connected single-transformer-layer kernel, and the exact discovered board wrapper; do not claim numerical/runtime/board pass from Stage 3.",
+      "Preserve pre-DUT learned absolute position composition and keep embedding/tokenization, final model norm, LM head/logits, and sampling outside DUT weight coverage and golden acceptance boundaries."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.pipeline_plan",
+        "pipeline_static_checks",
+        "checker_results",
+        "checker_summary",
+        "current_stage_evidence",
+        "design_team",
+        "sacg_memory_truth"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.data.block_input.to.stage_00_layer_norm_1.input",
+        "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+        "edge.data.stage_00_layer_norm_1.to.stage_01_self_attention.main",
+        "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+        "edge.data.stage_02_residual_add_1.to.stage_03_layer_norm_2.main",
+        "edge.data.stage_02_residual_add_1.to.stage_07_residual_add_2.residual_skip",
+        "edge.data.stage_03_layer_norm_2.to.stage_04_mlp_fc.main",
+        "edge.data.stage_04_mlp_fc.to.stage_05_activation.main",
+        "edge.data.stage_05_activation.to.stage_06_mlp_proj.main",
+        "edge.data.stage_06_mlp_proj.to.stage_07_residual_add_2.main",
+        "edge.data.stage_07_residual_add_2.to.block_output.output"
+      ],
+      "nodes": [
+        "block_input",
+        "stage_00_layer_norm_1",
+        "stage_01_self_attention",
+        "stage_02_residual_add_1",
+        "stage_03_layer_norm_2",
+        "stage_04_mlp_fc",
+        "stage_05_activation",
+        "stage_06_mlp_proj",
+        "stage_07_residual_add_2",
+        "block_output"
+      ]
+    },
+    "schema_version": "spatialaccagent.pipeline_architect_decision.v0",
+    "stage": "pipeline_planning",
+    "status": "ready",
+    "summary": "Stage-3 pipeline planning is ready. All 11 supplied deterministic checkers pass, the completed specialist-review bundle has no errors, SACG-memory truth has no active barriers/retries/backtracks, and no current model, numeric, stream, or scope contradiction is displayed. Concrete wrapper/address/output-header discovery and later VCS/Vivado evidence remain later-stage obligations."
+  },
+  "num_data_edges": 11,
+  "num_pipeline_stages": 8,
+  "num_stream_edges": 11,
+  "outputs": {
+    "llm_agent": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/llm/pipeline_architect_agent_result.json",
+    "pipeline_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/pipeline_plan.json",
+    "pipeline_static_checks": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/pipeline_static_checks.json",
+    "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/sacg_state.json",
+    "team_aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/team/team_aggregate.json",
+    "team_subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/team/subtask_plan.json"
+  },
+  "sacg_transition_id": "transition.0002",
+  "schema_version": "spatialaccagent.pipeline_planning_report.v0",
+  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/sacg_state.json",
+  "stage": "pipeline_planning",
+  "status": "ready"
+}

@@ -1,0 +1,524 @@
+{
+  "duration_sec": 47.743310683988966,
+  "error": null,
+  "http_transport": "urllib",
+  "mode": "llm",
+  "output": {
+    "reason": "Input preparation spans independently auditable model semantics, numeric/template binding, board and runtime assumptions, and tool/evidence/human boundaries. Parallel specialists can expose domain-specific gaps; a final SACG integration gate is needed to reconcile their findings before extraction. SACG memory truth reports no active retry, backtrack, or contamination blockers.",
+    "schema_version": "spatialaccagent.team_decomposition.v1",
+    "split_required": true,
+    "stage": "input_preparation",
+    "subtasks": [
+      {
+        "acceptance_checkers": [
+          "task_card_check",
+          "model_config_check",
+          "llm_semantic_extraction_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "model_shape_specialist",
+        "artifact_focus": [
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.case_adapter"
+        ],
+        "constraints": [
+          "constraint.task.goal",
+          "constraint.model.decoder",
+          "constraint.shape.model"
+        ],
+        "expected_artifacts": [
+          "artifact.stage0.model_intake_review",
+          "artifact.stage0.model_fact_and_gap_matrix"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "condition": "Provide the review and fact/gap matrix whether findings pass or fail; explicitly label unsupported or contradictory facts.",
+          "fail": "Keep SACG extraction blocked for affected model constraints and route specific source-backed gaps to the responsible input owner.",
+          "pass": "The integration gate may use only facts marked supported and accepted by the listed checkers."
+        },
+        "handoff_to": [
+          "input_preparation.cross_layer_sacg_gate"
+        ],
+        "id": "input_preparation.model_intake_engineer",
+        "objective": "Determine whether model_config, task_card, and case_adapter provide traceable decoder semantics, tensor/head/sequence shapes, and operator-order facts suitable for SACG extraction; report ambiguities rather than infer missing model facts.",
+        "parallel_group": 0,
+        "role": "model intake engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "task_card_check",
+              "model_config_check",
+              "llm_semantic_extraction_check",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "artifact.input.task_card",
+              "artifact.input.model_config",
+              "artifact.input.case_adapter"
+            ],
+            "downstream_consumers": [
+              "input_preparation.cross_layer_sacg_gate",
+              "SACG extraction"
+            ],
+            "handoff_to": [
+              "input_preparation.cross_layer_sacg_gate"
+            ],
+            "produces": [
+              "artifact.stage0.model_intake_review",
+              "artifact.stage0.model_fact_and_gap_matrix"
+            ]
+          },
+          "decision_authority": [
+            "Classify model-facing facts as supported, ambiguous, missing, or contradictory.",
+            "Recommend blocking SACG extraction for unresolved model contradictions.",
+            "Do not change model inputs or select a different model."
+          ],
+          "mission": "Establish a source-grounded model and shape account for SACG extraction.",
+          "out_of_scope": [
+            "Choosing architecture parameters or changing model semantics.",
+            "Numeric-policy and template-library approval.",
+            "RTL generation or implementation/deployment pass claims."
+          ],
+          "primary_responsibilities": [
+            "Check task and model configuration consistency.",
+            "Identify decoder-block, attention, head-mapping, sequence, and tensor-shape facts supported by the inputs.",
+            "Record missing, ambiguous, or contradictory facts without filling them by assumption."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "extract model semantics",
+            "audit shape and head mapping",
+            "track residual/operator order"
+          ],
+          "constraint_focus": [
+            "constraint.model.decoder",
+            "constraint.shape.model"
+          ],
+          "family": "model_shape"
+        },
+        "title": "Validate model-facing inputs"
+      },
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "numeric_template_specialist",
+        "artifact_focus": [
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space"
+        ],
+        "constraints": [
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space"
+        ],
+        "expected_artifacts": [
+          "artifact.stage0.numeric_template_review",
+          "artifact.stage0.template_binding_gap_matrix"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "condition": "Deliver the audit and binding gap matrix with checker results and source references.",
+          "fail": "Identify the exact policy, coverage, or binding gap and block promotion of affected constraints until resolved.",
+          "pass": "The integration gate may accept only numeric and template facts supported by the listed checks."
+        },
+        "handoff_to": [
+          "input_preparation.cross_layer_sacg_gate"
+        ],
+        "id": "input_preparation.numeric_template_engineer",
+        "objective": "Audit numeric_policy, template_library and metadata, and design_space for supported precision/quantization assumptions, trusted template coverage, and valid parameter bindings without inventing values.",
+        "parallel_group": 0,
+        "role": "numeric and template binding engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "numeric_policy_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "artifact.input.numeric_policy",
+              "artifact.input.template_library",
+              "artifact.input.template_metadata",
+              "artifact.input.design_space"
+            ],
+            "downstream_consumers": [
+              "input_preparation.cross_layer_sacg_gate",
+              "SACG extraction and template-constrained design"
+            ],
+            "handoff_to": [
+              "input_preparation.cross_layer_sacg_gate"
+            ],
+            "produces": [
+              "artifact.stage0.numeric_template_review",
+              "artifact.stage0.template_binding_gap_matrix"
+            ]
+          },
+          "decision_authority": [
+            "Classify numeric and template bindings as supported, incomplete, or inconsistent.",
+            "Recommend blocking any binding that lacks trusted-template evidence.",
+            "Do not alter the numeric policy, templates, or design-space targets."
+          ],
+          "mission": "Ensure numeric and template inputs are explicit, compatible, and bound within the trusted design space.",
+          "out_of_scope": [
+            "Selecting new numeric formats or inventing template parameters.",
+            "Model-shape interpretation beyond conflicts surfaced by the integration gate.",
+            "Backend synthesis or timing/resource pass claims."
+          ],
+          "primary_responsibilities": [
+            "Check that numeric formats and quantization policy are stated and internally consistent.",
+            "Check template coverage and metadata needed for parameter binding.",
+            "Flag unsupported bindings and resource-risk assumptions for resolution rather than treating them as facts."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "bind trusted templates",
+            "audit numeric policy",
+            "check resource-risk assumptions"
+          ],
+          "constraint_focus": [
+            "constraint.numeric.policy",
+            "constraint.template.library",
+            "constraint.parameter.binding"
+          ],
+          "family": "numeric_template"
+        },
+        "title": "Validate numeric policy and trusted templates"
+      },
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "stream_plan_check",
+          "deployment_board_check",
+          "sacg_static_check"
+        ],
+        "action_type": "implementation_evidence_review",
+        "agent": "data_memory_runtime_specialist",
+        "artifact_focus": [
+          "artifact.input.target_board_profile",
+          "artifact.input.field_evidence",
+          "artifact.input.field_evidence_candidates",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index"
+        ],
+        "constraints": [
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board"
+        ],
+        "expected_artifacts": [
+          "artifact.stage0.board_memory_runtime_review",
+          "artifact.stage0.board_evidence_gap_matrix"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "condition": "Deliver the review with evidence provenance and explicit distinctions between input declarations and verified evidence.",
+          "fail": "Keep unsupported board/runtime claims blocked and record the missing evidence or source needed for resolution.",
+          "pass": "The integration gate may bind only board/runtime facts supported by the listed checks and referenced evidence."
+        },
+        "handoff_to": [
+          "input_preparation.cross_layer_sacg_gate"
+        ],
+        "id": "input_preparation.board_data_runtime_engineer",
+        "objective": "Audit board-profile and available evidence for memory/address-layout and runtime assumptions needed by SACG extraction; distinguish declared plans from verified implementation or deployment evidence.",
+        "parallel_group": 0,
+        "role": "board, data, and runtime engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "memory_runtime_plan_check",
+              "addr_map_check",
+              "stream_plan_check",
+              "deployment_board_check",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "artifact.input.target_board_profile",
+              "artifact.input.field_evidence",
+              "artifact.input.field_evidence_candidates",
+              "artifact.input.material_index",
+              "artifact.input.sample_project_index"
+            ],
+            "downstream_consumers": [
+              "input_preparation.cross_layer_sacg_gate",
+              "SACG extraction and later verification/deployment planning"
+            ],
+            "handoff_to": [
+              "input_preparation.cross_layer_sacg_gate"
+            ],
+            "produces": [
+              "artifact.stage0.board_memory_runtime_review",
+              "artifact.stage0.board_evidence_gap_matrix"
+            ]
+          },
+          "decision_authority": [
+            "Classify board and runtime assumptions by evidence strength and consistency.",
+            "Recommend blocking unsupported memory/runtime bindings.",
+            "Do not claim board readiness, runtime success, or implementation success from input declarations alone."
+          ],
+          "mission": "Check whether board, memory, and runtime assumptions are evidenced and correctly bounded for input extraction.",
+          "out_of_scope": [
+            "Running backend, board, or runtime tools in this input-preparation review.",
+            "Guessing undocumented board wiring or address maps.",
+            "Promoting a declared plan to real-tool implementation evidence."
+          ],
+          "primary_responsibilities": [
+            "Review available board and source evidence for memory/address and runtime declarations.",
+            "Identify missing or conflicting board, DDR, AXI, layout, and runtime facts relevant to the current inputs.",
+            "Label evidence as declared, observed, or verified and avoid upgrading its status."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "audit data order",
+            "check transfer-count/liveness risks",
+            "bind DDR/runtime layout"
+          ],
+          "constraint_focus": [
+            "constraint.stream.order",
+            "constraint.beat.pipeline",
+            "constraint.memory.board",
+            "constraint.runtime.board"
+          ],
+          "family": "data_memory_runtime"
+        },
+        "title": "Validate board and runtime assumptions"
+      },
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "human_boundary_check",
+          "boundary_contract_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "verification_repair_specialist",
+        "artifact_focus": [
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.field_evidence",
+          "artifact.input.field_evidence_candidates",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary"
+        ],
+        "constraints": [
+          "constraint.tool.protocols",
+          "constraint.human.boundary"
+        ],
+        "expected_artifacts": [
+          "artifact.stage0.tool_evidence_boundary_review",
+          "artifact.stage0.capability_and_approval_gap_matrix"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "condition": "Deliver protocol, provenance, capability, and boundary findings with checker results.",
+          "fail": "Mark the missing capability as a blocker; if a required capability is absent from the registry, request planned_tool.<short_name> or planned_checker.<short_name> implementation.",
+          "pass": "The integration gate may treat a tool or evidence path as available only when supported by the protocol and evidence checks."
+        },
+        "handoff_to": [
+          "input_preparation.cross_layer_sacg_gate"
+        ],
+        "id": "input_preparation.tool_evidence_boundary_engineer",
+        "objective": "Audit tool profiles, availability, protocols, field evidence, case adapter, and human_agent_boundary for usable checker/evidence contracts and explicit limits on autonomous changes.",
+        "parallel_group": 0,
+        "role": "tool, evidence, and human-boundary engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "tool_protocol_check",
+              "required_real_tool_evidence_check",
+              "human_boundary_check",
+              "boundary_contract_check",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "artifact.input.tool_profile",
+              "artifact.input.tool_availability",
+              "artifact.input.tool_protocols",
+              "artifact.input.field_evidence",
+              "artifact.input.field_evidence_candidates",
+              "artifact.input.case_adapter",
+              "artifact.input.human_agent_boundary"
+            ],
+            "downstream_consumers": [
+              "input_preparation.cross_layer_sacg_gate",
+              "SACG extraction and later checker/evidence planning"
+            ],
+            "handoff_to": [
+              "input_preparation.cross_layer_sacg_gate"
+            ],
+            "produces": [
+              "artifact.stage0.tool_evidence_boundary_review",
+              "artifact.stage0.capability_and_approval_gap_matrix"
+            ]
+          },
+          "decision_authority": [
+            "Flag absent required tools/checkers as capability gaps rather than assuming their availability.",
+            "Recommend blocking actions that exceed the stated human boundary.",
+            "Do not authorize human approval or reinterpret missing evidence as a pass."
+          ],
+          "mission": "Ensure tool/evidence inputs and human approval boundaries can support checker-verified, bounded design closure.",
+          "out_of_scope": [
+            "Executing real tools or claiming their results.",
+            "Changing human approval requirements or bypassing forbidden-action boundaries.",
+            "Designing unrelated verification infrastructure."
+          ],
+          "primary_responsibilities": [
+            "Check protocol and availability declarations against the evidence and tool roles they claim to support.",
+            "Classify evidence provenance and identify missing or unsupported checker capabilities.",
+            "Verify that allowed, forbidden, and approval-required actions are explicit and consistent."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "classify evidence",
+            "map failures to violated constraints",
+            "enforce repair boundaries"
+          ],
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.human.boundary"
+          ],
+          "family": "verification_repair"
+        },
+        "title": "Validate tool protocols and decision boundaries"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check",
+          "verification_plan_static_check",
+          "repair_boundary_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "cross_layer_input_auditor",
+        "artifact_focus": [
+          "artifact.stage0.model_intake_review",
+          "artifact.stage0.numeric_template_review",
+          "artifact.stage0.board_memory_runtime_review",
+          "artifact.stage0.tool_evidence_boundary_review",
+          "artifact.input.design_space",
+          "artifact.input.case_adapter"
+        ],
+        "constraints": [
+          "constraint.task.goal",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board",
+          "constraint.tool.protocols",
+          "constraint.human.boundary"
+        ],
+        "expected_artifacts": [
+          "artifact.stage0.cross_layer_input_consistency_review",
+          "artifact.stage0.sacg_extraction_readiness"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "condition": "Run only after all parallel-group 0 reviews are delivered.",
+          "fail": "Keep extraction blocked for affected constraints and route each bounded gap to its responsible specialist or input owner; do not substitute an unsupported pass claim.",
+          "pass": "Handoff to SACG extraction only with a checker-supported readiness status and explicit limitations."
+        },
+        "handoff_to": [
+          "SACG extraction stage",
+          "responsible input owners for unresolved gaps"
+        ],
+        "id": "input_preparation.cross_layer_sacg_gate",
+        "objective": "Reconcile specialist findings across model, numeric/template, board/runtime, tool/evidence, and human-boundary inputs; report cross-layer contradictions and a checker-supported readiness decision without making unsupported pass claims.",
+        "parallel_group": 1,
+        "role": "cross-layer SACG input auditor",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "template_binding_static_check",
+              "verification_plan_static_check",
+              "repair_boundary_check",
+              "sacg_reference_check"
+            ],
+            "consumes": [
+              "artifact.stage0.model_intake_review",
+              "artifact.stage0.numeric_template_review",
+              "artifact.stage0.board_memory_runtime_review",
+              "artifact.stage0.tool_evidence_boundary_review",
+              "artifact.stage0.model_fact_and_gap_matrix",
+              "artifact.stage0.template_binding_gap_matrix",
+              "artifact.stage0.board_evidence_gap_matrix",
+              "artifact.stage0.capability_and_approval_gap_matrix"
+            ],
+            "downstream_consumers": [
+              "SACG extraction stage",
+              "responsible input owners for bounded corrections"
+            ],
+            "handoff_to": [
+              "SACG extraction stage",
+              "responsible input owners for unresolved gaps"
+            ],
+            "produces": [
+              "artifact.stage0.cross_layer_input_consistency_review",
+              "artifact.stage0.sacg_extraction_readiness"
+            ]
+          },
+          "decision_authority": [
+            "Accept only checker-supported specialist findings into the consolidated input review.",
+            "Block extraction where cross-layer contradictions or unsupported mandatory assumptions remain.",
+            "Do not edit source inputs, waive a checker, or claim implementation/deployment readiness."
+          ],
+          "mission": "Provide the final cross-layer consistency and evidence gate for prepared inputs before SACG extraction.",
+          "out_of_scope": [
+            "Replacing a specialist domain judgment with an unsupported inference.",
+            "Generating RTL, changing templates, or executing backend/deployment tools.",
+            "Promoting declared input evidence to a verified implementation result."
+          ],
+          "primary_responsibilities": [
+            "Compare specialist findings for incompatible shapes, numeric assumptions, template bindings, board/runtime expectations, and tool/evidence claims.",
+            "Map each unresolved contradiction or missing fact to the affected SACG constraint and responsible input owner.",
+            "Issue a readiness status that distinguishes ready, ready with explicit limitations, and blocked."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "classify evidence",
+            "map failures to violated constraints",
+            "enforce repair boundaries"
+          ],
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.human.boundary"
+          ],
+          "family": "verification_repair"
+        },
+        "title": "Reconcile input reviews for SACG readiness"
+      }
+    ]
+  },
+  "prompt_hash": "f6a5cf9cd67bb045bd8added5eca0ba2cfb93fe947c3974e932a255d2a86527a",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.team_decomposition.v1\",\n  \"stage\": \"input_preparation\",\n  \"split_required\": true,\n  \"reason\": \"Input preparation spans independently auditable model semantics, numeric/template binding, board and runtime assumptions, and tool/evidence/human boundaries. Parallel specialists can expose domain-specific gaps; a final SACG integration gate is needed to reconcile their findings before extraction. SACG memory truth reports no active retry, backtrack, or contamination blockers.\",\n  \"subtasks\": [\n    {\n      \"id\": \"input_preparation.model_intake_engineer\",\n      \"agent\": \"model_shape_specialist\",\n      \"role\": \"model intake engineer\",\n      \"title\": \"Validate model-facing inputs\",\n      \"objective\": \"Determine whether model_config, task_card, and case_adapter provide traceable decoder semantics, tensor/head/sequence shapes, and operator-order facts suitable for SACG extraction; report ambiguities rather than infer missing model facts.\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"constraints\": [\n        \"constraint.task.goal\",\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\"\n      ],\n      \"artifact_focus\": [\n        \"artifact.input.task_card\",\n        \"artifact.input.model_config\",\n        \"artifact.input.case_adapter\"\n      ],\n      \"parallel_group\": 0,\n      \"role_profile\": {\n        \"family\": \"model_shape\",\n        \"capabilities\": [\n          \"extract model semantics\",\n          \"audit shape and head mapping\",\n          \"track residual/operator order\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.model.decoder\",\n          \"constraint.shape.model\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Establish a source-grounded model and shape account for SACG extraction.\",\n        \"primary_responsibilities\": [\n          \"Check task and model configuration consistency.\",\n          \"Identify decoder-block, attention, head-mapping, sequence, and tensor-shape facts supported by the inputs.\",\n          \"Record missing, ambiguous, or contradictory facts without filling them by assumption.\"\n        ],\n        \"decision_authority\": [\n          \"Classify model-facing facts as supported, ambiguous, missing, or contradictory.\",\n          \"Recommend blocking SACG extraction for unresolved model contradictions.\",\n          \"Do not change model inputs or select a different model.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.input.task_card\",\n            \"artifact.input.model_config\",\n            \"artifact.input.case_adapter\"\n          ],\n          \"produces\": [\n            \"artifact.stage0.model_intake_review\",\n            \"artifact.stage0.model_fact_and_gap_matrix\"\n          ],\n          \"downstream_consumers\": [\n            \"input_preparation.cross_layer_sacg_gate\",\n            \"SACG extraction\"\n          ],\n          \"acceptance_checkers\": [\n            \"task_card_check\",\n            \"model_config_check\",\n            \"llm_semantic_extraction_check\",\n            \"sacg_static_check\"\n          ],\n          \"handoff_to\": [\n            \"input_preparation.cross_layer_sacg_gate\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Choosing architecture parameters or changing model semantics.\",\n          \"Numeric-policy and template-library approval.\",\n          \"RTL generation or implementation/deployment pass claims.\"\n        ]\n      },\n      \"expected_artifacts\": [\n        \"artifact.stage0.model_intake_review\",\n        \"artifact.stage0.model_fact_and_gap_matrix\"\n      ],\n      \"acceptance_checkers\": [\n        \"task_card_check\",\n        \"model_config_check\",\n        \"llm_semantic_extraction_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"input_preparation.cross_layer_sacg_gate\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"Provide the review and fact/gap matrix whether findings pass or fail; explicitly label unsupported or contradictory facts.\",\n        \"pass\": \"The integration gate may use only facts marked supported and accepted by the listed checkers.\",\n        \"fail\": \"Keep SACG extraction blocked for affected model constraints and route specific source-backed gaps to the responsible input owner.\"\n      }\n    },\n    {\n      \"id\": \"input_preparation.numeric_template_engineer\",\n      \"agent\": \"numeric_template_specialist\",\n      \"role\": \"numeric and template binding engineer\",\n      \"title\": \"Validate numeric policy and trusted templates\",\n      \"objective\": \"Audit numeric_policy, template_library and metadata, and design_space for supported precision/quantization assumptions, trusted template coverage, and valid parameter bindings without inventing values.\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"constraints\": [\n        \"constraint.numeric.policy\",\n        \"constraint.template.library\",\n        \"constraint.arch.design_space\"\n      ],\n      \"artifact_focus\": [\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.design_space\"\n      ],\n      \"parallel_group\": 0,\n      \"role_profile\": {\n        \"family\": \"numeric_template\",\n        \"capabilities\": [\n          \"bind trusted templates\",\n          \"audit numeric policy\",\n          \"check resource-risk assumptions\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.numeric.policy\",\n          \"constraint.template.library\",\n          \"constraint.parameter.binding\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Ensure numeric and template inputs are explicit, compatible, and bound within the trusted design space.\",\n        \"primary_responsibilities\": [\n          \"Check that numeric formats and quantization policy are stated and internally consistent.\",\n          \"Check template coverage and metadata needed for parameter binding.\",\n          \"Flag unsupported bindings and resource-risk assumptions for resolution rather than treating them as facts.\"\n        ],\n        \"decision_authority\": [\n          \"Classify numeric and template bindings as supported, incomplete, or inconsistent.\",\n          \"Recommend blocking any binding that lacks trusted-template evidence.\",\n          \"Do not alter the numeric policy, templates, or design-space targets.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.input.numeric_policy\",\n            \"artifact.input.template_library\",\n            \"artifact.input.template_metadata\",\n            \"artifact.input.design_space\"\n          ],\n          \"produces\": [\n            \"artifact.stage0.numeric_template_review\",\n            \"artifact.stage0.template_binding_gap_matrix\"\n          ],\n          \"downstream_consumers\": [\n            \"input_preparation.cross_layer_sacg_gate\",\n            \"SACG extraction and template-constrained design\"\n          ],\n          \"acceptance_checkers\": [\n            \"numeric_policy_check\",\n            \"template_coverage_check\",\n            \"parameter_binding_static_check\",\n            \"template_binding_static_check\",\n            \"sacg_static_check\"\n          ],\n          \"handoff_to\": [\n            \"input_preparation.cross_layer_sacg_gate\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Selecting new numeric formats or inventing template parameters.\",\n          \"Model-shape interpretation beyond conflicts surfaced by the integration gate.\",\n          \"Backend synthesis or timing/resource pass claims.\"\n        ]\n      },\n      \"expected_artifacts\": [\n        \"artifact.stage0.numeric_template_review\",\n        \"artifact.stage0.template_binding_gap_matrix\"\n      ],\n      \"acceptance_checkers\": [\n        \"numeric_policy_check\",\n        \"template_coverage_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"input_preparation.cross_layer_sacg_gate\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"Deliver the audit and binding gap matrix with checker results and source references.\",\n        \"pass\": \"The integration gate may accept only numeric and template facts supported by the listed checks.\",\n        \"fail\": \"Identify the exact policy, coverage, or binding gap and block promotion of affected constraints until resolved.\"\n      }\n    },\n    {\n      \"id\": \"input_preparation.board_data_runtime_engineer\",\n      \"agent\": \"data_memory_runtime_specialist\",\n      \"role\": \"board, data, and runtime engineer\",\n      \"title\": \"Validate board and runtime assumptions\",\n      \"objective\": \"Audit board-profile and available evidence for memory/address-layout and runtime assumptions needed by SACG extraction; distinguish declared plans from verified implementation or deployment evidence.\",\n      \"action_type\": \"implementation_evidence_review\",\n      \"constraints\": [\n        \"constraint.memory.board\",\n        \"constraint.runtime.board\",\n        \"constraint.deployment.board\"\n      ],\n      \"artifact_focus\": [\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.field_evidence_candidates\",\n        \"artifact.input.material_index\",\n        \"artifact.input.sample_project_index\"\n      ],\n      \"parallel_group\": 0,\n      \"role_profile\": {\n        \"family\": \"data_memory_runtime\",\n        \"capabilities\": [\n          \"audit data order\",\n          \"check transfer-count/liveness risks\",\n          \"bind DDR/runtime layout\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.stream.order\",\n          \"constraint.beat.pipeline\",\n          \"constraint.memory.board\",\n          \"constraint.runtime.board\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Check whether board, memory, and runtime assumptions are evidenced and correctly bounded for input extraction.\",\n        \"primary_responsibilities\": [\n          \"Review available board and source evidence for memory/address and runtime declarations.\",\n          \"Identify missing or conflicting board, DDR, AXI, layout, and runtime facts relevant to the current inputs.\",\n          \"Label evidence as declared, observed, or verified and avoid upgrading its status.\"\n        ],\n        \"decision_authority\": [\n          \"Classify board and runtime assumptions by evidence strength and consistency.\",\n          \"Recommend blocking unsupported memory/runtime bindings.\",\n          \"Do not claim board readiness, runtime success, or implementation success from input declarations alone.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.input.target_board_profile\",\n            \"artifact.input.field_evidence\",\n            \"artifact.input.field_evidence_candidates\",\n            \"artifact.input.material_index\",\n            \"artifact.input.sample_project_index\"\n          ],\n          \"produces\": [\n            \"artifact.stage0.board_memory_runtime_review\",\n            \"artifact.stage0.board_evidence_gap_matrix\"\n          ],\n          \"downstream_consumers\": [\n            \"input_preparation.cross_layer_sacg_gate\",\n            \"SACG extraction and later verification/deployment planning\"\n          ],\n          \"acceptance_checkers\": [\n            \"memory_runtime_plan_check\",\n            \"addr_map_check\",\n            \"stream_plan_check\",\n            \"deployment_board_check\",\n            \"sacg_static_check\"\n          ],\n          \"handoff_to\": [\n            \"input_preparation.cross_layer_sacg_gate\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Running backend, board, or runtime tools in this input-preparation review.\",\n          \"Guessing undocumented board wiring or address maps.\",\n          \"Promoting a declared plan to real-tool implementation evidence.\"\n        ]\n      },\n      \"expected_artifacts\": [\n        \"artifact.stage0.board_memory_runtime_review\",\n        \"artifact.stage0.board_evidence_gap_matrix\"\n      ],\n      \"acceptance_checkers\": [\n        \"memory_runtime_plan_check\",\n        \"addr_map_check\",\n        \"stream_plan_check\",\n        \"deployment_board_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"input_preparation.cross_layer_sacg_gate\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"Deliver the review with evidence provenance and explicit distinctions between input declarations and verified evidence.\",\n        \"pass\": \"The integration gate may bind only board/runtime facts supported by the listed checks and referenced evidence.\",\n        \"fail\": \"Keep unsupported board/runtime claims blocked and record the missing evidence or source needed for resolution.\"\n      }\n    },\n    {\n      \"id\": \"input_preparation.tool_evidence_boundary_engineer\",\n      \"agent\": \"verification_repair_specialist\",\n      \"role\": \"tool, evidence, and human-boundary engineer\",\n      \"title\": \"Validate tool protocols and decision boundaries\",\n      \"objective\": \"Audit tool profiles, availability, protocols, field evidence, case adapter, and human_agent_boundary for usable checker/evidence contracts and explicit limits on autonomous changes.\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"constraints\": [\n        \"constraint.tool.protocols\",\n        \"constraint.human.boundary\"\n      ],\n      \"artifact_focus\": [\n        \"artifact.input.tool_profile\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.tool_protocols\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.field_evidence_candidates\",\n        \"artifact.input.case_adapter\",\n        \"artifact.input.human_agent_boundary\"\n      ],\n      \"parallel_group\": 0,\n      \"role_profile\": {\n        \"family\": \"verification_repair\",\n        \"capabilities\": [\n          \"classify evidence\",\n          \"map failures to violated constraints\",\n          \"enforce repair boundaries\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.verification.plan\",\n          \"constraint.human.boundary\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Ensure tool/evidence inputs and human approval boundaries can support checker-verified, bounded design closure.\",\n        \"primary_responsibilities\": [\n          \"Check protocol and availability declarations against the evidence and tool roles they claim to support.\",\n          \"Classify evidence provenance and identify missing or unsupported checker capabilities.\",\n          \"Verify that allowed, forbidden, and approval-required actions are explicit and consistent.\"\n        ],\n        \"decision_authority\": [\n          \"Flag absent required tools/checkers as capability gaps rather than assuming their availability.\",\n          \"Recommend blocking actions that exceed the stated human boundary.\",\n          \"Do not authorize human approval or reinterpret missing evidence as a pass.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.input.tool_profile\",\n            \"artifact.input.tool_availability\",\n            \"artifact.input.tool_protocols\",\n            \"artifact.input.field_evidence\",\n            \"artifact.input.field_evidence_candidates\",\n            \"artifact.input.case_adapter\",\n            \"artifact.input.human_agent_boundary\"\n          ],\n          \"produces\": [\n            \"artifact.stage0.tool_evidence_boundary_review\",\n            \"artifact.stage0.capability_and_approval_gap_matrix\"\n          ],\n          \"downstream_consumers\": [\n            \"input_preparation.cross_layer_sacg_gate\",\n            \"SACG extraction and later checker/evidence planning\"\n          ],\n          \"acceptance_checkers\": [\n            \"tool_protocol_check\",\n            \"required_real_tool_evidence_check\",\n            \"human_boundary_check\",\n            \"boundary_contract_check\",\n            \"sacg_static_check\"\n          ],\n          \"handoff_to\": [\n            \"input_preparation.cross_layer_sacg_gate\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Executing real tools or claiming their results.\",\n          \"Changing human approval requirements or bypassing forbidden-action boundaries.\",\n          \"Designing unrelated verification infrastructure.\"\n        ]\n      },\n      \"expected_artifacts\": [\n        \"artifact.stage0.tool_evidence_boundary_review\",\n        \"artifact.stage0.capability_and_approval_gap_matrix\"\n      ],\n      \"acceptance_checkers\": [\n        \"tool_protocol_check\",\n        \"required_real_tool_evidence_check\",\n        \"human_boundary_check\",\n        \"boundary_contract_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"input_preparation.cross_layer_sacg_gate\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"Deliver protocol, provenance, capability, and boundary findings with checker results.\",\n        \"pass\": \"The integration gate may treat a tool or evidence path as available only when supported by the protocol and evidence checks.\",\n        \"fail\": \"Mark the missing capability as a blocker; if a required capability is absent from the registry, request planned_tool.<short_name> or planned_checker.<short_name> implementation.\"\n      }\n    },\n    {\n      \"id\": \"input_preparation.cross_layer_sacg_gate\",\n      \"agent\": \"cross_layer_input_auditor\",\n      \"role\": \"cross-layer SACG input auditor\",\n      \"title\": \"Reconcile input reviews for SACG readiness\",\n      \"objective\": \"Reconcile specialist findings across model, numeric/template, board/runtime, tool/evidence, and human-boundary inputs; report cross-layer contradictions and a checker-supported readiness decision without making unsupported pass claims.\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"constraints\": [\n        \"constraint.task.goal\",\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\",\n        \"constraint.numeric.policy\",\n        \"constraint.template.library\",\n        \"constraint.arch.design_space\",\n        \"constraint.memory.board\",\n        \"constraint.runtime.board\",\n        \"constraint.deployment.board\",\n        \"constraint.tool.protocols\",\n        \"constraint.human.boundary\"\n      ],\n      \"artifact_focus\": [\n        \"artifact.stage0.model_intake_review\",\n        \"artifact.stage0.numeric_template_review\",\n        \"artifact.stage0.board_memory_runtime_review\",\n        \"artifact.stage0.tool_evidence_boundary_review\",\n        \"artifact.input.design_space\",\n        \"artifact.input.case_adapter\"\n      ],\n      \"parallel_group\": 1,\n      \"role_profile\": {\n        \"family\": \"verification_repair\",\n        \"capabilities\": [\n          \"classify evidence\",\n          \"map failures to violated constraints\",\n          \"enforce repair boundaries\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.verification.plan\",\n          \"constraint.human.boundary\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Provide the final cross-layer consistency and evidence gate for prepared inputs before SACG extraction.\",\n        \"primary_responsibilities\": [\n          \"Compare specialist findings for incompatible shapes, numeric assumptions, template bindings, board/runtime expectations, and tool/evidence claims.\",\n          \"Map each unresolved contradiction or missing fact to the affected SACG constraint and responsible input owner.\",\n          \"Issue a readiness status that distinguishes ready, ready with explicit limitations, and blocked.\"\n        ],\n        \"decision_authority\": [\n          \"Accept only checker-supported specialist findings into the consolidated input review.\",\n          \"Block extraction where cross-layer contradictions or unsupported mandatory assumptions remain.\",\n          \"Do not edit source inputs, waive a checker, or claim implementation/deployment readiness.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.stage0.model_intake_review\",\n            \"artifact.stage0.numeric_template_review\",\n            \"artifact.stage0.board_memory_runtime_review\",\n            \"artifact.stage0.tool_evidence_boundary_review\",\n            \"artifact.stage0.model_fact_and_gap_matrix\",\n            \"artifact.stage0.template_binding_gap_matrix\",\n            \"artifact.stage0.board_evidence_gap_matrix\",\n            \"artifact.stage0.capability_and_approval_gap_matrix\"\n          ],\n          \"produces\": [\n            \"artifact.stage0.cross_layer_input_consistency_review\",\n            \"artifact.stage0.sacg_extraction_readiness\"\n          ],\n          \"downstream_consumers\": [\n            \"SACG extraction stage\",\n            \"responsible input owners for bounded corrections\"\n          ],\n          \"acceptance_checkers\": [\n            \"sacg_static_check\",\n            \"template_binding_static_check\",\n            \"verification_plan_static_check\",\n            \"repair_boundary_check\",\n            \"sacg_reference_check\"\n          ],\n          \"handoff_to\": [\n            \"SACG extraction stage\",\n            \"responsible input owners for unresolved gaps\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Replacing a specialist domain judgment with an unsupported inference.\",\n          \"Generating RTL, changing templates, or executing backend/deployment tools.\",\n          \"Promoting declared input evidence to a verified implementation result.\"\n        ]\n      },\n      \"expected_artifacts\": [\n        \"artifact.stage0.cross_layer_input_consistency_review\",\n        \"artifact.stage0.sacg_extraction_readiness\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"template_binding_static_check\",\n        \"verification_plan_static_check\",\n        \"repair_boundary_check\",\n        \"sacg_reference_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"SACG extraction stage\",\n        \"responsible input owners for unresolved gaps\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"Run only after all parallel-group 0 reviews are delivered.\",\n        \"pass\": \"Handoff to SACG extraction only with a checker-supported readiness status and explicit limitations.\",\n        \"fail\": \"Keep extraction blocked for affected constraints and route each bounded gap to its responsible specialist or input owner; do not substitute an unsupported pass claim.\"\n      }\n    }\n  ]\n}",
+  "reasoning_effort": "medium",
+  "schema_version": "spatialaccagent.team_decomposer_record.v0",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

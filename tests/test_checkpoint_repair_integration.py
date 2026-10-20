@@ -11,6 +11,7 @@ from unittest.mock import patch
 from accagent.framework.stage_repair_execute import (
     board_integration_prompt_rules,
     checkpoint_hook_specialist_package,
+    existing_exact_board_replay_ready,
     prepare_stage3_checkpoint_probe_environment,
     run_current_layer_causal_replay,
     run_exact_board_checkpoint_analyzer_only,
@@ -21,6 +22,30 @@ from accagent.framework.stage_repair_execute import (
 
 
 class CheckpointRepairIntegrationTest(unittest.TestCase):
+    def test_compile_only_existing_harness_does_not_reenter_runtime_bootstrap(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output = root / "repair_execution"
+            output.mkdir()
+            binding = root / "generated/memory/dut_weight_binding_manifest.json"
+            binding.parent.mkdir(parents=True)
+            binding.write_text(json.dumps({"status": "pass", "multilayer_harness": {}}), encoding="utf-8")
+            preflight = root / "board_manifest.json"
+            preflight.write_text('{"status":"ready"}\n', encoding="utf-8")
+            materialization = {
+                "status": "pass", "board_integration_harness_materialized": True,
+                "board_simulation_preflight_materialized": True,
+                "board_simulation_preflight_manifest": str(preflight),
+                "board_simulation_preflight_manifest_sha256": hashlib.sha256(preflight.read_bytes()).hexdigest(),
+            }
+            (output / "dut_weight_binding_materialization.json").write_text(json.dumps(materialization), encoding="utf-8")
+            for policy, expected in (("vcs_compile_only", True), ("full_semantic_simulation", True)):
+                with self.subTest(policy=policy), patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": policy}):
+                    self.assertEqual(existing_exact_board_replay_ready(root, output, {"status": "pass"}), expected)
+            preflight.write_text('{"status":"incomplete"}\n', encoding="utf-8")
+            with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}):
+                self.assertFalse(existing_exact_board_replay_ready(root, output, {"status": "pass"}))
+
     def test_checkpoint_calibration_failure_runs_analyzer_without_vcs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run"
@@ -827,6 +852,70 @@ class CheckpointRepairIntegrationTest(unittest.TestCase):
         )
         self.assertFalse(result["full_cold_vcs_required_after_screening"])
         self.assertTrue(result["final_runner_stage_pass_eligible"])
+
+    def test_compile_only_failure_refreshes_vcs_diagnostic_for_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            out_dir = run_dir / "repair_execution"
+            runner_path = run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
+            runner_path.parent.mkdir(parents=True)
+            out_dir.mkdir(parents=True)
+            labels: list[str] = []
+
+            def probe(**kwargs):
+                labels.append(kwargs["label"])
+                if kwargs["label"].endswith("_vcs"):
+                    runner_path.write_text(
+                        json.dumps(
+                            {
+                                "status": "fail",
+                                "phase": "remote_vcs",
+                                "validation_policy": "vcs_compile_only",
+                                "stage_pass_eligible": False,
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                    return {
+                        "status": "fail",
+                        "produced_reports": [{"path": str(runner_path)}],
+                    }
+                return {
+                    "status": "pass",
+                    "produced_reports": [{"path": str(run_dir / "diagnosis.json")}],
+                }
+
+            feedback = {
+                "status": "ready",
+                "diagnosis": {"value": {"status": "needs_repair"}},
+                "runner_report": {"value": {"status": "fail"}},
+            }
+            with patch.dict(
+                "os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}
+            ), patch(
+                "accagent.framework.stage_repair_execute.run_capability_probe",
+                side_effect=probe,
+            ), patch(
+                "accagent.framework.stage_repair_execute.exact_board_vcs_feedback",
+                return_value=feedback,
+            ):
+                result = run_exact_board_validation_chain(
+                    case_adapter={"case_id": "case"},
+                    vcs_role="vcs_functional_sim",
+                    vcs_spec={"name": "case_vcs_functional_sim"},
+                    analyzer_role="vcs_evidence_analyzer",
+                    analyzer_spec={"name": "case_vcs_evidence_analyzer"},
+                    run_dir=run_dir,
+                    step={"id": "repair.board.compile_only"},
+                    out_dir=out_dir,
+                    timeout_sec=0,
+                    label="compile_only",
+                )
+
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(result["analyzer"]["status"], "pass")
+        self.assertEqual(result["current_board_vcs_feedback"], feedback)
+        self.assertEqual(labels, ["compile_only_vcs", "compile_only_analyzer"])
 
     def test_board_agent_prompt_keeps_checkpoint_optional_and_nonaccepting(self) -> None:
         rules = "\n".join(board_integration_prompt_rules("repair")).lower()

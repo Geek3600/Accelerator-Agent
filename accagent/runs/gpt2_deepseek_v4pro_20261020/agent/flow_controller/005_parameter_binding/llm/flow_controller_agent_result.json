@@ -1,0 +1,155 @@
+{
+  "agent": "flow_controller_agent",
+  "duration_sec": 143.7582618840388,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "ec4be2d6d7b24d81aaa965a3c50223b2",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/005_parameter_binding/llm/flow_controller_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "flow_controller_agent",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "sacg_static_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.stage4.parameter_binding",
+          "artifact.stage4.selected_architecture",
+          "artifact.stage4.dse_selection_rationale",
+          "artifact.stage4.parameter_static_checks"
+        ],
+        "id": "advance.parameter_binding.to.code_generation",
+        "on_failure": "Retry the current parameter_binding stage for any framework/hash/provenance/route failure without rewinding design stages; if code_generation_manifest_static_check fails, block RTL generation until the stage-input/manifest contract is corrected.",
+        "produces": [
+          "stage_transition.parameter_binding_to_code_generation",
+          "sacg_memory.stage_outcome.code_generation_ready"
+        ],
+        "rationale": "parameter_binding static checks passed 6/6, the stage command returned 0, and SACG memory truth shows zero active blockers. Promote the validated selected architecture into code generation while preserving DSE exact measurement as downstream.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "sacg_memory_update",
+          "code_generation_manifest_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "timing_resource_check"
+        ],
+        "action_type": "real_tool_execution",
+        "consumes": [
+          "artifact.stage4.selected_architecture",
+          "artifact.stage4.dse_selection_rationale",
+          "artifact.stage4.dse_constraint_report",
+          "materialized_refill_rate_contract"
+        ],
+        "id": "dse_measure.arch_08fc81fe6157.downstream_exact_synthesis",
+        "on_failure": "Record actual synthesis failure or implementation infeasibility in dse_measurements.jsonl; do not modify candidate parameters or claim QoR/hardware pass; advance to the next supplied unmeasured legal candidate unless the deterministic evaluator flags legality, and raise a bounded backtrack request only if a cited hardware-design failure category with linked tool evidence applies.",
+        "produces": [
+          "dse_measurements.jsonl.entry.arch_08fc81fe6157",
+          "vivado_utilization_report.arch_08fc81fe6157",
+          "vivado_timing_report.arch_08fc81fe6157",
+          "rtl_cycle_derived_throughput.arch_08fc81fe6157"
+        ],
+        "rationale": "The formal DSE campaign remains incomplete and the selected legal candidate requires exact target-board app-shell synthesis measurement. Queue this real tool action for backend_board after code generation and board-accurate wrapper availability; it is not a current parameter_binding blocker and must not become a QoR or hardware-pass claim.",
+        "requires_approval": false,
+        "stage": "backend_board",
+        "tool_roles": [
+          "case_vivado_synthesis",
+          "case_vivado_synthesis_report_check",
+          "timing_resource_check"
+        ]
+      }
+    ],
+    "observations": [
+      "Stage parameter_binding reports stage_passed=true with attempt_count=1 and command returncode 0.",
+      "parameter_binding checker_summary shows 6 passed, 0 failed, 0 errors, and 0 warnings.",
+      "SACG memory truth reports active_contamination_barrier_count=0, open_backtrack_request_count=0, and open_retry_request_count=0; no current SACG-memory blockers are active.",
+      "sacg_memory recent_stage_outcomes records parameter_binding as status=ready with summary 'parameter static checks passed'.",
+      "No framework/hash/provenance/evidence-binding/stage-routing failure category is present; therefore no design-stage backtrack is authorized.",
+      "DSE campaign is incomplete: measured_candidate_count=0, unmeasured_candidate_count=360, and selected candidate arch_08fc81fe6157 has no exact target-board app-shell measurement.",
+      "arch_08fc81fe6157 is legal and unmeasured; it is selected only as the next measurement-priority candidate, not as measured-optimal or Pareto-final.",
+      "The qor_estimator status is insufficient_evidence and its validation sample_count is insufficient_independent_samples; ranking is not QoR evidence.",
+      "materialized_refill_rate_contract passes with cache_refill_data_width_bits=512, derived from the board AXI data width.",
+      "AXI transfer layout checks are static alignment/packing checks only; they are not bandwidth, timing, power, or throughput evidence.",
+      "LLM planning is mandatory and satisfied with requested model deepseek-v4-pro.",
+      "No sub-agent role_assignment or stage_gate_policy was supplied in this flow-controller review slice, so no specialist-boundary conflict is inferred."
+    ],
+    "proposed_actions": [
+      "Proceed to code_generation using the validated selected architecture arch_08fc81fe6157.",
+      "Record the parameter-binding promotion in SACG memory and carry forward the downstream DSE exact target-board app-shell measurement obligation.",
+      "Run code-generation manifest/static checks before RTL generation and keep the candidate parameters immutable.",
+      "Defer real Vivado synthesis/resource/timing measurement to backend_board after board-accurate RTL is available.",
+      "If a future measurement fails with linked tool evidence in an allowed hardware-design failure category, raise a bounded backtrack request instead of silently retrying or modifying the candidate."
+    ],
+    "risks": [
+      "Actual Vivado resource usage, timing, and derived throughput for arch_08fc81fe6157 remain unknown; downstream backend measurement may still prove resource/implementation infeasible.",
+      "The calibrated estimator has insufficient independent validation, so the selected candidate's rank must not be treated as quality-of-result evidence.",
+      "DSE exact measurement is pending; if the candidate later fails with cited resource/timing evidence, the flow may need a bounded design backtrack under an allowed hardware-design failure category, but no such backtrack is authorized now.",
+      "Code generation must preserve the chosen numeric policy and board AXI/DDR facts; cross-layer inconsistencies in data width, alignment, or stream order would become downstream blockers.",
+      "clock_target_mhz is currently null, so no timing objective is bound yet; this is a later backend timing concern, not a current parameter-binding blocker.",
+      "The DUT scope excludes embedding/tokenization, final model norm, LM head/logits, and sampling; code generation and golden boundaries must not expand that scope.",
+      "The selected candidate is an LLM measurement-order choice, not deterministic Pareto-final evidence; downstream stages must not overstate its status."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "parameter_binding.json",
+        "selected_architecture.json",
+        "dse_selection_rationale.json",
+        "parameter_static_checks.json",
+        "dse_constraint_report.json",
+        "dse_measurements.jsonl",
+        "materialized_refill_rate_contract"
+      ],
+      "constraints": [
+        "Do not claim QoR, Pareto optimality, feasibility, or hardware pass before exact target-board app-shell measurement",
+        "Do not modify selected candidate parameters",
+        "Preserve exact board AXI/DDR interface facts and Transformer-block-only DUT scope",
+        "Parameter binding static checks must pass before code generation",
+        "Exact Vivado measurement is a downstream backend obligation, not a current parameter_binding blocker",
+        "Framework, hash, manifest, provenance, evidence-binding, and stage-routing failures must retry the current stage rather than rewind hardware design stages",
+        "Preserve int8 activation, int4 weight, int32 accumulator/scale numeric policy, nearest_even rounding, saturation, and 512-bit cache refill contract"
+      ],
+      "edges": [
+        "parameter_binding -> code_generation",
+        "selected_architecture_arch_08fc81fe6157 -> code_generation",
+        "code_generation -> verification_artifacts -> debug_loop -> backend_board",
+        "backend_board -> exact_target_board_app_shell_measurement",
+        "exact_target_board_app_shell_measurement -> dse_measurement_campaign",
+        "dse_selection_rationale -> selected_architecture_arch_08fc81fe6157"
+      ],
+      "nodes": [
+        "parameter_binding",
+        "code_generation",
+        "selected_architecture_arch_08fc81fe6157",
+        "dse_measurement_campaign",
+        "exact_target_board_app_shell_measurement",
+        "backend_board"
+      ]
+    },
+    "schema_version": "spatialaccagent.flow_controller_decision.v1",
+    "stage": "parameter_binding",
+    "status": "proceed",
+    "summary": "Parameter binding passed all static checks with returncode 0, and SACG memory truth shows zero active contamination, retry, or backtrack blockers. Proceed to code_generation using selected legal candidate arch_08fc81fe6157 while preserving exact target-board app-shell Vivado measurement as a downstream backend_board/DSE-campaign obligation. No QoR, Pareto, feasibility, or hardware-pass claim is authorized from current evidence."
+  },
+  "prompt_bytes": 66432,
+  "prompt_hash": "bbbc977e22af83e1de6cea83482cd063e5a91a7805af006011005215b267c0ad",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.flow_controller_decision.v1\",\n  \"agent\": \"flow_controller_agent\",\n  \"stage\": \"parameter_binding\",\n  \"status\": \"proceed\",\n  \"summary\": \"Parameter binding passed all static checks with returncode 0, and SACG memory truth shows zero active contamination, retry, or backtrack blockers. Proceed to code_generation using selected legal candidate arch_08fc81fe6157 while preserving exact target-board app-shell Vivado measurement as a downstream backend_board/DSE-campaign obligation. No QoR, Pareto, feasibility, or hardware-pass claim is authorized from current evidence.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"parameter_binding\",\n      \"code_generation\",\n      \"selected_architecture_arch_08fc81fe6157\",\n      \"dse_measurement_campaign\",\n      \"exact_target_board_app_shell_measurement\",\n      \"backend_board\"\n    ],\n    \"edges\": [\n      \"parameter_binding -> code_generation\",\n      \"selected_architecture_arch_08fc81fe6157 -> code_generation\",\n      \"code_generation -> verification_artifacts -> debug_loop -> backend_board\",\n      \"backend_board -> exact_target_board_app_shell_measurement\",\n      \"exact_target_board_app_shell_measurement -> dse_measurement_campaign\",\n      \"dse_selection_rationale -> selected_architecture_arch_08fc81fe6157\"\n    ],\n    \"constraints\": [\n      \"Do not claim QoR, Pareto optimality, feasibility, or hardware pass before exact target-board app-shell measurement\",\n      \"Do not modify selected candidate parameters\",\n      \"Preserve exact board AXI/DDR interface facts and Transformer-block-only DUT scope\",\n      \"Parameter binding static checks must pass before code generation\",\n      \"Exact Vivado measurement is a downstream backend obligation, not a current parameter_binding blocker\",\n      \"Framework, hash, manifest, provenance, evidence-binding, and stage-routing failures must retry the current stage rather than rewind hardware design stages\",\n      \"Preserve int8 activation, int4 weight, int32 accumulator/scale numeric policy, nearest_even rounding, saturation, and 512-bit cache refill contract\"\n    ],\n    \"artifacts\": [\n      \"parameter_binding.json\",\n      \"selected_architecture.json\",\n      \"dse_selection_rationale.json\",\n      \"parameter_static_checks.json\",\n      \"dse_constraint_report.json\",\n      \"dse_measurements.jsonl\",\n      \"materialized_refill_rate_contract\"\n    ]\n  },\n  \"observations\": [\n    \"Stage parameter_binding reports stage_passed=true with attempt_count=1 and command returncode 0.\",\n    \"parameter_binding checker_summary shows 6 passed, 0 failed, 0 errors, and 0 warnings.\",\n    \"SACG memory truth reports active_contamination_barrier_count=0, open_backtrack_request_count=0, and open_retry_request_count=0; no current SACG-memory blockers are active.\",\n    \"sacg_memory recent_stage_outcomes records parameter_binding as status=ready with summary 'parameter static checks passed'.\",\n    \"No framework/hash/provenance/evidence-binding/stage-routing failure category is present; therefore no design-stage backtrack is authorized.\",\n    \"DSE campaign is incomplete: measured_candidate_count=0, unmeasured_candidate_count=360, and selected candidate arch_08fc81fe6157 has no exact target-board app-shell measurement.\",\n    \"arch_08fc81fe6157 is legal and unmeasured; it is selected only as the next measurement-priority candidate, not as measured-optimal or Pareto-final.\",\n    \"The qor_estimator status is insufficient_evidence and its validation sample_count is insufficient_independent_samples; ranking is not QoR evidence.\",\n    \"materialized_refill_rate_contract passes with cache_refill_data_width_bits=512, derived from the board AXI data width.\",\n    \"AXI transfer layout checks are static alignment/packing checks only; they are not bandwidth, timing, power, or throughput evidence.\",\n    \"LLM planning is mandatory and satisfied with requested model deepseek-v4-pro.\",\n    \"No sub-agent role_assignment or stage_gate_policy was supplied in this flow-controller review slice, so no specialist-boundary conflict is inferred.\"\n  ],\n  \"risks\": [\n    \"Actual Vivado resource usage, timing, and derived throughput for arch_08fc81fe6157 remain unknown; downstream backend measurement may still prove resource/implementation infeasible.\",\n    \"The calibrated estimator has insufficient independent validation, so the selected candidate's rank must not be treated as quality-of-result evidence.\",\n    \"DSE exact measurement is pending; if the candidate later fails with cited resource/timing evidence, the flow may need a bounded design backtrack under an allowed hardware-design failure category, but no such backtrack is authorized now.\",\n    \"Code generation must preserve the chosen numeric policy and board AXI/DDR facts; cross-layer inconsistencies in data width, alignment, or stream order would become downstream blockers.\",\n    \"clock_target_mhz is currently null, so no timing objective is bound yet; this is a later backend timing concern, not a current parameter-binding blocker.\",\n    \"The DUT scope excludes embedding/tokenization, final model norm, LM head/logits, and sampling; code generation and golden boundaries must not expand that scope.\",\n    \"The selected candidate is an LLM measurement-order choice, not deterministic Pareto-final evidence; downstream stages must not overstate its status.\"\n  ],\n  \"proposed_actions\": [\n    \"Proceed to code_generation using the validated selected architecture arch_08fc81fe6157.\",\n    \"Record the parameter-binding promotion in SACG memory and carry forward the downstream DSE exact target-board app-shell measurement obligation.\",\n    \"Run code-generation manifest/static checks before RTL generation and keep the candidate parameters immutable.\",\n    \"Defer real Vivado synthesis/resource/timing measurement to backend_board after board-accurate RTL is available.\",\n    \"If a future measurement fails with linked tool evidence in an allowed hardware-design failure category, raise a bounded backtrack request instead of silently retrying or modifying the candidate.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"advance.parameter_binding.to.code_generation\",\n      \"stage\": \"code_generation\",\n      \"action_type\": \"real_tool_execution\",\n      \"rationale\": \"parameter_binding static checks passed 6/6, the stage command returned 0, and SACG memory truth shows zero active blockers. Promote the validated selected architecture into code generation while preserving DSE exact measurement as downstream.\",\n      \"consumes\": [\n        \"artifact.stage4.parameter_binding\",\n        \"artifact.stage4.selected_architecture\",\n        \"artifact.stage4.dse_selection_rationale\",\n        \"artifact.stage4.parameter_static_checks\"\n      ],\n      \"produces\": [\n        \"stage_transition.parameter_binding_to_code_generation\",\n        \"sacg_memory.stage_outcome.code_generation_ready\"\n      ],\n      \"tool_roles\": [\n        \"sacg_memory_update\",\n        \"code_generation_manifest_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"parameter_binding_static_check\",\n        \"sacg_static_check\",\n        \"sacg_memory_check\"\n      ],\n      \"on_failure\": \"Retry the current parameter_binding stage for any framework/hash/provenance/route failure without rewinding design stages; if code_generation_manifest_static_check fails, block RTL generation until the stage-input/manifest contract is corrected.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"dse_measure.arch_08fc81fe6157.downstream_exact_synthesis\",\n      \"stage\": \"backend_board\",\n      \"action_type\": \"real_tool_execution\",\n      \"rationale\": \"The formal DSE campaign remains incomplete and the selected legal candidate requires exact target-board app-shell synthesis measurement. Queue this real tool action for backend_board after code generation and board-accurate wrapper availability; it is not a current parameter_binding blocker and must not become a QoR or hardware-pass claim.\",\n      \"consumes\": [\n        \"artifact.stage4.selected_architecture\",\n        \"artifact.stage4.dse_selection_rationale\",\n        \"artifact.stage4.dse_constraint_report\",\n        \"materialized_refill_rate_contract\"\n      ],\n      \"produces\": [\n        \"dse_measurements.jsonl.entry.arch_08fc81fe6157\",\n        \"vivado_utilization_report.arch_08fc81fe6157\",\n        \"vivado_timing_report.arch_08fc81fe6157\",\n        \"rtl_cycle_derived_throughput.arch_08fc81fe6157\"\n      ],\n      \"tool_roles\": [\n        \"case_vivado_synthesis\",\n        \"case_vivado_synthesis_report_check\",\n        \"timing_resource_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"parameter_binding_static_check\",\n        \"timing_resource_check\"\n      ],\n      \"on_failure\": \"Record actual synthesis failure or implementation infeasibility in dse_measurements.jsonl; do not modify candidate parameters or claim QoR/hardware pass; advance to the next supplied unmeasured legal candidate unless the deterministic evaluator flags legality, and raise a bounded backtrack request only if a cited hardware-design failure category with linked tool evidence applies.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/005_parameter_binding/llm/flow_controller_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/005_parameter_binding/llm/flow_controller_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "flow_orchestration",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

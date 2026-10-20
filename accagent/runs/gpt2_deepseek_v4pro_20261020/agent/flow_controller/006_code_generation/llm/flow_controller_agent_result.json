@@ -1,0 +1,179 @@
+{
+  "agent": "flow_controller_agent",
+  "duration_sec": 54.52691359794699,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "7bc5073a69444389b9ebcc648f97e424",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/006_code_generation/llm/flow_controller_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "flow_controller_agent",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "codegen_compile_gate_check",
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check",
+          "codegen_contract_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "stage_gate_advance",
+        "consumes": [
+          "artifact.code_generation_manifest",
+          "generated/chisel/logs/compile_check.json",
+          "generated/chisel/logs/codegen_contract_check.json",
+          "generated/chisel/logs/codegen_package_static_check.json",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "sacg_memory_truth"
+        ],
+        "id": "codegen.advance_to_verification_artifacts",
+        "on_failure": "Keep publish_status as candidate_only, localize the failing current-stage artifact or checker, repair only the Stage 5 artifact or checker, and rerun the affected compile/contract/static checks before attempting verification_artifacts handoff. Do not rewind earlier hardware design stages for framework, hash, manifest, provenance, or stage-routing failures.",
+        "produces": [
+          "artifact.code_generation_handoff.ready",
+          "sacg_memory.recent_stage_outcome.stage5.code_generation"
+        ],
+        "rationale": "All current code-generation acceptance evidence passes: compile/elaboration returncode is 0, required SystemVerilog outputs are present, contract and package static checks pass with no errors or warnings, and sacg_memory_truth has no active contamination, retry, or backtrack barriers. Promote the ready handoff and proceed to verification_artifacts without rewinding hardware design stages.",
+        "requires_approval": false,
+        "stage": "code_generation",
+        "tool_roles": [
+          "code_generation_manifest_static_check",
+          "codegen_package_static_check",
+          "codegen_contract_check",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "sacg_memory_check"
+        ],
+        "action_type": "verification_planning",
+        "consumes": [
+          "artifact.code_generation_handoff.ready",
+          "artifact.code_generation_manifest",
+          "generated/chisel/memory/memory_layout.json",
+          "generated/chisel/runtime/runtime_config.json",
+          "generated/chisel/GeneratedAcceleratorTop.sv",
+          "generated/chisel/GeneratedAxiDdrTop.sv",
+          "sacg_memory_truth"
+        ],
+        "id": "verification_artifacts.plan_compile_only_hierarchy",
+        "on_failure": "Stay in verification_artifacts and repair the verification plan or artifact contract against the failing static/checker evidence. Do not rewind to code_generation for verification-planning, contract, protocol, or audit failures; do not promote any verification layer without current-source VCS compile-only evidence.",
+        "produces": [
+          "artifact.stage6.verification_plan",
+          "artifact.stage6.verification_artifact_contract",
+          "sacg_memory.recent_stage_outcome.stage6.verification_planning"
+        ],
+        "rationale": "With code_generation promoted, the next bounded action is to plan verification artifacts in bottom-up order: operator/leaf modules, connected single-transformer-layer kernel, then the exact board-accurate AXI/DDR wrapper. The plan must use the existing compile-only VCS execution modes and make successful current-source VCS compilation, elaboration, and linking the sole acceptance standard; it must not require simulation execution, runtime weight loading, golden comparisons, or numerical correctness.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "sacg_memory_check",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "Stage 5 code_generation command wrapper returned returncode 0 and produced a ready code-generation report.",
+      "The compile gate passed all six SBT commands, including Scala compilation, GeneratedContractCheck, both standard elaborations, and both Vivado-oriented elaborations.",
+      "GeneratedContractCheck passed with hidden=768, intermediate=3072, lanes=16, bits=8/8/8.",
+      "codegen_contract_check passed all twelve listed contracts with zero errors and zero warnings.",
+      "codegen_package_static_check passed all five listed package-structure contracts with zero errors and zero warnings.",
+      "Required generated outputs GeneratedAcceleratorTop.sv and GeneratedAxiDdrTop.sv are present; missing_generated_outputs and empty_generated_outputs are empty.",
+      "sacg_memory_truth shows active_contamination_barrier_count=0, open_backtrack_request_count=0, and open_retry_request_count=0; there are no current SACG memory blockers.",
+      "design_team reports no_split with zero subtasks and empty executable_actions, which is acceptable for this non-split stage.",
+      "hierarchical_learning_context contains no validated lower-layer certificates, so Stage 6 will start from planning rather than reusing previously certified kernel evidence.",
+      "generated memory_layout.json and runtime_config.json are present and internally consistent for Stage 5, but they are generated artifacts and have not yet been validated against real board, runtime, or VCS evidence.",
+      "compile_gate.fpga_ip_modules is empty; this is a downstream verification item for FPGA IP simulation/implementation timing identity rather than a current code-generation failure.",
+      "clock_target_mhz=0 and board-clock/backend timing evidence remain Stage 7 or later obligations and must not be resolved by restarting code_generation."
+    ],
+    "proposed_actions": [
+      "Promote the Stage 5 candidate code-generation manifest to a ready handoff and record the outcome in SACG memory.",
+      "Advance to verification_artifacts and create a bottom-up compile-only VCS verification plan covering operator/leaf, connected single-transformer-layer kernel, and exact board-accurate AXI/DDR wrapper.",
+      "In Stage 6 planning, consume code_generation_manifest.json, generated memory_layout.json, runtime_config.json, and generated top-level SystemVerilog outputs, while keeping generated contract checks authoritative for Stage 5.",
+      "Require all verification artifacts to use successful current-source VCS compilation, elaboration, and linking as the sole acceptance standard.",
+      "Keep future timing and board-shell integration actions in Stage 7/backend_board; never route backend timing repair to code_generation or parameter_binding."
+    ],
+    "risks": [
+      "The absence of current-source VCS compile/elaboration/link certificates and lower-layer verification artifacts is a downstream Stage 6 obligation, not a reason to rewind code_generation.",
+      "memory_layout.json and runtime_config.json may contain board-inconsistent assumptions until Stage 6 validates them against the exact board wrapper and user-supplied sample project.",
+      "Derived fields in generated_top.params, such as head_dim, num_q_heads, num_kv_heads, max_seq_len, and board_axi_data_width_bits, must be explicitly consumed by verification contracts to avoid downstream ambiguity.",
+      "clock_target_mhz=0 is an unknown board shell clock; assigning a nonzero target without board-profile evidence or explicit approval could contaminate later timing work.",
+      "compile_gate.fpga_ip_modules being empty means Stage 6 must verify that generated FPGA IP simulation closures and implementation interfaces/latencies remain identical.",
+      "Stage 6 verification planning must use the existing compile-only VCS roles and must not add simulation execution, golden comparison, waveform, or runtime weight consumption as acceptance prerequisites.",
+      "Backend timing repair, if later needed, belongs in Stage 7 and must preserve Stage 4 parameters and shared templates; it must not restart code_generation."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "code_generation_manifest.json",
+        "generated/chisel/logs/compile_check.json",
+        "generated/chisel/logs/codegen_contract_check.json",
+        "generated/chisel/logs/codegen_package_static_check.json",
+        "generated/chisel/memory/memory_layout.json",
+        "generated/chisel/runtime/runtime_config.json",
+        "generated/chisel/GeneratedAcceleratorTop.sv",
+        "generated/chisel/GeneratedAxiDdrTop.sv",
+        "sacg_memory_truth"
+      ],
+      "constraints": [
+        "constraint.codegen.package",
+        "constraint.codegen.compile_gate",
+        "constraint.codegen.contract_check",
+        "constraint.verification.vcs_compile_only",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "artifact.stage4.parameter_binding -> generated.arch_plan",
+        "generated.chisel_modules -> generated.codegen_compile_gate",
+        "generated.memory_layout + generated.runtime_config -> generated.codegen_contract_check",
+        "artifact.code_generation_manifest -> artifact.code_generation_handoff.ready",
+        "artifact.code_generation_handoff.ready + generated.memory_layout + generated.runtime_config -> artifact.stage6.verification_artifact_contract",
+        "artifact.stage6.verification_artifact_contract -> current-source VCS compile-only leaf/connected-kernel/board evidence"
+      ],
+      "nodes": [
+        "generated.chisel_modules",
+        "generated.top_wrapper",
+        "generated.fpga_axi_ddr_top_wrapper",
+        "generated.memory_layout",
+        "generated.runtime_config",
+        "generated.codegen_compile_gate",
+        "generated.codegen_contract_check",
+        "artifact.code_generation_manifest",
+        "artifact.code_generation_handoff.ready",
+        "artifact.stage6.verification_plan",
+        "artifact.stage6.verification_artifact_contract"
+      ]
+    },
+    "schema_version": "spatialaccagent.agent_response.v0",
+    "stage": "code_generation",
+    "status": "ready",
+    "summary": "Code generation passed all supplied current-stage gates: the stage worker returned returncode 0, all six compile/elaboration commands passed, required GeneratedAcceleratorTop.sv and GeneratedAxiDdrTop.sv are present, codegen contract and package static checks pass with zero errors and zero warnings, and sacg_memory_truth reports zero active contamination barriers, retries, or backtracks. The design team should proceed to verification_artifacts and plan bottom-up current-source VCS compile-only evidence, without re-entering code_generation."
+  },
+  "prompt_bytes": 81382,
+  "prompt_hash": "266a6b3e948c5e09048e58fe1c1df03a3f6a3ce49dcbde992b156105671350ea",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.agent_response.v0\",\n  \"agent\": \"flow_controller_agent\",\n  \"stage\": \"code_generation\",\n  \"status\": \"ready\",\n  \"summary\": \"Code generation passed all supplied current-stage gates: the stage worker returned returncode 0, all six compile/elaboration commands passed, required GeneratedAcceleratorTop.sv and GeneratedAxiDdrTop.sv are present, codegen contract and package static checks pass with zero errors and zero warnings, and sacg_memory_truth reports zero active contamination barriers, retries, or backtracks. The design team should proceed to verification_artifacts and plan bottom-up current-source VCS compile-only evidence, without re-entering code_generation.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"generated.chisel_modules\",\n      \"generated.top_wrapper\",\n      \"generated.fpga_axi_ddr_top_wrapper\",\n      \"generated.memory_layout\",\n      \"generated.runtime_config\",\n      \"generated.codegen_compile_gate\",\n      \"generated.codegen_contract_check\",\n      \"artifact.code_generation_manifest\",\n      \"artifact.code_generation_handoff.ready\",\n      \"artifact.stage6.verification_plan\",\n      \"artifact.stage6.verification_artifact_contract\"\n    ],\n    \"edges\": [\n      \"artifact.stage4.parameter_binding -> generated.arch_plan\",\n      \"generated.chisel_modules -> generated.codegen_compile_gate\",\n      \"generated.memory_layout + generated.runtime_config -> generated.codegen_contract_check\",\n      \"artifact.code_generation_manifest -> artifact.code_generation_handoff.ready\",\n      \"artifact.code_generation_handoff.ready + generated.memory_layout + generated.runtime_config -> artifact.stage6.verification_artifact_contract\",\n      \"artifact.stage6.verification_artifact_contract -> current-source VCS compile-only leaf/connected-kernel/board evidence\"\n    ],\n    \"constraints\": [\n      \"constraint.codegen.package\",\n      \"constraint.codegen.compile_gate\",\n      \"constraint.codegen.contract_check\",\n      \"constraint.verification.vcs_compile_only\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.deployment.board\"\n    ],\n    \"artifacts\": [\n      \"code_generation_manifest.json\",\n      \"generated/chisel/logs/compile_check.json\",\n      \"generated/chisel/logs/codegen_contract_check.json\",\n      \"generated/chisel/logs/codegen_package_static_check.json\",\n      \"generated/chisel/memory/memory_layout.json\",\n      \"generated/chisel/runtime/runtime_config.json\",\n      \"generated/chisel/GeneratedAcceleratorTop.sv\",\n      \"generated/chisel/GeneratedAxiDdrTop.sv\",\n      \"sacg_memory_truth\"\n    ]\n  },\n  \"observations\": [\n    \"Stage 5 code_generation command wrapper returned returncode 0 and produced a ready code-generation report.\",\n    \"The compile gate passed all six SBT commands, including Scala compilation, GeneratedContractCheck, both standard elaborations, and both Vivado-oriented elaborations.\",\n    \"GeneratedContractCheck passed with hidden=768, intermediate=3072, lanes=16, bits=8/8/8.\",\n    \"codegen_contract_check passed all twelve listed contracts with zero errors and zero warnings.\",\n    \"codegen_package_static_check passed all five listed package-structure contracts with zero errors and zero warnings.\",\n    \"Required generated outputs GeneratedAcceleratorTop.sv and GeneratedAxiDdrTop.sv are present; missing_generated_outputs and empty_generated_outputs are empty.\",\n    \"sacg_memory_truth shows active_contamination_barrier_count=0, open_backtrack_request_count=0, and open_retry_request_count=0; there are no current SACG memory blockers.\",\n    \"design_team reports no_split with zero subtasks and empty executable_actions, which is acceptable for this non-split stage.\",\n    \"hierarchical_learning_context contains no validated lower-layer certificates, so Stage 6 will start from planning rather than reusing previously certified kernel evidence.\",\n    \"generated memory_layout.json and runtime_config.json are present and internally consistent for Stage 5, but they are generated artifacts and have not yet been validated against real board, runtime, or VCS evidence.\",\n    \"compile_gate.fpga_ip_modules is empty; this is a downstream verification item for FPGA IP simulation/implementation timing identity rather than a current code-generation failure.\",\n    \"clock_target_mhz=0 and board-clock/backend timing evidence remain Stage 7 or later obligations and must not be resolved by restarting code_generation.\"\n  ],\n  \"risks\": [\n    \"The absence of current-source VCS compile/elaboration/link certificates and lower-layer verification artifacts is a downstream Stage 6 obligation, not a reason to rewind code_generation.\",\n    \"memory_layout.json and runtime_config.json may contain board-inconsistent assumptions until Stage 6 validates them against the exact board wrapper and user-supplied sample project.\",\n    \"Derived fields in generated_top.params, such as head_dim, num_q_heads, num_kv_heads, max_seq_len, and board_axi_data_width_bits, must be explicitly consumed by verification contracts to avoid downstream ambiguity.\",\n    \"clock_target_mhz=0 is an unknown board shell clock; assigning a nonzero target without board-profile evidence or explicit approval could contaminate later timing work.\",\n    \"compile_gate.fpga_ip_modules being empty means Stage 6 must verify that generated FPGA IP simulation closures and implementation interfaces/latencies remain identical.\",\n    \"Stage 6 verification planning must use the existing compile-only VCS roles and must not add simulation execution, golden comparison, waveform, or runtime weight consumption as acceptance prerequisites.\",\n    \"Backend timing repair, if later needed, belongs in Stage 7 and must preserve Stage 4 parameters and shared templates; it must not restart code_generation.\"\n  ],\n  \"proposed_actions\": [\n    \"Promote the Stage 5 candidate code-generation manifest to a ready handoff and record the outcome in SACG memory.\",\n    \"Advance to verification_artifacts and create a bottom-up compile-only VCS verification plan covering operator/leaf, connected single-transformer-layer kernel, and exact board-accurate AXI/DDR wrapper.\",\n    \"In Stage 6 planning, consume code_generation_manifest.json, generated memory_layout.json, runtime_config.json, and generated top-level SystemVerilog outputs, while keeping generated contract checks authoritative for Stage 5.\",\n    \"Require all verification artifacts to use successful current-source VCS compilation, elaboration, and linking as the sole acceptance standard.\",\n    \"Keep future timing and board-shell integration actions in Stage 7/backend_board; never route backend timing repair to code_generation or parameter_binding.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"codegen.advance_to_verification_artifacts\",\n      \"stage\": \"code_generation\",\n      \"action_type\": \"stage_gate_advance\",\n      \"rationale\": \"All current code-generation acceptance evidence passes: compile/elaboration returncode is 0, required SystemVerilog outputs are present, contract and package static checks pass with no errors or warnings, and sacg_memory_truth has no active contamination, retry, or backtrack barriers. Promote the ready handoff and proceed to verification_artifacts without rewinding hardware design stages.\",\n      \"consumes\": [\n        \"artifact.code_generation_manifest\",\n        \"generated/chisel/logs/compile_check.json\",\n        \"generated/chisel/logs/codegen_contract_check.json\",\n        \"generated/chisel/logs/codegen_package_static_check.json\",\n        \"generated/chisel/memory/memory_layout.json\",\n        \"generated/chisel/runtime/runtime_config.json\",\n        \"sacg_memory_truth\"\n      ],\n      \"produces\": [\n        \"artifact.code_generation_handoff.ready\",\n        \"sacg_memory.recent_stage_outcome.stage5.code_generation\"\n      ],\n      \"tool_roles\": [\n        \"code_generation_manifest_static_check\",\n        \"codegen_package_static_check\",\n        \"codegen_contract_check\",\n        \"sacg_memory_update\"\n      ],\n      \"acceptance_checkers\": [\n        \"codegen_compile_gate_check\",\n        \"code_generation_manifest_static_check\",\n        \"codegen_package_static_check\",\n        \"codegen_contract_check\",\n        \"sacg_memory_check\"\n      ],\n      \"on_failure\": \"Keep publish_status as candidate_only, localize the failing current-stage artifact or checker, repair only the Stage 5 artifact or checker, and rerun the affected compile/contract/static checks before attempting verification_artifacts handoff. Do not rewind earlier hardware design stages for framework, hash, manifest, provenance, or stage-routing failures.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"verification_artifacts.plan_compile_only_hierarchy\",\n      \"stage\": \"verification_artifacts\",\n      \"action_type\": \"verification_planning\",\n      \"rationale\": \"With code_generation promoted, the next bounded action is to plan verification artifacts in bottom-up order: operator/leaf modules, connected single-transformer-layer kernel, then the exact board-accurate AXI/DDR wrapper. The plan must use the existing compile-only VCS execution modes and make successful current-source VCS compilation, elaboration, and linking the sole acceptance standard; it must not require simulation execution, runtime weight loading, golden comparisons, or numerical correctness.\",\n      \"consumes\": [\n        \"artifact.code_generation_handoff.ready\",\n        \"artifact.code_generation_manifest\",\n        \"generated/chisel/memory/memory_layout.json\",\n        \"generated/chisel/runtime/runtime_config.json\",\n        \"generated/chisel/GeneratedAcceleratorTop.sv\",\n        \"generated/chisel/GeneratedAxiDdrTop.sv\",\n        \"sacg_memory_truth\"\n      ],\n      \"produces\": [\n        \"artifact.stage6.verification_plan\",\n        \"artifact.stage6.verification_artifact_contract\",\n        \"sacg_memory.recent_stage_outcome.stage6.verification_planning\"\n      ],\n      \"tool_roles\": [\n        \"verification_plan_static_check\",\n        \"hierarchical_verification_plan_check\",\n        \"verification_artifact_contract_check\",\n        \"tool_protocol_check\",\n        \"human_boundary_check\",\n        \"sacg_memory_check\",\n        \"sacg_memory_update\"\n      ],\n      \"acceptance_checkers\": [\n        \"verification_plan_static_check\",\n        \"hierarchical_verification_plan_check\",\n        \"verification_artifact_contract_check\",\n        \"tool_protocol_check\",\n        \"human_boundary_check\",\n        \"sacg_memory_check\"\n      ],\n      \"on_failure\": \"Stay in verification_artifacts and repair the verification plan or artifact contract against the failing static/checker evidence. Do not rewind to code_generation for verification-planning, contract, protocol, or audit failures; do not promote any verification layer without current-source VCS compile-only evidence.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/006_code_generation/llm/flow_controller_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/006_code_generation/llm/flow_controller_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "flow_orchestration",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

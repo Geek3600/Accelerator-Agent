@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
-from accagent.framework.stage_pipeline import PipelinePlanningError, build_pipeline_plan, normalize_attention_contract
+from accagent.framework.stage_pipeline import PipelinePlanningError, build_pipeline_plan, normalize_attention_contract, board_axi_contract
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -182,6 +182,36 @@ def state_for(family: str, temp_dir: Path) -> dict:
 
 
 class SemanticPipelinePlanTest(TestCase):
+    def test_board_axi_accepts_explicitly_extracted_channel_prefix(self) -> None:
+        with TemporaryDirectory() as temp:
+            state = state_for("gpt2", Path(temp))
+            memory = next(c["facts"] for c in state["constraints"] if c["id"] == "constraint.memory.board")
+            system = memory.get("memory_system", memory)
+            system.pop("core_side_interface_name", None)
+            system["ddr_channel_prefix"] = "user_declared_ddr_axi_"
+            self.assertEqual(board_axi_contract(state)["core_side_interface_name"], "user_declared_ddr_axi_")
+            from accagent.framework.stage_params import board_axi
+            self.assertEqual(board_axi(state)["core_side_interface_name"], "user_declared_ddr_axi_")
+
+    def test_w4a8_streams_requantize_without_narrowing_mac_accumulators(self) -> None:
+        for family in ("gpt2", "qwen2", "llama"):
+            with self.subTest(family=family), TemporaryDirectory() as temp:
+                state = state_for(family, Path(temp))
+                numeric = next(c["facts"] for c in state["constraints"] if c["id"] == "constraint.numeric.policy")
+                numeric["default_rules"].update(weight_dtype="int4", activation_dtype="int8", acc_dtype="int32", scale_dtype="int32", rounding="nearest_even", saturation=True)
+                plan = build_pipeline_plan(state)
+                self.assertEqual(plan["status"], "ready")
+                for stage in plan["stages"]:
+                    contract = stage["numeric_contract"]
+                    self.assertEqual(contract["input_bits"], 8)
+                    self.assertEqual(contract["output_bits"], 8)
+                    self.assertEqual(contract["accumulator_bits"], 32)
+                bias_terms = [term for term in plan["memory_schedule"]["weight_storage_terms"] if str(term.get("physical_role", "")).endswith("_bias")]
+                if family == "gpt2":
+                    self.assertTrue(bias_terms)
+                for term in bias_terms:
+                    self.assertEqual(term["element_bits"], 32)
+
     def test_gpt2_uses_single_branch_dense_gelu_mlp_and_mha(self) -> None:
         with TemporaryDirectory() as temp:
             plan = build_pipeline_plan(state_for("gpt2", Path(temp)))

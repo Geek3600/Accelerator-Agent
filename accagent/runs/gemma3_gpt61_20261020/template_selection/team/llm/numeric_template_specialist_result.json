@@ -1,0 +1,128 @@
+{
+  "agent": "numeric_template_specialist",
+  "duration_sec": 58.09661331604002,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "491ff5952daa4688a28239649dd4cdc2",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/numeric_template_specialist_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "numeric_template_specialist",
+    "approval_required_for": [
+      "Any proposed change to model hidden_size, num_q_heads, num_kv_heads, or head_dim.",
+      "Any proposed change to the template attention shape contract or its interpretation as an architecture change.",
+      "Any change to the numeric policy or template internals."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "numeric_policy_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_stage_artifact.parameter_bindings",
+          "candidate_stage_artifact.unsupported_bindings",
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.template_source_checks",
+          "candidate_stage_artifact.selected_templates",
+          "artifact.input.model_config",
+          "artifact.input.template_metadata",
+          "constraint.shape.model",
+          "constraint.template.library"
+        ],
+        "id": "template_selection.reconcile_attention_shape_predicate",
+        "on_failure": "Keep template_selection incomplete and report the predicate as unresolved to template_selection.cross_layer_evidence_gate. Do not change hidden_size, head_dim, head counts, numeric policy, or template internals; any proposed architecture or model change requires separate approval.",
+        "produces": [
+          "template_selection.binding_numeric_audit",
+          "template_selection.shape_predicate_disposition"
+        ],
+        "rationale": "The binding values establish the 1152 versus 1024 arithmetic difference, but the supplied source/interface evidence does not establish the equality as a required architectural invariant. Adjudicate the predicate without editing any model, numeric, or template value, and preserve the checker failure unless its basis is resolved.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "architecture_review",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "numeric_policy_check"
+        ]
+      }
+    ],
+    "observations": [
+      "All required parameters are populated for the selected block wrapper and operators; the binding records report no missing parameters. The block wrapper and self-attention are marked incomplete only because of the reported shape relation.",
+      "The block wrapper binds hidden_size=1152, num_q_heads=4, num_kv_heads=1, head_dim=256, intermediate_size=6912, token_count=16, and max_seq_len=16. Self-attention binds the corresponding shape values and seq_len=16.",
+      "The reported arithmetic is correct for both entries: num_q_heads \u00d7 head_dim is 1024, which differs from hidden_size by 128. These are two occurrences of the same predicate, not evidence of two distinct underlying shape conflicts.",
+      "The supplied named constraints and template source/interface records do not state that hidden_size must equal num_q_heads \u00d7 head_dim. Source/interface checks pass and report complete constructor/metadata parameter coverage, but the summary does not expose source semantics establishing this particular equality as mandatory.",
+      "Accordingly, the arithmetic discrepancy is supported by the bound values, but classifying it as illegal is supported only if the checker\u2019s equality predicate is an authoritative template/model invariant. That invariant is not independently evidenced in the supplied summary.",
+      "Numeric parameters are explicitly sourced from the numeric policy: weight_bits=4, activation-derived input/element/output widths=8, acc_bits=32, and integer_mode=true. Norm epsilon is bound from model_config.norm.eps as 1e-06.",
+      "lanes, compute_array_rows, and compute_array_cols are explicitly candidate-bound from the design-space, memory, and numeric inputs, with null values pending candidate selection. The stage gate policy assigns their concrete selection to Stage 4; this is not a missing-binding blocker here.",
+      "The listed template source/interface checks pass with source hashes, and operator coverage is 11/11. Attention semantic expansion and cross-layer trace checks also pass. The cross-layer trace shows the numeric, memory, runtime, deployment, and input-consistency constraints present.",
+      "The candidate checker results do not include a numeric_policy_check result or numeric_compare result. Numeric provenance is visible in the bindings, but this review does not claim those checkers passed; numerical comparison is not evidenced by the supplied artifact."
+    ],
+    "proposed_actions": [
+      "Hand off the shared shape-predicate ambiguity and its exact arithmetic to template_selection.cross_layer_evidence_gate; retain the current values and the checker failure pending disposition.",
+      "Reconcile the checker\u2019s hidden_size == num_q_heads \u00d7 head_dim predicate against the supplied model/template contract. If the predicate is not established, record the checker finding as unresolved rather than changing a binding; if it is established, treat the conflict as a real architecture/model-shape issue requiring authorized resolution.",
+      "Run the numeric-policy checker against the existing bindings to confirm the numeric mapping; do not use numeric_compare as a substitute for missing stage-level numeric output evidence."
+    ],
+    "risks": [
+      "The current parameter-binding checker reports a failure for both gemma3_text_block and self_attention, so the stage remains incomplete under the supplied gate policy.",
+      "The legality predicate may be an unsupported checker assumption or may be a real template contract; the supplied hash and interface summaries alone do not resolve that distinction.",
+      "Changing hidden_size, num_q_heads, head_dim, or template semantics to make the checker pass without resolving the invariant would silently alter model or architecture facts."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.parameter_bindings",
+        "candidate_stage_artifact.selected_templates",
+        "candidate_stage_artifact.template_source_checks",
+        "candidate_stage_artifact.checker_results",
+        "candidate_stage_artifact.unsupported_bindings",
+        "candidate_stage_artifact.cross_layer_trace",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.design_space",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata"
+      ],
+      "constraints": [
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "constraint.shape.model -> gemma3_text_block and self_attention parameter bindings",
+        "constraint.template.library -> hash-bound template sources and constructor/interface checks",
+        "constraint.numeric.policy -> bound weight, activation, and accumulator parameters",
+        "template_parameter_binding_check -> reported hidden_size/head-dimension relation"
+      ],
+      "nodes": [
+        "gemma3_text_block",
+        "self_attention",
+        "hidden_size=1152",
+        "num_q_heads=4",
+        "head_dim=256",
+        "numeric_policy_bindings"
+      ]
+    },
+    "schema_version": "spatialaccagent.numeric_template_specialist.v0",
+    "stage": "template_selection",
+    "status": "incomplete",
+    "summary": "The bindings support the arithmetic mismatch reported for both the block wrapper and self-attention: 4 query heads \u00d7 head_dim 256 = 1024, versus hidden_size 1152. However, the supplied constraints and source/interface metadata do not establish that hidden_size must equal the attention projection width, so they do not independently substantiate that mismatch as an architectural legality failure. The current parameter-binding checker still fails, so the selection cannot be promoted until that invariant is supported or the checker finding is resolved. No bound value should be changed by inference."
+  },
+  "prompt_bytes": 79621,
+  "prompt_hash": "accafd7e083c3f57c480a3756cc8db662f3423de5c3c8ea75424abfb9ed4a5d2",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.numeric_template_specialist.v0\",\n  \"agent\": \"numeric_template_specialist\",\n  \"stage\": \"template_selection\",\n  \"status\": \"incomplete\",\n  \"summary\": \"The bindings support the arithmetic mismatch reported for both the block wrapper and self-attention: 4 query heads \u00d7 head_dim 256 = 1024, versus hidden_size 1152. However, the supplied constraints and source/interface metadata do not establish that hidden_size must equal the attention projection width, so they do not independently substantiate that mismatch as an architectural legality failure. The current parameter-binding checker still fails, so the selection cannot be promoted until that invariant is supported or the checker finding is resolved. No bound value should be changed by inference.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"gemma3_text_block\",\n      \"self_attention\",\n      \"hidden_size=1152\",\n      \"num_q_heads=4\",\n      \"head_dim=256\",\n      \"numeric_policy_bindings\"\n    ],\n    \"edges\": [\n      \"constraint.shape.model -> gemma3_text_block and self_attention parameter bindings\",\n      \"constraint.template.library -> hash-bound template sources and constructor/interface checks\",\n      \"constraint.numeric.policy -> bound weight, activation, and accumulator parameters\",\n      \"template_parameter_binding_check -> reported hidden_size/head-dimension relation\"\n    ],\n    \"constraints\": [\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.cross_layer.input_consistency\"\n    ],\n    \"artifacts\": [\n      \"candidate_stage_artifact.parameter_bindings\",\n      \"candidate_stage_artifact.selected_templates\",\n      \"candidate_stage_artifact.template_source_checks\",\n      \"candidate_stage_artifact.checker_results\",\n      \"candidate_stage_artifact.unsupported_bindings\",\n      \"candidate_stage_artifact.cross_layer_trace\",\n      \"artifact.input.model_config\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.design_space\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\"\n    ]\n  },\n  \"observations\": [\n    \"All required parameters are populated for the selected block wrapper and operators; the binding records report no missing parameters. The block wrapper and self-attention are marked incomplete only because of the reported shape relation.\",\n    \"The block wrapper binds hidden_size=1152, num_q_heads=4, num_kv_heads=1, head_dim=256, intermediate_size=6912, token_count=16, and max_seq_len=16. Self-attention binds the corresponding shape values and seq_len=16.\",\n    \"The reported arithmetic is correct for both entries: num_q_heads \u00d7 head_dim is 1024, which differs from hidden_size by 128. These are two occurrences of the same predicate, not evidence of two distinct underlying shape conflicts.\",\n    \"The supplied named constraints and template source/interface records do not state that hidden_size must equal num_q_heads \u00d7 head_dim. Source/interface checks pass and report complete constructor/metadata parameter coverage, but the summary does not expose source semantics establishing this particular equality as mandatory.\",\n    \"Accordingly, the arithmetic discrepancy is supported by the bound values, but classifying it as illegal is supported only if the checker\u2019s equality predicate is an authoritative template/model invariant. That invariant is not independently evidenced in the supplied summary.\",\n    \"Numeric parameters are explicitly sourced from the numeric policy: weight_bits=4, activation-derived input/element/output widths=8, acc_bits=32, and integer_mode=true. Norm epsilon is bound from model_config.norm.eps as 1e-06.\",\n    \"lanes, compute_array_rows, and compute_array_cols are explicitly candidate-bound from the design-space, memory, and numeric inputs, with null values pending candidate selection. The stage gate policy assigns their concrete selection to Stage 4; this is not a missing-binding blocker here.\",\n    \"The listed template source/interface checks pass with source hashes, and operator coverage is 11/11. Attention semantic expansion and cross-layer trace checks also pass. The cross-layer trace shows the numeric, memory, runtime, deployment, and input-consistency constraints present.\",\n    \"The candidate checker results do not include a numeric_policy_check result or numeric_compare result. Numeric provenance is visible in the bindings, but this review does not claim those checkers passed; numerical comparison is not evidenced by the supplied artifact.\"\n  ],\n  \"risks\": [\n    \"The current parameter-binding checker reports a failure for both gemma3_text_block and self_attention, so the stage remains incomplete under the supplied gate policy.\",\n    \"The legality predicate may be an unsupported checker assumption or may be a real template contract; the supplied hash and interface summaries alone do not resolve that distinction.\",\n    \"Changing hidden_size, num_q_heads, head_dim, or template semantics to make the checker pass without resolving the invariant would silently alter model or architecture facts.\"\n  ],\n  \"proposed_actions\": [\n    \"Hand off the shared shape-predicate ambiguity and its exact arithmetic to template_selection.cross_layer_evidence_gate; retain the current values and the checker failure pending disposition.\",\n    \"Reconcile the checker\u2019s hidden_size == num_q_heads \u00d7 head_dim predicate against the supplied model/template contract. If the predicate is not established, record the checker finding as unresolved rather than changing a binding; if it is established, treat the conflict as a real architecture/model-shape issue requiring authorized resolution.\",\n    \"Run the numeric-policy checker against the existing bindings to confirm the numeric mapping; do not use numeric_compare as a substitute for missing stage-level numeric output evidence.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"template_selection.reconcile_attention_shape_predicate\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"The binding values establish the 1152 versus 1024 arithmetic difference, but the supplied source/interface evidence does not establish the equality as a required architectural invariant. Adjudicate the predicate without editing any model, numeric, or template value, and preserve the checker failure unless its basis is resolved.\",\n      \"consumes\": [\n        \"candidate_stage_artifact.parameter_bindings\",\n        \"candidate_stage_artifact.unsupported_bindings\",\n        \"candidate_stage_artifact.checker_results\",\n        \"candidate_stage_artifact.template_source_checks\",\n        \"candidate_stage_artifact.selected_templates\",\n        \"artifact.input.model_config\",\n        \"artifact.input.template_metadata\",\n        \"constraint.shape.model\",\n        \"constraint.template.library\"\n      ],\n      \"produces\": [\n        \"template_selection.binding_numeric_audit\",\n        \"template_selection.shape_predicate_disposition\"\n      ],\n      \"tool_roles\": [\n        \"architecture_review\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"numeric_policy_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"numeric_policy_check\"\n      ],\n      \"on_failure\": \"Keep template_selection incomplete and report the predicate as unresolved to template_selection.cross_layer_evidence_gate. Do not change hidden_size, head_dim, head counts, numeric policy, or template internals; any proposed architecture or model change requires separate approval.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any proposed change to model hidden_size, num_q_heads, num_kv_heads, or head_dim.\",\n    \"Any proposed change to the template attention shape contract or its interpretation as an architecture change.\",\n    \"Any change to the numeric policy or template internals.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/numeric_template_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/numeric_template_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "template_selection.numeric and template binding engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

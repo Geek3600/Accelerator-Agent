@@ -1,0 +1,625 @@
+{
+  "duration_sec": 52.822417001996655,
+  "error": null,
+  "http_transport": "urllib",
+  "mode": "llm",
+  "output": {
+    "reason": "The initial graph spans independent model/shape, numeric/template, data/memory/runtime, implementation/deployment, and verification/boundary concerns. Parallel specialists can audit these layers against their source artifacts and produce evidence-backed findings for a final graph-integrity review. The candidate has no validation errors, but that does not establish semantic coverage or cross-layer consistency. state_summary.sacg_memory_truth reports no active retry, backtrack, or contamination blockers.",
+    "schema_version": "spatialaccagent.team_decomposition.v1",
+    "split_required": true,
+    "stage": "constraint_extraction",
+    "subtasks": [
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "sacg_static_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "model_shape_engineer",
+        "artifact_focus": [
+          "candidate_design_graph_summary",
+          "artifact.input.model_config",
+          "artifact.input.task_card",
+          "artifact.input.case_adapter"
+        ],
+        "constraints": [
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "constraint_extraction/reviews/model_shape_review.json",
+          "constraint_extraction/proposed_deltas/model_shape.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "acceptance": "The listed model and shape checkers accept the review; unresolved facts remain marked unknown rather than inferred.",
+          "deliver": "Provide a constraint-to-source evidence map, explicit contradictions or missing facts, and only evidence-supported proposed graph deltas.",
+          "downstream_consumers": [
+            "constraint_extraction.constraint_graph_auditor"
+          ],
+          "when": "After reviewing the current model and task inputs against the candidate graph."
+        },
+        "handoff_to": [
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.model_shape_engineer",
+        "objective": "Verify that the shared design graph faithfully represents model semantics, operator and residual order, attention/head mapping, and relevant shape facts, with provenance to current input artifacts. Report evidence-backed gaps or contradictions without inventing model-specific facts.",
+        "parallel_group": 0,
+        "role": "model and shape graph engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "model_config_check",
+              "sacg_static_check",
+              "template_binding_static_check"
+            ],
+            "consumes": [
+              "candidate_design_graph_summary",
+              "artifact.input.model_config",
+              "artifact.input.task_card",
+              "artifact.input.case_adapter"
+            ],
+            "downstream_consumers": [
+              "constraint_extraction.constraint_graph_auditor"
+            ],
+            "produces": [
+              "model/shape constraint-to-source evidence map",
+              "evidence-backed proposed graph deltas",
+              "unresolved model/shape questions"
+            ]
+          },
+          "decision_authority": [
+            "May classify a model or shape fact as supported, missing, ambiguous, or contradictory.",
+            "May recommend evidence-backed graph additions or corrections.",
+            "May not change the model, resolve ambiguity by guesswork, or claim implementation correctness."
+          ],
+          "mission": "Establish that model and shape facts in the initial graph are explicit, correct, and traceable to current inputs.",
+          "out_of_scope": [
+            "Selecting numeric formats or accelerator templates.",
+            "Generating RTL or asserting functional, synthesis, or board pass status."
+          ],
+          "primary_responsibilities": [
+            "Audit operator sequence, residual order, attention facts, head mapping, hidden dimensions, and sequence facts represented by the graph.",
+            "Check that each asserted model/shape fact has suitable source evidence.",
+            "Identify omitted, contradictory, or ambiguous facts and propose bounded graph deltas."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "extract model semantics",
+            "audit shape and head mapping",
+            "track residual/operator order"
+          ],
+          "constraint_focus": [
+            "constraint.model.decoder",
+            "constraint.shape.model"
+          ],
+          "family": "model_shape"
+        },
+        "title": "Audit model semantics and shape constraints"
+      },
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "numeric_template_engineer",
+        "artifact_focus": [
+          "candidate_design_graph_summary",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space"
+        ],
+        "constraints": [
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "constraint_extraction/reviews/numeric_template_review.json",
+          "constraint_extraction/proposed_deltas/numeric_template.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "acceptance": "Registered numeric, template coverage, binding, and SACG checks accept the review; unsupported bindings or resource claims are explicitly flagged.",
+          "deliver": "Provide evidence-backed policy/template/binding findings, resource-risk assumptions, and bounded proposed graph deltas.",
+          "downstream_consumers": [
+            "constraint_extraction.constraint_graph_auditor"
+          ],
+          "when": "After checking the graph against the supplied numeric policy, template library and metadata, and design space."
+        },
+        "handoff_to": [
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.numeric_template_engineer",
+        "objective": "Check that numeric policy, trusted template choices, parameter bindings, and architecture design-space limits are represented consistently in the graph and trace to current inputs. Distinguish supported bindings from choices that remain open.",
+        "parallel_group": 0,
+        "role": "numeric policy and template engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "numeric_policy_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "candidate_design_graph_summary",
+              "artifact.input.numeric_policy",
+              "artifact.input.template_library",
+              "artifact.input.template_metadata",
+              "artifact.input.design_space"
+            ],
+            "downstream_consumers": [
+              "constraint_extraction.constraint_graph_auditor"
+            ],
+            "produces": [
+              "numeric/template constraint-to-input evidence map",
+              "binding and resource-assumption findings",
+              "evidence-backed proposed graph deltas"
+            ]
+          },
+          "decision_authority": [
+            "May identify invalid, unsupported, missing, or conflicting numeric/template bindings.",
+            "May propose only bindings supported by the supplied library and design-space constraints.",
+            "May not invent templates, relax numeric policy, or claim measured resource closure."
+          ],
+          "mission": "Ensure the graph's numeric and template assumptions are constrained by supplied policy, trusted templates, and design-space evidence.",
+          "out_of_scope": [
+            "Changing model semantics or board/runtime interfaces.",
+            "Performing synthesis or asserting measured timing/resource results."
+          ],
+          "primary_responsibilities": [
+            "Audit numeric-format and policy facts for consistency with the numeric-policy input.",
+            "Check template identities, coverage, metadata, and parameter bindings against the supplied library.",
+            "Identify unsupported resource assumptions and distinguish selected parameters from unresolved choices."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "bind trusted templates",
+            "audit numeric policy",
+            "check resource-risk assumptions"
+          ],
+          "constraint_focus": [
+            "constraint.numeric.policy",
+            "constraint.template.library",
+            "constraint.parameter.binding"
+          ],
+          "family": "numeric_template"
+        },
+        "title": "Audit numeric policy, template binding, and design-space constraints"
+      },
+      {
+        "acceptance_checkers": [
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "data_memory_runtime_engineer",
+        "artifact_focus": [
+          "candidate_design_graph_summary",
+          "artifact.input.target_board_profile",
+          "artifact.input.field_evidence",
+          "artifact.input.sample_project_index",
+          "artifact.input.task_card"
+        ],
+        "constraints": [
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "constraint_extraction/reviews/data_memory_runtime_review.json",
+          "constraint_extraction/proposed_deltas/data_memory_runtime.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "acceptance": "The registered stream, memory/runtime, address-map, and SACG checks accept the review; absent board details remain explicit gaps.",
+          "deliver": "Provide a data-order and memory/runtime evidence map, identify missing or conflicting interface facts, and propose evidence-supported graph deltas.",
+          "downstream_consumers": [
+            "constraint_extraction.constraint_graph_auditor"
+          ],
+          "when": "After comparing graph dataflow, board-memory, and runtime claims with current board and field evidence."
+        },
+        "handoff_to": [
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.data_memory_runtime_engineer",
+        "objective": "Check that stream/data order, transfer and liveness assumptions, board memory/DDR layout, and runtime facts are represented in the initial graph with source evidence and without implying unverified interface readiness.",
+        "parallel_group": 0,
+        "role": "dataflow, memory, and runtime engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "stream_plan_check",
+              "memory_runtime_plan_check",
+              "addr_map_check",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "candidate_design_graph_summary",
+              "artifact.input.target_board_profile",
+              "artifact.input.field_evidence",
+              "artifact.input.sample_project_index",
+              "artifact.input.task_card"
+            ],
+            "downstream_consumers": [
+              "constraint_extraction.constraint_graph_auditor"
+            ],
+            "produces": [
+              "data/memory/runtime constraint-to-source evidence map",
+              "transfer, liveness, address-map, and runtime gap findings",
+              "evidence-backed proposed graph deltas"
+            ]
+          },
+          "decision_authority": [
+            "May classify dataflow, address-map, memory, and runtime facts as supported, missing, ambiguous, or contradictory.",
+            "May propose evidence-backed graph deltas and flag downstream verification needs.",
+            "May not infer exact board interfaces or claim AXI/DDR/runtime success without current evidence."
+          ],
+          "mission": "Make dataflow, memory layout, and runtime constraints usable as shared graph state without overstating board evidence.",
+          "out_of_scope": [
+            "Changing numeric/template selections.",
+            "Running board execution or claiming DDR/AXI protocol acceptance."
+          ],
+          "primary_responsibilities": [
+            "Audit whether relevant stream ordering and transfer/liveness risks are captured as constraints.",
+            "Check DDR and memory layout facts against the target board profile and supplied field evidence.",
+            "Check that runtime assumptions are explicit and tied to available board or sample-project evidence."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "audit data order",
+            "check transfer-count/liveness risks",
+            "bind DDR/runtime layout"
+          ],
+          "constraint_focus": [
+            "constraint.stream.order",
+            "constraint.beat.pipeline",
+            "constraint.memory.board",
+            "constraint.runtime.board"
+          ],
+          "family": "data_memory_runtime"
+        },
+        "title": "Audit data order and board memory/runtime constraints"
+      },
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "implementation_package_static",
+          "deployment_board_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "implementation_deployment_engineer",
+        "artifact_focus": [
+          "candidate_design_graph_summary",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.field_evidence",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols"
+        ],
+        "constraints": [
+          "constraint.source.materials",
+          "constraint.source.evidence",
+          "constraint.deployment.board",
+          "constraint.tool.profile",
+          "constraint.tool.protocols",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "constraint_extraction/reviews/implementation_deployment_review.json",
+          "constraint_extraction/proposed_deltas/implementation_deployment.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "acceptance": "Registered tool, real-evidence, implementation-package, deployment, and SACG checks accept the review; missing required evidence is recorded as a gap, not a pass.",
+          "deliver": "Provide an evidence inventory, unsupported-claim findings, and proposed graph deltas that preserve the distinction between planned work and completed tool evidence.",
+          "downstream_consumers": [
+            "constraint_extraction.constraint_graph_auditor"
+          ],
+          "when": "After checking source-material provenance, tool profiles/availability/protocols, and implementation/deployment statements in the graph."
+        },
+        "handoff_to": [
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.implementation_deployment_engineer",
+        "objective": "Verify that supplied materials and current tool availability/protocols are represented accurately, and that implementation, backend, and deployment constraints are framed as plans or evidence-backed facts rather than unsupported pass claims.",
+        "parallel_group": 0,
+        "role": "implementation and deployment evidence engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "tool_protocol_check",
+              "required_real_tool_evidence_check",
+              "implementation_package_static",
+              "deployment_board_check",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "candidate_design_graph_summary",
+              "artifact.input.material_index",
+              "artifact.input.sample_project_index",
+              "artifact.input.field_evidence",
+              "artifact.input.target_board_profile",
+              "artifact.input.tool_profile",
+              "artifact.input.tool_availability",
+              "artifact.input.tool_protocols"
+            ],
+            "downstream_consumers": [
+              "constraint_extraction.constraint_graph_auditor"
+            ],
+            "produces": [
+              "source/tool/deployment constraint-to-evidence map",
+              "implementation and deployment evidence-gap findings",
+              "evidence-backed proposed graph deltas"
+            ]
+          },
+          "decision_authority": [
+            "May flag missing provenance, unavailable tools, protocol mismatches, and unsupported implementation/deployment claims.",
+            "May propose evidence-backed graph corrections and identify downstream evidence requirements.",
+            "May not claim synthesis, timing, package, bitstream, or board-runtime success absent validated current-run evidence."
+          ],
+          "mission": "Preserve source provenance and accurately describe available implementation/deployment capabilities and evidence in the shared graph.",
+          "out_of_scope": [
+            "Executing synthesis or board deployment in this constraint-extraction stage.",
+            "Making model, numeric, or template choices."
+          ],
+          "primary_responsibilities": [
+            "Check that material, sample-project, and field-evidence claims are traceable to the supplied indexes and artifacts.",
+            "Audit tool profiles, actual availability, and tool protocols without treating a profile as proof of an executed tool.",
+            "Check that backend, implementation, and deployment constraints identify required evidence and do not claim unsupported closure."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "prepare implementation handoff",
+            "audit timing/board evidence",
+            "block unsupported pass claims"
+          ],
+          "constraint_focus": [
+            "constraint.backend_board.plan",
+            "constraint.backend.package",
+            "constraint.deployment.board"
+          ],
+          "family": "implementation_deployment"
+        },
+        "title": "Audit source evidence, tools, and implementation/deployment plan"
+      },
+      {
+        "acceptance_checkers": [
+          "verification_plan_static_check",
+          "verification_artifact_contract_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "verification_boundary_engineer",
+        "artifact_focus": [
+          "candidate_design_graph_summary",
+          "artifact.input.case_adapter",
+          "artifact.input.tool_protocols",
+          "artifact.input.tool_availability",
+          "artifact.input.human_agent_boundary"
+        ],
+        "constraints": [
+          "constraint.case.adapter",
+          "constraint.human.boundary",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "constraint_extraction/reviews/verification_boundary_review.json",
+          "constraint_extraction/proposed_deltas/verification_boundary.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "acceptance": "Registered verification-plan, artifact-contract, human-boundary, repair-boundary, and SACG checks accept the review; any genuinely missing required capability is identified for planned implementation.",
+          "deliver": "Provide a checker/evidence planning map, explicit approval boundaries, and bounded proposed graph deltas; identify unavailable checker capabilities rather than assuming them.",
+          "downstream_consumers": [
+            "constraint_extraction.constraint_graph_auditor"
+          ],
+          "when": "After comparing case-adapter and human-boundary inputs with verification and repair statements in the graph."
+        },
+        "handoff_to": [
+          "constraint_extraction.constraint_graph_auditor"
+        ],
+        "id": "constraint_extraction.verification_boundary_engineer",
+        "objective": "Check that the graph captures the case adapter, verification/checker plan, human approval boundaries, and bounded repair responsibilities needed for checker-verified design closure.",
+        "parallel_group": 0,
+        "role": "verification and repair-boundary engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "verification_plan_static_check",
+              "verification_artifact_contract_check",
+              "human_boundary_check",
+              "repair_boundary_check",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "candidate_design_graph_summary",
+              "artifact.input.case_adapter",
+              "artifact.input.tool_protocols",
+              "artifact.input.tool_availability",
+              "artifact.input.human_agent_boundary"
+            ],
+            "downstream_consumers": [
+              "constraint_extraction.constraint_graph_auditor"
+            ],
+            "produces": [
+              "verification and human-boundary constraint-to-input map",
+              "checker/evidence and repair-boundary gap findings",
+              "evidence-backed proposed graph deltas"
+            ]
+          },
+          "decision_authority": [
+            "May identify missing verification contracts, evidence, approval boundaries, or bounded-repair rules.",
+            "May flag a required capability as missing and recommend planned implementation.",
+            "May not waive human approval, certify functional correctness, or authorize unbounded repair."
+          ],
+          "mission": "Ensure the graph defines a checker-verifiable path and explicit human/agent boundaries for later design closure.",
+          "out_of_scope": [
+            "Executing downstream verification or treating historical results as current evidence.",
+            "Approving human-gated actions or changing implementation choices."
+          ],
+          "primary_responsibilities": [
+            "Audit whether the case adapter and available tool/checker protocols are represented as graph constraints.",
+            "Check that verification plans identify expected evidence and do not conflate planned or historical evidence with current-run results.",
+            "Verify that human approval boundaries and repair limits are explicit and actionable."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "classify evidence",
+            "map failures to violated constraints",
+            "enforce repair boundaries"
+          ],
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.human.boundary"
+          ],
+          "family": "verification_repair"
+        },
+        "title": "Audit verification planning, case adapter, and human boundaries"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "template_binding_static_check",
+          "repair_boundary_check",
+          "human_boundary_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "constraint_graph_auditor",
+        "artifact_focus": [
+          "candidate_design_graph_summary",
+          "prepared_inputs_manifest",
+          "validation_errors",
+          "all parallel specialist review artifacts and proposed deltas"
+        ],
+        "constraints": [
+          "constraint.cross_layer.input_consistency",
+          "constraint.human.boundary",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board",
+          "constraint.tool.profile",
+          "constraint.tool.protocols",
+          "constraint.case.adapter"
+        ],
+        "expected_artifacts": [
+          "constraint_extraction/reviews/consolidated_graph_audit.json",
+          "constraint_extraction/proposed_deltas/consolidated_graph_deltas.json"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "acceptance": "All listed graph, reference, template-binding, repair-boundary, and human-boundary checks accept; unresolved issues are explicitly routed rather than silently reconciled.",
+          "deliver": "Consolidate compatible findings, identify conflicting recommendations and unresolved constraints, and provide provenance-linked proposed graph deltas with no unsupported pass claims.",
+          "downstream_consumers": [
+            "team_aggregate",
+            "constraint_extraction stage owner"
+          ],
+          "when": "After all parallel_group=0 reviews and their checker results are available."
+        },
+        "handoff_to": [
+          "team_aggregate"
+        ],
+        "id": "constraint_extraction.constraint_graph_auditor",
+        "objective": "Review all parallel specialist findings and proposed deltas for reference integrity, provenance, cross-layer consistency, template binding, and explicit unresolved boundaries. Produce a consolidated graph audit for the stage aggregator without converting absent evidence into pass claims.",
+        "parallel_group": 1,
+        "role": "cross-layer constraint graph auditor",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "sacg_reference_check",
+              "template_binding_static_check",
+              "repair_boundary_check",
+              "human_boundary_check"
+            ],
+            "consumes": [
+              "candidate_design_graph_summary",
+              "prepared_inputs_manifest",
+              "validation_errors",
+              "model/shape review and deltas",
+              "numeric/template review and deltas",
+              "data/memory/runtime review and deltas",
+              "implementation/deployment review and deltas",
+              "verification/boundary review and deltas"
+            ],
+            "downstream_consumers": [
+              "team_aggregate",
+              "constraint_extraction stage owner"
+            ],
+            "produces": [
+              "consolidated cross-layer graph audit",
+              "provenance-linked accepted or rejected proposed deltas",
+              "unresolved blocker and checker-gap list"
+            ]
+          },
+          "decision_authority": [
+            "May accept, reject, or return proposed graph deltas based on evidence and registered checker results.",
+            "May identify blocking contradictions or missing capabilities for stage-level routing.",
+            "May not invent source facts, waive required checkers, or claim downstream implementation/deployment readiness."
+          ],
+          "mission": "Determine whether the candidate graph is reliable shared state across layers and whether specialist proposals preserve SACG-guided, template-constrained, checker-verified closure.",
+          "out_of_scope": [
+            "Performing RTL generation, synthesis, or board deployment.",
+            "Treating candidate summary counts or historical evidence as proof of semantic completeness."
+          ],
+          "primary_responsibilities": [
+            "Reconcile specialist findings against the candidate graph and current source artifacts.",
+            "Check graph references, evidence provenance, constraint coverage, and cross-layer contradictions.",
+            "Keep unresolved facts, required checker gaps, and human approval boundaries explicit in the consolidated handoff."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "classify evidence",
+            "map failures to violated constraints",
+            "enforce repair boundaries"
+          ],
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.human.boundary",
+            "constraint.cross_layer.input_consistency"
+          ],
+          "family": "verification_repair"
+        },
+        "title": "Reconcile specialist findings and audit shared graph integrity"
+      }
+    ]
+  },
+  "prompt_hash": "4a6d91c04b34c88205f9f826884fc34582584d272afbf42c099d11ea18d77ae2",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.team_decomposition.v1\",\n  \"stage\": \"constraint_extraction\",\n  \"split_required\": true,\n  \"reason\": \"The initial graph spans independent model/shape, numeric/template, data/memory/runtime, implementation/deployment, and verification/boundary concerns. Parallel specialists can audit these layers against their source artifacts and produce evidence-backed findings for a final graph-integrity review. The candidate has no validation errors, but that does not establish semantic coverage or cross-layer consistency. state_summary.sacg_memory_truth reports no active retry, backtrack, or contamination blockers.\",\n  \"subtasks\": [\n    {\n      \"id\": \"constraint_extraction.model_shape_engineer\",\n      \"agent\": \"model_shape_engineer\",\n      \"role\": \"model and shape graph engineer\",\n      \"title\": \"Audit model semantics and shape constraints\",\n      \"objective\": \"Verify that the shared design graph faithfully represents model semantics, operator and residual order, attention/head mapping, and relevant shape facts, with provenance to current input artifacts. Report evidence-backed gaps or contradictions without inventing model-specific facts.\",\n      \"constraints\": [\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"artifact_focus\": [\n        \"candidate_design_graph_summary\",\n        \"artifact.input.model_config\",\n        \"artifact.input.task_card\",\n        \"artifact.input.case_adapter\"\n      ],\n      \"parallel_group\": 0,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"constraint_extraction/reviews/model_shape_review.json\",\n        \"constraint_extraction/proposed_deltas/model_shape.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"model_config_check\",\n        \"sacg_static_check\",\n        \"template_binding_static_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"constraint_extraction.constraint_graph_auditor\"\n      ],\n      \"handoff_rule\": {\n        \"when\": \"After reviewing the current model and task inputs against the candidate graph.\",\n        \"deliver\": \"Provide a constraint-to-source evidence map, explicit contradictions or missing facts, and only evidence-supported proposed graph deltas.\",\n        \"downstream_consumers\": [\n          \"constraint_extraction.constraint_graph_auditor\"\n        ],\n        \"acceptance\": \"The listed model and shape checkers accept the review; unresolved facts remain marked unknown rather than inferred.\"\n      },\n      \"role_profile\": {\n        \"family\": \"model_shape\",\n        \"capabilities\": [\n          \"extract model semantics\",\n          \"audit shape and head mapping\",\n          \"track residual/operator order\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.model.decoder\",\n          \"constraint.shape.model\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Establish that model and shape facts in the initial graph are explicit, correct, and traceable to current inputs.\",\n        \"primary_responsibilities\": [\n          \"Audit operator sequence, residual order, attention facts, head mapping, hidden dimensions, and sequence facts represented by the graph.\",\n          \"Check that each asserted model/shape fact has suitable source evidence.\",\n          \"Identify omitted, contradictory, or ambiguous facts and propose bounded graph deltas.\"\n        ],\n        \"decision_authority\": [\n          \"May classify a model or shape fact as supported, missing, ambiguous, or contradictory.\",\n          \"May recommend evidence-backed graph additions or corrections.\",\n          \"May not change the model, resolve ambiguity by guesswork, or claim implementation correctness.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"candidate_design_graph_summary\",\n            \"artifact.input.model_config\",\n            \"artifact.input.task_card\",\n            \"artifact.input.case_adapter\"\n          ],\n          \"produces\": [\n            \"model/shape constraint-to-source evidence map\",\n            \"evidence-backed proposed graph deltas\",\n            \"unresolved model/shape questions\"\n          ],\n          \"downstream_consumers\": [\n            \"constraint_extraction.constraint_graph_auditor\"\n          ],\n          \"acceptance_checkers\": [\n            \"model_config_check\",\n            \"sacg_static_check\",\n            \"template_binding_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Selecting numeric formats or accelerator templates.\",\n          \"Generating RTL or asserting functional, synthesis, or board pass status.\"\n        ]\n      }\n    },\n    {\n      \"id\": \"constraint_extraction.numeric_template_engineer\",\n      \"agent\": \"numeric_template_engineer\",\n      \"role\": \"numeric policy and template engineer\",\n      \"title\": \"Audit numeric policy, template binding, and design-space constraints\",\n      \"objective\": \"Check that numeric policy, trusted template choices, parameter bindings, and architecture design-space limits are represented consistently in the graph and trace to current inputs. Distinguish supported bindings from choices that remain open.\",\n      \"constraints\": [\n        \"constraint.numeric.policy\",\n        \"constraint.template.library\",\n        \"constraint.arch.design_space\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"artifact_focus\": [\n        \"candidate_design_graph_summary\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.design_space\"\n      ],\n      \"parallel_group\": 0,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"constraint_extraction/reviews/numeric_template_review.json\",\n        \"constraint_extraction/proposed_deltas/numeric_template.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"numeric_policy_check\",\n        \"template_coverage_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"constraint_extraction.constraint_graph_auditor\"\n      ],\n      \"handoff_rule\": {\n        \"when\": \"After checking the graph against the supplied numeric policy, template library and metadata, and design space.\",\n        \"deliver\": \"Provide evidence-backed policy/template/binding findings, resource-risk assumptions, and bounded proposed graph deltas.\",\n        \"downstream_consumers\": [\n          \"constraint_extraction.constraint_graph_auditor\"\n        ],\n        \"acceptance\": \"Registered numeric, template coverage, binding, and SACG checks accept the review; unsupported bindings or resource claims are explicitly flagged.\"\n      },\n      \"role_profile\": {\n        \"family\": \"numeric_template\",\n        \"capabilities\": [\n          \"bind trusted templates\",\n          \"audit numeric policy\",\n          \"check resource-risk assumptions\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.numeric.policy\",\n          \"constraint.template.library\",\n          \"constraint.parameter.binding\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Ensure the graph's numeric and template assumptions are constrained by supplied policy, trusted templates, and design-space evidence.\",\n        \"primary_responsibilities\": [\n          \"Audit numeric-format and policy facts for consistency with the numeric-policy input.\",\n          \"Check template identities, coverage, metadata, and parameter bindings against the supplied library.\",\n          \"Identify unsupported resource assumptions and distinguish selected parameters from unresolved choices.\"\n        ],\n        \"decision_authority\": [\n          \"May identify invalid, unsupported, missing, or conflicting numeric/template bindings.\",\n          \"May propose only bindings supported by the supplied library and design-space constraints.\",\n          \"May not invent templates, relax numeric policy, or claim measured resource closure.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"candidate_design_graph_summary\",\n            \"artifact.input.numeric_policy\",\n            \"artifact.input.template_library\",\n            \"artifact.input.template_metadata\",\n            \"artifact.input.design_space\"\n          ],\n          \"produces\": [\n            \"numeric/template constraint-to-input evidence map\",\n            \"binding and resource-assumption findings\",\n            \"evidence-backed proposed graph deltas\"\n          ],\n          \"downstream_consumers\": [\n            \"constraint_extraction.constraint_graph_auditor\"\n          ],\n          \"acceptance_checkers\": [\n            \"numeric_policy_check\",\n            \"template_coverage_check\",\n            \"parameter_binding_static_check\",\n            \"template_binding_static_check\",\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Changing model semantics or board/runtime interfaces.\",\n          \"Performing synthesis or asserting measured timing/resource results.\"\n        ]\n      }\n    },\n    {\n      \"id\": \"constraint_extraction.data_memory_runtime_engineer\",\n      \"agent\": \"data_memory_runtime_engineer\",\n      \"role\": \"dataflow, memory, and runtime engineer\",\n      \"title\": \"Audit data order and board memory/runtime constraints\",\n      \"objective\": \"Check that stream/data order, transfer and liveness assumptions, board memory/DDR layout, and runtime facts are represented in the initial graph with source evidence and without implying unverified interface readiness.\",\n      \"constraints\": [\n        \"constraint.memory.board\",\n        \"constraint.runtime.board\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"artifact_focus\": [\n        \"candidate_design_graph_summary\",\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.sample_project_index\",\n        \"artifact.input.task_card\"\n      ],\n      \"parallel_group\": 0,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"constraint_extraction/reviews/data_memory_runtime_review.json\",\n        \"constraint_extraction/proposed_deltas/data_memory_runtime.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"stream_plan_check\",\n        \"memory_runtime_plan_check\",\n        \"addr_map_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"constraint_extraction.constraint_graph_auditor\"\n      ],\n      \"handoff_rule\": {\n        \"when\": \"After comparing graph dataflow, board-memory, and runtime claims with current board and field evidence.\",\n        \"deliver\": \"Provide a data-order and memory/runtime evidence map, identify missing or conflicting interface facts, and propose evidence-supported graph deltas.\",\n        \"downstream_consumers\": [\n          \"constraint_extraction.constraint_graph_auditor\"\n        ],\n        \"acceptance\": \"The registered stream, memory/runtime, address-map, and SACG checks accept the review; absent board details remain explicit gaps.\"\n      },\n      \"role_profile\": {\n        \"family\": \"data_memory_runtime\",\n        \"capabilities\": [\n          \"audit data order\",\n          \"check transfer-count/liveness risks\",\n          \"bind DDR/runtime layout\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.stream.order\",\n          \"constraint.beat.pipeline\",\n          \"constraint.memory.board\",\n          \"constraint.runtime.board\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Make dataflow, memory layout, and runtime constraints usable as shared graph state without overstating board evidence.\",\n        \"primary_responsibilities\": [\n          \"Audit whether relevant stream ordering and transfer/liveness risks are captured as constraints.\",\n          \"Check DDR and memory layout facts against the target board profile and supplied field evidence.\",\n          \"Check that runtime assumptions are explicit and tied to available board or sample-project evidence.\"\n        ],\n        \"decision_authority\": [\n          \"May classify dataflow, address-map, memory, and runtime facts as supported, missing, ambiguous, or contradictory.\",\n          \"May propose evidence-backed graph deltas and flag downstream verification needs.\",\n          \"May not infer exact board interfaces or claim AXI/DDR/runtime success without current evidence.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"candidate_design_graph_summary\",\n            \"artifact.input.target_board_profile\",\n            \"artifact.input.field_evidence\",\n            \"artifact.input.sample_project_index\",\n            \"artifact.input.task_card\"\n          ],\n          \"produces\": [\n            \"data/memory/runtime constraint-to-source evidence map\",\n            \"transfer, liveness, address-map, and runtime gap findings\",\n            \"evidence-backed proposed graph deltas\"\n          ],\n          \"downstream_consumers\": [\n            \"constraint_extraction.constraint_graph_auditor\"\n          ],\n          \"acceptance_checkers\": [\n            \"stream_plan_check\",\n            \"memory_runtime_plan_check\",\n            \"addr_map_check\",\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Changing numeric/template selections.\",\n          \"Running board execution or claiming DDR/AXI protocol acceptance.\"\n        ]\n      }\n    },\n    {\n      \"id\": \"constraint_extraction.implementation_deployment_engineer\",\n      \"agent\": \"implementation_deployment_engineer\",\n      \"role\": \"implementation and deployment evidence engineer\",\n      \"title\": \"Audit source evidence, tools, and implementation/deployment plan\",\n      \"objective\": \"Verify that supplied materials and current tool availability/protocols are represented accurately, and that implementation, backend, and deployment constraints are framed as plans or evidence-backed facts rather than unsupported pass claims.\",\n      \"constraints\": [\n        \"constraint.source.materials\",\n        \"constraint.source.evidence\",\n        \"constraint.deployment.board\",\n        \"constraint.tool.profile\",\n        \"constraint.tool.protocols\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"artifact_focus\": [\n        \"candidate_design_graph_summary\",\n        \"artifact.input.material_index\",\n        \"artifact.input.sample_project_index\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.tool_profile\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.tool_protocols\"\n      ],\n      \"parallel_group\": 0,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"constraint_extraction/reviews/implementation_deployment_review.json\",\n        \"constraint_extraction/proposed_deltas/implementation_deployment.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"tool_protocol_check\",\n        \"required_real_tool_evidence_check\",\n        \"implementation_package_static\",\n        \"deployment_board_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"constraint_extraction.constraint_graph_auditor\"\n      ],\n      \"handoff_rule\": {\n        \"when\": \"After checking source-material provenance, tool profiles/availability/protocols, and implementation/deployment statements in the graph.\",\n        \"deliver\": \"Provide an evidence inventory, unsupported-claim findings, and proposed graph deltas that preserve the distinction between planned work and completed tool evidence.\",\n        \"downstream_consumers\": [\n          \"constraint_extraction.constraint_graph_auditor\"\n        ],\n        \"acceptance\": \"Registered tool, real-evidence, implementation-package, deployment, and SACG checks accept the review; missing required evidence is recorded as a gap, not a pass.\"\n      },\n      \"role_profile\": {\n        \"family\": \"implementation_deployment\",\n        \"capabilities\": [\n          \"prepare implementation handoff\",\n          \"audit timing/board evidence\",\n          \"block unsupported pass claims\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.backend_board.plan\",\n          \"constraint.backend.package\",\n          \"constraint.deployment.board\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Preserve source provenance and accurately describe available implementation/deployment capabilities and evidence in the shared graph.\",\n        \"primary_responsibilities\": [\n          \"Check that material, sample-project, and field-evidence claims are traceable to the supplied indexes and artifacts.\",\n          \"Audit tool profiles, actual availability, and tool protocols without treating a profile as proof of an executed tool.\",\n          \"Check that backend, implementation, and deployment constraints identify required evidence and do not claim unsupported closure.\"\n        ],\n        \"decision_authority\": [\n          \"May flag missing provenance, unavailable tools, protocol mismatches, and unsupported implementation/deployment claims.\",\n          \"May propose evidence-backed graph corrections and identify downstream evidence requirements.\",\n          \"May not claim synthesis, timing, package, bitstream, or board-runtime success absent validated current-run evidence.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"candidate_design_graph_summary\",\n            \"artifact.input.material_index\",\n            \"artifact.input.sample_project_index\",\n            \"artifact.input.field_evidence\",\n            \"artifact.input.target_board_profile\",\n            \"artifact.input.tool_profile\",\n            \"artifact.input.tool_availability\",\n            \"artifact.input.tool_protocols\"\n          ],\n          \"produces\": [\n            \"source/tool/deployment constraint-to-evidence map\",\n            \"implementation and deployment evidence-gap findings\",\n            \"evidence-backed proposed graph deltas\"\n          ],\n          \"downstream_consumers\": [\n            \"constraint_extraction.constraint_graph_auditor\"\n          ],\n          \"acceptance_checkers\": [\n            \"tool_protocol_check\",\n            \"required_real_tool_evidence_check\",\n            \"implementation_package_static\",\n            \"deployment_board_check\",\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Executing synthesis or board deployment in this constraint-extraction stage.\",\n          \"Making model, numeric, or template choices.\"\n        ]\n      }\n    },\n    {\n      \"id\": \"constraint_extraction.verification_boundary_engineer\",\n      \"agent\": \"verification_boundary_engineer\",\n      \"role\": \"verification and repair-boundary engineer\",\n      \"title\": \"Audit verification planning, case adapter, and human boundaries\",\n      \"objective\": \"Check that the graph captures the case adapter, verification/checker plan, human approval boundaries, and bounded repair responsibilities needed for checker-verified design closure.\",\n      \"constraints\": [\n        \"constraint.case.adapter\",\n        \"constraint.human.boundary\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"artifact_focus\": [\n        \"candidate_design_graph_summary\",\n        \"artifact.input.case_adapter\",\n        \"artifact.input.tool_protocols\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.human_agent_boundary\"\n      ],\n      \"parallel_group\": 0,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"constraint_extraction/reviews/verification_boundary_review.json\",\n        \"constraint_extraction/proposed_deltas/verification_boundary.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"verification_plan_static_check\",\n        \"verification_artifact_contract_check\",\n        \"human_boundary_check\",\n        \"repair_boundary_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"constraint_extraction.constraint_graph_auditor\"\n      ],\n      \"handoff_rule\": {\n        \"when\": \"After comparing case-adapter and human-boundary inputs with verification and repair statements in the graph.\",\n        \"deliver\": \"Provide a checker/evidence planning map, explicit approval boundaries, and bounded proposed graph deltas; identify unavailable checker capabilities rather than assuming them.\",\n        \"downstream_consumers\": [\n          \"constraint_extraction.constraint_graph_auditor\"\n        ],\n        \"acceptance\": \"Registered verification-plan, artifact-contract, human-boundary, repair-boundary, and SACG checks accept the review; any genuinely missing required capability is identified for planned implementation.\"\n      },\n      \"role_profile\": {\n        \"family\": \"verification_repair\",\n        \"capabilities\": [\n          \"classify evidence\",\n          \"map failures to violated constraints\",\n          \"enforce repair boundaries\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.verification.plan\",\n          \"constraint.human.boundary\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Ensure the graph defines a checker-verifiable path and explicit human/agent boundaries for later design closure.\",\n        \"primary_responsibilities\": [\n          \"Audit whether the case adapter and available tool/checker protocols are represented as graph constraints.\",\n          \"Check that verification plans identify expected evidence and do not conflate planned or historical evidence with current-run results.\",\n          \"Verify that human approval boundaries and repair limits are explicit and actionable.\"\n        ],\n        \"decision_authority\": [\n          \"May identify missing verification contracts, evidence, approval boundaries, or bounded-repair rules.\",\n          \"May flag a required capability as missing and recommend planned implementation.\",\n          \"May not waive human approval, certify functional correctness, or authorize unbounded repair.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"candidate_design_graph_summary\",\n            \"artifact.input.case_adapter\",\n            \"artifact.input.tool_protocols\",\n            \"artifact.input.tool_availability\",\n            \"artifact.input.human_agent_boundary\"\n          ],\n          \"produces\": [\n            \"verification and human-boundary constraint-to-input map\",\n            \"checker/evidence and repair-boundary gap findings\",\n            \"evidence-backed proposed graph deltas\"\n          ],\n          \"downstream_consumers\": [\n            \"constraint_extraction.constraint_graph_auditor\"\n          ],\n          \"acceptance_checkers\": [\n            \"verification_plan_static_check\",\n            \"verification_artifact_contract_check\",\n            \"human_boundary_check\",\n            \"repair_boundary_check\",\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Executing downstream verification or treating historical results as current evidence.\",\n          \"Approving human-gated actions or changing implementation choices.\"\n        ]\n      }\n    },\n    {\n      \"id\": \"constraint_extraction.constraint_graph_auditor\",\n      \"agent\": \"constraint_graph_auditor\",\n      \"role\": \"cross-layer constraint graph auditor\",\n      \"title\": \"Reconcile specialist findings and audit shared graph integrity\",\n      \"objective\": \"Review all parallel specialist findings and proposed deltas for reference integrity, provenance, cross-layer consistency, template binding, and explicit unresolved boundaries. Produce a consolidated graph audit for the stage aggregator without converting absent evidence into pass claims.\",\n      \"constraints\": [\n        \"constraint.cross_layer.input_consistency\",\n        \"constraint.human.boundary\",\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\",\n        \"constraint.numeric.policy\",\n        \"constraint.template.library\",\n        \"constraint.arch.design_space\",\n        \"constraint.memory.board\",\n        \"constraint.runtime.board\",\n        \"constraint.deployment.board\",\n        \"constraint.tool.profile\",\n        \"constraint.tool.protocols\",\n        \"constraint.case.adapter\"\n      ],\n      \"artifact_focus\": [\n        \"candidate_design_graph_summary\",\n        \"prepared_inputs_manifest\",\n        \"validation_errors\",\n        \"all parallel specialist review artifacts and proposed deltas\"\n      ],\n      \"parallel_group\": 1,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"constraint_extraction/reviews/consolidated_graph_audit.json\",\n        \"constraint_extraction/proposed_deltas/consolidated_graph_deltas.json\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"sacg_reference_check\",\n        \"template_binding_static_check\",\n        \"repair_boundary_check\",\n        \"human_boundary_check\"\n      ],\n      \"handoff_required\": true,\n      \"handoff_to\": [\n        \"team_aggregate\"\n      ],\n      \"handoff_rule\": {\n        \"when\": \"After all parallel_group=0 reviews and their checker results are available.\",\n        \"deliver\": \"Consolidate compatible findings, identify conflicting recommendations and unresolved constraints, and provide provenance-linked proposed graph deltas with no unsupported pass claims.\",\n        \"downstream_consumers\": [\n          \"team_aggregate\",\n          \"constraint_extraction stage owner\"\n        ],\n        \"acceptance\": \"All listed graph, reference, template-binding, repair-boundary, and human-boundary checks accept; unresolved issues are explicitly routed rather than silently reconciled.\"\n      },\n      \"role_profile\": {\n        \"family\": \"verification_repair\",\n        \"capabilities\": [\n          \"classify evidence\",\n          \"map failures to violated constraints\",\n          \"enforce repair boundaries\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.verification.plan\",\n          \"constraint.human.boundary\",\n          \"constraint.cross_layer.input_consistency\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Determine whether the candidate graph is reliable shared state across layers and whether specialist proposals preserve SACG-guided, template-constrained, checker-verified closure.\",\n        \"primary_responsibilities\": [\n          \"Reconcile specialist findings against the candidate graph and current source artifacts.\",\n          \"Check graph references, evidence provenance, constraint coverage, and cross-layer contradictions.\",\n          \"Keep unresolved facts, required checker gaps, and human approval boundaries explicit in the consolidated handoff.\"\n        ],\n        \"decision_authority\": [\n          \"May accept, reject, or return proposed graph deltas based on evidence and registered checker results.\",\n          \"May identify blocking contradictions or missing capabilities for stage-level routing.\",\n          \"May not invent source facts, waive required checkers, or claim downstream implementation/deployment readiness.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"candidate_design_graph_summary\",\n            \"prepared_inputs_manifest\",\n            \"validation_errors\",\n            \"model/shape review and deltas\",\n            \"numeric/template review and deltas\",\n            \"data/memory/runtime review and deltas\",\n            \"implementation/deployment review and deltas\",\n            \"verification/boundary review and deltas\"\n          ],\n          \"produces\": [\n            \"consolidated cross-layer graph audit\",\n            \"provenance-linked accepted or rejected proposed deltas\",\n            \"unresolved blocker and checker-gap list\"\n          ],\n          \"downstream_consumers\": [\n            \"team_aggregate\",\n            \"constraint_extraction stage owner\"\n          ],\n          \"acceptance_checkers\": [\n            \"sacg_static_check\",\n            \"sacg_reference_check\",\n            \"template_binding_static_check\",\n            \"repair_boundary_check\",\n            \"human_boundary_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"Performing RTL generation, synthesis, or board deployment.\",\n          \"Treating candidate summary counts or historical evidence as proof of semantic completeness.\"\n        ]\n      }\n    }\n  ]\n}",
+  "reasoning_effort": "medium",
+  "schema_version": "spatialaccagent.team_decomposer_record.v0",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

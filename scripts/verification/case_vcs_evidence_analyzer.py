@@ -36,6 +36,9 @@ from accagent.framework.semantic_simulator import (
     REMOTE_JOB_RETRY_REQUEST,
     ZERO_TIME_LIVELOCK_EXIT_CODE,
 )
+from accagent.framework.verification_evidence_contract import (
+    COMPILE_ONLY_POLICY,
+)
 
 
 DIAGNOSIS_APPLICABILITY_BINDING_SCHEMA_VERSION = (
@@ -230,6 +233,11 @@ ELABORATION_ERROR_RE = re.compile(
 EXECUTION_ENVIRONMENT_ERROR_RE = re.compile(
     r"(?i)(?:no space left on device|disk quota exceeded)"
 )
+VCS_TOOL_PROCESS_FAILURE_RE = re.compile(
+    r"(?i)(?:vg_safe_write:\s*broken pipe|"
+    r"assertion failed[^\n]*(?:broken pipe|vg_safe_write)|"
+    r"an unexpected termination has occurred[^\n]*\bvcs1\b)"
+)
 TRANSPORT_FAILURE_CLASSES = {
     "remote_transport_failure",
     "remote_semantic_recovery_indeterminate",
@@ -306,7 +314,7 @@ def first_real_error(text: str, fallback_errors: Any = None) -> str | None:
                 return error[:2000]
     for raw in text.splitlines():
         line = raw.strip()
-        if not line or re.search(r"(?i)\b(?:0|no)\s+errors?\b", line):
+        if not line or line.startswith("#") or re.search(r"(?i)\b(?:0|no)\s+errors?\b", line):
             continue
         if REAL_ERROR_RE.search(line):
             return line[:2000]
@@ -317,7 +325,7 @@ def real_error_context(text: str, following_lines: int = 6) -> str:
     lines = text.splitlines()
     for index, raw in enumerate(lines):
         line = raw.strip()
-        if line and not re.search(r"(?i)\b(?:0|no)\s+errors?\b", line) and REAL_ERROR_RE.search(line):
+        if line and not line.startswith("#") and not re.search(r"(?i)\b(?:0|no)\s+errors?\b", line) and REAL_ERROR_RE.search(line):
             return "\n".join(lines[index : index + following_lines])
     return text[-4000:]
 
@@ -771,6 +779,8 @@ def classify_manifest_runner_failure(
         if nested_class == "remote_stage_cleanup_failure":
             return "vcs_execution_environment_failure", "execution_environment_retry"
         compile_diagnostic = real_error_context(compile_text)
+        if VCS_TOOL_PROCESS_FAILURE_RE.search(compile_diagnostic):
+            return "vcs_tool_process_failure", "execution_environment_retry"
         if EXECUTION_ENVIRONMENT_ERROR_RE.search(compile_diagnostic):
             return "vcs_execution_environment_failure", "execution_environment_retry"
         if LIBRARY_ERROR_RE.search(compile_diagnostic):
@@ -894,6 +904,9 @@ def failure_summary(failure_class: str, first_error: str | None) -> str:
         "simulation_checkpoint_capability_missing_or_invalid": "required simulation checkpoint capture or restore evidence is missing or invalid",
         "vcs_library_resolution_failure": "VCS could not resolve a required compiled simulation library",
         "vcs_execution_environment_failure": "the remote VCS execution environment exhausted required storage",
+        "vcs_tool_process_failure": (
+            "the remote VCS process terminated internally before producing a valid compile result"
+        ),
         "vcs_compile_failure": "VCS source compilation failed",
         "vcs_elaboration_failure": "VCS elaboration of the exact-board hierarchy failed",
         "vcs_runtime_failure": "the compiled exact-board simulator exited with failure",
@@ -935,548 +948,26 @@ def failure_summary(failure_class: str, first_error: str | None) -> str:
     return summaries.get(failure_class, failure_class.replace("_", " "))
 
 
-def analyze_manifest_board(run_dir: Path) -> dict[str, Any]:
-    runner_path = run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
-    board_manifest_path = run_dir / "verification" / "board_simulation" / "board_simulation_manifest.json"
-    semantic_path = run_dir / "verification" / "semantic_testbench" / "semantic_testbench_manifest.json"
-    binding_path = run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
-    identity_path = run_dir / "verification" / "board_interface" / "board_source_identity.json"
-    runner = read_json(runner_path)
-    stall_sidecar_path = (
-        run_dir / "verification" / "vcs" / "live" / "adaptive_semantic_stall.json"
-    )
-    stall_sidecar = read_optional_json(stall_sidecar_path)
-    sidecar_evidence = (
-        stall_sidecar.get("evidence", {})
-        if isinstance(stall_sidecar.get("evidence"), dict)
-        else {}
-    )
-    if (
-        sidecar_evidence.get("status") == "proven_semantic_stall"
-        and stall_sidecar.get("input_fingerprint_sha256")
-        == runner.get("input_fingerprint_sha256")
-        and stall_sidecar.get("remote_workdir") == runner.get("remote_workdir")
-    ):
-        runner = {
-            **runner,
-            "adaptive_semantic_stall_evidence": sidecar_evidence,
-            "adaptive_semantic_stall_evidence_source": {
-                "path": str(stall_sidecar_path),
-                "sha256": sha256_file(stall_sidecar_path),
-            },
-        }
-    board_manifest = read_optional_json(board_manifest_path)
-    semantic = read_optional_json(semantic_path)
-    binding = read_optional_json(binding_path)
-    identity = read_optional_json(identity_path)
-    executed_manifest_path = report_path(
-        run_dir,
-        runner.get("executed_manifest"),
-        run_dir / "verification" / "board_simulation" / "board_simulation_executed_manifest.json",
-    )
-    executed_manifest = read_optional_json(executed_manifest_path)
-    compile_log_path = report_path(
-        run_dir,
-        runner.get("compile_log"),
-        run_dir / "verification" / "board_simulation" / "compile.log",
-    )
-    simulation_log_path = report_path(
-        run_dir,
-        runner.get("sim_log"),
-        run_dir / "verification" / "board_simulation" / "simulation.log",
-    )
-    compile_text = log_tail(
-        read_optional_text(compile_log_path),
-        nested_tool_text(runner.get("compile")),
-    )
-    simulation_text = log_tail(
-        read_optional_text(simulation_log_path),
-        nested_tool_text(runner.get("run")),
-    )
-    output_path = run_dir / "verification" / "board_simulation" / "rtl_output.memh"
-    expected = semantic.get("board", {}).get("expected_output", {}) if isinstance(semantic.get("board"), dict) else {}
-    compile_result = runner.get("compile", {}) if isinstance(runner.get("compile"), dict) else {}
-    run_result = runner.get("run", {}) if isinstance(runner.get("run"), dict) else {}
-    causal_simulation_text = (
-        simulation_text if compile_result.get("status") == "pass" else ""
-    )
-    execution_completed = runner.get("status") == "pass" or (
-        runner.get("phase") == "remote_vcs"
-        and compile_result.get("status") == "pass"
-        and run_result.get("status") == "pass"
-    )
-    if execution_completed:
-        try:
-            metrics = semantic_compare(
-                output_path,
-                expected,
-                semantic.get("numeric_comparison_policy", {}),
-            )
-        except Exception as exc:
-            metrics = {"passed": False, "error": f"semantic comparison could not run: {exc}"}
-        semantic_status = "pass" if metrics.get("passed") is True else "fail"
-    else:
-        metrics = {
-            "passed": False,
-            "not_run_reason": "exact-board VCS execution did not complete",
-        }
-        semantic_status = "not_run"
-    consumed, consumed_source = board_consumed_tensor_hashes(runner, board_manifest, binding)
-    testbench = board_manifest.get("testbench", {}) if isinstance(board_manifest.get("testbench"), dict) else {}
-    semantic_comparison = {
-        "status": semantic_status,
-        "passed": metrics.get("passed") is True,
-        "expected_output_source": "target_model_inference",
-        "expected_output_sha256": expected.get("sha256"),
-        "rtl_output_sha256": sha256_file(output_path) if output_path.is_file() else None,
-        "testbench_sha256": testbench.get("sha256"),
-        "consumed_tensor_hashes": consumed,
-        "consumed_tensor_hash_source": consumed_source,
-        "numeric_metrics": metrics,
-    }
-    copied_outputs = (
-        runner.get("outputs", {}) if isinstance(runner.get("outputs"), dict) else {}
-    )
-    copied_boundary = (
-        copied_outputs.get("boundary_trace_file", {})
-        if isinstance(copied_outputs.get("boundary_trace_file"), dict)
-        else {}
-    )
-    trace_source = report_path(
-        run_dir,
-        copied_boundary.get("path"),
-        run_dir / "verification" / "board_simulation" / "boundary_trace.json",
-    )
-    if not trace_source.is_file():
-        jsonl_fallback = (
-            run_dir / "verification" / "board_simulation" / "boundary_trace.jsonl"
-        )
-        if jsonl_fallback.is_file():
-            trace_source = jsonl_fallback
-    trace_target = run_dir / "verification" / "debug_closure" / "boundary_trace.json"
-    trace = load_boundary_trace_evidence(trace_source)
-    trace_records = trace.get("records", [])
-    trace_ready = isinstance(trace_records, list) and bool(trace_records)
-    validation_scope = board_validation_scope_summary(
-        run_dir, binding, board_manifest
-    )
-    if trace_ready:
-        write_json(
-            trace_target,
-            {
-                "schema_version": "spatialaccagent.normalized_boundary_trace.v1",
-                "status": "ready",
-                "source_format": trace.get("source_format"),
-                "source_path": str(trace_source),
-                "record_count": len(trace_records),
-                "invalid_records": trace.get("invalid_records", []),
-                "boundary_trace": trace_records,
-                "progress_summary": trace.get("progress_summary", {}),
-            },
-        )
-    runner_passed = runner.get("status") == "pass"
-    passed = (
-        runner_passed
-        and semantic_comparison["passed"]
-        and identity.get("exact_user_sample_wrapper") is True
-        and identity.get("simulation_hashes_match_source") is True
-        and validation_scope["status"] == "pass"
-        and trace_ready
-    )
-    runner_tail = log_tail(
-        compile_text if compile_result.get("status") != "pass" else "",
-        causal_simulation_text,
-        str(runner.get("stderr_tail") or ""),
-    )
-    if runner_passed:
-        if semantic_status == "fail":
-            failure_class = (
-                "semantic_evidence_missing"
-                if metrics.get("error")
-                else "rtl_semantic_mismatch"
-            )
-            repair_scope = "board_rtl_or_testbench"
-        elif identity.get("exact_user_sample_wrapper") is not True or identity.get("simulation_hashes_match_source") is not True:
-            failure_class, repair_scope = "board_wrapper_identity_failure", "board_binding_or_generated_rtl"
-        elif validation_scope["status"] != "pass":
-            failure_class, repair_scope = "real_weight_binding_failure", "board_rtl_or_testbench"
-        elif not trace_ready:
-            failure_class, repair_scope = "boundary_trace_failure", "board_rtl_or_testbench"
-        else:
-            failure_class, repair_scope = "none", "none"
-    else:
-        failure_class, repair_scope = classify_manifest_runner_failure(
-            runner, compile_text, simulation_text
-        )
-    first_error = first_real_error(
-        compile_text if compile_result.get("status") != "pass" else simulation_text,
-        runner.get("errors"),
-    )
-    adaptive_semantic_stall = adaptive_semantic_stall_from_runner(runner)
-    zero_time_livelock = zero_time_livelock_from_runner(runner)
-    intra_layer_pipeline_violation = intra_layer_pipeline_violation_from_runner(
-        runner
-    )
-    lower_layer_contradiction = board_to_lower_layer_contradiction_from_runner(
-        runner,
-        target_debug_layer="single_transformer_layer_kernel",
-    )
-    termination_provenance = termination_provenance_from_runner(runner)
-    if failure_class == "vcs_simulator_process_crash":
-        terminal_log = (
-            termination_provenance.get("simulator_terminal_log", {})
-            if isinstance(
-                termination_provenance.get("simulator_terminal_log"), dict
-            )
-            else {}
-        )
-        crash_lines = ordered_strings(terminal_log.get("simulator_crash_lines"))
-        first_error = (
-            crash_lines[0]
-            if crash_lines
-            else "the exact-board simulator process crashed"
-        )
-    elif failure_class == "vcs_runtime_zero_time_livelock":
-        first_error = (
-            "VCS simulation time stopped advancing after cycle "
-            f"{zero_time_livelock.get('last_cycle')} while the remote simulator "
-            "remained alive; this is a proven zero-time simulation livelock, not "
-            "a semantic-stall timeout"
-        )
-    elif failure_class == "vcs_runtime_semantic_stall":
-        first_error = (
-            "semantic progress stopped at cycle "
-            f"{adaptive_semantic_stall.get('last_semantic_event_cycle')} and cumulative "
-            "scheduler/layer/bank/workload/AXI state remained unchanged through cycle "
-            f"{adaptive_semantic_stall.get('latest_cycle')}"
-        )
-    elif failure_class == "intra_layer_spatial_pipeline_violation":
-        first_error = (
-            "all "
-            f"{intra_layer_pipeline_violation.get('completed_input_tokens')} input tokens "
-            "completed by cycle "
-            f"{intra_layer_pipeline_violation.get('final_input_cycle')} while the ready "
-            "kernel output accepted zero beats"
-        )
-    elif failure_class == "board_output_lifecycle_frontier_violation":
-        first_error = (
-            "the board trace completed current-layer ingress while the ready output frontier "
-            "accepted zero beats; direct core-boundary contradiction evidence is still required "
-            "before reopening the connected kernel"
-        )
-    elif failure_class == "simulation_checkpoint_capability_missing_or_invalid":
-        checkpoint_artifacts = (
-            runner.get("checkpoint_artifacts", {})
-            if isinstance(runner.get("checkpoint_artifacts"), dict)
-            else {}
-        )
-        checkpoint_errors = [
-            str(value)
-            for value in checkpoint_artifacts.get("errors", [])
-            if str(value)
-        ]
-        first_error = (
-            checkpoint_errors[0]
-            if checkpoint_errors
-            else "required checkpoint execution produced no passing capture or restore report"
-        )
-    runtime_frontier_failure = failure_class in {
-        "vcs_runtime_semantic_stall",
-        "vcs_runtime_zero_time_livelock",
-    }
-    structured = (
-        {}
-        if runtime_frontier_failure
-        else structured_failures(runner, executed_manifest)
-    )
-    if first_error is None:
-        first_error = first_structured_error(structured)
-    if first_error is None and semantic_status == "fail":
-        first_error = str(metrics.get("error") or "") or None
-    source_text = "\n".join(
-        value
-        for value in (first_error or "", compile_text, causal_simulation_text)
-        if value
-    )
-    related_sources = related_source_ids(source_text, board_manifest)
-    summary = (
-        "exact sample-wrapper board simulation and semantic comparison passed"
-        if passed
-        else failure_summary(failure_class, first_error)
-    )
-    blockers = [] if passed else [summary]
-    if semantic_status == "fail" and failure_class not in {"rtl_semantic_mismatch", "semantic_evidence_missing"}:
-        blockers.append(failure_summary("rtl_semantic_mismatch", None))
-    if execution_completed and not trace_ready:
-        blockers.append("board testbench did not emit a CCTG boundary trace")
-    causal_slice_path = (
-        run_dir
-        / "verification"
-        / "case_diagnostics"
-        / "sacg_cctg_causal_slice.json"
-    )
-    runtime_attempted = (
-        compile_result.get("status") == "pass"
-        and run_result.get("status") in {"pass", "fail"}
-    )
-    if runtime_attempted:
-        causal_slice = build_sacg_cctg_causal_slice(
-            run_dir=run_dir,
-            runner=runner,
-            executed_manifest=executed_manifest,
-            failure_class="none" if passed else failure_class,
-            executed_manifest_path=executed_manifest_path,
-        )
-    else:
-        causal_slice = {
-            "schema_version": "spatialaccagent.sacg_cctg_causal_slice.v1",
-            "status": "not_applicable_before_runtime_execution",
-            "run_dir": str(run_dir),
-            "input_fingerprint_sha256": runner.get("input_fingerprint_sha256"),
-            "remote_workdir": runner.get("remote_workdir"),
-            "failure_class": failure_class,
-            "reason": (
-                "SACG/CCTG runtime frontier selection requires a completed VCS "
-                "compile and an attempted simulator execution"
-            ),
-            "llm_analysis_contract": {
-                "use_earliest_real_tool_error_before_runtime_graph": True,
-                "must_not_reuse_a_prior_fingerprint_runtime_slice": True,
-                "must_not_edit_hardware_for_transport_or_tool_environment_failure": True,
-            },
-        }
-    write_json(causal_slice_path, causal_slice)
-    causal_slice_binding = {
-        "path": str(causal_slice_path),
-        "sha256": sha256_file(causal_slice_path),
-        "value": causal_slice,
-    }
-    sources = [
-        str(path)
-        for path in (
-            runner_path,
-            board_manifest_path,
-            identity_path,
-            binding_path,
-            semantic_path,
-            compile_log_path,
-            simulation_log_path if causal_simulation_text else Path(),
-            executed_manifest_path,
-            trace_source,
-            stall_sidecar_path,
-            causal_slice_path,
-        )
-        if path.is_file()
-    ]
-    supplemental_observation_artifacts = (
-        runner.get("supplemental_observation_artifacts", [])
-        if isinstance(runner.get("supplemental_observation_artifacts"), list)
-        else []
-    )
-    sources.extend(
-        str(path)
-        for row in supplemental_observation_artifacts
-        if isinstance(row, dict)
-        and row.get("copied") is True
-        and (path := Path(str(row.get("path") or ""))).is_file()
-    )
-    agent_should_apply_code_changes = not passed and repair_scope not in {
-        "none",
-        "remote_transport_retry",
-        "simulation_environment",
-        "execution_environment_retry",
-    }
-    failure_evidence = {
-        "runner_phase": str(runner.get("phase") or "unknown"),
-        "failure_class": failure_class,
-        "repair_scope": repair_scope,
-        "first_real_error": first_error,
-        "log_tail": runner_tail,
-        "related_source_ids": related_sources,
-        "compile": {
-            key: compile_result.get(key)
-            for key in ("status", "returncode", "failure_class", "remote_state", "duration_sec")
-            if key in compile_result
-        },
-        "simulation": {
-            key: run_result.get(key)
-            for key in ("status", "returncode", "failure_class", "remote_state", "duration_sec", "summary")
-            if key in run_result
-        },
-        "termination_provenance": termination_provenance,
-        "structured_failures": structured,
-        "live_progress": runner.get("live_progress", {}),
-        "progress_event_summary": runner.get("progress_event_summary", {}),
-        "supplemental_observation_artifacts": supplemental_observation_artifacts,
-        "vcs_native_loop_report": runner.get("vcs_native_loop_report", {}),
-        "adaptive_semantic_stall_evidence": adaptive_semantic_stall,
-        "zero_time_livelock_evidence": zero_time_livelock,
-        "intra_layer_pipeline_violation_evidence": (
-            intra_layer_pipeline_violation
-        ),
-        "board_to_lower_layer_contradiction_evidence": lower_layer_contradiction,
-        "checkpoint_execution": runner.get("checkpoint_execution", {}),
-        "checkpoint_artifacts": runner.get("checkpoint_artifacts", {}),
-        "checkpoint_runtime_execution_failure": (
-            checkpoint_runtime_capability_failure(runner)
-        ),
-    }
-    failure_evidence["sacg_cctg_causal_slice"] = causal_slice_binding
-    target_debug_layer = (
-        "single_transformer_layer_kernel"
-        if failure_class == "intra_layer_spatial_pipeline_violation"
-        else "board_axi_ddr_wrapped_system"
-    )
-    applicable_rerun_gates = (
-        [
-            "case_single_layer_functional",
-            "case_vcs_functional_sim",
-            "case_vcs_evidence_analyzer",
-        ]
-        if failure_class == "intra_layer_spatial_pipeline_violation"
-        else ["case_vcs_functional_sim", "case_vcs_evidence_analyzer"]
-    )
-    critical_sources = [
-        ("board_vcs_runner_report", runner_path),
-        ("board_simulation_manifest", board_manifest_path),
-        ("board_source_identity", identity_path),
-        ("semantic_testbench_manifest", semantic_path),
-        ("dut_weight_binding_manifest", binding_path),
-        ("executed_board_manifest", executed_manifest_path),
-        ("sacg_cctg_causal_slice", causal_slice_path),
-    ]
-    source_artifacts = [
-        {"role": role, "path": str(path), "sha256": sha256_file(path)}
-        for role, path in critical_sources
-        if path.is_file()
-    ]
-    report = {
-        "schema_version": "spatialaccagent.case_vcs_functional_diagnosis.v4",
-        "status": "pass" if passed else "needs_repair",
-        "diagnosis_status": "ready",
-        "run_dir": str(run_dir),
-        "sources": sources,
-        "sim_pass": runner_passed,
-        "runner_phase": failure_evidence["runner_phase"],
-        "failure_class": "none" if passed else failure_class,
-        "root_cause_class": "none" if passed else failure_class,
-        "summary": summary,
-        "applicability_binding": {
-            "schema_version": DIAGNOSIS_APPLICABILITY_BINDING_SCHEMA_VERSION,
-            "origin_layer": "board_axi_ddr_wrapped_system",
-            "target_layer": target_debug_layer,
-            "origin_gates": ["case_vcs_functional_sim"],
-            "applicable_rerun_gates": applicable_rerun_gates,
-            "diagnosed_failure_class": "none" if passed else failure_class,
-            "input_fingerprint_sha256": runner.get("input_fingerprint_sha256"),
-            "preflight_manifest_projection_sha256": runner.get(
-                "preflight_manifest_projection_sha256"
-            ),
-            "source_identity_sha256": (
-                runner.get("source_identity_sha256")
-                or (
-                    sha256_file(identity_path)
-                    if identity_path.is_file()
-                    else None
-                )
-            ),
-            "source_artifacts": source_artifacts,
-            "policy": {
-                "live_source_artifact_hashes_must_match": True,
-                "current_failed_gate_must_match_origin_or_target_rerun_gate": True,
-                "cross_layer_reuse_is_read_only_without_an_explicit_targeted_backtrack": True,
-            },
-        },
-        "failure_evidence": failure_evidence,
-        "semantic_comparison": semantic_comparison,
-        "real_weight_provenance": {
-            "binding_manifest": str(binding_path),
-            "all_target_layers": binding.get("all_target_layers") is True,
-            "all_validation_layers": validation_scope["status"] == "pass",
-            "board_validation_scope": validation_scope,
-            "consumed_tensor_hashes": consumed,
-            "consumed_tensor_hash_source": consumed_source,
-        },
-        "board_wrapper_identity": {
-            "path": str(identity_path),
-            "sha256": sha256_file(identity_path) if identity_path.is_file() else None,
-            **{
-                key: identity.get(key)
-                for key in (
-                    "schema_version",
-                    "status",
-                    "exact_user_sample_wrapper",
-                    "simulation_hashes_match_source",
-                    "selected_simulation_source_closure_sha256",
-                    "compute_slot_abi_sha256",
-                    "timing_contract_sha256",
-                    "axi_interfaces_sha256",
-                    "vivado_facts_sha256",
-                )
-                if key in identity
-            },
-            "complete_identity_bound_by_path_and_sha256": True,
-        },
-        "debug_closure": {
-            "status": "pass" if passed else ("trace_ready" if trace_ready else "needs_boundary_trace"),
-            "boundary_trace_path": str(trace_target),
-            "boundary_trace_record_count": len(trace_records),
-            "boundary_trace_failed_count": sum(1 for row in trace_records if isinstance(row, dict) and row.get("status") == "fail"),
-            "progress_event_summary": trace.get("progress_summary", {}),
-            "live_progress": runner.get("live_progress", {}),
-        },
-        "repair_handoff": {
-            "repair_patterns": [],
-            "next_stage": None if passed else "repair",
-            "agent_should_apply_code_changes": agent_should_apply_code_changes,
-            "runner_phase": failure_evidence["runner_phase"],
-            "failure_class": "none" if passed else failure_class,
-            "repair_scope": repair_scope,
-            "debug_layer": (
-                target_debug_layer if not passed else None
-            ),
-            "first_real_error": first_error,
-            "termination_causal_classification": (
-                termination_provenance.get("causal_classification", {})
-                if isinstance(
-                    termination_provenance.get("causal_classification"), dict
-                )
-                else {}
-            ),
-            "log_tail": runner_tail,
-            "related_source_ids": related_sources,
-            "structured_failures": structured,
-            "sacg_cctg_causal_frontier": {
-                "status": causal_slice_binding["value"].get("status"),
-                "artifact_path": causal_slice_binding["path"],
-                "artifact_sha256": causal_slice_binding["sha256"],
-                "earliest_unproven_frontier": causal_slice_binding["value"].get(
-                    "earliest_unproven_frontier", {}
-                ),
-                "hierarchical_certificate_projection": causal_slice_binding[
-                    "value"
-                ].get("hierarchical_certificate_projection", {}),
-            },
-            "board_to_lower_layer_contradiction_evidence": lower_layer_contradiction,
-            "must_rerun": applicable_rerun_gates,
-            "acceptance_contracts_to_revalidate": (
-                ["single_layer_pipeline_overlap"]
-                if failure_class == "intra_layer_spatial_pipeline_violation"
-                else []
-            ),
-            "acceptance_reminder": "Keep checkpoint, random input, golden, numeric policy, and exact sample wrapper hashes unchanged during repair.",
-        },
-        "blockers": blockers,
-    }
+def _persist_remote_job_retry_request(
+    runner_path: Path,
+    runner: dict[str, Any],
+    compile_result: dict[str, Any],
+    compile_log_path: Path,
+    failure_class: str,
+) -> None:
     retry_request_path = runner_path.parent / REMOTE_JOB_RETRY_REQUEST
     remote_workdir = str(
         compile_result.get("remote_workdir")
         or runner.get("remote_workdir")
         or ""
     )
+    fingerprint = runner.get("input_fingerprint_sha256")
     if (
-        failure_class == "vcs_execution_environment_failure"
-        and runner.get("input_fingerprint_sha256")
+        failure_class in {
+            "vcs_execution_environment_failure",
+            "vcs_tool_process_failure",
+        }
+        and fingerprint
         and remote_workdir
     ):
         write_json(
@@ -1484,16 +975,11 @@ def analyze_manifest_board(run_dir: Path) -> dict[str, Any]:
             {
                 "schema_version": "spatialaccagent.remote_job_retry_request.v1",
                 "status": "ready",
-                "action": (
-                    "discard_completed_remote_workdir_and_retry_same_fingerprint"
-                ),
+                "action": "discard_completed_remote_workdir_and_retry_same_fingerprint",
                 "failure_class": failure_class,
-                "input_fingerprint_sha256": runner.get(
-                    "input_fingerprint_sha256"
-                ),
+                "input_fingerprint_sha256": fingerprint,
                 "remote_workdir": remote_workdir,
                 "runner_report_path": str(runner_path),
-                "runner_report_sha256": sha256_file(runner_path),
                 "compile_log_path": str(compile_log_path),
                 "compile_log_sha256": (
                     sha256_file(compile_log_path)
@@ -1509,10 +995,99 @@ def analyze_manifest_board(run_dir: Path) -> dict[str, Any]:
         )
     elif retry_request_path.is_file():
         prior_retry = read_optional_json(retry_request_path)
-        if prior_retry.get("input_fingerprint_sha256") == runner.get(
-            "input_fingerprint_sha256"
-        ):
+        if prior_retry.get("input_fingerprint_sha256") == fingerprint:
             retry_request_path.unlink()
+
+
+def analyze_manifest_board(run_dir: Path) -> dict[str, Any]:
+    runner_path = run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
+    board_manifest_path = run_dir / "verification" / "board_simulation" / "board_simulation_manifest.json"
+    semantic_path = run_dir / "verification" / "semantic_testbench" / "semantic_testbench_manifest.json"
+    binding_path = run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
+    identity_path = run_dir / "verification" / "board_interface" / "board_source_identity.json"
+    runner = read_json(runner_path)
+    compile_evidence = runner.get("compile_evidence", {}) if isinstance(runner.get("compile_evidence"), dict) else {}
+    compile_result = runner.get("compile", {}) if isinstance(runner.get("compile"), dict) else {}
+    compile_log_path = Path(str(compile_evidence.get("log_path") or runner.get("compile_log") or ""))
+    errors = []
+    if runner.get("status") != "pass" or runner.get("validation_policy") != COMPILE_ONLY_POLICY:
+        errors.append("exact-board VCS compile-only execution did not pass")
+    if compile_result.get("status") != "pass" or compile_result.get("returncode") != 0:
+        errors.append("exact-board VCS compile/elaboration did not pass")
+    if not compile_log_path.is_file():
+        errors.append(f"VCS compile log is missing: {compile_log_path}")
+    elif compile_evidence.get("log_sha256") != sha256_file(compile_log_path):
+        errors.append("VCS compile log hash mismatch")
+    compile_text = read_optional_text(compile_log_path)
+    first_error = first_real_error(compile_text) or first_real_error("", runner.get("errors"))
+    compile_log_valid = (
+        compile_log_path.is_file()
+        and compile_evidence.get("log_sha256") == sha256_file(compile_log_path)
+    )
+    failure_class, repair_scope = ("none", "none") if not errors else ("vcs_compile_failure", "generated_source_or_compile_plan")
+    if errors and compile_result.get("status") != "pass" and compile_log_valid:
+        failure_class, repair_scope = classify_manifest_runner_failure(runner, compile_text, "")
+    source_repair = compile_log_valid and compile_result.get("status") == "fail" and failure_class in {
+        "vcs_compile_failure", "vcs_elaboration_failure",
+    }
+    failure_evidence = {
+        "runner_phase": runner.get("phase"),
+        "compile": compile_result,
+        "first_real_error": first_error,
+        "first_real_error_context": real_error_context(compile_text) if errors else "",
+        "log_tail": log_tail(compile_text) if errors else "",
+        "compile_log_path": str(compile_log_path),
+        "compile_log_sha256": compile_evidence.get("log_sha256"),
+        "compile_log_valid": compile_log_valid,
+    }
+    report = {
+        "schema_version": "spatialaccagent.case_vcs_functional_diagnosis.v4",
+        "status": "pass" if not errors else "needs_repair",
+        "diagnosis_status": "ready",
+        "run_dir": str(run_dir),
+        "sources": [str(runner_path), str(compile_log_path)],
+        "validation_policy": COMPILE_ONLY_POLICY,
+        "sim_pass": None,
+        "latency_cycles": None,
+        "measured_cycles": None,
+        "measurement_kind": "optional_rtl_simulation_not_run",
+        "failure_class": failure_class,
+        "root_cause_class": failure_class,
+        "repair_scope": repair_scope,
+        "runner_phase": runner.get("phase"),
+        "first_real_error": first_error,
+        "failure_evidence": failure_evidence,
+        "summary": (
+            "exact-board VCS compilation and elaboration passed; runtime diagnosis skipped"
+            if not errors
+            else failure_summary(failure_class, first_error) if first_error else "; ".join(errors)
+        ),
+        "compile_evidence": {
+            **compile_evidence,
+            "compile": compile_result,
+        },
+        "semantic_comparison": {
+            "status": "not_run",
+            "passed": None,
+            "reason": "simulation is an optional post-compile measurement and was skipped by compile-only policy",
+        },
+        "repair_handoff": {
+            "repair_patterns": [],
+            "next_stage": None if not errors else "repair",
+            "agent_should_apply_code_changes": source_repair,
+            "failure_class": failure_class,
+            "repair_scope": repair_scope,
+            **failure_evidence,
+        },
+        "blockers": errors,
+    }
+    _persist_remote_job_retry_request(
+        runner_path,
+        runner,
+        compile_result,
+        compile_log_path,
+        failure_class,
+    )
     return report
 
 
@@ -1717,6 +1292,8 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "last_progress": latest(progress),
         "fatal": fatal,
         "pass_fields": pass_fields,
+        "measured_cycles": int(pass_fields.get("cycles", 0)) if isinstance(pass_fields, dict) and int(pass_fields.get("cycles", 0) or 0) > 0 else None,
+        "measurement_kind": "rtl_simulation" if isinstance(pass_fields, dict) and int(pass_fields.get("cycles", 0) or 0) > 0 else None,
     }
     debug_status = "pass" if sim_pass else ("trace_ready" if boundary_trace.get("status") == "ready" and boundary_trace.get("record_count", 0) else "needs_boundary_trace")
     return {
@@ -1726,6 +1303,12 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "run_dir": str(run_dir),
         "sources": sources,
         "sim_pass": sim_pass,
+        # RTL cycle counters remain in observed for debugging only. Performance
+        # reporting uses the DSE/source-cycle model as the single cycle source.
+        "latency_cycles": None,
+        "measurement_kind": "rtl_simulation_ignored_for_performance"
+        if observed["measured_cycles"] is not None
+        else observed["measurement_kind"],
         "root_cause_class": root_cause,
         "summary": summary,
         "debug_closure": {

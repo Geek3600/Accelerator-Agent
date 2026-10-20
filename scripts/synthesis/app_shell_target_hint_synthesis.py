@@ -24,6 +24,7 @@ if str(REPO_ROOT) not in sys.path:
 from accagent.framework.llm_config import resolved_llm_cfg
 from accagent.framework.llm_io import build_prompt, parse_json_object, repair_prompt, validate_schema
 from accagent.framework.stage_llm import call_llm_with_retry, llm_timeout_sec
+from accagent.framework.board_acceptance_contract import validate_exact_board_identity
 
 
 SYSTEM = """You are the SpatialAccAgent app-shell target-selection engineer.
@@ -144,6 +145,33 @@ def compact_target_candidates(contract: dict[str, Any], discovery_report: dict[s
     return result
 
 
+def validated_stage6_selection(run_dir: Path, contract: dict[str, Any]) -> dict[str, Any]:
+    path = run_dir / "verification" / "board_interface" / "board_source_identity.json"
+    identity = read_json_if_exists(path)
+    if not identity or validate_exact_board_identity(path).get("status") != "pass":
+        return {"status": "unavailable", "source": str(path)}
+    abi = identity.get("compute_slot_abi", {})
+    target = contract.get("integration_target", {})
+    bindings = {
+        "selected_cell_id": abi.get("selected_cell_id"),
+        "replacement_module_identity": abi.get("replacement_module_identity"),
+        "bd_cell": abi.get("replacement_instance_boundary"),
+    }
+    if any(not value or target.get(key) != value for key, value in bindings.items()):
+        return {"status": "target_mismatch", "source": str(path)}
+    return {
+        "status": "pass",
+        "source": str(path),
+        "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "selection_authority": "existing_validated_stage6_exact_board_selection",
+        "human_approval_claimed": False,
+        "integration_target": bindings,
+        "sample_project_sha256": identity.get("sample_project_sha256"),
+        "compute_slot_abi_sha256": identity.get("compute_slot_abi_sha256"),
+        "selected_simulation_source_closure_sha256": identity.get("selected_simulation_source_closure_sha256"),
+    }
+
+
 def input_context(run_dir: Path, contract: dict[str, Any], discovery_report: dict[str, Any], app_shell_report: dict[str, Any]) -> dict[str, Any]:
     input_dir = run_dir / "input"
     material_index = read_json_if_exists(input_dir / "material_index.json")
@@ -152,6 +180,7 @@ def input_context(run_dir: Path, contract: dict[str, Any], discovery_report: dic
     board_profile = read_json_if_exists(input_dir / "target_board_profile.json")
     prepared_inputs = read_json_if_exists(input_dir / "prepared_inputs.json")
     return {
+        "validated_stage6_selection": validated_stage6_selection(run_dir, contract),
         "app_shell_contract": {
             "status": contract.get("status"),
             "integration_target": contract.get("integration_target"),
@@ -211,7 +240,9 @@ def prompt_for_decision(context: dict[str, Any]) -> str:
         output_schema=DECISION_SCHEMA,
         rules=[
             "Valid decision values are approved_target, approved_policy_hints, or defer.",
-            "Default to defer unless user-supplied materials explicitly identify a target candidate or unambiguous target-name hint.",
+            "Default to defer unless user-supplied materials explicitly identify a target, or validated_stage6_selection.status=pass proves the unchanged current target is already bound to the exact supplied project and sources.",
+            "When validated_stage6_selection passes, preserve that exact target and cite its source plus current Vivado candidate evidence. IP and BD-cell names for that same bound slot are aliases, not a new target-selection decision. Do not request human approval again merely to preserve it, and do not claim human approval was provided.",
+            "A target change or unavailable/mismatching Stage-6 identity still requires independent evidence or approval; contract hints and candidate scores alone remain insufficient.",
             "Vivado candidate names alone are not user intent. Do not approve a candidate only because its name looks like a compute block.",
             "For approved_target, proposed_contract_update.integration_target.ip_name or bd_cell must exactly match one vivado_target_candidates.name.",
             "For approved_policy_hints, proposed_contract_update.target_discovery_policy.candidate_name_hints must be non-empty and must be cited by user materials or LLM-confirmed field evidence.",
@@ -261,7 +292,7 @@ def apply_decision(contract: dict[str, Any], decision: dict[str, Any]) -> dict[s
         target = updated.get("integration_target", {}) if isinstance(updated.get("integration_target"), dict) else {}
         proposed = update.get("integration_target", {}) if isinstance(update.get("integration_target"), dict) else {}
         for key in ["ip_name", "bd_cell", "bd_path", "adapter_contract"]:
-            if proposed.get(key) not in {None, "", []}:
+            if proposed.get(key) not in (None, "", []):
                 target[key] = proposed.get(key)
         target["selection_source"] = "llm_target_hint_synthesis"
         target["selection_citations"] = decision.get("citations", [])[:12]

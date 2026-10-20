@@ -1,0 +1,299 @@
+{
+  "attempt_count": 1,
+  "decision": "retry",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "llm_semantic_extraction_check",
+        "sacg_static_check"
+      ],
+      "action_type": "prepared_input_error_triage",
+      "consumes": [
+        "prepared_inputs.errors",
+        "artifact.input.case_adapter",
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols"
+      ],
+      "id": "input_preparation.triage_missing_case_adapter",
+      "on_failure": "Preserve the exact error and any retrieval gap, leave the adapter unresolved, and request the real source-backed adapter through the authorized input path. Do not fabricate testbench, RTL, simulator, diagnosis, or weight evidence, and do not promote the stage.",
+      "produces": [
+        "input_preparation/prepared_input_error_triage.json",
+        "input_preparation/case_adapter_provenance_handoff.json"
+      ],
+      "rationale": "Inspect and preserve the original prepared_inputs.errors entry and trace the adapter requirement to the supplied material and tool evidence. The visible error identifies a missing adapter, but does not authorize creating or guessing one.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "sacg_validate",
+        "llm_semantic_extraction"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "llm_semantic_extraction_check",
+        "task_card_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "template_binding_static_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "addr_map_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "repair_boundary_check",
+        "verification_plan_static_check",
+        "sacg_static_check"
+      ],
+      "action_type": "sacg_constraint_review",
+      "consumes": [
+        "artifact.input.task_card",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.field_evidence",
+        "artifact.input.case_adapter",
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.human_agent_boundary",
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.tool.protocols",
+        "prepared_inputs.errors"
+      ],
+      "id": "input_preparation.audit_source_and_cross_layer_contracts",
+      "on_failure": "Record each failed or not-run checker against its source artifact and constraint. Distinguish details omitted from the summary from fields proven absent in the complete source; preserve unknowns and contradictions without guessing or changing design contracts.",
+      "produces": [
+        "input_preparation/model_intake_audit.json",
+        "input_preparation/numeric_template_audit.json",
+        "input_preparation/board_memory_runtime_audit.json",
+        "input_preparation/source_and_tool_evidence_audit.json",
+        "input_preparation/constraint_to_evidence_gap_map.json",
+        "input_preparation/human_and_repair_boundary_audit.json"
+      ],
+      "rationale": "Inspect the complete supplied artifacts and bind model, shape, numeric, template, stream, memory/runtime, board, tool, and boundary claims to their evidence and SACG constraints. The compact summary is insufficient to assert readiness.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "llm_semantic_extraction",
+        "task_card_check",
+        "model_config_check",
+        "numeric_policy_check",
+        "template_coverage_check",
+        "parameter_binding_static_check",
+        "template_binding_static_check",
+        "stream_plan_check",
+        "memory_runtime_plan_check",
+        "addr_map_check",
+        "tool_protocol_check",
+        "human_boundary_check",
+        "repair_boundary_check",
+        "verification_plan_static_check",
+        "sacg_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "required_real_tool_evidence_check",
+        "tool_protocol_check",
+        "sacg_static_check"
+      ],
+      "action_type": "stage_retry",
+      "consumes": [
+        "input/case_adapter.json or explicitly configured SPATIALACC_CASE_ADAPTER",
+        "input_preparation/prepared_input_error_triage.json",
+        "input_preparation/constraint_to_evidence_gap_map.json",
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "all current input-preparation source artifacts"
+      ],
+      "id": "input_preparation.retry_after_adapter_evidence_is_available",
+      "on_failure": "Retry input_preparation again only for resolvable input or framework issues. Preserve exact failed evidence, keep outputs blocked from downstream use, and do not backtrack hardware stages or invent missing materials.",
+      "produces": [
+        "prepared_inputs.json",
+        "input_preparation/retry_readiness.json",
+        "input_preparation/refreshed_source_and_tool_evidence_audit.json"
+      ],
+      "rationale": "Retry the failed current stage only after a real adapter is supplied and its provenance and declared tool protocols are checkable. This is an input/framework failure, not a hardware-design failure; no hardware stage should be rewound.",
+      "requires_approval": false,
+      "stage": "input_preparation",
+      "tool_roles": [
+        "sacg_validate",
+        "tool_protocol_check",
+        "real_tool_evidence_check"
+      ]
+    }
+  ],
+  "flow_event_index": 1,
+  "llm_flow_controller": {
+    "agent_executable_actions": [
+      {
+        "acceptance_checkers": [
+          "llm_semantic_extraction_check",
+          "sacg_static_check"
+        ],
+        "action_type": "prepared_input_error_triage",
+        "consumes": [
+          "prepared_inputs.errors",
+          "artifact.input.case_adapter",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "input_preparation.triage_missing_case_adapter",
+        "on_failure": "Preserve the exact error and any retrieval gap, leave the adapter unresolved, and request the real source-backed adapter through the authorized input path. Do not fabricate testbench, RTL, simulator, diagnosis, or weight evidence, and do not promote the stage.",
+        "produces": [
+          "input_preparation/prepared_input_error_triage.json",
+          "input_preparation/case_adapter_provenance_handoff.json"
+        ],
+        "rationale": "Inspect and preserve the original prepared_inputs.errors entry and trace the adapter requirement to the supplied material and tool evidence. The visible error identifies a missing adapter, but does not authorize creating or guessing one.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_validate",
+          "llm_semantic_extraction"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "llm_semantic_extraction_check",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.field_evidence",
+          "artifact.input.case_adapter",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.human_agent_boundary",
+          "constraint.task.goal",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.arch.design_space",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board",
+          "constraint.tool.protocols",
+          "prepared_inputs.errors"
+        ],
+        "id": "input_preparation.audit_source_and_cross_layer_contracts",
+        "on_failure": "Record each failed or not-run checker against its source artifact and constraint. Distinguish details omitted from the summary from fields proven absent in the complete source; preserve unknowns and contradictions without guessing or changing design contracts.",
+        "produces": [
+          "input_preparation/model_intake_audit.json",
+          "input_preparation/numeric_template_audit.json",
+          "input_preparation/board_memory_runtime_audit.json",
+          "input_preparation/source_and_tool_evidence_audit.json",
+          "input_preparation/constraint_to_evidence_gap_map.json",
+          "input_preparation/human_and_repair_boundary_audit.json"
+        ],
+        "rationale": "Inspect the complete supplied artifacts and bind model, shape, numeric, template, stream, memory/runtime, board, tool, and boundary claims to their evidence and SACG constraints. The compact summary is insufficient to assert readiness.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "llm_semantic_extraction",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "required_real_tool_evidence_check",
+          "tool_protocol_check",
+          "sacg_static_check"
+        ],
+        "action_type": "stage_retry",
+        "consumes": [
+          "input/case_adapter.json or explicitly configured SPATIALACC_CASE_ADAPTER",
+          "input_preparation/prepared_input_error_triage.json",
+          "input_preparation/constraint_to_evidence_gap_map.json",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "all current input-preparation source artifacts"
+        ],
+        "id": "input_preparation.retry_after_adapter_evidence_is_available",
+        "on_failure": "Retry input_preparation again only for resolvable input or framework issues. Preserve exact failed evidence, keep outputs blocked from downstream use, and do not backtrack hardware stages or invent missing materials.",
+        "produces": [
+          "prepared_inputs.json",
+          "input_preparation/retry_readiness.json",
+          "input_preparation/refreshed_source_and_tool_evidence_audit.json"
+        ],
+        "rationale": "Retry the failed current stage only after a real adapter is supplied and its provenance and declared tool protocols are checkable. This is an input/framework failure, not a hardware-design failure; no hardware stage should be rewound.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_validate",
+          "tool_protocol_check",
+          "real_tool_evidence_check"
+        ]
+      }
+    ],
+    "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/001_input_preparation/llm/flow_controller_agent_result.json",
+    "agent_status": "retry_current_stage",
+    "agent_summary": "Input preparation failed with a reported missing verification case adapter. Keep the hardware design stages unchanged; obtain and verify the real adapter and retry input_preparation. Do not promote the incomplete artifacts."
+  },
+  "reason": "Input preparation failed with a reported missing verification case adapter. Keep the hardware design stages unchanged; obtain and verify the real adapter and retry input_preparation. Do not promote the incomplete artifacts.",
+  "sacg_state": null,
+  "schema_version": "spatialaccagent.flow_event_action_record.v0",
+  "source_identities": {
+    "flow_controller_result_sha256": "cdd22dc984b482dd234a613bb457b14069bf972e85795ce03b629b0bc79c1e75",
+    "source_sacg_state_sha256": ""
+  },
+  "source_sacg_state": null,
+  "stage": "input_preparation"
+}

@@ -1,0 +1,166 @@
+{
+  "agent": "spatialaccagent_verification_repair_auditor",
+  "duration_sec": 29.55786401894875,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "42b5ec562b0444e7bd77287676e2d0cd",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_verification_repair_auditor_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "spatialaccagent_verification_repair_auditor",
+    "approval_required_for": [
+      "Any proposed architecture or pipeline change, memory-layout change, numeric-policy change, or major template change; this audit does not authorize such changes.",
+      "Any action requiring approval under the exact human-agent boundary artifact, once its detailed approval rules have been reviewed."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.design_space",
+          "artifact.input.tool_protocols",
+          "artifact.input.human_agent_boundary",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.case_adapter",
+          "artifact.input.field_evidence",
+          "artifact.input.field_evidence_candidates",
+          "prepared_inputs.errors",
+          "input_preparation/model_intake_audit.json",
+          "input_preparation/numeric_template_audit.json",
+          "input_preparation/board_memory_runtime_audit.json",
+          "input_preparation/source_and_tool_evidence_audit.json"
+        ],
+        "id": "input_preparation.aggregate_cross_layer_readiness_review",
+        "on_failure": "Keep SACG extraction readiness blocked. Record the exact failing checker, affected constraint, source artifact, and evidence gap in the gap map. Preserve the prepared-input error as unresolved unless the specialist evidence classifies it; route a bounded repair or clarification to the responsible specialist and rerun the affected registered checker before reassessing readiness.",
+        "produces": [
+          "input_preparation/cross_layer_input_readiness.json",
+          "input_preparation/constraint_to_evidence_gap_map.json",
+          "input_preparation/human_and_repair_boundary_audit.json"
+        ],
+        "rationale": "The summary establishes an unresolved prepared-input error but does not provide its details, specialist findings, or checker outcomes. Aggregate the complete supplied artifacts, map evidence and gaps to SACG constraints, and run the registered readiness and boundary checks before any extraction decision.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_static_check",
+          "template_binding_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The input inventory includes model configuration, numeric policy, template metadata and library, design space, board profile, tool profile and availability, tool protocols, and human-agent boundaries. Their detailed values are not included in the supplied summary, so consistency cannot be independently established from this view.",
+      "The prepared-input summary reports one error. Its text and specialist classification are not supplied; retain it as an unresolved blocker rather than guessing its cause or repair owner.",
+      "The candidate artifact summary is truncated and does not surface checker outcomes or the detailed contents of the four specialist audit artifacts. This is an evidence limitation, not proof that those artifacts are absent.",
+      "No successful checker results bound to the relevant SACG constraints are shown. Input readiness and SACG-extraction readiness therefore remain unverified.",
+      "sacg_memory_truth reports zero active contamination barriers and zero open retry or backtrack requests; no SACG-memory blocker is active.",
+      "The hierarchical learning context reports no validated lower-layer evidence. No lower-layer certificate is required to resolve this input-preparation gate."
+    ],
+    "proposed_actions": [
+      "Run the aggregate cross-layer review against the complete specialist audit artifacts and source inputs, and execute all registered input-preparation checkers.",
+      "Expose and classify the single prepared-input error in the constraint-to-evidence gap map. Keep readiness blocked until its evidence-backed resolution is checked.",
+      "Route any confirmed gap to the specialist responsible for the affected constraint; do not infer a repair or change architecture, numeric policy, memory layout, or major template decisions in this auditor role."
+    ],
+    "risks": [
+      "The unresolved prepared-input error may affect model intake, numeric/template binding, board/runtime assumptions, tool evidence, or human boundaries; its impact cannot be classified without the error details and specialist findings.",
+      "Without checker-grounded comparison, conflicts among model shape, numeric policy, template coverage, data order, transfer units, memory, runtime, implementation assumptions, and board facts could pass unnoticed.",
+      "The exact allowed automatic actions, forbidden actions, and approval triggers cannot be confirmed from the summarized human-boundary artifact alone.",
+      "A claimed specialist audit or readiness result without the corresponding evidence and registered checker outcomes would be unsupported."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.design_space",
+        "artifact.input.tool_protocols",
+        "artifact.input.human_agent_boundary",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.case_adapter",
+        "prepared_inputs.errors",
+        "input_preparation/model_intake_audit.json",
+        "input_preparation/numeric_template_audit.json",
+        "input_preparation/board_memory_runtime_audit.json",
+        "input_preparation/source_and_tool_evidence_audit.json"
+      ],
+      "constraints": [
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.tool.protocols",
+        "constraint.human.boundary"
+      ],
+      "edges": [
+        "model and shape constraints -> numeric policy and template bindings",
+        "architecture and memory constraints -> board runtime and deployment constraints",
+        "tool protocols -> verification plan and evidence claims",
+        "human boundary -> permitted repairs and required approvals",
+        "prepared-input errors and specialist audits -> SACG extraction readiness"
+      ],
+      "nodes": [
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.tool.protocols",
+        "constraint.human.boundary"
+      ]
+    },
+    "schema_version": "spatialaccagent.verification_repair_auditor.v0",
+    "stage": "input_preparation",
+    "status": "blocked",
+    "summary": "Do not promote these inputs to SACG extraction yet. The prepared-input summary reports one unresolved error, but its contents are not available here. The supplied summaries also do not expose specialist findings or checker outcomes sufficient to verify cross-layer consistency or human-boundary compliance. Preserve these as explicit blockers and run the registered aggregate review."
+  },
+  "prompt_bytes": 40122,
+  "prompt_hash": "5f074d084eb25be85954745cceed8895038400f870e72d69338752dab84f2a59",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.verification_repair_auditor.v0\",\n  \"agent\": \"spatialaccagent_verification_repair_auditor\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"blocked\",\n  \"summary\": \"Do not promote these inputs to SACG extraction yet. The prepared-input summary reports one unresolved error, but its contents are not available here. The supplied summaries also do not expose specialist findings or checker outcomes sufficient to verify cross-layer consistency or human-boundary compliance. Preserve these as explicit blockers and run the registered aggregate review.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"constraint.task.goal\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.deployment.board\",\n      \"constraint.tool.protocols\",\n      \"constraint.human.boundary\"\n    ],\n    \"edges\": [\n      \"model and shape constraints -> numeric policy and template bindings\",\n      \"architecture and memory constraints -> board runtime and deployment constraints\",\n      \"tool protocols -> verification plan and evidence claims\",\n      \"human boundary -> permitted repairs and required approvals\",\n      \"prepared-input errors and specialist audits -> SACG extraction readiness\"\n    ],\n    \"constraints\": [\n      \"constraint.task.goal\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.deployment.board\",\n      \"constraint.tool.protocols\",\n      \"constraint.human.boundary\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.design_space\",\n      \"artifact.input.tool_protocols\",\n      \"artifact.input.human_agent_boundary\",\n      \"artifact.input.model_config\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"artifact.input.target_board_profile\",\n      \"artifact.input.tool_profile\",\n      \"artifact.input.tool_availability\",\n      \"artifact.input.case_adapter\",\n      \"prepared_inputs.errors\",\n      \"input_preparation/model_intake_audit.json\",\n      \"input_preparation/numeric_template_audit.json\",\n      \"input_preparation/board_memory_runtime_audit.json\",\n      \"input_preparation/source_and_tool_evidence_audit.json\"\n    ]\n  },\n  \"observations\": [\n    \"The input inventory includes model configuration, numeric policy, template metadata and library, design space, board profile, tool profile and availability, tool protocols, and human-agent boundaries. Their detailed values are not included in the supplied summary, so consistency cannot be independently established from this view.\",\n    \"The prepared-input summary reports one error. Its text and specialist classification are not supplied; retain it as an unresolved blocker rather than guessing its cause or repair owner.\",\n    \"The candidate artifact summary is truncated and does not surface checker outcomes or the detailed contents of the four specialist audit artifacts. This is an evidence limitation, not proof that those artifacts are absent.\",\n    \"No successful checker results bound to the relevant SACG constraints are shown. Input readiness and SACG-extraction readiness therefore remain unverified.\",\n    \"sacg_memory_truth reports zero active contamination barriers and zero open retry or backtrack requests; no SACG-memory blocker is active.\",\n    \"The hierarchical learning context reports no validated lower-layer evidence. No lower-layer certificate is required to resolve this input-preparation gate.\"\n  ],\n  \"risks\": [\n    \"The unresolved prepared-input error may affect model intake, numeric/template binding, board/runtime assumptions, tool evidence, or human boundaries; its impact cannot be classified without the error details and specialist findings.\",\n    \"Without checker-grounded comparison, conflicts among model shape, numeric policy, template coverage, data order, transfer units, memory, runtime, implementation assumptions, and board facts could pass unnoticed.\",\n    \"The exact allowed automatic actions, forbidden actions, and approval triggers cannot be confirmed from the summarized human-boundary artifact alone.\",\n    \"A claimed specialist audit or readiness result without the corresponding evidence and registered checker outcomes would be unsupported.\"\n  ],\n  \"proposed_actions\": [\n    \"Run the aggregate cross-layer review against the complete specialist audit artifacts and source inputs, and execute all registered input-preparation checkers.\",\n    \"Expose and classify the single prepared-input error in the constraint-to-evidence gap map. Keep readiness blocked until its evidence-backed resolution is checked.\",\n    \"Route any confirmed gap to the specialist responsible for the affected constraint; do not infer a repair or change architecture, numeric policy, memory layout, or major template decisions in this auditor role.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"input_preparation.aggregate_cross_layer_readiness_review\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"The summary establishes an unresolved prepared-input error but does not provide its details, specialist findings, or checker outcomes. Aggregate the complete supplied artifacts, map evidence and gaps to SACG constraints, and run the registered readiness and boundary checks before any extraction decision.\",\n      \"consumes\": [\n        \"artifact.input.design_space\",\n        \"artifact.input.tool_protocols\",\n        \"artifact.input.human_agent_boundary\",\n        \"artifact.input.model_config\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.tool_profile\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.case_adapter\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.field_evidence_candidates\",\n        \"prepared_inputs.errors\",\n        \"input_preparation/model_intake_audit.json\",\n        \"input_preparation/numeric_template_audit.json\",\n        \"input_preparation/board_memory_runtime_audit.json\",\n        \"input_preparation/source_and_tool_evidence_audit.json\"\n      ],\n      \"produces\": [\n        \"input_preparation/cross_layer_input_readiness.json\",\n        \"input_preparation/constraint_to_evidence_gap_map.json\",\n        \"input_preparation/human_and_repair_boundary_audit.json\"\n      ],\n      \"tool_roles\": [\n        \"team_aggregate\",\n        \"sacg_static_check\",\n        \"template_binding_static_check\",\n        \"tool_protocol_check\",\n        \"human_boundary_check\",\n        \"repair_boundary_check\",\n        \"verification_plan_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"template_binding_static_check\",\n        \"tool_protocol_check\",\n        \"human_boundary_check\",\n        \"repair_boundary_check\",\n        \"verification_plan_static_check\"\n      ],\n      \"on_failure\": \"Keep SACG extraction readiness blocked. Record the exact failing checker, affected constraint, source artifact, and evidence gap in the gap map. Preserve the prepared-input error as unresolved unless the specialist evidence classifies it; route a bounded repair or clarification to the responsible specialist and rerun the affected registered checker before reassessing readiness.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any proposed architecture or pipeline change, memory-layout change, numeric-policy change, or major template change; this audit does not authorize such changes.\",\n    \"Any action requiring approval under the exact human-agent boundary artifact, once its detailed approval rules have been reviewed.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_verification_repair_auditor_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_verification_repair_auditor_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.cross-layer input readiness auditor",
+  "stream": false,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/history/spatialaccagent_verification_repair_auditor_result.124da66dfcd48395.28b440b1da321414.5f074d084eb25be8.snapshot.json",
+    "replaced_prompt_hash": "5f074d084eb25be85954745cceed8895038400f870e72d69338752dab84f2a59",
+    "replaced_result_sha256": "124da66dfcd48395d0f1deee6353c62194af0094643d51b7e43a06ce8306d22c",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "124da66dfcd48395.28b440b1da321414.5f074d084eb25be8"
+  },
+  "transport": "responses_json",
+  "used_fallback": false
+}

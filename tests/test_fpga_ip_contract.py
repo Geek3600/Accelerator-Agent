@@ -1,4 +1,5 @@
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -45,6 +46,43 @@ def _closure(path: Path) -> None:
 
 
 class FpgaIpContractTest(unittest.TestCase):
+    def test_integer_contract_accepts_public_class_and_rejects_missing_class(self) -> None:
+        source = Path("accagent/framework/templates/operator_chisel")
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "templates"
+            shutil.copytree(source, target)
+            names = [path.name for path in target.glob("*.scala")]
+            result = check_fpga_ip_template_contract(target, names, compute_backend="integer_dsp")
+            self.assertEqual(result["errors"], [])
+            attention = target / "Attention.scala"
+            attention.write_text(attention.read_text().replace(
+                "class IntegerAttention(", "class MissingIntegerAttention("))
+            result = check_fpga_ip_template_contract(target, names, compute_backend="integer_dsp")
+            self.assertTrue(any("class IntegerAttention" in error for error in result["errors"]))
+
+    def test_physical_fp_wrappers_keep_axi_valid_independent_of_ready(self) -> None:
+        source = Path(
+            "accagent/framework/templates/operator_chisel/PhysicalResources.scala"
+        ).read_text(encoding="utf-8")
+
+        self.assertEqual(source.count("ip.s_axis_a_tvalid := io.inValid"), 5)
+        self.assertNotIn("ip.s_axis_a_tvalid := io.inValid &&", source)
+        self.assertNotIn("ip.s_axis_a_tvalid := fire", source)
+        self.assertNotIn("ip.s_axis_b_tvalid := fire", source)
+
+    def test_physical_fp_wrappers_consume_vivado_results(self) -> None:
+        source = Path(
+            "accagent/framework/templates/operator_chisel/PhysicalResources.scala"
+        ).read_text(encoding="utf-8")
+
+        self.assertGreaterEqual(source.count("m_axis_result_tready = IO(Input(Bool()))"), 4)
+        self.assertEqual(source.count("ip.m_axis_result_tready := true.B"), 5)
+
+    def test_generated_fp_ips_expose_result_ready(self) -> None:
+        source = Path("scripts/synthesis/gen_xilinx_fp_ips_23.tcl").read_text(encoding="utf-8")
+        self.assertEqual(source.count("CONFIG.Has_RESULT_TREADY {true}"), 3)
+        self.assertNotIn("CONFIG.Has_RESULT_TREADY {false}", source)
+
     def test_template_maps_large_cache_to_explicit_xpm_uram(self) -> None:
         source = Path(
             "accagent/framework/templates/operator_chisel/PhysicalResources.scala"

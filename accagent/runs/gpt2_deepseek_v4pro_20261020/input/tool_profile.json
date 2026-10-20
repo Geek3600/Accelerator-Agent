@@ -1,0 +1,71 @@
+{
+  "_llm_provenance": {
+    "mode": "llm",
+    "sub_agent": "tool_profile_agent",
+    "used_fallback": false
+  },
+  "notes": [
+    "The tool material directory contains four files: remote_server.md, vcs.md, verilator.md, and vivado.md.",
+    "Remote access is via passwordless SSH to hyyuan@10.12.133.23; no SSH port was specified.",
+    "VCS and Vivado are remote tools accessed over SSH. Verilator is stated to be local.",
+    "The existing framework VCS smoke script is scripts/verification/run_qwen_generated_vcs_smoke_23.sh and the existing Vivado script is scripts/synthesis/run_qwen_generated_bitstream_23.sh, as documented.",
+    "Field evidence summary only contains selected host and executable fields for VCS and Vivado; these outputs match that evidence. Other values are extracted directly from the supplied tool documents with null used where the materials are silent.",
+    "Blank VCS/Vivado endpoint fields were completed from current-run source-bound board/tool evidence; explicit LLM values were preserved."
+  ],
+  "schema_version": "spatialaccagent.tool_profile.v0",
+  "tools": [
+    {
+      "constraints": [
+        "Stage 0 must probe the VCS command over SSH; the documented path alone is not enough to declare it available.",
+        "Must set VCS_TARGET_ARCH=linux64 when running VCS.",
+        "Must use the specified HOME containing synopsys_sim.setup bound to Vivado 2021.1 simulation libraries; do not use the user default HOME with 2021.09 precompiled libraries.",
+        "VCS T-2022.06_Full64 has a prior actual generated-design compile/link pass; old 2021.09 failed on the same source with a VHDL code-generation native assertion.",
+        "No explicit SSH port or license server was supplied in the tool materials."
+      ],
+      "env": {
+        "HOME": "/home/hyyuan/workspace/spatialaccagent_artifacts/toolchains/vcs202206_vivado2021_1/home",
+        "REMOTE_HOST": "hyyuan@10.12.133.23",
+        "REMOTE_VCS_HOME": "/home/EDA/Software/EDATools/Synopsys/VCSALL/v202206-OLD",
+        "VCS_TARGET_ARCH": "linux64"
+      },
+      "executable": "/home/EDA/Software/EDATools/Synopsys/VCSALL/v202206-OLD/bin/vcs",
+      "host": "hyyuan@10.12.133.23",
+      "name": "vcs",
+      "port": 22,
+      "role": "functional_verification_compile_and_run_systemverilog_testbench",
+      "scope": "remote",
+      "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools/vcs.md"
+    },
+    {
+      "constraints": [
+        "Verilator is stated to be on the local machine, not on the remote server.",
+        "It is mainly used for the functional verification stage.",
+        "The tool materials do not provide an executable path, host detail, environment, version, or additional restrictions for Verilator."
+      ],
+      "env": {},
+      "name": "verilator",
+      "role": "functional_verification",
+      "scope": "local",
+      "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools/verilator.md"
+    },
+    {
+      "constraints": [
+        "Stage 0 must probe the Vivado command over SSH; the documented path alone is not enough to declare it available.",
+        "Vivado is mandatory for final synthesis, implementation, and bitstream evidence; missing or failed probing must fail Stage 0.",
+        "Confirmed Vivado version is v2021.1.",
+        "No explicit SSH port or license server was supplied in the tool materials."
+      ],
+      "env": {
+        "REMOTE_HOST": "hyyuan@10.12.133.23",
+        "VIVADO_BIN": "/home/EDA/Xilinx/Vivado/2021.1/bin/vivado"
+      },
+      "executable": "/home/EDA/Xilinx/Vivado/2021.1/bin/vivado",
+      "host": "hyyuan@10.12.133.23",
+      "name": "vivado",
+      "port": 22,
+      "role": "synthesis_implementation_and_bitstream_generation",
+      "scope": "remote",
+      "source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools/vivado.md"
+    }
+  ]
+}

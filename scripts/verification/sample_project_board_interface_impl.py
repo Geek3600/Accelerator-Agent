@@ -27,6 +27,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from accagent.framework.board_acceptance_contract import compile_only_board_contract
+
 
 IDENTITY_SCHEMA_VERSION = "spatialaccagent.exact_sample_board_source_identity.v2"
 FACT_SCHEMA_VERSION = "spatialaccagent.vivado_sample_project_facts.v1"
@@ -110,6 +112,9 @@ BOARD_INTERFACE_INTERPRETATION_SCHEMA: dict[str, Any] = {
     "additionalProperties": True,
     "properties": {
         "schema_version": {"type": "string"},
+        "validation_policy": {"type": "string"},
+        "functional_semantics_claimed": {"type": "boolean"},
+        "deferred_runtime_evidence": {"type": "array", "items": {"type": "string"}},
         "agent": {"type": "string"},
         "stage": {"type": "string"},
         "status": {"type": "string"},
@@ -209,6 +214,12 @@ BOARD_INTERFACE_SELECTION_SCHEMA: dict[str, Any] = {
         "summary": {"type": "string"},
         "selected_cell_id": {"type": "string"},
         "wrapper_source_id": {"type": "string"},
+        "selection_basis": {
+            "type": "object",
+            "additionalProperties": True,
+            "properties": {"mode": {"type": "string"}, "rationale": {"type": "string", "minLength": 1}},
+            "required": ["mode", "rationale"],
+        },
         "relevant_sample_source_ids": {"type": "array", "items": {"type": "string"}},
         "proposed_replaced_source_ids": {"type": "array", "items": {"type": "string"}},
         "blockers": {"type": "array", "items": {"type": "string"}},
@@ -743,7 +754,7 @@ def canonical_sha256(value: Any) -> str:
     return sha256_bytes(payload.encode("utf-8"))
 
 
-def board_interface_domain_output_contract() -> dict[str, Any]:
+def _full_board_interface_domain_output_contract() -> dict[str, Any]:
     """Describe the exact generic shape consumed by deterministic board gates."""
 
     signal_fact_map = {
@@ -848,7 +859,6 @@ def board_interface_domain_output_contract() -> dict[str, Any]:
                 ),
                 "required_fields": [
                     "selected_cell_id",
-                    "retained_source_ids",
                     "sample_closure_unchanged",
                     "generated_sources_excluded_from_sample_closure",
                     "source_module_evidence",
@@ -858,7 +868,7 @@ def board_interface_domain_output_contract() -> dict[str, Any]:
                     "source_sha256",
                     "declared_modules",
                 ],
-                "retained_rule": "complete sample closure minus replaced_source_ids",
+                "retained_rule": "framework derives complete sample closure minus replaced_source_ids; omit retained_source_ids rather than copying the source catalog",
             },
         },
         "timing_contract": {
@@ -1103,6 +1113,54 @@ def board_interface_domain_output_contract() -> dict[str, Any]:
             "Never invent an identifier or infer a value from a name alone."
         ),
     }
+
+
+def board_interface_domain_output_contract(*, compile_only: bool = False) -> dict[str, Any]:
+    contract = _full_board_interface_domain_output_contract()
+    if not compile_only:
+        return contract
+    contract["top_level"]["required_fields"] += [
+        "validation_policy", "functional_semantics_claimed", "deferred_runtime_evidence"
+    ]
+    contract["top_level"]["passing_values"].update({
+        "validation_policy": "vcs_compile_only", "functional_semantics_claimed": False
+    })
+    timing = contract["timing_contract"]
+    timing["clock_domains"]["item_required_fields"] = [
+        "fact_port_id", "name", "frequency_hz", "period_ps", "evidence_refs"
+    ]
+    timing["resets"]["item_required_fields"] = [
+        "fact_port_id", "name", "active_level", "evidence_refs"
+    ]
+    timing["calibration"]["item_required_fields"] = [
+        "fact_port_id", "name", "active_level", "evidence_refs"
+    ]
+    for key in ("startup_sequence", "memory_timing_model_required_fields", "other_required_fields"):
+        timing.pop(key, None)
+    contract["control_abi"] = {
+        "required_fields": ["port_classifications"],
+        "port_classifications": {
+            "coverage": "exactly every selected-cell pin that is not an interface member",
+            "item_required_fields": ["fact_port_id", "name", "direction", "width_bits",
+                                     "classification", "semantic_role", "evidence_object_ids"],
+            "classification_values": ["configuration_bus", "control", "status", "data",
+                                      "clock", "reset", "calibration", "other"],
+        },
+    }
+    for key in ("item_required_fields", "parameter_evidence_required_fields"):
+        fields = contract["axi_interfaces"].get(key)
+        if isinstance(fields, list):
+            contract["axi_interfaces"][key] = [f for f in fields if f != "supports_unaligned_access"]
+    contract["axi_interfaces"]["unaligned_access_rule"] = (
+        "supports_unaligned_access may be omitted/null when unproved; list it in deferred_runtime_evidence. "
+        "Physical AXI widths, sidebands and source connections remain required."
+    )
+    contract["deferred_runtime_evidence"] = (
+        "List unproved startup/reset duration, lifecycle/control sequence, configuration-word "
+        "semantics, memory response timing and numerical/runtime behavior. These are not "
+        "compile-only blockers and must not be invented or claimed verified."
+    )
+    return contract
 
 
 def command_timeout(timeout: int) -> int | None:
@@ -2598,8 +2656,11 @@ def _validate_selector_record(
         errors.append("selector wrapper_source_id is not in the sample simulation closure")
     if not relevant_sample or not relevant_sample.issubset(sample_ids) or wrapper_id not in relevant_sample:
         errors.append("selector relevant_sample_source_ids are empty, unknown, or omit the wrapper")
-    if not replaced or not replaced.issubset(relevant_sample):
-        errors.append("selector proposed replacement sources are empty or outside its sample evidence set")
+    # The selector sees source metadata; full-source review follows this gate.
+    # An empty proposal defers the replacement proof to that review/domain
+    # step, whose ABI validator still requires an exclusive replacement.
+    if not replaced.issubset(relevant_sample):
+        errors.append("selector proposed replacement sources are outside its sample evidence set")
     return output, errors
 
 
@@ -3857,9 +3918,10 @@ def _validate_progressive_final_selection(
     selector: dict[str, Any],
     reviews: list[dict[str, Any]],
     human_approval: dict[str, Any] | None = None,
+    readable_source_ids: set[str] | None = None,
 ) -> list[str]:
     output = selector.get("output") if isinstance(selector.get("output"), dict) else {}
-    if output.get("status") not in {"pass", "ready"}:
+    if output.get("status") not in {"pass", "ready", "selected"}:
         return []
     candidate_cells = {
         str(row.get("cell_id") or "")
@@ -3906,6 +3968,31 @@ def _validate_progressive_final_selection(
             errors.append("board-selection human approval cites cells outside current progressive evidence")
         if str(output.get("selected_cell_id") or "") not in approved_cells:
             errors.append("final selector chose a cell outside the bounded human approval")
+    elif len(candidate_cells) > 1:
+        basis = output.get("selection_basis")
+        equivalent_cells = (
+            {
+                str(value)
+                for value in basis.get("equivalent_candidate_cell_ids", [])
+                if str(value)
+            }
+            if isinstance(basis, dict)
+            else set()
+        )
+        if not isinstance(basis, dict) or basis.get("mode") != "evidence_equivalent_candidates":
+            errors.append(
+                "multiple candidate cells require an evidence-equivalence selection basis"
+            )
+        elif (
+            str(output.get("selected_cell_id") or "") not in equivalent_cells
+            or len(equivalent_cells) < 2
+            or not equivalent_cells.issubset(candidate_cells)
+        ):
+            errors.append(
+                "selection basis must cover the selected cell and at least one other evidence candidate"
+            )
+        elif not str(basis.get("rationale") or "").strip():
+            errors.append("selection basis rationale is missing")
     if str(output.get("selected_cell_id") or "") not in candidate_cells:
         errors.append("final selector chose a cell absent from progressive LLM candidate evidence")
     if str(output.get("wrapper_source_id") or "") not in wrapper_sources:
@@ -3913,8 +4000,21 @@ def _validate_progressive_final_selection(
     selected_relevant = {
         str(value) for value in output.get("relevant_sample_source_ids", []) if str(value)
     }
-    if not selected_relevant.issubset(relevant_sources):
-        errors.append("final selector added relevant sources absent from progressive LLM candidate evidence")
+    # Shared control/DDR sources cited in findings are valid read-only review
+    # inputs even when the map correctly excludes them as replacements.
+    review_sources = relevant_sources | (readable_source_ids or set()) | {
+        str(value)
+        for review in reviews
+        for finding in review.get("findings", [])
+        if isinstance(finding, dict)
+        for value in finding.get("evidence_source_ids", [])
+        if str(value)
+    }
+    if not selected_relevant.issubset(review_sources):
+        errors.append(
+            "final selector added relevant sources absent from progressive LLM candidate evidence: "
+            + ", ".join(sorted(selected_relevant - review_sources))
+        )
     selected_replacement = {
         str(value) for value in output.get("proposed_replaced_source_ids", []) if str(value)
     }
@@ -3987,7 +4087,9 @@ def _reuse_domain_validated_selector_checkpoint(
     }
     _, selector_errors = _validate_selector_record(selector, facts, sample_rows)
     selector_errors.extend(
-        _validate_progressive_final_selection(selector, reviews, human_approval)
+        _validate_progressive_final_selection(
+            selector, reviews, human_approval, set(_source_index(sample_rows))
+        )
     )
     if selector_errors:
         return None
@@ -3998,6 +4100,41 @@ def _reuse_domain_validated_selector_checkpoint(
         flush=True,
     )
     return selector
+
+
+def _reuse_validated_final_selector(
+    out_dir: Path,
+    input_binding: str,
+    facts: dict[str, Any],
+    sample_rows: list[dict[str, Any]],
+    reviews: list[dict[str, Any]],
+    human_approval: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    path = out_dir / "llm" / "exact_board_interface_selector_agent_result.json"
+    if not path.is_file():
+        return None
+    try:
+        record = read_json(path)
+    except (OSError, ValueError):
+        return None
+    progressive = record.get("progressive_selection", {})
+    if not isinstance(progressive, dict) or progressive.get("input_binding") != input_binding:
+        return None
+    _, errors = _validate_selector_record(record, facts, sample_rows)
+    errors.extend(_validate_progressive_final_selection(
+        record, reviews, human_approval, set(_source_index(sample_rows))
+    ))
+    if errors:
+        return None
+    record["result_path"] = str(path.resolve())
+    record["semantic_checkpoint_reuse"] = True
+    print(
+        "[stage:verification.layer3.board_interface_selection:semantic-checkpoint] "
+        "reuse validated final selector under unchanged current evidence",
+        file=sys.stderr,
+        flush=True,
+    )
+    return record
 
 
 def _blocked_selector_record(
@@ -4501,6 +4638,8 @@ def run_progressive_board_selector(
         semantic_reviews,
         human_approval,
     )
+    selector_schema = json.loads(json.dumps(BOARD_INTERFACE_SELECTION_SCHEMA))
+    selector_schema["properties"]["relevant_sample_source_ids"]["items"]["enum"] = sorted(known_source_ids)
     selector_request = {
         "agent": "exact_board_interface_selector_agent",
         "stage": "verification.layer3.board_interface_selection",
@@ -4513,6 +4652,7 @@ def run_progressive_board_selector(
             "global_vivado_context": common,
             "target_board_profile": profile,
             "progressive_evidence_reviews": semantic_reviews,
+            "sample_source_catalog": llm_sample_source_manifest(sample_rows),
             **(
                 {"human_board_selection_approval": human_approval}
                 if human_approval
@@ -4530,23 +4670,36 @@ def run_progressive_board_selector(
         },
         "out_dir": out_dir,
         "fallback_summary": "Exact compute-slot selection requires the configured LLM agent.",
-        "output_schema": BOARD_INTERFACE_SELECTION_SCHEMA,
+        "output_schema": selector_schema,
         "prompt_rules": [
             "You are the final adaptive board-interface selector. Every selection-projection Vivado object and every hash-bound sample source has been reviewed by the supplied map/reduce agents; compare all evidence-bound alternatives before selecting.",
             "Select by cited Vivado properties, interface metadata, connectivity, ownership, hashes, and source provenance. Never use a filename/module-name keyword rule, target-model name, hardcoded board name, or static keyword list.",
-            "Return IDs only when they appear in the progressive evidence reviews. If the reviews do not support exactly one compute-slot/wrapper boundary and no bounded human approval resolves that exact candidate tie, return status=blocked; never guess.",
+            "Select cell, wrapper, and replacement candidates only from the progressive evidence reviews. Additional relevant_sample_source_ids for read-only full-source review may come from sample_source_catalog: use its real source IDs and provenance to follow implementation dependencies. If multiple cell candidates remain, compare their cited properties, interfaces, ownership, and source boundaries. When the evidence proves the candidates are interchangeable for this replacement boundary, select one autonomously, set selection_basis.mode to evidence_equivalent_candidates, list every equivalent candidate cell ID in selection_basis.equivalent_candidate_cell_ids, and state the evidence-grounded rationale. A stable choice among equivalent candidates does not require human approval. Return status=blocked only when the candidates are semantically different or their equivalence cannot be proved; never guess.",
             "When human_board_selection_approval is supplied with an approved decision delegating one choice, select exactly one approved_candidate_cell_id yourself. That approval resolves only the cited candidate multiplicity; every wrapper, source, ABI, timing, AXI, and replacement-boundary claim must still be proved by the supplied evidence.",
             "relevant_sample_source_ids must include the wrapper and every cited source needed by the downstream domain agent to prove slot exclusivity, control semantics/field layout, clock/reset/calibration, and DDR timing/backpressure.",
-            "proposed_replaced_source_ids is the minimal evidence-bounded candidate handoff for full-source review. When map evidence proves a source is exclusively owned by the selected cell and is a simulator-fa\u00e7ade candidate, emit it here with status=selected and no blocker even though module/instance proof is pending; the following full-source review and domain agent must prove or reject that boundary. Do not claim that this handoff is final proof. A selected-cell simulation wrapper that exclusively declares CONFIG.Component_Name is a valid compile-delta boundary even when it instantiates shared legacy compute RTL.",
+            "Include the implementation dependencies of control/register wrappers, reset/startup logic, calibration/DDR controllers, and simulator wrapper/testbench when needed for the contract. A wrapper that merely instantiates or forwards signals cannot prove its callee's register fields or timing. Use the complete source catalog to request those real implementation sources for review instead of leaving the domain agent with the same missing evidence. Reading a shared source never authorizes replacing it.",
+            "proposed_replaced_source_ids is a provisional candidate handoff for full-source review. Nominate exclusively owned selected-cell sources when the map findings support them. If the cell and wrapper are selected but exclusive module/instance proof requires full source, return an empty proposed_replaced_source_ids list and include those candidate sources in relevant_sample_source_ids so the following full-source review can establish or reject the boundary. This pending proof alone does not block selection. The downstream domain ABI still requires a nonempty, source-proved exclusive replacement boundary before generation or compilation. A selected-cell simulation wrapper that exclusively declares CONFIG.Component_Name is a valid compile-delta boundary even when it instantiates shared legacy compute RTL.",
             "Retain shared compute RTL for other sample instances. Do not require the exclusive instance-boundary wrapper to contain the complete legacy implementation, and never replace shared shell, DDR, interconnect, testbench, memory-model, or compute sources.",
             "Discovery ends at the existing sample compute-slot boundary. Do not select or name future generated accelerator modules, instances, or sources.",
             "Return one JSON object only.",
         ],
     }
+    selector_input_binding = canonical_sha256({
+        "map_inputs": [item["fingerprint"] for item in map_descriptors],
+        "reviews": semantic_reviews,
+        "profile": profile,
+        "human_approval": human_approval,
+        "schema": selector_request["output_schema"],
+        "rules": selector_request["prompt_rules"],
+    })
+    if selector is None:
+        selector = _reuse_validated_final_selector(
+            out_dir, selector_input_binding, facts, sample_rows, semantic_reviews, human_approval
+        )
     if selector is None:
         selector = run_stage_agent(**selector_request)
     final_selection_errors = _validate_progressive_final_selection(
-        selector, semantic_reviews, human_approval
+        selector, semantic_reviews, human_approval, known_source_ids
     )
     if (
         final_selection_errors
@@ -4566,18 +4719,19 @@ def run_progressive_board_selector(
             },
             "prompt_rules": [
                 *selector_request["prompt_rules"],
-                "The previous output failed deterministic evidence binding. Repair every listed error; do not add any ID that is absent from the progressive reviews, and return status=blocked if the reviews do not support the required claim.",
+                "The previous output failed deterministic evidence binding. Repair every listed error; cell/wrapper/replacement IDs must remain supported by progressive reviews, while additional read-only review sources may come from sample_source_catalog. Return status=blocked when the required selection claim is unsupported.",
             ],
         }
         selector = run_stage_agent(**correction_request)
         final_selection_errors = _validate_progressive_final_selection(
-            selector, semantic_reviews, human_approval
+            selector, semantic_reviews, human_approval, known_source_ids
         )
     if final_selection_errors:
         selector["error"] = "; ".join(
             [str(selector.get("error") or ""), *final_selection_errors]
         ).strip("; ")
     selector["progressive_selection"] = {
+        "input_binding": selector_input_binding,
         "status": "pass" if not final_selection_errors else "blocked",
         "map_chunk_count": len(chunks),
         "reduction_record_count": len(reduction_records),
@@ -4947,7 +5101,18 @@ def run_board_interface_domain_repair_loop(
     return candidate
 
 
-def board_interface_domain_prompt_rules() -> list[str]:
+def board_interface_domain_prompt_rules(*, compile_only: bool = False) -> list[str]:
+    if compile_only:
+        return [
+            "The active acceptance policy is vcs_compile_only. Return validation_policy=vcs_compile_only, functional_semantics_claimed=false, and deferred_runtime_evidence listing unproved runtime behavior. A pass here certifies physical board discovery only; real VCS compilation and synthesis are still required.",
+            "Follow deterministic_output_contract literally. Use current Vivado object IDs and hash-bound source IDs only, with evidence for all physical claims. Never invent a value or use name heuristics.",
+            "Select exactly the validated cell and wrapper. required_ports and port_bindings cover all kind=pin objects exactly, with exact name/direction/width. kind=interface_pin rows are aggregate buses used only for interface_classifications/fact_interface_id. Classify every non-interface pin in control_abi.port_classifications.",
+            "Preserve the complete AXI physical signal maps, protocol, widths and parameter evidence, connected clock/reset/calibration names, Vivado clock frequency/period and reset polarity. Unknown physical bindings are blockers.",
+            "Runtime startup ordering, minimum external reset cycles, clock duty, timescale provenance, legacy CNN completion, all configuration-word semantics and memory latency and behavioral unaligned-access support are not prerequisites. Omit unproved runtime fields and list them in deferred_runtime_evidence; do not block or fabricate proofs for them.",
+            "Preserve the exact sample top wrapper, real AXI/DDR implementation and source closure. replaced_source_ids must be a nonempty exclusively owned selected-slot boundary source, including an exclusive instance wrapper if shared legacy compute RTL remains needed elsewhere. Do not replace shared sources. Omit retained_source_ids; the framework derives the unchanged closure minus your explicit replacements.",
+            "replacement_module_identity equals slot_module and replacement_instance_boundary equals the exact selected Vivado cell path. no_behavioral_substitution=true preserves the real retained board infrastructure. Future generated kernel/scheduler absence is not a discovery blocker; generation owns their connection and real tools verify it.",
+            "Use the supplied complete source reviews and exact evidence references. status=pass/ready requires blockers=[] and required_capabilities=[]. A genuine missing physical/source fact requires status=blocked and an executor-supported required_capabilities handoff, never a request to prove deferred runtime semantics. Return one JSON object.",
+        ]
     return [
         "Use only object IDs, properties, connections, compile-order ownership, source hashes, and source context supplied in this request; never rely on module-name or signal-name keyword heuristics.",
         "deterministic_output_contract is the exact machine-readable field and container contract consumed by the generic acceptance gate. Follow it literally while deriving all values and semantics from current evidence.",
@@ -4962,7 +5127,7 @@ def board_interface_domain_prompt_rules() -> list[str]:
         "For each AXI semantic signal, provide signal_fact_map entries referring to the exact physical pin object ID; use an explicit constant/absent binding only when Vivado properties prove the sideband is disabled.",
         "Every clock/reset/calibration and memory timing claim must cite exact Vivado object/property or hash-bound sample-source evidence. Preserve exact frequencies, phases, reset polarities, calibration traffic gating, latency/backpressure behavior, and startup ordering.",
         "Inside compute_slot_abi return control_abi in exactly the deterministic_output_contract shape, including exact non-interface pin coverage, physical configuration-field projection, six canonical lifecycle roles, timing relations, and an ordered control_sequence list.",
-        "An evidence-proved software, testbench, or scheduler sequence is the exact real board operational contract. Set control_sequence_enforcement=external_orchestrator or mixed as appropriate; lack of a hardware total-order FSM is not a blocker.",
+        "Derive the legal control sequence from source-proved configuration capture, start, status/count updates, and clear mechanisms. The external orchestrator may be generated later; discovery does not require an existing software driver, a witnessed run, or a hardware total-order FSM. Set control_sequence_enforcement=external_orchestrator or mixed as appropriate and cite the RTL mechanisms that impose each ordering constraint.",
         "A dedicated operation-done pin is not required. When completion is exactly observable as a predicate on a physical count/status port, represent done as derived_from_physical_port with the exact predicate and evidence required by deterministic_output_contract; never invent a done pin.",
         "For asynchronous crossings, preserve the exact variable handshake/CDC relation. Report source-domain assertion cycles proved by the source and encode variable acceptance/completion in the canonical timing strings; do not invent a fixed cross-domain latency and do not block merely because absolute phase varies.",
         "compute_slot_abi.control_abi.control_sequence must encode configure -> start -> observe_completion -> clear_completion ordering from current sample sources. If any field access/reset value, lifecycle action, clock domain, event relation, or ordering cannot be proved, return status=blocked.",
@@ -4973,7 +5138,7 @@ def board_interface_domain_prompt_rules() -> list[str]:
                 "For every AXI interface return parameter_evidence_refs for all width/burst/alignment/outstanding/byte-order fields and signal_evidence_refs for every AW/W/B/AR/R member. Cite the interface/member Vivado objects and sample source IDs that actually prove each value.",
                 "parameter_evidence_refs must be an object mapping every required AXI field name to a non-empty evidence-reference list (for example {\"byte_order\": [\"<object-or-source-id>\"], \"supports_unaligned_access\": [\"<object-or-source-id>\"]}); do not return one flat list. signal_evidence_refs must likewise be the field/channel mapping required by deterministic_output_contract.",
         "selected_simulation_source_closure is immutable and is not your output. replaced_source_ids is only a later compile delta: select the exclusively owned source that declares the selected cell's existing slot_module boundary. It may be a simulation instance wrapper around shared legacy compute RTL; retain that shared RTL for every unselected sample instance.",
-        "replacement_boundary.retained_source_ids must be the complete sample closure minus replaced_source_ids; set sample_closure_unchanged=true and generated_sources_excluded_from_sample_closure=true.",
+        "Omit replacement_boundary.retained_source_ids: the framework derives the complete immutable sample closure minus your explicit replaced_source_ids. Do not block on copying or reconstructing the source-ID list. Set sample_closure_unchanged=true and generated_sources_excluded_from_sample_closure=true; source ownership and module evidence remain mandatory.",
         "Set replacement_module_identity equal to the selected existing slot_module and replacement_instance_boundary equal to the selected existing Vivado cell path. Do not choose or name future generated accelerator internals; the later generation agent owns them.",
         "Set no_behavioral_substitution=true when the exclusive replacement boundary preserves the real sample wrapper, DDR model, AXI path, clocks, resets, calibration behavior, and immutable retained closure. Discovery does not require the future generated scheduler/kernel to already be connected; generation and VCS validate that later binding.",
         "Return one JSON object only.",
@@ -5077,7 +5242,7 @@ def run_board_interface_agent(
             if str(row.get("source_id") or "") in relevant_source_ids
         ],
     }
-    output_contract = board_interface_domain_output_contract()
+    output_contract = board_interface_domain_output_contract(compile_only=True)
     domain_inputs = {
         "vivado_facts": selected_fact_subgraph(
             facts, str(selection.get("selected_cell_id") or "")
@@ -5092,33 +5257,7 @@ def run_board_interface_agent(
         "sample_source_review_coverage": source_review_coverage,
         "deterministic_output_contract": output_contract,
     }
-    domain_rules = [
-        "Use only object IDs, properties, connections, compile-order ownership, source hashes, and source context supplied in this request; never rely on module-name or signal-name keyword heuristics.",
-        "Use selected_cell_pin_index as the authoritative compact index for required_ports, port_bindings, and AXI signal_fact_map. Copy each object_id, path, direction, and width_bits exactly; do not invent or omit physical pins.",
-        "deterministic_output_contract is the exact machine-readable field and container contract consumed by the generic acceptance gate. Follow it literally while deriving all values and semantics from current evidence.",
-        "sample_source_semantic_reviews are deterministic-coverage-checked LLM reviews of every byte of every selector-chosen hash-bound source. Use their exact findings as source evidence and cite only their source IDs; do not claim the source text was omitted.",
-        "sample_simulation_source_manifest.complete_source_ids is the immutable complete closure used to construct replacement_boundary.retained_source_ids. relevant_source_records retain detailed provenance for every reviewed source.",
-        "The LLM is the adaptive domain expert: select and explain the compute slot and semantic roles. Static framework code will only cross-check your claims against Vivado facts.",
-        "Return status=blocked when evidence is genuinely ambiguous or incomplete. Never guess a cell, port role, timing value, source boundary, or generated internal implementation.",
-        "Select exactly one Vivado cell object. required_ports and port_bindings must cover every physical pin owned by that cell, including full interface members, clocks, resets, calibration, control, and status. accelerator_port denotes the later generated boundary port and may preserve the exact physical boundary name; it does not claim generated RTL already exists.",
-        "interface_classifications must cover every interface pin owned by the selected cell. Classify from Vivado VLNV/CONFIG.PROTOCOL properties and connectivity, not names.",
-        "For each AXI semantic signal, provide signal_fact_map entries referring to the exact physical pin object ID; use an explicit constant/absent binding only when Vivado properties prove the sideband is disabled.",
-        "Every clock/reset/calibration and memory timing claim must cite exact Vivado object/property or hash-bound sample-source evidence. Preserve exact frequencies, phases, reset polarities, calibration traffic gating, latency/backpressure behavior, and startup ordering.",
-        "Inside compute_slot_abi return control_abi in exactly the deterministic_output_contract shape, including exact non-interface pin coverage, physical configuration-field projection, six canonical lifecycle roles, timing relations, and an ordered control_sequence list.",
-        "An evidence-proved software, testbench, or scheduler sequence is the exact real board operational contract. Set control_sequence_enforcement=external_orchestrator or mixed as appropriate; lack of a hardware total-order FSM is not a blocker.",
-        "A dedicated operation-done pin is not required. When completion is exactly observable as a predicate on a physical count/status port, represent done as derived_from_physical_port with the exact predicate and evidence required by deterministic_output_contract; never invent a done pin.",
-        "For asynchronous crossings, preserve the exact variable handshake/CDC relation. Report source-domain assertion cycles proved by the source and encode variable acceptance/completion in the canonical timing strings; do not invent a fixed cross-domain latency and do not block merely because absolute phase varies.",
-        "compute_slot_abi.control_abi.control_sequence must encode configure -> start -> observe_completion -> clear_completion ordering from current sample sources. If any field access/reset value, lifecycle action, clock domain, event relation, or ordering cannot be proved, return status=blocked.",
-        "Every canonical ABI, port, binding, control, timing, AXI interface, parameter and signal claim must carry the evidence fields requested by deterministic_output_contract using only exact Vivado object_ids or sample source_ids supplied in this request. Do not invent semantic evidence identifiers.",
-        "Return wrapper_top_module only when it is declared by the selected wrapper source and is the exact sample top instantiated by the simulator flow; do not assume the simulation fileset TOP is the wrapper when it is a testbench.",
-        "For every AXI interface return parameter_evidence_refs for all width/burst/alignment/outstanding/byte-order fields and signal_evidence_refs for every AW/W/B/AR/R member. Cite the interface/member Vivado objects and sample source IDs that actually prove each value.",
-        "parameter_evidence_refs must be an object mapping every required AXI field name to a non-empty evidence-reference list (for example {\"byte_order\": [\"<object-or-source-id>\"], \"supports_unaligned_access\": [\"<object-or-source-id>\"]}); do not return one flat list. signal_evidence_refs must likewise be the field/channel mapping required by deterministic_output_contract.",
-        "selected_simulation_source_closure is immutable and is not your output. replaced_source_ids is only a later compile delta: select the exclusively owned source that declares the selected cell's existing slot_module boundary. It may be a simulation instance wrapper around shared legacy compute RTL; retain that shared RTL for every unselected sample instance.",
-        "replacement_boundary.retained_source_ids must be the complete sample closure minus replaced_source_ids; set sample_closure_unchanged=true and generated_sources_excluded_from_sample_closure=true.",
-        "Set replacement_module_identity equal to the selected existing slot_module and replacement_instance_boundary equal to the selected existing Vivado cell path. Do not choose or name future generated accelerator internals; the later generation agent owns them.",
-        "Set no_behavioral_substitution=true when the exclusive replacement boundary preserves the real sample wrapper, DDR model, AXI path, clocks, resets, calibration behavior, and immutable retained closure. Discovery does not require the future generated scheduler/kernel to already be connected; generation and VCS validate that later binding.",
-        "Return one JSON object only.",
-    ]
+    domain_rules = board_interface_domain_prompt_rules(compile_only=True)
     progressive = (
         selector.get("progressive_selection")
         if isinstance(selector.get("progressive_selection"), dict)
@@ -5204,7 +5343,7 @@ def run_board_interface_agent(
         task=(
             "Interpret the complete read-only Vivado object graph for the current user's sample project. "
             "Select the replaceable compute slot, reconstruct its complete port ABI, exact AXI4 contracts, "
-            "clock/reset/calibration/startup and memory timing contract, and the minimal exclusive sample-source "
+            "physical clock/reset/calibration contract under vcs_compile_only, and the minimal exclusive sample-source "
             "replacement boundary into which the later generation agent will bind the transformer scheduler/kernel."
         ),
         inputs=domain_inputs,
@@ -5336,6 +5475,9 @@ def _validate_replacement_boundary(
         return [*errors, "compute_slot_abi.replacement_boundary is missing"]
     retained = {str(value) for value in boundary.get("retained_source_ids", []) if str(value)}
     expected_retained = all_ids - set(replaced)
+    if not retained and replaced and not errors:
+        boundary["retained_source_ids"] = sorted(expected_retained)
+        retained = expected_retained
     if retained != expected_retained:
         errors.append("replacement_boundary.retained_source_ids is not exactly sample closure minus replaced_source_ids")
     if boundary.get("sample_closure_unchanged") is not True:
@@ -5394,7 +5536,12 @@ def _validate_compute_slot(
     required = [row for row in abi.get("required_ports", []) if isinstance(row, dict)]
     required_ids = [str(row.get("fact_port_id") or row.get("port_id") or "") for row in required]
     if set(required_ids) != fact_port_ids or len(required_ids) != len(fact_port_ids):
-        errors.append("compute_slot_abi.required_ports does not exactly cover every selected-cell physical pin")
+        errors.append(
+            "compute_slot_abi.required_ports does not exactly cover every selected-cell physical pin: "
+            f"missing={sorted(fact_port_ids - set(required_ids))}, "
+            f"unexpected={sorted(set(required_ids) - fact_port_ids)}, "
+            f"duplicates={len(required_ids) - len(set(required_ids))}"
+        )
     normalized_ports = []
     for row in required:
         fact_id = str(row.get("fact_port_id") or row.get("port_id") or "")
@@ -5422,7 +5569,12 @@ def _validate_compute_slot(
     bindings = [row for row in abi.get("port_bindings", []) if isinstance(row, dict)]
     binding_ids = [str(row.get("port_id") or "") for row in bindings]
     if set(binding_ids) != fact_port_ids or len(binding_ids) != len(fact_port_ids):
-        errors.append("compute_slot_abi.port_bindings does not exactly cover every selected-cell physical pin")
+        errors.append(
+            "compute_slot_abi.port_bindings does not exactly cover every selected-cell physical pin: "
+            f"missing={sorted(fact_port_ids - set(binding_ids))}, "
+            f"unexpected={sorted(set(binding_ids) - fact_port_ids)}, "
+            f"duplicates={len(binding_ids) - len(set(binding_ids))}"
+        )
     normalized_bindings = []
     fact_by_id = {str(row["object_id"]): row for row in fact_ports}
     for row in bindings:
@@ -5471,6 +5623,16 @@ def _validate_timing(
     timing: dict[str, Any], cell: dict[str, Any], facts: dict[str, Any], sample_rows: list[dict[str, Any]]
 ) -> list[str]:
     errors: list[str] = []
+    # Preserve the Agent's asserted level while canonicalizing its spelling.
+    # The checks below still compare reset polarity to the exact Vivado fact.
+    for key in ("resets", "calibration"):
+        for row in timing.get(key, []):
+            if isinstance(row, dict) and isinstance(row.get("active_level"), str):
+                level = row["active_level"].strip().lower()
+                row["active_level"] = {
+                    "low": 0, "high": 1, "0": 0, "1": 1,
+                    "active_low": 0, "active_high": 1,
+                }.get(level, row["active_level"])
     objects = _object_index(facts)
     sample_ids = set(_source_index(sample_rows))
     pins = _cell_children(objects, cell, "pin")
@@ -5582,8 +5744,49 @@ def _validate_timing(
     return errors
 
 
+def _validate_compile_timing(
+    timing: dict[str, Any], cell: dict[str, Any], facts: dict[str, Any],
+    source_ids: set[str] | None = None,
+) -> list[str]:
+    """Check physical clock/reset/calibration bindings without claiming a run."""
+    errors: list[str] = []
+    objects = _object_index(facts)
+    pins = _cell_children(objects, cell, "pin")
+    for key, pin_type in (("clock_domains", "clk"), ("resets", "rst"), ("calibration", None)):
+        rows = [r for r in timing.get(key, []) if isinstance(r, dict)]
+        expected = {r["object_id"]: r for r in pins if r.get("properties", {}).get("TYPE") == pin_type} if pin_type else {}
+        ids = [r.get("fact_port_id") for r in rows]
+        if not rows or len(set(ids)) != len(ids) or (pin_type and set(ids) != set(expected)):
+            errors.append(f"compile-only timing.{key} physical pin coverage is incomplete")
+        for row in rows:
+            refs = row.get("evidence_refs", [])
+            allowed = set(objects) | (source_ids or set())
+            if not refs or any(str(ref) not in allowed for ref in refs):
+                errors.append(f"compile-only timing.{key} has missing/unknown evidence_refs: {refs}")
+            fact = objects.get(str(row.get("fact_port_id") or ""))
+            if fact not in pins:
+                errors.append(f"compile-only timing.{key} references a non-selected-cell pin")
+                continue
+            if key == "clock_domains":
+                frequency = _int_property(fact, "CONFIG.FREQ_HZ")
+                if not frequency or row.get("frequency_hz") != frequency or row.get("period_ps") != round(1e12 / frequency):
+                    errors.append(f"clock {row.get('name')} frequency/period does not match Vivado")
+            elif key == "resets":
+                level = row.get("active_level")
+                if isinstance(level, str):
+                    level = {"low": 0, "active_low": 0, "0": 0, "high": 1, "active_high": 1, "1": 1}.get(level.lower(), level)
+                    row["active_level"] = level
+                polarity = fact.get("properties", {}).get("CONFIG.POLARITY")
+                if level != {"ACTIVE_LOW": 0, "ACTIVE_HIGH": 1}.get(polarity):
+                    errors.append(f"reset {row.get('name')} polarity does not match Vivado CONFIG.POLARITY")
+            elif fact.get("properties", {}).get("TYPE") in {"clk", "rst"} or not fact.get("connected_nets"):
+                errors.append("compile-only calibration is not a connected scalar pin")
+    return errors
+
+
 def _validate_control(
-    control: dict[str, Any], cell: dict[str, Any], facts: dict[str, Any], timing: dict[str, Any], sample_rows: list[dict[str, Any]]
+    control: dict[str, Any], cell: dict[str, Any], facts: dict[str, Any], timing: dict[str, Any], sample_rows: list[dict[str, Any]],
+    *, compile_only: bool = False,
 ) -> list[str]:
     errors: list[str] = []
     objects = _object_index(facts)
@@ -5635,6 +5838,11 @@ def _validate_control(
             errors.append(f"control classification {port_id} has an unsupported classification")
         if not str(row.get("semantic_role") or "").strip():
             errors.append(f"control classification {port_id} lacks an LLM semantic role")
+        if compile_only:
+            refs = row.get("evidence_object_ids", [])
+            if port_id not in refs or any(str(ref) not in objects for ref in refs):
+                errors.append(f"control classification {port_id} lacks valid physical evidence")
+            continue
         if category in {"configuration_bus", "control", "status", "calibration"}:
             semantic_control_ids.add(port_id)
             if str(row.get("pulse_or_level") or "") not in {
@@ -5669,6 +5877,8 @@ def _validate_control(
             if not evidence_sources or not evidence_sources.issubset(sample_ids):
                 errors.append(f"control/status port {port_id} semantics are not bound to sample-source hashes")
 
+    if compile_only:
+        return errors
     control_ports = [row for row in control.get("control_ports", []) if isinstance(row, dict)]
     control_port_ids = [str(row.get("fact_port_id") or "") for row in control_ports]
     if set(control_port_ids) != semantic_control_ids or len(control_port_ids) != len(semantic_control_ids):
@@ -5886,7 +6096,8 @@ def _validate_control(
 
 
 def _validate_axi(
-    axi_rows: list[dict[str, Any]], abi: dict[str, Any], timing: dict[str, Any], cell: dict[str, Any], facts: dict[str, Any]
+    axi_rows: list[dict[str, Any]], abi: dict[str, Any], timing: dict[str, Any], cell: dict[str, Any], facts: dict[str, Any],
+    *, compile_only: bool = False,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     errors: list[str] = []
     objects = _object_index(facts)
@@ -5948,7 +6159,7 @@ def _validate_axi(
                 errors.append(f"AXI interface {interface_id} lacks integer {field}")
         if isinstance(row.get("data_width_bits"), int) and row.get("strb_width_bits") != row.get("data_width_bits") // 8:
             errors.append(f"AXI interface {interface_id} strobe width does not equal data width / 8")
-        if not isinstance(row.get("supports_unaligned_access"), bool):
+        if not compile_only and not isinstance(row.get("supports_unaligned_access"), bool):
             errors.append(f"AXI interface {interface_id} lacks explicit unaligned-access policy")
         if str(row.get("byte_order") or "").lower() not in {
             "little",
@@ -5964,6 +6175,8 @@ def _validate_axi(
             )
         else:
             for field in AXI_PARAMETER_EVIDENCE_FIELDS:
+                if compile_only and field == "supports_unaligned_access":
+                    continue
                 refs = parameter_refs.get(field)
                 if not isinstance(refs, list) or not any(str(value) for value in refs):
                     errors.append(
@@ -5990,6 +6203,11 @@ def _validate_axi(
                 channel_facts = {}
             for signal in signals:
                 binding = channel_facts.get(signal)
+                if isinstance(binding, str):
+                    # An exact ID is equivalent to {port_id: ID}; all physical
+                    # membership, width and direction checks below still apply.
+                    binding = {"port_id": binding}
+                    channel_facts[signal] = binding
                 if not isinstance(binding, dict):
                     errors.append(f"AXI interface {interface_id} signal_fact_map.{channel}.{signal} is missing")
                     signal_map[channel][signal] = None
@@ -6133,14 +6351,19 @@ def validate_interpretation(
     timing = output.get("timing_contract") if isinstance(output.get("timing_contract"), dict) else {}
     control = abi.get("control_abi") if isinstance(abi.get("control_abi"), dict) else {}
     if cell:
-        errors.extend(_validate_timing(timing, cell, facts, sample_rows))
-        errors.extend(_validate_control(control, cell, facts, timing, sample_rows))
+        compile_only = compile_only_board_contract(output)
+        errors.extend(
+            _validate_compile_timing(timing, cell, facts, set(by_source)) if compile_only
+            else _validate_timing(timing, cell, facts, sample_rows)
+        )
+        errors.extend(_validate_control(control, cell, facts, timing, sample_rows, compile_only=compile_only))
         axi, axi_errors = _validate_axi(
             [row for row in output.get("axi_interfaces", []) if isinstance(row, dict)],
             abi,
             timing,
             cell,
             facts,
+            compile_only=compile_only,
         )
         errors.extend(axi_errors)
     else:
@@ -6381,6 +6604,277 @@ def recover_historical_selection(
         if best is None or rank > best[0]:
             best = (rank, candidate)
     return best[1] if best else None
+
+
+def _board_fact_structure_fingerprint(facts: dict[str, Any]) -> str:
+    """Fingerprint stable Vivado structure while excluding temporary exports."""
+
+    normalized = json.loads(json.dumps(facts))
+    simulation = normalized.get("simulation")
+    if isinstance(simulation, dict):
+        simulation.pop("simulator_export_contexts", None)
+        simulation.pop("simulator_export_files", None)
+    return canonical_sha256(normalized)
+
+
+def _source_identity_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        [
+            {
+                "source_id": str(row.get("source_id") or ""),
+                "sha256": str(row.get("sha256") or row.get("local_sha256") or "").lower(),
+                "compile_order": row.get("compile_order"),
+                "library": str(row.get("library") or ""),
+                "file_type": str(row.get("file_type") or row.get("language") or ""),
+                "file_set": str(row.get("file_set") or ""),
+                "used_in": sorted(str(value) for value in row.get("used_in", [])),
+                "parent_composite_file": str(row.get("parent_composite_file") or ""),
+                "owner_cell_ids": sorted(str(value) for value in row.get("owner_cell_ids", [])),
+            }
+            for row in rows
+            if isinstance(row, dict)
+        ],
+        key=lambda row: row["source_id"],
+    )
+
+
+def _selector_coverage_matches_current_ids(
+    coverage: dict[str, Any], facts: dict[str, Any], coverage_path: Path
+) -> bool:
+    complete = coverage.get("complete_coverage")
+    workers = coverage.get("worker_records")
+    if (
+        coverage.get("status") != "pass"
+        or not isinstance(complete, dict)
+        or not isinstance(workers, list)
+        or not workers
+        or complete.get("all_fact_and_source_units_reviewed") is not True
+    ):
+        return False
+    object_ids = sorted(
+        str(row.get("object_id") or "")
+        for row in facts.get("objects", [])
+        if isinstance(row, dict) and str(row.get("object_id") or "")
+    )
+    source_ids = sorted(
+        str(row.get("source_id") or "")
+        for row in facts.get("simulation", {}).get("source_files", [])
+        if isinstance(row, dict) and str(row.get("source_id") or "")
+    )
+    if (
+        sorted(str(value) for value in complete.get("reviewed_object_ids", [])) != object_ids
+        or sorted(str(value) for value in complete.get("reviewed_source_ids", [])) != source_ids
+        or complete.get("reviewed_object_count") != len(object_ids)
+        or complete.get("reviewed_source_count") != len(source_ids)
+        or complete.get("reviewed_object_ids_sha256") != canonical_sha256(object_ids)
+        or complete.get("reviewed_source_ids_sha256") != canonical_sha256(source_ids)
+    ):
+        return False
+    for worker in workers:
+        if not isinstance(worker, dict):
+            return False
+        worker_path = Path(str(worker.get("path") or ""))
+        if not worker_path.is_absolute():
+            worker_path = coverage_path.parent / worker_path
+        if not worker_path.is_file() or sha256_file(worker_path) != str(worker.get("sha256") or ""):
+            return False
+    return True
+
+
+def recover_hash_bound_historical_board_identity(
+    run_dir: Path,
+    out_dir: Path,
+    facts: dict[str, Any],
+    facts_path: Path,
+    profile: dict[str, Any],
+    sample_rows: list[dict[str, Any]],
+    current_xpr_sha256: str,
+) -> dict[str, Any] | None:
+    """Reuse a successful board interpretation only after current-fact rebinding."""
+
+    current_coverage_path = (
+        out_dir / "llm" / "exact_board_interface_selector_progressive_coverage.json"
+    )
+    if not current_coverage_path.is_file():
+        return None
+    current_coverage = read_json(current_coverage_path)
+    current_fact_canonical_sha256 = canonical_sha256(facts)
+    coverage_rebound = (
+        current_coverage.get("input_vivado_fact_canonical_sha256")
+        != current_fact_canonical_sha256
+    )
+    if coverage_rebound and not _selector_coverage_matches_current_ids(
+        current_coverage, facts, current_coverage_path
+    ):
+        return None
+    if not coverage_rebound and current_coverage.get("status") != "pass":
+        return None
+
+    current_sources = _source_identity_rows(sample_rows)
+    current_fact_structure = _board_fact_structure_fingerprint(facts)
+    current_project = str(facts.get("project", {}).get("path") or "")
+    current_objects = _object_index(facts)
+    candidates = sorted(
+        (
+            path
+            for path in run_dir.parent.rglob("board_source_identity.json")
+            if path.resolve() != (out_dir / "board_source_identity.json").resolve()
+        ),
+        key=lambda path: (path.stat().st_mtime, str(path)),
+        reverse=True,
+    )
+    for identity_path in candidates:
+        try:
+            identity = read_json(identity_path)
+            if (
+                identity.get("status") != "pass"
+                or identity.get("exact_user_sample_wrapper") is not True
+                or identity.get("simulation_hashes_match_source") is not True
+                or str(identity.get("sample_project_sha256") or "") != current_xpr_sha256
+            ):
+                continue
+            historical_facts_path = Path(
+                str(identity.get("vivado_facts_path") or "")
+            ).expanduser()
+            if not historical_facts_path.is_absolute():
+                historical_facts_path = identity_path.parent / historical_facts_path
+            if not historical_facts_path.is_file():
+                continue
+            historical_facts = read_json(historical_facts_path)
+            if (
+                historical_facts.get("status") != "pass"
+                or str(historical_facts.get("project", {}).get("path") or "")
+                != current_project
+                or _board_fact_structure_fingerprint(historical_facts)
+                != current_fact_structure
+            ):
+                continue
+            historical_rows = identity.get("selected_simulation_source_closure", {}).get(
+                "source_files", []
+            )
+            if _source_identity_rows(historical_rows) != current_sources:
+                continue
+            abi = identity.get("compute_slot_abi")
+            timing = identity.get("timing_contract")
+            axi = identity.get("axi_interfaces")
+            if not isinstance(abi, dict) or not isinstance(timing, dict) or not isinstance(axi, list):
+                continue
+            selected_cell_id = str(abi.get("selected_cell_id") or "")
+            if current_objects.get(selected_cell_id, {}).get("kind") != "cell":
+                continue
+            wrapper_rows = [
+                row
+                for row in historical_rows
+                if isinstance(row, dict)
+                and (
+                    row.get("closure_role") == "exact_sample_top"
+                    or row.get("role") in {"wrapper", "board_wrapper", "sample_wrapper"}
+                )
+            ]
+            if len(wrapper_rows) != 1:
+                continue
+            wrapper_source_id = str(wrapper_rows[0].get("source_id") or "")
+            current_source_ids = {str(row.get("source_id") or "") for row in sample_rows}
+            if wrapper_source_id not in current_source_ids:
+                continue
+
+            from accagent.framework.board_acceptance_contract import canonical_contract_sha256
+
+            coverage_ref = {
+                "path": str(current_coverage_path.resolve()),
+            }
+            if coverage_rebound:
+                previous_fact_canonical_sha256 = current_coverage.get(
+                    "input_vivado_fact_canonical_sha256"
+                )
+                current_coverage["input_vivado_fact_canonical_sha256"] = (
+                    current_fact_canonical_sha256
+                )
+                current_coverage["fact_rebind"] = {
+                    "mode": "stable_vivado_structure_rebind",
+                    "previous_fact_canonical_sha256": previous_fact_canonical_sha256,
+                    "current_fact_canonical_sha256": current_fact_canonical_sha256,
+                    "stable_structure_sha256": current_fact_structure,
+                }
+                write_json(current_coverage_path, current_coverage)
+            coverage_ref["sha256"] = sha256_file(current_coverage_path)
+            output = {
+                "schema_version": INTERPRETATION_SCHEMA_VERSION,
+                "agent": "historical_board_identity_rebinding_agent",
+                "stage": "verification.layer3.board_interface_discovery",
+                "status": "pass",
+                "summary": "Rebound a prior successful board interpretation to identical current Vivado facts and source closure",
+                "wrapper_source_id": wrapper_source_id,
+                "wrapper_top_module": str(
+                    identity.get("wrapper_top_module")
+                    or identity.get("top_module")
+                    or ""
+                ),
+                "compute_slot_abi": json.loads(json.dumps(abi)),
+                "timing_contract": json.loads(json.dumps(timing)),
+                "axi_interfaces": json.loads(json.dumps(axi)),
+                "blockers": [],
+                "required_capabilities": [],
+            }
+            if compile_only_board_contract(identity):
+                for key in ("validation_policy", "functional_semantics_claimed", "deferred_runtime_evidence"):
+                    output[key] = identity.get(key, [] if key == "deferred_runtime_evidence" else None)
+            record = {
+                "schema_version": "spatialaccagent.stage_worker_record.v0",
+                "agent": output["agent"],
+                "stage": output["stage"],
+                "model": str(
+                    identity.get("discovery_provenance", {}).get("model")
+                    or "historical-llm"
+                ),
+                "used_fallback": False,
+                "error": None,
+                "result_path": str(
+                    (out_dir / "llm" / "exact_board_interface_rebound_agent_result.json").resolve()
+                ),
+                "validated_selection": {
+                    "selected_cell_id": selected_cell_id,
+                    "wrapper_source_id": wrapper_source_id,
+                    "relevant_sample_source_ids": sorted(current_source_ids),
+                    "proposed_replaced_source_ids": [
+                        str(value) for value in abi.get("replaced_source_ids", []) if str(value)
+                    ],
+                },
+                "selector_coverage_ledger": coverage_ref,
+                "selector_progressive_selection": {
+                    "status": "pass",
+                    "coverage_ledger": coverage_ref,
+                    "mode": "current_fact_coverage_rebind",
+                },
+                "historical_identity_reuse": {
+                    "identity_path": str(identity_path.resolve()),
+                    "identity_sha256": sha256_file(identity_path),
+                    "historical_facts_path": str(historical_facts_path.resolve()),
+                    "historical_facts_sha256": sha256_file(historical_facts_path),
+                    "historical_fact_structure_sha256": _board_fact_structure_fingerprint(
+                        historical_facts
+                    ),
+                    "current_fact_structure_sha256": current_fact_structure,
+                    "source_identity_rows_sha256": canonical_contract_sha256(current_sources),
+                },
+                "output": output,
+            }
+            normalized, errors = validate_interpretation(
+                record,
+                facts,
+                profile,
+                [dict(row) for row in sample_rows],
+            )
+            if errors:
+                continue
+            record["deterministic_validation_status"] = "pass"
+            record["deterministic_validation_errors"] = []
+            record["output"] = normalized["output"]
+            write_json(Path(record["result_path"]), record)
+            return record
+        except (OSError, TypeError, ValueError, json.JSONDecodeError, KeyError):
+            continue
+    return None
 
 
 def _evidence_refs(*values: Any) -> list[str]:
@@ -6681,6 +7175,9 @@ def _canonical_identity_contract(
     closure_hash = source_closure_fingerprint(closure_rows)
     return {
         "wrapper_top_module": wrapper_top,
+        "validation_policy": interpretation.get("output", {}).get("validation_policy"),
+        "functional_semantics_claimed": interpretation.get("output", {}).get("functional_semantics_claimed"),
+        "deferred_runtime_evidence": interpretation.get("output", {}).get("deferred_runtime_evidence", []),
         "top_module": wrapper_top,
         "selected_simulation_source_closure": {
             "source_files": closure_rows,
@@ -6729,6 +7226,9 @@ def _canonical_identity_contract(
             "agent_id": agent_record.get("agent"),
             "model": agent_record.get("model"),
             "used_fallback": agent_record.get("used_fallback"),
+            "historical_identity_reuse": agent_record.get(
+                "historical_identity_reuse"
+            ),
             "prompt_sha256": agent_record.get("prompt_hash"),
             "input_fact_bundle": {"path": str(facts_path), "sha256": facts_digest},
             "selector_record_path": agent_record.get("selector_record_path"),
@@ -6750,6 +7250,13 @@ def _canonical_identity_contract(
 
 def build_report(run_dir: Path, out_dir: Path, timeout: int) -> dict[str, Any]:
     inputs = project_inputs(run_dir)
+    xpr_raw = source_bytes(
+        str(inputs["host"]),
+        str(inputs["xpr_path"]),
+        timeout,
+        int(inputs["port"]),
+    )
+    current_xpr_sha256 = sha256_bytes(xpr_raw)
     facts = run_vivado_fact_export(inputs, out_dir, timeout)
     facts_path = out_dir / "vivado_board_facts.json"
     write_json(facts_path, facts)
@@ -6779,13 +7286,23 @@ def build_report(run_dir: Path, out_dir: Path, timeout: int) -> dict[str, Any]:
         "profile_axi_data_width_bits": 0,
     }
     if not blockers:
-        agent_record = run_board_interface_agent(
+        agent_record = recover_hash_bound_historical_board_identity(
             run_dir,
             out_dir,
             facts,
+            facts_path,
             inputs["profile"],
             sample_rows,
+            current_xpr_sha256,
         )
+        if agent_record is None:
+            agent_record = run_board_interface_agent(
+                run_dir,
+                out_dir,
+                facts,
+                inputs["profile"],
+                sample_rows,
+            )
         interpretation, validation_blockers = validate_interpretation(
             agent_record,
             facts,
@@ -6804,8 +7321,6 @@ def build_report(run_dir: Path, out_dir: Path, timeout: int) -> dict[str, Any]:
     wrapper_id = interpretation.get("wrapper_source_id")
     wrapper = _source_index(sample_rows).get(str(wrapper_id), {})
     axi = canonical_identity.get("axi_interfaces", [])
-    xpr_raw = source_bytes(str(inputs["host"]), str(inputs["xpr_path"]), timeout, int(inputs["port"]))
-
     report = {
         "schema_version": IDENTITY_SCHEMA_VERSION,
         "status": "pass" if not blockers else "fail",
@@ -7019,9 +7534,12 @@ def resume_existing_board_domain_repair(
             if str(row.get("source_id") or "") in selected_sources
         ],
     }
-    output_contract = board_interface_domain_output_contract()
+    output_contract = board_interface_domain_output_contract(compile_only=True)
     domain_inputs = {
         "vivado_facts": selected_fact_subgraph(
+            facts, str(selection.get("selected_cell_id") or "")
+        ),
+        "selected_cell_pin_index": selected_cell_pin_index(
             facts, str(selection.get("selected_cell_id") or "")
         ),
         "target_board_profile": inputs["profile"],
@@ -7097,7 +7615,7 @@ def resume_existing_board_domain_repair(
         inputs["profile"],
         sample_rows,
         domain_inputs,
-        board_interface_domain_prompt_rules(),
+        board_interface_domain_prompt_rules(compile_only=True),
         candidate,
         candidate_errors,
         annotate_and_persist,

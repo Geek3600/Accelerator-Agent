@@ -1,0 +1,170 @@
+{
+  "agent": "constraint_graph_auditor",
+  "duration_sec": 105.60872719902545,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "2d06a89b03f4442291769589a40278db",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/llm/constraint_graph_auditor_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "constraint_graph_auditor",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "prepared_inputs_manifest",
+          "validation_errors",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary"
+        ],
+        "id": "constraint_extraction.run_graph_reference_integrity_checks",
+        "on_failure": "Do not promote candidate_design_graph_summary. Emit the failed invariant list and bounded repair actions scoped to broken graph references, missing cross-layer edges, or human-boundary violations, and route them to constraint_extraction.team_aggregate.",
+        "produces": [
+          "constraint_extraction.design_graph_audit_report.json"
+        ],
+        "rationale": "The compact candidate_design_graph_summary exposes only aggregate counts and an empty validation_errors list. Promotion as shared design state requires checker-bound evidence that every node and edge resolves to a supplied artifact or constraint and that no human-boundary violation is present.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "repair_boundary_check",
+          "human_boundary_check"
+        ],
+        "action_type": "team_aggregate",
+        "consumes": [
+          "constraint_extraction.design_graph_audit_report.json"
+        ],
+        "id": "constraint_extraction.promote_initial_design_graph_after_checks",
+        "on_failure": "Keep next_stage handoff blocked and require a bounded remediation cycle before retrying aggregation.",
+        "produces": [
+          "constraint_extraction.team_aggregate.design_graph_promotion_decision"
+        ],
+        "rationale": "After the reference-integrity and human-boundary checks pass, the audit report can be aggregated into the team handoff state without making architecture, template, memory-layout, or numeric-policy changes.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "candidate_design_graph_summary reports 16 constraints, 20 node_ids, 7 edges, 109 evidence_fields, and three input groups: evidence, materials, and tools.",
+      "validation_errors is empty in the supplied candidate stage artifact, so no explicit graph-validation failure is currently recorded.",
+      "sacg_memory_truth shows zero active contamination barriers, zero open retry requests, and zero open backtrack requests; there are no current SACG-memory blockers for this audit.",
+      "The visible summary exposes only aggregate graph counts, not full node/edge definitions; therefore artifact-reference integrity and cross-layer edge coverage cannot be certified from this compact slice alone.",
+      "artifact.input.human_agent_boundary is present in the prepared input manifest, but no human_boundary_check evidence is supplied; a hidden transformer-scope or agent-boundary violation cannot be ruled out until that checker runs.",
+      "hierarchical_learning_context contains no validated lower-layer certificates, so there is no live lower-layer contradiction requiring a lower-layer reopen."
+    ],
+    "proposed_actions": [
+      "Run sacg_static_check and sacg_reference_check over the materialized graph to verify node and edge resolvability against supplied input artifacts and constraints.",
+      "Run human_boundary_check and repair_boundary_check to confirm DUT scope remains Transformer-blocks-only and no tool/human-boundary violation exists.",
+      "If all checks pass, authorize constraint_extraction.team_aggregate to promote the graph for next-stage consumption.",
+      "If any check fails, emit bounded remediation actions scoped to broken references, missing cross-layer edges, or human-boundary violations, and keep promotion blocked."
+    ],
+    "risks": [
+      "Promoting candidate_design_graph_summary before running sacg_static_check and sacg_reference_check could allow dangling artifact references or broken constraint-to-artifact edges that are not visible in the aggregate summary.",
+      "The seven recorded edges may omit required cross-layer relations across model, shape, numeric policy, template, board, memory, runtime, tool, case-adapter, and human-boundary facts.",
+      "prepared_inputs_manifest.design_team includes completed_subtasks and decomposer_used_fallback whose compact values are not visible; stale or fallback records could be consumed incorrectly unless inspected by the aggregation gate.",
+      "The full graph may contain a human-boundary violation, including out-of-scope embedding/tokenization, final model norm, LM head/logits, or sampling nodes, which would be missed without human_boundary_check.",
+      "The constraint.cross_layer.input_consistency requirement remains unverified because no materialized cross-layer edge evidence is exposed in the compact summary."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_design_graph_summary",
+        "prepared_inputs_manifest",
+        "validation_errors",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary",
+        "constraint_extraction.design_graph_audit_report.json"
+      ],
+      "constraints": [
+        "constraint.source.materials",
+        "constraint.source.evidence",
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.case.adapter",
+        "constraint.human.boundary",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "constraint.model.decoder -> constraint.shape.model",
+        "constraint.shape.model -> constraint.numeric.policy",
+        "constraint.numeric.policy -> constraint.template.library",
+        "constraint.arch.design_space -> constraint.deployment.board",
+        "constraint.deployment.board -> constraint.memory.board",
+        "constraint.memory.board -> constraint.runtime.board",
+        "constraint.tool.profile -> constraint.case.adapter"
+      ],
+      "nodes": [
+        "candidate_design_graph_summary",
+        "prepared_inputs_manifest",
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary",
+        "constraint.human.boundary",
+        "constraint.cross_layer.input_consistency"
+      ]
+    },
+    "schema_version": "spatialaccagent.design_graph_audit.v0",
+    "stage": "constraint_extraction",
+    "status": "needs_remediation",
+    "summary": "The candidate_design_graph_summary is structurally present: 16 constraints, 20 node_ids, 7 edges, 109 evidence_fields, three input groups, and an empty validation_errors list. That is necessary but not sufficient evidence for promotion as shared design state. The visible compact slice does not expose the full node/edge definitions or resolved artifact references, so checker evidence must be generated before promotion. No current SACG-memory blockers or lower-layer contradictions are active."
+  },
+  "prompt_bytes": 39146,
+  "prompt_hash": "a3ab86e5b1164b6aafd72be15c21a34f143c70bed1667922e2934e254a294f62",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.design_graph_audit.v0\",\n  \"agent\": \"constraint_graph_auditor\",\n  \"stage\": \"constraint_extraction\",\n  \"status\": \"needs_remediation\",\n  \"summary\": \"The candidate_design_graph_summary is structurally present: 16 constraints, 20 node_ids, 7 edges, 109 evidence_fields, three input groups, and an empty validation_errors list. That is necessary but not sufficient evidence for promotion as shared design state. The visible compact slice does not expose the full node/edge definitions or resolved artifact references, so checker evidence must be generated before promotion. No current SACG-memory blockers or lower-layer contradictions are active.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"candidate_design_graph_summary\",\n      \"prepared_inputs_manifest\",\n      \"artifact.input.model_config\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.template_library\",\n      \"artifact.input.design_space\",\n      \"artifact.input.target_board_profile\",\n      \"artifact.input.tool_profile\",\n      \"artifact.input.case_adapter\",\n      \"artifact.input.human_agent_boundary\",\n      \"constraint.human.boundary\",\n      \"constraint.cross_layer.input_consistency\"\n    ],\n    \"edges\": [\n      \"constraint.model.decoder -> constraint.shape.model\",\n      \"constraint.shape.model -> constraint.numeric.policy\",\n      \"constraint.numeric.policy -> constraint.template.library\",\n      \"constraint.arch.design_space -> constraint.deployment.board\",\n      \"constraint.deployment.board -> constraint.memory.board\",\n      \"constraint.memory.board -> constraint.runtime.board\",\n      \"constraint.tool.profile -> constraint.case.adapter\"\n    ],\n    \"constraints\": [\n      \"constraint.source.materials\",\n      \"constraint.source.evidence\",\n      \"constraint.task.goal\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.deployment.board\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.tool.profile\",\n      \"constraint.tool.protocols\",\n      \"constraint.case.adapter\",\n      \"constraint.human.boundary\",\n      \"constraint.cross_layer.input_consistency\"\n    ],\n    \"artifacts\": [\n      \"candidate_design_graph_summary\",\n      \"prepared_inputs_manifest\",\n      \"validation_errors\",\n      \"artifact.input.model_config\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.template_library\",\n      \"artifact.input.design_space\",\n      \"artifact.input.target_board_profile\",\n      \"artifact.input.tool_profile\",\n      \"artifact.input.case_adapter\",\n      \"artifact.input.human_agent_boundary\",\n      \"constraint_extraction.design_graph_audit_report.json\"\n    ]\n  },\n  \"observations\": [\n    \"candidate_design_graph_summary reports 16 constraints, 20 node_ids, 7 edges, 109 evidence_fields, and three input groups: evidence, materials, and tools.\",\n    \"validation_errors is empty in the supplied candidate stage artifact, so no explicit graph-validation failure is currently recorded.\",\n    \"sacg_memory_truth shows zero active contamination barriers, zero open retry requests, and zero open backtrack requests; there are no current SACG-memory blockers for this audit.\",\n    \"The visible summary exposes only aggregate graph counts, not full node/edge definitions; therefore artifact-reference integrity and cross-layer edge coverage cannot be certified from this compact slice alone.\",\n    \"artifact.input.human_agent_boundary is present in the prepared input manifest, but no human_boundary_check evidence is supplied; a hidden transformer-scope or agent-boundary violation cannot be ruled out until that checker runs.\",\n    \"hierarchical_learning_context contains no validated lower-layer certificates, so there is no live lower-layer contradiction requiring a lower-layer reopen.\"\n  ],\n  \"risks\": [\n    \"Promoting candidate_design_graph_summary before running sacg_static_check and sacg_reference_check could allow dangling artifact references or broken constraint-to-artifact edges that are not visible in the aggregate summary.\",\n    \"The seven recorded edges may omit required cross-layer relations across model, shape, numeric policy, template, board, memory, runtime, tool, case-adapter, and human-boundary facts.\",\n    \"prepared_inputs_manifest.design_team includes completed_subtasks and decomposer_used_fallback whose compact values are not visible; stale or fallback records could be consumed incorrectly unless inspected by the aggregation gate.\",\n    \"The full graph may contain a human-boundary violation, including out-of-scope embedding/tokenization, final model norm, LM head/logits, or sampling nodes, which would be missed without human_boundary_check.\",\n    \"The constraint.cross_layer.input_consistency requirement remains unverified because no materialized cross-layer edge evidence is exposed in the compact summary.\"\n  ],\n  \"proposed_actions\": [\n    \"Run sacg_static_check and sacg_reference_check over the materialized graph to verify node and edge resolvability against supplied input artifacts and constraints.\",\n    \"Run human_boundary_check and repair_boundary_check to confirm DUT scope remains Transformer-blocks-only and no tool/human-boundary violation exists.\",\n    \"If all checks pass, authorize constraint_extraction.team_aggregate to promote the graph for next-stage consumption.\",\n    \"If any check fails, emit bounded remediation actions scoped to broken references, missing cross-layer edges, or human-boundary violations, and keep promotion blocked.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"constraint_extraction.run_graph_reference_integrity_checks\",\n      \"stage\": \"constraint_extraction\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"The compact candidate_design_graph_summary exposes only aggregate counts and an empty validation_errors list. Promotion as shared design state requires checker-bound evidence that every node and edge resolves to a supplied artifact or constraint and that no human-boundary violation is present.\",\n      \"consumes\": [\n        \"candidate_design_graph_summary\",\n        \"prepared_inputs_manifest\",\n        \"validation_errors\",\n        \"artifact.input.model_config\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.design_space\",\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.tool_profile\",\n        \"artifact.input.case_adapter\",\n        \"artifact.input.human_agent_boundary\"\n      ],\n      \"produces\": [\n        \"constraint_extraction.design_graph_audit_report.json\"\n      ],\n      \"tool_roles\": [\n        \"sacg_static_check\",\n        \"sacg_reference_check\",\n        \"human_boundary_check\",\n        \"repair_boundary_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"sacg_reference_check\",\n        \"human_boundary_check\",\n        \"repair_boundary_check\"\n      ],\n      \"on_failure\": \"Do not promote candidate_design_graph_summary. Emit the failed invariant list and bounded repair actions scoped to broken graph references, missing cross-layer edges, or human-boundary violations, and route them to constraint_extraction.team_aggregate.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"constraint_extraction.promote_initial_design_graph_after_checks\",\n      \"stage\": \"constraint_extraction\",\n      \"action_type\": \"team_aggregate\",\n      \"rationale\": \"After the reference-integrity and human-boundary checks pass, the audit report can be aggregated into the team handoff state without making architecture, template, memory-layout, or numeric-policy changes.\",\n      \"consumes\": [\n        \"constraint_extraction.design_graph_audit_report.json\"\n      ],\n      \"produces\": [\n        \"constraint_extraction.team_aggregate.design_graph_promotion_decision\"\n      ],\n      \"tool_roles\": [\n        \"team_aggregate\",\n        \"sacg_memory_update\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"repair_boundary_check\",\n        \"human_boundary_check\"\n      ],\n      \"on_failure\": \"Keep next_stage handoff blocked and require a bounded remediation cycle before retrying aggregation.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/llm/constraint_graph_auditor_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/llm/constraint_graph_auditor_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction.constraint graph auditor",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

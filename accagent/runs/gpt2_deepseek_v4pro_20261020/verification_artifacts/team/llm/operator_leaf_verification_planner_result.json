@@ -1,0 +1,231 @@
+{
+  "agent": "operator_leaf_verification_planner",
+  "duration_sec": 119.38683471799595,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "12977c29deeb48b483816bc2a02d48d8",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/team/llm/operator_leaf_verification_planner_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "operator_leaf_verification_planner",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "verification_planning",
+        "consumes": [
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.stage5.runtime_config",
+          "artifact.stage5.codegen_compile_gate",
+          "artifact.stage5.codegen_contract_check"
+        ],
+        "id": "build_operator_leaf_verification_dag",
+        "on_failure": "Do not promote the operator-leaf DAG; return a bounded verification-plan repair action to remap missing leaf gate bindings or missing upstream references.",
+        "produces": [
+          "artifact.stage6.operator_leaf_verification_dag"
+        ],
+        "rationale": "Produce the canonical layer-1 DAG binding stage_00_layer_norm_1 through stage_07_residual_add_2 to case_stage_leaf_static, boundary_contract_check, case_leaf_functional, case_leaf_golden_compare, and case_operator_leaf_semantic_evidence before any layer merge. Encode VCS current-source compile/elaboration/link as the sole acceptance boundary.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "verification_plan_static_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "verification_planning",
+        "consumes": [
+          "artifact.stage3.pipeline_plan",
+          "artifact.stage4.parameter_binding",
+          "artifact.stage5.generated_code_package",
+          "artifact.input.case_adapter"
+        ],
+        "id": "build_leaf_gate_contract_map",
+        "on_failure": "Block layer-1 closure and hand off a bounded action that leaf gate mappings are incomplete to the single-layer and board DAG planners.",
+        "produces": [
+          "artifact.stage6.operator_leaf_gate_contract_map"
+        ],
+        "rationale": "Explicitly map each of the eight leaf stage IDs to per-leaf records for case_stage_leaf_static, boundary_contract_check, case_leaf_functional, case_leaf_golden_compare, and case_operator_leaf_semantic_evidence, including real-weight, target-model-reference, and semantic-testbench prerequisites.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "verification_artifact_contract_check",
+          "required_real_tool_evidence_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "verification_planning",
+        "consumes": [
+          "artifact.stage5.generated_code_package",
+          "artifact.stage5.memory_layout",
+          "artifact.input.numeric_policy",
+          "artifact.input.case_adapter"
+        ],
+        "id": "declare_leaf_evidence_prerequisites",
+        "on_failure": "Treat missing real-weight, target-model-reference, or semantic-testbench dependency binding as a verification-capability/blocking contract error; do not create a smoke gate or fallback golden.",
+        "produces": [
+          "verification/planning/layer1_leaf_prerequisite_bindings.json"
+        ],
+        "rationale": "Bind case_real_weight_artifacts, case_target_model_reference, and case_semantic_testbench as declared upstream dependencies for leaf functional/golden/semantic gates. Ensure default-weight, smoke-only, random, or RTL-derived expected outputs are excluded from layer-1 acceptance.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "hierarchical_verification_plan_check",
+          "verification_artifact_contract_check"
+        ],
+        "action_type": "verification_planning",
+        "consumes": [
+          "artifact.stage6.operator_leaf_verification_dag",
+          "artifact.stage6.operator_leaf_gate_contract_map",
+          "artifact.stage5.generated_code_package"
+        ],
+        "id": "encode_compile_only_vcs_leaf_order",
+        "on_failure": "Do not schedule downstream VCS certificate execution if the leaf gate order does not pass planning checks; route to verification_plan_static_check repair and preserve bottom-up layer order.",
+        "produces": [
+          "verification/planning/layer1_vcs_compile_only_gate_order.json"
+        ],
+        "rationale": "Record the bottom-up compile-only VCS execution order for layer-1 leaf gates using the existing leaf functional-mode tools. Historical functional/golden nodes are downstream execution obligations; no alternate compile-only runner is needed and no simulation execution is required as acceptance.",
+        "requires_approval": false,
+        "stage": "verification_artifacts",
+        "tool_roles": [
+          "verification_plan_static_check",
+          "tool_protocol_check",
+          "hierarchical_verification_plan_check"
+        ]
+      }
+    ],
+    "observations": [
+      "Stage 3, Stage 4, and Stage 5 upstream gates are visible as ready; Stage 5 reports six successful compile/elaboration commands.",
+      "sacg_memory_truth shows zero active contamination barriers, zero open backtrack requests, and zero open retry requests, so there is no current SACG-memory blocker for this planning stage.",
+      "All eight operator-leaf stage IDs are present in parameter_binding and stage_agent presence_summary, so the compact role slice is not treated as missing leaf coverage.",
+      "The candidate verification_gate_dag already declares the required gates, but case_stage_leaf_static is globally aggregated after leaf nodes; the Stage 6 artifact must explicitly bind each leaf through the five required checks before merge.",
+      "The layer-1 real-weight catalog, target-model reference, and semantic testbench are declared required pending execution and must remain upstream dependencies of leaf functional, golden, and semantic gates.",
+      "Layer-1 acceptance is planned as current-source VCS compile/elaborate/link only; runtime simulation execution and numerical comparison are downstream Stage 7 obligations and are not claimed here.",
+      "Learned absolute position encoding is pre-DUT reference composition and must remain outside the self-attention DUT weight and operation scope.",
+      "No default-generated-weight or smoke-only evidence may satisfy case_operator_leaf_semantic_evidence; complete Transformer-block weight-consumption evidence is required."
+    ],
+    "proposed_actions": [
+      "Publish artifact.stage6.operator_leaf_verification_dag with explicit eight-leaf bottom-up gate expansion.",
+      "Publish artifact.stage6.operator_leaf_gate_contract_map listing required gates, consumed inputs, produced evidence, and acceptance checkers for stage_00..stage_07.",
+      "Declare case_real_weight_artifacts -> case_target_model_reference -> case_semantic_testbench as prerequisites to every leaf functional/golden/semantic gate.",
+      "Encode the VCS compile-only acceptance boundary for layer-1 gates and hand off the gate contract map to the single-layer and board DAG planners."
+    ],
+    "risks": [
+      "If the DAG only contains a global case_stage_leaf_static aggregator, a leaf may be promoted without its own per-leaf static, boundary, functional, golden, and semantic evidence.",
+      "case_real_weight_artifacts, case_target_model_reference, and case_semantic_testbench are currently pending execution; absent or fake/default-weight versions would block leaf execution and semantic closure.",
+      "No layer-1 VCS compile certificates exist yet; these are downstream execution obligations and must not be reported as current pass evidence.",
+      "Cross-leaf stream/beat/numeric consistency failures could invalidate boundary contracts if int8/int32 Q31 policy, residual precision, or pipeline order are not bound per leaf.",
+      "case_operator_leaf_semantic_evidence must preserve immutable weight artifact hashes and complete Transformer-block weight-consumption proof; random or RTL-derived expected outputs are forbidden."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage3.pipeline_plan",
+        "artifact.stage4.parameter_binding",
+        "artifact.stage5.generated_code_package",
+        "artifact.stage5.memory_layout",
+        "artifact.stage5.runtime_config",
+        "artifact.stage5.codegen_compile_gate",
+        "artifact.stage5.codegen_contract_check",
+        "artifact.stage6.operator_leaf_verification_dag",
+        "artifact.stage6.operator_leaf_gate_contract_map"
+      ],
+      "constraints": [
+        "constraint.verification.hierarchy",
+        "constraint.verification.plan",
+        "constraint.verification.artifacts",
+        "constraint.pipeline.structure",
+        "constraint.stream.order",
+        "constraint.beat.pipeline",
+        "constraint.numeric.policy",
+        "constraint.tool.protocols"
+      ],
+      "edges": [
+        "case_real_weight_artifacts -> case_target_model_reference",
+        "case_target_model_reference -> case_semantic_testbench",
+        "case_real_weight_artifacts -> case_stage_leaf_static",
+        "leaf_stage.stage_00_layer_norm_1 -> case_stage_leaf_static",
+        "leaf_stage.stage_01_self_attention -> case_stage_leaf_static",
+        "leaf_stage.stage_02_residual_add_1 -> case_stage_leaf_static",
+        "leaf_stage.stage_03_layer_norm_2 -> case_stage_leaf_static",
+        "leaf_stage.stage_04_mlp_fc -> case_stage_leaf_static",
+        "leaf_stage.stage_05_activation -> case_stage_leaf_static",
+        "leaf_stage.stage_06_mlp_proj -> case_stage_leaf_static",
+        "leaf_stage.stage_07_residual_add_2 -> case_stage_leaf_static",
+        "case_stage_leaf_static -> boundary_contract_check",
+        "boundary_contract_check -> case_leaf_functional",
+        "case_semantic_testbench -> case_leaf_functional",
+        "case_target_model_reference -> case_leaf_golden_compare",
+        "case_semantic_testbench -> case_leaf_golden_compare",
+        "case_leaf_functional -> case_leaf_golden_compare",
+        "case_leaf_golden_compare -> case_operator_leaf_semantic_evidence",
+        "case_real_weight_artifacts -> case_operator_leaf_semantic_evidence",
+        "case_target_model_reference -> case_operator_leaf_semantic_evidence",
+        "case_semantic_testbench -> case_operator_leaf_semantic_evidence"
+      ],
+      "nodes": [
+        "case_real_weight_artifacts",
+        "case_target_model_reference",
+        "case_semantic_testbench",
+        "boundary_contract_check",
+        "case_stage_leaf_static",
+        "case_leaf_functional",
+        "case_leaf_golden_compare",
+        "case_operator_leaf_semantic_evidence",
+        "leaf_stage.stage_00_layer_norm_1",
+        "leaf_stage.stage_01_self_attention",
+        "leaf_stage.stage_02_residual_add_1",
+        "leaf_stage.stage_03_layer_norm_2",
+        "leaf_stage.stage_04_mlp_fc",
+        "leaf_stage.stage_05_activation",
+        "leaf_stage.stage_06_mlp_proj",
+        "leaf_stage.stage_07_residual_add_2"
+      ]
+    },
+    "schema_version": "spatialaccagent.agent_response.v0",
+    "stage": "verification_artifacts",
+    "status": "ready",
+    "summary": "Planned a bottom-up operator-leaf verification DAG for stage_00_layer_norm_1 through stage_07_residual_add_2. Each leaf binds case_stage_leaf_static, boundary_contract_check, case_leaf_functional, case_leaf_golden_compare, and case_operator_leaf_semantic_evidence before any layer merge. Real-weight, target-model-reference, and semantic-testbench gates are declared upstream dependencies. VCS current-source compile/elaboration/link is the sole layer-1 planning acceptance boundary; no simulation execution, golden numerical pass, or runtime loading is claimed at this stage."
+  },
+  "prompt_bytes": 98679,
+  "prompt_hash": "830c02ad0686a00e40f248b434bf00aa7b4782534865c947898b624e64c540fe",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.agent_response.v0\",\n  \"agent\": \"operator_leaf_verification_planner\",\n  \"stage\": \"verification_artifacts\",\n  \"status\": \"ready\",\n  \"summary\": \"Planned a bottom-up operator-leaf verification DAG for stage_00_layer_norm_1 through stage_07_residual_add_2. Each leaf binds case_stage_leaf_static, boundary_contract_check, case_leaf_functional, case_leaf_golden_compare, and case_operator_leaf_semantic_evidence before any layer merge. Real-weight, target-model-reference, and semantic-testbench gates are declared upstream dependencies. VCS current-source compile/elaboration/link is the sole layer-1 planning acceptance boundary; no simulation execution, golden numerical pass, or runtime loading is claimed at this stage.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"case_real_weight_artifacts\",\n      \"case_target_model_reference\",\n      \"case_semantic_testbench\",\n      \"boundary_contract_check\",\n      \"case_stage_leaf_static\",\n      \"case_leaf_functional\",\n      \"case_leaf_golden_compare\",\n      \"case_operator_leaf_semantic_evidence\",\n      \"leaf_stage.stage_00_layer_norm_1\",\n      \"leaf_stage.stage_01_self_attention\",\n      \"leaf_stage.stage_02_residual_add_1\",\n      \"leaf_stage.stage_03_layer_norm_2\",\n      \"leaf_stage.stage_04_mlp_fc\",\n      \"leaf_stage.stage_05_activation\",\n      \"leaf_stage.stage_06_mlp_proj\",\n      \"leaf_stage.stage_07_residual_add_2\"\n    ],\n    \"edges\": [\n      \"case_real_weight_artifacts -> case_target_model_reference\",\n      \"case_target_model_reference -> case_semantic_testbench\",\n      \"case_real_weight_artifacts -> case_stage_leaf_static\",\n      \"leaf_stage.stage_00_layer_norm_1 -> case_stage_leaf_static\",\n      \"leaf_stage.stage_01_self_attention -> case_stage_leaf_static\",\n      \"leaf_stage.stage_02_residual_add_1 -> case_stage_leaf_static\",\n      \"leaf_stage.stage_03_layer_norm_2 -> case_stage_leaf_static\",\n      \"leaf_stage.stage_04_mlp_fc -> case_stage_leaf_static\",\n      \"leaf_stage.stage_05_activation -> case_stage_leaf_static\",\n      \"leaf_stage.stage_06_mlp_proj -> case_stage_leaf_static\",\n      \"leaf_stage.stage_07_residual_add_2 -> case_stage_leaf_static\",\n      \"case_stage_leaf_static -> boundary_contract_check\",\n      \"boundary_contract_check -> case_leaf_functional\",\n      \"case_semantic_testbench -> case_leaf_functional\",\n      \"case_target_model_reference -> case_leaf_golden_compare\",\n      \"case_semantic_testbench -> case_leaf_golden_compare\",\n      \"case_leaf_functional -> case_leaf_golden_compare\",\n      \"case_leaf_golden_compare -> case_operator_leaf_semantic_evidence\",\n      \"case_real_weight_artifacts -> case_operator_leaf_semantic_evidence\",\n      \"case_target_model_reference -> case_operator_leaf_semantic_evidence\",\n      \"case_semantic_testbench -> case_operator_leaf_semantic_evidence\"\n    ],\n    \"constraints\": [\n      \"constraint.verification.hierarchy\",\n      \"constraint.verification.plan\",\n      \"constraint.verification.artifacts\",\n      \"constraint.pipeline.structure\",\n      \"constraint.stream.order\",\n      \"constraint.beat.pipeline\",\n      \"constraint.numeric.policy\",\n      \"constraint.tool.protocols\"\n    ],\n    \"artifacts\": [\n      \"artifact.stage3.pipeline_plan\",\n      \"artifact.stage4.parameter_binding\",\n      \"artifact.stage5.generated_code_package\",\n      \"artifact.stage5.memory_layout\",\n      \"artifact.stage5.runtime_config\",\n      \"artifact.stage5.codegen_compile_gate\",\n      \"artifact.stage5.codegen_contract_check\",\n      \"artifact.stage6.operator_leaf_verification_dag\",\n      \"artifact.stage6.operator_leaf_gate_contract_map\"\n    ]\n  },\n  \"observations\": [\n    \"Stage 3, Stage 4, and Stage 5 upstream gates are visible as ready; Stage 5 reports six successful compile/elaboration commands.\",\n    \"sacg_memory_truth shows zero active contamination barriers, zero open backtrack requests, and zero open retry requests, so there is no current SACG-memory blocker for this planning stage.\",\n    \"All eight operator-leaf stage IDs are present in parameter_binding and stage_agent presence_summary, so the compact role slice is not treated as missing leaf coverage.\",\n    \"The candidate verification_gate_dag already declares the required gates, but case_stage_leaf_static is globally aggregated after leaf nodes; the Stage 6 artifact must explicitly bind each leaf through the five required checks before merge.\",\n    \"The layer-1 real-weight catalog, target-model reference, and semantic testbench are declared required pending execution and must remain upstream dependencies of leaf functional, golden, and semantic gates.\",\n    \"Layer-1 acceptance is planned as current-source VCS compile/elaborate/link only; runtime simulation execution and numerical comparison are downstream Stage 7 obligations and are not claimed here.\",\n    \"Learned absolute position encoding is pre-DUT reference composition and must remain outside the self-attention DUT weight and operation scope.\",\n    \"No default-generated-weight or smoke-only evidence may satisfy case_operator_leaf_semantic_evidence; complete Transformer-block weight-consumption evidence is required.\"\n  ],\n  \"risks\": [\n    \"If the DAG only contains a global case_stage_leaf_static aggregator, a leaf may be promoted without its own per-leaf static, boundary, functional, golden, and semantic evidence.\",\n    \"case_real_weight_artifacts, case_target_model_reference, and case_semantic_testbench are currently pending execution; absent or fake/default-weight versions would block leaf execution and semantic closure.\",\n    \"No layer-1 VCS compile certificates exist yet; these are downstream execution obligations and must not be reported as current pass evidence.\",\n    \"Cross-leaf stream/beat/numeric consistency failures could invalidate boundary contracts if int8/int32 Q31 policy, residual precision, or pipeline order are not bound per leaf.\",\n    \"case_operator_leaf_semantic_evidence must preserve immutable weight artifact hashes and complete Transformer-block weight-consumption proof; random or RTL-derived expected outputs are forbidden.\"\n  ],\n  \"proposed_actions\": [\n    \"Publish artifact.stage6.operator_leaf_verification_dag with explicit eight-leaf bottom-up gate expansion.\",\n    \"Publish artifact.stage6.operator_leaf_gate_contract_map listing required gates, consumed inputs, produced evidence, and acceptance checkers for stage_00..stage_07.\",\n    \"Declare case_real_weight_artifacts -> case_target_model_reference -> case_semantic_testbench as prerequisites to every leaf functional/golden/semantic gate.\",\n    \"Encode the VCS compile-only acceptance boundary for layer-1 gates and hand off the gate contract map to the single-layer and board DAG planners.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"build_operator_leaf_verification_dag\",\n      \"stage\": \"verification_artifacts\",\n      \"action_type\": \"verification_planning\",\n      \"rationale\": \"Produce the canonical layer-1 DAG binding stage_00_layer_norm_1 through stage_07_residual_add_2 to case_stage_leaf_static, boundary_contract_check, case_leaf_functional, case_leaf_golden_compare, and case_operator_leaf_semantic_evidence before any layer merge. Encode VCS current-source compile/elaboration/link as the sole acceptance boundary.\",\n      \"consumes\": [\n        \"artifact.stage3.pipeline_plan\",\n        \"artifact.stage4.parameter_binding\",\n        \"artifact.stage5.generated_code_package\",\n        \"artifact.stage5.memory_layout\",\n        \"artifact.stage5.runtime_config\",\n        \"artifact.stage5.codegen_compile_gate\",\n        \"artifact.stage5.codegen_contract_check\"\n      ],\n      \"produces\": [\n        \"artifact.stage6.operator_leaf_verification_dag\"\n      ],\n      \"tool_roles\": [\n        \"hierarchical_verification_plan_check\",\n        \"verification_artifact_contract_check\",\n        \"verification_plan_static_check\",\n        \"sacg_reference_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"hierarchical_verification_plan_check\",\n        \"verification_artifact_contract_check\",\n        \"sacg_reference_check\"\n      ],\n      \"on_failure\": \"Do not promote the operator-leaf DAG; return a bounded verification-plan repair action to remap missing leaf gate bindings or missing upstream references.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"build_leaf_gate_contract_map\",\n      \"stage\": \"verification_artifacts\",\n      \"action_type\": \"verification_planning\",\n      \"rationale\": \"Explicitly map each of the eight leaf stage IDs to per-leaf records for case_stage_leaf_static, boundary_contract_check, case_leaf_functional, case_leaf_golden_compare, and case_operator_leaf_semantic_evidence, including real-weight, target-model-reference, and semantic-testbench prerequisites.\",\n      \"consumes\": [\n        \"artifact.stage3.pipeline_plan\",\n        \"artifact.stage4.parameter_binding\",\n        \"artifact.stage5.generated_code_package\",\n        \"artifact.input.case_adapter\"\n      ],\n      \"produces\": [\n        \"artifact.stage6.operator_leaf_gate_contract_map\"\n      ],\n      \"tool_roles\": [\n        \"verification_plan_static_check\",\n        \"hierarchical_verification_plan_check\",\n        \"verification_artifact_contract_check\",\n        \"sacg_reference_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"hierarchical_verification_plan_check\",\n        \"verification_artifact_contract_check\",\n        \"sacg_reference_check\"\n      ],\n      \"on_failure\": \"Block layer-1 closure and hand off a bounded action that leaf gate mappings are incomplete to the single-layer and board DAG planners.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"declare_leaf_evidence_prerequisites\",\n      \"stage\": \"verification_artifacts\",\n      \"action_type\": \"verification_planning\",\n      \"rationale\": \"Bind case_real_weight_artifacts, case_target_model_reference, and case_semantic_testbench as declared upstream dependencies for leaf functional/golden/semantic gates. Ensure default-weight, smoke-only, random, or RTL-derived expected outputs are excluded from layer-1 acceptance.\",\n      \"consumes\": [\n        \"artifact.stage5.generated_code_package\",\n        \"artifact.stage5.memory_layout\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.case_adapter\"\n      ],\n      \"produces\": [\n        \"verification/planning/layer1_leaf_prerequisite_bindings.json\"\n      ],\n      \"tool_roles\": [\n        \"verification_plan_static_check\",\n        \"tool_protocol_check\",\n        \"sacg_reference_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"verification_artifact_contract_check\",\n        \"required_real_tool_evidence_check\",\n        \"sacg_reference_check\"\n      ],\n      \"on_failure\": \"Treat missing real-weight, target-model-reference, or semantic-testbench dependency binding as a verification-capability/blocking contract error; do not create a smoke gate or fallback golden.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"encode_compile_only_vcs_leaf_order\",\n      \"stage\": \"verification_artifacts\",\n      \"action_type\": \"verification_planning\",\n      \"rationale\": \"Record the bottom-up compile-only VCS execution order for layer-1 leaf gates using the existing leaf functional-mode tools. Historical functional/golden nodes are downstream execution obligations; no alternate compile-only runner is needed and no simulation execution is required as acceptance.\",\n      \"consumes\": [\n        \"artifact.stage6.operator_leaf_verification_dag\",\n        \"artifact.stage6.operator_leaf_gate_contract_map\",\n        \"artifact.stage5.generated_code_package\"\n      ],\n      \"produces\": [\n        \"verification/planning/layer1_vcs_compile_only_gate_order.json\"\n      ],\n      \"tool_roles\": [\n        \"verification_plan_static_check\",\n        \"tool_protocol_check\",\n        \"hierarchical_verification_plan_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"hierarchical_verification_plan_check\",\n        \"verification_artifact_contract_check\"\n      ],\n      \"on_failure\": \"Do not schedule downstream VCS certificate execution if the leaf gate order does not pass planning checks; route to verification_plan_static_check repair and preserve bottom-up layer order.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/team/llm/operator_leaf_verification_planner_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/team/llm/operator_leaf_verification_planner_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "verification_artifacts.Operator-leaf verification gate planner",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

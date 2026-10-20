@@ -248,7 +248,11 @@ def trace_failure_sort_key(
     source_order: int,
 ) -> tuple[int, int, int, int]:
     boundary_order = ranks.get(str(row.get("boundary_id") or ""), 10**9)
-    if row.get("evidence_type") != "semantic_internal_boundary_trace":
+    if row.get("evidence_type") not in {
+        "semantic_internal_boundary_trace",
+        "semantic_internal_scalar_probe",
+        "semantic_liveness",
+    }:
         return boundary_order, 1, 10**9, source_order
     stage_order = stage_exit_ranks.get(str(row.get("stage_id") or ""), boundary_order)
     try:
@@ -343,10 +347,41 @@ def load_trace_records(paths: list[Path]) -> list[dict[str, Any]]:
             )
         elif "boundary_id" in data or "module" in data:
             records.append(data)
+        for execution in data.get("module_results", []):
+            if not isinstance(execution, dict):
+                continue
+            proof = execution.get("adaptive_semantic_stall_evidence", {})
+            if not isinstance(proof, dict) or proof.get("status") != "proven_semantic_stall":
+                continue
+            heartbeat = proof.get("heartbeat", {})
+            contract = proof.get("heartbeat_contract", {})
+            stage_id = data.get("stage_id")
+            if not stage_id or proof.get("stage_id") != stage_id:
+                continue
+            records.append({
+                "status": "fail",
+                "source": execution.get("sim_log") or str(path),
+                "evidence_type": "semantic_liveness",
+                "failure_class": "semantic_ingress_stall",
+                "stage_id": stage_id,
+                "module": data.get("first_failed_module") or data.get("debug_closure", {}).get("root_candidate_module"),
+                "boundary_id": f"boundary.internal_{stage_id}_semantic_input_progress",
+                "cycle": heartbeat.get("cycles"),
+                "input_fingerprint_sha256": execution.get("input_fingerprint_sha256"),
+                "contract": "semantic_input_progress",
+                "violated_contract": "semantic_input_progress",
+                "observed_value": heartbeat,
+                "expected_value": contract,
+                "liveness_evidence": proof,
+                "summary": "real VCS proved that incomplete input acceptance and zero output did not progress",
+            })
     deduplicated: list[dict[str, Any]] = []
     seen_internal: set[tuple[Any, ...]] = set()
     for record in records:
-        if record.get("evidence_type") != "semantic_internal_boundary_trace":
+        if record.get("evidence_type") not in {
+            "semantic_internal_boundary_trace",
+            "semantic_internal_scalar_probe",
+        }:
             deduplicated.append(record)
             continue
         observed = record.get("observed_value", {}) if isinstance(record.get("observed_value"), dict) else {}
@@ -357,9 +392,11 @@ def load_trace_records(paths: list[Path]) -> list[dict[str, Any]]:
             record.get("cycle"),
             record.get("beat_index"),
             record.get("status"),
+            record.get("probe_kind"),
             observed.get("valid"),
             observed.get("ready"),
             observed.get("packed_literal"),
+            observed.get("scalar_value"),
         )
         if key in seen_internal:
             continue
@@ -718,6 +755,22 @@ def localize_failure(
     ]
     earliest = failures[0] if failures else {}
     representative_failures = representative_failure_records(failures)
+    diagnostic_observations = [
+        {
+            key: row[key]
+            for key in (
+                "stage_id", "boundary_id", "module", "cycle", "beat_index",
+                "probe_kind", "observed_value", "status", "failure_class", "source",
+            )
+            if key in row
+        }
+        for row in trace_records
+        if row.get("evidence_type") in {
+            "semantic_internal_boundary_trace",
+            "semantic_internal_scalar_probe",
+        }
+        and row.get("stage_id") == earliest.get("stage_id")
+    ][:64]
     boundary_by_id = {
         str(item.get("boundary_id")): item
         for item in boundary_contracts.get("boundaries", [])
@@ -790,6 +843,7 @@ def localize_failure(
             "violated_contract": violated_contract,
             "boundary_contract": contract,
             "trace_record": earliest,
+            "diagnostic_observations": diagnostic_observations,
             "repair_scope": (
                 "causal_slice"
                 if earliest

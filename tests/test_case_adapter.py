@@ -13,7 +13,7 @@ class BuiltinTransformerCaseAdapterTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             adapters = {}
-            for family in ("gpt2", "qwen2", "llama"):
+            for family in ("gpt2", "qwen2", "llama", "gemma3_text"):
                 model_dir = root / family / "checkpoint"
                 model_dir.mkdir(parents=True)
                 run_dir = root / family / "run"

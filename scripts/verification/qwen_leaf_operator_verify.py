@@ -29,8 +29,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from accagent.framework.semantic_simulator import (
+    leaf_semantic_progress_observer,
     reusable_semantic_execution,
     run_configured_semantic_harness,
+)
+from accagent.framework.live_state import (
+    activate_live_state_slot,
+    update_live_state_slot,
 )
 
 
@@ -101,6 +106,37 @@ def semantic_stage_max_workers(stage_count: int) -> int:
     return min(stage_count, env_int("SPATIALACC_SEMANTIC_STAGE_MAX_WORKERS", 1))
 
 
+def leaf_execution_live_status(
+    *,
+    mode: str,
+    status: str,
+    invocation_id: str,
+    stage_count: int,
+    current_stage_id: str | None = None,
+    last_completed_stage_id: str | None = None,
+    last_completed_stage_status: str | None = None,
+    summary: str | None = None,
+) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in {
+            "verification_layer": "layer1_operator_leaf",
+            "verification_scope": "operator_leaf_closure",
+            "debug_layer": "operator_leaf_modules",
+            "gate": "leaf_functional" if mode == "functional" else "leaf_golden_compare",
+            "mode": mode,
+            "status": status,
+            "invocation_id": invocation_id,
+            "stage_count": stage_count,
+            "current_stage_id": current_stage_id,
+            "last_completed_stage_id": last_completed_stage_id,
+            "last_completed_stage_status": last_completed_stage_status,
+            "summary": summary,
+        }.items()
+        if value is not None
+    }
+
+
 def internal_trace_records(
     sim_log: Path,
     expected_stage_id: str,
@@ -150,10 +186,49 @@ def internal_trace_records(
             valid = integer("valid")
             ready = integer("ready")
             beat = integer("beat")
-            contains_unknown = bool(re.search(r"[xz]", data, re.IGNORECASE))
-            status = "fail" if valid == 1 and contains_unknown else "diagnostic_seed"
-            records.append(
-                {
+            probe_kind = str(fields.get("probe_kind") or "ready_valid")
+            scalar_value = str(fields.get("scalar_value") or "")
+            observed_literal = scalar_value if probe_kind == "scalar" else data
+            contains_unknown = bool(re.search(r"[xz]", observed_literal, re.IGNORECASE))
+            status = (
+                "fail"
+                if probe_kind != "scalar" and valid == 1 and contains_unknown
+                else "diagnostic_seed"
+            )
+            if probe_kind == "scalar":
+                record = {
+                    "status": status,
+                    "source": source,
+                    "evidence_type": "semantic_internal_scalar_probe",
+                    "failure_class": "unknown_logic_value" if status == "fail" else None,
+                    "stage_id": stage_id,
+                    "boundary_id": (
+                        boundary
+                        if boundary.startswith("boundary.")
+                        else f"boundary.internal_{safe_id(stage_id)}_{safe_id(boundary)}"
+                    ),
+                    "module": module,
+                    "probe_kind": "scalar",
+                    "contract": "internal_scalar_observation",
+                    "violated_contract": "internal_scalar_known_value" if status == "fail" else None,
+                    "cycle": integer("cycle"),
+                    "beat_index": beat,
+                    "logical_index": beat,
+                    "tx_id": fields.get("tx"),
+                    "tile_id": fields.get("tile"),
+                    "observed_value": {
+                        "probe_kind": "scalar",
+                        "scalar_value": scalar_value or None,
+                    },
+                    "expected_value": "diagnostic scalar value; no ready/valid handshake semantics",
+                    "summary": (
+                        f"scalar probe {boundary} contains an unknown value"
+                        if status == "fail"
+                        else f"captured scalar probe {boundary}"
+                    ),
+                }
+            else:
+                record = {
                     "status": status,
                     "source": source,
                     "evidence_type": "semantic_internal_boundary_trace",
@@ -165,6 +240,7 @@ def internal_trace_records(
                         else f"boundary.internal_{safe_id(stage_id)}_{safe_id(boundary)}"
                     ),
                     "module": module,
+                    "probe_kind": "ready_valid",
                     "contract": "internal_submodule_ready_valid_data",
                     "violated_contract": "internal_submodule_known_value_when_valid" if status == "fail" else None,
                     "cycle": integer("cycle"),
@@ -184,10 +260,92 @@ def internal_trace_records(
                         else f"captured internal boundary {boundary}"
                     ),
                 }
-            )
+            records.append(record)
             if len(records) >= limit:
                 return records
     return records
+
+
+def semantic_output_evidence(
+    contract: dict[str, Any],
+    execution: dict[str, Any],
+) -> dict[str, Any]:
+    expected = contract.get("expected_output", {})
+    blockers: list[str] = []
+    expected_beats = expected.get("beats") if isinstance(expected, dict) else None
+    if not isinstance(expected_beats, int) or isinstance(expected_beats, bool) or expected_beats <= 0:
+        blockers.append("semantic contract has no positive expected output beat count")
+
+    output_path = Path(str(contract.get("rtl_output_capture") or ""))
+    actual_beats = None
+    unknown_word_count = 0
+    invalid_word_count = 0
+    first_invalid_word_index = None
+    if not output_path.is_file():
+        blockers.append(f"semantic RTL output capture is missing: {output_path}")
+    else:
+        try:
+            with output_path.open("r", encoding="ascii", errors="replace") as stream:
+                for index, line in enumerate(stream):
+                    literal = line.strip()
+                    if not literal:
+                        continue
+                    if re.fullmatch(r"[0-9a-fA-F]+", literal) is None:
+                        invalid_word_count += 1
+                        if first_invalid_word_index is None:
+                            first_invalid_word_index = index
+                        if re.search(r"[xXzZ]", literal):
+                            unknown_word_count += 1
+                    if actual_beats is None:
+                        actual_beats = 0
+                    actual_beats += 1
+        except OSError as exc:
+            blockers.append(f"semantic RTL output capture cannot be read: {exc}")
+        if actual_beats is not None and isinstance(expected_beats, int) and actual_beats != expected_beats:
+            blockers.append(
+                f"semantic RTL output beat count mismatch: expected {expected_beats}, observed {actual_beats}"
+            )
+        if unknown_word_count:
+            blockers.append(
+                "semantic RTL output capture contains Verilog unknown/high-impedance values"
+            )
+        elif invalid_word_count:
+            blockers.append("semantic RTL output capture contains non-hexadecimal beats")
+
+    run = execution.get("run", {}) if isinstance(execution.get("run"), dict) else {}
+    log_texts = [str(run.get("stdout_tail") or ""), str(run.get("stderr_tail") or "")]
+    for key in ("sim_log", "sim_stderr_log"):
+        path = Path(str(execution.get(key) or ""))
+        if not path.is_file():
+            continue
+        try:
+            with path.open("rb") as stream:
+                stream.seek(max(0, path.stat().st_size - 12000))
+                log_texts.append(stream.read().decode("utf-8", errors="replace"))
+        except OSError:
+            continue
+    fatal_lines = list(
+        dict.fromkeys(
+            line.strip()[:1000]
+            for text in log_texts
+            for line in text.splitlines()
+            if re.match(r"^\s*Fatal\s*:", line, re.IGNORECASE)
+        )
+    )
+    if fatal_lines:
+        blockers.append("semantic simulator reported a fatal assertion despite its process result")
+
+    return {
+        "status": "pass" if not blockers else "fail",
+        "output_capture": str(output_path),
+        "expected_beats": expected_beats,
+        "actual_beats": actual_beats,
+        "unknown_word_count": unknown_word_count,
+        "invalid_word_count": invalid_word_count,
+        "first_invalid_word_index": first_invalid_word_index,
+        "fatal_lines": fatal_lines[:10],
+        "blockers": blockers,
+    }
 
 
 def hex_const(width: int, value: int) -> str:
@@ -489,7 +647,13 @@ def run_semantic_harness(
     output_capture = Path(str(contract.get("rtl_output_capture") or ""))
     if output_capture.exists():
         output_capture.unlink()
-    return run_configured_semantic_harness(run_dir, stage_id, contract, timeout_sec)
+    return run_configured_semantic_harness(
+        run_dir,
+        stage_id,
+        contract,
+        timeout_sec,
+        leaf_semantic_progress_observer(run_dir, stage_id, contract),
+    )
 
 
 def decoded_memh(path: Path, bits: int, lanes: int) -> tuple[Any | None, dict[str, Any]]:
@@ -741,6 +905,8 @@ def semantic_stage_report(
         execution = run_semantic_harness(run_dir, stage_id, contract, timeout_sec)
     if execution.get("status") != "pass":
         blockers.append(str(execution.get("summary") or "semantic harness failed"))
+    output_evidence = semantic_output_evidence(contract, execution)
+    blockers.extend(output_evidence["blockers"])
     sim_log_path = Path(str(execution.get("sim_log") or ""))
     sim_stderr_path = Path(str(execution.get("sim_stderr_log") or ""))
     run_evidence = execution.get("run", {}) if isinstance(execution.get("run"), dict) else {}
@@ -831,7 +997,30 @@ def semantic_stage_report(
             "testbench_sha256": comparison.get("testbench_sha256"),
             "numeric_metrics": metrics,
         }
-    failure_slice = [*internal_failures[:1], *([failure_record] if failure_record is not None else [])]
+    output_failure = None
+    if output_evidence["status"] != "pass":
+        output_failure = {
+            "status": "fail",
+            "source": output_evidence["output_capture"],
+            "evidence_type": "semantic_output_shape",
+            "stage_id": stage_id,
+            "module": root_module,
+            "contract": "semantic_output",
+            "failure_class": (
+                "unknown_logic_value"
+                if output_evidence.get("unknown_word_count", 0)
+                else "simulator_fatal_or_output_shape_mismatch"
+            ),
+            "summary": "; ".join(output_evidence["blockers"]),
+            "expected_beats": output_evidence["expected_beats"],
+            "actual_beats": output_evidence["actual_beats"],
+            "fatal_lines": output_evidence["fatal_lines"],
+        }
+    failure_slice = [
+        *internal_failures[:1],
+        *([failure_record] if failure_record is not None else []),
+        *([output_failure] if output_failure is not None else []),
+    ]
     if not failure_slice and status != "pass" and execution.get("status") != "pass":
         failure_slice = [execution]
     return {
@@ -862,20 +1051,29 @@ def semantic_stage_report(
             "random_input": manifest.get("random_input"),
         },
         "semantic_comparison": comparison,
+        "output_evidence": output_evidence,
         "internal_boundary_trace": internal_trace,
-        "target_failure_diagnostics": metrics if numeric_failure else {},
-        "first_failed_module": root_module if numeric_failure else None,
+        "target_failure_diagnostics": (
+            metrics if numeric_failure else output_evidence if output_failure is not None else {}
+        ),
+        "first_failed_module": root_module if numeric_failure or output_failure is not None else None,
         "first_failed_summary": (
             internal_failures[0].get("summary")
             if internal_failures
-            else failure_record.get("summary") if failure_record else None
+            else failure_record.get("summary")
+            if failure_record
+            else output_failure.get("summary") if output_failure else None
         ),
         "debug_closure": {
             "mechanism": "contract_guided_leaf_boundary_verification",
             "causal_path": [stage_id],
             "root_candidate_module": root_module if status != "pass" else None,
             "failure_slice": failure_slice,
-            "boundary_trace": [*internal_trace, *([failure_record] if failure_record is not None else [])],
+            "boundary_trace": [
+                *internal_trace,
+                *([failure_record] if failure_record is not None else []),
+                *([output_failure] if output_failure is not None else []),
+            ],
         },
     }
 
@@ -1889,7 +2087,12 @@ def stage_report(
     }
 
 
-def aggregate_report(run_dir: Path, stage_reports: list[dict[str, Any]], mode: str) -> dict[str, Any]:
+def aggregate_report(
+    run_dir: Path,
+    stage_reports: list[dict[str, Any]],
+    mode: str,
+    planned_stage_ids: list[str] | None = None,
+) -> dict[str, Any]:
     blockers = []
     checks = []
     for report in stage_reports:
@@ -1904,6 +2107,13 @@ def aggregate_report(run_dir: Path, stage_reports: list[dict[str, Any]], mode: s
         for blocker in report.get("blockers", []):
             blockers.append(f"{report.get('stage_id')}: {blocker}")
     gate = "leaf_functional" if mode == "functional" else "leaf_golden_compare"
+    completed_stage_ids = [str(report.get("stage_id") or "") for report in stage_reports]
+    not_run_stage_ids = [
+        stage_id for stage_id in planned_stage_ids or [] if stage_id not in completed_stage_ids
+    ]
+    stopped_after_failure = bool(not_run_stage_ids) and any(
+        report.get("status") != "pass" for report in stage_reports
+    )
     return {
         "schema_version": SCHEMA,
         "gate": gate,
@@ -1912,7 +2122,13 @@ def aggregate_report(run_dir: Path, stage_reports: list[dict[str, Any]], mode: s
         "run_dir": str(run_dir),
         "checks": checks,
         "blockers": blockers,
-        "summary": f"{gate} {'passed' if not blockers else 'failed'} for {len(stage_reports)} pipeline stage(s)",
+        "completed_stage_ids": completed_stage_ids,
+        "not_run_stage_ids": not_run_stage_ids,
+        "stopped_after_failure": stopped_after_failure,
+        "summary": (
+            f"{gate} {'passed' if not blockers else 'failed'} for {len(stage_reports)} pipeline stage(s)"
+            + ("; stopped after the first failed leaf stage" if stopped_after_failure else "")
+        ),
         "canonical_run_ids": sorted(
             {str(report.get("canonical_run_id")) for report in stage_reports if report.get("canonical_run_id")}
         ),
@@ -1944,9 +2160,23 @@ def execute_stage_reports(
     timeout_sec: int,
     invocation_id: str,
     out_dir: Path,
+    live_binding: str = "",
 ) -> list[dict[str, Any]]:
     def execute(index: int, stage: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         stage_id = str(stage.get("stage_id") or "unknown")
+        if live_binding:
+            update_live_state_slot(
+                run_dir,
+                "execution",
+                leaf_execution_live_status(
+                    mode=mode,
+                    status="running",
+                    invocation_id=invocation_id,
+                    stage_count=len(stages),
+                    current_stage_id=stage_id,
+                ),
+                binding=live_binding,
+            )
         try:
             report = stage_report(run_dir, stage, mode, timeout_sec, invocation_id)
         except Exception as exc:
@@ -1970,11 +2200,32 @@ def execute_stage_reports(
         path = out_dir / f"{safe_id(report['stage_id'])}.json"
         report["path"] = str(path)
         write_json(path, report)
+        if live_binding:
+            update_live_state_slot(
+                run_dir,
+                "execution",
+                leaf_execution_live_status(
+                    mode=mode,
+                    status="running",
+                    invocation_id=invocation_id,
+                    stage_count=len(stages),
+                    current_stage_id=stage_id,
+                    last_completed_stage_id=stage_id,
+                    last_completed_stage_status=str(report.get("status") or "unknown"),
+                ),
+                binding=live_binding,
+            )
         return index, report
 
     workers = semantic_stage_max_workers(len(stages))
     if workers == 1:
-        return [execute(index, stage)[1] for index, stage in enumerate(stages)]
+        reports: list[dict[str, Any]] = []
+        for index, stage in enumerate(stages):
+            _, report = execute(index, stage)
+            reports.append(report)
+            if report.get("status") != "pass":
+                break
+        return reports
 
     ordered: list[dict[str, Any] | None] = [None] * len(stages)
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="semantic-stage") as executor:
@@ -1995,9 +2246,23 @@ def main(argv: list[str] | None = None) -> int:
     run_dir = Path(args.run_dir).resolve()
     timeout_sec = semantic_sim_timeout_sec()
     focus_stage = args.stage_id.strip() or os.environ.get("SPATIALACC_PIPELINE_STAGE_ID", "").strip()
+    invocation_id = f"operator-leaf-{args.mode}-{uuid.uuid4().hex}"
+    live_binding = f"operator-leaf:{os.getpid()}:{invocation_id}"
     stages = plan_stages(run_dir)
     if focus_stage:
         stages = [stage for stage in stages if str(stage.get("stage_id")) == focus_stage]
+    activate_live_state_slot(
+        run_dir,
+        "execution",
+        leaf_execution_live_status(
+            mode=args.mode,
+            status="running",
+            invocation_id=invocation_id,
+            stage_count=len(stages),
+            current_stage_id=focus_stage or None,
+        ),
+        binding=live_binding,
+    )
     if not stages:
         report = {
             "schema_version": SCHEMA,
@@ -2010,11 +2275,22 @@ def main(argv: list[str] | None = None) -> int:
         }
         out_dir = run_dir / "verification" / ("operator_leaf_functional" if args.mode == "functional" else "operator_leaf_golden")
         write_json(out_dir / "summary.json", report)
+        update_live_state_slot(
+            run_dir,
+            "execution",
+            leaf_execution_live_status(
+                mode=args.mode,
+                status="fail",
+                invocation_id=invocation_id,
+                stage_count=0,
+                summary=report["blockers"][0],
+            ),
+            binding=live_binding,
+        )
         return 1
 
     out_dir = run_dir / "verification" / ("operator_leaf_functional" if args.mode == "functional" else "operator_leaf_golden")
     hierarchy_dir = run_dir / "verification" / "qwen_hierarchy"
-    invocation_id = f"operator-leaf-{args.mode}-{uuid.uuid4().hex}"
     reports = execute_stage_reports(
         run_dir,
         stages,
@@ -2022,8 +2298,14 @@ def main(argv: list[str] | None = None) -> int:
         timeout_sec,
         invocation_id,
         out_dir,
+        live_binding,
     )
-    aggregate = aggregate_report(run_dir, reports, args.mode)
+    aggregate = aggregate_report(
+        run_dir,
+        reports,
+        args.mode,
+        [str(stage.get("stage_id") or "") for stage in stages],
+    )
     hierarchy_name = "leaf_functional.json" if args.mode == "functional" else "leaf_golden_compare.json"
     if focus_stage:
         focus_name = safe_id(focus_stage)
@@ -2034,6 +2316,21 @@ def main(argv: list[str] | None = None) -> int:
     else:
         write_json(out_dir / "summary.json", aggregate)
         write_json(hierarchy_dir / hierarchy_name, aggregate)
+    last_report = reports[-1] if reports else {}
+    update_live_state_slot(
+        run_dir,
+        "execution",
+        leaf_execution_live_status(
+            mode=args.mode,
+            status=str(aggregate["status"]),
+            invocation_id=invocation_id,
+            stage_count=len(stages),
+            last_completed_stage_id=str(last_report.get("stage_id") or "") or None,
+            last_completed_stage_status=str(last_report.get("status") or "") or None,
+            summary=str(aggregate.get("summary") or ""),
+        ),
+        binding=live_binding,
+    )
     print(json.dumps({"status": aggregate["status"], "summary": aggregate["summary"], "blockers": aggregate["blockers"][:8]}, indent=2))
     return 0 if aggregate["status"] == "pass" else 1
 

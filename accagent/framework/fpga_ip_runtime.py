@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 import shlex
 import shutil
 from pathlib import Path
@@ -18,7 +20,7 @@ from typing import Any
 from accagent.framework.fpga_ip_contract import check_fpga_ip_simulation_closure
 
 
-FPGA_IP_RUNTIME_PROTOCOL_VERSION = "vivado_export_file_info_v1"
+FPGA_IP_RUNTIME_PROTOCOL_VERSION = "vivado_export_file_info_v3"
 _RUNTIME_DIR = Path(__file__).resolve().parent
 _EXPORT_HELPER = _RUNTIME_DIR / "fpga_ip_vcs_export.tcl"
 _PLAN_HELPER = _RUNTIME_DIR / "fpga_ip_vcs_plan.py"
@@ -65,6 +67,115 @@ def _closure_artifact_path(value: Any, closure_path: Path) -> Path:
     return path if path.is_absolute() else closure_path.parent / path
 
 
+def _stage_integer_dsp_runtime(
+    closure_path: Path,
+    closure: dict[str, Any],
+    stage_dir: Path,
+    vivado_executable: str,
+    compiler_workdirs: list[str],
+    default_library: str,
+) -> dict[str, Any]:
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", default_library) is None:
+        raise ValueError("integer-DSP default library must be an HDL logical-library name")
+    runtime_dir = stage_dir / "fpga_ip"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    module_manifest_source = _closure_artifact_path(
+        closure["ip_module_manifest"], closure_path
+    )
+    if not module_manifest_source.is_file():
+        raise FileNotFoundError(f"Vivado IP module manifest is missing: {module_manifest_source}")
+    staged_module_manifest = runtime_dir / "fpga_ip_modules.txt"
+    shutil.copy2(module_manifest_source, staged_module_manifest)
+    shutil.copy2(closure_path, runtime_dir / "fpga_ip_simulation_closure.json")
+
+    libraries = [default_library, "xpm", "unisims_ver"]
+    (stage_dir / "vcs_lib").mkdir(parents=True, exist_ok=True)
+    for library in libraries:
+        (stage_dir / "vcs_lib" / library).mkdir(parents=True, exist_ok=True)
+    for workdir in compiler_workdirs:
+        work_path = Path(workdir)
+        setup_lines = [
+            f"{library}:{os.path.relpath(stage_dir / 'vcs_lib' / library, start=stage_dir / work_path).replace(os.sep, '/')}"
+            for library in libraries
+        ]
+        setup_path = stage_dir / work_path / "synopsys_sim.setup"
+        setup_path.parent.mkdir(parents=True, exist_ok=True)
+        setup_path.write_text("\n".join(setup_lines) + "\n", encoding="ascii")
+
+    compile_script = runtime_dir / "compile_ip_models.sh"
+    compile_script.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                ': "${VIVADO_ROOT:?VIVADO_ROOT must identify the configured Vivado installation}"',
+                'find "$VIVADO_ROOT/data/verilog/src/unisims" -maxdepth 1 -type f -name "*.v" -print | sort > fpga_ip/unisims_ver.f',
+                'test -s fpga_ip/unisims_ver.f',
+                'vlogan -full64 -work unisims_ver +v2k -f fpga_ip/unisims_ver.f',
+                'vlogan -full64 -sverilog -work xpm "$VIVADO_ROOT/data/ip/xpm/xpm_memory/hdl/xpm_memory.sv"',
+                'vlogan -full64 -sverilog -work xpm "$VIVADO_ROOT/data/ip/xpm/xpm_fifo/hdl/xpm_fifo.sv"',
+                'vlogan -full64 -sverilog -work xpm "$VIVADO_ROOT/data/ip/xpm/xpm_cdc/hdl/xpm_cdc.sv"',
+                f'vlogan -full64 -work {shlex.quote(default_library)} +v2k "$VIVADO_ROOT/data/verilog/src/glbl.v"',
+            ]
+        )
+        + "\n",
+        encoding="ascii",
+    )
+    compile_script.chmod(0o755)
+    (runtime_dir / "vcs_runtime.env").write_text(
+        f"FPGA_IP_DEFAULT_LIBRARY={default_library}\n"
+        f"FPGA_IP_GLBL_UNIT={default_library}.glbl\n",
+        encoding="ascii",
+    )
+    (runtime_dir / "vcs_elab_args.txt").write_text(
+        "-L\nxpm\n-L\nunisims_ver\n",
+        encoding="ascii",
+    )
+    protocol = {
+        "protocol_version": "integer_dsp_xpm_source_v1",
+            "default_library": default_library,
+        "sources": [
+            "Vivado data/ip/xpm/xpm_memory/hdl/xpm_memory.sv",
+            "Vivado data/ip/xpm/xpm_fifo/hdl/xpm_fifo.sv",
+            "Vivado data/ip/xpm/xpm_cdc/hdl/xpm_cdc.sv",
+            "Vivado data/verilog/src/unisims/*.v",
+            "Vivado data/verilog/src/glbl.v",
+        ],
+    }
+    command = " ".join(
+        [
+            "set -euo pipefail;",
+            f"VIVADO_BIN={shlex.quote(vivado_executable)};",
+            'test -x "$VIVADO_BIN";',
+            'VIVADO_ROOT="$(cd "$(dirname "$(command -v "$VIVADO_BIN")")/.." && pwd)";',
+            "export VIVADO_ROOT;",
+            'test -f "$VIVADO_ROOT/data/ip/xpm/xpm_memory/hdl/xpm_memory.sv";',
+            'test -f "$VIVADO_ROOT/data/ip/xpm/xpm_fifo/hdl/xpm_fifo.sv";',
+            'test -f "$VIVADO_ROOT/data/ip/xpm/xpm_cdc/hdl/xpm_cdc.sv";',
+            'test -f "$VIVADO_ROOT/data/verilog/src/glbl.v";',
+            'test -d "$VIVADO_ROOT/data/verilog/src/unisims";',
+            "mkdir -p vcs_lib/xil_defaultlib vcs_lib/xpm vcs_lib/unisims_ver fpga_ip/isolated_home;",
+        ]
+    )
+    return {
+        "status": "ready",
+        "closure_path": str(closure_path),
+        "staged_module_manifest": str(staged_module_manifest),
+        "runtime_dir": str(runtime_dir),
+        "remote_vcs_compile_script": "fpga_ip/compile_ip_models.sh",
+        "remote_vcs_runtime_env": "fpga_ip/vcs_runtime.env",
+        "remote_vcs_elab_args": "fpga_ip/vcs_elab_args.txt",
+        "remote_vcs_plan": "fpga_ip/vcs_library_plan.json",
+        "compiler_workdirs": compiler_workdirs,
+        "vivado_executable": vivado_executable,
+        "runtime_protocol": protocol,
+        "provision_command": command,
+        "runtime_environment_command": 'export HOME="$PWD/fpga_ip/isolated_home";',
+        "compile_command": "bash fpga_ip/compile_ip_models.sh",
+        "required_modules": list(closure.get("required_ip_modules", [])),
+    }
+
+
 def stage_fpga_ip_runtime(
     run_dir: Path,
     stage_dir: Path,
@@ -95,14 +206,39 @@ def stage_fpga_ip_runtime(
         errors = [str(value) for value in closure_check.get("errors", []) if str(value)]
         raise ValueError("FPGA IP simulation closure is invalid: " + "; ".join(errors))
     closure = closure_check["closure"]
-    tcl_source = _closure_artifact_path(closure["ip_generation_tcl"], closure_path)
-    if not tcl_source.is_file():
-        raise FileNotFoundError(f"Vivado IP generation TCL is missing: {tcl_source}")
-
     vivado = _tool(tool_profile, "vivado")
     executable = str(vivado.get("executable") or "")
     if not executable:
         raise ValueError("tool_profile does not provide a Vivado executable")
+    compiler_workdir = compiler_workdir.strip() or "."
+    if (
+        compiler_workdir.startswith("/")
+        or any(part == ".." for part in compiler_workdir.split("/"))
+    ):
+        raise ValueError("compiler_workdir must be a safe relative path")
+    workdirs = compiler_workdirs if compiler_workdirs is not None else [compiler_workdir]
+    workdirs = [".", *workdirs]
+    normalized_workdirs: list[str] = []
+    for value in workdirs:
+        candidate = str(value).strip() or "."
+        if candidate.startswith("/") or any(part == ".." for part in candidate.split("/")):
+            raise ValueError("compiler workdirs must be safe relative paths")
+        if candidate not in normalized_workdirs:
+            normalized_workdirs.append(candidate)
+    if not normalized_workdirs:
+        normalized_workdirs = ["."]
+    if str(closure.get("compute_backend") or "vivado_fp_ip") == "integer_dsp":
+        return _stage_integer_dsp_runtime(
+            closure_path,
+            closure,
+            stage_dir,
+            executable,
+            normalized_workdirs,
+            expected_default_library or "xil_defaultlib",
+        )
+    tcl_source = _closure_artifact_path(closure["ip_generation_tcl"], closure_path)
+    if not tcl_source.is_file():
+        raise FileNotFoundError(f"Vivado IP generation TCL is missing: {tcl_source}")
 
     runtime_dir = stage_dir / "fpga_ip"
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -131,25 +267,8 @@ def stage_fpga_ip_runtime(
     output = shlex.quote(ip_output)
     module_manifest_q = shlex.quote(module_manifest)
     fpga_part_q = shlex.quote(str(closure["fpga_part"]))
-    compiler_workdir = compiler_workdir.strip() or "."
-    if (
-        compiler_workdir.startswith("/")
-        or any(part == ".." for part in compiler_workdir.split("/"))
-    ):
-        raise ValueError("compiler_workdir must be a safe relative path")
-    workdirs = compiler_workdirs if compiler_workdirs is not None else [compiler_workdir]
     # compile_ip_models.sh executes from the staged root before any board-plan
     # command changes cwd, so the root library map is always required.
-    workdirs = [".", *workdirs]
-    normalized_workdirs: list[str] = []
-    for value in workdirs:
-        candidate = str(value).strip() or "."
-        if candidate.startswith("/") or any(part == ".." for part in candidate.split("/")):
-            raise ValueError("compiler workdirs must be safe relative paths")
-        if candidate not in normalized_workdirs:
-            normalized_workdirs.append(candidate)
-    if not normalized_workdirs:
-        normalized_workdirs = ["."]
     if expected_default_library and not expected_default_library.replace("_", "a").isalnum():
         raise ValueError("expected_default_library must be an HDL logical-library name")
     # Resolve this once on the remote host.  A tool profile may name Vivado by

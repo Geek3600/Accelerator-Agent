@@ -8,7 +8,8 @@ final case class RoPEParams(
   theta: Double = 1000000.0,
   localTheta: Option[Double] = None
 ) {
-  require(qkv.elemBits == 16, "captured RoPE tables and Q/K values use IEEE FP16")
+  if (qkv.integerMode) require(qkv.elemBits == 8, "integer RoPE Q/K/V values must be signed INT8")
+  else require(qkv.elemBits == 16, "captured floating RoPE tables and Q/K values use IEEE FP16")
   require(qkv.headDim % 2 == 0, "rotate-half RoPE requires an even head dimension")
   require(qkv.headDim % qkv.qkvElemsPerBeat == 0, "head dimension must divide the stream beat")
 
@@ -23,7 +24,7 @@ final case class RoPEParams(
   val runtimeAddrBits: Int = log2Ceil(runtimeWordCount max 2)
 }
 
-class RoPE(p: RoPEParams) extends Module {
+private class FloatingRoPE(p: RoPEParams) extends Module {
   val io = IO(new Bundle {
     val cfg = Input(new StageConfig(log2Ceil(p.qkv.maxSeqLen + 1 max 2)))
     val cfgValid = Input(Bool())
@@ -279,6 +280,204 @@ class RoPE(p: RoPEParams) extends Module {
   dontTouch(io.cfg)
   dontTouch(io.cfgValid)
   dontTouch(io.position)
+}
+
+private class IntegerRoPE(p: RoPEParams) extends Module {
+  private val q = p.qkv
+  private val chunkBits = q.qkvElemsPerBeat * 8
+  private val vectorBits = chunkBits
+  private val beatBits = log2Ceil(q.headBeats max 2)
+  private val qMemory = Module(new PhysicalSimpleDualPortMemory(q.headBeats, vectorBits, "cache"))
+  private val qPartnerMemory = Module(new PhysicalSimpleDualPortMemory(q.headBeats, vectorBits, "cache"))
+  private val kMemory = Module(new PhysicalSimpleDualPortMemory(q.headBeats, vectorBits, "cache"))
+  private val kPartnerMemory = Module(new PhysicalSimpleDualPortMemory(q.headBeats, vectorBits, "cache"))
+  private val vMemory = Module(new PhysicalSimpleDualPortMemory(q.headBeats, vectorBits, "cache"))
+  private val runtimeMemory = Module(new PhysicalSimpleDualPortMemory(p.runtimeWordCount, 32, "activation"))
+
+  val io = IO(new Bundle {
+    val cfg = Input(new StageConfig(log2Ceil(q.maxSeqLen + 1 max 2)))
+    val cfgValid = Input(Bool())
+    val position = Input(UInt(p.positionBits.W))
+    val runtime = Flipped(Decoupled(new WeightWrite(32, p.runtimeAddrBits)))
+    val runtimeLast = Input(Bool())
+    val runtimeLoaded = Output(Bool())
+    val in = Flipped(Decoupled(new QKVStreamBeat(q)))
+    val out = Decoupled(new QKVStreamBeat(q))
+  })
+
+  private val runtimeCount = RegInit(0.U(p.runtimeAddrBits.W))
+  private val constantsLoaded = RegInit(false.B)
+  private val expectedLast = runtimeCount === (p.runtimeWordCount - 1).U
+  io.runtime.ready := !constantsLoaded && io.runtime.bits.addr === runtimeCount && io.runtimeLast === expectedLast
+  io.runtimeLoaded := constantsLoaded
+  runtimeMemory.io.writeEn := io.runtime.fire
+  runtimeMemory.io.writeAddr := runtimeCount
+  runtimeMemory.io.writeData := io.runtime.bits.data
+  when(io.runtime.fire) {
+    when(expectedLast) { constantsLoaded := true.B; runtimeCount := 0.U }
+      .otherwise { runtimeCount := runtimeCount + 1.U }
+  }
+
+  private val sCollect :: sElementRead :: sElementCapture :: sCosRead :: sCosCapture :: sSinRead :: sSinCapture :: sRotate :: sEmit :: Nil = Enum(9)
+  private val state = RegInit(sCollect)
+  private val collectBeat = RegInit(0.U(beatBits.W))
+  private val emitBeat = RegInit(0.U(beatBits.W))
+  private val emitLane = RegInit(0.U(log2Ceil(q.qkvElemsPerBeat max 2).W))
+  private val capturedToken = Reg(UInt(p.positionBits.W))
+  private val capturedHead = Reg(UInt(q.headBits.W))
+  private val capturedStart = RegInit(false.B)
+  private val capturedLast = RegInit(false.B)
+  private val laneQ = Reg(UInt(8.W))
+  private val laneQPartner = Reg(UInt(8.W))
+  private val laneK = Reg(UInt(8.W))
+  private val laneKPartner = Reg(UInt(8.W))
+  private val laneV = Reg(UInt(8.W))
+  private val cosineWord = Reg(UInt(32.W))
+  private val sineWord = Reg(UInt(32.W))
+  private val qOutput = Reg(Vec(q.qkvElemsPerBeat, UInt(8.W)))
+  private val kOutput = Reg(Vec(q.qkvElemsPerBeat, UInt(8.W)))
+  private val vOutput = Reg(Vec(q.qkvElemsPerBeat, UInt(8.W)))
+
+  val qChunk = io.in.bits.data(chunkBits - 1, 0)
+  val kChunk = io.in.bits.data(2 * chunkBits - 1, chunkBits)
+  val vChunk = io.in.bits.data(3 * chunkBits - 1, 2 * chunkBits)
+  io.in.ready := constantsLoaded && state === sCollect
+  qMemory.io.writeEn := io.in.fire
+  qMemory.io.writeAddr := collectBeat
+  qMemory.io.writeData := qChunk
+  qPartnerMemory.io.writeEn := io.in.fire
+  qPartnerMemory.io.writeAddr := collectBeat
+  qPartnerMemory.io.writeData := qChunk
+  kMemory.io.writeEn := io.in.fire
+  kMemory.io.writeAddr := collectBeat
+  kMemory.io.writeData := kChunk
+  kPartnerMemory.io.writeEn := io.in.fire
+  kPartnerMemory.io.writeAddr := collectBeat
+  kPartnerMemory.io.writeData := kChunk
+  vMemory.io.writeEn := io.in.fire
+  vMemory.io.writeAddr := collectBeat
+  vMemory.io.writeData := vChunk
+  when(io.in.fire) {
+    when(collectBeat === 0.U) {
+      capturedToken := io.position
+      capturedHead := io.in.bits.head
+      capturedStart := io.in.bits.st
+    }
+    when(collectBeat === (q.headBeats - 1).U) {
+      capturedLast := io.in.bits.last
+      collectBeat := 0.U
+      emitBeat := 0.U
+      emitLane := 0.U
+      state := sElementRead
+    }.otherwise { collectBeat := collectBeat + 1.U }
+  }
+
+  private val dimension = emitBeat * q.qkvElemsPerBeat.U + emitLane
+  private val firstHalf = dimension < (q.headDim / 2).U
+  private val partnerDimension = Mux(firstHalf, dimension + (q.headDim / 2).U, dimension - (q.headDim / 2).U)
+  private val partnerBeat = partnerDimension / q.qkvElemsPerBeat.U
+  private val partnerLane = partnerDimension % q.qkvElemsPerBeat.U
+  private val scalarIndex = capturedToken * q.headDim.U + dimension
+  private val wordOffset = scalarIndex >> 1
+  private val oddScalar = scalarIndex(0)
+  qMemory.io.readEn := state === sElementRead
+  qMemory.io.readAddr := emitBeat
+  qPartnerMemory.io.readEn := state === sElementRead
+  qPartnerMemory.io.readAddr := AccMath.boundedIndex(partnerBeat, q.headBeats)
+  kMemory.io.readEn := state === sElementRead
+  kMemory.io.readAddr := emitBeat
+  kPartnerMemory.io.readEn := state === sElementRead
+  kPartnerMemory.io.readAddr := AccMath.boundedIndex(partnerBeat, q.headBeats)
+  vMemory.io.readEn := state === sElementRead
+  vMemory.io.readAddr := emitBeat
+  runtimeMemory.io.readEn := state === sCosRead || state === sSinRead
+  runtimeMemory.io.readAddr := Mux(state === sCosRead, p.cosineWordOffset.U + wordOffset, p.sineWordOffset.U + wordOffset)
+  when(state === sElementRead) { state := sElementCapture }
+  val qValues = qMemory.io.readData.asTypeOf(Vec(q.qkvElemsPerBeat, UInt(8.W)))
+  val qPartnerValues = qPartnerMemory.io.readData.asTypeOf(Vec(q.qkvElemsPerBeat, UInt(8.W)))
+  val kValues = kMemory.io.readData.asTypeOf(Vec(q.qkvElemsPerBeat, UInt(8.W)))
+  val kPartnerValues = kPartnerMemory.io.readData.asTypeOf(Vec(q.qkvElemsPerBeat, UInt(8.W)))
+  val vValues = vMemory.io.readData.asTypeOf(Vec(q.qkvElemsPerBeat, UInt(8.W)))
+  when(state === sElementCapture) {
+    laneQ := qValues(AccMath.boundedIndex(emitLane, q.qkvElemsPerBeat))
+    laneQPartner := qPartnerValues(AccMath.boundedIndex(partnerLane, q.qkvElemsPerBeat))
+    laneK := kValues(AccMath.boundedIndex(emitLane, q.qkvElemsPerBeat))
+    laneKPartner := kPartnerValues(AccMath.boundedIndex(partnerLane, q.qkvElemsPerBeat))
+    laneV := vValues(AccMath.boundedIndex(emitLane, q.qkvElemsPerBeat))
+    state := sCosRead
+  }
+  when(state === sCosRead) { state := sCosCapture }
+  when(state === sCosCapture) { cosineWord := runtimeMemory.io.readData; state := sSinRead }
+  when(state === sSinRead) { state := sSinCapture }
+  when(state === sSinCapture) { sineWord := runtimeMemory.io.readData; state := sRotate }
+
+  private val cosQ15 = Mux(oddScalar, cosineWord(31, 16).asSInt, cosineWord(15, 0).asSInt)
+  private val sinQ15 = Mux(oddScalar, sineWord(31, 16).asSInt, sineWord(15, 0).asSInt)
+  // Extend before negation: negating the INT8 minimum in eight bits would
+  // wrap -128 back to -128 instead of representing the rotate-half +128 term.
+  private val qPartnerExtended = laneQPartner.asSInt.pad(9)
+  private val kPartnerExtended = laneKPartner.asSInt.pad(9)
+  private val qRotatedPartner = Mux(firstHalf, -qPartnerExtended, qPartnerExtended)
+  private val kRotatedPartner = Mux(firstHalf, -kPartnerExtended, kPartnerExtended)
+  private val qSum = (laneQ.asSInt.pad(9) * cosQ15).pad(26) + (qRotatedPartner * sinQ15).pad(26)
+  private val kSum = (laneK.asSInt.pad(9) * cosQ15).pad(26) + (kRotatedPartner * sinQ15).pad(26)
+  private def saturateQ15(value: SInt): UInt = {
+    val shifted = AccMath.roundShiftRightNearestEven(value, 15)
+    val clipped = Mux(shifted > 127.S, 127.S(32.W), Mux(shifted < (-128).S, (-128).S(32.W), shifted))
+    AccMath.resizeSignedToUInt(clipped, 8)
+  }
+  when(state === sRotate) {
+    qOutput(AccMath.boundedIndex(emitLane, q.qkvElemsPerBeat)) := saturateQ15(qSum)
+    kOutput(AccMath.boundedIndex(emitLane, q.qkvElemsPerBeat)) := saturateQ15(kSum)
+    vOutput(AccMath.boundedIndex(emitLane, q.qkvElemsPerBeat)) := laneV
+    when(emitLane === (q.qkvElemsPerBeat - 1).U) { emitLane := 0.U; state := sEmit }
+      .otherwise { emitLane := emitLane + 1.U; state := sElementRead }
+  }
+  io.out.valid := state === sEmit
+  io.out.bits.data := Cat(vOutput.reverse ++ kOutput.reverse ++ qOutput.reverse)
+  io.out.bits.st := capturedStart && emitBeat === 0.U
+  io.out.bits.head := capturedHead
+  io.out.bits.addr := emitBeat
+  io.out.bits.last := capturedLast && emitBeat === (q.headBeats - 1).U
+  when(io.out.fire) {
+    when(emitBeat === (q.headBeats - 1).U) { emitBeat := 0.U; state := sCollect }
+      .otherwise { emitBeat := emitBeat + 1.U; emitLane := 0.U; state := sElementRead }
+  }
+}
+
+class RoPE(p: RoPEParams) extends Module {
+  private val q = p.qkv
+  val io = IO(new Bundle {
+    val cfg = Input(new StageConfig(log2Ceil(q.maxSeqLen + 1 max 2)))
+    val cfgValid = Input(Bool())
+    val position = Input(UInt(p.positionBits.W))
+    val runtime = Flipped(Decoupled(new WeightWrite(32, p.runtimeAddrBits)))
+    val runtimeLast = Input(Bool())
+    val runtimeLoaded = Output(Bool())
+    val in = Flipped(Decoupled(new QKVStreamBeat(q)))
+    val out = Decoupled(new QKVStreamBeat(q))
+  })
+  if (q.integerMode) {
+    val core = Module(new IntegerRoPE(p))
+    core.io.cfg := io.cfg
+    core.io.cfgValid := io.cfgValid
+    core.io.position := io.position
+    core.io.runtime <> io.runtime
+    core.io.runtimeLast := io.runtimeLast
+    io.runtimeLoaded := core.io.runtimeLoaded
+    core.io.in <> io.in
+    io.out <> core.io.out
+  } else {
+    val core = Module(new FloatingRoPE(p))
+    core.io.cfg := io.cfg
+    core.io.cfgValid := io.cfgValid
+    core.io.position := io.position
+    core.io.runtime <> io.runtime
+    core.io.runtimeLast := io.runtimeLast
+    io.runtimeLoaded := core.io.runtimeLoaded
+    core.io.in <> io.in
+    io.out <> core.io.out
+  }
 }
 
 class RoPEApply(p: RoPEParams) extends RoPE(p)

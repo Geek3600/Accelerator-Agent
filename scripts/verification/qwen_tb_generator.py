@@ -990,8 +990,8 @@ module qwen_axi_board_tb;
       $fatal(1, "qwen_axi_board_tb FAIL incomplete real DDR path input=%0d weight=%0d out_valid=%0d out_write=%0d",
              input_read_beats, weight_read_beats, output_valid_beats, output_write_beats);
     end
-    $display("qwen_axi_board_tb PASS real functional ddr path input_beats=%0d weight_beats=%0d out_valid=%0d out_write=%0d",
-             input_read_beats, weight_read_beats, output_valid_beats, output_write_beats);
+    $display("qwen_axi_board_tb PASS real functional ddr path cycles=%0d input_beats=%0d weight_beats=%0d out_valid=%0d out_write=%0d",
+             cycle, input_read_beats, weight_read_beats, output_valid_beats, output_write_beats);
     $finish;
   end
 endmodule

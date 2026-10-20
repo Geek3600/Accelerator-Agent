@@ -14,8 +14,229 @@ from accagent.framework.llm_config import LlmCfg, resolve_llm_cfg
 
 
 class LlmRetryPathTests(unittest.TestCase):
+    def test_implementation_retry_preserves_all_sources_and_task_specific_validation(self) -> None:
+        inputs = {
+            "requirements": {"weight_storage": "DDR active/shadow PREFETCH_REQUIREMENT"},
+            "source_snapshots": {f"module_{i}.scala": "prefix " * 4000 + f"SOURCE_END_{i}"
+                                 for i in range(12)},
+            "previous_real_tool_feedback": {"detail": {"nested": {"error": "ACTUAL_VCS_ERROR"}}},
+            "edit_scope": "EDIT_SCOPE_REQUIRED",
+        }
+        prompt = stage_llm.compact_retry_prompt(
+            "new_implementation_agent", "implementation", "Implement bounded DDR caches",
+            inputs, {"type": "object", "properties": {"file_edits": {"type": "array"}}},
+            ["Real VCS numeric simulation is mandatory for this task."],
+        )
+        for i in range(12):
+            self.assertIn(f"SOURCE_END_{i}", prompt)
+        for value in ["PREFETCH_REQUIREMENT", "ACTUAL_VCS_ERROR", "EDIT_SCOPE_REQUIRED"]:
+            self.assertIn(value, prompt)
+        self.assertNotIn("_more_keys", prompt)
+        self.assertIn("Real VCS numeric simulation is mandatory", prompt)
+        self.assertNotIn("All verification layers accept successful real VCS compilation", prompt)
+
+    def test_repeated_board_feedback_compaction_preserves_full_compiler_diagnostic(self) -> None:
+        context = (
+            "Error-[URMI] Unresolved modules\n../sources/board_tb.sv, 5\n"
+            '"sample_wrapper exact_board();"\nModule definition is not found.\n'
+        )
+        package = {
+            "generation_mode": "repair",
+            "generation_phase_contract": {
+                "status": "repair_existing_board_sources", "current_vcs_feedback_ready": True,
+            },
+            "current_board_vcs_feedback": {
+                "status": "ready",
+                "diagnosis": {"value": {
+                    "failure_class": "vcs_elaboration_failure",
+                    "failure_evidence": {
+                        "first_real_error": "Error-[URMI] Unresolved modules",
+                        "first_real_error_context": context,
+                        "compile": {"status": "fail", "returncode": 1},
+                    },
+                }},
+            },
+        }
+        for compaction_index in range(3):
+            with self.subTest(compaction_index=compaction_index):
+                package = stage_llm.compact_verification_capability_repair_package(package)
+                evidence = package["current_board_vcs_feedback"]["diagnosis"]["value"]["failure_evidence"]
+                self.assertEqual(evidence["first_real_error_context"], context)
+                self.assertEqual(evidence["compile"]["status"], "fail")
+
+    def test_bounded_backend_source_repair_retry_preserves_complete_source_and_abi(self) -> None:
+        request = {
+            "stage": "backend_board", "agent": "backend_compute_slot_repair_agent",
+            "source_snapshot": {"path": "current-adapter.sv", "sha256": "a" * 64, "content": "module source;\n" * 100},
+            "immutable_compute_slot_abi": {"required_ports": [{"name": f"port_{index}", "direction": "input"} for index in range(40)]},
+            "failure_diagnostics": ["ValueError: concrete ABI direction mismatch"],
+        }
+        compacted = stage_llm.compact_for_retry(request)
+        self.assertEqual(compacted, request)
+        self.assertIsNot(compacted["source_snapshot"], request["source_snapshot"])
+
+    def test_adapter_repair_priority_context_precedes_large_compact_metadata(self) -> None:
+        source = {
+            "path": "current-adapter.sv",
+            "sha256": "a" * 64,
+            "content": "module adapter;\n" + "source\n" * 200,
+        }
+        top = {
+            "path": "GeneratedAxiDdrTop.sv",
+            "sha256": "b" * 64,
+            "module_header": "module GeneratedAxiDdrTop(input clock);",
+        }
+        weights = {
+            "path": "weights.u32.memh",
+            "sha256": "c" * 64,
+            "stage_segments": [{"stage_id": "stage_00", "word_count": 4}],
+        }
+        loader = {
+            "status": "pass",
+            "sources": [{"path": "sample_loader.v", "content": "loader\n" * 400}],
+        }
+        prompt = stage_llm.compact_retry_prompt(
+            "backend_compute_slot_repair_agent",
+            "backend_board",
+            "Repair the current adapter source.",
+            {
+                "source_snapshot": source,
+                "immutable_compute_slot_abi": {"required_ports": []},
+                "generated_top_interface": top,
+                "weight_stream_contract": weights,
+                "exact_board_loader_source_context": loader,
+                "failure_diagnostics": {"tail": "x" * 10_000},
+            },
+            {
+                "type": "object",
+                "properties": {"status": {"type": "string"}, "file_edits": {"type": "array"}},
+            },
+        )
+
+        priority_block = prompt.split(
+            "<adapter_repair_priority_context>\n", 1
+        )[1].split("\n</adapter_repair_priority_context>", 1)[0]
+        priority = json.loads(priority_block)
+        self.assertEqual(
+            [row["name"] for row in priority],
+            [
+                "source_snapshot",
+                "generated_top_interface",
+                "weight_stream_contract",
+                "exact_board_loader_source_context",
+            ],
+        )
+        self.assertEqual(priority[0]["value"], source)
+        self.assertEqual(priority[1]["value"], top)
+        self.assertEqual(priority[2]["value"], weights)
+        self.assertEqual(priority[3]["value"], loader)
+        compact_block = prompt.split("<compact_inputs>\n", 1)[1].split(
+            "\n</compact_inputs>", 1
+        )[0]
+        compact = json.loads(compact_block)
+        for name in (
+            "source_snapshot",
+            "generated_top_interface",
+            "weight_stream_contract",
+            "exact_board_loader_source_context",
+        ):
+            self.assertNotIn(name, compact)
+        self.assertLess(
+            prompt.index("<adapter_repair_priority_context>\n"),
+            prompt.index("<compact_inputs>\n"),
+        )
+
     def _transient_then_success(self) -> list[object]:
         return [urllib.error.URLError("temporary upstream error") for _ in range(3)] + ['{"ok":true}']
+
+    def test_localized_operator_leaf_compaction_keeps_current_source_and_bounds_history(self) -> None:
+        template_path = "/run/generated/chisel/src/main/scala/templates/Attention.scala"
+        current_stage = "stage_01_self_attention"
+        package = {
+            "schema_version": "spatialaccagent.verification_capability_repair_package.v1",
+            "verification_scope": "operator_leaf_closure",
+            "repair_kind": "localized_semantic_dut_repair",
+            "relevant_repair_experience": {
+                "episodes": [
+                    {
+                        "experience_id": "exp-1",
+                        "intervention": {"summary": "prior repair"},
+                        "evidence_bindings": [
+                            {"path": f"/evidence/{index}", "sha256": "a" * 64}
+                            for index in range(10)
+                        ],
+                    }
+                ]
+            },
+            "relevant_project_knowledge": {
+                "knowledge": [
+                    {
+                        "knowledge_id": "knowledge-1",
+                        "knowledge": {"lesson": "keep current evidence authoritative"},
+                        "evidence_bindings": [
+                            {"path": f"/knowledge/{index}", "sha256": "b" * 64}
+                            for index in range(10)
+                        ],
+                    }
+                ]
+            },
+            "repair_source_bundle": {
+                "schema_version": "spatialaccagent.repair_source_bundle.v1",
+                "editable_contract": {
+                    "read_only_template_sources": [template_path],
+                    "localized_allowed_exact_files": ["/run/SemanticHarnesses.scala"],
+                },
+                "documents": [
+                    {
+                        "path": template_path,
+                        "sha256": "c" * 64,
+                        "content": "class AttentionTemplate\n" * 100,
+                    },
+                    {
+                        "path": "/run/generated/semantic_harness/stage_01_self_attention/Stage.sv",
+                        "sha256": "d" * 64,
+                        "content": "module Stage; endmodule\n",
+                    },
+                    {
+                        "path": "/run/verification/semantic_testbench/dut_weight_binding_requirements.json",
+                        "json_content": {
+                            "stage_requirements": {
+                                current_stage: {"weight_count": 4},
+                                "stage_00_rms_norm_1": {"weight_count": 2},
+                            },
+                            "single_layer_pipeline_overlap_contract": {"large": True},
+                            "standard_harness_interface": {"input": "valid"},
+                        },
+                    },
+                ],
+            },
+        }
+
+        compact = stage_llm.compact_verification_capability_repair_package(package)
+        bundle = compact["repair_source_bundle"]
+        documents = bundle["documents"]
+        template = next(row for row in documents if row.get("path") == template_path)
+        requirements = next(
+            row for row in documents if "dut_weight_binding_requirements.json" in row.get("path", "")
+        )
+
+        self.assertNotIn("content", template)
+        self.assertEqual(
+            requirements["json_content"]["stage_requirements"],
+            {current_stage: {"weight_count": 4}},
+        )
+        self.assertNotIn(
+            "single_layer_pipeline_overlap_contract",
+            requirements["json_content"],
+        )
+        self.assertIn(
+            "evidence_binding_summary",
+            compact["relevant_repair_experience"]["episodes"][0],
+        )
+        self.assertLess(
+            len(json.dumps(compact, separators=(",", ":"))),
+            len(json.dumps(package, separators=(",", ":"))),
+        )
 
     def test_compaction_exposes_current_observation_frontier_lock(self) -> None:
         package = {
@@ -126,11 +347,75 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertNotIn("infeasible_candidates", compact["dse_constraint_report"])
         self.assertEqual(compact["formal_dse_campaign"]["campaign_complete"], False)
 
+    def test_board_interface_domain_compact_retry_preserves_current_evidence(self) -> None:
+        authoritative = {
+            "vivado_facts": {"objects": [{"object_id": "cell:slot"}]},
+            "selected_cell_pin_index": [{"object_id": "pin:clock", "width_bits": 1}],
+            "sample_source_semantic_reviews": [{"source_id": "source:wrapper", "status": "pass"}],
+            "deterministic_output_contract": {"schema_version": "contract.v1"},
+            "candidate_interpretation": {"status": "blocked", "summary": "prior"},
+            "deterministic_validation_errors": ["missing field"],
+            "validated_llm_selection": {"selected_cell_id": "cell:slot"},
+        }
+
+        prompt = stage_llm.compact_retry_prompt(
+            "exact_board_interface_domain_repair_agent",
+            "verification.layer3.board_interface_discovery.repair",
+            "Repair the current exact board-interface interpretation.",
+            authoritative,
+            {"type": "object", "properties": {"status": {"type": "string"}}},
+        )
+        compact_block = prompt.split("<compact_inputs>\n", 1)[1].split(
+            "\n</compact_inputs>", 1
+        )[0]
+        compact = json.loads(compact_block)
+
+        for key, value in authoritative.items():
+            self.assertEqual(compact[key], value)
+        self.assertNotIn("_more_keys", compact)
+        self.assertTrue(compact["compaction_policy"]["lossless_current_evidence"])
+        self.assertNotIn("<action_grounding_registry>", prompt)
+
     def test_explicit_403_capacity_limit_retries_but_other_403_does_not(self) -> None:
         capacity = urllib.error.HTTPError(
             "https://example.invalid",
             403,
             'curl direct HTTP/1.1 response 403; response_body={"error":{"type":"billing_error","message":"daily usage limit exceeded"}}',
+            None,
+            None,
+        )
+        daily_limit = urllib.error.HTTPError(
+            "https://example.invalid",
+            429,
+            'Too Many Requests; response_body={"code":"USAGE_LIMIT_EXCEEDED","reason":"DAILY_LIMIT_EXCEEDED"}',
+            None,
+            None,
+        )
+        insufficient_user_quota = urllib.error.HTTPError(
+            "https://example.invalid",
+            403,
+            'Forbidden; response_body={"error":{"code":"insufficient_user_quota","message":"provider quota exhausted"}}',
+            None,
+            None,
+        )
+        route_rejection = urllib.error.HTTPError(
+            "https://example.invalid",
+            403,
+            'Forbidden; response_body={"error":{"message":"openai_error","type":"bad_response_status_code","code":"bad_response_status_code"}}',
+            None,
+            None,
+        )
+        blocked_route = urllib.error.HTTPError(
+            "https://example.invalid",
+            403,
+            "Forbidden; The site owner has blocked access based on your browser's signature.",
+            None,
+            None,
+        )
+        invalid_token = urllib.error.HTTPError(
+            "https://example.invalid",
+            403,
+            'Forbidden; response_body={"error":{"message":"Invalid token","code":"invalid_api_key"}}',
             None,
             None,
         )
@@ -142,7 +427,75 @@ class LlmRetryPathTests(unittest.TestCase):
         ):
             self.assertTrue(stage_llm.transient_llm_error(capacity))
             self.assertEqual(stage_llm.retry_sleep_seconds(capacity, 1), 123.0)
+            self.assertTrue(stage_llm.provider_capacity_error(daily_limit))
+            self.assertEqual(stage_llm.retry_sleep_seconds(daily_limit, 1), 123.0)
+            self.assertTrue(stage_llm.provider_capacity_error(insufficient_user_quota))
+            self.assertTrue(stage_llm.transient_llm_error(insufficient_user_quota))
+            self.assertEqual(
+                stage_llm.retry_sleep_seconds(insufficient_user_quota, 1), 123.0
+            )
+            self.assertFalse(stage_llm.provider_capacity_error(route_rejection))
+            self.assertTrue(stage_llm.route_failover_error(route_rejection))
+            self.assertTrue(stage_llm.transient_llm_error(route_rejection))
+            self.assertEqual(stage_llm.retry_sleep_seconds(route_rejection, 1), 8.0)
+            self.assertTrue(stage_llm.route_failover_error(blocked_route))
+            self.assertTrue(stage_llm.transient_llm_error(blocked_route))
+            self.assertFalse(stage_llm.provider_capacity_error(blocked_route))
+        self.assertFalse(stage_llm.provider_capacity_error(invalid_token))
+        self.assertFalse(stage_llm.transient_llm_error(invalid_token))
         self.assertFalse(stage_llm.transient_llm_error(denied))
+
+    def test_stage_llm_switches_gateway_failure_to_fallback_and_recovers(self) -> None:
+        gateway_timeout = urllib.error.HTTPError(
+            "https://primary.invalid/v1/responses", 524, "origin timeout", None, None
+        )
+        blocked_route = urllib.error.HTTPError(
+            "https://fallback.invalid/v1/responses",
+            403,
+            "Forbidden; The site owner has blocked access based on your browser's signature.",
+            None,
+            None,
+        )
+        endpoints: list[str] = []
+
+        def call(endpoint: str, *_args: object, **_kwargs: object) -> str:
+            endpoints.append(endpoint)
+            if len(endpoints) == 1:
+                raise gateway_timeout
+            if len(endpoints) == 2:
+                raise blocked_route
+            return '{"ok":true}'
+
+        cfg = LlmCfg(
+            fallback_endpoint="https://fallback.invalid/v1/responses",
+            fallback_api_key="fallback-key",
+        )
+        with (
+            patch.object(stage_llm, "call_llm", side_effect=call),
+            patch.object(stage_llm, "resolved_llm_cfg", return_value=cfg),
+            patch.object(stage_llm, "retry_sleep_seconds", return_value=0.0),
+            patch.object(stage_llm.time, "sleep"),
+        ):
+            text, errors = stage_llm.call_llm_with_retry(
+                "https://primary.invalid/v1/responses",
+                "primary-key",
+                "model",
+                "prompt",
+                "schema",
+                {},
+                1,
+            )
+
+        self.assertEqual(text, '{"ok":true}')
+        self.assertEqual(len(errors), 2)
+        self.assertEqual(
+            endpoints,
+            [
+                "https://primary.invalid/v1/responses",
+                "https://fallback.invalid/v1/responses",
+                "https://primary.invalid/v1/responses",
+            ],
+        )
 
     def test_gateway_errors_retry_within_team_decomposition(self) -> None:
         def http_error(code: int, reason: str) -> urllib.error.HTTPError:
@@ -177,7 +530,7 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertEqual(len(errors), 3)
         self.assertEqual(request.call_count, 4)
 
-    def test_team_decomposer_retries_primary_after_fallback_transient_error(self) -> None:
+    def test_team_decomposer_stays_on_fallback_after_primary_quota_error(self) -> None:
         primary = object()
         fallback = object()
         capacity = urllib.error.HTTPError(
@@ -212,9 +565,9 @@ class LlmRetryPathTests(unittest.TestCase):
 
         self.assertEqual(text, '{"ok":true}')
         self.assertEqual(len(errors), 2)
-        self.assertEqual(seen, [primary, fallback, primary])
+        self.assertEqual(seen, [primary, fallback, fallback])
 
-    def test_stage0_retries_primary_after_fallback_transient_error(self) -> None:
+    def test_stage0_stays_on_fallback_after_primary_quota_error(self) -> None:
         primary = object()
         fallback = object()
         capacity = urllib.error.HTTPError(
@@ -249,11 +602,67 @@ class LlmRetryPathTests(unittest.TestCase):
 
         self.assertEqual(text, '{"ok":true}')
         self.assertEqual(len(errors), 2)
-        self.assertEqual(seen, [primary, fallback, primary])
+        self.assertEqual(seen, [primary, fallback, fallback])
+
+    def test_stage_llm_stays_on_fallback_after_primary_quota_error(self) -> None:
+        primary_quota = urllib.error.HTTPError(
+            "https://primary.invalid/v1/responses",
+            403,
+            "Forbidden; response_body={\"error\":{\"code\":\"insufficient_user_quota\"}}",
+            None,
+            None,
+        )
+        fallback_transient = urllib.error.HTTPError(
+            "https://fallback.invalid/v1/responses", 502, "bad gateway", None, None
+        )
+        endpoints: list[str] = []
+
+        def call(endpoint: str, *_args: object, **_kwargs: object) -> str:
+            endpoints.append(endpoint)
+            if len(endpoints) == 1:
+                raise primary_quota
+            if len(endpoints) == 2:
+                raise fallback_transient
+            return '{"ok":true}'
+
+        cfg = LlmCfg(
+            fallback_endpoint="https://fallback.invalid/v1/responses",
+            fallback_api_key="fallback-key",
+        )
+        with (
+            patch.object(stage_llm, "call_llm", side_effect=call),
+            patch.object(stage_llm, "resolved_llm_cfg", return_value=cfg),
+            patch.object(stage_llm, "retry_sleep_seconds", return_value=0.0),
+            patch.object(stage_llm.time, "sleep"),
+        ):
+            text, errors = stage_llm.call_llm_with_retry(
+                "https://primary.invalid/v1/responses",
+                "primary-key",
+                "model",
+                "prompt",
+                "schema",
+                {},
+                1,
+            )
+
+        self.assertEqual(text, '{"ok":true}')
+        self.assertEqual(len(errors), 2)
+        self.assertEqual(
+            endpoints,
+            [
+                "https://primary.invalid/v1/responses",
+                "https://fallback.invalid/v1/responses",
+                "https://fallback.invalid/v1/responses",
+            ],
+        )
 
     def test_stage_llm_retries_primary_after_fallback_transient_error(self) -> None:
         capacity = urllib.error.HTTPError(
-            "https://primary.invalid/v1/responses", 403, "INSUFFICIENT_BALANCE", None, None
+            "https://primary.invalid/v1/responses",
+            403,
+            "Forbidden; response_body={\"error\":{\"message\":\"openai_error\",\"type\":\"bad_response_status_code\",\"code\":\"bad_response_status_code\"}}",
+            None,
+            None,
         )
         redirect_loop = urllib.error.HTTPError(
             "https://fallback.invalid/v1/responses", 302,
@@ -374,6 +783,11 @@ class LlmRetryPathTests(unittest.TestCase):
 
         self.assertEqual(threshold, 256_000)
         self.assertLess(threshold, stage_llm.llm_auto_compact_min_prompt_bytes())
+
+    def test_provider_retry_uses_bounded_compaction_threshold(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SPATIALACC_LLM_RETRY_COMPACT_MIN_PROMPT_BYTES", None)
+            self.assertEqual(stage_llm.llm_retry_compact_min_prompt_bytes(), 256_000)
 
     def test_team_decomposer_honors_unbounded_transient_retry(self) -> None:
         with (
@@ -920,12 +1334,23 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertEqual(call.call_count, 1)
         sleep.assert_not_called()
 
-    def test_compact_retry_keeps_parent_reasoning_effort(self) -> None:
+    def test_compact_retry_bounds_high_parent_reasoning_effort(self) -> None:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("SPATIALACC_COMPACT_RETRY_REASONING_EFFORT", None)
             self.assertEqual(
                 stage_llm.compact_retry_reasoning_effort("xhigh"),
-                "xhigh",
+                "medium",
+            )
+
+    def test_compact_retry_honors_explicit_reasoning_effort(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"SPATIALACC_COMPACT_RETRY_REASONING_EFFORT": "high"},
+            clear=False,
+        ):
+            self.assertEqual(
+                stage_llm.compact_retry_reasoning_effort("xhigh"),
+                "high",
             )
 
     def test_streaming_upstream_error_retries_once_with_json_transport(self) -> None:
@@ -1130,11 +1555,10 @@ class LlmRetryPathTests(unittest.TestCase):
                     "SPATIALACC_LLM_AUTO_COMPACT_AFTER_ATTEMPTS": "2",
                 },
             ),
-            patch.object(stage_llm, "call_llm", side_effect=[error, error]),
+            patch.object(stage_llm, "call_llm", side_effect=[error, error]) as call,
             patch.object(stage_llm, "retry_sleep_seconds", return_value=0.0),
             patch.object(stage_llm.time, "sleep"),
         ):
-            resolve_llm_cfg.cache_clear()
             with self.assertRaises(stage_llm.PromptCompactionNeeded):
                 stage_llm.call_llm_with_retry(
                     "https://example.invalid",
@@ -1145,6 +1569,78 @@ class LlmRetryPathTests(unittest.TestCase):
                     {},
                     60,
                 )
+
+        self.assertEqual(call.call_count, 2)
+
+        resolve_llm_cfg.cache_clear()
+
+    def test_large_prompt_route_rejection_triggers_compact_retry_signal(self) -> None:
+        error = urllib.error.HTTPError(
+            "https://example.invalid",
+            403,
+            "Forbidden; response_body=site owner has blocked access based on your browser's signature",
+            None,
+            None,
+        )
+        prompt = "x" * 256_000
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "SPATIALACC_LLM_TRANSIENT_RETRY_UNBOUNDED": "1",
+                    "SPATIALACC_LLM_AUTO_COMPACT_AFTER_ATTEMPTS": "2",
+                },
+            ),
+            patch.object(stage_llm, "call_llm", side_effect=[error, error]),
+            patch.object(stage_llm, "retry_sleep_seconds", return_value=0.0),
+            patch.object(stage_llm.time, "sleep"),
+        ):
+            resolve_llm_cfg.cache_clear()
+            with self.assertRaises(stage_llm.PromptCompactionNeeded):
+                stage_llm.call_llm_with_retry(
+                    "https://example.invalid",
+                    "key",
+                    "model",
+                    prompt,
+                    "schema",
+                    {},
+                    60,
+                )
+        resolve_llm_cfg.cache_clear()
+
+    def test_large_prompt_provider_capacity_triggers_compact_retry_signal(self) -> None:
+        error = urllib.error.HTTPError(
+            "https://example.invalid",
+            429,
+            'Too Many Requests; response_body={"code":"USAGE_LIMIT_EXCEEDED","reason":"DAILY_LIMIT_EXCEEDED"}',
+            None,
+            None,
+        )
+        prompt = "x" * 256_000
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "SPATIALACC_LLM_TRANSIENT_RETRY_UNBOUNDED": "1",
+                    "SPATIALACC_LLM_AUTO_COMPACT_AFTER_ATTEMPTS": "2",
+                },
+            ),
+            patch.object(stage_llm, "call_llm", side_effect=[error, error]) as call,
+            patch.object(stage_llm, "retry_sleep_seconds", return_value=0.0),
+            patch.object(stage_llm.time, "sleep"),
+        ):
+            resolve_llm_cfg.cache_clear()
+            with self.assertRaises(stage_llm.PromptCompactionNeeded):
+                stage_llm.call_llm_with_retry(
+                    "https://example.invalid",
+                    "key",
+                    "model",
+                    prompt,
+                    "schema",
+                    {},
+                    60,
+                )
+        self.assertEqual(call.call_count, 2)
         resolve_llm_cfg.cache_clear()
 
     def test_stage_agent_compact_retry_keeps_custom_output_schema(self) -> None:
@@ -1290,6 +1786,8 @@ class LlmRetryPathTests(unittest.TestCase):
 
         self.assertEqual(record["output"]["status"], "ready_to_apply")
         self.assertEqual(call.call_count, 3)
+        for repair_call in call.call_args_list[1:]:
+            self.assertIs(repair_call.kwargs.get("allow_auto_compact"), False)
         self.assertEqual(
             [row["status"] for row in record["schema_repair_attempts"]],
             ["invalid", "pass"],
@@ -2009,6 +2507,65 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertNotIn("content", rows["/run/old_board_report.txt"])
         self.assertEqual(rows["/run/old_board_report.txt"]["content_chars"], len(unrelated_content))
 
+    def test_semantic_harness_sources_survive_retry_compaction(self) -> None:
+        source_text = "class Attention extends Module {\n" + "  val io = IO(new Bundle {})\n" + "}\n"
+        package = {
+            "schema_version": "spatialaccagent.verification_capability_repair_package.v0",
+            "verification_scope": "operator_leaf_closure",
+            "repair_source_bundle": {
+                "schema_version": "spatialaccagent.repair_source_bundle.v1",
+                "semantic_harness_source_contract": {
+                    "agent_harness_source": {
+                        "creation_required": True,
+                        "present": False,
+                    }
+                },
+                "documents": [
+                    {
+                        "path": "/run/templates/Attention.scala",
+                        "content": source_text,
+                    },
+                    {
+                        "path": "/run/reports/old.txt",
+                        "content": "r" * 5000,
+                    },
+                ],
+            },
+        }
+
+        first = stage_llm.compact_verification_capability_repair_package(package)
+        first_rows = {
+            row["path"]: row
+            for row in first["repair_source_bundle"]["documents"]
+        }
+        self.assertEqual(
+            first_rows["/run/templates/Attention.scala"]["content"],
+            source_text,
+        )
+        self.assertNotIn("content_head", first_rows["/run/templates/Attention.scala"])
+        self.assertNotIn("content_tail", first_rows["/run/templates/Attention.scala"])
+
+        prompt = stage_llm.compact_retry_prompt(
+            "verification_capability_repair_agent",
+            "repair_execution",
+            "Create the missing semantic harness.",
+            {"verification_capability_repair_package": first},
+            {"type": "object", "properties": {"status": {"type": "string"}}},
+        )
+        compact_block = prompt.split("<compact_inputs>\n", 1)[1].split(
+            "\n</compact_inputs>", 1
+        )[0]
+        retry_inputs = json.loads(compact_block)
+        retry_row = {
+            row["path"]: row
+            for row in retry_inputs["verification_capability_repair_package"][
+                "repair_source_bundle"
+            ]["documents"]
+        }["/run/templates/Attention.scala"]
+        self.assertEqual(retry_row["content"], source_text)
+        self.assertNotIn("content_head", retry_row)
+        self.assertNotIn("content_tail", retry_row)
+
     def test_large_implementation_prompt_is_compacted_before_transport(self) -> None:
         custom_schema = {
             "type": "object",
@@ -2065,6 +2622,419 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertIn("compact_retry_prompt", record["request_path"])
         self.assertGreater(record["full_prompt_bytes"], record["prompt_bytes"])
         self.assertIn("CUSTOM_RULE_SURVIVES_COMPACTION", call.call_args.args[3])
+
+    def test_verification_compaction_preserves_current_failure_trace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            localization_path = run_dir / "verification" / "debug_closure" / "failure_localization.json"
+            localization_path.parent.mkdir(parents=True)
+            (run_dir / "repair_execution").mkdir(parents=True)
+            state_path = run_dir / "repair_execution" / "sacg_state.json"
+            state_path.write_text("{}", encoding="utf-8")
+            localization_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "spatialaccagent.debug_failure_localization.v0",
+                        "status": "localized",
+                        "root_candidate_module": "NormHarness",
+                        "failure_signature": {"summary": "rtl_output.memh missing"},
+                        "minimal_repair_context": {
+                            "trace_record": {
+                                "stage_id": "stage_00_norm",
+                                "status": "fail",
+                                "summary": "rtl_output.memh missing",
+                            },
+                            "diagnostic_observations": [
+                                {
+                                    "stage_id": "stage_00_norm",
+                                    "boundary_id": "boundary.input",
+                                    "module": "NormHarness",
+                                    "cycle": 1024,
+                                    "beat_index": 256,
+                                    "observed_value": {"valid": 1, "ready": 0},
+                                    "source": "sim.log",
+                                },
+                                {
+                                    "stage_id": "other_stage",
+                                    "boundary_id": "boundary.unrelated",
+                                    "cycle": 2048,
+                                    "observed_value": {"valid": 1, "ready": 0},
+                                },
+                            ],
+                        },
+                        "targeted_replay_plan": {
+                            "status": "ready",
+                            "strategy": "failed_stage_adjacent_boundary_replay",
+                            "probe_sequence": [{"boundary_id": "boundary.input"}],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            verification_result = {
+                "schema_version": "spatialaccagent.verification_result.v0",
+                "stage": "verification",
+                "status": "fail",
+                "results": [
+                    {"checker": "static_pass", "status": "pass", "details": "x" * 50_000},
+                    {
+                        "checker": "real_tool.case_leaf_functional",
+                        "status": "fail",
+                        "summary": "remote VCS simulation proved an adaptive semantic stall",
+                        "log_path": "real_tools/case_leaf_functional.json",
+                        "tool_report_blockers": ["adaptive semantic stall", "rtl_output.memh missing"],
+                    },
+                    {
+                        "checker": "real_tool.case_leaf_golden_compare",
+                        "status": "not_run",
+                        "summary": "blocked by functional failure",
+                    },
+                ],
+                "hierarchical_gate_summary": {
+                    "strategy": "layered",
+                    "missing_or_failed": [{"name": "case_leaf_functional", "status": "fail"}],
+                },
+                "hierarchical_repair_loop": {
+                    "status": "needs_repair",
+                    "failure_kind": "functional_failure",
+                    "current_layer": {
+                        "id": "operator_leaf_modules",
+                        "order": 0,
+                        "status": "needs_repair",
+                        "promotion_target": "single_transformer_layer_kernel",
+                        "required_gates": [{"name": "case_leaf_functional", "status": "fail"}],
+                    },
+                },
+                "debug_closure": {"failure_localization": str(localization_path)},
+                "retry_reconciliation_contract": {"status": "ready", "debug_layer": "operator_leaf_modules"},
+            }
+            with patch.object(
+                stage_llm,
+                "build_stage_agent_prompt_inputs",
+                return_value=(
+                    {
+                        "sacg_memory": {
+                            "schema_version": "spatialaccagent.scoped_sacg_memory.v1",
+                            "recent_failure_lessons": [
+                                {
+                                    "id": "lesson-current",
+                                    "stage": "stage6.verification",
+                                    "debug_layer": "operator_leaf_modules",
+                                    "summary": "Do not replay an unchanged stalled boundary.",
+                                }
+                            ],
+                        },
+                        "sacg_memory_truth": {
+                            "schema_version": "spatialaccagent.scoped_sacg_memory_truth.v1",
+                            "active_contamination_barriers": [
+                                {"id": "barrier-current", "debug_layer": "operator_leaf_modules"}
+                            ],
+                            "open_retry_requests": [{"id": "retry-current"}],
+                        },
+                    },
+                    False,
+                    {
+                        "status": "validated",
+                        "validated_lower_layer_certificates": [
+                            {"scope": "operator_leaf_modules", "level_id": "layer1", "claim": "leaf evidence"}
+                        ],
+                    },
+                ),
+            ):
+                prompt = stage_llm.compact_retry_prompt(
+                    "verification_targeted_specialist_agent",
+                    "verification.targeted_specialist",
+                    "Review the current failed layer.",
+                    {
+                        "source_sacg_state": str(state_path),
+                        "routing_trigger": "current layer blocked",
+                        "verification_result": verification_result,
+                    },
+                    {"type": "object", "properties": {"status": {"type": "string"}}},
+                )
+
+        compact_block = prompt.split("<compact_inputs>\n", 1)[1].split(
+            "\n</compact_inputs>", 1
+        )[0]
+        compact = json.loads(compact_block)
+        result = compact["verification_result"]
+        localization = result["failure_localization"]
+
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(result["current_layer"]["id"], "operator_leaf_modules")
+        self.assertEqual(
+            result["failed_or_blocked_results"][0]["tool_report_blockers"],
+            ["adaptive semantic stall", "rtl_output.memh missing"],
+        )
+        self.assertEqual(
+            localization["current_handshake_stall"]["status"],
+            "terminal_backpressure_observed",
+        )
+        self.assertEqual(
+            localization["current_handshake_stall"]["interfaces"][0]["boundary_id"],
+            "boundary.input",
+        )
+        self.assertEqual(len(localization["minimal_repair_context"]["diagnostic_observations"]), 1)
+        self.assertEqual(localization["artifact_path"], str(localization_path))
+        self.assertNotIn("x" * 1_000, json.dumps(compact))
+        self.assertEqual(
+            result["sacg_memory_truth"]["active_contamination_barriers"][0]["id"],
+            "barrier-current",
+        )
+        self.assertEqual(
+            result["sacg_memory"]["recent_failure_lessons"][0]["id"],
+            "lesson-current",
+        )
+        self.assertEqual(
+            result["hierarchical_learning_context"]["validated_lower_layers"][0]["level_id"],
+            "layer1",
+        )
+        self.assertNotIn("compiled broad observation source", prompt)
+        self.assertIn("same-layer observation or targeted-replay action", prompt)
+
+    def test_targeted_specialist_receives_effective_replay_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            state_path = run_dir / "repair_execution" / "sacg_state.json"
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text("{}", encoding="utf-8")
+            ledger_path = (
+                run_dir
+                / "verification"
+                / "debug_closure"
+                / "targeted_replay_ledger.json"
+            )
+            ledger_path.parent.mkdir(parents=True)
+            ledger_path.write_text(
+                json.dumps(
+                    {
+                        "completed": {
+                            "execution-identity": {
+                                "execution_input": {
+                                    "schema_version": "spatialaccagent.targeted_leaf_trace_execution_input.v3",
+                                    "stage_id": "stage_00_norm",
+                                    "semantic_input_fingerprint_sha256": "a" * 64,
+                                    "trace_env": {
+                                        "SPATIALACC_BOUNDARY_TRACE": "1",
+                                        "SPATIALACC_TARGETED_REPLAY": "1",
+                                        "SPATIALACC_TARGET_BOUNDARY": "boundary.input",
+                                        "SPATIALACC_CHECKPOINT_REPLAY": "1",
+                                    },
+                                },
+                                "result_status": "fail",
+                                "result_summary": "VCS observed ingress backpressure",
+                                "completed_at_unix_sec": 10,
+                                "input": {
+                                    "targeted_replay_plan": {
+                                        "rationale": "must not be forwarded"
+                                    }
+                                },
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            inputs = {
+                "source_sacg_state": str(state_path),
+                "verification_result": {
+                    "schema_version": "spatialaccagent.verification_result.v0",
+                    "stage": "verification",
+                    "status": "fail",
+                    "current_layer": {"id": "operator_leaf_modules", "status": "needs_repair"},
+                    "results": [
+                        {
+                            "checker": "real_tool.case_leaf_functional",
+                            "status": "fail",
+                            "summary": "semantic VCS stalled",
+                        }
+                    ],
+                },
+            }
+            projected = stage_llm.compact_verification_result_for_specialist(inputs)
+            prompt = stage_llm.compact_retry_prompt(
+                "verification_targeted_specialist_agent",
+                "verification.targeted_specialist",
+                "Diagnose the current leaf failure.",
+                inputs,
+                {"type": "object", "properties": {"status": {"type": "string"}}},
+            )
+
+            for agent in ("repair_targeted_specialist_agent", "repair_agent"):
+                with self.subTest(agent=agent):
+                    repair_prompt = stage_llm.compact_retry_prompt(
+                        agent,
+                        "repair",
+                        "Consume the fresh leaf trace before selecting another action.",
+                        inputs,
+                        {"type": "object", "properties": {"status": {"type": "string"}}},
+                    )
+                    self.assertIn("targeted_replay_history", repair_prompt)
+                    self.assertIn("boundary.input", repair_prompt)
+
+        history = projected["targeted_replay_history"]
+        self.assertEqual(history["records"][0]["target_boundary"], "boundary.input")
+        self.assertEqual(
+            history["records"][0]["semantic_input_fingerprint_sha256"], "a" * 64
+        )
+        self.assertNotIn("rationale", json.dumps(history))
+        self.assertIn("effective trace_env", prompt)
+        self.assertIn("semantic_input_fingerprint_sha256", prompt)
+
+    def test_layer3_specialist_keeps_board_observation_rules(self) -> None:
+        prompt = stage_llm.compact_retry_prompt(
+            "verification_targeted_specialist_agent",
+            "verification.targeted_specialist",
+            "Review the current board verification failure.",
+            {
+                "verification_result": {
+                    "status": "fail",
+                    "current_layer": {
+                        "id": "board_axi_ddr_wrapped_system",
+                        "status": "needs_repair",
+                    },
+                }
+            },
+            {"type": "object", "properties": {"status": {"type": "string"}}},
+        )
+
+        self.assertIn("Layer-3 observation must be unconditional", prompt)
+        self.assertIn("compiled broad observation source", prompt)
+
+    def test_scalar_probe_is_not_compacted_as_terminal_backpressure(self) -> None:
+        localization = {
+            "status": "localized",
+            "minimal_repair_context": {
+                "trace_record": {"stage_id": "stage_00_norm", "status": "fail"},
+                "diagnostic_observations": [
+                    {
+                        "stage_id": "stage_00_norm",
+                        "boundary_id": "boundary.internal_state",
+                        "module": "Norm",
+                        "cycle": 1024,
+                        "probe_kind": "scalar",
+                        "observed_value": {
+                            "probe_kind": "scalar",
+                            "scalar_value": "0",
+                        },
+                    }
+                ],
+            },
+        }
+        result = stage_llm.compact_verification_failure_localization(localization)
+
+        self.assertEqual(result["current_handshake_stall"]["status"], "not_observed")
+        self.assertEqual(result["current_handshake_stall"]["interfaces"], [])
+
+    def test_scalar_probe_after_handshake_does_not_hide_terminal_backpressure(self) -> None:
+        localization = {
+            "status": "localized",
+            "minimal_repair_context": {
+                "trace_record": {"stage_id": "stage_00_norm", "status": "fail"},
+                "diagnostic_observations": [
+                    {
+                        "stage_id": "stage_00_norm",
+                        "boundary_id": "boundary.input",
+                        "module": "NormHarness",
+                        "cycle": 1024,
+                        "probe_kind": "ready_valid",
+                        "observed_value": {"valid": 1, "ready": 0},
+                    },
+                    {
+                        "stage_id": "stage_00_norm",
+                        "boundary_id": "boundary.internal_state",
+                        "module": "Norm",
+                        "cycle": 2048,
+                        "probe_kind": "scalar",
+                        "observed_value": {
+                            "probe_kind": "scalar",
+                            "scalar_value": "0",
+                        },
+                    },
+                ],
+            },
+        }
+        result = stage_llm.compact_verification_failure_localization(localization)
+
+        self.assertEqual(result["current_handshake_stall"]["terminal_cycle"], 1024)
+        self.assertEqual(
+            result["current_handshake_stall"]["interfaces"][0]["boundary_id"],
+            "boundary.input",
+        )
+
+    def test_failed_verification_specialist_compacts_before_first_request(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {"status": {"type": "string"}},
+            "required": ["status"],
+        }
+        output = '{"status":"ready"}'
+        localization = {
+            "status": "localized",
+            "minimal_repair_context": {
+                "trace_record": {"stage_id": "stage_00_norm", "status": "fail"},
+                "diagnostic_observations": [
+                    {
+                        "stage_id": "stage_00_norm",
+                        "boundary_id": "boundary.input",
+                        "cycle": 1024,
+                        "observed_value": {"valid": 1, "ready": 0},
+                    }
+                ],
+            },
+        }
+        verification_result = {
+            "schema_version": "spatialaccagent.verification_result.v0",
+            "stage": "verification",
+            "status": "fail",
+            "results": [
+                {"checker": "static_pass", "status": "pass", "details": "x" * 300_000},
+                {"checker": "case_leaf_functional", "status": "fail", "summary": "adaptive semantic stall"},
+            ],
+            "debug_closure": {"failure_localization": localization},
+            "hierarchical_repair_loop": {"current_layer": {"id": "operator_leaf_modules"}},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "SPATIALACC_LLM_AUTO_COMPACT_RETRY": "1",
+                        "SPATIALACC_LLM_AUTO_COMPACT_MIN_PROMPT_BYTES": "2000000",
+                        "SPATIALACC_LLM_RETRY_COMPACT_MIN_PROMPT_BYTES": "1",
+                    },
+                ),
+                patch.object(
+                    stage_llm,
+                    "resolved_llm_cfg",
+                    return_value=LlmCfg(
+                        model="test-model",
+                        endpoint="https://example.invalid",
+                        api_key="key",
+                        stream=True,
+                    ),
+                ),
+                patch.object(
+                    stage_llm,
+                    "call_llm_with_retry",
+                    return_value=(output, []),
+                ) as call,
+            ):
+                record = stage_llm.run_stage_agent(
+                    agent="verification_targeted_specialist_agent",
+                    stage="verification.targeted_specialist",
+                    task="review current verification failure",
+                    inputs={"verification_result": verification_result},
+                    out_dir=Path(tmp),
+                    fallback_summary="fallback",
+                    output_schema=schema,
+                )
+
+        self.assertEqual(call.call_count, 1)
+        self.assertTrue(record["proactive_prompt_compaction"])
+        self.assertIn("compact_retry_prompt", record["request_path"])
+        self.assertGreater(record["full_prompt_bytes"], record["prompt_bytes"])
+        self.assertIn("terminal_backpressure_observed", call.call_args.args[3])
 
     def test_compact_projection_bounds_long_source_text(self) -> None:
         source = "x" * 100_000
@@ -3455,6 +4425,7 @@ class LlmRetryPathTests(unittest.TestCase):
             manifest,
             ["certified:kernel"],
             ["generated:adapter", "generated:testbench"],
+            compiler_timescale="-timescale=1ps/1ps",
         )
 
         self.assertEqual(authority["counts"]["total_sources"], 5)
@@ -3466,6 +4437,14 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertEqual(
             authority["external_fixture"]["command_groups"][0]["source_ids"],
             ["fixture:model"],
+        )
+        self.assertIn(
+            "-timescale=1ps/1ps",
+            authority["manifest_ready_ordered_commands"][0]["argv"],
+        )
+        self.assertIn(
+            "-timescale=1ps/1ps",
+            authority["manifest_ready_ordered_commands"][1]["argv"],
         )
         self.assertEqual(
             authority["additional_generated_group"]["source_ids"],

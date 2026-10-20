@@ -1,0 +1,52 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "required_real_tool_evidence_check",
+      "tool_protocol_check",
+      "sacg_static_check"
+    ],
+    "action_type": "stage_retry",
+    "consumes": [
+      "input/case_adapter.json or explicitly configured SPATIALACC_CASE_ADAPTER",
+      "input_preparation/prepared_input_error_triage.json",
+      "input_preparation/constraint_to_evidence_gap_map.json",
+      "artifact.input.material_index",
+      "artifact.input.sample_project_index",
+      "artifact.input.tool_availability",
+      "artifact.input.tool_protocols",
+      "all current input-preparation source artifacts"
+    ],
+    "id": "input_preparation.retry_after_adapter_evidence_is_available",
+    "on_failure": "Retry input_preparation again only for resolvable input or framework issues. Preserve exact failed evidence, keep outputs blocked from downstream use, and do not backtrack hardware stages or invent missing materials.",
+    "produces": [
+      "prepared_inputs.json",
+      "input_preparation/retry_readiness.json",
+      "input_preparation/refreshed_source_and_tool_evidence_audit.json"
+    ],
+    "rationale": "Retry the failed current stage only after a real adapter is supplied and its provenance and declared tool protocols are checkable. This is an input/framework failure, not a hardware-design failure; no hardware stage should be rewound.",
+    "requires_approval": false,
+    "stage": "input_preparation",
+    "tool_roles": [
+      "sacg_validate",
+      "tool_protocol_check",
+      "real_tool_evidence_check"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 1,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": null,
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/001_retry.json",
+  "source_identities": {
+    "flow_controller_result_sha256": "cdd22dc984b482dd234a613bb457b14069bf972e85795ce03b629b0bc79c1e75",
+    "source_sacg_state_sha256": ""
+  },
+  "source_sacg_state": null,
+  "stage": "input_preparation"
+}

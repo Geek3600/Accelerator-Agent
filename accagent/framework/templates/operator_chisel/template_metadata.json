@@ -6,14 +6,14 @@
       "template_id": "activation",
       "source": "Activation.scala",
       "supported_ops": ["activation", "relu", "gelu", "gelu_new", "silu", "gelu_tanh"],
-      "required_params": ["hidden_size", "lanes", "elem_bits"],
+      "required_params": ["hidden_size", "lanes", "elem_bits", "integer_mode"],
       "constraints_emitted": ["shape", "numeric", "stream", "beat"]
     },
     {
       "template_id": "attention",
       "source": "Attention.scala",
       "supported_ops": ["self_attention", "mha_attention", "gqa_attention", "mqa_attention"],
-      "required_params": ["hidden_size", "num_q_heads", "num_kv_heads", "head_dim", "seq_len", "lanes", "elem_bits"],
+      "required_params": ["hidden_size", "num_q_heads", "num_kv_heads", "head_dim", "seq_len", "lanes", "elem_bits", "weight_bits", "acc_bits", "integer_mode"],
       "constraints_emitted": ["shape", "numeric", "stream", "beat", "memory", "liveness"]
     },
     {
@@ -37,14 +37,14 @@
       "template_id": "elementwise",
       "source": "Elementwise.scala",
       "supported_ops": ["elementwise_mul", "activation_mul"],
-      "required_params": ["hidden_size", "lanes", "elem_bits"],
+      "required_params": ["hidden_size", "lanes", "elem_bits", "integer_mode"],
       "constraints_emitted": ["shape", "numeric", "stream", "beat"]
     },
     {
       "template_id": "ffn",
       "source": "FFN.scala",
       "supported_ops": ["dense_ffn", "dense_mlp", "gated_mlp", "mlp_fc", "mlp_proj", "mlp_fc1", "mlp_fc2", "mlp_gate_proj", "mlp_up_proj", "mlp_down_proj"],
-      "required_params": ["hidden_size", "intermediate_size", "lanes", "elem_bits"],
+      "required_params": ["hidden_size", "intermediate_size", "lanes", "elem_bits", "weight_bits", "acc_bits", "integer_mode"],
       "constraints_emitted": ["shape", "numeric", "stream", "beat", "memory"]
     },
     {
@@ -72,21 +72,21 @@
       "template_id": "norm",
       "source": "Norm.scala",
       "supported_ops": ["layer_norm", "rms_norm", "qk_norm"],
-      "required_params": ["hidden_size", "lanes", "input_bits", "output_bits", "eps"],
+      "required_params": ["hidden_size", "lanes", "input_bits", "output_bits", "eps", "integer_mode"],
       "constraints_emitted": ["shape", "numeric", "stream", "beat"]
     },
     {
       "template_id": "qkv_projection",
       "source": "QKVProjection.scala",
       "supported_ops": ["qkv_projection", "q_proj", "k_proj", "v_proj", "fused_qkv"],
-      "required_params": ["hidden_size", "num_q_heads", "num_kv_heads", "head_dim", "lanes"],
+      "required_params": ["hidden_size", "num_q_heads", "num_kv_heads", "head_dim", "lanes", "weight_bits", "acc_bits", "integer_mode"],
       "constraints_emitted": ["shape", "numeric", "stream", "beat", "memory"]
     },
     {
       "template_id": "residual",
       "source": "Residual.scala",
       "supported_ops": ["residual_add", "residual_add_1", "residual_add_2"],
-      "required_params": ["hidden_size", "lanes", "elem_bits"],
+      "required_params": ["hidden_size", "lanes", "elem_bits", "integer_mode"],
       "constraints_emitted": ["shape", "numeric", "stream", "beat"]
     },
     {

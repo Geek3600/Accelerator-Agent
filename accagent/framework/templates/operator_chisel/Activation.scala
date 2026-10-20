@@ -9,11 +9,25 @@ final case class ActivationParams(
   elemBits: Int = 8,
   batchSize: Int = 16,
   maxSeqLen: Int = 16,
-  kind: String = "relu"
+  kind: String = "relu",
+  outputBits: Int = 16,
+  integerMode: Boolean = false
 ) {
   require(hiddenSize % lanes == 0, "hiddenSize must be divisible by lanes")
+  if (integerMode) {
+    require(elemBits == 8, "integer activations require signed INT8 inputs")
+    require(outputBits == 8, "integer activation output must be signed INT8")
+    require(
+      Set("relu", "silu", "swish", "gelu", "gelu_new", "gelu_pytorch_tanh", "gelu_tanh").contains(kind),
+      s"unsupported integer activation kind: $kind"
+    )
+  } else {
+    require(elemBits == 16 || elemBits == 32, "floating-point activations require IEEE FP16 or FP32")
+    require(outputBits == 16 || outputBits == 32, "floating-point activation output requires IEEE FP16 or FP32")
+  }
   val beats: Int = hiddenSize / lanes
   val beatBits: Int = lanes * elemBits
+  val outputBeatBits: Int = lanes * outputBits
   val addrBits: Int = log2Ceil(batchSize * beats max 2)
 }
 
@@ -21,19 +35,54 @@ class Activation(p: ActivationParams) extends Module {
   val io = IO(new Bundle {
     val cfg = Input(new StageConfig(log2Ceil(p.maxSeqLen + 1 max 2)))
     val in = Flipped(Decoupled(new StreamBeat(StreamSpec(p.beatBits, p.addrBits))))
-    val out = Decoupled(new StreamBeat(StreamSpec(p.beatBits, p.addrBits)))
+    val out = Decoupled(new StreamBeat(StreamSpec(p.outputBeatBits, p.addrBits)))
   })
 
-  private val sigmoidTablePath = "src/main/resources/spatialaccagent/numeric/sigmoid_pwl_q18.mem"
-  private val q11Width = 16
-  private val sigmoidFractionBits = 18
+  if (p.integerMode) {
+    // Integer GELU/SiLU approximation: a bounded linear sigmoid in Q7 followed
+    // by a signed INT8 multiply and real Q31 nearest-even requantization.
+    // GELU uses a steeper slope for the tanh-based approximation; SiLU uses
+    // the unit sigmoid slope. The path contains no floating-point IP.
+    io.in.ready := io.out.ready
+    io.out.valid := io.in.valid
+    io.out.bits.st := io.in.bits.st
+    io.out.bits.addr := io.in.bits.addr
+    io.out.bits.last := io.in.bits.last
+    val input = io.in.bits.data.asTypeOf(Vec(p.lanes, SInt(8.W)))
+    val result = Wire(Vec(p.lanes, UInt(8.W)))
+    for (lane <- 0 until p.lanes) {
+      val x = input(lane)
+      val y = if (p.kind == "relu") {
+        Mux(x < 0.S, 0.S(8.W), x)
+      } else if (p.kind == "silu" || p.kind == "swish" || p.kind == "gelu" || p.kind == "gelu_new" || p.kind == "gelu_pytorch_tanh" || p.kind == "gelu_tanh") {
+        // Explicit code-domain PWL approximation to sigmoid(x): unsigned
+        // Q7 coefficient, centered at 0.5, clamped to [0, 1]. The Q31
+        // multiplier below divides x*coefficient by 128. Zero-extend before
+        // signed multiplication so the valid coefficient 128 is never
+        // reinterpreted as -128.
+        val slope = if (p.kind == "silu" || p.kind == "swish") 8 else 14
+        val linear = 64.S(16.W) + (x * slope.S(5.W)).pad(16)
+        val sigmoid = Mux(linear < 0.S, 0.U(8.W), Mux(linear > 128.S, 128.U(8.W), linear.asUInt(7, 0)))
+        val coefficient = Cat(0.U(1.W), sigmoid).asSInt
+        val product = x * coefficient
+        AccMath.requantizeQ31(product, (BigInt(1) << 24).U(32.W), 8).asSInt
+      } else {
+        x
+      }
+      result(lane) := AccMath.resizeSignedToUInt(y, 8)
+    }
+    io.out.bits.data := result.asUInt
+  } else {
+  val sigmoidTablePath = "src/main/resources/spatialaccagent/numeric/sigmoid_pwl_q18.mem"
+  val q11Width = 16
+  val sigmoidFractionBits = 18
 
   if (p.kind == "silu" || p.kind == "swish") {
     require(p.elemBits == 16 || p.elemBits == 32, "target-model SiLU requires IEEE fp16 or fp32 stream elements")
 
     val streamSpec = StreamSpec(p.beatBits, p.addrBits)
     val inputBeat = Reg(new StreamBeat(streamSpec))
-    val resultData = Reg(Vec(p.lanes, UInt(p.elemBits.W)))
+    val resultData = Reg(Vec(p.lanes, UInt(p.outputBits.W)))
     val laneIndex = RegInit(0.U(log2Ceil(p.lanes max 2).W))
     val inputFpReg = Reg(UInt(32.W))
     val scaledInputReg = Reg(UInt(32.W))
@@ -163,7 +212,7 @@ class Activation(p: ActivationParams) extends Module {
         PhysicalMath.fp32Zero,
         Mux(abovePlusEightReg, inputFpReg, productScale.io.out)
       )
-      resultData(AccMath.boundedIndex(laneIndex, p.lanes)) := PhysicalMath.fromFp32(selectedResult, p.elemBits)
+      resultData(AccMath.boundedIndex(laneIndex, p.lanes)) := PhysicalMath.fromFp32(selectedResult, p.outputBits)
       when(laneIndex === (p.lanes - 1).U) {
         laneIndex := 0.U
         state := sEmit
@@ -188,7 +237,7 @@ class Activation(p: ActivationParams) extends Module {
     io.out.bits.addr := io.in.bits.addr
     io.out.bits.last := io.in.bits.last
     val inVec = io.in.bits.data.asTypeOf(Vec(p.lanes, SInt(p.elemBits.W)))
-    val outVec = Wire(Vec(p.lanes, UInt(p.elemBits.W)))
+    val outVec = Wire(Vec(p.lanes, UInt(p.outputBits.W)))
     for (lane <- 0 until p.lanes) {
       val x = inVec(lane)
       val y = if (p.kind == "relu") {
@@ -198,12 +247,13 @@ class Activation(p: ActivationParams) extends Module {
       } else {
         x
       }
-      outVec(lane) := AccMath.resizeSignedToUInt(y, p.elemBits)
+      outVec(lane) := AccMath.resizeSignedToUInt(y, p.outputBits)
     }
     io.out.bits.data := outVec.asUInt
   }
 
   dontTouch(io.cfg)
+  }
 }
 
 class ActivationReLU(p: ActivationParams) extends Activation(p.copy(kind = "relu"))

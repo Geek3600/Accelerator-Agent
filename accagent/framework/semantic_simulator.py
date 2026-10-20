@@ -26,12 +26,23 @@ from accagent.framework.fpga_ip_runtime import (
     fpga_ip_runtime_protocol_identity,
     stage_fpga_ip_runtime,
 )
+from accagent.framework.verification_evidence_contract import (
+    COMPILE_ONLY_POLICY,
+    compile_log_errors,
+)
+from accagent.framework.stage_input_common import (
+    normalized_functional_verification_role,
+)
 
 
 SCHEMA_VERSION = "spatialaccagent.semantic_simulator_execution.v1"
 MAX_VCS_COMPILE_JOBS = 32
 MEMORY_INIT_DEFINE = "ENABLE_INITIAL_MEM_"
 READMEM_LITERAL_RE = re.compile(r'\$readmem[hb]\s*\(\s*"([^"]+)"')
+MEMORY_INIT_FILE_LITERAL_RE = re.compile(
+    r'\.MEMORY_INIT_FILE\s*\(\s*"([^"]+)"\s*\)'
+)
+MEMORY_INIT_FILE_DISABLED_VALUES = {"none"}
 PHYSICAL_XPM_MODULE_NAMES = {"xpm_memory_sdpram", "xpm_memory_sprom"}
 PHYSICAL_SIMULATION_MODULE_RE = re.compile(r"\b(?:fp_[a-z0-9_]+|xpm_memory_[a-z0-9_]+)\b")
 SEMANTIC_STALL_EXIT_CODE = 86
@@ -50,6 +61,57 @@ REMOTE_RUNNER_PROCESS_PROVENANCE_SCHEMA = (
 REMOTE_JOB_PROCESS_MARKER = "SPATIALACC_REMOTE_JOB_PROCESS"
 REMOTE_JOB_PROCESS_SUMMARY_MARKER = "SPATIALACC_REMOTE_JOB_PROCESS_SUMMARY"
 FORCE_FRESH_REMOTE_VCS_ENV = "SPATIALACC_FORCE_FRESH_REMOTE_VCS"
+BOUNDARY_TRACE_ENV = "SPATIALACC_BOUNDARY_TRACE"
+TARGET_BOUNDARY_ENV = "SPATIALACC_TARGET_BOUNDARY"
+LEAF_ZERO_DELAY_LOOP_MARKERS = (
+    "possible zero delay loop",
+    "delta-cycles exceeded the threshold-limit",
+)
+SIMULATION_TIME_RE = re.compile(
+    r"\bat\s+time\s+([0-9]+(?:\.\d+)?)\s*(fs|ps|ns|us|ms|s)\b",
+    re.IGNORECASE,
+)
+LEAF_HEARTBEAT_FIELD_RE = re.compile(
+    r"\b([A-Za-z_][A-Za-z0-9_]*)=([^\s]+)"
+)
+LEAF_HEARTBEAT_INPUT_RE = re.compile(r"^input_(\d+)_accepted$")
+
+
+def vcs_tool_environment(tool: dict[str, Any], target_arch: str | None = None) -> str:
+    vcs_home = Path(str(tool["executable"])).parent.parent
+    environment = {"LANG": "C", "LC_ALL": "C", "VCS_TARGET_ARCH": "linux64", **(tool.get("env") or {})}
+    environment["VCS_HOME"] = str(vcs_home)
+    if target_arch:
+        environment["VCS_TARGET_ARCH"] = target_arch
+    if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) for key in environment):
+        raise ValueError("invalid VCS environment variable name")
+    return " ".join(
+        f"export {key}={shlex.quote(str(value))};" for key, value in sorted(environment.items())
+    ) + f" export PATH={shlex.quote(str(vcs_home / 'bin'))}:/usr/bin:/bin:$PATH; "
+
+
+def remote_transport_result_failed(result: dict[str, Any] | None) -> bool:
+    if not isinstance(result, dict) or result.get("status") != "fail":
+        return False
+    if str(result.get("failure_class") or "") in {
+        "remote_transport_failure",
+        "remote_semantic_recovery_indeterminate",
+        "remote_recovery_indeterminate",
+        "remote_tool_poll_budget_exhausted",
+    }:
+        return True
+    stderr = str(result.get("stderr_tail") or "").lower()
+    return int(result.get("returncode") or 0) in {124, 255} and any(
+        marker in stderr
+        for marker in (
+            "connection closed",
+            "connection reset",
+            "connection timed out",
+            "connection refused",
+            "ssh:",
+            "scp:",
+        )
+    )
 
 
 def force_fresh_remote_vcs() -> bool:
@@ -62,6 +124,350 @@ def force_fresh_remote_vcs() -> bool:
     """
 
     return os.environ.get(FORCE_FRESH_REMOTE_VCS_ENV, "0") == "1"
+
+
+def boundary_trace_enabled() -> bool:
+    return os.environ.get(BOUNDARY_TRACE_ENV, "0") == "1"
+
+
+def target_boundary() -> str:
+    """Return the Agent-selected boundary for the current trace epoch."""
+
+    return os.environ.get(TARGET_BOUNDARY_ENV, "").strip()
+
+
+def diagnostic_testbench_overlay(
+    testbench_text: str,
+    stage_id: str,
+    internal_probe_signals: list[str] | None = None,
+    target_boundary_id: str = "",
+    probe_paths_relative_to_harness: bool = False,
+) -> tuple[str, dict[str, Any]]:
+    """Add leaf boundary observations without changing the functional contract."""
+
+    if "SPATIALACC_INTERNAL_TRACE " in testbench_text:
+        return testbench_text, {
+            "status": "already_instrumented",
+            "stage_id": stage_id,
+            "sha256": hashlib.sha256(testbench_text.encode("utf-8")).hexdigest(),
+        }
+    safe_stage = re.sub(r"[^a-zA-Z0-9_]+", "_", str(stage_id)).strip("_") or "unknown"
+    module_match = re.search(r"\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)\s*;", testbench_text)
+    module = module_match.group(1) if module_match else "semantic_tb"
+    boundary_fingerprint = hashlib.sha256(
+        target_boundary_id.encode("utf-8")
+    ).hexdigest()[:16]
+    template = (
+        '$display("SPATIALACC_INTERNAL_TRACE stage={stage} '
+        'boundary={boundary} target={target} module={module} probe_kind=ready_valid cycle=%0d valid=%0d ready=%0d '
+        'beat=%0d data=%h at time %0t", cycles, {valid}, {ready}, {beat}, {data}, $time);'
+    )
+    scalar_template = (
+        '$display("SPATIALACC_INTERNAL_TRACE stage={stage} '
+        'boundary={boundary} target={target} module={module} probe_kind=scalar cycle=%0d '
+        'scalar_value=%h at time %0t", cycles, {scalar}, $time);'
+    )
+
+    def trace(
+        boundary: str,
+        valid: str,
+        ready: str,
+        beat: str,
+        data: str,
+        indent: str = "    ",
+    ) -> str:
+        return indent + template.format(
+            stage=safe_stage,
+            boundary=boundary,
+            target=boundary_fingerprint,
+            module=module,
+            valid=valid,
+            ready=ready,
+            beat=beat,
+            data=data,
+        )
+
+    def scalar_trace(
+        boundary: str,
+        scalar: str,
+        indent: str = "    ",
+    ) -> str:
+        return indent + scalar_template.format(
+            stage=safe_stage,
+            boundary=boundary,
+            target=boundary_fingerprint,
+            module=module,
+            scalar=scalar,
+        )
+
+    overlay = testbench_text
+    reset_marker = "    reset = 0;"
+    if reset_marker in overlay:
+        overlay = overlay.replace(
+            reset_marker,
+            reset_marker + "\n" + trace("tb.reset_release", "0", "0", "0", "0"),
+            1,
+        )
+    capture_marker = '    if (!output_fd) $fatal(1, "cannot open semantic RTL output capture");'
+    if capture_marker in overlay:
+        overlay = overlay.replace(
+            capture_marker,
+            capture_marker + "\n" + trace("tb.capture_open", "1", "1", "0", "0"),
+            1,
+        )
+    for index in sorted(
+        int(match.group(1))
+        for match in re.finditer(r"\breg\s+input_(\d+)_valid\b", overlay)
+    ):
+        handshake_match = re.search(
+            rf"(?m)^(?P<indent>\s*)if \(input_{index}_valid && input_{index}_ready\) "
+            rf"(?P<statement>input_{index}_accepted = input_{index}_accepted \+ 1;)\s*$",
+            overlay,
+        )
+        if handshake_match:
+            indent = handshake_match.group("indent")
+            handshake = handshake_match.group(0)
+            overlay = overlay.replace(
+                handshake,
+                f"{indent}if (input_{index}_valid && input_{index}_ready) begin\n"
+                f"{indent}  {handshake_match.group('statement')}\n"
+                + trace(
+                    f"tb.input_{index}",
+                    f"input_{index}_valid",
+                    f"input_{index}_ready",
+                    f"input_{index}_accepted",
+                    f"input_{index}_data",
+                    indent=indent + "  ",
+                )
+                + f"\n{indent}end",
+                1,
+            )
+    for prefix in ("weight", "runtime"):
+        handshake_match = re.search(
+            rf"(?m)^(?P<indent>\s*){prefix}_accepted\s*=\s*"
+            rf"{prefix}_accepted\s*\+\s*1;\s*$",
+            overlay,
+        )
+        if handshake_match:
+            handshake = handshake_match.group(0)
+            overlay = overlay.replace(
+                handshake,
+                handshake
+                + "\n"
+                + trace(
+                    f"tb.{prefix}",
+                    f"{prefix}_valid",
+                    f"{prefix}_ready",
+                    f"{prefix}_accepted",
+                    f"{prefix}_data",
+                    indent=handshake_match.group("indent"),
+                ),
+                1,
+            )
+    output_match = re.search(
+        r"(?m)^(?P<indent>\s*)output_produced\s*=\s*"
+        r"output_produced\s*\+\s*1;\s*$",
+        overlay,
+    )
+    if output_match:
+        output_handshake = output_match.group(0)
+        overlay = overlay.replace(
+            output_handshake,
+            output_handshake
+            + "\n"
+            + trace(
+                "tb.output",
+                "output_valid",
+                "output_ready",
+                "output_produced",
+                "output_data",
+                indent=output_match.group("indent"),
+            ),
+            1,
+        )
+    if "    start = 1;" in overlay:
+        overlay = overlay.replace(
+            "    start = 1;",
+            "    start = 1;\n" + trace("tb.start", "1", "1", "0", "0"),
+            1,
+        )
+    snapshot_lines: list[str] = []
+    for index in sorted(
+        int(match.group(1))
+        for match in re.finditer(r"\breg\s+input_(\d+)_valid\b", overlay)
+    ):
+        snapshot_lines.append(
+            trace(
+                f"tb.input_{index}_snapshot",
+                f"input_{index}_valid",
+                f"input_{index}_ready",
+                f"input_{index}_accepted",
+                f"input_{index}_data",
+                indent="      ",
+            )
+        )
+    if "output_valid" in overlay and "output_ready" in overlay:
+        snapshot_lines.append(
+            trace(
+                "tb.output_snapshot",
+                "output_valid",
+                "output_ready",
+                "output_produced",
+                "output_data",
+                indent="      ",
+            )
+        )
+    for signal in internal_probe_signals or []:
+        signal_path = (
+            f"dut.{signal}"
+            if probe_paths_relative_to_harness
+            else (signal if signal.startswith("dut.") else f"dut.{signal}")
+        )
+        snapshot_lines.append(
+            scalar_trace(
+                f"harness.{signal}",
+                signal_path,
+                indent="      ",
+            )
+        )
+    if snapshot_lines:
+        monitor = "\n".join(
+            [
+                "  always @(posedge clock) begin",
+                "    if (!reset && heartbeat_phase == \"streaming\" &&",
+                "        (cycles % HEARTBEAT_PERIOD_CYCLES) == 0) begin",
+                *[f"{line}" for line in snapshot_lines],
+                "    end",
+                "  end",
+            ]
+        )
+        endmodule_index = overlay.rfind("endmodule")
+        if endmodule_index >= 0:
+            overlay = overlay[:endmodule_index] + monitor + "\n" + overlay[endmodule_index:]
+    close_marker = "    $fclose(output_fd);"
+    if close_marker in overlay:
+        overlay = overlay.replace(
+            close_marker,
+            trace("tb.capture_close", "1", "1", "output_produced", "0")
+            + "\n"
+            + close_marker,
+            1,
+        )
+    if overlay == testbench_text:
+        status = "no_supported_probe_sites"
+    else:
+        status = "ready"
+    return overlay, {
+        "status": status,
+        "stage_id": stage_id,
+        "module": module,
+        "target_boundary": target_boundary_id,
+        "internal_probe_signals": list(internal_probe_signals or []),
+        "probe_paths_relative_to_harness": probe_paths_relative_to_harness,
+        "sha256": hashlib.sha256(overlay.encode("utf-8")).hexdigest(),
+    }
+
+
+def harness_control_probe_signals(
+    harness: dict[str, Any],
+    *,
+    include_descendant_controls: bool = False,
+) -> list[str]:
+    """Discover hash-bound harness and DUT control nets."""
+
+    top_module = str(harness.get("top_module") or "")
+    rows = harness.get("source_files", [])
+    if not top_module or not isinstance(rows, list):
+        return []
+    source_texts: list[str] = []
+    candidates: list[str] = []
+    pattern = re.compile(
+        rf"\bmodule\s+{re.escape(top_module)}\b.*?;(?P<body>.*?)\bendmodule\b",
+        re.DOTALL,
+    )
+    declaration = re.compile(
+        r"^\s*(?:wire|reg|logic)\s+(?:\[[^\]]+\]\s+)?([A-Za-z_][A-Za-z0-9_]*)\b",
+        re.MULTILINE,
+    )
+    control_name = re.compile(r"(?:valid|ready|loaded|enable|protocol|done|busy|active|state|count)", re.IGNORECASE)
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        path = Path(str(row.get("path") or ""))
+        if not path.is_file():
+            continue
+        try:
+            source_texts.append(path.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+    def controls(module_body: str) -> list[str]:
+        names: list[str] = []
+        for declaration_match in declaration.finditer(module_body):
+            name = declaration_match.group(1)
+            if control_name.search(name) and name not in names:
+                names.append(name)
+        return names
+
+    top_match = next(
+        (
+            pattern.search(text)
+            for text in source_texts
+            if pattern.search(text) is not None
+        ),
+        None,
+    )
+    if top_match is None:
+        return []
+    candidates.extend(controls(top_match.group("body")))
+    if not include_descendant_controls:
+        return candidates[:16]
+
+    module_pattern = re.compile(
+        r"\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)\b.*?;(?P<body>.*?)\bendmodule\b",
+        re.DOTALL,
+    )
+    module_bodies = {
+        match.group(1): match.group("body")
+        for text in source_texts
+        for match in module_pattern.finditer(text)
+    }
+    instance_pattern = re.compile(
+        r"(?m)^\s*([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("
+    )
+    descendant_candidates: list[str] = []
+    queue: list[tuple[str, str]] = [(top_module, "")]
+    visited: set[tuple[str, str]] = set()
+    while queue:
+        module_name, instance_path = queue.pop(0)
+        visit_key = (module_name, instance_path)
+        if visit_key in visited or module_name not in module_bodies:
+            continue
+        visited.add(visit_key)
+        if instance_path:
+            for name in controls(module_bodies[module_name]):
+                candidate = f"{instance_path}.{name}"
+                if candidate not in descendant_candidates:
+                    descendant_candidates.append(candidate)
+        instances = [
+            (match.group(1), match.group(2))
+            for match in instance_pattern.finditer(module_bodies[module_name])
+            if match.group(1) in module_bodies
+        ]
+        instances.sort(key=lambda item: (item[1] != "dut", item[1], item[0]))
+        for child_module, child_instance in instances:
+            child_path = (
+                f"{instance_path}.{child_instance}"
+                if instance_path
+                else child_instance
+            )
+            queue.append((child_module, child_path))
+    descendant_candidates.sort(
+        key=lambda name: (
+            not re.search(r"(?:^|[_.])(?:state|loaded|done|count)(?:$|_)", name, re.IGNORECASE),
+            name,
+        )
+    )
+    return candidates[:8] + descendant_candidates[:8]
 
 
 def sha256_file(path: Path) -> str:
@@ -93,12 +499,13 @@ def configured_vcs(run_dir: Path) -> tuple[dict[str, Any], list[str]]:
     if not profile_path.is_file():
         return {}, [f"tool profile is missing: {profile_path}"]
     profile = read_json(profile_path)
+
     candidates = [
         row
         for row in profile.get("tools", [])
         if isinstance(row, dict)
         and str(row.get("name") or "").lower() == "vcs"
-        and str(row.get("role") or "") == "functional_verification"
+        and normalized_functional_verification_role(row.get("role"))
     ]
     if len(candidates) != 1:
         return {}, [f"tool profile must declare exactly one functional VCS tool, found {len(candidates)}"]
@@ -243,6 +650,11 @@ def source_memory_init_contract(source: Path) -> tuple[bool, set[str]]:
                 if f"`ifdef {MEMORY_INIT_DEFINE}" in line:
                     guarded = True
                 references.update(READMEM_LITERAL_RE.findall(line))
+                references.update(
+                    reference
+                    for reference in MEMORY_INIT_FILE_LITERAL_RE.findall(line)
+                    if reference.lower() not in MEMORY_INIT_FILE_DISABLED_VALUES
+                )
     except OSError:
         return False, set()
     return guarded, references
@@ -336,21 +748,19 @@ def semantic_fpga_ip_static_binding(
             )
         ]
     closure = closure_check["closure"]
+    compute_backend = str(closure.get("compute_backend") or "vivado_fp_ip")
 
     def closure_file(key: str) -> Path:
         path = Path(str(closure[key])).expanduser()
         return path if path.is_absolute() else closure_path.parent / path
 
-    tcl_path = closure_file("ip_generation_tcl")
     manifest_path = closure_file("ip_module_manifest")
-    missing_paths = [
-        f"{label} is missing: {path}"
-        for label, path in (
-            ("FPGA IP generation TCL", tcl_path),
-            ("FPGA IP module manifest", manifest_path),
-        )
-        if not path.is_file()
-    ]
+    required_artifacts = [("FPGA IP module manifest", manifest_path)]
+    tcl_path = None
+    if compute_backend != "integer_dsp":
+        tcl_path = closure_file("ip_generation_tcl")
+        required_artifacts.append(("FPGA IP generation TCL", tcl_path))
+    missing_paths = [f"{label} is missing: {path}" for label, path in required_artifacts if not path.is_file()]
     if missing_paths:
         return {}, missing_paths
     required_modules = {
@@ -368,17 +778,22 @@ def semantic_fpga_ip_static_binding(
             "FPGA IP simulation closure does not cover generated physical modules: "
             + ", ".join(missing_models)
         ]
-    try:
-        runtime_protocol = fpga_ip_runtime_protocol_identity()
-    except (OSError, ValueError, FileNotFoundError) as exc:
-        return {}, [f"FPGA IP runtime protocol is unavailable: {exc}"]
+    if compute_backend == "integer_dsp":
+        runtime_protocol = {"protocol_version": "integer_dsp_xpm_source_v1"}
+    else:
+        try:
+            runtime_protocol = fpga_ip_runtime_protocol_identity()
+        except (OSError, ValueError, FileNotFoundError) as exc:
+            return {}, [f"FPGA IP runtime protocol is unavailable: {exc}"]
     staged_payload = {
         "fpga_ip/fpga_ip_simulation_closure.json": sha256_file(closure_path),
-        "fpga_ip/gen_xilinx_fp_ips.tcl": sha256_file(tcl_path),
         "fpga_ip/fpga_ip_modules.txt": sha256_file(manifest_path),
-        **dict(runtime_protocol["files"]),
+        **dict(runtime_protocol.get("files", {})),
     }
+    if tcl_path is not None:
+        staged_payload["fpga_ip/gen_xilinx_fp_ips.tcl"] = sha256_file(tcl_path)
     identity = {
+        "compute_backend": compute_backend,
         "fpga_part": str(closure["fpga_part"]),
         "required_module_references": references,
         "required_ip_modules": sorted(required_modules),
@@ -493,6 +908,7 @@ def semantic_input_fingerprint(
     if blockers:
         return "", blockers
     payload_hashes = [sha256_file(path) for path in paths]
+    payload_hashes.append(f"validation_policy:{COMPILE_ONLY_POLICY}")
     if run_dir is not None:
         defines, dependencies, init_errors = semantic_memory_init_payload(
             run_dir,
@@ -693,6 +1109,9 @@ def _semantic_contract_identity(
             "executable": tool.get("executable"),
             "vcs_target_arch": target_arch,
             "compile_jobs": semantic_vcs_compile_jobs(),
+            "validation_policy": (
+                (COMPILE_ONLY_POLICY)
+            ),
             **(
                 {"fpga_ip_runtime": fpga_ip_tool_identity}
                 if fpga_ip_tool_identity
@@ -2117,6 +2536,28 @@ def adaptive_stall_evidence_from_progress_callback(
             and snapshot.get("remote_workdir") == remote_dir
             and (not fingerprint or snapshot.get("input_fingerprint_sha256") == fingerprint)
         ):
+            history_path = getattr(progress_callback, "history_path", None)
+            if (
+                evidence.get("status") != "proven_semantic_stall"
+                and snapshot.get("process_state") == "done"
+                and fingerprint
+                and isinstance(history_path, Path)
+                and history_path.is_file()
+            ):
+                with history_path.open(encoding="utf-8") as history:
+                    for line in history:
+                        try:
+                            record = json.loads(line)
+                        except ValueError:
+                            continue
+                        prior_evidence = record.get("adaptive_semantic_stall_evidence") if isinstance(record, dict) else None
+                        if (
+                            isinstance(prior_evidence, dict)
+                            and prior_evidence.get("status") == "proven_semantic_stall"
+                            and record.get("remote_workdir") == remote_dir
+                            and record.get("input_fingerprint_sha256") == fingerprint
+                        ):
+                            evidence = prior_evidence
             return evidence
     if not isinstance(raw_path, Path) or not raw_path.is_file():
         return {}
@@ -2321,15 +2762,20 @@ def progress_callback_observation(
         return observation
     if Path(log_name).name != log_name or log_name in {".", ".."}:
         raise ValueError("remote progress log name must be an isolated basename")
-    command = " ".join(
-        [
-            "set -u;",
-            f"cd {shlex.quote(remote_dir)};",
-            f"if [ -f {shlex.quote(log_name)} ]; then",
-            f"tail -c 12000 -- {shlex.quote(log_name)};",
-            "fi;",
-        ]
-    )
+    command_parts = [
+        "set -u;",
+        f"cd {shlex.quote(remote_dir)};",
+        f"if [ -s {shlex.quote(log_name)} ]; then",
+        f"tail -c 12000 -- {shlex.quote(log_name)};",
+    ]
+    if log_name == "sim.log" and semantic_stall_termination_label_allowed(label):
+        stdout_name = f".spatialacc_{safe_id(label)}.stdout.log"
+        command_parts.extend([
+            f"elif [ -f {shlex.quote(stdout_name)} ]; then",
+            f"tail -c 12000 -- {shlex.quote(stdout_name)};",
+        ])
+    command_parts.append("fi;")
+    command = " ".join(command_parts)
     result = command_result(remote_shell(host, port, command), cwd, 60)
     observation["progress_log_tail"] = str(result.get("stdout_tail") or "")
     observation["progress_log_transport"] = {
@@ -2337,6 +2783,535 @@ def progress_callback_observation(
         "returncode": result.get("returncode"),
     }
     return observation
+
+
+def leaf_heartbeat_contract(contract: dict[str, Any] | None) -> dict[str, Any]:
+    """Bind leaf heartbeat liveness checks to the generated semantic contract."""
+
+    contract = contract if isinstance(contract, dict) else {}
+    input_targets: dict[str, int] = {}
+    input_rows = contract.get("input_vectors")
+    if isinstance(input_rows, list):
+        for index, row in enumerate(input_rows):
+            beats = row.get("beats") if isinstance(row, dict) else None
+            if isinstance(beats, int) and not isinstance(beats, bool) and beats > 0:
+                input_targets[f"input_{index}_accepted"] = beats
+    expected_output = contract.get("expected_output")
+    output_beats = (
+        expected_output.get("beats") if isinstance(expected_output, dict) else None
+    )
+    if not (
+        isinstance(output_beats, int)
+        and not isinstance(output_beats, bool)
+        and output_beats > 0
+    ):
+        output_beats = None
+    result = {
+        "status": "ready" if input_targets and output_beats is not None else "not_ready",
+        "input_beat_targets": input_targets,
+        "expected_output_beats": output_beats,
+    }
+    loader_targets = {
+        counter: stream["word_count"]
+        for stream, counter in (
+            (contract.get("real_weight_stream", {}), "weight_accepted"),
+            (contract.get("runtime_constant_stream", {}), "runtime_accepted"),
+        )
+        if isinstance(stream, dict)
+        and isinstance(stream.get("word_count"), int)
+        and not isinstance(stream["word_count"], bool)
+        and stream["word_count"] > 0
+    }
+    if loader_targets:
+        result["loader_word_targets"] = loader_targets
+    return result
+
+
+class LeafSemanticProgressObserver:
+    """Prove leaf VCS zero-time and protocol-liveness failures from live evidence.
+
+    Leaf harnesses do not necessarily emit the board-level progress JSONL.  A
+    leaf job can still be closed safely when VCS keeps consuming CPU while its
+    own simulation-time diagnostics and log tail remain unchanged across
+    several independent remote snapshots.  It also recognizes a generated
+    heartbeat whose simulator time and CPU usage advance but whose contract-
+    bound stream counters remain stuck.  Both proofs avoid wall-clock and
+    fixed-cycle termination budgets.
+    """
+
+    remote_progress_log_name = "sim.log"
+    ZERO_TIME_LIVELOCK_UNCHANGED_SNAPSHOT_LIMIT = 3
+    HEARTBEAT_STALL_UNCHANGED_SNAPSHOT_LIMIT = 3
+
+    def __init__(
+        self,
+        *,
+        run_dir: Path,
+        stage_id: str,
+        host: str,
+        port: int,
+        heartbeat_contract: dict[str, Any] | None = None,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.stage_id = stage_id
+        self.fingerprint = ""
+        self.live_dir = (
+            run_dir / "verification" / "semantic_live" / safe_id(stage_id)
+        )
+        self.snapshot_path = self.live_dir / "live_progress.json"
+        self.history_path = self.live_dir / "live_progress_history.jsonl"
+        self._binding: tuple[str, str] | None = None
+        self._last_signature: tuple[str, str] | None = None
+        self._last_simulator_cpu_ticks: int | None = None
+        self._unchanged_running_snapshot_count = 0
+        self._cpu_active_without_progress_snapshot_count = 0
+        self.heartbeat_contract = leaf_heartbeat_contract(heartbeat_contract)
+        self._last_leaf_heartbeat: dict[str, Any] = {}
+        self._consecutive_heartbeat_stall_snapshots = 0
+        self.zero_time_livelock_evidence: dict[str, Any] = {}
+        self.adaptive_semantic_stall_evidence: dict[str, Any] = {}
+
+    @staticmethod
+    def _simulation_time(log_tail: str) -> dict[str, Any]:
+        matches = list(SIMULATION_TIME_RE.finditer(log_tail))
+        if not matches:
+            return {"status": "not_observed", "value": None, "unit": None}
+        last = matches[-1]
+        return {
+            "status": "observed",
+            "value": last.group(1),
+            "unit": last.group(2).lower(),
+        }
+
+    @staticmethod
+    def _native_loop_witness(log_tail: str) -> dict[str, Any]:
+        lower = log_tail.lower()
+        markers = [
+            marker for marker in LEAF_ZERO_DELAY_LOOP_MARKERS if marker in lower
+        ]
+        return {
+            "status": "observed" if markers else "not_observed",
+            "native_loop_detected": bool(markers),
+            "matched_markers": markers,
+            "excerpt": log_tail[-4000:] if markers else "",
+        }
+
+    @staticmethod
+    def _leaf_heartbeat(log_tail: str) -> dict[str, Any]:
+        for line in reversed(log_tail.splitlines()):
+            if "SPATIALACC_LEAF_HEARTBEAT" not in line:
+                continue
+            simulation_time = LeafSemanticProgressObserver._simulation_time(line)
+            fields = dict(LEAF_HEARTBEAT_FIELD_RE.findall(line))
+            try:
+                cycles = int(fields["cycles"])
+                output_beats = int(fields["output_beats"])
+            except (KeyError, ValueError):
+                continue
+            accepted = {
+                name: int(value)
+                for name, value in fields.items()
+                if LEAF_HEARTBEAT_INPUT_RE.fullmatch(name) is not None
+                and value.isdigit()
+            }
+            if simulation_time.get("status") != "observed" or not accepted:
+                continue
+            heartbeat = {
+                "status": "observed",
+                "simulation_time": simulation_time,
+                "phase": fields.get("phase"),
+                "cycles": cycles,
+                "input_accepted": accepted,
+                "output_beats": output_beats,
+            }
+            loader_accepted = {
+                name: int(fields[name])
+                for name in ("weight_accepted", "runtime_accepted")
+                if str(fields.get(name) or "").isdigit()
+            }
+            if loader_accepted:
+                heartbeat["loader_accepted"] = loader_accepted
+            return heartbeat
+        return {
+            "status": "not_observed",
+            "simulation_time": {"status": "not_observed", "value": None, "unit": None},
+            "phase": None,
+            "cycles": None,
+            "input_accepted": {},
+            "output_beats": None,
+        }
+
+    def _heartbeat_stall_context(
+        self,
+        heartbeat: dict[str, Any],
+    ) -> dict[str, Any]:
+        if (
+            self.heartbeat_contract.get("status") != "ready"
+            or heartbeat.get("status") != "observed"
+            or heartbeat.get("output_beats") != 0
+        ):
+            return {"status": "not_proven"}
+        targets = self.heartbeat_contract.get("input_beat_targets")
+        accepted = heartbeat.get("input_accepted")
+        loader_counter = {
+            "loading_weights": "weight_accepted",
+            "loading_runtime": "runtime_accepted",
+        }.get(heartbeat.get("phase"))
+        if loader_counter:
+            targets = {
+                loader_counter: self.heartbeat_contract.get("loader_word_targets", {}).get(loader_counter),
+            }
+            accepted = heartbeat.get("loader_accepted")
+        elif heartbeat.get("phase") != "streaming":
+            return {"status": "not_proven"}
+        if not isinstance(targets, dict) or not isinstance(accepted, dict):
+            return {"status": "not_proven"}
+        incomplete_inputs = {
+            name: accepted[name]
+            for name, target in targets.items()
+            if isinstance(target, int)
+            and name in accepted
+            and isinstance(accepted[name], int)
+            and 0 <= accepted[name] < target
+        }
+        if set(incomplete_inputs) != set(targets):
+            return {"status": "not_proven"}
+        return {
+            "status": "candidate",
+            "input_accepted": incomplete_inputs,
+            "input_beat_targets": targets,
+            "expected_output_beats": self.heartbeat_contract.get("expected_output_beats"),
+        }
+
+    @staticmethod
+    def _heartbeat_advanced(
+        heartbeat: dict[str, Any],
+        prior: dict[str, Any],
+    ) -> bool:
+        current_time = heartbeat.get("simulation_time")
+        prior_time = prior.get("simulation_time")
+        if not isinstance(current_time, dict) or not isinstance(prior_time, dict):
+            return False
+        if current_time.get("unit") != prior_time.get("unit"):
+            return False
+        try:
+            return (
+                int(heartbeat.get("cycles")) > int(prior.get("cycles"))
+                and float(current_time.get("value")) > float(prior_time.get("value"))
+            )
+        except (TypeError, ValueError):
+            return False
+
+    def _restore_or_reset(self, remote_dir: str) -> None:
+        binding = (self.fingerprint, remote_dir)
+        if binding == self._binding:
+            return
+        self._binding = binding
+        snapshot = read_json(self.snapshot_path) if self.snapshot_path.is_file() else {}
+        if (
+            snapshot.get("input_fingerprint_sha256") == self.fingerprint
+            and snapshot.get("remote_workdir") == remote_dir
+        ):
+            signature = snapshot.get("last_observation_signature")
+            if (
+                isinstance(signature, list)
+                and len(signature) == 2
+                and all(isinstance(value, str) for value in signature)
+            ):
+                self._last_signature = (signature[0], signature[1])
+            self._last_simulator_cpu_ticks = snapshot.get("simulator_cpu_ticks")
+            self._unchanged_running_snapshot_count = int(
+                snapshot.get("consecutive_unchanged_running_snapshots") or 0
+            )
+            self._cpu_active_without_progress_snapshot_count = int(
+                snapshot.get("consecutive_cpu_active_without_progress_snapshots")
+                or 0
+            )
+            prior_evidence = snapshot.get("zero_time_livelock_evidence")
+            if isinstance(prior_evidence, dict):
+                self.zero_time_livelock_evidence = prior_evidence
+            prior_heartbeat = snapshot.get("last_leaf_heartbeat")
+            if isinstance(prior_heartbeat, dict):
+                self._last_leaf_heartbeat = prior_heartbeat
+            self._consecutive_heartbeat_stall_snapshots = int(
+                snapshot.get("consecutive_heartbeat_stall_snapshots") or 0
+            )
+            prior_stall = snapshot.get("adaptive_semantic_stall_evidence")
+            if isinstance(prior_stall, dict):
+                self.adaptive_semantic_stall_evidence = prior_stall
+            return
+        self._last_signature = None
+        self._last_simulator_cpu_ticks = None
+        self._unchanged_running_snapshot_count = 0
+        self._cpu_active_without_progress_snapshot_count = 0
+        self._last_leaf_heartbeat = {}
+        self._consecutive_heartbeat_stall_snapshots = 0
+        self.zero_time_livelock_evidence = {}
+        self.adaptive_semantic_stall_evidence = {}
+
+    def _simulator_cpu_probe(
+        self,
+        remote_dir: str,
+        process_snapshot: dict[str, Any],
+    ) -> dict[str, Any]:
+        pids = [
+            int(row["pid"])
+            for row in process_snapshot.get("processes", [])
+            if isinstance(row, dict)
+            and isinstance(row.get("pid"), int)
+            and "simv" in str(row.get("command") or "").lower()
+        ]
+        if not pids:
+            return {"status": "not_observed", "total_ticks": None, "processes": []}
+        command = " ; ".join(
+            (
+                f"if test -r /proc/{pid}/stat; then "
+                f"awk '{{print {pid}, $14 + $15}}' /proc/{pid}/stat; fi"
+            )
+            for pid in pids
+        )
+        result = command_result(
+            remote_shell(
+                self.host,
+                self.port,
+                f"cd {shlex.quote(remote_dir)} && {command}",
+            ),
+            self.live_dir,
+            60,
+        )
+        rows: list[dict[str, int]] = []
+        if result.get("status") == "pass":
+            for line in str(result.get("stdout_tail") or "").splitlines():
+                fields = line.split()
+                if len(fields) == 2 and all(field.isdigit() for field in fields):
+                    rows.append({"pid": int(fields[0]), "cpu_ticks": int(fields[1])})
+        return {
+            "status": "observed" if rows else "not_observed",
+            "processes": rows,
+            "total_ticks": sum(row["cpu_ticks"] for row in rows) if rows else None,
+        }
+
+    def __call__(self, observation: dict[str, Any]) -> None:
+        state = str(observation.get("state") or "unknown")
+        remote_dir = str(observation.get("remote_workdir") or "")
+        if not remote_dir or state not in {"running", "done"}:
+            return
+        self._restore_or_reset(remote_dir)
+        self.live_dir.mkdir(parents=True, exist_ok=True)
+        log_tail = str(observation.get("progress_log_tail") or "")
+        log_sha256 = hashlib.sha256(log_tail.encode("utf-8")).hexdigest()
+        simulation_time = self._simulation_time(log_tail)
+        native_loop = self._native_loop_witness(log_tail)
+        heartbeat = self._leaf_heartbeat(log_tail)
+        heartbeat_stall = self._heartbeat_stall_context(heartbeat)
+        process_snapshot = (
+            observation.get("process_snapshot")
+            if isinstance(observation.get("process_snapshot"), dict)
+            else {}
+        )
+        simulator_observed = (
+            process_snapshot.get("simulator_like_process_observed") is True
+        )
+        cpu_probe = self._simulator_cpu_probe(remote_dir, process_snapshot)
+        cpu_ticks = cpu_probe.get("total_ticks")
+        prior_cpu_ticks = self._last_simulator_cpu_ticks
+        time_identity = " ".join(
+            value
+            for value in (
+                str(simulation_time.get("value") or ""),
+                str(simulation_time.get("unit") or ""),
+            )
+            if value
+        )
+        signature = (time_identity, log_sha256)
+        if state == "running" and simulator_observed and time_identity:
+            if signature == self._last_signature:
+                self._unchanged_running_snapshot_count += 1
+                if (
+                    isinstance(cpu_ticks, int)
+                    and isinstance(self._last_simulator_cpu_ticks, int)
+                    and cpu_ticks > self._last_simulator_cpu_ticks
+                ):
+                    self._cpu_active_without_progress_snapshot_count += 1
+                else:
+                    self._cpu_active_without_progress_snapshot_count = 0
+            else:
+                self._unchanged_running_snapshot_count = 0
+                self._cpu_active_without_progress_snapshot_count = 0
+                self.zero_time_livelock_evidence = {}
+            if (
+                self._unchanged_running_snapshot_count
+                >= self.ZERO_TIME_LIVELOCK_UNCHANGED_SNAPSHOT_LIMIT
+                and (
+                    native_loop.get("native_loop_detected") is True
+                    or self._cpu_active_without_progress_snapshot_count
+                    >= self.ZERO_TIME_LIVELOCK_UNCHANGED_SNAPSHOT_LIMIT
+                )
+            ):
+                self.zero_time_livelock_evidence = {
+                    "schema_version": "spatialaccagent.zero_time_livelock_evidence.v1",
+                    "status": "proven_zero_time_livelock",
+                    "proof_mode": "leaf_semantic_vcs_live_progress",
+                    "remote_workdir": remote_dir,
+                    "remote_pid": observation.get("pid"),
+                    "stage_id": self.stage_id,
+                    "simulation_time": simulation_time,
+                    "sim_log_tail_sha256": log_sha256,
+                    "native_loop_report": native_loop,
+                    "simulator_cpu_probe": cpu_probe,
+                    "consecutive_unchanged_running_snapshots": (
+                        self._unchanged_running_snapshot_count
+                    ),
+                    "consecutive_cpu_active_without_progress_snapshots": (
+                        self._cpu_active_without_progress_snapshot_count
+                    ),
+                    "required_unchanged_running_snapshots": (
+                        self.ZERO_TIME_LIVELOCK_UNCHANGED_SNAPSHOT_LIMIT
+                    ),
+                    "fixed_wall_clock_timeout": False,
+                    "fixed_cycle_timeout": False,
+                    "reason": (
+                        "the live leaf VCS simulator remained active while its "
+                        "simulation-time diagnostic and log tail remained unchanged "
+                        "across repeated snapshots"
+                    ),
+                }
+            self._last_signature = signature
+            self._last_simulator_cpu_ticks = (
+                cpu_ticks if isinstance(cpu_ticks, int) else None
+            )
+            if (
+                heartbeat_stall.get("status") == "candidate"
+                and self._last_leaf_heartbeat
+                and self._heartbeat_advanced(heartbeat, self._last_leaf_heartbeat)
+                and isinstance(cpu_ticks, int)
+                and isinstance(prior_cpu_ticks, int)
+                and cpu_ticks > prior_cpu_ticks
+                and heartbeat.get("input_accepted")
+                == self._last_leaf_heartbeat.get("input_accepted")
+                and heartbeat.get("loader_accepted", {})
+                == self._last_leaf_heartbeat.get("loader_accepted", {})
+                and heartbeat.get("phase") == self._last_leaf_heartbeat.get("phase")
+                and heartbeat.get("output_beats")
+                == self._last_leaf_heartbeat.get("output_beats")
+            ):
+                self._consecutive_heartbeat_stall_snapshots += 1
+            else:
+                self._consecutive_heartbeat_stall_snapshots = 0
+                self.adaptive_semantic_stall_evidence = {}
+            if (
+                self._consecutive_heartbeat_stall_snapshots
+                >= self.HEARTBEAT_STALL_UNCHANGED_SNAPSHOT_LIMIT
+            ):
+                self.adaptive_semantic_stall_evidence = {
+                    "schema_version": "spatialaccagent.adaptive_semantic_stall_evidence.v1",
+                    "status": "proven_semantic_stall",
+                    "proof_mode": "leaf_semantic_vcs_heartbeat_liveness",
+                    "remote_workdir": remote_dir,
+                    "remote_pid": observation.get("pid"),
+                    "stage_id": self.stage_id,
+                    "heartbeat": heartbeat,
+                    "heartbeat_contract": self.heartbeat_contract,
+                    "simulator_cpu_probe": cpu_probe,
+                    "consecutive_heartbeat_stall_snapshots": (
+                        self._consecutive_heartbeat_stall_snapshots
+                    ),
+                    "required_heartbeat_stall_snapshots": (
+                        self.HEARTBEAT_STALL_UNCHANGED_SNAPSHOT_LIMIT
+                    ),
+                    "fixed_wall_clock_timeout": False,
+                    "fixed_cycle_timeout": False,
+                    "reason": (
+                        "the leaf VCS heartbeat advanced in simulation time while "
+                        "all incomplete contract-bound inputs and the zero "
+                        "output counter remained unchanged across repeated CPU-active "
+                        "remote observations"
+                    ),
+                }
+            self._last_leaf_heartbeat = heartbeat
+        elif state != "running":
+            self._last_signature = None
+            self._last_simulator_cpu_ticks = None
+            self._unchanged_running_snapshot_count = 0
+            self._cpu_active_without_progress_snapshot_count = 0
+            self._last_leaf_heartbeat = {}
+            self._consecutive_heartbeat_stall_snapshots = 0
+
+        snapshot = {
+            "schema_version": "spatialaccagent.leaf_semantic_live_progress.v1",
+            "status": (
+                "fail"
+                if self.zero_time_livelock_evidence.get("status")
+                == "proven_zero_time_livelock"
+                or self.adaptive_semantic_stall_evidence.get("status")
+                == "proven_semantic_stall"
+                else "completed"
+                if state == "done"
+                else "observing"
+                if state == "running"
+                else "unknown"
+            ),
+            "input_fingerprint_sha256": self.fingerprint,
+            "remote_workdir": remote_dir,
+            "remote_pid": observation.get("pid"),
+            "stage_id": self.stage_id,
+            "process_state": state,
+            "poll_attempt": observation.get("poll_attempt"),
+            "simulator_process_observed": simulator_observed,
+            "simulation_time": simulation_time,
+            "sim_log_tail_sha256": log_sha256,
+            "native_loop_report": native_loop,
+            "last_leaf_heartbeat": heartbeat,
+            "heartbeat_contract": self.heartbeat_contract,
+            "heartbeat_stall_context": heartbeat_stall,
+            "consecutive_heartbeat_stall_snapshots": (
+                self._consecutive_heartbeat_stall_snapshots
+            ),
+            "simulator_cpu_probe": cpu_probe,
+            "simulator_cpu_ticks": cpu_ticks,
+            "last_observation_signature": list(signature),
+            "consecutive_unchanged_running_snapshots": (
+                self._unchanged_running_snapshot_count
+            ),
+            "consecutive_cpu_active_without_progress_snapshots": (
+                self._cpu_active_without_progress_snapshot_count
+            ),
+            "zero_time_livelock_evidence": self.zero_time_livelock_evidence,
+            "adaptive_semantic_stall_evidence": self.adaptive_semantic_stall_evidence,
+            "policy": {
+                "fixed_wall_clock_timeout": False,
+                "fixed_cycle_timeout": False,
+                "unchanged_log_alone_never_proves_zero_time_livelock": True,
+                "simulation_time_observation_required": True,
+                "simulator_process_observation_required": True,
+                "active_simulator_cpu_or_native_loop_witness_required": True,
+                "heartbeat_contract_bound": True,
+                "heartbeat_stall_requires_partial_input_and_zero_output": True,
+            },
+        }
+        write_json(self.snapshot_path, snapshot)
+        with self.history_path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(snapshot, sort_keys=True) + "\n")
+
+
+def leaf_semantic_progress_observer(
+    run_dir: Path,
+    stage_id: str,
+    contract: dict[str, Any] | None = None,
+) -> LeafSemanticProgressObserver | None:
+    """Create the generic live observer only for the configured remote VCS."""
+
+    tool, errors = configured_vcs(run_dir)
+    if errors or tool.get("scope") != "remote" or not tool.get("host"):
+        return None
+    return LeafSemanticProgressObserver(
+        run_dir=run_dir,
+        stage_id=stage_id,
+        host=str(tool["host"]),
+        port=int(tool.get("port") or 22),
+        heartbeat_contract=contract,
+    )
 
 
 def semantic_remote_job_contract(
@@ -3000,7 +3975,6 @@ def recover_exact_remote_semantic_job(
     simulate_command: str,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
     allow_relaunch: bool = True,
-    allow_initial_simulation_launch: bool = False,
 ) -> dict[str, Any] | None:
     started = time.monotonic()
     unbounded = wall_timeout(timeout_sec) is None
@@ -3013,17 +3987,14 @@ def recover_exact_remote_semantic_job(
             runner_path = Path(
                 str(candidate_request.get("runner_report_path") or "")
             )
-            runner_sha256 = str(
-                candidate_request.get("runner_report_sha256") or ""
-            )
+            runner_report = read_json(runner_path) if runner_path.is_file() else {}
             if (
                 candidate_request.get("status") == "ready"
                 and candidate_request.get("action")
                 == "discard_completed_remote_workdir_and_retry_same_fingerprint"
                 and candidate_request.get("input_fingerprint_sha256") == fingerprint
                 and runner_path.is_file()
-                and runner_sha256
-                and sha256_file(runner_path) == runner_sha256
+                and runner_report.get("input_fingerprint_sha256") == fingerprint
             ):
                 retry_request = candidate_request
         except Exception:
@@ -3186,152 +4157,17 @@ def recover_exact_remote_semantic_job(
                 "identity": identity,
             }
 
-        simulate_state_attempts = 0
-        while True:
-            simulate_state = remote_background_job_state(
-                host,
-                port,
-                remote_dir,
-                cwd,
-                "vcs_simulate",
-                probe_timeout(),
-            )
-            simulate_state_attempts += 1
-            if simulate_state.get("certainty") == "determinate" or (
-                "certainty" not in simulate_state
-                and simulate_state.get("probe", {}).get("status") == "pass"
-                and simulate_state.get("state") in {"done", "running", "lost", "missing"}
-            ):
-                break
-            if not retry_pause():
-                return indeterminate(
-                    "simulate_job_state",
-                    simulate_state,
-                    simulate_state_attempts,
-                    remote_dir,
-                )
-        if simulate_state.get("state") == "running":
-            simulate_result = wait_for_existing_remote_job(
-                host,
-                port,
-                remote_dir,
-                cwd,
-                timeout_sec,
-                "vcs_simulate",
-                progress_callback,
-            )
-        elif simulate_state.get("state") == "done":
-            simulate_rc = simulate_state.get("returncode")
-            observer_errors: list[str] = []
-            semantic_stall_evidence: dict[str, Any] = {}
-            if progress_callback is not None:
-                try:
-                    progress_callback(
-                        progress_callback_observation(
-                            progress_callback,
-                            host=host,
-                            port=port,
-                            remote_dir=remote_dir,
-                            cwd=cwd,
-                            state="done",
-                            pid=None,
-                            poll_attempt=1,
-                            label="vcs_simulate",
-                        )
-                    )
-                    semantic_stall_evidence = (
-                        adaptive_stall_evidence_from_progress_callback(
-                            progress_callback,
-                            remote_dir,
-                        )
-                    )
-                except Exception as exc:
-                    observer_errors.append(str(exc)[:1000])
-            semantic_stall = (
-                simulate_rc == SEMANTIC_STALL_EXIT_CODE
-                and semantic_stall_evidence.get("status")
-                == "proven_semantic_stall"
-            )
-            simulate_result = {
-                "status": "pass" if simulate_rc == 0 else "fail",
-                "returncode": simulate_rc,
-                "failure_class": (
-                    None
-                    if simulate_rc == 0
-                    else "adaptive_semantic_stall"
-                    if semantic_stall
-                    else "remote_tool_failure"
-                ),
-                "transport": "recovered_exact_fingerprint_detached_remote_job",
-                "remote_workdir": remote_dir,
-                "remote_state": "done",
-                "progress_observer_errors": observer_errors,
-                "adaptive_semantic_stall_evidence": semantic_stall_evidence,
-                "adaptive_semantic_stall_termination": {
-                    "status": "recovered_completed_job"
-                    if semantic_stall
-                    else "not_run"
-                },
-            }
-        elif simulate_state.get("state") in {"missing", "lost"}:
-            if not allow_relaunch:
-                if (
-                    simulate_state.get("state") == "missing"
-                    and allow_initial_simulation_launch
-                ):
-                    simulate_result = run_remote_background_command(
-                        host,
-                        port,
-                        simulate_command,
-                        remote_dir,
-                        cwd,
-                        timeout_sec,
-                        "vcs_simulate",
-                        progress_callback,
-                    )
-                    return {
-                        "recovery_state": "recovered",
-                        "remote_dir": remote_dir,
-                        "compile": compile_result,
-                        "simulate": simulate_result,
-                        "identity": identity,
-                    }
-                return {
-                    "recovery_state": "recovered",
-                    "remote_dir": remote_dir,
-                    "compile": compile_result,
-                    "simulate": {
-                        "status": "fail",
-                        "returncode": 255,
-                        "failure_class": "remote_job_lost",
-                        "remote_workdir": remote_dir,
-                        "remote_state": simulate_state.get("state"),
-                        "summary": (
-                            "the exact remote simulation is no longer attachable; "
-                            "relaunch is forbidden for a pending job"
-                        ),
-                    },
-                    "identity": identity,
-                }
-            simulate_result = run_remote_background_command(
-                host,
-                port,
-                simulate_command,
-                remote_dir,
-                cwd,
-                timeout_sec,
-                "vcs_simulate",
-                progress_callback,
-            )
-        else:
-            continue
         return {
             "recovery_state": "recovered",
             "remote_dir": remote_dir,
             "compile": compile_result,
-            "simulate": simulate_result,
+            "simulate": {
+                "status": "not_run",
+                "summary": "simulation skipped by VCS compile-only policy",
+            },
             "identity": identity,
         }
+
     return None
 
 
@@ -3732,6 +4568,29 @@ def run_remote_vcs_semantic_harness(
         sources,
     )
     blockers.extend(memory_init_errors)
+    diagnostic_overlay: dict[str, Any] = {"status": "disabled"}
+    staged_testbench_text: str | None = None
+    if boundary_trace_enabled():
+        try:
+            base_testbench_text = testbench.read_text(encoding="utf-8")
+            selected_boundary = target_boundary()
+            probe_signals = harness_control_probe_signals(
+                harness,
+                include_descendant_controls=bool(selected_boundary),
+            )
+            staged_testbench_text, diagnostic_overlay = diagnostic_testbench_overlay(
+                base_testbench_text,
+                stage_id,
+                probe_signals,
+                selected_boundary,
+                probe_paths_relative_to_harness=True,
+            )
+        except OSError as exc:
+            blockers.append(f"diagnostic testbench overlay could not be read: {exc}")
+        if diagnostic_overlay.get("status") == "no_supported_probe_sites":
+            blockers.append(
+                "diagnostic boundary trace requested but generated semantic testbench has no probe sites"
+            )
     if blockers:
         return {
             "schema_version": SCHEMA_VERSION,
@@ -3741,6 +4600,27 @@ def run_remote_vcs_semantic_harness(
             "blockers": blockers,
             "summary": "semantic VCS fingerprint validation failed closed",
         }
+    overlay_path: Path | None = None
+    if staged_testbench_text is not None:
+        overlay_path = (
+            run_dir
+            / "verification"
+            / "debug_closure"
+            / "diagnostic_overlays"
+            / f"{safe_id(stage_id)}_{diagnostic_overlay['sha256']}.sv"
+        )
+        overlay_path.parent.mkdir(parents=True, exist_ok=True)
+        overlay_path.write_text(staged_testbench_text, encoding="ascii")
+        diagnostic_overlay["path"] = str(overlay_path)
+        diagnostic_overlay["base_testbench_sha256"] = sha256_file(testbench)
+        fingerprint = hashlib.sha256(
+            f"{fingerprint}:{diagnostic_overlay['sha256']}".encode("ascii")
+        ).hexdigest()
+        if progress_callback is not None:
+            try:
+                setattr(progress_callback, "fingerprint", fingerprint)
+            except Exception:
+                pass
     work_dir = run_dir / "verification" / "operator_leaf_vcs" / safe_id(stage_id)
     if work_dir.exists():
         shutil.rmtree(work_dir)
@@ -3758,7 +4638,10 @@ def run_remote_vcs_semantic_harness(
         shutil.copy2(source, destination)
         copied_sources.append(destination)
     assert testbench is not None
-    shutil.copy2(testbench, staging / "semantic_tb.sv")
+    if staged_testbench_text is None:
+        shutil.copy2(testbench, staging / "semantic_tb.sv")
+    else:
+        (staging / "semantic_tb.sv").write_text(staged_testbench_text, encoding="ascii")
     plusargs = []
     for index, source in enumerate(inputs):
         name = f"input_{index}.memh"
@@ -3821,17 +4704,10 @@ def run_remote_vcs_semantic_harness(
         f"{persistent_remote_artifact_root(host)}/semantic_vcs",
     )
     remote_stage_root = f"{remote_root}/{safe_id(run_dir.name)}/{safe_id(stage_id)}"
-    vcs_home = str(Path(executable).parent.parent)
     source_names = [path.name for path in copied_sources]
     compile_jobs = semantic_vcs_compile_jobs()
-    environment_setup = " ".join(
-        [
-            "export LANG=C LC_ALL=C;",
-            f"export VCS_HOME={shlex.quote(vcs_home)};",
-            f"export VCS_TARGET_ARCH={shlex.quote(target_arch)};",
-            f"export PATH={shlex.quote(str(Path(executable).parent))}:/usr/bin:/bin:$PATH;",
-        ]
-    )
+    environment_setup = vcs_tool_environment(tool, target_arch)
+    environment_setup += str(fpga_ip_runtime.get("runtime_environment_command") or "")
     if fpga_ip_runtime.get("status") == "ready":
         vlogan_command = " ".join(
             [
@@ -3882,11 +4758,9 @@ def run_remote_vcs_semantic_harness(
     simulate_command = " ".join(
         [
             "set -euo pipefail;",
-            "export LANG=C LC_ALL=C;",
-            f"export VCS_HOME={shlex.quote(vcs_home)};",
-            f"export VCS_TARGET_ARCH={shlex.quote(target_arch)};",
-            f"export PATH={shlex.quote(str(Path(executable).parent))}:/usr/bin:/bin:$PATH;",
+            environment_setup,
             "./simv",
+            "+vcs+flush+log",
             *(shlex.quote(value) for value in plusargs),
             "-l sim.log",
             "2> sim.stderr.log",
@@ -3924,7 +4798,7 @@ def run_remote_vcs_semantic_harness(
     fresh_execution_required = force_fresh_remote_vcs()
     recovered = (
         None
-        if fresh_execution_required
+        if fresh_execution_required or True
         else recover_exact_remote_semantic_job(
             host,
             port,
@@ -4055,18 +4929,7 @@ def run_remote_vcs_semantic_harness(
             else {"status": "not_run", "summary": "remote upload failed"}
         )
         simulate_result = (
-            run_remote_background_command(
-                host,
-                port,
-                simulate_command,
-                remote_dir,
-                work_dir,
-                timeout_sec,
-                "vcs_simulate",
-                progress_callback,
-            )
-            if compile_result.get("status") == "pass"
-            else {"status": "not_run", "summary": "remote VCS compile failed"}
+            ({'status': 'not_run', 'summary': 'simulation skipped by vcs_compile_only verification policy'})
         )
         remote_job_reuse = {
             "status": "not_run",
@@ -4078,8 +4941,34 @@ def run_remote_vcs_semantic_harness(
             ),
         }
 
+    elaboration_check = command_result(
+        remote_shell(
+            host,
+            port,
+            f"cd {shlex.quote(remote_dir)} && test -x simv",
+        ),
+        work_dir,
+        timeout_sec,
+    )
+    if compile_result.get("status") == "pass" and elaboration_check.get("status") != "pass":
+        compile_result = {
+            **compile_result,
+            "status": "fail",
+            "failure_class": "vcs_elaboration_output_missing",
+            "elaboration_output_check": elaboration_check,
+        }
+    else:
+        compile_result["elaboration_output_check"] = elaboration_check
+    simulate_result = {
+        "status": "not_run",
+        "summary": "simulation skipped by vcs_compile_only verification policy",
+    }
+
     downloads: dict[str, Any] = {}
-    for name in ("vcs.log", "sim.log", "sim.stderr.log"):
+    download_names = (
+        (('vcs.log',))
+    )
+    for name in download_names:
         downloads[name] = copy_remote_file(
             host,
             port,
@@ -4097,31 +4986,11 @@ def run_remote_vcs_semantic_harness(
             work_dir,
             timeout_sec,
         )
-    if simulate_result.get("status") == "pass":
-        output_capture.parent.mkdir(parents=True, exist_ok=True)
-        downloads["rtl_output.memh"] = copy_remote_file(
-            host,
-            port,
-            f"{remote_dir}/rtl_output.memh",
-            output_capture,
-            work_dir,
-            timeout_sec,
-        )
 
     semantic_passed = (
-        compile_result.get("status") == "pass"
-        and simulate_result.get("status") == "pass"
-        and downloads.get("sim.stderr.log", {}).get("status") == "pass"
-        and downloads.get("rtl_output.memh", {}).get("status") == "pass"
-        and output_capture.is_file()
+        (compile_result.get('status') == 'pass' and downloads.get('vcs.log', {}).get('status') == 'pass')
     )
     required_evidence_paths = [work_dir / "vcs.log"]
-    if simulate_result.get("status") != "not_run":
-        required_evidence_paths.extend(
-            [work_dir / "sim.log", work_dir / "sim.stderr.log"]
-        )
-    if semantic_passed:
-        required_evidence_paths.append(output_capture)
     persistence = persist_remote_artifact_receipt(
         host=host,
         port=port,
@@ -4140,7 +5009,7 @@ def run_remote_vcs_semantic_harness(
         required_evidence_paths=required_evidence_paths,
         source_identity_paths=[
             *sources,
-            testbench,
+            *( [overlay_path] if overlay_path is not None else [testbench] ),
             *inputs,
             *([weight] if weight is not None else []),
             *([runtime] if runtime is not None else []),
@@ -4150,7 +5019,10 @@ def run_remote_vcs_semantic_harness(
         # reachable.  Inputs and weight streams remain content-addressed by the
         # job contract; source/testbench bytes are retained locally for closure
         # reconstruction.
-        snapshot_source_paths=[*sources, testbench],
+        snapshot_source_paths=[
+            *sources,
+            *( [overlay_path] if overlay_path is not None else [testbench] ),
+        ],
         timeout_sec=timeout_sec,
     )
     passed = semantic_passed and persistence.get("status") == "pass"
@@ -4161,38 +5033,73 @@ def run_remote_vcs_semantic_harness(
             for row in (compile_result, simulate_result)
             if isinstance(row, dict) and row.get("status") == "fail"
         ]
+        transport_results = [
+            setup,
+            upload,
+            compile_result,
+            simulate_result,
+            *downloads.values(),
+        ]
+        transport_failure = any(
+            remote_transport_result_failed(row) for row in transport_results
+        )
         failure_class = (
             "remote_artifact_persistence_failure"
             if semantic_passed and persistence.get("status") != "pass"
+            else "remote_transport_failure"
+            if transport_failure
             else next(
                 (
                     value
                     for value in execution_failures
-                    if value
-                    in {
-                        "remote_transport_failure",
-                        "remote_tool_poll_budget_exhausted",
-                    }
+                    if value and value != "remote_tool_failure"
                 ),
                 "remote_tool_failure",
             )
         )
+    run_evidence = simulate_result if isinstance(simulate_result, dict) else {}
+    adaptive_semantic_stall_evidence = run_evidence.get(
+        "adaptive_semantic_stall_evidence", {}
+    )
+    adaptive_semantic_stall_termination = run_evidence.get(
+        "adaptive_semantic_stall_termination", {}
+    )
+    zero_time_livelock_evidence = run_evidence.get(
+        "zero_time_livelock_evidence", {}
+    )
+    zero_time_livelock_termination = run_evidence.get(
+        "zero_time_livelock_termination", {}
+    )
     return {
         "schema_version": SCHEMA_VERSION,
         "status": "pass" if passed else "fail",
+        "validation_policy": (
+            (COMPILE_ONLY_POLICY)
+        ),
+        "simulation_skipped": (True),
+        "compile_evidence": {
+            "status": ('pass' if passed else 'fail'),
+            "compile": compile_result,
+            "log_path": str(work_dir / "vcs.log"),
+            "log_sha256": (
+                sha256_file(work_dir / "vcs.log")
+                if (work_dir / "vcs.log").is_file()
+                else None
+            ),
+            "remote_workdir": remote_dir,
+            "input_fingerprint_sha256": fingerprint,
+            "top_module": top_module,
+            "remote_artifact_persistence": persistence,
+        },
         "summary": (
-            "remote VCS semantic harness executed with hash-bound real inputs"
-            if passed
-            else (
-                "remote VCS semantic evidence was not durably acknowledged"
-                if failure_class == "remote_artifact_persistence_failure"
-                else
-                "remote VCS transport failed before a hardware verdict was available"
-                if failure_class == "remote_transport_failure"
-                else "remote VCS semantic harness failed"
-            )
+            ('remote VCS compile and elaboration passed; simulation intentionally skipped' if passed else 'remote VCS semantic harness executed with hash-bound real inputs' if passed else 'remote VCS semantic evidence was not durably acknowledged' if failure_class == 'remote_artifact_persistence_failure' else 'remote VCS transport failed before a hardware verdict was available' if failure_class == 'remote_transport_failure' else 'remote VCS simulation proved an adaptive semantic stall' if failure_class == 'adaptive_semantic_stall' else 'remote VCS simulation proved a zero-time simulation livelock' if failure_class == 'zero_time_simulation_livelock' else 'remote VCS semantic harness failed')
         ),
         "failure_class": failure_class,
+        "returncode": run_evidence.get("returncode"),
+        "adaptive_semantic_stall_evidence": adaptive_semantic_stall_evidence,
+        "adaptive_semantic_stall_termination": adaptive_semantic_stall_termination,
+        "zero_time_livelock_evidence": zero_time_livelock_evidence,
+        "zero_time_livelock_termination": zero_time_livelock_termination,
         "simulator": "vcs",
         "tool_scope": "remote",
         "stage_id": stage_id,
@@ -4214,6 +5121,7 @@ def run_remote_vcs_semantic_harness(
             ),
         },
         "input_fingerprint_sha256": fingerprint,
+        "diagnostic_boundary_trace": diagnostic_overlay,
         "fresh_remote_vcs_execution_required": fresh_execution_required,
         "python_environment_contract": {
             "group": os.environ.get("SPATIALACC_PYTHON_ENVIRONMENT_GROUP"),
@@ -4251,7 +5159,9 @@ def run_remote_vcs_semantic_harness(
         "sim_log": str(work_dir / "sim.log"),
         "sim_stderr_log": str(work_dir / "sim.stderr.log"),
         "output_capture": str(output_capture),
-        "rtl_output_sha256": sha256_file(output_capture) if passed else None,
+        "rtl_output_sha256": (
+            (sha256_file(output_capture) if passed and False else None)
+        ),
         "blockers": blockers,
     }
 
@@ -4300,3 +5210,333 @@ def run_configured_semantic_harness(
         timeout_sec,
         progress_callback,
     )
+
+
+def run_configured_chisel_top_compile(
+    run_dir: Path,
+    timeout_sec: int,
+    *,
+    compile_leaf_modules: bool = False,
+) -> dict[str, Any]:
+    """Compile and elaborate current generated modules on remote VCS."""
+
+    chisel_dir = run_dir / "generated" / "chisel"
+    filelist = chisel_dir / "filelist.f"
+    runtime_config_path = chisel_dir / "runtime" / "runtime_config.json"
+    blockers: list[str] = []
+    try:
+        runtime_config = read_json(runtime_config_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        runtime_config = {}
+        blockers.append(f"generated Chisel runtime config is unreadable: {exc}")
+    top_module = str(runtime_config.get("chisel_top") or "")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", top_module):
+        blockers.append("generated Chisel runtime config has no valid chisel_top module")
+    if not filelist.is_file():
+        blockers.append(f"generated Chisel filelist is missing: {filelist}")
+
+    sources: list[Path] = []
+    if filelist.is_file():
+        for line_number, raw in enumerate(filelist.read_text(encoding="utf-8").splitlines(), 1):
+            value = raw.strip()
+            if not value or value.startswith("#"):
+                continue
+            relative = Path(value)
+            source = (chisel_dir / relative).resolve()
+            if relative.is_absolute() or ".." in relative.parts or not source.is_relative_to(chisel_dir.resolve()):
+                blockers.append(f"generated Chisel filelist entry is outside its source root at line {line_number}: {value}")
+            elif not source.is_file():
+                blockers.append(f"generated Chisel source is missing at line {line_number}: {source}")
+            else:
+                sources.append(source)
+    if not sources:
+        blockers.append("generated Chisel filelist contains no source files")
+    top_modules = list(dict.fromkeys(
+        module
+        for source in sources
+        for module in re.findall(
+            r"(?m)^\s*module\s+([A-Za-z_][A-Za-z0-9_]*)\b",
+            source.read_text(encoding="utf-8", errors="ignore"),
+        )
+    )) if compile_leaf_modules else [top_module]
+    if not top_modules:
+        blockers.append("generated Chisel sources declare no modules to elaborate")
+    if top_module and not any(
+        re.search(rf"(?m)^\s*module\s+{re.escape(top_module)}\b", source.read_text(encoding="utf-8", errors="ignore"))
+        for source in sources
+    ):
+        blockers.append(f"generated Chisel filelist does not declare top module {top_module}")
+
+    tool, tool_errors = configured_vcs(run_dir)
+    blockers.extend(tool_errors)
+    if tool.get("scope") != "remote":
+        blockers.append("generated Chisel top compile requires the configured remote VCS tool")
+    if blockers:
+        return {
+            "schema_version": "spatialaccagent.generated_chisel_top_compile.v1",
+            "status": "fail",
+            "validation_policy": COMPILE_ONLY_POLICY,
+            "top_module": top_module,
+            "filelist": str(filelist),
+            "blockers": blockers,
+            "summary": "generated Chisel top compile could not start",
+            "simulation": {"status": "not_run"},
+        }
+
+    fpga_ip_binding, ip_errors = semantic_fpga_ip_static_binding(run_dir, sources)
+    blockers.extend(ip_errors)
+    profile: dict[str, Any] = {}
+    fpga_ip_tool_identity: dict[str, Any] = {}
+    if not blockers:
+        profile, fpga_ip_tool_identity, ip_tool_errors = semantic_fpga_ip_runtime_tool_profile(
+            run_dir, fpga_ip_binding, tool
+        )
+        blockers.extend(ip_tool_errors)
+    compile_defines, memory_dependencies, memory_errors = semantic_memory_init_payload(run_dir, sources)
+    blockers.extend(memory_errors)
+    if blockers:
+        return {
+            "schema_version": "spatialaccagent.generated_chisel_top_compile.v1",
+            "status": "fail",
+            "validation_policy": COMPILE_ONLY_POLICY,
+            "top_module": top_module,
+            "filelist": str(filelist),
+            "fpga_ip_binding": fpga_ip_binding,
+            "blockers": blockers,
+            "summary": "generated Chisel top compile preflight failed",
+            "simulation": {"status": "not_run"},
+        }
+
+    source_rows = [
+        {
+            "path": str(source),
+            "relative_path": source.relative_to(chisel_dir.resolve()).as_posix(),
+            "sha256": sha256_file(source),
+        }
+        for source in sources
+    ]
+    tool_env = tool.get("env", {}) if isinstance(tool.get("env"), dict) else {}
+    target_arch = str(tool_env.get("VCS_TARGET_ARCH") or os.environ.get("SPATIALACC_VCS_TARGET_ARCH") or "linux64")
+    identity = {
+        "top_module": top_module,
+        "top_modules": top_modules,
+        "runtime_config_sha256": sha256_file(runtime_config_path),
+        "filelist_sha256": sha256_file(filelist),
+        "sources": source_rows,
+        "compile_defines": compile_defines,
+        "fpga_ip_binding_sha256": fpga_ip_binding.get("binding_sha256"),
+        "vcs": {
+            "name": tool.get("name"),
+            "host": tool.get("host"),
+            "port": int(tool.get("port") or 22),
+            "executable": tool.get("executable"),
+            "target_arch": target_arch,
+        },
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    run_tag = f"{fingerprint[:12]}_{time.time_ns()}"
+    work_dir = run_dir / "verification" / "single_layer_vcs" / run_tag
+    staging = work_dir / "staging"
+    staging.mkdir(parents=True, exist_ok=False)
+    for source, row in zip(sources, source_rows):
+        destination = staging / str(row["relative_path"])
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    shutil.copy2(filelist, staging / "filelist.f")
+    for dependency in memory_dependencies:
+        relative = Path(str(dependency["remote_relative_path"]))
+        destination = staging / relative
+        if destination.exists() and sha256_file(destination) != dependency.get("sha256"):
+            blockers.append(f"memory initialization source conflicts with generated source: {relative}")
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if not destination.exists():
+            shutil.copy2(Path(str(dependency["path"])), destination)
+    if blockers:
+        return {
+            "schema_version": "spatialaccagent.generated_chisel_top_compile.v1",
+            "status": "fail",
+            "validation_policy": COMPILE_ONLY_POLICY,
+            "top_module": top_module,
+            "source_fingerprint_sha256": fingerprint,
+            "blockers": blockers,
+            "summary": "generated Chisel top compile staging failed",
+            "simulation": {"status": "not_run"},
+        }
+
+    fpga_ip_runtime: dict[str, Any] = {"status": "not_required"}
+    if fpga_ip_binding.get("status") == "ready":
+        try:
+            fpga_ip_runtime = stage_fpga_ip_runtime(
+                run_dir,
+                staging,
+                profile,
+                compiler_workdir=".",
+            )
+        except (OSError, ValueError, FileNotFoundError) as exc:
+            return {
+                "schema_version": "spatialaccagent.generated_chisel_top_compile.v1",
+                "status": "fail",
+                "validation_policy": COMPILE_ONLY_POLICY,
+                "top_module": top_module,
+                "source_fingerprint_sha256": fingerprint,
+                "blockers": [f"FPGA IP VCS runtime staging failed: {exc}"],
+                "summary": "generated Chisel top compile staging failed",
+                "simulation": {"status": "not_run"},
+            }
+
+    host = str(tool["host"])
+    port = int(tool.get("port") or 22)
+    executable = str(tool["executable"])
+    environment_setup = vcs_tool_environment(tool, target_arch)
+    environment_setup += str(fpga_ip_runtime.get("runtime_environment_command") or "")
+    if fpga_ip_runtime.get("status") == "ready":
+        vlogan_command = " ".join(
+            [
+                "vlogan -full64 -sverilog -timescale=1ns/1ps",
+                *(shlex.quote(value) for value in semantic_vcs_compile_define_args(compile_defines)),
+                '-work "$FPGA_IP_DEFAULT_LIBRARY"',
+                "-f filelist.f",
+            ]
+        )
+        elaboration_command = " ".join(
+            [
+                shlex.quote(executable),
+                "-full64 -timescale=1ns/1ps",
+                *(shlex.quote(value) for value in semantic_vcs_parallel_compile_args()),
+                *(f'"$FPGA_IP_DEFAULT_LIBRARY.{module}"' for module in top_modules),
+                '"$FPGA_IP_GLBL_UNIT"',
+                '"${fpga_ip_elab_args[@]}"',
+                "-o simv",
+            ]
+        )
+        compile_command = " ".join(
+            [
+                "set -euo pipefail;",
+                str(fpga_ip_runtime["provision_command"]),
+                environment_setup,
+                str(fpga_ip_runtime["compile_command"]) + " >> vcs.log 2>&1;",
+                "source fpga_ip/vcs_runtime.env;",
+                f"{vlogan_command} >> vcs.log 2>&1;",
+                "mapfile -t fpga_ip_elab_args < fpga_ip/vcs_elab_args.txt;",
+                f"{elaboration_command} >> vcs.log 2>&1;",
+            ]
+        )
+    else:
+        compile_command = " ".join(
+            [
+                "set -euo pipefail;",
+                environment_setup,
+                shlex.quote(executable),
+                "-full64 -sverilog -timescale=1ns/1ps",
+                *(shlex.quote(value) for value in semantic_vcs_parallel_compile_args()),
+                *(shlex.quote(value) for value in semantic_vcs_compile_define_args(compile_defines)),
+                *(f"-top {shlex.quote(module)}" for module in top_modules),
+                "-o simv -f filelist.f -l vcs.log",
+            ]
+        )
+
+    remote_root = os.environ.get(
+        "SPATIALACC_REMOTE_SEMANTIC_ROOT",
+        f"{persistent_remote_artifact_root(host)}/semantic_vcs",
+    ).rstrip("/")
+    remote_dir = f"{remote_root}/{safe_id(run_dir.name)}/single_layer_compile/{run_tag}"
+    setup = command_result(
+        remote_shell(host, port, f"mkdir -p {shlex.quote(remote_dir)}"), work_dir, timeout_sec
+    )
+    upload = (
+        command_result(
+            ["scp", *scp_options(port), "-r", f"{staging}/.", f"{host}:{remote_dir}/"],
+            work_dir,
+            timeout_sec,
+        )
+        if setup.get("status") == "pass"
+        else {"status": "not_run", "summary": "remote setup failed"}
+    )
+    compile_result = (
+        run_remote_background_command(
+            host,
+            port,
+            compile_command,
+            remote_dir,
+            work_dir,
+            timeout_sec,
+            "vcs_compile",
+        )
+        if upload.get("status") == "pass"
+        else {"status": "not_run", "summary": "remote source upload failed"}
+    )
+    elaboration_check = (
+        command_result(
+            remote_shell(host, port, f"cd {shlex.quote(remote_dir)} && test -x simv"),
+            work_dir,
+            timeout_sec,
+        )
+        if compile_result.get("status") == "pass"
+        else {"status": "not_run", "summary": "VCS compile did not pass"}
+    )
+    if compile_result.get("status") == "pass" and elaboration_check.get("status") != "pass":
+        compile_result = {**compile_result, "status": "fail", "failure_class": "vcs_elaboration_output_missing"}
+    log_path = work_dir / "vcs.log"
+    log_download = (
+        copy_remote_file(host, port, f"{remote_dir}/vcs.log", log_path, work_dir, timeout_sec)
+        if setup.get("status") == "pass" and upload.get("status") == "pass"
+        else {"status": "not_run", "summary": "remote compile staging did not complete"}
+    )
+    log_errors = compile_log_errors(log_path) if log_path.is_file() else ["VCS compile log is missing"]
+    passed = (
+        compile_result.get("status") == "pass"
+        and elaboration_check.get("status") == "pass"
+        and log_download.get("status") == "pass"
+        and not log_errors
+    )
+    summary = "VCS compile-only functional passed" if passed else "VCS compile-only functional failed"
+    compile_evidence = {
+        "status": "pass" if passed else "fail",
+        "top_module": top_module,
+        "top_modules": top_modules,
+        "source_fingerprint_sha256": fingerprint,
+        "runtime_config_path": str(runtime_config_path),
+        "runtime_config_sha256": identity["runtime_config_sha256"],
+        "filelist_path": str(filelist),
+        "filelist_sha256": identity["filelist_sha256"],
+        "source_files": source_rows,
+        "compile_defines": compile_defines,
+        "vcs_tool": identity["vcs"],
+        "remote_workdir": remote_dir,
+        "command": compile_command,
+        "log_path": str(log_path),
+        "log_sha256": sha256_file(log_path) if log_path.is_file() else None,
+        "log_errors": log_errors,
+        "elaboration_output_check": elaboration_check,
+    }
+    return {
+        "schema_version": "spatialaccagent.generated_chisel_top_compile.v1",
+        "status": "pass" if passed else "fail",
+        "validation_policy": COMPILE_ONLY_POLICY,
+        "verification_layer": (
+            "layer1_operator_leaf_modules"
+            if compile_leaf_modules
+            else "layer2_connected_single_transformer"
+        ),
+        "summary": summary,
+        "top_module": top_module,
+        "source_fingerprint_sha256": fingerprint,
+        "compile_evidence": compile_evidence,
+        "setup": setup,
+        "upload": upload,
+        "compile": compile_result,
+        "compile_log_download": log_download,
+        "fpga_ip_runtime": {key: value for key, value in fpga_ip_runtime.items() if key != "provision_command"},
+        "simulation": {"status": "not_run", "summary": "simulation skipped by VCS compile-only policy"},
+        "blockers": [] if passed else [
+            *([f"remote setup failed: {setup.get('summary')}"] if setup.get("status") != "pass" else []),
+            *([f"source upload failed: {upload.get('summary')}"] if upload.get("status") != "pass" else []),
+            *([f"VCS compile failed: {compile_result.get('summary') or compile_result.get('returncode')}"] if compile_result.get("status") != "pass" else []),
+            *(["VCS elaboration output simv is missing"] if elaboration_check.get("status") != "pass" and compile_result.get("status") == "pass" else []),
+            *([f"VCS compile log unavailable: {log_download.get('summary')}"] if log_download.get("status") != "pass" else []),
+            *[f"VCS compile log reports an error: {value}" for value in log_errors],
+        ],
+    }

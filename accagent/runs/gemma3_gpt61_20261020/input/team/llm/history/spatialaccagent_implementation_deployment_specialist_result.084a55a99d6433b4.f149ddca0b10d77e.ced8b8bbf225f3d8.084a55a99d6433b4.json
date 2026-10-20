@@ -1,0 +1,142 @@
+{
+  "agent": "spatialaccagent_implementation_deployment_specialist",
+  "duration_sec": 42.2170098220231,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "e748bac31f1043069d735def9aaaf4fd",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_implementation_deployment_specialist_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "spatialaccagent_implementation_deployment_specialist",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.field_evidence_candidates",
+          "artifact.input.field_evidence",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "constraint.tool.protocols",
+          "constraint.deployment.board",
+          "constraint.memory.board"
+        ],
+        "id": "input_preparation.audit_source_and_tool_evidence",
+        "on_failure": "Record the specific unavailable detail or inconsistent declaration, retain claims as unverified, and hand unresolved provenance or applicability questions to the readiness auditor. Do not infer a board target, tool execution, or pass.",
+        "produces": [
+          "input_preparation/source_and_tool_evidence_audit.json",
+          "input_preparation/evidence_provenance_and_applicability.json"
+        ],
+        "rationale": "Create a traceable audit of the listed source indexes, field evidence, and tool declarations against board, board-memory, and tool-protocol constraints. The detailed records must be inspected before asserting provenance, applicability, or a pass.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_validate",
+          "tool_protocol_check",
+          "real_tool_evidence_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "llm_semantic_extraction_check",
+          "sacg_static_check"
+        ],
+        "action_type": "prepared_input_error_triage",
+        "consumes": [
+          "prepared_inputs.errors",
+          "artifact.input.case_adapter",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index"
+        ],
+        "id": "input_preparation.surface_and_triage_prepared_input_error",
+        "on_failure": "If the original entry or supporting source cannot be retrieved, record the entry as unclassified with the retrieval gap and hand that exact limitation to the readiness auditor; do not invent a cause or suppress the error.",
+        "produces": [
+          "input_preparation/prepared_input_error_triage.json",
+          "input_preparation/readiness_auditor_error_handoff.json"
+        ],
+        "rationale": "The supplied summary establishes that one prepared_inputs.errors entry exists but omits its payload. Inspect and preserve the original entry, trace it to available source evidence, and provide an evidence-bounded classification to the readiness auditor.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_validate",
+          "llm_semantic_extraction"
+        ]
+      }
+    ],
+    "observations": [
+      "The state summary lists all seven requested input artifact classes as present. The candidate-stage summary exposes only key names and counts, not the evidence rows or their source metadata; presence alone does not establish applicability.",
+      "prepared_inputs.errors has exactly one entry according to the supplied summary. The entry text and source are not included, so its specific cause cannot be classified from this prompt. Preserve and forward the original entry unchanged to input_preparation.cross_layer_readiness_auditor.",
+      "The run directory name is not sufficient evidence of model identity, board identity, sample-project applicability, or source provenance.",
+      "No tool execution logs or current VCS, synthesis, implementation, or board-runtime results are supplied. Tool profile, availability, and protocol declarations must not be represented as execution evidence or a board pass.",
+      "The audit should distinguish candidate field evidence from curated field evidence and trace each accepted claim to its originating material, project, or tool record. Sample-project evidence is not proof for the current design without an applicability check."
+    ],
+    "proposed_actions": [
+      "Audit the raw material and sample-project index rows alongside candidate and curated field evidence; record provenance, hashes or other source identifiers, case applicability, limitations, and unsupported claims.",
+      "Compare the declared tool profile, availability, and protocols; report declarations separately from actual execution evidence and flag any mismatch without claiming a tool pass.",
+      "Forward the exact existing prepared_inputs.errors entry to the readiness auditor and record its evidence-based classification and unresolved cause in prepared_input_error_triage.json."
+    ],
+    "risks": [
+      "Without the detailed index rows, source paths, hashes, revisions, and applicability annotations cannot be checked against the current case or exact user-supplied sample-project wrapper.",
+      "Without the detailed field-evidence records, claims about board interfaces, memory/DDR organization, or deployment cannot be confirmed or cross-checked against constraint.deployment.board and constraint.memory.board.",
+      "Tool profile, availability, and protocol consistency remains unverified; a declared tool or capability is not evidence that it was available in this run or executed successfully.",
+      "The single prepared-input error may affect readiness or downstream evidence claims. Its severity and owner are unresolved until the exact entry and source are inspected; do not silently dismiss it or infer its contents."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "input_preparation/source_and_tool_evidence_audit.json",
+        "input_preparation/evidence_provenance_and_applicability.json",
+        "input_preparation/prepared_input_error_triage.json"
+      ],
+      "constraints": [
+        "constraint.tool.protocols",
+        "constraint.deployment.board",
+        "constraint.memory.board"
+      ],
+      "edges": [
+        "artifact.input.material_index -> constraint.deployment.board",
+        "artifact.input.sample_project_index -> constraint.deployment.board",
+        "artifact.input.field_evidence_candidates -> artifact.input.field_evidence",
+        "artifact.input.tool_profile -> constraint.tool.protocols",
+        "artifact.input.tool_availability -> constraint.tool.protocols",
+        "artifact.input.tool_protocols -> constraint.tool.protocols",
+        "artifact.input.sample_project_index -> constraint.memory.board"
+      ],
+      "nodes": [
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.field_evidence_candidates",
+        "artifact.input.field_evidence",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "prepared_inputs.errors"
+      ]
+    },
+    "schema_version": "spatialaccagent.input_evidence_audit.v0",
+    "stage": "input_preparation",
+    "status": "needs_triage",
+    "summary": "The supplied summary confirms that material and sample-project indexes, field-evidence candidates and curated field evidence, tool profile, availability, and protocols are prepared inputs. It does not expose their detailed records, so provenance, applicability, and protocol consistency cannot yet be confirmed. prepared_inputs.errors contains one entry, but its payload is not shown; it must be surfaced for exact-source classification by the readiness auditor."
+  },
+  "prompt_bytes": 39727,
+  "prompt_hash": "ced8b8bbf225f3d84fbddd710301786574e4375826547250a4fcd3a5f75d7fdf",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.input_evidence_audit.v0\",\n  \"agent\": \"spatialaccagent_implementation_deployment_specialist\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"needs_triage\",\n  \"summary\": \"The supplied summary confirms that material and sample-project indexes, field-evidence candidates and curated field evidence, tool profile, availability, and protocols are prepared inputs. It does not expose their detailed records, so provenance, applicability, and protocol consistency cannot yet be confirmed. prepared_inputs.errors contains one entry, but its payload is not shown; it must be surfaced for exact-source classification by the readiness auditor.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"artifact.input.material_index\",\n      \"artifact.input.sample_project_index\",\n      \"artifact.input.field_evidence_candidates\",\n      \"artifact.input.field_evidence\",\n      \"artifact.input.tool_profile\",\n      \"artifact.input.tool_availability\",\n      \"artifact.input.tool_protocols\",\n      \"prepared_inputs.errors\"\n    ],\n    \"edges\": [\n      \"artifact.input.material_index -> constraint.deployment.board\",\n      \"artifact.input.sample_project_index -> constraint.deployment.board\",\n      \"artifact.input.field_evidence_candidates -> artifact.input.field_evidence\",\n      \"artifact.input.tool_profile -> constraint.tool.protocols\",\n      \"artifact.input.tool_availability -> constraint.tool.protocols\",\n      \"artifact.input.tool_protocols -> constraint.tool.protocols\",\n      \"artifact.input.sample_project_index -> constraint.memory.board\"\n    ],\n    \"constraints\": [\n      \"constraint.tool.protocols\",\n      \"constraint.deployment.board\",\n      \"constraint.memory.board\"\n    ],\n    \"artifacts\": [\n      \"input_preparation/source_and_tool_evidence_audit.json\",\n      \"input_preparation/evidence_provenance_and_applicability.json\",\n      \"input_preparation/prepared_input_error_triage.json\"\n    ]\n  },\n  \"observations\": [\n    \"The state summary lists all seven requested input artifact classes as present. The candidate-stage summary exposes only key names and counts, not the evidence rows or their source metadata; presence alone does not establish applicability.\",\n    \"prepared_inputs.errors has exactly one entry according to the supplied summary. The entry text and source are not included, so its specific cause cannot be classified from this prompt. Preserve and forward the original entry unchanged to input_preparation.cross_layer_readiness_auditor.\",\n    \"The run directory name is not sufficient evidence of model identity, board identity, sample-project applicability, or source provenance.\",\n    \"No tool execution logs or current VCS, synthesis, implementation, or board-runtime results are supplied. Tool profile, availability, and protocol declarations must not be represented as execution evidence or a board pass.\",\n    \"The audit should distinguish candidate field evidence from curated field evidence and trace each accepted claim to its originating material, project, or tool record. Sample-project evidence is not proof for the current design without an applicability check.\"\n  ],\n  \"risks\": [\n    \"Without the detailed index rows, source paths, hashes, revisions, and applicability annotations cannot be checked against the current case or exact user-supplied sample-project wrapper.\",\n    \"Without the detailed field-evidence records, claims about board interfaces, memory/DDR organization, or deployment cannot be confirmed or cross-checked against constraint.deployment.board and constraint.memory.board.\",\n    \"Tool profile, availability, and protocol consistency remains unverified; a declared tool or capability is not evidence that it was available in this run or executed successfully.\",\n    \"The single prepared-input error may affect readiness or downstream evidence claims. Its severity and owner are unresolved until the exact entry and source are inspected; do not silently dismiss it or infer its contents.\"\n  ],\n  \"proposed_actions\": [\n    \"Audit the raw material and sample-project index rows alongside candidate and curated field evidence; record provenance, hashes or other source identifiers, case applicability, limitations, and unsupported claims.\",\n    \"Compare the declared tool profile, availability, and protocols; report declarations separately from actual execution evidence and flag any mismatch without claiming a tool pass.\",\n    \"Forward the exact existing prepared_inputs.errors entry to the readiness auditor and record its evidence-based classification and unresolved cause in prepared_input_error_triage.json.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"input_preparation.audit_source_and_tool_evidence\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"Create a traceable audit of the listed source indexes, field evidence, and tool declarations against board, board-memory, and tool-protocol constraints. The detailed records must be inspected before asserting provenance, applicability, or a pass.\",\n      \"consumes\": [\n        \"artifact.input.material_index\",\n        \"artifact.input.sample_project_index\",\n        \"artifact.input.field_evidence_candidates\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.tool_profile\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.tool_protocols\",\n        \"constraint.tool.protocols\",\n        \"constraint.deployment.board\",\n        \"constraint.memory.board\"\n      ],\n      \"produces\": [\n        \"input_preparation/source_and_tool_evidence_audit.json\",\n        \"input_preparation/evidence_provenance_and_applicability.json\"\n      ],\n      \"tool_roles\": [\n        \"sacg_validate\",\n        \"tool_protocol_check\",\n        \"real_tool_evidence_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"tool_protocol_check\",\n        \"required_real_tool_evidence_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Record the specific unavailable detail or inconsistent declaration, retain claims as unverified, and hand unresolved provenance or applicability questions to the readiness auditor. Do not infer a board target, tool execution, or pass.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"input_preparation.surface_and_triage_prepared_input_error\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"prepared_input_error_triage\",\n      \"rationale\": \"The supplied summary establishes that one prepared_inputs.errors entry exists but omits its payload. Inspect and preserve the original entry, trace it to available source evidence, and provide an evidence-bounded classification to the readiness auditor.\",\n      \"consumes\": [\n        \"prepared_inputs.errors\",\n        \"artifact.input.case_adapter\",\n        \"artifact.input.material_index\",\n        \"artifact.input.sample_project_index\"\n      ],\n      \"produces\": [\n        \"input_preparation/prepared_input_error_triage.json\",\n        \"input_preparation/readiness_auditor_error_handoff.json\"\n      ],\n      \"tool_roles\": [\n        \"sacg_validate\",\n        \"llm_semantic_extraction\"\n      ],\n      \"acceptance_checkers\": [\n        \"llm_semantic_extraction_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"If the original entry or supporting source cannot be retrieved, record the entry as unclassified with the retrieval gap and hand that exact limitation to the readiness auditor; do not invent a cause or suppress the error.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_implementation_deployment_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_implementation_deployment_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.input evidence and toolchain engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

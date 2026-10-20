@@ -6,14 +6,32 @@ import hashlib
 import json
 import math
 import re
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
+
+from accagent.framework.contract_identity import (
+    canonical_sha256,
+    hash_matches,
+    identity_sha256,
+)
+from accagent.framework.numeric_policy import canonical_dtype
 
 
 SCHEMA_VERSION = "spatialaccagent.dut_weight_layout_contract.v1"
 STREAM_SCHEMA_VERSION = "spatialaccagent.materialized_weight_stream.v1"
 COMPOSITE_STREAM_SCHEMA_VERSION = "spatialaccagent.composite_weight_stream.v1"
-DTYPE_BITS = {"fp16": 16, "fp32": 32}
+# Source checkpoint tensors remain FP16/FP32, but deployed storage is
+# policy-driven and may be signed INT4 matrix weights, signed INT8 vectors, or
+# signed INT32 accumulator-domain bias.  The source dtype and deployed scalar
+# dtype are intentionally separate contracts.
+DTYPE_BITS = {
+    "fp16": 16,
+    "fp32": 32,
+    "int4": 4,
+    "int8": 8,
+    "int32": 32,
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -25,8 +43,46 @@ def sha256_file(path: Path) -> str:
 
 
 def sha256_json(value: Any) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return canonical_sha256(value)
+
+
+def _legacy_identity_transform_projection(value: Any) -> Any:
+    """Project the pre-canonical layout that serialized an identity transform."""
+
+    projected = deepcopy(value)
+    if not isinstance(projected, dict):
+        return projected
+    targets = projected.get("storage_targets")
+    if not isinstance(targets, list):
+        return projected
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        if (
+            target.get("target_kind") == "linear_weight_matrix"
+            and target.get("source_transform") == {"kind": "identity"}
+        ):
+            target.pop("source_transform", None)
+    return projected
+
+
+def weight_layout_hash_matches(layout: dict[str, Any], declared_hash: Any) -> bool:
+    """Validate a layout hash without treating arbitrary mismatches as aliases."""
+
+    return hash_matches(
+        layout,
+        declared_hash,
+        excluded_fields={"contract_sha256"},
+        legacy_projections=(_legacy_identity_transform_projection,),
+    )
+
+
+def weight_layout_binding_matches(layout: dict[str, Any], bound_hash: Any) -> bool:
+    """Check both the self-declared layout hash and an external binding."""
+
+    return weight_layout_hash_matches(
+        layout, layout.get("contract_sha256")
+    ) and weight_layout_hash_matches(layout, bound_hash)
 
 
 def bound_int(stage: dict[str, Any], name: str, default: int | None = None) -> int:
@@ -86,13 +142,27 @@ def projection_role(suffix: str) -> tuple[str, str] | None:
 def storage_dtype_for_bits(preferred: str, bits: int) -> str:
     if dtype_bits(preferred) == bits:
         return preferred
-    candidate = f"fp{bits}"
+    preferred_text = str(preferred or "").lower()
+    if preferred_text.startswith("int"):
+        candidate = f"int{bits}"
+    else:
+        candidate = f"fp{bits}"
     if candidate not in DTYPE_BITS:
-        raise ValueError(f"no floating-point storage dtype for {bits} bits")
+        raise ValueError(f"no declared deployed storage dtype for {bits} bits")
     return candidate
 
 
 def conversion_contract(source_dtype: str, storage_dtype: str) -> dict[str, Any]:
+    if storage_dtype in {"int4", "int8", "int32"} and source_dtype in {"fp16", "fp32"}:
+        return {
+            "kind": "symmetric_signed_quantization",
+            "source_dtype": source_dtype,
+            "storage_dtype": storage_dtype,
+            "zero_point": 0,
+            "rounding": "nearest_even",
+            "saturation": True,
+            "scale_granularity": "per_output_channel_for_matrix_else_per_tensor",
+        }
     if source_dtype == storage_dtype:
         return {
             "kind": "ieee754_bit_preserving",
@@ -117,6 +187,8 @@ def linear_weight_target(
     source_dtype: str,
     storage_dtype: str,
     transpose_source: bool = False,
+    array_rows: int | None = None,
+    array_cols: int | None = None,
 ) -> dict[str, Any]:
     if not sources:
         raise ValueError(f"{target_id} has no source tensor")
@@ -133,17 +205,19 @@ def linear_weight_target(
         if any(shape[1] != in_features for shape in shapes):
             raise ValueError(f"{target_id} source input dimensions disagree: {shapes}")
         out_features = sum(shape[0] for shape in shapes)
-    if in_features % in_lanes or out_features % out_lanes:
+    tile_in_lanes = array_cols if array_cols is not None and array_cols > in_lanes else in_lanes
+    tile_out_lanes = array_rows if array_cols is not None and array_cols > in_lanes else out_lanes
+    if in_features % tile_in_lanes or out_features % tile_out_lanes:
         raise ValueError(
             f"{target_id} dimensions do not divide selected lanes: "
-            f"shape=[{out_features}, {in_features}] out_lanes={out_lanes} in_lanes={in_lanes}"
+            f"shape=[{out_features}, {in_features}] tile_rows={tile_out_lanes} tile_cols={tile_in_lanes}"
         )
     scalar_bits = dtype_bits(storage_dtype)
-    data_width_bits = in_lanes * out_lanes * scalar_bits
+    data_width_bits = tile_in_lanes * tile_out_lanes * scalar_bits
     if data_width_bits % 32:
         raise ValueError(f"{target_id} port width is not divisible by the 32-bit harness loader")
-    in_beats = in_features // in_lanes
-    out_beats = out_features // out_lanes
+    in_beats = in_features // tile_in_lanes
+    out_beats = out_features // tile_out_lanes
     write_count = in_beats * out_beats
     return {
         "target_id": target_id,
@@ -161,7 +235,7 @@ def linear_weight_target(
             if transpose_source
             else ["output_feature", "input_feature"]
         ),
-        "source_transform": {"kind": "transpose_2d"} if transpose_source else {"kind": "identity"},
+        **({"source_transform": {"kind": "transpose_2d"}} if transpose_source else {}),
         "storage_scalar_dtype": storage_dtype,
         "storage_scalar_bits": scalar_bits,
         "value_conversion": conversion_contract(source_dtype, storage_dtype),
@@ -174,8 +248,8 @@ def linear_weight_target(
             "words_per_write": data_width_bits // 32,
         },
         "tile": {
-            "out_lanes": out_lanes,
-            "in_lanes": in_lanes,
+            "out_lanes": tile_out_lanes,
+            "in_lanes": tile_in_lanes,
             "out_beats": out_beats,
             "in_beats": in_beats,
             "scalar_order_within_write": ["out_lane", "in_lane"],
@@ -246,6 +320,14 @@ def vector_target(
     }
 
 
+def linear_array_tile(stage: dict[str, Any], in_lanes: int, out_lanes: int) -> tuple[int | None, int | None]:
+    rows = bound_int(stage, "compute_array_rows", out_lanes)
+    cols = bound_int(stage, "compute_array_cols", in_lanes)
+    if cols > in_lanes:
+        return rows, cols
+    return None, None
+
+
 def resolve_explicit_layout(
     stage: dict[str, Any],
     stage_semantics: dict[str, Any],
@@ -271,16 +353,21 @@ def resolve_explicit_layout(
         kind = str(row.get("kind") or "")
         storage = str(row.get("storage_dtype") or weight_dtype).replace("weight_dtype", weight_dtype).replace("acc_dtype", acc_dtype)
         if kind == "linear_weight_matrix":
+            in_lanes = bound_int(stage, str(row.get("in_lanes_param") or "lanes"))
+            out_lanes = bound_int(stage, str(row.get("out_lanes_param") or "lanes"))
+            array_rows, array_cols = linear_array_tile(stage, in_lanes, out_lanes)
             targets.append(
                 linear_weight_target(
                     target_id=str(row.get("target_id")),
                     port_role=str(row.get("dut_port_role")),
                     sources=sources,
-                    in_lanes=bound_int(stage, str(row.get("in_lanes_param") or "lanes")),
-                    out_lanes=bound_int(stage, str(row.get("out_lanes_param") or "lanes")),
+                    in_lanes=in_lanes,
+                    out_lanes=out_lanes,
                     source_dtype=weight_dtype,
                     storage_dtype=storage,
                     transpose_source=bool(row.get("transpose_source", False)),
+                    array_rows=array_rows,
+                    array_cols=array_cols,
                 )
             )
         elif kind in {"norm_scale_vector", "norm_bias_vector", "linear_bias_vector"}:
@@ -367,6 +454,7 @@ def canonical_targets(
     if op in {"mlp_gate_proj", "mlp_up_proj", "mlp_down_proj"}:
         if len(bindings) != 1:
             raise ValueError(f"{stage.get('stage_id')}: standalone MLP projection requires one matrix")
+        array_rows, array_cols = linear_array_tile(stage, lanes, lanes)
         return [
             linear_weight_target(
                 target_id="linear.weight",
@@ -376,6 +464,8 @@ def canonical_targets(
                 out_lanes=lanes,
                 source_dtype=weight_dtype,
                 storage_dtype=weight_dtype,
+                array_rows=array_rows,
+                array_cols=array_cols,
             )
         ], "canonical_semantic_op_layout.v1"
     if op == "self_attention":
@@ -402,6 +492,8 @@ def canonical_targets(
             qkv_biases = [roles[(name, "bias")] for name in ("q_proj", "k_proj", "v_proj") if (name, "bias") in roles]
             out_bias = roles.get(("o_proj", "bias"))
             transpose_source = False
+        qkv_array_rows, qkv_array_cols = linear_array_tile(stage, lanes, lanes)
+        out_array_rows, out_array_cols = linear_array_tile(stage, bound_int(stage, "head_dim"), lanes)
         targets = [
             linear_weight_target(
                 target_id="attention.qkv.weight",
@@ -412,6 +504,8 @@ def canonical_targets(
                 source_dtype=weight_dtype,
                 storage_dtype=weight_dtype,
                 transpose_source=transpose_source,
+                array_rows=qkv_array_rows,
+                array_cols=qkv_array_cols,
             )
         ]
         if qkv_biases and (not fused_conv1d and len(qkv_biases) != 3):
@@ -438,6 +532,8 @@ def canonical_targets(
                 source_dtype=weight_dtype,
                 storage_dtype=weight_dtype,
                 transpose_source=transpose_source,
+                array_rows=out_array_rows,
+                array_cols=out_array_cols,
             )
         )
         if out_bias is not None:
@@ -466,6 +562,7 @@ def canonical_targets(
             )
         weight_role = "weight_mlp_up" if op == "mlp_fc" else "weight_mlp_down"
         bias_role = f"{weight_role}_bias"
+        array_rows, array_cols = linear_array_tile(stage, lanes, lanes)
         return [
             linear_weight_target(
                 target_id="linear.weight",
@@ -476,6 +573,8 @@ def canonical_targets(
                 source_dtype=weight_dtype,
                 storage_dtype=weight_dtype,
                 transpose_source=True,
+                array_rows=array_rows,
+                array_cols=array_cols,
             ),
             vector_target(
                 target_id="linear.bias",
@@ -500,8 +599,8 @@ def build_stage_weight_layout(
     numeric_policy: dict[str, Any],
 ) -> dict[str, Any]:
     rules = numeric_policy.get("default_rules", {}) if isinstance(numeric_policy.get("default_rules"), dict) else {}
-    weight_dtype = str(rules.get("weight_dtype") or "")
-    acc_dtype = str(rules.get("acc_dtype") or "")
+    weight_dtype = canonical_dtype(rules.get("weight_dtype")).lower()
+    acc_dtype = canonical_dtype(rules.get("acc_dtype")).lower()
     dtype_bits(weight_dtype)
     dtype_bits(acc_dtype)
     targets, resolution = canonical_targets(stage, stage_semantics, bindings, weight_dtype, acc_dtype)
@@ -577,7 +676,7 @@ def build_stage_weight_layout(
             "default_or_identity_fallback": "forbidden",
         },
     }
-    contract["contract_sha256"] = sha256_json(contract)
+    contract["contract_sha256"] = identity_sha256(contract)
     return contract
 
 
@@ -598,27 +697,142 @@ def load_target_tensor(binding: dict[str, Any], source_dtype: str) -> Any:
     raise ValueError(f"unsupported source tensor dtype: {source_dtype}")
 
 
-def target_scalars(target: dict[str, Any], by_suffix: dict[str, dict[str, Any]]) -> Any:
+def _policy_scalar_scale_fixed_point() -> dict[str, Any]:
+    """Declare unit activation/output scales in the signed-INT8 code domain.
+
+    This is an explicit numeric-policy convention for a run with no learned
+    activation calibration payload. It is not inferred from checkpoint values
+    or DUT outputs. The per-output-channel matrix scales remain independently
+    derived from the real checkpoint tensors.
+    """
+
+    unit = _q31_scale_encoding(1.0)
+    convention = {
+        "id": "w4a8_signed_int8_code_domain_unit_real_scale",
+        "activation_real_scale": 1.0,
+        "output_real_scale": 1.0,
+        "source": "explicit_numeric_policy_code_domain_convention",
+        "learned_activation_calibration_assumed": False,
+    }
+    return {
+        "representation": "unsigned_q31_multiplier_times_power_of_two",
+        "fractional_bits": 31,
+        "scalar_scale_convention": convention,
+        "activationScale": dict(unit),
+        "activationShift": int(unit["binary_shift"]),
+        "outputScale": dict(unit),
+        "outputShift": int(unit["binary_shift"]),
+    }
+
+
+def _q31_scale_encoding(scale: float) -> dict[str, int]:
+    """Encode a positive real scale as unsigned Q31 mantissa plus exponent."""
+
+    if not math.isfinite(float(scale)) or float(scale) <= 0.0:
+        raise ValueError(f"quantization scale must be finite and positive, got {scale!r}")
+    mantissa, exponent = math.frexp(float(scale))
+    multiplier = int(round(mantissa * (1 << 31)))
+    if multiplier >= (1 << 31):
+        multiplier >>= 1
+        exponent += 1
+    if multiplier <= 0 or multiplier >= (1 << 31):
+        raise ValueError(f"quantization scale cannot be represented as unsigned Q31: {scale!r}")
+    return {
+        "multiplier_unsigned_q31": multiplier,
+        "binary_shift": int(exponent),
+    }
+
+
+def _q31_scale_encoding_list(scales: list[float]) -> list[dict[str, int]]:
+    return [_q31_scale_encoding(scale) for scale in scales]
+
+
+def target_scalars(target: dict[str, Any], by_suffix: dict[str, dict[str, Any]]) -> tuple[Any, dict[str, Any] | None]:
+    """Read source FP tensors, quantize to deployed integer storage, then tile-pack.
+
+    Checkpoint dtype remains independent from deployed dtype. Matrix quantizing
+    uses symmetric per-output-channel scales; vector/bias targets use a
+    symmetric per-tensor scale. torch.round implements nearest-even rounding.
+    The scale record is carried alongside the packed stream for downstream
+    loader/scale-port binding rather than being silently discarded.
+    """
     import torch
 
     conversion = target.get("value_conversion", {}) if isinstance(target.get("value_conversion"), dict) else {}
-    source_dtype = str(conversion.get("source_dtype") or target.get("storage_scalar_dtype"))
+    source_dtype = str(conversion.get("source_dtype") or "")
     source_order = target.get("compose", {}).get("source_order", [])
     tensors = [load_target_tensor(by_suffix[str(suffix)], source_dtype) for suffix in source_order]
     axis = int(target.get("compose", {}).get("axis", 0))
     value = tensors[0] if len(tensors) == 1 else torch.cat(tensors, dim=axis)
+    if target.get("source_transform", {}).get("kind") == "transpose_2d":
+        value = value.transpose(0, 1).contiguous()
+    logical_shape = [int(item) for item in target.get("logical_shape", [])]
+    if list(value.shape) != logical_shape:
+        raise ValueError(f"{target.get('target_id')}: composed tensor shape {list(value.shape)} != {logical_shape}")
     storage_dtype = str(target.get("storage_scalar_dtype") or "")
-    value = value.to(torch.float16 if storage_dtype == "fp16" else torch.float32)
+    quantization: dict[str, Any] | None = None
+    if storage_dtype in {"int4", "int8", "int32"}:
+        bits = {"int4": 4, "int8": 8, "int32": 32}[storage_dtype]
+        qmin = -(1 << (bits - 1))
+        qmax = (1 << (bits - 1)) - 1
+        if target.get("target_kind") == "linear_weight_matrix":
+            if value.ndim != 2:
+                raise ValueError(f"{target.get('target_id')}: quantized matrix must have rank two")
+            maxima = value.abs().amax(dim=1)
+            scales = torch.where(maxima > 0, maxima / float(qmax), torch.ones_like(maxima))
+            value = torch.round(value / scales[:, None]).clamp(qmin, qmax).to(torch.int64)
+            scale_values = [float(item) for item in scales.tolist()]
+            quantization = {
+                "scheme": "symmetric_signed_per_output_channel",
+                "rounding": "nearest_even",
+                "zero_point": 0,
+                "saturation_range": [qmin, qmax],
+                "scale": scale_values,
+                "scale_fixed_point": {
+                    "representation": "unsigned_q31_multiplier_times_power_of_two",
+                    "fractional_bits": 31,
+                    "channels": _q31_scale_encoding_list(scale_values),
+                },
+                # Activation/output scalar metadata is supplied by the
+                # explicit current-policy code-domain convention, not by an
+                # invented learned calibration value. Keep it separate from
+                # the checkpoint-derived per-output-channel weight scales.
+                "scalar_scale_fixed_point": _policy_scalar_scale_fixed_point(),
+            }
+        else:
+            maximum = float(value.abs().max().item()) if value.numel() else 0.0
+            scale = maximum / float(qmax) if maximum > 0 else 1.0
+            value = torch.round(value / scale).clamp(qmin, qmax).to(torch.int64)
+            quantization = {
+                "scheme": "symmetric_signed_per_tensor",
+                "rounding": "nearest_even",
+                "zero_point": 0,
+                "saturation_range": [qmin, qmax],
+                "scale": float(scale),
+                "scale_fixed_point": {
+                    "representation": "unsigned_q31_multiplier_times_power_of_two",
+                    "fractional_bits": 31,
+                    **_q31_scale_encoding(float(scale)),
+                },
+            }
+    elif storage_dtype == "fp16":
+        value = value.to(torch.float16)
+    elif storage_dtype == "fp32":
+        value = value.to(torch.float32)
+    else:
+        raise ValueError(f"unsupported storage dtype: {storage_dtype}")
     if target.get("target_kind") == "linear_weight_matrix":
-        if target.get("source_transform", {}).get("kind") == "transpose_2d":
-            value = value.transpose(0, 1).contiguous()
-        out_features, in_features = [int(item) for item in target["logical_shape"]]
+        out_features, in_features = logical_shape
         tile = target["tile"]
         out_lanes = int(tile["out_lanes"])
         in_lanes = int(tile["in_lanes"])
+        if out_features % out_lanes or in_features % in_lanes:
+            raise ValueError(f"{target.get('target_id')}: matrix dimensions do not divide the tile")
         value = value.reshape(out_features // out_lanes, out_lanes, in_features // in_lanes, in_lanes)
         value = value.permute(0, 2, 1, 3).contiguous()
-    return value.reshape(-1)
+    elif len(logical_shape) != 1:
+        raise ValueError(f"{target.get('target_id')}: unsupported non-vector target shape {logical_shape}")
+    return value.reshape(-1), quantization
 
 
 def scalar_words(value: Any, dtype: str) -> list[int]:
@@ -630,6 +844,9 @@ def scalar_words(value: Any, dtype: str) -> list[int]:
     if dtype == "fp32":
         raw = value.contiguous().view(torch.int32).reshape(-1).tolist()
         return [int(item) & 0xFFFFFFFF for item in raw]
+    if dtype in {"int4", "int8", "int32"}:
+        bits = {"int4": 4, "int8": 8, "int32": 32}[dtype]
+        return [int(item) & ((1 << bits) - 1) for item in value.to(torch.int64).reshape(-1).tolist()]
     raise ValueError(f"unsupported storage dtype: {dtype}")
 
 
@@ -658,7 +875,7 @@ def materialize_stage_weight_stream(
     packed_words: list[int] = []
     target_rows = []
     for target in layout.get("storage_targets", []):
-        scalars = target_scalars(target, by_suffix)
+        scalars, quantization = target_scalars(target, by_suffix)
         words = scalar_words(scalars, str(target.get("storage_scalar_dtype")))
         packed = pack_u32(words, int(target.get("storage_scalar_bits")))
         expected = int(target.get("stream_word_count") or 0)
@@ -672,10 +889,45 @@ def materialize_stage_weight_stream(
                 f"{target.get('target_id')} stream offset mismatch: {len(packed_words)} != {expected_offset}"
             )
         packed_words.extend(packed)
+        scale_metadata = None
+        scale_payload = None
+        scale_consumer_binding = None
+        if isinstance(quantization, dict):
+            fixed_point = quantization.get("scale_fixed_point")
+            if isinstance(fixed_point, dict):
+                # This is the canonical materialized payload. Merge the
+                # checkpoint-derived per-channel weight fields with the
+                # explicitly declared policy code-domain scalar fields while
+                # preserving each source and channel order.
+                scalar_fixed_point = quantization.get("scalar_scale_fixed_point")
+                scale_payload = deepcopy(fixed_point)
+                if isinstance(scalar_fixed_point, dict):
+                    scale_payload.update(deepcopy(scalar_fixed_point))
+                scale_metadata = {
+                    "representation": fixed_point.get("representation"),
+                    "fractional_bits": fixed_point.get("fractional_bits"),
+                    "payload": deepcopy(scale_payload),
+                    "scalar_scale_convention": deepcopy(
+                        scalar_fixed_point.get("scalar_scale_convention")
+                        if isinstance(scalar_fixed_point, dict)
+                        else None
+                    ),
+                    "consumer_binding": "LinearScalePorts.channelScale/activationScale/outputScale and downstream requantizeQ31WithShift",
+                }
+                scale_consumer_binding = scale_metadata["consumer_binding"]
         target_rows.append(
             {
                 "target_id": target.get("target_id"),
+                "target_kind": target.get("target_kind"),
                 "dut_port_role": target.get("dut_port_role"),
+                "storage_scalar_dtype": target.get("storage_scalar_dtype"),
+                "storage_scalar_bits": target.get("storage_scalar_bits"),
+                "logical_shape": deepcopy(target.get("logical_shape")),
+                "tile": deepcopy(target.get("tile")),
+                "quantization": quantization,
+                "scale_metadata": scale_metadata,
+                "scale_payload": scale_payload,
+                "scale_consumer_binding": scale_consumer_binding,
                 "stream_range": target.get("stream_range"),
                 "port": target.get("port"),
                 "source_tensor_hashes": [
@@ -733,8 +985,7 @@ def materialize_composite_weight_stream(
         if str(layout.get("stage_id") or "") != stage_id or str(layout.get("op") or "") != op:
             raise ValueError(f"{stage_id}: descriptor identity does not match canonical weight layout")
         layout_hash = str(layout.get("contract_sha256") or "")
-        layout_payload = {key: value for key, value in layout.items() if key != "contract_sha256"}
-        if not layout_hash or sha256_json(layout_payload) != layout_hash:
+        if not layout_hash or not weight_layout_hash_matches(layout, layout_hash):
             raise ValueError(f"{stage_id}: canonical weight-layout contract hash mismatch")
 
         layout_word_count = layout.get("stream_word_count")
@@ -779,10 +1030,19 @@ def materialize_composite_weight_stream(
             target_segments.append(
                 {
                     "target_id": target_id,
+                    "target_kind": target.get("target_kind"),
                     "dut_port_role": target.get("dut_port_role"),
+                    "storage_scalar_dtype": target.get("storage_scalar_dtype"),
+                    "storage_scalar_bits": target.get("storage_scalar_bits"),
+                    "logical_shape": deepcopy(target.get("logical_shape")),
+                    "tile": deepcopy(target.get("tile")),
                     "local_stream_range": expected_range,
                     "global_stream_range": global_range,
                     "port": target.get("port"),
+                    "quantization": deepcopy(target.get("quantization")),
+                    "scale_metadata": deepcopy(target.get("scale_metadata")),
+                    "scale_payload": deepcopy(target.get("scale_payload")),
+                    "scale_consumer_binding": deepcopy(target.get("scale_consumer_binding")),
                     "source_tensor_hashes": [
                         row.get("sha256")
                         for row in target.get("source_tensors", [])
@@ -819,7 +1079,53 @@ def materialize_composite_weight_stream(
             stream_targets = local_stream.get("targets")
             if not isinstance(stream_targets, list) or len(stream_targets) != len(target_segments):
                 raise ValueError(f"{stage_id}: canonical local stream target coverage is incomplete")
-            for target, stream_target, target_segment in zip(targets, stream_targets, target_segments):
+
+            # The canonical layout declares structural target ranges, while the
+            # local stream materializes checkpoint-derived quantization. Bind
+            # those records by stable target_id before composing the global
+            # stream. Never retain layout-only metadata when the local stream
+            # contains the actual INT4/INT8 quantization and Q31 scale payload.
+            stream_targets_by_id: dict[str, dict[str, Any]] = {}
+            for stream_index, stream_target in enumerate(stream_targets):
+                if not isinstance(stream_target, dict):
+                    raise ValueError(
+                        f"{stage_id}: canonical local stream target {stream_index} is not an object"
+                    )
+                stream_target_id = str(stream_target.get("target_id") or "")
+                if not stream_target_id or stream_target_id in stream_targets_by_id:
+                    raise ValueError(
+                        f"{stage_id}: canonical local stream target ids must be non-empty and unique"
+                    )
+                stream_targets_by_id[stream_target_id] = stream_target
+            layout_target_ids = [str(target.get("target_id") or "") for target in targets]
+            if set(stream_targets_by_id) != set(layout_target_ids):
+                raise ValueError(
+                    f"{stage_id}: materialized local stream target ids do not match canonical layout targets"
+                )
+            for target_segment in target_segments:
+                target_id = target_segment["target_id"]
+                materialized_target = stream_targets_by_id[target_id]
+                # Preserve exact materialized values and per-channel ordering;
+                # board_weight_image.py consumes these composite target records.
+                if "quantization" in materialized_target:
+                    target_segment["quantization"] = deepcopy(materialized_target["quantization"])
+                if "scale_metadata" in materialized_target:
+                    target_segment["scale_metadata"] = deepcopy(materialized_target["scale_metadata"])
+                if "scale_payload" in materialized_target:
+                    target_segment["scale_payload"] = deepcopy(materialized_target["scale_payload"])
+                # Preserve the complete materialized target record at the
+                # local-to-composite boundary. Board image generation consumes
+                # this record, so route/range metadata and checkpoint-derived
+                # quantization must remain bound to the same stable target_id.
+                target_segment["materialized_target"] = deepcopy(materialized_target)
+
+            for target in targets:
+                target_id = str(target.get("target_id") or "")
+                target_segment = next(
+                    segment for segment in target_segments
+                    if segment["target_id"] == target_id
+                )
+                stream_target = stream_targets_by_id[target_id]
                 expected_stream_target = {
                     "target_id": target_segment["target_id"],
                     "dut_port_role": target_segment["dut_port_role"],
@@ -827,10 +1133,64 @@ def materialize_composite_weight_stream(
                     "port": target_segment["port"],
                     "source_tensor_hashes": target_segment["source_tensor_hashes"],
                 }
-                if stream_target != expected_stream_target:
-                    raise ValueError(
-                        f"{stage_id}/{target.get('target_id')}: canonical local stream target metadata mismatch"
-                    )
+                # Quantization and fixed-point scale payloads are materialized
+                # from the real checkpoint tensors during stream generation;
+                # they are intentionally absent from the canonical layout
+                # template. Validate stable route/range/source metadata exactly,
+                # then require and preserve the materialized integer metadata.
+                for key, expected_value in expected_stream_target.items():
+                    if stream_target.get(key) != expected_value:
+                        raise ValueError(
+                            f"{stage_id}/{target_id}: canonical local stream target metadata mismatch"
+                        )
+                storage_dtype = str(target.get("storage_scalar_dtype") or "")
+                if storage_dtype in {"int4", "int8", "int32"}:
+                    quantization = stream_target.get("quantization")
+                    if not isinstance(quantization, dict):
+                        raise ValueError(
+                            f"{stage_id}/{target_id}: materialized integer quantization metadata is missing"
+                        )
+                    fixed_point = quantization.get("scale_fixed_point")
+                    if not isinstance(fixed_point, dict):
+                        raise ValueError(
+                            f"{stage_id}/{target_id}: materialized Q31 scale/shift metadata is missing"
+                        )
+                    expected_scale_payload = deepcopy(fixed_point)
+                    scalar_fixed_point = quantization.get("scalar_scale_fixed_point")
+                    if isinstance(scalar_fixed_point, dict):
+                        expected_scale_payload.update(deepcopy(scalar_fixed_point))
+                    if stream_target.get("scale_payload") != expected_scale_payload:
+                        raise ValueError(
+                            f"{stage_id}/{target_id}: first-class scale payload differs from canonical quantization and policy scalar convention"
+                        )
+                    materialized_scale_metadata = stream_target.get("scale_metadata")
+                    if not isinstance(materialized_scale_metadata, dict) or materialized_scale_metadata.get("payload") != expected_scale_payload:
+                        raise ValueError(
+                            f"{stage_id}/{target_id}: scale_metadata payload differs from canonical quantization and policy scalar convention"
+                        )
+                    if not stream_target.get("scale_consumer_binding"):
+                        raise ValueError(
+                            f"{stage_id}/{target_id}: materialized scale consumer binding is missing"
+                        )
+                    if fixed_point.get("representation") != "unsigned_q31_multiplier_times_power_of_two":
+                        raise ValueError(
+                            f"{stage_id}/{target_id}: unsupported fixed-point scale representation"
+                        )
+                    if fixed_point.get("fractional_bits") != 31:
+                        raise ValueError(
+                            f"{stage_id}/{target_id}: fixed-point scale must use Q31 fractional bits"
+                        )
+                    if storage_dtype == "int4" and quantization.get("saturation_range") != [-8, 7]:
+                        raise ValueError(
+                            f"{stage_id}/{target_id}: INT4 saturation range is not signed W4"
+                        )
+                    declared_scale_metadata = target_segment.get("scale_metadata")
+                    materialized_scale_metadata = stream_target.get("scale_metadata")
+                    if declared_scale_metadata is not None and materialized_scale_metadata != declared_scale_metadata:
+                        raise ValueError(
+                            f"{stage_id}/{target_id}: materialized scale metadata differs from canonical declaration"
+                        )
+
             source_paths.append((stage_id, local_path, local_stream_hash, layout_word_count))
 
         stage_range = {

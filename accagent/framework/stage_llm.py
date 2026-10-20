@@ -32,17 +32,20 @@ from accagent.framework.llm_io import (
     read_response_text,
     repair_prompt,
     response_payload,
+    responses_request_headers,
     validate_schema,
 )
 from accagent.framework.sacg_utils import (
     hierarchical_learning_context,
     hierarchy_memory_context,
     read_json as read_sacg_json,
+    run_dir_from_state,
     sacg_memory_summary,
     sacg_memory_truth,
     scoped_sacg_memory_summary,
     scoped_sacg_memory_truth,
 )
+from accagent.framework.trace_identity import targeted_trace_env
 
 
 SYSTEM = """You are a SpatialAccAgent AI-chip-design-team stage agent.
@@ -53,22 +56,20 @@ requests, structured stage artifacts, tool logs, and SACG constraints. Convert
 messy evidence into bounded next actions. Do not bypass checkers, modify golden
 outputs, loosen tolerance, or claim hardware pass without tool evidence.
 
-Functional correctness requires an independent target-model reference run on
-the same immutable checkpoint and stimulus used by the DUT. A deterministic
-random generator may create the input stimulus, but expected outputs must come
-from executing the real target model, never from random data or RTL output.
-Weight files or manifests existing on disk do not prove that the DUT consumed
-them: require complete-scope tensor hashes, a bound loader/harness, and executed
-tool evidence. Keep the numeric comparison policy and its tolerance immutable
-during a repair loop. At board level, require the exact user-supplied sample
-project wrapper and source hashes rather than a simplified substitute. The
+All verification layers use one standard: successful real VCS compilation,
+elaboration, and linking of the current hardware sources. Repair compiler
+errors and advance as soon as this evidence passes. Do not run the simulation
+executable or require runtime weight loading, golden comparisons, signal
+traces, output dumps, or numerical correctness for verification acceptance.
+Historical task descriptions cannot restore retired validation requirements.
+Preserve the intended accelerator architecture and real board interfaces. The
 accelerator scope is Transformer blocks only: embedding/tokenization, final
 model norm, LM head/logits, sampling, and other model-tail work are outside the
 DUT and must not be added to its golden or weight-consumption requirements.
 Return one JSON object only. No markdown.
 """
 
-PROMPT_COMPACTION_PROTOCOL = "spatialaccagent.evidence_preserving_prompt_compaction.v10"
+PROMPT_COMPACTION_PROTOCOL = "spatialaccagent.evidence_preserving_prompt_compaction.v12"
 
 # The runner stages every exact-board job under this framework-owned relative
 # directory. These transport values are not part of the agent's design output.
@@ -78,8 +79,20 @@ FRAMEWORK_VCS_OUTPUT = "simv"
 
 ACTION_GROUNDING_REGISTRY = {
     "schema_version": "spatialaccagent.action_grounding_registry.v0",
+    "verification_execution_policy": {
+        "validation_policy": "vcs_compile_only",
+        "acceptance": "Real current-source VCS compilation, elaboration and linking; simulator execution and numerical comparison are not acceptance prerequisites.",
+        "existing_tool_modes": {
+            "case_leaf_functional": "scripts/verification/case_leaf_operator_verify.py: current-source VCS compile-only evidence for operator leaves",
+            "case_single_layer_functional": "scripts/verification/case_single_layer_stream_sim.py: current-source VCS compile-only evidence for the connected kernel",
+            "case_vcs_functional_sim": "scripts/verification/case_board_vcs_functional.py: compile-only VCS evidence for the exact discovered board wrapper; simulation is not invoked",
+        },
+        "executor": "accagent/framework/stage_verification.py: compile_only_stage_gates and compile_only_required_gates_by_level select the existing layer tools in bottom-up order",
+        "planning_boundary": "Historical functional/golden DAG nodes describe optional diagnostic capabilities. Missing runtime/golden results and layer certificates are downstream execution obligations during verification_artifacts planning, not missing compile-only capabilities. Use existing tool roles; do not invent another compile-only runner merely because a role retains a functional_sim name.",
+    },
     "policy": (
         "Executable actions should use these tool/checker names when applicable. "
+        "A registered acceptance checker may also be requested as a validation operation in tool_roles. "
         "If a required capability is missing, name it as planned_tool.<short_name> "
         "and make the rationale say that multi-agent system capability implementation is required."
     ),
@@ -157,16 +170,19 @@ ACTION_GROUNDING_REGISTRY = {
         "case_board_shell_wrapper_generate",
         "case_runtime_abi_check",
         "case_runtime_bitstream",
+        "case_compute_slot_adapter_generate",
         "app_shell_target_discovery_contract",
         "app_shell_target_hint_synthesis",
         "app_shell_target_discovery_after_hint",
         "backend_bounded_recovery_action",
+        "backend_bounded_recovery",
         "backend_recovery_approval_ingest",
         "implementation_package_static",
         "timing_resource_check",
         "deployment_board_check",
         "board_runtime",
         "output_validity_check",
+        "case_stage7_metrics",
         "targeted_failed_checker_rerun",
         "bounded_template_repair",
         "pipeline_repair",
@@ -178,6 +194,7 @@ ACTION_GROUNDING_REGISTRY = {
         "llm_semantic_extraction",
         "no_static_keyword_semantic_matching",
         "sacg_memory_update",
+        "sacg_memory_check",
         "stage_retry_request",
         "stage_backtrack_request",
         "stage_artifact_trust_barrier",
@@ -291,6 +308,7 @@ ACTION_GROUNDING_REGISTRY = {
         "backend_app_shell_target_discovery_check",
         "backend_app_shell_target_hint_synthesis_check",
         "backend_bounded_recovery_action_check",
+        "backend_recovery_approval_ingest",
         "backend_recovery_approval_ingest_check",
     ],
 }
@@ -433,6 +451,7 @@ STAGE_AGENT_SCHEMA = {
                     "produces": {"type": "array", "items": {"type": "string"}},
                     "tool_roles": {"type": "array", "items": {"type": "string"}},
                     "acceptance_checkers": {"type": "array", "items": {"type": "string"}},
+                    "targeted_replay_plan": {"type": "object", "additionalProperties": True},
                     "on_failure": {"type": "string"},
                     "requires_approval": {"type": "boolean"},
                 },
@@ -1092,22 +1111,47 @@ def retry_404_model_route_errors() -> bool:
 
 
 def provider_capacity_error(exc: Exception) -> bool:
-    """Recognize explicit provider quota exhaustion without masking 403 auth errors."""
+    """Recognize explicit provider quota or capacity exhaustion."""
 
-    if not isinstance(exc, urllib.error.HTTPError) or exc.code != 403:
+    if not isinstance(exc, urllib.error.HTTPError) or exc.code not in {403, 429}:
         return False
     text = str(exc).lower()
     return any(
         term in text
         for term in (
             "daily usage limit",
+            "daily_limit_exceeded",
             "daily quota",
             "quota exceeded",
             "usage limit exceeded",
+            "usage_limit_exceeded",
+            "insufficient_user_quota",
             "billing_error",
             "capacity exhausted",
             "insufficient balance",
             "insufficient_balance",
+        )
+    )
+
+
+def route_failover_error(exc: Exception) -> bool:
+    """Recognize recoverable gateway or configured-route rejection errors."""
+
+    if not isinstance(exc, urllib.error.HTTPError):
+        return False
+    if exc.code in {502, 503, 504, 524}:
+        return True
+    if exc.code != 403:
+        return False
+    text = str(exc).lower()
+    return any(
+        term in text
+        for term in (
+            "site owner has blocked access",
+            "blocked access based on your browser",
+            "browser's signature",
+            "openai_error",
+            "bad_response_status_code",
         )
     )
 
@@ -1151,6 +1195,38 @@ def llm_auto_compact_after_attempts() -> int:
         return max(1, int(raw))
     except ValueError:
         return 2
+
+
+def llm_retry_compact_min_prompt_bytes() -> int:
+    """Return the lower bound for compaction after provider transport failures."""
+
+    raw = os.environ.get("SPATIALACC_LLM_RETRY_COMPACT_MIN_PROMPT_BYTES", "").strip()
+    if not raw:
+        raw = os.environ.get("SPATIALACC_LLM_AUTO_COMPACT_MIN_PROMPT_BYTES", "").strip()
+    if not raw:
+        return 256_000
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 256_000
+
+
+def hot_loop_prompt_requires_compaction(agent: str, prompt_bytes: int) -> bool:
+    """Keep verification and repair requests below provider-safe input sizes."""
+
+    if prompt_bytes < llm_retry_compact_min_prompt_bytes():
+        return False
+    return any(
+        marker in agent
+        for marker in (
+            "evidence_classifier",
+            "verification_targeted_specialist",
+            "verification_capability_repair",
+            "repair_targeted_specialist",
+            "localized_semantic_",
+            "repair_agent",
+        )
+    )
 
 
 def retry_float_env(name: str, default: float) -> float:
@@ -1511,12 +1587,7 @@ def call_llm(
     req = urllib.request.Request(
         endpoint,
         data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream" if stream else "application/json",
-            "Connection": "close",
-        },
+        headers=responses_request_headers(key, stream),
         method="POST",
     )
     with llm_inflight_slot(schema_name):
@@ -1534,6 +1605,8 @@ def transient_llm_error(exc: Exception) -> bool:
         if exc.code == 404 and retry_404_model_route_errors():
             return True
         if provider_capacity_error(exc):
+            return True
+        if route_failover_error(exc):
             return True
         if exc.code == 302 and "redirect error that would lead to an infinite loop" in str(exc).lower():
             return True
@@ -1652,6 +1725,7 @@ def call_llm_with_retry(
     route_endpoint = endpoint
     route_key = key
     fallback_used = False
+    exhausted_routes: set[str] = set()
 
     def observe(kind: str, **fields: Any) -> None:
         if transaction_observer is None:
@@ -1699,10 +1773,12 @@ def call_llm_with_retry(
                 transport=transport,
                 error=str(exc),
             )
+            if provider_capacity_error(exc):
+                exhausted_routes.add(route_endpoint)
             if not transient_llm_error(exc):
                 raise
             if (
-                provider_capacity_error(exc)
+                (provider_capacity_error(exc) or route_failover_error(exc))
                 and not fallback_used
                 and fallback.fallback_endpoint
                 and fallback.fallback_api_key
@@ -1714,11 +1790,15 @@ def call_llm_with_retry(
                     "route_switched",
                     attempt=attempt,
                     schema_name=schema_name,
-                    reason="provider_capacity_error",
+                    reason=(
+                        "provider_capacity_error"
+                        if provider_capacity_error(exc)
+                        else "route_failover_error"
+                    ),
                     endpoint=route_endpoint,
                 )
                 print(
-                    f"[stage:llm] switching {schema_name} to configured fallback route after provider capacity error",
+                    f"[stage:llm] switching {schema_name} to configured fallback route after recoverable route failure",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -1728,7 +1808,7 @@ def call_llm_with_retry(
                 raise
             delay = retry_sleep_seconds(exc, attempt)
             retry_mode = "unbounded" if max_attempts is None else f"{attempt}/{max_attempts}"
-            if fallback_used:
+            if fallback_used and endpoint not in exhausted_routes:
                 route_endpoint = endpoint
                 route_key = key
                 fallback_used = False
@@ -1771,10 +1851,13 @@ def call_llm_with_retry(
             if (
                 allow_auto_compact
                 and llm_auto_compact_retry()
-                and len(prompt.encode("utf-8")) >= llm_auto_compact_min_prompt_bytes()
+                and len(prompt.encode("utf-8"))
+                >= llm_retry_compact_min_prompt_bytes()
                 and attempt >= llm_auto_compact_after_attempts()
                 and (
                     stream_transport_fallback_error(exc)
+                    or route_failover_error(exc)
+                    or provider_capacity_error(exc)
                     or llm_output_budget_error(exc)
                 )
             ):
@@ -2936,11 +3019,17 @@ def expanded_vcs_command_rewrite_authority(
     replacement_targets = (
         set() if compute_slot_axi_mode else set(replacement_ids.values())
     )
-    additional_generated_ids = [
-        str(value)
-        for value in [*certified_kernel_source_ids, *current_generated_source_ids]
-        if str(value) and str(value) not in replacement_targets
-    ]
+    additional_generated_ids: list[str] = []
+    emitted_additional_ids: set[str] = set()
+    for value in [*certified_kernel_source_ids, *current_generated_source_ids]:
+        source_id = str(value)
+        if (
+            source_id
+            and source_id not in replacement_targets
+            and source_id not in emitted_additional_ids
+        ):
+            emitted_additional_ids.add(source_id)
+            additional_generated_ids.append(source_id)
     ordered_source_ids = [
         *ordered_fixture_ids,
         *[value for group in sample_groups for value in group["source_ids"]],
@@ -2993,11 +3082,24 @@ def expanded_vcs_command_rewrite_authority(
                 )
             else:
                 result.append(token)
+        if compiler_timescale_option and compiler_timescale_option not in result:
+            source_index = next(
+                (
+                    index
+                    for index, token in enumerate(result)
+                    if isinstance(token, dict) and "source_id" in token
+                ),
+                len(result),
+            )
+            result.insert(source_index, compiler_timescale_option)
         return result
 
     ordered_command_templates: list[dict[str, Any]] = []
     for group in fixture_groups:
         source_ids = [str(value) for value in group.get("source_ids", [])]
+        compiler_options = list(group.get("compiler_options", []))
+        if compiler_timescale_option and compiler_timescale_option not in compiler_options:
+            compiler_options.append(compiler_timescale_option)
         ordered_command_templates.append(
             {
                 "order": len(ordered_command_templates),
@@ -3007,7 +3109,7 @@ def expanded_vcs_command_rewrite_authority(
                 "argv": [
                     "-work",
                     str(group.get("work_library") or ""),
-                    *copy.deepcopy(group.get("compiler_options", [])),
+                    *copy.deepcopy(compiler_options),
                     *(
                         {"include_dir_id": str(value)}
                         for value in group.get("include_directory_ids", [])
@@ -3750,6 +3852,208 @@ def _interface_headers(
     return headers
 
 
+def _compact_verilog_module_interface(text: str) -> dict[str, Any]:
+    """Losslessly index ANSI-style module ports without sending generated logic."""
+
+    module = re.search(
+        r"(?m)^\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\s*\(", text
+    )
+    if not module:
+        raise ValueError("certified kernel source has no ANSI module header")
+    header_end = text.find(");", module.end())
+    if header_end < 0:
+        raise ValueError("certified kernel ANSI module header is unterminated")
+    header = text[module.start() : header_end + 1]
+    ports: list[tuple[str, str, str]] = []
+    direction: str | None = None
+    packed_width = ""
+    for line_number, raw_line in enumerate(header.splitlines()[1:], 2):
+        line = raw_line.strip().rstrip(",")
+        if not line:
+            continue
+        if line == ")":
+            continue
+        declaration = re.fullmatch(
+            r"(?:(input|output|inout)\s+)?"
+            r"(?:(?:wire|reg|logic)\s+)?"
+            r"(\[[^]]+\])?\s*"
+            r"([A-Za-z_$][A-Za-z0-9_$]*)",
+            line,
+        )
+        if not declaration:
+            raise ValueError(
+                f"unsupported certified kernel ANSI port syntax at header line {line_number}"
+            )
+        declared_direction, declared_width, name = declaration.groups()
+        if declared_direction:
+            direction = declared_direction
+            packed_width = declared_width or ""
+        elif declared_width:
+            raise ValueError(
+                f"kernel port width continuation lacks an explicit direction at line {line_number}"
+            )
+        if not direction:
+            raise ValueError(f"kernel port direction is missing at line {line_number}")
+        ports.append((direction, packed_width, name))
+    if not ports:
+        raise ValueError("certified kernel module has no declared ports")
+
+    # Consecutive flattened ports such as io_weight_0..io_weight_1151 are
+    # represented as explicit indexed ranges while preserving order and ABI.
+    groups: list[dict[str, Any]] = []
+    index = 0
+    while index < len(ports):
+        port_direction, width, name = ports[index]
+        match = re.fullmatch(r"(.*?)(\d+)", name)
+        stop = index + 1
+        if match:
+            prefix, first = match.group(1), int(match.group(2))
+            last = first
+            while stop < len(ports):
+                next_direction, next_width, next_name = ports[stop]
+                next_match = re.fullmatch(r"(.*?)(\d+)", next_name)
+                if (
+                    not next_match
+                    or next_direction != port_direction
+                    or next_width != width
+                    or next_match.group(1) != prefix
+                    or int(next_match.group(2)) != last + 1
+                ):
+                    break
+                last += 1
+                stop += 1
+        group_count = stop - index
+        if group_count >= 3:
+            groups.append(
+                {
+                    "direction": port_direction,
+                    "packed_width": width,
+                    "name_pattern": f"{prefix}{{index}}",
+                    "first_index": first,
+                    "last_index": last,
+                    "count": group_count,
+                    "order_start": index,
+                }
+            )
+        else:
+            for offset in range(group_count):
+                item_direction, item_width, item_name = ports[index + offset]
+                groups.append(
+                    {
+                        "direction": item_direction,
+                        "packed_width": item_width,
+                        "name": item_name,
+                        "order": index + offset,
+                    }
+                )
+        index = stop
+    expanded_count = sum(int(group.get("count", 1)) for group in groups)
+    if expanded_count != len(ports):
+        raise ValueError("compacted kernel interface does not preserve every port")
+    return {
+        "encoding": "spatialaccagent.ordered_verilog_port_ranges.v1",
+        "module": module.group(1),
+        "source_bytes": len(text.encode("utf-8")),
+        "header_bytes": len(header.encode("utf-8")),
+        "port_count": len(ports),
+        "ordered_port_groups": groups,
+        "policy": {
+            "port_order_preserved": True,
+            "direction_and_packed_width_preserved": True,
+            "numeric_name_ranges_expand_losslessly": True,
+            "module_body_omitted_as_read_only_implementation": True,
+        },
+    }
+
+
+def _compact_exact_board_generation_kernel_inputs(
+    compact_inputs: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep generated logic out of the prompt while preserving its certified ABI."""
+
+    result = copy.deepcopy(compact_inputs)
+    package = result.get("verification_capability_repair_package")
+    if not isinstance(package, dict):
+        return result
+    bundle = package.get("repair_source_bundle")
+    bundle = bundle if isinstance(bundle, dict) else {}
+    editable = bundle.get("editable_contract")
+    editable = editable if isinstance(editable, dict) else {}
+    rewrite_authority = editable.get("board_manifest_rewrite_authority")
+    rewrite_authority = (
+        rewrite_authority if isinstance(rewrite_authority, dict) else {}
+    )
+    compile_authority = rewrite_authority.get("stage2_vcs_compile_authority")
+    if isinstance(compile_authority, dict):
+        declaration = compile_authority.get("module_declaration")
+        if isinstance(declaration, str) and len(declaration.encode("utf-8")) > 64_000:
+            declaration_bytes = declaration.encode("utf-8")
+            compile_authority["module_declaration"] = {
+                "source_sha256": hashlib.sha256(declaration_bytes).hexdigest(),
+                "source_bytes": len(declaration_bytes),
+                "interface_contract": _compact_verilog_module_interface(
+                    declaration
+                ),
+            }
+            compile_authority["module_declaration_projection_policy"] = {
+                "full_hash_bound_compile_authority_remains_on_disk": True,
+                "complete_ordered_port_contract_supplied": True,
+                "numeric_port_ranges_expand_losslessly": True,
+            }
+    context = package.get("exact_board_integration_repair_context")
+    if not isinstance(context, dict):
+        return result
+    adaptive = context.get("adaptive_design_inputs")
+    if not isinstance(adaptive, dict):
+        return result
+    kernel = adaptive.get("kernel_binding_design_inputs")
+    if not isinstance(kernel, dict):
+        return result
+    certified_sources = kernel.get("certified_top_sources")
+    if not isinstance(certified_sources, list):
+        return result
+    projected_sources: list[dict[str, Any]] = []
+    for source in certified_sources:
+        if not isinstance(source, dict) or not isinstance(source.get("content"), str):
+            projected_sources.append(copy.deepcopy(source))
+            continue
+        source_content = source["content"]
+        source_digest = hashlib.sha256(source_content.encode("utf-8")).hexdigest()
+        expected_digest = str(source.get("sha256") or "")
+        if expected_digest and expected_digest != source_digest:
+            raise ValueError(
+                "certified kernel source content differs from its supplied SHA-256"
+            )
+        if source.get("size_bytes") is not None and int(source["size_bytes"]) != len(
+            source_content.encode("utf-8")
+        ):
+            raise ValueError(
+                "certified kernel source content differs from its supplied byte size"
+            )
+        interface = _compact_verilog_module_interface(source_content)
+        projected = {
+            key: copy.deepcopy(source[key])
+            for key in (
+                "path",
+                "sha256",
+                "size_bytes",
+                "source_id",
+                "declared_modules",
+            )
+            if key in source
+        }
+        projected["interface_contract"] = interface
+        projected_sources.append(projected)
+    kernel["certified_top_sources"] = projected_sources
+    kernel["prompt_projection_policy"] = {
+        "full_hash_bound_sources_remain_on_disk": True,
+        "certified_top_implementation_body_omitted": True,
+        "ordered_complete_top_port_interface_supplied": True,
+        "current_generator_sources_remain_complete": True,
+    }
+    return result
+
+
 def _json_document_projection(parsed: dict[str, Any], max_items: int = 16) -> dict[str, Any]:
     schema = str(parsed.get("schema_version") or "")
     result: dict[str, Any] = {}
@@ -4035,6 +4339,9 @@ def evidence_document_projection(
         if len(content) > 4800:
             projection["content_tail"] = content[-1200:]
         return projection
+    if suffix == ".log":
+        projection["causal_log_excerpt"] = _compact_causal_log(content, None)
+        return projection
     projection["content_head"] = content[:1600]
     return projection
 
@@ -4262,6 +4569,7 @@ def compact_repair_source_bundle(
             required_modules & declared_modules
             or required_paths & row_paths
             or required_hashes & row_hashes
+            or (row.get("content_preservation") and content and not row.get("truncated"))
         )
         projection = evidence_document_projection(
             row,
@@ -4506,6 +4814,11 @@ def compact_repair_source_bundle(
             bundle.get("generated_module_inventory", [])
         ),
         "trusted_numeric_support": compact_for_retry(bundle.get("trusted_numeric_support", {})),
+        "fpga_ip_repair_closure": copy.deepcopy(bundle.get("fpga_ip_repair_closure", {})),
+        "reference_operator_semantics": copy.deepcopy(bundle.get("reference_operator_semantics", {})),
+        "semantic_harness_source_contract": copy.deepcopy(
+            bundle.get("semantic_harness_source_contract", {})
+        ),
         "external_fixture_source_contract": compact_for_retry(
             bundle.get("external_fixture_source_contract", {})
         ),
@@ -4513,7 +4826,8 @@ def compact_repair_source_bundle(
         "compaction_policy": {
             "full_document_text_or_json_omitted_except_selected_editable_interface_and_certified_lifecycle_sources": True,
             "evidence_preserved_by_path_and_sha256": True,
-            "tools_must_read_hash_bound_source_files_for_execution": True,
+            "source_hash_validation_owner": "framework_executor_before_file_edits_and_tool_execution",
+            "implementation_agent_uses_supplied_complete_source_bodies": True,
         },
     }
 
@@ -5445,9 +5759,8 @@ def _compact_current_adaptive_observation_state(
         runner = runner if isinstance(runner, dict) else {}
         boundary = failed_recheck.get("boundary")
         boundary = boundary if isinstance(boundary, dict) else {}
-        # Both locations contain the same complete current signal summary.
-        # Keep one canonical copy so the Agent still receives the 300-signal
-        # evidence without paying for the duplicated runner/boundary wrapper.
+        # Both locations contain the same current signal summary. Keep one
+        # canonical copy so the prompt does not duplicate the wrapper.
         signal_summary = boundary.get("summary")
         if not isinstance(signal_summary, dict):
             signal_summary = runner.get("pipeline_boundary_observation_summary")
@@ -5528,7 +5841,7 @@ def _compact_board_vcs_feedback(feedback: dict[str, Any]) -> dict[str, Any]:
         )
         causal_projection = {
             key: copy.deepcopy(failure_evidence.get(key))
-            for key in ("failure_class", "first_real_error")
+            for key in ("failure_class", "first_real_error", "first_real_error_context")
             if key in failure_evidence
         }
         for key in ("compile", "simulation"):
@@ -5869,6 +6182,7 @@ def compact_board_bootstrap_repair_package(result: dict[str, Any]) -> dict[str, 
             bool(board_root and (path == board_root or path.startswith(board_root + "/")))
             or path == manifest_path
             or any(marker in path for marker in required_markers)
+            or bool(document.get("content_preservation"))
         )
         if keep:
             retained_documents.append(document)
@@ -6185,6 +6499,12 @@ def compact_board_post_vcs_repair_package(result: dict[str, Any]) -> dict[str, A
             required_keys = [
                 "target_model",
                 "connected_kernel_lifecycle_authority",
+                "kernel_binding_design_inputs",
+                "target_board_profile",
+                "shared_board_source_index",
+                "exact_board_source_identity",
+                "model_derived_memory_layout",
+                "full_weight_image_manifest",
             ]
             if failure_class == "vcs_runtime_zero_time_livelock":
                 required_keys.append("debug_observability_authority")
@@ -6395,7 +6715,190 @@ def has_proven_board_to_lower_layer_contradiction(package: Any) -> bool:
     )
 
 
+def _compact_relevant_repair_context(value: Any) -> Any:
+    """Keep prior lessons useful without replaying their raw evidence bundles."""
+
+    if not isinstance(value, dict):
+        return compact_for_retry(value)
+    row_key = "episodes" if isinstance(value.get("episodes"), list) else "knowledge"
+    rows = value.get(row_key, [])
+    compact_rows: list[dict[str, Any]] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        if row_key == "episodes":
+            fields = (
+                "experience_id",
+                "key",
+                "similarity",
+                "intervention",
+                "observation",
+                "outcome",
+                "transfer_policy",
+            )
+        else:
+            fields = (
+                "knowledge_id",
+                "key",
+                "similarity",
+                "epistemic_status",
+                "applicability",
+                "lifecycle_status",
+                "knowledge",
+                "outcome",
+                "recorded_identity",
+                "source_experience_id",
+            )
+        projected = {
+            field: _compact_progress_value(row[field])
+            for field in fields
+            if field in row
+        }
+        bindings = row.get("evidence_bindings")
+        if isinstance(bindings, list):
+            projected["evidence_binding_summary"] = {
+                "row_count": len(bindings),
+                "canonical_sha256": _canonical_json_sha256(bindings),
+                "first_rows": [
+                    {
+                        field: binding.get(field)
+                        for field in ("path", "source_path", "role", "sha256")
+                        if binding.get(field)
+                    }
+                    for binding in bindings[:3]
+                    if isinstance(binding, dict)
+                ],
+                "full_bindings_remain_on_disk": True,
+            }
+        compact_rows.append(projected)
+    result = {
+        key: copy.deepcopy(value[key])
+        for key in ("schema_version", "status", "database_path", "database_sha256", "query", "policy", "sync")
+        if key in value
+    }
+    result["selected_count"] = len(compact_rows)
+    result[row_key] = compact_rows
+    result["prompt_projection_policy"] = (
+        "Current source and real-tool evidence outrank this bounded prior context; "
+        "full evidence bindings remain on disk and are not decision authority."
+    )
+    return result
+
+
+def _operator_leaf_stage_ids(documents: list[dict[str, Any]]) -> set[str]:
+    stage_ids: set[str] = set()
+    for document in documents:
+        path = str(document.get("path") or "")
+        for match in re.finditer(r"(stage_[A-Za-z0-9_]+)", path):
+            stage_ids.add(match.group(1))
+    return stage_ids
+
+
+def _compact_operator_leaf_json_document(
+    document: dict[str, Any], stage_ids: set[str]
+) -> None:
+    """Remove layer-2 catalogs from a layer-1 repair prompt."""
+
+    content = document.get("json_content")
+    path = str(document.get("path") or "")
+    if not isinstance(content, dict):
+        return
+    if "dut_weight_binding_requirements.json" in path:
+        keep = {
+            "schema_version",
+            "status",
+            "accelerator_scope",
+            "source_checkpoint_sha256",
+            "source_reference_sha256",
+            "model_semantic_adapter_sha256",
+            "numeric_policy_sha256",
+            "numeric_policy",
+            "reference_operator_semantics",
+            "stream_metadata_contract",
+            "standard_harness_interface",
+            "canonical_weight_stream_contract",
+            "required_manifest_fields",
+            "agent_manifest_schema",
+            "agent_manifest_example",
+            "semantic_runtime_constant_contract",
+        }
+        projected = {
+            key: copy.deepcopy(content[key])
+            for key in keep
+            if key in content
+        }
+        stage_requirements = content.get("stage_requirements")
+        if isinstance(stage_requirements, dict):
+            projected["stage_requirements"] = {
+                key: copy.deepcopy(value)
+                for key, value in stage_requirements.items()
+                if key in stage_ids
+            }
+        document["json_content"] = projected
+    elif "semantic_testbench_manifest.json" in path:
+        keep = {
+            "schema_version",
+            "status",
+            "accelerator_scope",
+            "blockers",
+            "real_weight_source",
+            "numeric_policy",
+            "numeric_comparison_policy",
+            "numeric_comparison_resolution",
+            "random_input",
+            "reference_manifest",
+            "reference_manifest_sha256",
+            "dut_weight_binding_requirements",
+            "dut_weight_binding_requirements_sha256",
+        }
+        projected = {
+            key: copy.deepcopy(content[key])
+            for key in keep
+            if key in content
+        }
+        stage_contracts = content.get("stage_contracts")
+        if isinstance(stage_contracts, dict):
+            projected["stage_contracts"] = {
+                key: copy.deepcopy(value)
+                for key, value in stage_contracts.items()
+                if key in stage_ids
+            }
+        document["json_content"] = projected
+
+
+def _compact_operator_leaf_repair_bundle(
+    bundle: dict[str, Any],
+    *,
+    stage_ids: set[str],
+    read_only_template_paths: set[str],
+) -> None:
+    documents = bundle.get("documents")
+    if not isinstance(documents, list):
+        return
+    for document in documents:
+        if not isinstance(document, dict):
+            continue
+        path = str(document.get("path") or "")
+        if path in read_only_template_paths:
+            document.pop("content", None)
+            document.pop("content_head", None)
+            document.pop("content_tail", None)
+            document["read_only_source_body_omitted"] = True
+        _compact_operator_leaf_json_document(document, stage_ids)
+    bundle["operator_leaf_prompt_projection"] = {
+        "layer": "layer1_operator_leaf",
+        "current_stage_ids": sorted(stage_ids),
+        "layer2_and_layer3_catalogs_omitted_from_prompt": True,
+        "read_only_template_bodies_omitted_from_prompt": True,
+        "full_hash_bound_artifacts_remain_on_disk": True,
+    }
+
+
 def compact_verification_capability_repair_package(package: dict[str, Any]) -> dict[str, Any]:
+    localized_operator_leaf_repair = (
+        package.get("verification_scope") == "operator_leaf_closure"
+        and package.get("repair_kind") == "localized_semantic_dut_repair"
+    )
     board_semantic_rtl_repair = (
         package.get("generation_mode") == "board_semantic_rtl_repair"
     )
@@ -6458,17 +6961,27 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
         "trusted_numeric_support_compile",
         "current_repair_agent_disposition",
         "prior_capability_producer_evidence",
+        "available_upstream_capabilities",
+        "validation_failure_projection",
+        "materialization_failure_projection",
     ):
         if key in package:
             result[key] = (
-                copy.deepcopy(package[key])
+                (
+                    _compact_relevant_repair_context(package[key])
+                    if key in {"relevant_repair_experience", "relevant_project_knowledge"}
+                    else copy.deepcopy(package[key])
+                )
                 if key
                 in {
                     "generation_phase_contract",
-                    "relevant_repair_experience",
-                    "relevant_project_knowledge",
                     "current_repair_agent_disposition",
                     "prior_capability_producer_evidence",
+                    "available_upstream_capabilities",
+                    "validation_failure_projection",
+                    "materialization_failure_projection",
+                    "relevant_repair_experience",
+                    "relevant_project_knowledge",
                 }
                 else compact_for_retry(package[key])
             )
@@ -6491,6 +7004,10 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
     current_vcs_feedback_present = isinstance(
         package.get("current_board_vcs_feedback"), dict
     )
+    if package.get("current_compiler_module_interfaces"):
+        result["current_compiler_module_interfaces"] = copy.deepcopy(
+            package["current_compiler_module_interfaces"]
+        )
     if isinstance(package.get("adaptive_observation_state"), dict):
         if board_semantic_rtl_repair:
             result["adaptive_observation_state"] = (
@@ -6628,6 +7145,14 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
             for field in ("sha256", "local_sha256", "remote_sha256")
             if row.get(field)
         }
+        reference_semantics = bundle.get("reference_operator_semantics", {})
+        if isinstance(reference_semantics, dict) and not localized_operator_leaf_repair:
+            for source, hash_key in (
+                (reference_semantics.get("semantic_adapter", {}), "sha256"),
+                (reference_semantics.get("model_implementation", {}), "source_sha256"),
+            ):
+                if isinstance(source, dict) and source.get(hash_key):
+                    selected_source_hashes.add(str(source[hash_key]))
         editable = (
             bundle.get("editable_contract", {})
             if isinstance(bundle.get("editable_contract"), dict)
@@ -6653,9 +7178,10 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
             )
         else:
             for field in (
-                "read_only_template_sources",
+                *(() if localized_operator_leaf_repair else ("read_only_template_sources",)),
                 "approved_bounded_template_repair_exact_files",
                 "allowed_exact_files",
+                "localized_allowed_exact_files",
             ):
                 selected_source_paths.update(
                     str(value)
@@ -6679,14 +7205,22 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
             exact_operator_contract_markers = (
                 "semantic_testbench_manifest.json#operator_leaf_closure_execution_projection",
                 "dut_weight_binding_requirements.json#operator_leaf_closure_requirements_projection",
+                "dut_weight_binding_manifest.json#operator_leaf_closure_binding_projection",
+                "#localized_semantic_decision_projection",
             )
             for row in bundle.get("documents", []):
-                if not isinstance(row, dict) or not any(
-                    marker in str(row.get("path") or "")
-                    for marker in exact_operator_contract_markers
+                if not isinstance(row, dict):
+                    continue
+                document_path = str(row.get("path") or "")
+                if not (
+                    any(marker in document_path for marker in exact_operator_contract_markers)
+                    or (
+                        "/generated/semantic_harness/" in "/" + document_path.lstrip("/")
+                        and Path(document_path).suffix.lower() in {".sv", ".svh", ".v", ".vh"}
+                    )
                 ):
                     continue
-                selected_source_paths.add(str(row.get("path")))
+                selected_source_paths.add(document_path)
         if current_board_manifest.get("path"):
             selected_source_paths.add(str(current_board_manifest.get("path")))
         if current_board_manifest.get("sha256"):
@@ -6701,6 +7235,32 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
             for row in current_board_sources
             if isinstance(row, dict) and row.get("sha256")
         )
+        semantic_harness_contract = bundle.get(
+            "semantic_harness_source_contract", {}
+        )
+        semantic_harness_source = (
+            semantic_harness_contract.get("agent_harness_source", {})
+            if isinstance(semantic_harness_contract, dict)
+            else {}
+        )
+        preserve_complete_semantic_sources = bool(
+            package.get("verification_scope")
+            in {"operator_leaf_closure", "single_layer_closure"}
+            and isinstance(semantic_harness_source, dict)
+            and semantic_harness_source.get("creation_required") is True
+            and semantic_harness_source.get("present") is False
+        )
+        if preserve_complete_semantic_sources:
+            for document in bundle.get("documents", []):
+                if not isinstance(document, dict):
+                    continue
+                document_path = str(document.get("path") or "")
+                if Path(document_path.split("#", 1)[0]).suffix.lower() != ".scala":
+                    continue
+                selected_source_paths.add(document_path)
+                for field in ("sha256", "source_sha256", "content_sha256"):
+                    if document.get(field):
+                        selected_source_hashes.add(str(document[field]))
         single_layer_authority_selected = False
         if package.get("verification_scope") == "single_layer_closure":
             exact_names = {
@@ -6770,6 +7330,22 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
             preserve_full_text_paths=selected_source_paths,
             preserve_full_text_hashes=selected_source_hashes,
         )
+        if localized_operator_leaf_repair:
+            _compact_operator_leaf_repair_bundle(
+                compact_bundle,
+                stage_ids=_operator_leaf_stage_ids(
+                    [
+                        row
+                        for row in compact_bundle.get("documents", [])
+                        if isinstance(row, dict)
+                    ]
+                ),
+                read_only_template_paths={
+                    str(value)
+                    for value in editable.get("read_only_template_sources", [])
+                    if str(value)
+                },
+            )
         if package.get("verification_scope") == "single_layer_closure":
             compact_bundle["single_layer_generation_authority"] = {
                 "status": (
@@ -8732,6 +9308,7 @@ def compact_exact_board_integration_context(context: dict[str, Any]) -> dict[str
         for key in (
             "schema_version",
             "status",
+            "runtime_materialization_deferred",
             "blockers",
             "immutable_architecture_mechanisms",
             "adaptive_fields_policy",
@@ -8751,10 +9328,12 @@ def compact_exact_board_integration_context(context: dict[str, Any]) -> dict[str
             if isinstance(row, dict)
         ]
         compact_adaptive = {
+            "kernel_binding_design_inputs": copy.deepcopy(adaptive.get("kernel_binding_design_inputs", {})),
             "task_card": compact_bound_artifact(adaptive.get("task_card", {})),
             "target_model": compact_bound_artifact(adaptive.get("target_model", {})),
             "model_derived_memory_layout": compact_bound_artifact(adaptive.get("model_derived_memory_layout", {})),
             "current_tool_profile": compact_bound_artifact(adaptive.get("current_tool_profile", {})),
+            "target_board_profile": compact_bound_artifact(adaptive.get("target_board_profile", {})),
             "certified_single_layer_binding": compact_complete_binding_manifest(
                 adaptive.get("certified_single_layer_binding", {})
             ),
@@ -8959,6 +9538,44 @@ def compact_template_selection_for_retry(candidate: dict[str, Any], focus_text: 
     return result
 
 
+def compact_board_interface_domain_for_retry(value: Any) -> dict[str, Any]:
+    """Keep the complete evidence frontier for exact board-domain retries.
+
+    The domain agent reconstructs a physical Vivado ABI from these inputs. A
+    generic depth-based projection can therefore remove the very object and
+    source indexes that make the result provable. This request is already
+    bounded by the selector and source-review stages, so preserve every input
+    field literally and omit only the unrelated global retry context.
+    """
+
+    if not isinstance(value, dict):
+        return {}
+    result = {
+        key: copy.deepcopy(item)
+        for key, item in value.items()
+        if key not in {"sacg_memory", "sacg_memory_truth", "action_grounding_registry", "action_contract_examples"}
+    }
+    result["compaction_policy"] = {
+        "schema_version": "spatialaccagent.board_interface_domain_retry_projection.v1",
+        "lossless_current_evidence": True,
+        "preserved_fields": [
+            "selected_cell_pin_index",
+            "vivado_facts",
+            "sample_source_semantic_reviews",
+            "deterministic_output_contract",
+            "candidate_interpretation",
+            "deterministic_validation_errors",
+        ],
+        "omitted_context": [
+            "sacg_memory",
+            "sacg_memory_truth",
+            "action_grounding_registry",
+            "action_contract_examples",
+        ],
+    }
+    return result
+
+
 def compact_repair_step_for_retry(value: Any) -> Any:
     if not isinstance(value, dict):
         return compact_for_retry(value)
@@ -9026,6 +9643,8 @@ def compact_for_retry(value: Any, depth: int = 0) -> Any:
         return items
     if isinstance(value, dict):
         schema = str(value.get("schema_version") or "")
+        if "source_snapshot" in value and "immutable_compute_slot_abi" in value:
+            return copy.deepcopy(value)
         if "dse_selection_evidence" in value:
             # Stage-4 selection evidence is already a bounded, lossless
             # projection of the eligible candidate set.  The generic retry
@@ -9385,6 +10004,493 @@ def compact_hierarchical_learning_context(value: Any) -> dict[str, Any]:
     return copy.deepcopy(value)
 
 
+def compact_verification_failure_localization(
+    value: dict[str, Any],
+    *,
+    artifact_path: str | None = None,
+    artifact_sha256: str | None = None,
+) -> dict[str, Any]:
+    context = value.get("minimal_repair_context", {})
+    context = context if isinstance(context, dict) else {}
+    trace_record = context.get("trace_record", {})
+    trace_record = trace_record if isinstance(trace_record, dict) else {}
+    stage_id = str(trace_record.get("stage_id") or "")
+    observations = [
+        copy.deepcopy(row)
+        for row in context.get("diagnostic_observations", [])
+        if isinstance(row, dict)
+        and (not stage_id or row.get("stage_id") == stage_id)
+    ]
+    handshake_observations = [
+        row
+        for row in observations
+        if str(
+            row.get("probe_kind")
+            or (
+                row.get("observed_value", {}).get("probe_kind")
+                if isinstance(row.get("observed_value"), dict)
+                else ""
+            )
+            or "ready_valid"
+        )
+        != "scalar"
+    ]
+    terminal_cycle = max(
+        (int(row.get("cycle") or 0) for row in handshake_observations),
+        default=0,
+    )
+    terminal_backpressure = [
+        {
+            key: copy.deepcopy(row[key])
+            for key in (
+                "stage_id",
+                "boundary_id",
+                "module",
+                "cycle",
+                "beat_index",
+                "probe_kind",
+                "observed_value",
+                "source",
+            )
+            if key in row
+        }
+        for row in observations
+        if terminal_cycle > 0
+        and int(row.get("cycle") or 0) == terminal_cycle
+        and isinstance(row.get("observed_value"), dict)
+        and str(row.get("probe_kind") or row["observed_value"].get("probe_kind") or "ready_valid") != "scalar"
+        and row["observed_value"].get("valid") == 1
+        and row["observed_value"].get("ready") == 0
+    ]
+    plan = value.get("targeted_replay_plan", {})
+    plan = plan if isinstance(plan, dict) else {}
+    compact_plan = {
+        key: copy.deepcopy(plan[key])
+        for key in (
+            "status",
+            "strategy",
+            "failed_boundary_index",
+            "probe_sequence",
+            "rerun_env",
+            "acceptance",
+        )
+        if key in plan
+    }
+    compact_context = {
+        key: copy.deepcopy(context[key])
+        for key in (
+            "root_candidate_module",
+            "violated_contract",
+            "boundary_contract",
+            "trace_record",
+            "repair_scope",
+            "lower_layer_evidence_challenge",
+        )
+        if key in context
+    }
+    compact_context["diagnostic_observations"] = observations
+    compact_context["terminal_backpressure_observed"] = bool(terminal_backpressure)
+    compact_context["terminal_backpressure_interfaces"] = terminal_backpressure
+    result = {
+        key: copy.deepcopy(value[key])
+        for key in (
+            "schema_version",
+            "status",
+            "strategy",
+            "root_candidate_module",
+            "violated_contract",
+            "failure_signature",
+            "causal_path",
+            "failure_record_count",
+            "representative_failure_count",
+            "policy",
+        )
+        if key in value
+    }
+    result["minimal_repair_context"] = compact_context
+    result["failed_boundaries"] = [
+        copy.deepcopy(row)
+        for row in value.get("failed_boundaries", [])
+        if isinstance(row, dict)
+        and (not stage_id or row.get("stage_id") == stage_id)
+    ][:12]
+    result["targeted_replay_plan"] = compact_plan
+    result["current_handshake_stall"] = {
+        "status": "terminal_backpressure_observed" if terminal_backpressure else "not_observed",
+        "stage_id": stage_id or None,
+        "terminal_cycle": terminal_cycle,
+        "interfaces": terminal_backpressure,
+        "interpretation": (
+            "The current VCS trace ended with valid asserted and ready deasserted. "
+            "This identifies a blocked handshake boundary, not the internal RTL root cause."
+            if terminal_backpressure
+            else "No terminal valid/ready backpressure pair was present in the supplied trace."
+        ),
+    }
+    if artifact_path:
+        result["artifact_path"] = artifact_path
+    if artifact_sha256:
+        result["artifact_sha256"] = artifact_sha256
+    return result
+
+
+def compact_verification_result_for_specialist(
+    inputs: dict[str, Any],
+) -> dict[str, Any]:
+    verification = inputs.get("verification_result", {})
+    verification = verification if isinstance(verification, dict) else {}
+    source_state = str(inputs.get("source_sacg_state") or "")
+    run_root: Path | None = None
+    if source_state:
+        source_path = Path(source_state)
+        if source_path.parent.name == "repair_execution":
+            run_root = source_path.parent.parent.resolve()
+
+    debug_closure = verification.get("debug_closure", {})
+    debug_closure = debug_closure if isinstance(debug_closure, dict) else {}
+    raw_localization = debug_closure.get("failure_localization")
+    localization_path: str | None = None
+    localization_sha256: str | None = None
+    localization: dict[str, Any] | None = None
+    if isinstance(raw_localization, dict):
+        localization = raw_localization
+    elif isinstance(raw_localization, str) and run_root is not None:
+        candidate = Path(raw_localization)
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(run_root)
+            text = resolved.read_text(encoding="utf-8")
+            parsed = json.loads(text)
+        except (OSError, ValueError, json.JSONDecodeError):
+            parsed = None
+        if isinstance(parsed, dict):
+            localization = parsed
+            localization_path = str(resolved)
+            localization_sha256 = _hash_text(text)
+
+    repair_loop = verification.get("hierarchical_repair_loop", {})
+    repair_loop = repair_loop if isinstance(repair_loop, dict) else {}
+    current_layer = repair_loop.get("current_layer", {})
+    current_layer = current_layer if isinstance(current_layer, dict) else {}
+    if not current_layer and isinstance(verification.get("current_layer"), dict):
+        current_layer = verification["current_layer"]
+    current_gates = [
+        {
+            key: copy.deepcopy(row[key])
+            for key in ("name", "status")
+            if key in row
+        }
+        for row in current_layer.get("required_gates", [])
+        if isinstance(row, dict)
+    ]
+    failed_rows = [
+        {
+            key: copy.deepcopy(row[key])
+            for key in (
+                "checker",
+                "kind",
+                "status",
+                "summary",
+                "failure_class",
+                "log_path",
+                "tool_report_status",
+                "tool_report_path",
+                "tool_report_summary",
+                "tool_report_blockers",
+                "required",
+            )
+            if key in row
+        }
+        for row in verification.get("results", [])
+        if isinstance(row, dict) and row.get("status") != "pass"
+    ]
+    gate_summary = verification.get("hierarchical_gate_summary", {})
+    gate_summary = gate_summary if isinstance(gate_summary, dict) else {}
+    projected: dict[str, Any] = {
+        "schema_version": verification.get("schema_version"),
+        "stage": verification.get("stage"),
+        "status": verification.get("status"),
+        "scope": verification.get("scope"),
+        "execution_scope": verification.get("execution_scope"),
+        "gate_execution_scope": verification.get("gate_execution_scope"),
+        "current_layer": {
+            key: copy.deepcopy(current_layer[key])
+            for key in ("id", "order", "status", "promotion_target", "missing_or_failed")
+            if key in current_layer
+        }
+        | {"required_gates": current_gates},
+        "failed_or_blocked_results": failed_rows,
+        "passed_result_summary": {
+            "count": sum(
+                1
+                for row in verification.get("results", [])
+                if isinstance(row, dict) and row.get("status") == "pass"
+            ),
+            "checkers": [
+                str(row.get("checker"))
+                for row in verification.get("results", [])
+                if isinstance(row, dict)
+                and row.get("status") == "pass"
+                and row.get("checker")
+            ],
+        },
+        "hierarchical_gate_summary": {
+            "strategy": gate_summary.get("strategy"),
+            "missing_or_failed": copy.deepcopy(gate_summary.get("missing_or_failed", [])),
+        },
+        "hierarchical_repair_loop": {
+            key: copy.deepcopy(repair_loop[key])
+            for key in (
+                "status",
+                "failure_kind",
+                "root_candidate_module",
+                "violated_contract",
+                "lower_layer_evidence_challenge",
+            )
+            if key in repair_loop
+        },
+        "retry_reconciliation_contract": {
+            key: copy.deepcopy(verification["retry_reconciliation_contract"][key])
+            for key in (
+                "status",
+                "debug_layer",
+                "target_stage",
+                "verification_scope",
+                "reason",
+                "eligible_retry_request_ids",
+                "eligible_contamination_barrier_ids",
+                "policy",
+            )
+            if key in verification.get("retry_reconciliation_contract", {})
+        },
+    }
+    replay_history = targeted_replay_history_for_inputs(inputs)
+    if replay_history:
+        projected["targeted_replay_history"] = replay_history
+    if localization is not None:
+        projected["failure_localization"] = compact_verification_failure_localization(
+            localization,
+            artifact_path=localization_path,
+            artifact_sha256=localization_sha256,
+        )
+    elif isinstance(raw_localization, str):
+        projected["failure_localization_reference"] = raw_localization
+    if source_state:
+        projected["source_sacg_state"] = source_state
+    derived_inputs, _, learning_context = build_stage_agent_prompt_inputs(inputs)
+    memory = derived_inputs.get("sacg_memory", {})
+    if isinstance(memory, dict) and memory:
+        memory_fields = (
+            "schema_version",
+            "source_schema_version",
+            "verification_scope",
+            "debug_layer",
+            "omitted_unscoped_cross_layer_or_limit_counts",
+            "policy",
+        )
+        compact_memory = {
+            key: copy.deepcopy(memory[key])
+            for key in memory_fields
+            if key in memory
+        }
+        lesson_fields = (
+            "id",
+            "stage",
+            "debug_layer",
+            "failed_gates",
+            "failure_class",
+            "summary",
+            "recommended_action",
+            "retry_scope",
+            "source_fingerprint_sha256",
+        )
+        for key in ("recent_stage_outcomes", "recent_failure_lessons"):
+            rows = memory.get(key, [])
+            compact_memory[key] = [
+                {
+                    field: copy.deepcopy(row[field])
+                    for field in lesson_fields
+                    if field in row
+                }
+                for row in rows[-3:]
+                if isinstance(row, dict)
+            ] if isinstance(rows, list) else []
+        projected["sacg_memory"] = compact_memory
+    memory_truth = derived_inputs.get("sacg_memory_truth")
+    if isinstance(memory_truth, dict) and memory_truth:
+        projected["sacg_memory_truth"] = copy.deepcopy(memory_truth)
+    compact_learning = compact_hierarchical_learning_context(learning_context)
+    if compact_learning:
+        projected["hierarchical_learning_context"] = compact_learning
+    return projected
+
+
+def targeted_replay_history_for_inputs(
+    inputs: dict[str, Any],
+    *,
+    limit: int = 12,
+) -> dict[str, Any]:
+    """Project completed trace attempts by effective VCS identity, not plan prose."""
+
+    source_state = str(inputs.get("source_sacg_state") or "")
+    if not source_state:
+        return {}
+    try:
+        run_dir = run_dir_from_state(Path(source_state))
+        ledger_path = (
+            run_dir
+            / "verification"
+            / "debug_closure"
+            / "targeted_replay_ledger.json"
+        )
+        ledger = read_sacg_json(ledger_path)
+    except (OSError, ValueError, TypeError):
+        return {}
+    completed = ledger.get("completed", {})
+    if not isinstance(completed, dict):
+        return {}
+    records: list[dict[str, Any]] = []
+    for identity, entry in completed.items():
+        if not isinstance(entry, dict):
+            continue
+        execution = entry.get("execution_input", {})
+        execution = execution if isinstance(execution, dict) else {}
+        input_record = entry.get("input", {})
+        input_record = input_record if isinstance(input_record, dict) else {}
+        plan = execution.get("targeted_replay_plan", {})
+        if not isinstance(plan, dict):
+            plan = input_record.get("targeted_replay_plan", {})
+        plan = plan if isinstance(plan, dict) else {}
+        plan_env = plan.get("rerun_env", {})
+        plan_env = plan_env if isinstance(plan_env, dict) else {}
+        trace_env = execution.get("trace_env")
+        if not isinstance(trace_env, dict):
+            trace_env = input_record.get("trace_env", {})
+        trace_env = trace_env if isinstance(trace_env, dict) else {}
+        stage_id = str(
+            execution.get("stage_id")
+            or input_record.get("stage_id")
+            or plan.get("stage_id")
+            or ""
+        )
+        records.append(
+            {
+                "execution_identity_sha256": str(identity),
+                "stage_id": stage_id,
+                "semantic_input_fingerprint_sha256": (
+                    execution.get("semantic_input_fingerprint_sha256")
+                    or input_record.get("semantic_input_fingerprint_sha256")
+                ),
+                "unverified_contract_sha256": execution.get(
+                    "unverified_contract_sha256"
+                ),
+                "target_boundary": str(
+                    trace_env.get("SPATIALACC_TARGET_BOUNDARY")
+                    or plan_env.get(
+                        "SPATIALACC_TARGET_BOUNDARY"
+                    )
+                    or ""
+                ),
+                "trace_env": targeted_trace_env(trace_env),
+                "result_status": entry.get("result_status"),
+                "result_summary": str(entry.get("result_summary") or "")[:320],
+                "completed_at_unix_sec": entry.get("completed_at_unix_sec"),
+            }
+        )
+    def completed_at(row: dict[str, Any]) -> float:
+        try:
+            return float(row.get("completed_at_unix_sec") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    records.sort(key=completed_at)
+    if not records:
+        return {}
+    return {
+        "schema_version": "spatialaccagent.targeted_replay_history.v1",
+        "total_completed": len(records),
+        "records": records[-limit:],
+        "identity_policy": (
+            "A replay is the same observation when stage, semantic input fingerprint, "
+            "and effective trace environment match. If semantic inputs could not be "
+            "validated, unverified_contract_sha256 is the conservative fallback. "
+            "Plan prose and unused plan fields do not make a new VCS observation."
+        ),
+    }
+
+
+def compact_request_debug_layer(compact_inputs: dict[str, Any]) -> str:
+    """Return the active verification layer represented by compact inputs."""
+
+    verification = compact_inputs.get("verification_result", {})
+    verification = verification if isinstance(verification, dict) else {}
+    current_layer = verification.get("current_layer", {})
+    current_layer = current_layer if isinstance(current_layer, dict) else {}
+    if not current_layer:
+        repair_loop = verification.get("hierarchical_repair_loop", {})
+        repair_loop = repair_loop if isinstance(repair_loop, dict) else {}
+        nested_layer = repair_loop.get("current_layer", {})
+        if isinstance(nested_layer, dict):
+            current_layer = nested_layer
+    candidates = [
+        current_layer.get("id"),
+        verification.get("debug_layer"),
+    ]
+    package = compact_inputs.get("verification_capability_repair_package", {})
+    package = package if isinstance(package, dict) else {}
+    candidates.append(package.get("debug_layer"))
+    for candidate in candidates:
+        value = str(candidate or "").strip().lower()
+        if value:
+            return value
+    return ""
+
+
+def compact_request_is_layer3(compact_inputs: dict[str, Any]) -> bool:
+    debug_layer = compact_request_debug_layer(compact_inputs)
+    if debug_layer:
+        return debug_layer in {
+            "board_axi_ddr_wrapped_system",
+            "board_axi_ddr_closure",
+            "board_bringup",
+        }
+    package = compact_inputs.get("verification_capability_repair_package", {})
+    package = package if isinstance(package, dict) else {}
+    return (
+        package.get("generation_mode") == "board_semantic_rtl_repair"
+        or isinstance(package.get("current_board_vcs_feedback"), dict)
+    )
+
+
+def _adapter_repair_priority_context(
+    compact_inputs: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any]] | None:
+    """Put the bounded adapter source evidence before large retry metadata."""
+
+    names = (
+        "source_snapshot",
+        "generated_top_interface",
+        "weight_stream_contract",
+        "exact_board_loader_source_context",
+    )
+    if not all(name in compact_inputs for name in names):
+        return None
+    priority = [
+        {"name": name, "value": copy.deepcopy(compact_inputs[name])}
+        for name in names
+    ]
+    remainder = {
+        key: value for key, value in compact_inputs.items() if key not in names
+    }
+    remainder["adapter_repair_priority_context"] = {
+        "status": "complete",
+        "fields": list(names),
+        "source": "adapter_repair_priority_context",
+        "full_values_moved_before_compact_inputs": True,
+    }
+    return priority, remainder
+
+
 def compact_retry_prompt(
     agent: str,
     stage: str,
@@ -9396,6 +10502,7 @@ def compact_retry_prompt(
     proactive: bool = False,
 ) -> str:
     retry_inputs = {"stage": stage, "agent": agent, **inputs}
+    implementation_schema = "file_edits" in output_schema.get("properties", {})
     package = inputs.get("verification_capability_repair_package")
     generation_phase = (
         package.get("generation_phase_contract", {})
@@ -9409,11 +10516,35 @@ def compact_retry_prompt(
         and generation_phase.get("status") == "repair_existing_board_sources"
         and generation_phase.get("current_vcs_feedback_ready") is True
     )
+    bootstrap_board_generation = bool(
+        agent == "exact_board_integration_generation_agent"
+        and isinstance(package, dict)
+        and isinstance(generation_phase, dict)
+        and generation_phase.get("status") == "generation_required_before_probe"
+    )
+    deterministic_preflight_board_repair = bool(
+        agent == "exact_board_integration_generation_agent"
+        and isinstance(package, dict)
+        and isinstance(generation_phase, dict)
+        and generation_phase.get("status") == "repair_deterministic_preflight"
+        and generation_phase.get("current_preflight_feedback_ready") is True
+        and isinstance(package.get("current_board_preflight_feedback"), dict)
+        and package["current_board_preflight_feedback"].get("status") == "ready"
+    )
     current_trace_lower_layer_repair = bool(
         agent == "verification_capability_repair_agent"
         and has_proven_board_to_lower_layer_contradiction(package)
     )
-    if post_vcs_board_repair or current_trace_lower_layer_repair:
+    board_interface_domain_retry = agent in {
+        "exact_board_interface_domain_agent",
+        "exact_board_interface_domain_repair_agent",
+    }
+    if (
+        post_vcs_board_repair
+        or bootstrap_board_generation
+        or deterministic_preflight_board_repair
+        or current_trace_lower_layer_repair
+    ):
         focused_package = compact_verification_capability_repair_package(
             copy.deepcopy(package)
         )
@@ -9442,11 +10573,34 @@ def compact_retry_prompt(
             compact_inputs["hierarchical_learning_context"] = (
                 compact_learning_context
             )
+    elif agent == "verification_targeted_specialist_agent":
+        compact_inputs = {
+            "stage": stage,
+            "agent": agent,
+            "routing_trigger": inputs.get("routing_trigger"),
+            "verification_result": compact_verification_result_for_specialist(inputs),
+        }
+    elif board_interface_domain_retry:
+        compact_inputs = compact_board_interface_domain_for_retry(
+            {"stage": stage, "agent": agent, **inputs}
+        )
+    elif implementation_schema or "pipeline_schedule" in output_schema.get("properties", {}):
+        # Generic key/depth/string truncation can remove the complete editable
+        # source and even the task itself. Implementation retries must retain
+        # every supplied source, requirement and real-tool diagnostic.
+        compact_inputs = copy.deepcopy(retry_inputs)
     else:
         compact_inputs = _deduplicate_compact_projection(
             compact_for_retry(retry_inputs)
         )
+    if agent in {"flow_controller_agent", "repair_targeted_specialist_agent", "repair_agent"}:
+        replay_history = targeted_replay_history_for_inputs(inputs)
+        if replay_history:
+            compact_inputs["targeted_replay_history"] = replay_history
     if agent == "exact_board_integration_generation_agent":
+        compact_inputs = _compact_exact_board_generation_kernel_inputs(
+            compact_inputs
+        )
         request_errors = exact_board_compact_request_errors(compact_inputs)
         if request_errors:
             raise ValueError(
@@ -9454,14 +10608,37 @@ def compact_retry_prompt(
                 + "; ".join(request_errors)
             )
     implementation_schema = "file_edits" in output_schema.get("properties", {})
+    adapter_priority = None
+    if agent == "backend_compute_slot_repair_agent":
+        adapter_priority = _adapter_repair_priority_context(compact_inputs)
+        if adapter_priority is not None:
+            adapter_priority, compact_inputs = adapter_priority
     prompt_inputs: dict[str, Any] = {
         "stage": stage,
         "agent": agent,
-        "compact_inputs": _canonical_json(compact_inputs),
     }
-    if not implementation_schema:
+    if implementation_schema:
+        from accagent.framework.prompt_source_encoding import encode_prompt_source_documents
+
+        compact_inputs = encode_prompt_source_documents(compact_inputs)
+        if adapter_priority is not None:
+            adapter_priority = encode_prompt_source_documents(adapter_priority)
+    if adapter_priority is not None:
+        prompt_inputs["adapter_repair_priority_context"] = _canonical_json(
+            adapter_priority
+        )
+    prompt_inputs["compact_inputs"] = _canonical_json(compact_inputs)
+    if not implementation_schema and not board_interface_domain_retry:
         prompt_inputs["action_grounding_registry"] = _canonical_json(ACTION_GROUNDING_REGISTRY)
         prompt_inputs["action_contract_examples"] = _canonical_json(ACTION_CONTRACT_EXAMPLES)
+    compile_only_board_request = (
+        agent == "exact_board_integration_generation_agent"
+        and any("vcs_compile_only" in rule for rule in (prompt_rules or []))
+    )
+    layer3_context = compact_request_is_layer3(compact_inputs) and not (
+        bootstrap_board_generation or deterministic_preflight_board_repair
+        or compile_only_board_request
+    )
     rules = [
         (
         "This is an evidence-preserving compact implementation request selected before transport because the complete audit prompt exceeds the configured provider-safe size."
@@ -9469,23 +10646,45 @@ def compact_retry_prompt(
             else "This is an evidence-preserving compact retry after transient provider failures or oversized prompt transport failure."
         ),
         "Use only the compact inputs and named constraints. The compact inputs preserve original evidence by path, sha256, schema/status fields, interface summaries, module headers, and source/compile indexes.",
-        "For a Layer-3 post-VCS repair, compact_inputs.verification_capability_repair_package.current_board_vcs_feedback.current_signal_epoch is the only dynamic hardware evidence. Use every current internal boundary and stage signal in that object together with the current SACG/CCTG frontier. Do not use prior observation plans, old probe values, old signal epochs, or execution acceleration details as hardware evidence. Complete editable source text is an edit surface only: labels, comments, or helper code inside it are not runtime evidence.",
         "If the output schema requires file_edits, return complete content for create/replace edits. For operation=replace_text on an existing non-JSON source, use content='' and exact unique old_text/new_text anchors; include expected_sha256 whenever the task-specific source contract requires an exact current hash. The framework materializes anchored edits into the complete final file and rejects any missing, ambiguous, overlapping, or stale anchor. Never return ellipses, prose patches, or instructions for a human to finish.",
-        "For functional verification, random generation may create only the input stimulus. Expected output must be target-model inference using the same model-weight artifact and input; never accept random or RTL-derived golden data.",
-        "Do not infer DUT real-weight consumption from file existence. Require complete-scope tensor hashes, a bound loader/harness, and executed evidence.",
-        "If the current-run policy omits atol, rtol, or max_mismatch_fraction, accept the frozen framework loose defaults recorded in numeric_comparison_resolution. This initial resolution is authorized; never derive or loosen it from DUT output.",
-        "Preserve the numeric policy, comparison tolerance, model-weight artifact hash, stimulus hash, and expected-output hash throughout repair.",
-        "Board-level acceptance requires source-hash identity with the exact user sample-project wrapper; a simplified wrapper is not equivalent.",
-        "For board integration, exact simulation behavior is preserved by the hash-bound source files and compile authority; do not replace them with a behavioral or idealized model.",
-        "Layer-3 observation must be unconditional: never gate a probe or snapshot on output_accept_count, partial output, upstream progress, valid/ready/fire, stall classification, or any other signal value. Record the selected frontier signals on a fixed sampling cadence and again at every terminal event, even when all counts are zero. Set probe_plan.trigger_condition to 'always' and describe only the fixed cadence/terminal window in bounded_window.",
-        "For Layer-3 observation deepening, use the already compiled broad observation source. Select the complete relevant scalar set from compiled_signal_catalog and return file_edits=[]. The executor writes only current_selection.json and restores the same verified snapshot. A missing condition must not suppress observation; zero-valued records are valid evidence.",
-        "For every Layer-3 deepen_simulation_observation decision, return an observation_delta that names the missing distinction, candidate root causes, selected real DUT scalar expressions from compiled_signal_catalog, expected signal patterns, and candidate_cause_checks. Walk backward and forward from the first stopped boundary. Every candidate_cause_checks row must map a cause to selected catalog expressions and explain what alternative it separates. Do not modify SystemVerilog merely to change observation focus, and do not return an earlier selection unchanged.",
         "Compact JSON may use lossless columnar indexes and JSON-pointer $ref objects. Resolve column names, path_prefixes, views, and refs before reasoning; expand aliases and refs to real absolute paths in file_edits.",
+        "Expand every ordered_verilog_port_ranges interface group losslessly before deriving bindings; preserve each port's order, direction, and packed width.",
         "If compact inputs include checker_results, parameter_bindings, template_source_checks, attention_semantics, or cross_layer_trace, treat those fields as supplied evidence.",
         "If compact inputs include candidate_verification_artifact_contract, candidate_verification_plan, retry_reconciliation_contract, or design_team, treat their visible status, summary, policy, node counts, error lists, and checker summaries as supplied Stage6 evidence; do not claim the evidence is absent merely because compact retry omitted full nested details.",
         "If compact inputs include stage_gate_policy, report only current-stage blockers in risks and move later-stage obligations to proposed_actions.",
         "Return conservative review findings; mark evidence as not_run only when the relevant field is absent from compact inputs.",
     ]
+    if adapter_priority is not None:
+        rules.insert(
+            1,
+            "For this adapter repair, use the complete source_snapshot, generated_top_interface, weight_stream_contract, and exact_board_loader_source_context in <adapter_repair_priority_context> first; this block is authoritative and appears before compact_inputs to keep the editable source and its routing evidence visible. The compact_inputs.adapter_repair_priority_context entry is only an index, not a missing-source indication.",
+        )
+    if layer3_context:
+        rules.extend(
+            [
+                "For a Layer-3 post-VCS repair, compact_inputs.verification_capability_repair_package.current_board_vcs_feedback.current_signal_epoch is the only dynamic hardware evidence. Use every current internal boundary and stage signal in that object together with the current SACG/CCTG frontier. Do not use prior observation plans, old probe values, old signal epochs, or execution acceleration details as hardware evidence. Complete editable source text is an edit surface only: labels, comments, or helper code inside it are not runtime evidence.",
+                "Board-level acceptance requires source-hash identity with the exact user sample-project wrapper; a simplified wrapper is not equivalent.",
+                "For board integration, exact simulation behavior is preserved by the hash-bound source files and compile authority; do not replace them with a behavioral or idealized model.",
+                "Layer-3 observation must be unconditional: never gate a probe or snapshot on output_accept_count, partial output, upstream progress, valid/ready/fire, stall classification, or any other signal value. Record the selected frontier signals on a fixed sampling cadence and again at every terminal event, even when all counts are zero. Set probe_plan.trigger_condition to 'always' and describe only the fixed cadence/terminal window in bounded_window.",
+                "For Layer-3 observation deepening, use the already compiled broad observation source. Select the complete relevant scalar set from compiled_signal_catalog and return file_edits=[]. The executor writes only current_selection.json and restores the same verified snapshot. A missing condition must not suppress observation; zero-valued records are valid evidence.",
+                "For every Layer-3 deepen_simulation_observation decision, return an observation_delta that names the missing distinction, candidate root causes, selected real DUT scalar expressions from compiled_signal_catalog, expected signal patterns, and candidate_cause_checks. Walk backward and forward from the first stopped boundary. Every candidate_cause_checks row must map a cause to selected catalog expressions and explain what alternative it separates. Do not modify SystemVerilog merely to change observation focus, and do not return an earlier selection unchanged.",
+            ]
+        )
+    if agent == "verification_targeted_specialist_agent":
+        debug_layer = compact_request_debug_layer(compact_inputs)
+        if layer3_context:
+            rules.append(
+                "For a failed Layer-3 verification_result, inspect failure_localization.current_handshake_stall and its terminal interfaces before proposing an action. A valid=1/ready=0 terminal sample identifies the blocked boundary, not the internal RTL root cause. If current board evidence is absent, return an executable unconditional current-layer observation action; do not return blocked merely because the board signal catalog or current signal epoch is missing."
+            )
+        else:
+            rules.extend(
+                [
+                    f"This is a current {debug_layer or 'lower-layer'} verification failure. Use the current_layer, failed checker, current real-tool trace, and failure_localization as the authority. Missing current_board_vcs_feedback, compiled_signal_catalog, or Layer-3 wrapper evidence is not a blocker for this layer and must not redirect the decision to Layer-3.",
+                    "A valid=1/ready=0 sample identifies a blocked boundary, not the internal RTL root cause. Do not reduce the failure to a missing output file or request the same boundary trace again.",
+                    "If the current evidence does not prove a repair yet, return one executable same-layer observation or targeted-replay action that selects a new boundary or internal signal and states the missing distinction; never return status=blocked solely because board-level evidence is absent. If the evidence proves a cause, return the smallest same-layer repair action followed by the real-tool rerun and acceptance checker.",
+                    "Use targeted_replay_history when supplied as the record of completed real VCS observations. Compare stage_id, semantic_input_fingerprint_sha256, and effective trace_env; changing plan prose or fields the runner does not consume is not a new observation. State the unresolved causal distinction, then select a boundary that changes effective trace inputs, or return a bounded replan if no useful observation remains.",
+                ]
+            )
     if prompt_rules:
         rules.append(
             "All original task-specific rules below remain authoritative after compaction."
@@ -9496,7 +10695,7 @@ def compact_retry_prompt(
             [
                 "Ground executable_actions in action_grounding_registry. Use exact listed tool_roles and acceptance_checkers whenever possible.",
                 "If a missing capability is required, name it planned_tool.<short_name> or planned_checker.<short_name>; do not invent free-form tool roles such as verification_planner or tool_runner.",
-                "Before returning, self-check every executable action: each tool_roles entry must be listed in action_grounding_registry.tool_roles or start with planned_tool.; each acceptance_checkers entry must be listed in action_grounding_registry.acceptance_checkers or start with planned_checker.",
+                "Before returning, self-check every executable action: each tool_roles entry must be listed in action_grounding_registry.tool_roles or action_grounding_registry.acceptance_checkers, or start with planned_tool.; each acceptance_checkers entry must be listed in action_grounding_registry.acceptance_checkers or start with planned_checker.",
             ]
         )
     rules.append("Return one JSON object only.")
@@ -9510,10 +10709,15 @@ def compact_retry_prompt(
 
 
 def compact_retry_reasoning_effort(fallback: str | None = None) -> str | None:
-    """Keep compact retries at the caller's reasoning level unless overridden."""
+    """Use a bounded default for compact retries while preserving explicit overrides."""
 
     override = os.environ.get("SPATIALACC_COMPACT_RETRY_REASONING_EFFORT", "").strip()
-    return override or fallback or stage_worker_reasoning_effort() or resolved_llm_cfg().reasoning_effort
+    if override:
+        return override
+    effort = fallback or stage_worker_reasoning_effort() or resolved_llm_cfg().reasoning_effort
+    if effort and effort.strip().lower() in {"high", "xhigh", "max"}:
+        return "medium"
+    return effort
 
 
 def _json_pointer_lookup(root: Any, pointer: str) -> tuple[bool, Any]:
@@ -10008,6 +11212,96 @@ def exact_board_compact_request_errors(compact_inputs: dict[str, Any]) -> list[s
     if package.get("generation_mode") == "board_semantic_rtl_repair":
         return _semantic_rtl_compact_request_errors(package)
     generation_phase = package.get("generation_phase_contract")
+    if isinstance(generation_phase, dict) and generation_phase.get("status") == "generation_required_before_probe":
+        context = package.get("exact_board_integration_repair_context", {})
+        if context.get("status") != "ready" or not context.get("required_binding_manifest"):
+            errors.append("bootstrap generation lacks ready exact-board authority or its binding output path")
+        # The Agent creates the manifest and source replacement plan in this
+        # phase. Their absence cannot prevent sending the creation request.
+        return errors
+    if (
+        isinstance(generation_phase, dict)
+        and generation_phase.get("status") == "repair_deterministic_preflight"
+    ):
+        context = package.get("exact_board_integration_repair_context", {})
+        context = context if isinstance(context, dict) else {}
+        manifest_path = str(context.get("required_binding_manifest") or "")
+        if context.get("status") != "ready" or not manifest_path:
+            errors.append(
+                "deterministic-preflight repair lacks ready exact-board authority or its binding manifest path"
+            )
+        feedback = package.get("current_board_preflight_feedback", {})
+        if not isinstance(feedback, dict) or feedback.get("status") != "ready":
+            errors.append(
+                "deterministic-preflight repair lacks current materialization feedback"
+            )
+        bundle = package.get("repair_source_bundle", {})
+        bundle = bundle if isinstance(bundle, dict) else {}
+        editable = bundle.get("editable_contract", {})
+        editable = editable if isinstance(editable, dict) else {}
+        allowed_manifest_paths = {
+            Path(str(value)).resolve()
+            for value in editable.get("allowed_exact_files", [])
+            if str(value)
+        }
+        rewrite = editable.get("board_manifest_rewrite_authority", {})
+        rewrite = rewrite if isinstance(rewrite, dict) else {}
+        target = rewrite.get("target_file", {})
+        target = target if isinstance(target, dict) else {}
+        resolved_manifest_path = Path(manifest_path).resolve() if manifest_path else None
+        if resolved_manifest_path not in allowed_manifest_paths:
+            errors.append(
+                "deterministic-preflight repair manifest is outside exact editable-file authority"
+            )
+        target_path = str(target.get("path") or "")
+        resolved_target_path = Path(target_path).resolve() if target_path else None
+        if resolved_target_path != resolved_manifest_path:
+            errors.append(
+                "deterministic-preflight repair target differs from the authorized binding manifest"
+            )
+        documents_by_path = {
+            str(row.get("path") or ""): row
+            for row in bundle.get("documents", [])
+            if isinstance(row, dict) and row.get("path")
+        }
+        current_sources = editable.get("current_board_source_files", [])
+        if isinstance(current_sources, dict) and current_sources.get("encoding") == (
+            "spatialaccagent.lossless_dictionary_column_rows.v1"
+        ):
+            try:
+                current_sources = _decode_lossless_columnar_rows(current_sources)
+            except (TypeError, ValueError):
+                current_sources = []
+        if not isinstance(current_sources, list) or not current_sources:
+            errors.append(
+                "deterministic-preflight repair lacks the current editable board source set"
+            )
+        else:
+            for source in current_sources:
+                if not isinstance(source, dict):
+                    errors.append(
+                        "deterministic-preflight current board source identity is not an object"
+                    )
+                    continue
+                path = str(source.get("path") or "")
+                expected_sha256 = str(source.get("sha256") or "")
+                content = documents_by_path.get(path, {}).get("content")
+                if not path or not isinstance(content, str) or not content:
+                    errors.append(
+                        f"deterministic-preflight current board source is incomplete: {path or '<missing>'}"
+                    )
+                elif (
+                    not expected_sha256
+                    or hashlib.sha256(content.encode("utf-8")).hexdigest()
+                    != expected_sha256
+                    or documents_by_path[path].get("sha256") != expected_sha256
+                ):
+                    errors.append(
+                        f"deterministic-preflight current board source hash differs: {path}"
+                    )
+        # The missing/invalid manifest is the repair target in this explicit
+        # phase. It is checked again by materialization and real VCS afterward.
+        return list(dict.fromkeys(errors))
     if (
         isinstance(generation_phase, dict)
         and generation_phase.get("status") == "repair_existing_board_sources"
@@ -10225,7 +11519,10 @@ def exact_board_compact_request_errors(compact_inputs: dict[str, Any]) -> list[s
 
 
 def stage_worker_reasoning_effort() -> str | None:
-    raw = os.environ.get("SPATIALACC_STAGE_WORKER_REASONING_EFFORT", "").strip()
+    raw = os.environ.get(
+        "SPATIALACC_STAGE_WORKER_REASONING_EFFORT",
+        os.environ.get("SPATIALACC_LLM_STAGE_WORKER_REASONING_EFFORT", ""),
+    ).strip()
     return raw or None
 
 
@@ -10459,14 +11756,15 @@ def run_stage_agent(
         "Ground executable_actions in action_grounding_registry. Use exact listed tool_roles and acceptance_checkers whenever possible; do not invent Qwen/OPT-specific core names unless they are supplied by the case adapter or tool protocol.",
         "For backend/app-shell target discovery, treat the LLM as the adaptive board-integration engineer: convert supplied board materials and real Vivado evidence into target_discovery_policy updates with cited artifacts; if evidence is ambiguous, require bounded approval instead of guessing names.",
         "If a missing capability is required, name it planned_tool.<short_name> or planned_checker.<short_name> and state the implementation gap in rationale.",
-        "Before returning, self-check every executable action: each tool_roles entry must be listed in action_grounding_registry.tool_roles or start with planned_tool.; each acceptance_checkers entry must be listed in action_grounding_registry.acceptance_checkers or start with planned_checker.",
+        "Before returning, self-check every executable action: each tool_roles entry must be listed in action_grounding_registry.tool_roles or action_grounding_registry.acceptance_checkers, or start with planned_tool.; each acceptance_checkers entry must be listed in action_grounding_registry.acceptance_checkers or start with planned_checker.",
         "For verification/backend failures, executable_actions must drive the next stage/tool decision instead of relying on static scripts or human memory.",
         "For hardware debug, enforce the three-layer repair loop: first operator/leaf modules, then the connected single-transformer-layer kernel, then the board-accurate AXI/DDR wrapped system. A failed layer must enter tool-output -> CCTG/contract-guided localization -> bounded repair -> rerun, and must not promote or skip to a higher layer.",
         "When hierarchical_learning_context is supplied, treat it as live hash-validated lower-layer knowledge rather than informal history. Reuse its certified invariants, and reopen a lower layer only for a current trace that explicitly contradicts a named invariant.",
         "When hierarchical_learning_context supplies connected-kernel timing knowledge, preserve its elastic variable-latency token-pipeline semantics: required boundary order and cross-token overlap matter, while strict same-cycle start/end across unequal-latency stages is not required.",
         "At board scope, distinguish independent AXI/prefetch progress from output or lifecycle-frontier progress. A current frontier stall localizes what to observe next, but is neither a pass claim nor a preselected RTL root cause.",
         "A board output-frontier symptom alone cannot reopen a certified connected kernel. Require a current hash-bound lower-layer contradiction with direct core start, ingress, egress, named causal-boundary, and current-certificate evidence before scheduling lower-layer revalidation.",
-        "Before any functional pass, require a complete target-checkpoint tensor catalog, deterministic or real input provenance, target-model inference expected outputs for the same input/checkpoint, a resolved numeric comparison tolerance (current-run values first, otherwise frozen framework loose defaults), generated semantic testbench hashes, and proof that the DUT consumed every required bound weight.",
+        "At every verification layer, use successful current-source VCS compilation, elaboration, and linking as the sole acceptance standard. Repair actual compiler errors; do not add runtime, golden-output, waveform, or weight-consumption prerequisites.",
+        "The action_grounding_registry.verification_execution_policy documents the existing compile-only modes of the leaf, connected-kernel and exact-board tools. These modes already execute real VCS compile/elaboration/link without running simulation. A functional_sim role name does not imply simulation must execute. Reuse these existing roles rather than declaring a planned_tool capability gap solely from their names. At verification_artifacts planning, future VCS certificates are downstream obligations; actual execution still requires them in bottom-up order before backend synthesis.",
         "Applying the recorded framework loose defaults for initially missing atol, rtol, or max_mismatch_fraction is authorized and is not a repair-time tolerance change. Never derive or loosen those values from DUT output.",
         "A random generator may produce input stimulus only. Never generate expected output randomly, derive it from RTL output, replace model inference with an identity/default implementation, or treat sampled weights as complete evidence.",
         "During repair, keep checkpoint, stimulus, target-model reference, numeric policy, tolerance, testbench contract, and exact board-wrapper source hashes immutable. Repair the DUT, loader/harness, instrumentation, or integration that violated the contract.",
@@ -10475,6 +11773,43 @@ def run_stage_agent(
         "When a verifier capability is missing, classify it as a checker/golden-reference repair, not as hardware correctness. When real RTL/tool evidence shows liveness, value, order, or protocol failure, localize the earliest causal boundary/module before proposing a code repair.",
         "Use approval_required_for for architecture, pipeline, memory layout, numeric policy, or major template changes.",
     ]
+    if agent == "flow_controller_agent":
+        active_rules.append(
+            "Use exact internal stage names for backtrack targets. Public Stage 5 contains both code_generation and verification_artifacts: verification-plan, artifact-contract, or action-audit repairs target verification_artifacts; hardware regeneration targets code_generation. Do not use the ambiguous label stage5 for those actions."
+        )
+        active_rules.append(
+            "For Stage-7 loader-to-DUT mapping failures, case_compute_slot_adapter_generate is an existing bounded repair path. Prefer that real tool and its current hash-verified board-source context over a separate planned_tool read-only audit; a missing dedicated audit role alone is not a missing system capability. When validated_stage6_selection passes, preserve that exact target without asking for approval merely to restate it. Keep approval for changing the target or semantic contracts."
+        )
+        active_rules.append(
+            "For a Stage-7 read-only trust, provenance, or identity audit, compose the registered checks such as stage_artifact_trust_barrier_check, verification_action_audit_check, artifact_hash_check, sacg_memory_check, stage_backtrack_request_check, and stage_retry_request_check. Do not request a new planned_tool or planned_checker only because no single registered role wraps the whole audit; keep unresolved barriers active until the existing checks pass, and name a capability gap only for a specific required check that none of the registered capabilities can perform."
+        )
+        active_rules.append(
+            "For a Stage-6 trace replay, include targeted_replay_plan with the current stage_id and rerun_env.SPATIALACC_TARGET_BOUNDARY set to a specific boundary from the supplied failure-localization evidence. Use targeted_replay_history when supplied: a new rationale, probe label, or unused plan field is not a new observation unless the effective trace environment or semantic input fingerprint changes. Choose a boundary not already observed for the same stage and semantic inputs; state what root-cause alternatives the new signal distinguishes, or return a bounded replan instead of authorizing another VCS replay."
+        )
+    if agent == "backend_closure_agent":
+        active_rules.append(
+            "For Stage-7 loader-to-DUT mapping failures, use the existing case_compute_slot_adapter_generate bounded repair route and its supplied hash-verified board-source context; do not create a separate planned_tool audit solely because no aggregate mapping-audit role exists. For read-only trust, provenance, or identity audits, compose registered checks such as stage_artifact_trust_barrier_check, verification_action_audit_check, artifact_hash_check, sacg_memory_check, stage_backtrack_request_check, and stage_retry_request_check. Keep unresolved barriers active until these checks pass, and name a capability gap only for a specific required check that no registered capability can perform. Preserve the current passing Stage-6 selection unless cited evidence supports a changed target."
+        )
+    if agent in {"verification_targeted_specialist_agent", "repair_targeted_specialist_agent", "repair_agent"}:
+        active_rules.append(
+            "Use targeted_replay_history when supplied as the record of completed real VCS observations. Compare stage_id, semantic_input_fingerprint_sha256, and effective trace_env; changing plan prose or fields the runner does not consume is not a new observation. State the unresolved causal distinction and select a boundary that changes effective trace inputs, or return a bounded replan if no useful observation remains. Preserve the current verification_specialist_review's same-stage selected boundary and rerun_env unless current evidence justifies a different explicit executable selection. Put executable trace settings in targeted_replay_plan.rerun_env; prose-only probe lists do not add instrumentation. Request bounded harness instrumentation through the implementation owner when the existing monitors cannot distinguish the proposed causes."
+        )
+        active_rules.append(
+            "For an unresolved real operator-leaf stall, select one unconditional action for the existing observation "
+            "implementation owner: same_layer_targeted_observation with requires_approval=false, tool_roles=[targeted_replay, "
+            "case_leaf_functional], and targeted_replay_plan containing stage_id, rerun_env, and the missing "
+            "internal distinction. This routes the existing localized repair step through instrumentation_first, "
+            "complete current generated Scala sources and binding contracts, authorized harness creation or "
+            "replacement, compile, full elaboration, and same-leaf real VCS. The executor owns source/hash checks, "
+            "edit authorization, immutable-contract preservation, and validation within this action. Keep these "
+            "checks in that execution sequence; do not introduce separate identity-audit or context-pack actions "
+            "whose missing acceptance reports prevent the implementation owner from starting. Report a concrete "
+            "current checker failure when one exists. Source-bound passive harness "
+            "observations within signal_connection/trace_parser/regression_rerun authority are routine execution. "
+            "A missing harness is created by this owner when its source contract passes. Reserve human approval "
+            "for changes outside the supplied authority, including architecture, numeric policy, or major "
+            "template changes; resolve an actual remaining source or compiler gap from the resulting tool feedback."
+        )
     llm_dir = out_dir / "llm"
     llm_dir.mkdir(parents=True, exist_ok=True)
     source_state = inputs.get("source_sacg_state")
@@ -10483,6 +11818,10 @@ def run_stage_agent(
         checkpoint_hook_specialist,
         learning_context,
     ) = build_stage_agent_prompt_inputs(inputs)
+    if agent in {"flow_controller_agent", "verification_targeted_specialist_agent", "repair_targeted_specialist_agent", "repair_agent"}:
+        replay_history = targeted_replay_history_for_inputs(inputs)
+        if replay_history:
+            prompt_inputs["targeted_replay_history"] = replay_history
     prompt_path = llm_dir / f"{agent}_prompt.md"
     retry_prompt_path = llm_dir / f"{agent}_compact_retry_prompt.md"
     result_path = llm_dir / f"{agent}_result.json"
@@ -10497,6 +11836,20 @@ def run_stage_agent(
         and isinstance(generation_phase, dict)
         and generation_phase.get("status") == "repair_existing_board_sources"
         and generation_phase.get("current_vcs_feedback_ready") is True
+    )
+    exact_board_bootstrap_generation = bool(
+        agent == "exact_board_integration_generation_agent"
+        and isinstance(generation_phase, dict)
+        and generation_phase.get("status") == "generation_required_before_probe"
+    )
+    exact_board_preflight_repair = bool(
+        agent == "exact_board_integration_generation_agent"
+        and isinstance(generation_phase, dict)
+        and generation_phase.get("status") == "repair_deterministic_preflight"
+        and generation_phase.get("current_preflight_feedback_ready") is True
+        and isinstance(repair_package.get("current_board_preflight_feedback"), dict)
+        and repair_package["current_board_preflight_feedback"].get("status")
+        == "ready"
     )
     current_trace_lower_layer_repair = bool(
         agent == "verification_capability_repair_agent"
@@ -10516,7 +11869,10 @@ def run_stage_agent(
     # has a bounded evidence package. Persisting the broad history hides the
     # current causal proof and adds no implementation authority.
     focused_capability_repair_prompt = (
-        exact_board_post_vcs_repair or current_trace_lower_layer_repair
+        exact_board_post_vcs_repair
+        or exact_board_bootstrap_generation
+        or exact_board_preflight_repair
+        or current_trace_lower_layer_repair
     )
     full_prompt: str | None = None
     proactive_compaction = False
@@ -10540,15 +11896,33 @@ def run_stage_agent(
         )
         prompt = full_prompt
         prompt_byte_count = len(prompt.encode("utf-8"))
+        failed_verification_review = bool(
+            agent == "verification_targeted_specialist_agent"
+            and isinstance(inputs.get("verification_result"), dict)
+            and inputs["verification_result"].get("status") == "fail"
+        )
         proactive_compaction = bool(
-            "file_edits" in active_schema.get("properties", {})
-            and llm_auto_compact_retry()
+            llm_auto_compact_retry()
             and (
-                prompt_byte_count >= llm_auto_compact_min_prompt_bytes()
+                agent == "exact_board_integration_generation_agent"
+                or
+                hot_loop_prompt_requires_compaction(agent, prompt_byte_count)
                 or (
-                    checkpoint_hook_specialist
-                    and prompt_byte_count
-                    >= checkpoint_specialist_auto_compact_min_prompt_bytes()
+                (
+                    "file_edits" in active_schema.get("properties", {})
+                    and (
+                        prompt_byte_count >= llm_auto_compact_min_prompt_bytes()
+                        or (
+                            checkpoint_hook_specialist
+                            and prompt_byte_count
+                            >= checkpoint_specialist_auto_compact_min_prompt_bytes()
+                        )
+                    )
+                )
+                or (
+                    failed_verification_review
+                    and prompt_byte_count >= llm_retry_compact_min_prompt_bytes()
+                )
                 )
             )
         )
@@ -10827,6 +12201,10 @@ def run_stage_agent(
                     active_schema,
                     timeout_sec,
                     reasoning_effort=worker_effort,
+                    # This repair already carries the original evidence plus the
+                    # invalid output. Keep retrying it rather than raising an
+                    # unhandled request for another prompt compaction layer.
+                    allow_auto_compact=False,
                     transaction_observer=observe_transaction,
                 )
                 repair_artifact_path = (

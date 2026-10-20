@@ -1,0 +1,3216 @@
+{
+  "agent": "TopAgent",
+  "design_id": "gemma3_gpt61_20261020",
+  "flow_events": [
+    {
+      "attempt_count": 1,
+      "decision": "retry",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/001_retry.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_actions/001_input_preparation_triage_missing_case_adapter.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_actions/001_input_preparation_audit_source_and_cross_layer_contracts.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/retry_requests/001_input_preparation_retry_after_adapter_evidence_is_available.json"
+      ],
+      "flow_event_index": 1,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_state.json",
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "llm_semantic_extraction_check",
+              "sacg_static_check"
+            ],
+            "action_type": "prepared_input_error_triage",
+            "consumes": [
+              "prepared_inputs.errors",
+              "artifact.input.case_adapter",
+              "artifact.input.material_index",
+              "artifact.input.sample_project_index",
+              "artifact.input.tool_availability",
+              "artifact.input.tool_protocols"
+            ],
+            "id": "input_preparation.triage_missing_case_adapter",
+            "on_failure": "Preserve the exact error and any retrieval gap, leave the adapter unresolved, and request the real source-backed adapter through the authorized input path. Do not fabricate testbench, RTL, simulator, diagnosis, or weight evidence, and do not promote the stage.",
+            "produces": [
+              "input_preparation/prepared_input_error_triage.json",
+              "input_preparation/case_adapter_provenance_handoff.json"
+            ],
+            "rationale": "Inspect and preserve the original prepared_inputs.errors entry and trace the adapter requirement to the supplied material and tool evidence. The visible error identifies a missing adapter, but does not authorize creating or guessing one.",
+            "requires_approval": false,
+            "stage": "input_preparation",
+            "tool_roles": [
+              "sacg_validate",
+              "llm_semantic_extraction"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "llm_semantic_extraction_check",
+              "task_card_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "stream_plan_check",
+              "memory_runtime_plan_check",
+              "addr_map_check",
+              "tool_protocol_check",
+              "human_boundary_check",
+              "repair_boundary_check",
+              "verification_plan_static_check",
+              "sacg_static_check"
+            ],
+            "action_type": "sacg_constraint_review",
+            "consumes": [
+              "artifact.input.task_card",
+              "artifact.input.model_config",
+              "artifact.input.numeric_policy",
+              "artifact.input.template_library",
+              "artifact.input.template_metadata",
+              "artifact.input.design_space",
+              "artifact.input.target_board_profile",
+              "artifact.input.field_evidence",
+              "artifact.input.case_adapter",
+              "artifact.input.material_index",
+              "artifact.input.sample_project_index",
+              "artifact.input.tool_profile",
+              "artifact.input.tool_availability",
+              "artifact.input.tool_protocols",
+              "artifact.input.human_agent_boundary",
+              "constraint.task.goal",
+              "constraint.model.decoder",
+              "constraint.shape.model",
+              "constraint.numeric.policy",
+              "constraint.arch.design_space",
+              "constraint.memory.board",
+              "constraint.runtime.board",
+              "constraint.deployment.board",
+              "constraint.tool.protocols",
+              "prepared_inputs.errors"
+            ],
+            "id": "input_preparation.audit_source_and_cross_layer_contracts",
+            "on_failure": "Record each failed or not-run checker against its source artifact and constraint. Distinguish details omitted from the summary from fields proven absent in the complete source; preserve unknowns and contradictions without guessing or changing design contracts.",
+            "produces": [
+              "input_preparation/model_intake_audit.json",
+              "input_preparation/numeric_template_audit.json",
+              "input_preparation/board_memory_runtime_audit.json",
+              "input_preparation/source_and_tool_evidence_audit.json",
+              "input_preparation/constraint_to_evidence_gap_map.json",
+              "input_preparation/human_and_repair_boundary_audit.json"
+            ],
+            "rationale": "Inspect the complete supplied artifacts and bind model, shape, numeric, template, stream, memory/runtime, board, tool, and boundary claims to their evidence and SACG constraints. The compact summary is insufficient to assert readiness.",
+            "requires_approval": false,
+            "stage": "input_preparation",
+            "tool_roles": [
+              "llm_semantic_extraction",
+              "task_card_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "stream_plan_check",
+              "memory_runtime_plan_check",
+              "addr_map_check",
+              "tool_protocol_check",
+              "human_boundary_check",
+              "repair_boundary_check",
+              "verification_plan_static_check",
+              "sacg_static_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "required_real_tool_evidence_check",
+              "tool_protocol_check",
+              "sacg_static_check"
+            ],
+            "action_type": "stage_retry",
+            "consumes": [
+              "input/case_adapter.json or explicitly configured SPATIALACC_CASE_ADAPTER",
+              "input_preparation/prepared_input_error_triage.json",
+              "input_preparation/constraint_to_evidence_gap_map.json",
+              "artifact.input.material_index",
+              "artifact.input.sample_project_index",
+              "artifact.input.tool_availability",
+              "artifact.input.tool_protocols",
+              "all current input-preparation source artifacts"
+            ],
+            "id": "input_preparation.retry_after_adapter_evidence_is_available",
+            "on_failure": "Retry input_preparation again only for resolvable input or framework issues. Preserve exact failed evidence, keep outputs blocked from downstream use, and do not backtrack hardware stages or invent missing materials.",
+            "produces": [
+              "prepared_inputs.json",
+              "input_preparation/retry_readiness.json",
+              "input_preparation/refreshed_source_and_tool_evidence_audit.json"
+            ],
+            "rationale": "Retry the failed current stage only after a real adapter is supplied and its provenance and declared tool protocols are checkable. This is an input/framework failure, not a hardware-design failure; no hardware stage should be rewound.",
+            "requires_approval": false,
+            "stage": "input_preparation",
+            "tool_roles": [
+              "sacg_validate",
+              "tool_protocol_check",
+              "real_tool_evidence_check"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/001_input_preparation/llm/flow_controller_agent_result.json",
+        "agent_status": "retry_current_stage",
+        "agent_summary": "Input preparation failed with a reported missing verification case adapter. Keep the hardware design stages unchanged; obtain and verify the real adapter and retry input_preparation. Do not promote the incomplete artifacts."
+      },
+      "reason": "Input preparation failed with a reported missing verification case adapter. Keep the hardware design stages unchanged; obtain and verify the real adapter and retry input_preparation. Do not promote the incomplete artifacts.",
+      "request_id": null,
+      "sacg_state": null,
+      "source": "llm_flow_controller",
+      "stage": "input_preparation",
+      "stage_passed": false,
+      "target_index": 0,
+      "target_stage": "input_preparation"
+    },
+    {
+      "attempt_count": 2,
+      "decision": "retry",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/002_retry.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_actions/002_input_preparation_surface_and_classify_prepared_input_error.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/bounded_repairs/002_input_preparation_resolve_adapter_and_retry_readiness.json"
+      ],
+      "flow_event_index": 2,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_state.json",
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "tool_protocol_check",
+              "required_real_tool_evidence_check"
+            ],
+            "action_type": "prepared_input_error_triage",
+            "consumes": [
+              "prepared_inputs.errors",
+              "input/case_adapter.json",
+              "input/material_index.json",
+              "input/sample_project_index.json",
+              "input/tool_profile.json",
+              "input/tool_availability.json",
+              "input/tool_protocols.json"
+            ],
+            "id": "input_preparation.surface_and_classify_prepared_input_error",
+            "on_failure": "Preserve the exact error and unavailable or conflicting source references as unresolved. Do not suppress the error, synthesize adapter contents, or treat artifact presence as evidence that the adapter is ready.",
+            "produces": [
+              "input_preparation/prepared_input_error_triage.json",
+              "input_preparation/case_adapter_source_evidence.json"
+            ],
+            "rationale": "The stage result exposes one prepared-input error but not its full payload. Retrieve it verbatim and trace the missing adapter claim to the declared tool and sample-project materials; classify only from that evidence.",
+            "requires_approval": false,
+            "stage": "input_preparation",
+            "tool_roles": [
+              "sacg_validate",
+              "tool_protocol_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "task_card_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "template_coverage_check",
+              "template_binding_static_check",
+              "parameter_binding_static_check",
+              "stream_plan_check",
+              "memory_runtime_plan_check",
+              "boundary_contract_check",
+              "deployment_board_check",
+              "tool_protocol_check",
+              "human_boundary_check",
+              "repair_boundary_check",
+              "verification_plan_static_check",
+              "required_real_tool_evidence_check"
+            ],
+            "action_type": "input_preparation_retry_after_evidence_repair",
+            "consumes": [
+              "input_preparation/prepared_input_error_triage.json",
+              "input_preparation/case_adapter_source_evidence.json",
+              "input/case_adapter.json",
+              "input/task_card.json",
+              "input/model_config.json",
+              "input/numeric_policy.json",
+              "input/template_library.json",
+              "input/template_metadata.json",
+              "input/design_space.json",
+              "input/target_board_profile.json",
+              "input/field_evidence.json",
+              "input/tool_profile.json",
+              "input/tool_availability.json",
+              "input/tool_protocols.json",
+              "input/human_agent_boundary.json",
+              "prepared_inputs.errors"
+            ],
+            "id": "input_preparation.resolve_adapter_and_retry_readiness",
+            "on_failure": "Keep input_preparation incomplete and downstream stages blocked. Record each failing or not-run checker and its source-bound gap; if no real adapter payload is available, request that specific input rather than guessing, changing design constraints, or backtracking hardware stages.",
+            "produces": [
+              "input_preparation/source_and_tool_evidence_audit.json",
+              "input_preparation/model_intake_audit.json",
+              "input_preparation/numeric_template_audit.json",
+              "input_preparation/board_memory_runtime_audit.json",
+              "input_preparation/checker_results.json",
+              "input_preparation/cross_layer_input_readiness.json",
+              "input_preparation/prepared_inputs.json",
+              "input_preparation/stage_result.json"
+            ],
+            "rationale": "After a real adapter is located or supplied, validate its tool declarations and evidence, then rerun the provided input_preparation command and integrate the registered cross-layer audits. The current failure is an input/readiness issue, not a hardware-design failure.",
+            "requires_approval": false,
+            "stage": "input_preparation",
+            "tool_roles": [
+              "team_aggregate",
+              "sacg_validate",
+              "sacg_static_check",
+              "task_card_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "template_coverage_check",
+              "template_binding_static_check",
+              "parameter_binding_static_check",
+              "stream_plan_check",
+              "memory_runtime_plan_check",
+              "boundary_contract_check",
+              "deployment_board_check",
+              "tool_protocol_check",
+              "human_boundary_check",
+              "repair_boundary_check",
+              "verification_plan_static_check",
+              "real_tool_evidence_check"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/002_input_preparation/llm/flow_controller_agent_result.json",
+        "agent_status": "retry_current_stage",
+        "agent_summary": "Retry input_preparation after resolving and validating the missing case adapter from real supplied materials. The stage command exited 1 and reports that no verification case adapter was provided. This is an input/readiness failure, not evidence of a hardware-design defect, so do not backtrack or promote downstream stages."
+      },
+      "reason": "Retry input_preparation after resolving and validating the missing case adapter from real supplied materials. The stage command exited 1 and reports that no verification case adapter was provided. This is an input/readiness failure, not evidence of a hardware-design defect, so do not backtrack or promote downstream stages.",
+      "request_id": null,
+      "sacg_state": null,
+      "source": "llm_flow_controller",
+      "stage": "input_preparation",
+      "stage_passed": false,
+      "target_index": 0,
+      "target_stage": "input_preparation"
+    },
+    {
+      "attempt_count": 3,
+      "decision": "retry",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/003_retry.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/bounded_repairs/003_input_preparation_resolve_case_adapter_input.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/retry_requests/003_input_preparation_retry_with_cross_layer_readiness_checks.json"
+      ],
+      "flow_event_index": 3,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_state.json",
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "tool_protocol_check",
+              "required_real_tool_evidence_check",
+              "sacg_static_check"
+            ],
+            "action_type": "bounded_input_repair",
+            "consumes": [
+              "prepared_inputs.errors",
+              "input/case_adapter.json",
+              "input/tool_materials",
+              "input/tool_profile.json",
+              "input/tool_availability.json",
+              "input/tool_protocols.json",
+              "input/sample_project_index.json",
+              "input/field_evidence.json"
+            ],
+            "id": "input_preparation.resolve_case_adapter_input",
+            "on_failure": "Keep the original error active and input_preparation incomplete. Record which required adapter component or provenance link is unsupported; do not synthesize a default adapter, infer unread source-project contents, or consume the incomplete attempt downstream.",
+            "produces": [
+              "input/case_adapter.json",
+              "input_preparation/source_and_tool_evidence_audit.json",
+              "input_preparation/evidence_provenance_and_applicability.json"
+            ],
+            "rationale": "The current stage's explicit blocking error is a missing case adapter. Supply only a genuine, provenance-backed adapter from the supported environment/tool-material path, then check its protocol and real-tool applicability. This repairs an input contract; it does not authorize hardware or verification-contract changes.",
+            "requires_approval": false,
+            "stage": "input_preparation",
+            "tool_roles": [
+              "tool_protocol_check",
+              "required_real_tool_evidence_check",
+              "sacg_static_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "task_card_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "stream_plan_check",
+              "memory_runtime_plan_check",
+              "addr_map_check",
+              "tool_protocol_check",
+              "required_real_tool_evidence_check",
+              "human_boundary_check",
+              "repair_boundary_check",
+              "verification_plan_static_check",
+              "sacg_static_check"
+            ],
+            "action_type": "stage_retry",
+            "consumes": [
+              "input/task_card.json",
+              "input/model_config.json",
+              "input/case_adapter.json",
+              "input/numeric_policy.json",
+              "input/template_library.json",
+              "input/template_metadata.json",
+              "input/design_space.json",
+              "input/target_board_profile.json",
+              "input/field_evidence.json",
+              "input/field_evidence_candidates.json",
+              "input/material_index.json",
+              "input/sample_project_index.json",
+              "input/tool_profile.json",
+              "input/tool_availability.json",
+              "input/tool_protocols.json",
+              "input/human_agent_boundary.json",
+              "prepared_inputs.errors",
+              "input_preparation/source_and_tool_evidence_audit.json"
+            ],
+            "id": "input_preparation.retry_with_cross_layer_readiness_checks",
+            "on_failure": "Keep input_preparation blocked and record the exact checker, constraint, source artifact, and evidence gap. Preserve the original prepared-input error unless the complete artifact evidence resolves it. Do not promote incomplete outputs or route to an earlier hardware stage.",
+            "produces": [
+              "input_preparation/model_intake_audit.json",
+              "input_preparation/numeric_template_audit.json",
+              "input_preparation/board_memory_runtime_audit.json",
+              "input_preparation/source_and_tool_evidence_audit.json",
+              "input_preparation/human_and_repair_boundary_audit.json",
+              "input_preparation/cross_layer_input_readiness.json",
+              "input_preparation/constraint_to_evidence_gap_map.json",
+              "input_preparation/prepared_input_error_triage.json",
+              "current input_preparation stage result"
+            ],
+            "rationale": "After the adapter input is supplied and checked, rerun the current input_preparation command and perform the registered input and cross-layer readiness checks against the actual artifacts. The current failure is an input-stage blocker, so retry this stage rather than rewinding hardware design stages.",
+            "requires_approval": false,
+            "stage": "input_preparation",
+            "tool_roles": [
+              "team_aggregate",
+              "task_card_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "stream_plan_check",
+              "memory_runtime_plan_check",
+              "addr_map_check",
+              "tool_protocol_check",
+              "required_real_tool_evidence_check",
+              "human_boundary_check",
+              "repair_boundary_check",
+              "verification_plan_static_check",
+              "sacg_static_check"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/003_input_preparation/llm/flow_controller_agent_result.json",
+        "agent_status": "retry_current_stage",
+        "agent_summary": "Retry input_preparation after resolving its explicit missing case-adapter input. Do not backtrack or promote the incomplete artifacts. SACG memory and sacg_memory_truth are empty, so there are no active memory barriers or open retry/backtrack requests."
+      },
+      "reason": "Retry input_preparation after resolving its explicit missing case-adapter input. Do not backtrack or promote the incomplete artifacts. SACG memory and sacg_memory_truth are empty, so there are no active memory barriers or open retry/backtrack requests.",
+      "request_id": null,
+      "sacg_state": null,
+      "source": "llm_flow_controller",
+      "stage": "input_preparation",
+      "stage_passed": false,
+      "target_index": 0,
+      "target_stage": "input_preparation"
+    },
+    {
+      "attempt_count": 4,
+      "decision": "retry",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/004_retry.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_actions/004_input_preparation_triage_missing_case_adapter.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_actions/004_input_preparation_provision_case_adapter_candidate.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/retry_requests/004_input_preparation_retry_after_case_adapter_promotion.json"
+      ],
+      "flow_event_index": 4,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_state.json",
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "tool_protocol_check",
+              "required_real_tool_evidence_check",
+              "artifact_hash_check",
+              "stage_artifact_trust_barrier_check"
+            ],
+            "action_type": "prepared_input_error_triage",
+            "consumes": [
+              "prepared_inputs.errors",
+              "input/case_adapter.json",
+              "artifact.input.material_index",
+              "artifact.input.sample_project_index",
+              "artifact.input.tool_profile",
+              "artifact.input.tool_availability",
+              "artifact.input.tool_protocols"
+            ],
+            "id": "input_preparation.triage_missing_case_adapter",
+            "on_failure": "Preserve the exact error, failed checker, source identity, and unresolved fields in the triage artifact. Keep input_preparation blocked; do not guess a case adapter, board target, tool path, or sample-project identity.",
+            "produces": [
+              "input_preparation/prepared_input_error_triage.json"
+            ],
+            "rationale": "Read the exact prepared_inputs.errors entry and the declared source/tool indexes, bind the missing case-adapter diagnosis to current evidence, and preserve unresolved sample-project references. This is a read-only current-stage triage and does not promote or modify any downstream artifact.",
+            "requires_approval": false,
+            "stage": "input_preparation",
+            "tool_roles": [
+              "sacg_validate",
+              "sacg_static_check",
+              "tool_protocol_check",
+              "artifact_hash_check",
+              "stage_artifact_trust_barrier"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "tool_protocol_check",
+              "required_real_tool_evidence_check",
+              "artifact_hash_check",
+              "stage_artifact_trust_barrier_check",
+              "case_real_weight_artifacts",
+              "case_target_model_reference",
+              "case_semantic_testbench"
+            ],
+            "action_type": "system_capability_gap",
+            "consumes": [
+              "input_preparation/prepared_input_error_triage.json",
+              "artifact.input.task_card",
+              "artifact.input.model_config",
+              "artifact.input.numeric_policy",
+              "artifact.input.target_board_profile",
+              "artifact.input.material_index",
+              "artifact.input.sample_project_index",
+              "artifact.input.tool_profile",
+              "artifact.input.tool_availability",
+              "artifact.input.tool_protocols",
+              "source_specs.model_dir",
+              "source_specs.board_materials_dir",
+              "source_specs.tool_materials_dir"
+            ],
+            "id": "input_preparation.provision_case_adapter_candidate",
+            "on_failure": "Keep the candidate unpromoted and retain the missing-adapter error as the active current-stage blocker. Do not use candidate fields as validated downstream inputs, substitute a legacy adapter, or add random/identity model behavior, runtime-weight loading, simulation, or golden-output prerequisites.",
+            "produces": [
+              "input/case_adapter.candidate.json",
+              "input/case_adapter.candidate.provenance.json",
+              "input/case_adapter.json (promoted only after candidate checks pass)"
+            ],
+            "rationale": "No registered tool can create the missing model-family case adapter. Implement or invoke planned_tool.case_adapter_provision to assemble a candidate from the supplied model, board, tool, and sample-project materials, including real weight references, TB/RTL references, compile-only VCS/simulator protocol declarations, and diagnosis-tool bindings. The candidate must be hash/provenance bound and must exclude model-tail operations from DUT weight coverage. This is a capability implementation gap, not a hardware correctness result.",
+            "requires_approval": true,
+            "stage": "input_preparation",
+            "tool_roles": [
+              "planned_tool.case_adapter_provision"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "task_card_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "memory_runtime_plan_check",
+              "stream_plan_check",
+              "addr_map_check",
+              "tool_protocol_check",
+              "required_real_tool_evidence_check",
+              "artifact_hash_check",
+              "stage_artifact_trust_barrier_check",
+              "human_boundary_check",
+              "repair_boundary_check",
+              "verification_plan_static_check",
+              "llm_io_quality_check",
+              "llm_semantic_extraction_check",
+              "no_static_keyword_semantic_matching_check"
+            ],
+            "action_type": "retry_current_stage",
+            "consumes": [
+              "input/case_adapter.json",
+              "input/case_adapter.candidate.provenance.json",
+              "input_preparation/prepared_input_error_triage.json",
+              "artifact.input.task_card",
+              "artifact.input.model_config",
+              "artifact.input.case_adapter",
+              "artifact.input.numeric_policy",
+              "artifact.input.template_library",
+              "artifact.input.template_metadata",
+              "artifact.input.design_space",
+              "artifact.input.target_board_profile",
+              "artifact.input.tool_profile",
+              "artifact.input.tool_availability",
+              "artifact.input.tool_protocols",
+              "artifact.input.human_agent_boundary",
+              "artifact.input.material_index",
+              "artifact.input.sample_project_index",
+              "constraint.task.goal",
+              "constraint.model.decoder",
+              "constraint.shape.model",
+              "constraint.numeric.policy",
+              "constraint.template.library",
+              "constraint.arch.design_space",
+              "constraint.memory.board",
+              "constraint.runtime.board",
+              "constraint.deployment.board",
+              "constraint.stream.order",
+              "constraint.beat.pipeline",
+              "constraint.tool.protocols",
+              "action_grounding_registry.verification_execution_policy"
+            ],
+            "id": "input_preparation.retry_after_case_adapter_promotion",
+            "on_failure": "Keep input_preparation incomplete, preserve every failed or not-run checker and the exact prepared-input error, and route only the checker-localized issue to another bounded current-stage repair. Do not promote to constraint_extraction, alter trusted templates or numeric policy, modify golden outputs, infer missing board facts, or rewind any hardware design stage.",
+            "produces": [
+              "input_preparation/model_intake_audit.json",
+              "input_preparation/model_shape_assumptions_and_gaps.json",
+              "input_preparation/numeric_template_audit.json",
+              "input_preparation/template_binding_gaps.json",
+              "input_preparation/board_memory_runtime_audit.json",
+              "input_preparation/data_order_and_transfer_assumptions.json",
+              "input_preparation/source_and_tool_evidence_audit.json",
+              "input_preparation/evidence_provenance_and_applicability.json",
+              "input_preparation/cross_layer_input_readiness.json",
+              "input_preparation/constraint_to_evidence_gap_map.json",
+              "input_preparation/human_and_repair_boundary_audit.json",
+              "input_preparation/prepared_input_error_disposition.json"
+            ],
+            "rationale": "Once the case adapter candidate has passed all checks and has been explicitly promoted with immutable provenance, rerun the complete current-stage input audits and aggregate gate. This honors the framework policy that input, provenance, evidence-binding, and orchestration failures retry the failed current stage rather than rewind hardware design.",
+            "requires_approval": false,
+            "stage": "input_preparation",
+            "tool_roles": [
+              "team_aggregate",
+              "sacg_validate",
+              "sacg_static_check",
+              "task_card_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "memory_runtime_plan_check",
+              "stream_plan_check",
+              "addr_map_check",
+              "tool_protocol_check",
+              "real_tool_evidence_check",
+              "artifact_hash_check",
+              "stage_artifact_trust_barrier",
+              "human_boundary_check",
+              "repair_boundary_check",
+              "verification_plan_static_check",
+              "llm_io_quality_check",
+              "llm_semantic_extraction",
+              "no_static_keyword_semantic_matching"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/004_input_preparation/llm/flow_controller_agent_result.json",
+        "agent_status": "bounded_repair_required_before_retry",
+        "agent_summary": "Do not proceed downstream or backtrack hardware stages. The current input_preparation attempt failed with return code 1 because the verification case adapter is missing, while the stage aggregate remains incomplete. Preserve all current artifacts, provision and validate a candidate case adapter through a bounded repair, promote it only after provenance and tool checks pass, then retry input_preparation."
+      },
+      "reason": "Once the case adapter candidate has passed all checks and has been explicitly promoted with immutable provenance, rerun the complete current-stage input audits and aggregate gate. This honors the framework policy that input, provenance, evidence-binding, and orchestration failures retry the failed current stage rather than rewind hardware design.",
+      "request_id": "input_preparation.retry_after_case_adapter_promotion",
+      "sacg_state": null,
+      "source": "llm_flow_controller",
+      "stage": "input_preparation",
+      "stage_passed": false,
+      "target_index": 0,
+      "target_stage": "input_preparation"
+    },
+    {
+      "attempt_count": 5,
+      "decision": "retry",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/005_retry.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/bounded_repairs/005_input_preparation_resolve_case_adapter_and_retry_with_evidence_checks.json"
+      ],
+      "flow_event_index": 5,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_state.json",
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "tool_protocol_check",
+              "required_real_tool_evidence_check",
+              "task_card_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "stream_plan_check",
+              "memory_runtime_plan_check",
+              "boundary_contract_check",
+              "human_boundary_check",
+              "repair_boundary_check",
+              "verification_plan_static_check",
+              "sacg_static_check"
+            ],
+            "action_type": "input_repair_and_stage_retry",
+            "consumes": [
+              "prepared_inputs.errors",
+              "input/material_index.json",
+              "input/sample_project_index.json",
+              "input/tool_availability.json",
+              "input/tool_profile.json",
+              "input/tool_protocols.json",
+              "input/target_board_profile.json",
+              "input/model_config.json",
+              "input/task_card.json",
+              "input/numeric_policy.json",
+              "input/template_library.json",
+              "input/template_metadata.json",
+              "input/design_space.json",
+              "input/human_agent_boundary.json",
+              "declared tool materials and explicit SPATIALACC_CASE_ADAPTER configuration"
+            ],
+            "id": "input_preparation.resolve_case_adapter_and_retry_with_evidence_checks",
+            "on_failure": "Keep input_preparation blocked and retry this same stage after addressing the specific unresolved input or checker finding. Preserve the exact prepared-input error and provenance gaps; do not promote incomplete artifacts, proceed downstream, invent adapter contents, or backtrack hardware stages.",
+            "produces": [
+              "input/case_adapter.json",
+              "input_preparation/source_and_tool_evidence_audit.json",
+              "input_preparation/evidence_provenance_and_applicability.json",
+              "input_preparation/prepared_input_error_triage.json",
+              "input_preparation/model_intake_audit.json",
+              "input_preparation/model_shape_assumptions_and_gaps.json",
+              "input_preparation/numeric_template_audit.json",
+              "input_preparation/template_binding_gaps.json",
+              "input_preparation/board_memory_runtime_audit.json",
+              "input_preparation/cross_layer_input_readiness.json",
+              "input_preparation/constraint_to_evidence_gap_map.json",
+              "input_preparation/registered_checker_results.json",
+              "updated prepared_inputs readiness result"
+            ],
+            "rationale": "The current-stage error explicitly identifies a missing case adapter, not a hardware-design defect. Source a real adapter from the declared materials or explicit runtime configuration; do not synthesize its contents. Then rerun the current input_preparation command and validate the model, numeric/template, board/memory/runtime, tool-provenance, and cross-layer readiness contracts. Review the unreadable sample-project warning against actual source evidence without guessing.",
+            "requires_approval": false,
+            "stage": "input_preparation",
+            "tool_roles": [
+              "tool_protocol_check",
+              "required_real_tool_evidence_check",
+              "task_card_check",
+              "model_config_check",
+              "numeric_policy_check",
+              "template_coverage_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "stream_plan_check",
+              "memory_runtime_plan_check",
+              "boundary_contract_check",
+              "human_boundary_check",
+              "repair_boundary_check",
+              "verification_plan_static_check",
+              "sacg_static_check",
+              "sacg_validate"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/005_input_preparation/llm/flow_controller_agent_result.json",
+        "agent_status": "retry_current_stage",
+        "agent_summary": "Retry input_preparation after resolving the explicitly reported missing case adapter. The latest attempt is incomplete and returned code 1; there is no hardware-design failure evidence to justify backtracking. SACG memory and sacg_memory_truth show no active barriers or open requests."
+      },
+      "reason": "Retry input_preparation after resolving the explicitly reported missing case adapter. The latest attempt is incomplete and returned code 1; there is no hardware-design failure evidence to justify backtracking. SACG memory and sacg_memory_truth show no active barriers or open requests.",
+      "request_id": null,
+      "sacg_state": null,
+      "source": "llm_flow_controller",
+      "stage": "input_preparation",
+      "stage_passed": false,
+      "target_index": 0,
+      "target_stage": "input_preparation"
+    },
+    {
+      "attempt_count": 6,
+      "decision": "proceed_bootstrap_stage",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/006_proceed_bootstrap_stage.json"
+      ],
+      "flow_event_index": 6,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_state.json",
+      "reason": "bootstrap stage passed its deterministic gate",
+      "sacg_state": null,
+      "stage": "input_preparation",
+      "stage_passed": true
+    },
+    {
+      "attempt_count": 1,
+      "decision": "proceed_bootstrap_stage",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/flow_events/007_proceed_bootstrap_stage.json"
+      ],
+      "flow_event_index": 7,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_state.json",
+      "reason": "bootstrap stage passed its deterministic gate",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/flow_handoff_sources/007_8d4dcaf083ab7e5d9504ea6e9f4f346c494e850ac776cde32b2b1c581058172c.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/initial_design_graph.json",
+      "stage": "constraint_extraction",
+      "stage_passed": true
+    },
+    {
+      "attempt_count": 1,
+      "decision": "retry",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/flow_events/008_retry.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/flow_actions/008_template_selection_retry_authoritative_shape_reconciliation.json"
+      ],
+      "flow_event_index": 8,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_state.json",
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "model_config_check",
+              "task_card_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "sacg_static_check"
+            ],
+            "action_type": "bounded_evidence_reconciliation",
+            "consumes": [
+              "artifact.input.model_config",
+              "artifact.input.field_evidence",
+              "artifact.input.task_card",
+              "constraint.shape.model",
+              "constraint.template.library",
+              "artifact.stage.template_selection.parameter_bindings",
+              "artifact.stage.template_selection.checker_results",
+              "artifact.stage.template_selection.template_source_checks"
+            ],
+            "id": "template_selection.retry_authoritative_shape_reconciliation",
+            "on_failure": "Keep template_selection incomplete and contamination_barrier.0001 active. Preserve authoritative values and the exact checker failure; do not repair dimensions, alter template internals, waive the predicate, or promote the rejected artifact. If authoritative evidence remains contradictory or the contract requires a semantic change, request explicit bounded approval and authoritative model-owner evidence.",
+            "produces": [
+              "artifact.template_selection.dimension_authority_reconciliation",
+              "artifact.template_selection.refreshed_parameter_binding_results",
+              "artifact.template_selection.retry_checker_results"
+            ],
+            "rationale": "The failed checker establishes a concrete 1152-versus-1024 binding mismatch, but the supplied summary does not establish which authoritative fact or contract interpretation resolves it. Reconcile cited model/task evidence and rerun current-stage checks without changing model, numeric, or template semantics. A successful candidate may supersede the rejected transition only after all required checks pass.",
+            "requires_approval": false,
+            "stage": "template_selection",
+            "tool_roles": [
+              "architecture_review",
+              "model_config_check",
+              "task_card_check",
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "sacg_static_check"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/008_template_selection/llm/flow_controller_agent_result.json",
+        "agent_status": "retry_current_stage",
+        "agent_summary": "Retry template_selection with bounded authoritative-evidence reconciliation. The binding checker failed on hidden_size=1152 versus num_q_heads*head_dim=4*256=1024. Do not backtrack or allow downstream stages to consume the rejected artifact."
+      },
+      "reason": "Retry template_selection with bounded authoritative-evidence reconciliation. The binding checker failed on hidden_size=1152 versus num_q_heads*head_dim=4*256=1024. Do not backtrack or allow downstream stages to consume the rejected artifact.",
+      "request_id": null,
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/flow_handoff_sources/008_8edfc03cfa693728ba3da53f13ee0e2f42c868d3931f6f554464db4850cb282c.json",
+      "source": "llm_flow_controller",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/sacg_state.json",
+      "stage": "template_selection",
+      "stage_passed": false,
+      "target_index": 2,
+      "target_stage": "template_selection"
+    }
+  ],
+  "flow_state": {
+    "backtrack_count": 0,
+    "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_state.json",
+    "stage_attempts": {
+      "template_selection": {
+        "count": 1,
+        "epoch": {
+          "module": "accagent.framework.stage_templates",
+          "orchestration_hash": "5cbeb239573f138f7bb7441486e824e0a7adc4ec894fc4368ca6eb163a9c00db",
+          "stage": "template_selection",
+          "stage_code_hash": "eab230be6e74d8fe3f9b0f04156ebef8517c01d7d86244edcc5c45591ae7366b",
+          "stage_input_hash": "7a9631a9c017ae2504e4cbf9e69016b339913c747656128ab36cc15925bbbd72"
+        },
+        "epoch_hash": "cd97daadf7d182d8097efe123af308500685e3bc981b06995473b4388d1d2857"
+      }
+    }
+  },
+  "llm": {
+    "endpoint": "https://www.a8pi.com/v1/responses",
+    "enforce": true,
+    "mandatory": true,
+    "mode": "llm",
+    "model": "gpt-6.1-sol"
+  },
+  "public_workflow": [
+    {
+      "id": 0,
+      "internal_steps": [
+        "input_preparation"
+      ],
+      "name": "objective_and_input_preparation"
+    },
+    {
+      "id": 1,
+      "internal_steps": [
+        "constraint_extraction"
+      ],
+      "name": "sacg_extraction"
+    },
+    {
+      "id": 2,
+      "internal_steps": [
+        "template_selection"
+      ],
+      "name": "trusted_templates_and_fpga_ip_binding"
+    },
+    {
+      "id": 3,
+      "internal_steps": [
+        "pipeline_planning"
+      ],
+      "name": "model_derived_spatial_pipeline"
+    },
+    {
+      "id": 4,
+      "internal_steps": [
+        "parameter_binding"
+      ],
+      "name": "dse_and_parameter_binding"
+    },
+    {
+      "id": 5,
+      "internal_steps": [
+        "code_generation",
+        "verification_artifacts"
+      ],
+      "name": "hardware_implementation_and_verification_preparation"
+    },
+    {
+      "id": 6,
+      "internal_steps": [
+        "debug_loop"
+      ],
+      "name": "hierarchical_real_verification_and_repair"
+    },
+    {
+      "id": 7,
+      "internal_steps": [
+        "backend_board"
+      ],
+      "name": "vivado_implementation_and_qor"
+    }
+  ],
+  "run_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+  "schema_version": "spatialaccagent.agent_run_report.v0",
+  "stages": [
+    {
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "accagent.framework.stage_input",
+        "--run-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+        "--task-spec",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/campaigns/20261020_gemma_gpt61/task_spec.md",
+        "--model-source",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/model_configs/gemma3_1b_it/model_config.json",
+        "--model-dir",
+        "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+        "--board-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board",
+        "--quantization-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/quantization",
+        "--tool-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools"
+      ],
+      "command_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/logs/01_input_preparation.json",
+      "name": "input_preparation",
+      "output_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/prepared_inputs.json",
+      "passed": false,
+      "public_stage": {
+        "id": 0,
+        "name": "objective_and_input_preparation"
+      },
+      "summary": {
+        "design_team": {
+          "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/team_aggregate.json",
+          "approval_required_for": [
+            "Adding, replacing, or materially modifying a template or its supported-use metadata.",
+            "Any change to numeric precision, quantization intent, or numeric-policy values.",
+            "Any human-boundary decision whose required approval cannot be determined from the supplied boundary artifact; resolve through the authorized approval process rather than assuming permission.",
+            "Any later commitment or change to the accelerator memory layout, tensor/weight packing or ordering, transfer/beat protocol, or board-facing AXI/runtime ABI that is not directly established by supplied evidence.",
+            "Any major change to design-space architecture, parameter bindings, or resource assumptions.",
+            "Any proposed change to model scope, architecture, pipeline, trusted template, numeric precision or tolerance, or memory layout; seek the applicable human approval before such a change."
+          ],
+          "completed_subtasks": 5,
+          "decomposer_error": null,
+          "decomposer_used_fallback": false,
+          "decomposition_source": "llm",
+          "errors": [],
+          "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/event_log.jsonl",
+          "executable_actions": [
+            {
+              "acceptance_checkers": [
+                "stream_plan_check",
+                "memory_runtime_plan_check",
+                "addr_map_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.target_board_profile",
+                "artifact.input.field_evidence",
+                "artifact.input.case_adapter",
+                "constraint.memory.board",
+                "constraint.runtime.board",
+                "constraint.deployment.board"
+              ],
+              "id": "input_preparation.audit_full_board_memory_stream_runtime_inputs",
+              "on_failure": "Do not claim board/runtime readiness or infer missing values from the compact summary. Preserve each unverified field and failed or not_run checker in the audit artifacts, identify the exact evidence needed, and hand unresolved decisions to the cross_layer_readiness_auditor/SACG extraction; do not guess interface names, address ranges, beat widths, ordering, or memory layout.",
+              "produces": [
+                "input_preparation.board_memory_runtime_audit.json",
+                "input_preparation.data_order_and_transfer_assumptions.json"
+              ],
+              "rationale": "The supplied artifact inventory confirms the relevant artifacts exist but the compact summary does not expose their substantive values. Inspect the full artifacts, cite documented board facts, preserve unknowns as unresolved, and validate the resulting data-order, transfer, memory, and runtime contracts using the registered checkers.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "stream_plan_check",
+                "memory_runtime_plan_check",
+                "addr_map_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "tool_protocol_check",
+                "required_real_tool_evidence_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.material_index",
+                "artifact.input.sample_project_index",
+                "artifact.input.field_evidence_candidates",
+                "artifact.input.field_evidence",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.tool_protocols",
+                "constraint.tool.protocols",
+                "constraint.deployment.board",
+                "constraint.memory.board"
+              ],
+              "id": "input_preparation.audit_source_and_tool_evidence",
+              "on_failure": "Record the specific unavailable detail or inconsistent declaration, retain claims as unverified, and hand unresolved provenance or applicability questions to the readiness auditor. Do not infer a board target, tool execution, or pass.",
+              "produces": [
+                "input_preparation/source_and_tool_evidence_audit.json",
+                "input_preparation/evidence_provenance_and_applicability.json"
+              ],
+              "rationale": "Create a traceable audit of the listed source indexes, field evidence, and tool declarations against board, board-memory, and tool-protocol constraints. The detailed records must be inspected before asserting provenance, applicability, or a pass.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "sacg_validate",
+                "tool_protocol_check",
+                "real_tool_evidence_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "llm_semantic_extraction_check",
+                "sacg_static_check"
+              ],
+              "action_type": "prepared_input_error_triage",
+              "consumes": [
+                "prepared_inputs.errors",
+                "artifact.input.case_adapter",
+                "artifact.input.material_index",
+                "artifact.input.sample_project_index"
+              ],
+              "id": "input_preparation.surface_and_triage_prepared_input_error",
+              "on_failure": "If the original entry or supporting source cannot be retrieved, record the entry as unclassified with the retrieval gap and hand that exact limitation to the readiness auditor; do not invent a cause or suppress the error.",
+              "produces": [
+                "input_preparation/prepared_input_error_triage.json",
+                "input_preparation/readiness_auditor_error_handoff.json"
+              ],
+              "rationale": "The supplied summary establishes that one prepared_inputs.errors entry exists but omits its payload. Inspect and preserve the original entry, trace it to available source evidence, and provide an evidence-bounded classification to the readiness auditor.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "sacg_validate",
+                "llm_semantic_extraction"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "task_card_check",
+                "model_config_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.task_card",
+                "artifact.input.model_config",
+                "artifact.input.case_adapter",
+                "constraint.task.goal",
+                "constraint.model.decoder",
+                "constraint.shape.model"
+              ],
+              "id": "input_preparation.audit_model_shape_sources",
+              "on_failure": "Record each checker as failed or not_run with its evidence; distinguish a field proven absent in the complete source from one omitted from a prompt summary. Preserve contradictions and unresolved values as gaps, do not infer defaults or alter model semantics, and do not hand off a passing extraction until the required source-backed facts are checked.",
+              "produces": [
+                "input_preparation/model_intake_audit.json",
+                "input_preparation/model_shape_assumptions_and_gaps.json"
+              ],
+              "rationale": "The visible summary establishes artifact presence but not the source-backed decoder, shape, attention, head-mapping, sequence, and operator-order facts needed to judge extraction sufficiency. Inspect the complete supplied artifacts and bind findings to their provenance.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "llm_semantic_extraction",
+                "task_card_check",
+                "model_config_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "numeric_policy_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.design_space",
+                "constraint.numeric.policy",
+                "constraint.template.library",
+                "constraint.arch.design_space"
+              ],
+              "id": "input_preparation.audit_numeric_template_contract",
+              "on_failure": "Record each check as failed or not_run with its artifact and constraint evidence, retain the identified binding gaps, and do not claim the input contract passes. Do not alter numeric policy, create or claim templates, or change design-space assumptions; route proposed material changes for the required approval and hand off the evidence to the cross-layer readiness auditor and SACG extraction.",
+              "produces": [
+                "input_preparation/numeric_template_audit.json",
+                "input_preparation/template_binding_gaps.json"
+              ],
+              "rationale": "Evaluate the full numeric policy, template library and metadata, and design space using the registered checks so claims and bindings are traceable to the named SACG constraints. The compact summary does not expose enough detail to report a pass or identify specific missing fields.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "numeric_policy_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "sacg_static_check",
+                "template_binding_static_check",
+                "tool_protocol_check",
+                "human_boundary_check",
+                "repair_boundary_check",
+                "verification_plan_static_check"
+              ],
+              "action_type": "cross_layer_sacg_readiness_audit",
+              "consumes": [
+                "artifact.input.task_card",
+                "artifact.input.model_config",
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.design_space",
+                "artifact.input.target_board_profile",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.case_adapter",
+                "artifact.input.tool_protocols",
+                "artifact.input.human_agent_boundary",
+                "prepared_inputs.errors",
+                "input_preparation/model_intake_audit.json",
+                "input_preparation/numeric_template_audit.json",
+                "input_preparation/board_memory_runtime_audit.json",
+                "input_preparation/source_and_tool_evidence_audit.json"
+              ],
+              "id": "input_preparation.aggregate_cross_layer_evidence_and_gate_sacg_extraction",
+              "on_failure": "Keep SACG extraction blocked. Record each failed or not-run checker against its affected constraints and source artifact, preserve the exact prepared-input error, and hand off only evidence-supported repair items to the responsible specialist or coordinator. Do not infer missing details from this compact summary, bypass a checker, alter trusted templates or numeric policy, or add runtime/golden/simulation prerequisites.",
+              "produces": [
+                "input_preparation/cross_layer_input_readiness.json",
+                "input_preparation/constraint_to_evidence_gap_map.json",
+                "input_preparation/human_and_repair_boundary_audit.json"
+              ],
+              "rationale": "The supplied summary does not provide the detailed specialist findings, checker outcomes, or the single prepared-input error. Aggregate the actual source artifacts, run the registered readiness checks, and produce explicit constraint-to-evidence bindings and blockers without inventing readiness.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "team_aggregate",
+                "sacg_validate"
+              ]
+            }
+          ],
+          "execution_groups": [
+            0,
+            1
+          ],
+          "llm_io_metrics": {
+            "executable_action_count": 6,
+            "max_duration_sec": 42.2170098220231,
+            "max_prompt_bytes": 40122,
+            "result_count": 5,
+            "subtasks_without_executable_actions": [],
+            "total_duration_sec": 163.5268521939288,
+            "total_prompt_bytes": 196749
+          },
+          "split_required": true,
+          "status": "ready",
+          "subtask_count": 5,
+          "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/subtask_plan.json",
+          "used_fallback_count": 0
+        },
+        "errors": [
+          "case_adapter is not ready for this run: status=missing errors=['No verification case adapter was provided for this model family. Provide SPATIALACC_CASE_ADAPTER or a case_adapter.json in tool materials with real weight, TB/RTL, simulator, and diagnosis tools.']"
+        ],
+        "inputs": {
+          "case_adapter": "input/case_adapter.json",
+          "design_space": "input/design_space.json",
+          "field_evidence": "input/field_evidence.json",
+          "field_evidence_candidates": "input/field_evidence_candidates.json",
+          "human_agent_boundary": "input/human_agent_boundary.json",
+          "material_index": "input/material_index.json",
+          "model_config": "input/model_config.json",
+          "numeric_policy": "input/numeric_policy.json",
+          "sample_project_index": "input/sample_project_index.json",
+          "target_board_profile": "input/target_board_profile.json",
+          "task_card": "input/task_card.json",
+          "template_library": "input/template_library.json",
+          "template_metadata": "input/template_metadata.json",
+          "tool_availability": "input/tool_availability.json",
+          "tool_profile": "input/tool_profile.json",
+          "tool_protocols": "input/tool_protocols.json"
+        },
+        "mode": "independent_from_scratch_design",
+        "run_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+        "schema_version": "spatialaccagent.prepared_inputs.v0",
+        "source_roles": {
+          "board_materials_dir": "current-run target FPGA board, DDR/AXI, runtime, and sample-project materials",
+          "model_dir": "run-specific target checkpoint directory",
+          "model_source": "run-specific model architecture source",
+          "quantization_materials_dir": "current-run numeric and quantization design materials",
+          "task_spec": "run-specific objective and acceptance boundary",
+          "template_dir": "trusted local hardware template library",
+          "tool_materials_dir": "current-run EDA tool location, usage, and limitation materials"
+        },
+        "source_specs": {
+          "board_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board",
+          "model_dir": "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+          "model_source": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/model_configs/gemma3_1b_it/model_config.json",
+          "quantization_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/quantization",
+          "task_spec": "/home/remote/workspace/Qwen2-Accelerator/accagent/campaigns/20261020_gemma_gpt61/task_spec.md",
+          "template_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/templates/operator_chisel",
+          "tool_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools"
+        },
+        "stage": "input_preparation",
+        "status": "incomplete",
+        "summary": {
+          "llm_mode": "llm",
+          "llm_provider": "OpenAI",
+          "model_type": "gemma3_text",
+          "operator_count": 11,
+          "template_count": 13,
+          "tool_protocols": 18
+        },
+        "warnings": [
+          "sample_project_index failed to read one or more declared sample projects; later real-tool/remote probes must confirm these references"
+        ]
+      }
+    },
+    {
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "accagent.framework.stage_input",
+        "--run-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+        "--task-spec",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/campaigns/20261020_gemma_gpt61/task_spec.md",
+        "--model-source",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/model_configs/gemma3_1b_it/model_config.json",
+        "--model-dir",
+        "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+        "--board-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board",
+        "--quantization-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/quantization",
+        "--tool-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools"
+      ],
+      "command_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/logs/02_input_preparation.json",
+      "name": "input_preparation",
+      "output_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/prepared_inputs.json",
+      "passed": false,
+      "public_stage": {
+        "id": 0,
+        "name": "objective_and_input_preparation"
+      },
+      "summary": {
+        "design_team": {
+          "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/team_aggregate.json",
+          "approval_required_for": [
+            "Any addition, replacement, or major modification of a template or its supported parameter contract.",
+            "Any change to architecture/design-space constraints or material resource assumptions.",
+            "Any change to numeric precision, quantization intent, or numeric policy.",
+            "Any major memory, pipeline, or deployment-template change needed to resolve a documented conflict.",
+            "Any proposed architecture, pipeline, memory-layout, trusted-template, or numeric-policy change requires the applicable human approval before execution.",
+            "Any proposed board memory layout, address-map, DDR/AXI interface, or runtime ABI choice not established by supplied evidence.",
+            "Any proposed change or selection of data ordering, transfer/beat contract, or stream pipeline semantics not established by supplied evidence.",
+            "Any repair that would change checkpoint, stimulus, target-model reference, numeric policy, tolerance, testbench contract, or exact board-wrapper source identity requires approval and must not be used to mask a DUT or integration defect.",
+            "No approval is evidenced as necessary for the audit-only action; human_boundary_check must determine permissions for any subsequent repair."
+          ],
+          "completed_subtasks": 5,
+          "decomposer_error": null,
+          "decomposer_used_fallback": false,
+          "decomposition_source": "llm",
+          "errors": [],
+          "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/event_log.jsonl",
+          "executable_actions": [
+            {
+              "acceptance_checkers": [
+                "memory_runtime_plan_check",
+                "stream_plan_check",
+                "addr_map_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.target_board_profile",
+                "artifact.input.field_evidence",
+                "artifact.input.case_adapter",
+                "artifact.input.model_config",
+                "artifact.input.numeric_policy",
+                "candidate_stage_artifact.prepared_inputs.errors"
+              ],
+              "id": "input_preparation.extract_and_check_board_memory_runtime_contract",
+              "on_failure": "Do not promote board or runtime readiness. Preserve checker findings and unresolved fields with their source references; classify the prepared-input error from its actual detail, and request the canonical artifact detail or a bounded board-owner decision where evidence is ambiguous. Do not invent ordering, beat, memory-map, or runtime defaults.",
+              "produces": [
+                "input_preparation.board_memory_runtime_audit.json",
+                "input_preparation.data_order_and_transfer_assumptions.json",
+                "input_preparation.board_memory_runtime_checker_results.json"
+              ],
+              "rationale": "The supplied summaries establish that the relevant input artifacts exist but do not expose their substantive values. Produce a source-bound audit and assumption ledger, then use the registered checkers to validate it without guessing board facts or claiming readiness.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "memory_runtime_plan_check",
+                "stream_plan_check",
+                "addr_map_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "tool_protocol_check",
+                "required_real_tool_evidence_check",
+                "sacg_static_check"
+              ],
+              "action_type": "source_and_tool_evidence_audit",
+              "consumes": [
+                "artifact.input.material_index",
+                "artifact.input.sample_project_index",
+                "artifact.input.field_evidence_candidates",
+                "artifact.input.field_evidence",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.tool_protocols",
+                "constraint.tool.protocols",
+                "constraint.deployment.board",
+                "constraint.memory.board"
+              ],
+              "id": "input_preparation.audit_source_and_tool_evidence",
+              "on_failure": "Record the specific missing payload, provenance link, applicability basis, or checker result as unresolved/not_run; do not claim tool, backend, or board pass and hand the unresolved evidence requirement to the readiness auditor.",
+              "produces": [
+                "input_preparation.source_and_tool_evidence_audit.json",
+                "input_preparation.evidence_provenance_and_applicability.json"
+              ],
+              "rationale": "Audit the complete artifact payloads rather than their compact index summary, and record provenance, applicability, tool declarations, checker outcomes, and explicit not_run status where execution evidence is absent.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "tool_protocol_check",
+                "real_tool_evidence_check",
+                "sacg_validate"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "sacg_static_check",
+                "tool_protocol_check",
+                "required_real_tool_evidence_check"
+              ],
+              "action_type": "prepared_input_error_triage",
+              "consumes": [
+                "prepared_inputs.errors",
+                "artifact.input.material_index",
+                "artifact.input.sample_project_index",
+                "artifact.input.field_evidence",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.tool_protocols"
+              ],
+              "id": "input_preparation.surface_prepared_error_for_readiness_triage",
+              "on_failure": "Preserve prepared_inputs.errors[0] verbatim, mark its classification unresolved when the payload or cited evidence is unavailable, and hand that unresolved entry to input_preparation.cross_layer_readiness_auditor; do not suppress or reinterpret it.",
+              "produces": [
+                "input_preparation/prepared_input_error_triage.json"
+              ],
+              "rationale": "The supplied summary confirms one prepared_inputs.errors entry but hides its contents. Retrieve and surface the exact entry and classify it only against its cited source evidence so the readiness auditor can determine whether it blocks promotion.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "sacg_validate",
+                "tool_protocol_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "llm_semantic_extraction_check",
+                "task_card_check",
+                "model_config_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.task_card",
+                "artifact.input.model_config",
+                "artifact.input.case_adapter",
+                "constraint.task.goal",
+                "constraint.model.decoder",
+                "constraint.shape.model"
+              ],
+              "id": "input_preparation.extract_and_check_model_shape_facts",
+              "on_failure": "Record failed or unavailable checks as not_run/failed with the affected source fields. Keep unsupported facts unknown, preserve conflicting source evidence without resolving it by guesswork, and hand off the bounded gaps to input_preparation.cross_layer_readiness_auditor; do not claim SACG-ready model or shape coverage.",
+              "produces": [
+                "input_preparation/model_intake_audit.json",
+                "input_preparation/model_shape_assumptions_and_gaps.json"
+              ],
+              "rationale": "The summarized inputs establish artifact presence but do not expose field-level model facts or provenance. Inspect and extract only source-supported decoder, shape, attention, head-mapping, sequence, and operator-order facts, retaining unknowns and contradictions explicitly for SACG handoff.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "llm_semantic_extraction",
+                "task_card_check",
+                "model_config_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "numeric_policy_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.design_space",
+                "constraint.numeric.policy",
+                "constraint.template.library",
+                "constraint.arch.design_space"
+              ],
+              "id": "input_preparation.run_numeric_template_static_audit",
+              "on_failure": "Record each checker result and the specific unresolved binding or unsupported claim in the expected artifacts; keep SACG extraction and template-constrained architecture planning blocked on failing or not_run required checks. Do not repair RTL, invent template support, or alter numeric policy. Route any proposed numeric-policy, template, architecture, or resource-assumption change for approval.",
+              "produces": [
+                "input_preparation/numeric_template_audit.json",
+                "input_preparation/template_binding_gaps.json"
+              ],
+              "rationale": "Establish whether the supplied numeric policy and template-constrained design-space contract are traceable and statically supported. The current summary contains artifact-presence evidence only, so checker results must be obtained before promotion.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "numeric_policy_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "sacg_static_check",
+                "task_card_check",
+                "model_config_check",
+                "numeric_policy_check",
+                "template_coverage_check",
+                "template_binding_static_check",
+                "parameter_binding_static_check",
+                "stream_plan_check",
+                "memory_runtime_plan_check",
+                "boundary_contract_check",
+                "deployment_board_check",
+                "tool_protocol_check",
+                "human_boundary_check",
+                "repair_boundary_check",
+                "verification_plan_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "input_preparation/model_intake_audit.json",
+                "input_preparation/numeric_template_audit.json",
+                "input_preparation/board_memory_runtime_audit.json",
+                "input_preparation/source_and_tool_evidence_audit.json",
+                "artifact.input.task_card",
+                "artifact.input.model_config",
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.design_space",
+                "artifact.input.target_board_profile",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.tool_protocols",
+                "artifact.input.human_agent_boundary",
+                "artifact.input.field_evidence",
+                "artifact.input.case_adapter",
+                "prepared_inputs.errors"
+              ],
+              "id": "input_preparation.integrate_audits_and_gate_sacg_extraction",
+              "on_failure": "Keep SACG extraction blocked. Record each failing or unavailable checker, affected constraint, source evidence, and bounded repair or clarification owner. Preserve the prepared-input error until its actual content is classified. Do not alter golden/reference artifacts, loosen numeric policy, infer approval, or claim readiness from omitted details.",
+              "produces": [
+                "input_preparation/cross_layer_input_readiness.json",
+                "input_preparation/constraint_to_evidence_gap_map.json",
+                "input_preparation/human_and_repair_boundary_audit.json",
+                "input_preparation/prepared_input_error_classification.json",
+                "input_preparation/checker_results.json"
+              ],
+              "rationale": "The visible summary does not contain the specialist findings, checker results, or the content of the single prepared-input error. Integrate the source audits and execute the registered static checks so readiness and each remaining gap are evidence-bound rather than inferred.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "team_aggregate",
+                "sacg_static_check",
+                "task_card_check",
+                "model_config_check",
+                "numeric_policy_check",
+                "template_coverage_check",
+                "template_binding_static_check",
+                "parameter_binding_static_check",
+                "stream_plan_check",
+                "memory_runtime_plan_check",
+                "boundary_contract_check",
+                "deployment_board_check",
+                "tool_protocol_check",
+                "human_boundary_check",
+                "repair_boundary_check",
+                "verification_plan_static_check"
+              ]
+            }
+          ],
+          "execution_groups": [
+            0,
+            1
+          ],
+          "llm_io_metrics": {
+            "executable_action_count": 6,
+            "max_duration_sec": 40.7502856439678,
+            "max_prompt_bytes": 40122,
+            "result_count": 5,
+            "subtasks_without_executable_actions": [],
+            "total_duration_sec": 160.91118159191683,
+            "total_prompt_bytes": 196749
+          },
+          "split_required": true,
+          "status": "ready",
+          "subtask_count": 5,
+          "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/subtask_plan.json",
+          "used_fallback_count": 0
+        },
+        "errors": [
+          "case_adapter is not ready for this run: status=missing errors=['No verification case adapter was provided for this model family. Provide SPATIALACC_CASE_ADAPTER or a case_adapter.json in tool materials with real weight, TB/RTL, simulator, and diagnosis tools.']"
+        ],
+        "inputs": {
+          "case_adapter": "input/case_adapter.json",
+          "design_space": "input/design_space.json",
+          "field_evidence": "input/field_evidence.json",
+          "field_evidence_candidates": "input/field_evidence_candidates.json",
+          "human_agent_boundary": "input/human_agent_boundary.json",
+          "material_index": "input/material_index.json",
+          "model_config": "input/model_config.json",
+          "numeric_policy": "input/numeric_policy.json",
+          "sample_project_index": "input/sample_project_index.json",
+          "target_board_profile": "input/target_board_profile.json",
+          "task_card": "input/task_card.json",
+          "template_library": "input/template_library.json",
+          "template_metadata": "input/template_metadata.json",
+          "tool_availability": "input/tool_availability.json",
+          "tool_profile": "input/tool_profile.json",
+          "tool_protocols": "input/tool_protocols.json"
+        },
+        "mode": "independent_from_scratch_design",
+        "run_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+        "schema_version": "spatialaccagent.prepared_inputs.v0",
+        "source_roles": {
+          "board_materials_dir": "current-run target FPGA board, DDR/AXI, runtime, and sample-project materials",
+          "model_dir": "run-specific target checkpoint directory",
+          "model_source": "run-specific model architecture source",
+          "quantization_materials_dir": "current-run numeric and quantization design materials",
+          "task_spec": "run-specific objective and acceptance boundary",
+          "template_dir": "trusted local hardware template library",
+          "tool_materials_dir": "current-run EDA tool location, usage, and limitation materials"
+        },
+        "source_specs": {
+          "board_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board",
+          "model_dir": "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+          "model_source": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/model_configs/gemma3_1b_it/model_config.json",
+          "quantization_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/quantization",
+          "task_spec": "/home/remote/workspace/Qwen2-Accelerator/accagent/campaigns/20261020_gemma_gpt61/task_spec.md",
+          "template_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/templates/operator_chisel",
+          "tool_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools"
+        },
+        "stage": "input_preparation",
+        "status": "incomplete",
+        "summary": {
+          "llm_mode": "llm",
+          "llm_provider": "OpenAI",
+          "model_type": "gemma3_text",
+          "operator_count": 11,
+          "template_count": 13,
+          "tool_protocols": 18
+        },
+        "warnings": [
+          "sample_project_index failed to read one or more declared sample projects; later real-tool/remote probes must confirm these references"
+        ]
+      }
+    },
+    {
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "accagent.framework.stage_input",
+        "--run-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+        "--task-spec",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/campaigns/20261020_gemma_gpt61/task_spec.md",
+        "--model-source",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/model_configs/gemma3_1b_it/model_config.json",
+        "--model-dir",
+        "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+        "--board-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board",
+        "--quantization-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/quantization",
+        "--tool-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools"
+      ],
+      "command_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/logs/03_input_preparation.json",
+      "name": "input_preparation",
+      "output_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/prepared_inputs.json",
+      "passed": false,
+      "public_stage": {
+        "id": 0,
+        "name": "objective_and_input_preparation"
+      },
+      "summary": {
+        "design_team": {
+          "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/team_aggregate.json",
+          "approval_required_for": [
+            "Any action requiring approval under the exact human-agent boundary artifact, once its detailed approval rules have been reviewed.",
+            "Any change or selection of numeric policy, precision, quantization, or tolerance beyond authorized recorded framework defaults",
+            "Any major template or architecture change, including changes to template parameters or resource assumptions",
+            "Any proposed architecture or pipeline change, memory-layout change, numeric-policy change, or major template change; this audit does not authorize such changes.",
+            "Changing or selecting a board memory layout, address map, buffer placement, or DDR organization not explicitly supported by the supplied profile/evidence",
+            "Changing or selecting stream ordering, transfer units, beat/burst assumptions, or AXI-facing protocol behavior beyond the supplied evidence",
+            "Changing runtime ABI or board lifecycle assumptions"
+          ],
+          "completed_subtasks": 5,
+          "decomposer_error": null,
+          "decomposer_used_fallback": false,
+          "decomposition_source": "llm",
+          "errors": [],
+          "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/event_log.jsonl",
+          "executable_actions": [
+            {
+              "acceptance_checkers": [
+                "memory_runtime_plan_check",
+                "stream_plan_check",
+                "addr_map_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.target_board_profile",
+                "artifact.input.field_evidence",
+                "artifact.input.case_adapter",
+                "artifact.input.model_config",
+                "constraint.memory.board",
+                "constraint.runtime.board",
+                "constraint.deployment.board"
+              ],
+              "id": "input_preparation.extract_and_check_board_memory_runtime_contract",
+              "on_failure": "Keep unsupported fields explicitly unresolved and record the failing checker and cited source locations. Do not infer defaults, declare board/runtime readiness, or alter protocol, transfer, or memory-layout assumptions. Escalate contradictions or proposed layout changes to the appropriate downstream owner and obtain approval where required.",
+              "produces": [
+                "input_preparation.board_memory_runtime_audit.json",
+                "input_preparation.data_order_and_transfer_assumptions.json",
+                "input_preparation.board_memory_runtime_checker_results.json"
+              ],
+              "rationale": "The required source artifact classes are present, but their substantive values are not exposed in the supplied summaries. Extract only cited facts, record unknowns explicitly, and run the registered checks before handing assumptions to SACG planning.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "memory_runtime_plan_check",
+                "stream_plan_check",
+                "addr_map_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "tool_protocol_check",
+                "required_real_tool_evidence_check",
+                "sacg_static_check"
+              ],
+              "action_type": "source_and_tool_evidence_audit",
+              "consumes": [
+                "artifact.input.material_index",
+                "artifact.input.sample_project_index",
+                "artifact.input.field_evidence_candidates",
+                "artifact.input.field_evidence",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.tool_protocols",
+                "constraint.tool.protocols",
+                "constraint.deployment.board",
+                "constraint.memory.board"
+              ],
+              "id": "input_preparation.audit_source_and_tool_evidence",
+              "on_failure": "Record the relevant claim as unsupported, limited, or not_run with the missing provenance or applicability basis. Do not infer tool execution, board readiness, or current-design applicability, and do not promote unsupported implementation or deployment claims.",
+              "produces": [
+                "input_preparation.source_and_tool_evidence_audit.json",
+                "input_preparation.evidence_provenance_and_applicability.json"
+              ],
+              "rationale": "Use the complete supplied index, evidence, profile, availability, and protocol artifacts to produce provenance- and applicability-bounded records. The compact summary is insufficient to assert any specific evidence claim or tool capability.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "tool_protocol_check",
+                "required_real_tool_evidence_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "sacg_static_check"
+              ],
+              "action_type": "prepared_input_error_handoff",
+              "consumes": [
+                "prepared_inputs.errors",
+                "artifact.input.material_index",
+                "artifact.input.sample_project_index",
+                "artifact.input.field_evidence",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.tool_protocols"
+              ],
+              "id": "input_preparation.surface_prepared_input_error",
+              "on_failure": "If the full error entry is unavailable, record that one entry is present but its contents were not available in this review, leave cause classification unresolved, and hand the original prepared_inputs.errors artifact to input_preparation.cross_layer_readiness_auditor. Do not drop or silently dismiss it.",
+              "produces": [
+                "input_preparation/prepared_input_error_triage.json"
+              ],
+              "rationale": "The supplied summary establishes that prepared_inputs.errors contains one entry but omits its contents. Preserve the original entry for readiness-auditor classification rather than guessing its cause.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "task_card_check",
+                "model_config_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.task_card",
+                "artifact.input.model_config",
+                "artifact.input.case_adapter",
+                "constraint.task.goal",
+                "constraint.model.decoder",
+                "constraint.shape.model"
+              ],
+              "id": "input_preparation.audit_model_shape_provenance",
+              "on_failure": "Record each failed or unavailable check and its artifact/source basis as unresolved or not_run; retain explicit ambiguities and contradictions, do not infer or repair model semantics, and hand off the bounded gaps before SACG extraction.",
+              "produces": [
+                "input_preparation/model_intake_audit.json",
+                "input_preparation/model_shape_assumptions_and_gaps.json",
+                "checker results for task_card_check, model_config_check, and sacg_static_check"
+              ],
+              "rationale": "The named input artifacts exist, but the supplied summary does not expose enough detail to verify model semantics or provenance. Inspect the actual artifacts and use the registered checkers to distinguish supported facts from unresolved gaps without inventing model semantics.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "task_card_check",
+                "model_config_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "numeric_policy_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.design_space",
+                "constraint.numeric.policy",
+                "constraint.template.library",
+                "constraint.arch.design_space"
+              ],
+              "id": "input_preparation.run_numeric_template_static_audit",
+              "on_failure": "Record exact checker outputs and bind each finding to its SACG constraint. Keep the audit non-passing if a checker fails or cannot establish a binding; do not infer missing fields from this compact summary, fabricate template or numeric support, or modify policy/assumptions. Apply only authorized recorded framework defaults for initially missing tolerance fields, if applicable, and record their use.",
+              "produces": [
+                "input_preparation/numeric_template_audit.json",
+                "input_preparation/template_binding_gaps.json"
+              ],
+              "rationale": "The artifact summaries establish that the in-scope inputs exist, but do not expose enough detail or checker evidence to assess whether numeric policy, template metadata, and design-space assumptions form a traceable, template-constrained contract. Run the registered checks and preserve their constraint-bound findings.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "numeric_policy_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "sacg_static_check",
+                "template_binding_static_check",
+                "tool_protocol_check",
+                "human_boundary_check",
+                "repair_boundary_check",
+                "verification_plan_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.design_space",
+                "artifact.input.tool_protocols",
+                "artifact.input.human_agent_boundary",
+                "artifact.input.model_config",
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.target_board_profile",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.case_adapter",
+                "artifact.input.field_evidence",
+                "artifact.input.field_evidence_candidates",
+                "prepared_inputs.errors",
+                "input_preparation/model_intake_audit.json",
+                "input_preparation/numeric_template_audit.json",
+                "input_preparation/board_memory_runtime_audit.json",
+                "input_preparation/source_and_tool_evidence_audit.json"
+              ],
+              "id": "input_preparation.aggregate_cross_layer_readiness_review",
+              "on_failure": "Keep SACG extraction readiness blocked. Record the exact failing checker, affected constraint, source artifact, and evidence gap in the gap map. Preserve the prepared-input error as unresolved unless the specialist evidence classifies it; route a bounded repair or clarification to the responsible specialist and rerun the affected registered checker before reassessing readiness.",
+              "produces": [
+                "input_preparation/cross_layer_input_readiness.json",
+                "input_preparation/constraint_to_evidence_gap_map.json",
+                "input_preparation/human_and_repair_boundary_audit.json"
+              ],
+              "rationale": "The summary establishes an unresolved prepared-input error but does not provide its details, specialist findings, or checker outcomes. Aggregate the complete supplied artifacts, map evidence and gaps to SACG constraints, and run the registered readiness and boundary checks before any extraction decision.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "team_aggregate",
+                "sacg_static_check",
+                "template_binding_static_check",
+                "tool_protocol_check",
+                "human_boundary_check",
+                "repair_boundary_check",
+                "verification_plan_static_check"
+              ]
+            }
+          ],
+          "execution_groups": [
+            0,
+            1
+          ],
+          "llm_io_metrics": {
+            "executable_action_count": 6,
+            "max_duration_sec": 41.06130454299273,
+            "max_prompt_bytes": 40122,
+            "result_count": 5,
+            "subtasks_without_executable_actions": [],
+            "total_duration_sec": 147.66804880194832,
+            "total_prompt_bytes": 196749
+          },
+          "split_required": true,
+          "status": "ready",
+          "subtask_count": 5,
+          "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/subtask_plan.json",
+          "used_fallback_count": 0
+        },
+        "errors": [
+          "case_adapter is not ready for this run: status=missing errors=['No verification case adapter was provided for this model family. Provide SPATIALACC_CASE_ADAPTER or a case_adapter.json in tool materials with real weight, TB/RTL, simulator, and diagnosis tools.']"
+        ],
+        "inputs": {
+          "case_adapter": "input/case_adapter.json",
+          "design_space": "input/design_space.json",
+          "field_evidence": "input/field_evidence.json",
+          "field_evidence_candidates": "input/field_evidence_candidates.json",
+          "human_agent_boundary": "input/human_agent_boundary.json",
+          "material_index": "input/material_index.json",
+          "model_config": "input/model_config.json",
+          "numeric_policy": "input/numeric_policy.json",
+          "sample_project_index": "input/sample_project_index.json",
+          "target_board_profile": "input/target_board_profile.json",
+          "task_card": "input/task_card.json",
+          "template_library": "input/template_library.json",
+          "template_metadata": "input/template_metadata.json",
+          "tool_availability": "input/tool_availability.json",
+          "tool_profile": "input/tool_profile.json",
+          "tool_protocols": "input/tool_protocols.json"
+        },
+        "mode": "independent_from_scratch_design",
+        "run_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+        "schema_version": "spatialaccagent.prepared_inputs.v0",
+        "source_roles": {
+          "board_materials_dir": "current-run target FPGA board, DDR/AXI, runtime, and sample-project materials",
+          "model_dir": "run-specific target checkpoint directory",
+          "model_source": "run-specific model architecture source",
+          "quantization_materials_dir": "current-run numeric and quantization design materials",
+          "task_spec": "run-specific objective and acceptance boundary",
+          "template_dir": "trusted local hardware template library",
+          "tool_materials_dir": "current-run EDA tool location, usage, and limitation materials"
+        },
+        "source_specs": {
+          "board_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board",
+          "model_dir": "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+          "model_source": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/model_configs/gemma3_1b_it/model_config.json",
+          "quantization_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/quantization",
+          "task_spec": "/home/remote/workspace/Qwen2-Accelerator/accagent/campaigns/20261020_gemma_gpt61/task_spec.md",
+          "template_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/templates/operator_chisel",
+          "tool_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools"
+        },
+        "stage": "input_preparation",
+        "status": "incomplete",
+        "summary": {
+          "llm_mode": "llm",
+          "llm_provider": "OpenAI",
+          "model_type": "gemma3_text",
+          "operator_count": 11,
+          "template_count": 13,
+          "tool_protocols": 18
+        },
+        "warnings": [
+          "sample_project_index failed to read one or more declared sample projects; later real-tool/remote probes must confirm these references"
+        ]
+      }
+    },
+    {
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "accagent.framework.stage_input",
+        "--run-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+        "--task-spec",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/campaigns/20261020_gemma_gpt61/task_spec.md",
+        "--model-source",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/model_configs/gemma3_1b_it/model_config.json",
+        "--model-dir",
+        "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+        "--board-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board",
+        "--quantization-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/quantization",
+        "--tool-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools"
+      ],
+      "command_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/logs/04_input_preparation.json",
+      "name": "input_preparation",
+      "output_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/prepared_inputs.json",
+      "passed": false,
+      "public_stage": {
+        "id": 0,
+        "name": "objective_and_input_preparation"
+      },
+      "summary": {
+        "design_team": {
+          "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/team_aggregate.json",
+          "approval_required_for": [
+            "Any major template selection, template implementation, or architecture/design-space change",
+            "Any proposed change to accelerator architecture, pipeline structure, or memory layout.",
+            "Any proposed change to numeric policy or quantization intent",
+            "Any proposed change to the human approval or forbidden-action boundary.",
+            "Any proposed numeric-policy, precision, tolerance, or major trusted-template change.",
+            "Selecting or changing memory layout, DDR address mapping, AXI beat or transfer semantics, or runtime ABI where the supplied profile and cited evidence do not determine the choice.",
+            "Selecting or changing model dimensions, sequence/context policy, tensor layout, residual structure, or operator order when source evidence is absent or contradictory.",
+            "Selecting, changing, or resolving unsupported decoder or attention semantics, including head counts or query-to-KV head mapping."
+          ],
+          "completed_subtasks": 5,
+          "decomposer_error": null,
+          "decomposer_used_fallback": false,
+          "decomposition_source": "llm",
+          "errors": [],
+          "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/event_log.jsonl",
+          "executable_actions": [
+            {
+              "acceptance_checkers": [
+                "memory_runtime_plan_check",
+                "stream_plan_check",
+                "addr_map_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.target_board_profile",
+                "artifact.input.field_evidence",
+                "artifact.input.case_adapter",
+                "constraint.memory.board",
+                "constraint.runtime.board",
+                "constraint.deployment.board",
+                "constraint.stream.order",
+                "constraint.beat.pipeline"
+              ],
+              "id": "input_preparation.audit_board_memory_runtime_contract",
+              "on_failure": "Record checker failures and the precise unresolved or contradictory fields in the produced handoff artifacts. Do not fill gaps by guessing board facts, declare readiness, or promote an unsupported memory or transfer contract; route required layout or interface decisions for approval.",
+              "produces": [
+                "input_preparation.board_memory_runtime_audit.json",
+                "input_preparation.data_order_and_transfer_assumptions.json"
+              ],
+              "rationale": "The required source artifacts are listed as present, but their detailed board-facing facts are not visible in this summary. Review the full supplied records and bind explicit facts or unresolved fields to the named SACG constraints without asserting readiness.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "memory_runtime_plan_check",
+                "stream_plan_check",
+                "addr_map_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "tool_protocol_check",
+                "required_real_tool_evidence_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.material_index",
+                "artifact.input.sample_project_index",
+                "artifact.input.field_evidence_candidates",
+                "artifact.input.field_evidence",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.tool_protocols",
+                "constraint.tool.protocols",
+                "constraint.deployment.board",
+                "constraint.memory.board"
+              ],
+              "id": "input_preparation.audit_source_and_tool_evidence",
+              "on_failure": "Record unavailable details or failed checks as unresolved/not_run, preserve source identity and checker findings, and block unsupported tool, board, or deployment claims. Do not infer missing fields from the compact summary or treat sample-project evidence as current-design proof.",
+              "produces": [
+                "input_preparation.source_and_tool_evidence_audit.json",
+                "input_preparation.evidence_provenance_and_applicability.json"
+              ],
+              "rationale": "Create a provenance- and applicability-bounded audit from the detailed supplied indexes and declarations. The current compact summary cannot support specific source, tool-availability, protocol, or board-evidence conclusions.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "sacg_validate",
+                "tool_protocol_check",
+                "real_tool_evidence_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "sacg_static_check",
+                "tool_protocol_check",
+                "required_real_tool_evidence_check"
+              ],
+              "action_type": "prepared_input_error_triage",
+              "consumes": [
+                "prepared_inputs.errors",
+                "artifact.input.material_index",
+                "artifact.input.sample_project_index",
+                "artifact.input.field_evidence",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.tool_protocols"
+              ],
+              "id": "input_preparation.triage_existing_prepared_input_error",
+              "on_failure": "Preserve the exact error entry and mark its cause or impact unresolved when the supplied source evidence is insufficient. Hand the unresolved entry to input_preparation.cross_layer_readiness_auditor; do not drop it, fabricate a classification, or promote readiness.",
+              "produces": [
+                "input_preparation/prepared_input_error_triage.json"
+              ],
+              "rationale": "The candidate summary confirms one existing prepared_inputs.errors entry but omits its content. Retrieve that exact entry, classify it against the source evidence, and make the result directly consumable by the readiness auditor.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "sacg_validate",
+                "sacg_static_check",
+                "tool_protocol_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "task_card_check",
+                "model_config_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.task_card",
+                "artifact.input.model_config",
+                "artifact.input.case_adapter",
+                "constraint.task.goal",
+                "constraint.model.decoder",
+                "constraint.shape.model"
+              ],
+              "id": "input_preparation.audit_model_shape_provenance",
+              "on_failure": "Do not claim model-intake or SACG pass. Preserve checker findings and provenance, mark unavailable or ambiguous fields explicitly, and hand off unresolved items; do not select decoder semantics, shapes, head mappings, sequence rules, or operator order by guess.",
+              "produces": [
+                "input_preparation/model_intake_audit.json",
+                "input_preparation/model_shape_assumptions_and_gaps.json"
+              ],
+              "rationale": "The visible summary establishes artifact presence but not model facts or provenance. Run the registered checkers on the source artifacts and record verified facts, contradictions, and gaps without inferring model semantics.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "task_card_check",
+                "model_config_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "numeric_policy_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.design_space",
+                "constraint.numeric.policy",
+                "constraint.template.library",
+                "constraint.arch.design_space"
+              ],
+              "id": "input_preparation.run_numeric_template_static_checks",
+              "on_failure": "Record each failed or not-run check and its artifact/constraint binding in the audit and gap artifacts. Do not claim pass, promote the inputs as verified, or silently alter numeric policy, template contents, or design-space assumptions; route the specific gap to the responsible input owner and cross-layer readiness auditor.",
+              "produces": [
+                "input_preparation/numeric_template_audit.json",
+                "input_preparation/template_binding_gaps.json"
+              ],
+              "rationale": "The artifact summaries establish presence but not content or check outcomes. Run the registered checks to establish traceable evidence for numeric-policy validity, template coverage, parameter binding, and template binding before SACG extraction.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "numeric_policy_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "sacg_static_check",
+                "template_binding_static_check",
+                "tool_protocol_check",
+                "human_boundary_check",
+                "repair_boundary_check",
+                "verification_plan_static_check",
+                "llm_io_quality_check",
+                "llm_semantic_extraction_check",
+                "no_static_keyword_semantic_matching_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "input_preparation/model_intake_audit.json",
+                "input_preparation/numeric_template_audit.json",
+                "input_preparation/board_memory_runtime_audit.json",
+                "input_preparation/source_and_tool_evidence_audit.json",
+                "artifact.input.task_card",
+                "artifact.input.model_config",
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.design_space",
+                "artifact.input.target_board_profile",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.tool_protocols",
+                "artifact.input.human_agent_boundary",
+                "prepared_inputs.errors",
+                "action_grounding_registry.verification_execution_policy"
+              ],
+              "id": "input_preparation.aggregate_and_check_cross_layer_readiness",
+              "on_failure": "Keep SACG extraction blocked; retain the prepared-input error and every failed or not-run check in the gap map. Route only the checker-localized issue to its responsible bounded repair owner, then rerun the affected registered checker and the aggregate gate. Do not infer missing fields from compact summaries, waive failures, alter trusted templates or numeric policy, or add simulation, golden-comparison, or runtime-weight prerequisites.",
+              "produces": [
+                "input_preparation/cross_layer_input_readiness.json",
+                "input_preparation/constraint_to_evidence_gap_map.json",
+                "input_preparation/human_and_repair_boundary_audit.json",
+                "input_preparation/prepared_input_error_disposition.json"
+              ],
+              "rationale": "Integrate the four specialist audits with the named input constraints and run the registered static, tool, human-boundary, repair-boundary, and verification-plan checks. The visible summary is insufficient to establish a pass; preserve the single prepared-input error until its detail and source checker support a disposition. Keep specialist conclusions intact and record evidence gaps rather than guessing.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "team_aggregate",
+                "sacg_validate",
+                "sacg_static_check",
+                "template_binding_static_check",
+                "tool_protocol_check",
+                "human_boundary_check",
+                "repair_boundary_check",
+                "verification_plan_static_check",
+                "llm_io_quality_check",
+                "llm_semantic_extraction",
+                "no_static_keyword_semantic_matching"
+              ]
+            }
+          ],
+          "execution_groups": [
+            0,
+            1
+          ],
+          "llm_io_metrics": {
+            "executable_action_count": 6,
+            "max_duration_sec": 40.34916039998643,
+            "max_prompt_bytes": 40122,
+            "result_count": 5,
+            "subtasks_without_executable_actions": [],
+            "total_duration_sec": 153.42880992603023,
+            "total_prompt_bytes": 196749
+          },
+          "split_required": true,
+          "status": "ready",
+          "subtask_count": 5,
+          "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/subtask_plan.json",
+          "used_fallback_count": 0
+        },
+        "errors": [
+          "case_adapter is not ready for this run: status=missing errors=['No verification case adapter was provided for this model family. Provide SPATIALACC_CASE_ADAPTER or a case_adapter.json in tool materials with real weight, TB/RTL, simulator, and diagnosis tools.']"
+        ],
+        "inputs": {
+          "case_adapter": "input/case_adapter.json",
+          "design_space": "input/design_space.json",
+          "field_evidence": "input/field_evidence.json",
+          "field_evidence_candidates": "input/field_evidence_candidates.json",
+          "human_agent_boundary": "input/human_agent_boundary.json",
+          "material_index": "input/material_index.json",
+          "model_config": "input/model_config.json",
+          "numeric_policy": "input/numeric_policy.json",
+          "sample_project_index": "input/sample_project_index.json",
+          "target_board_profile": "input/target_board_profile.json",
+          "task_card": "input/task_card.json",
+          "template_library": "input/template_library.json",
+          "template_metadata": "input/template_metadata.json",
+          "tool_availability": "input/tool_availability.json",
+          "tool_profile": "input/tool_profile.json",
+          "tool_protocols": "input/tool_protocols.json"
+        },
+        "mode": "independent_from_scratch_design",
+        "run_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+        "schema_version": "spatialaccagent.prepared_inputs.v0",
+        "source_roles": {
+          "board_materials_dir": "current-run target FPGA board, DDR/AXI, runtime, and sample-project materials",
+          "model_dir": "run-specific target checkpoint directory",
+          "model_source": "run-specific model architecture source",
+          "quantization_materials_dir": "current-run numeric and quantization design materials",
+          "task_spec": "run-specific objective and acceptance boundary",
+          "template_dir": "trusted local hardware template library",
+          "tool_materials_dir": "current-run EDA tool location, usage, and limitation materials"
+        },
+        "source_specs": {
+          "board_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board",
+          "model_dir": "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+          "model_source": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/model_configs/gemma3_1b_it/model_config.json",
+          "quantization_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/quantization",
+          "task_spec": "/home/remote/workspace/Qwen2-Accelerator/accagent/campaigns/20261020_gemma_gpt61/task_spec.md",
+          "template_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/templates/operator_chisel",
+          "tool_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools"
+        },
+        "stage": "input_preparation",
+        "status": "incomplete",
+        "summary": {
+          "llm_mode": "llm",
+          "llm_provider": "OpenAI",
+          "model_type": "gemma3_text",
+          "operator_count": 11,
+          "template_count": 13,
+          "tool_protocols": 18
+        },
+        "warnings": [
+          "sample_project_index failed to read one or more declared sample projects; later real-tool/remote probes must confirm these references"
+        ]
+      }
+    },
+    {
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "accagent.framework.stage_input",
+        "--run-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+        "--task-spec",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/campaigns/20261020_gemma_gpt61/task_spec.md",
+        "--model-source",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/model_configs/gemma3_1b_it/model_config.json",
+        "--model-dir",
+        "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+        "--board-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board",
+        "--quantization-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/quantization",
+        "--tool-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools"
+      ],
+      "command_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/logs/05_input_preparation.json",
+      "name": "input_preparation",
+      "output_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/prepared_inputs.json",
+      "passed": false,
+      "public_stage": {
+        "id": 0,
+        "name": "objective_and_input_preparation"
+      },
+      "summary": {
+        "design_team": {
+          "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/team_aggregate.json",
+          "approval_required_for": [
+            "Any change to numeric precision, quantization, or tolerance policy.",
+            "Any major change to design-space architecture, parameter limits, or resource assumptions.",
+            "Any proposed architecture or pipeline change",
+            "Any proposed change to the board-facing memory layout, address map, stream ordering, transfer/beat protocol, or major runtime/interface assumption.",
+            "Any proposed change to the real board interface",
+            "Any proposed major template change",
+            "Any proposed memory-layout change",
+            "Any proposed numeric-policy or tolerance change",
+            "Any template implementation or selection change that materially changes architecture."
+          ],
+          "completed_subtasks": 5,
+          "decomposer_error": null,
+          "decomposer_used_fallback": false,
+          "decomposition_source": "llm",
+          "errors": [],
+          "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/event_log.jsonl",
+          "executable_actions": [
+            {
+              "acceptance_checkers": [
+                "memory_runtime_plan_check",
+                "stream_plan_check",
+                "addr_map_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.target_board_profile",
+                "artifact.input.field_evidence",
+                "artifact.input.field_evidence_candidates",
+                "artifact.input.case_adapter",
+                "artifact.input.model_config",
+                "artifact.input.numeric_policy"
+              ],
+              "id": "input_preparation.audit_board_data_memory_runtime_contract",
+              "on_failure": "Record each unresolved or contradictory fact with its source and affected constraint; do not claim a checker pass, infer board-specific values, or promote the audit as board/runtime readiness. Route major layout or protocol changes for approval before adopting them.",
+              "produces": [
+                "input_preparation.board_memory_runtime_audit.json",
+                "input_preparation.data_order_and_transfer_assumptions.json",
+                "input_preparation.board_memory_runtime_checker_results.json"
+              ],
+              "rationale": "Extract a traceable board-facing contract from the supplied detailed profile and evidence, preserving unknowns rather than guessing. Run the designated static checkers against the resulting data-order, transfer, memory, and runtime records before they are consumed in SACG planning.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "memory_runtime_plan_check",
+                "stream_plan_check",
+                "addr_map_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "tool_protocol_check",
+                "required_real_tool_evidence_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.material_index",
+                "artifact.input.sample_project_index",
+                "artifact.input.field_evidence_candidates",
+                "artifact.input.field_evidence",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.tool_protocols",
+                "artifact.input.target_board_profile",
+                "prepared_inputs.errors",
+                "constraint.tool.protocols",
+                "constraint.deployment.board",
+                "constraint.memory.board"
+              ],
+              "id": "input_preparation.audit_source_tool_evidence_and_surface_error",
+              "on_failure": "Record each uninspectable, unbound, or inconclusive claim as unresolved or not_run, preserve the exact prepared_inputs.errors entry for the readiness auditor, and block promotion of unsupported tool, implementation, or deployment claims. Do not run EDA tools or alter protocol declarations.",
+              "produces": [
+                "input_preparation/source_and_tool_evidence_audit.json",
+                "input_preparation/evidence_provenance_and_applicability.json",
+                "input_preparation/prepared_input_error_triage.json"
+              ],
+              "rationale": "The summary establishes artifact presence but omits the records needed for a provenance and applicability decision. Review the complete supplied artifacts, bind each claim to its source and relevant constraint, and carry forward the existing one-entry prepared-input error without inventing its contents.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "tool_protocol_check",
+                "required_real_tool_evidence_check",
+                "sacg_validate"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "task_card_check",
+                "model_config_check",
+                "sacg_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.task_card",
+                "artifact.input.model_config",
+                "artifact.input.case_adapter",
+                "constraint.task.goal",
+                "constraint.model.decoder",
+                "constraint.shape.model"
+              ],
+              "id": "input_preparation.audit_model_shape_sources",
+              "on_failure": "Record checker failures or unavailable source details as unresolved evidence with the affected fields and provenance needed. Do not infer model semantics, claim pass, or promote unsupported assumptions into SACG; hand the bounded gaps to the cross-layer readiness auditor and SACG extraction.",
+              "produces": [
+                "input_preparation/model_intake_audit.json",
+                "input_preparation/model_shape_assumptions_and_gaps.json"
+              ],
+              "rationale": "The supplied summary establishes artifact presence but omits the source contents needed to judge model-facing sufficiency. Run the registered checkers on the actual input artifacts and preserve provenance-backed facts separately from unresolved fields.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "task_card_check",
+                "model_config_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "numeric_policy_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.design_space",
+                "candidate_stage_artifact.prepared_inputs.errors (one summarized entry; detail not supplied)"
+              ],
+              "id": "input_preparation.run_numeric_template_static_audit",
+              "on_failure": "Record each failed or not-run check and the affected constraint in the audit and gap artifacts. Keep the input contract unapproved for downstream consumption until findings are resolved or explicitly accepted by the appropriate authority; do not invent template support, numeric settings, or resource assumptions.",
+              "produces": [
+                "input_preparation/numeric_template_audit.json",
+                "input_preparation/template_binding_gaps.json"
+              ],
+              "rationale": "The summaries establish artifact presence but provide neither detailed contract fields nor checker evidence. Execute the registered checks and bind their results to constraint.numeric.policy, constraint.template.library, and constraint.arch.design_space before SACG extraction or template-constrained planning.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "numeric_policy_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "sacg_static_check",
+                "template_binding_static_check",
+                "tool_protocol_check",
+                "human_boundary_check",
+                "repair_boundary_check",
+                "verification_plan_static_check",
+                "task_card_check",
+                "model_config_check",
+                "numeric_policy_check",
+                "template_coverage_check",
+                "parameter_binding_static_check",
+                "stream_plan_check",
+                "memory_runtime_plan_check",
+                "boundary_contract_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "input_preparation/model_intake_audit.json",
+                "input_preparation/numeric_template_audit.json",
+                "input_preparation/board_memory_runtime_audit.json",
+                "input_preparation/source_and_tool_evidence_audit.json",
+                "artifact.input.task_card",
+                "artifact.input.model_config",
+                "artifact.input.numeric_policy",
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "artifact.input.design_space",
+                "artifact.input.target_board_profile",
+                "artifact.input.tool_profile",
+                "artifact.input.tool_availability",
+                "artifact.input.tool_protocols",
+                "artifact.input.human_agent_boundary",
+                "prepared_inputs.errors"
+              ],
+              "id": "input_preparation.aggregate_and_check_cross_layer_readiness",
+              "on_failure": "Keep SACG extraction blocked. Record each failed or not-run checker against its affected constraint and source artifact, retain the prepared-input error as unresolved if it remains unclassified, and route only checker-grounded violations to their bounded owners. Do not infer a pass from absent detail or make unapproved design changes.",
+              "produces": [
+                "input_preparation/cross_layer_input_readiness.json",
+                "input_preparation/constraint_to_evidence_gap_map.json",
+                "input_preparation/human_and_repair_boundary_audit.json",
+                "input_preparation/registered_checker_results.json"
+              ],
+              "rationale": "The available summaries do not establish specialist outcomes or classify the prepared-input error. Aggregate the named audits with their source constraints, run the registered checks, and emit an evidence-linked readiness decision rather than assuming missing detail is a missing artifact or a pass.",
+              "requires_approval": false,
+              "stage": "input_preparation",
+              "tool_roles": [
+                "team_aggregate",
+                "sacg_validate",
+                "sacg_static_check",
+                "task_card_check",
+                "model_config_check",
+                "numeric_policy_check",
+                "template_coverage_check",
+                "template_binding_static_check",
+                "parameter_binding_static_check",
+                "stream_plan_check",
+                "memory_runtime_plan_check",
+                "boundary_contract_check",
+                "tool_protocol_check",
+                "human_boundary_check",
+                "repair_boundary_check",
+                "verification_plan_static_check"
+              ]
+            }
+          ],
+          "execution_groups": [
+            0,
+            1
+          ],
+          "llm_io_metrics": {
+            "executable_action_count": 5,
+            "max_duration_sec": 57.643837260024156,
+            "max_prompt_bytes": 40122,
+            "result_count": 5,
+            "subtasks_without_executable_actions": [],
+            "total_duration_sec": 195.99726947204908,
+            "total_prompt_bytes": 196749
+          },
+          "split_required": true,
+          "status": "ready",
+          "subtask_count": 5,
+          "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/subtask_plan.json",
+          "used_fallback_count": 0
+        },
+        "errors": [
+          "case_adapter is not ready for this run: status=missing errors=['No verification case adapter was provided for this model family. Provide SPATIALACC_CASE_ADAPTER or a case_adapter.json in tool materials with real weight, TB/RTL, simulator, and diagnosis tools.']"
+        ],
+        "inputs": {
+          "case_adapter": "input/case_adapter.json",
+          "design_space": "input/design_space.json",
+          "field_evidence": "input/field_evidence.json",
+          "field_evidence_candidates": "input/field_evidence_candidates.json",
+          "human_agent_boundary": "input/human_agent_boundary.json",
+          "material_index": "input/material_index.json",
+          "model_config": "input/model_config.json",
+          "numeric_policy": "input/numeric_policy.json",
+          "sample_project_index": "input/sample_project_index.json",
+          "target_board_profile": "input/target_board_profile.json",
+          "task_card": "input/task_card.json",
+          "template_library": "input/template_library.json",
+          "template_metadata": "input/template_metadata.json",
+          "tool_availability": "input/tool_availability.json",
+          "tool_profile": "input/tool_profile.json",
+          "tool_protocols": "input/tool_protocols.json"
+        },
+        "mode": "independent_from_scratch_design",
+        "run_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+        "schema_version": "spatialaccagent.prepared_inputs.v0",
+        "source_roles": {
+          "board_materials_dir": "current-run target FPGA board, DDR/AXI, runtime, and sample-project materials",
+          "model_dir": "run-specific target checkpoint directory",
+          "model_source": "run-specific model architecture source",
+          "quantization_materials_dir": "current-run numeric and quantization design materials",
+          "task_spec": "run-specific objective and acceptance boundary",
+          "template_dir": "trusted local hardware template library",
+          "tool_materials_dir": "current-run EDA tool location, usage, and limitation materials"
+        },
+        "source_specs": {
+          "board_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board",
+          "model_dir": "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+          "model_source": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/model_configs/gemma3_1b_it/model_config.json",
+          "quantization_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/quantization",
+          "task_spec": "/home/remote/workspace/Qwen2-Accelerator/accagent/campaigns/20261020_gemma_gpt61/task_spec.md",
+          "template_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/templates/operator_chisel",
+          "tool_materials_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools"
+        },
+        "stage": "input_preparation",
+        "status": "incomplete",
+        "summary": {
+          "llm_mode": "llm",
+          "llm_provider": "OpenAI",
+          "model_type": "gemma3_text",
+          "operator_count": 11,
+          "template_count": 13,
+          "tool_protocols": 18
+        },
+        "warnings": [
+          "sample_project_index failed to read one or more declared sample projects; later real-tool/remote probes must confirm these references"
+        ]
+      }
+    },
+    {
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "accagent.framework.stage_input",
+        "--run-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020",
+        "--task-spec",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/campaigns/20261020_gemma_gpt61/task_spec.md",
+        "--model-source",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/model_configs/gemma3_1b_it/model_config.json",
+        "--model-dir",
+        "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+        "--board-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board",
+        "--quantization-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/quantization",
+        "--tool-materials-dir",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/tools"
+      ],
+      "command_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/logs/06_input_preparation.json",
+      "name": "input_preparation",
+      "output_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/prepared_inputs.json",
+      "passed": true,
+      "public_stage": {
+        "id": 0,
+        "name": "objective_and_input_preparation"
+      },
+      "summary": {
+        "errors": [],
+        "status": "ready",
+        "warnings": [
+          "sample_project_index failed to read one or more declared sample projects; later real-tool/remote probes must confirm these references"
+        ]
+      }
+    },
+    {
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "accagent.framework.stage_constraints",
+        "--prepared-inputs",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/prepared_inputs.json",
+        "--design-id",
+        "gemma3_gpt61_20261020"
+      ],
+      "command_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/logs/07_constraint_extraction.json",
+      "name": "constraint_extraction",
+      "output_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/constraint_extraction_report.json",
+      "passed": true,
+      "public_stage": {
+        "id": 1,
+        "name": "sacg_extraction"
+      },
+      "summary": {
+        "errors": [],
+        "num_constraints": 16,
+        "num_nodes": 23,
+        "outputs": {
+          "initial_design_graph": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/initial_design_graph.json",
+          "llm_agent": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/llm/initial_design_graph_agent_result.json",
+          "team_aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/team/team_aggregate.json",
+          "team_subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/team/subtask_plan.json"
+        },
+        "status": "ready"
+      }
+    },
+    {
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "accagent.framework.stage_templates",
+        "--sacg-state",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/initial_design_graph.json"
+      ],
+      "command_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/logs/08_template_selection.json",
+      "name": "template_selection",
+      "output_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/template_selection_report.json",
+      "passed": false,
+      "public_stage": {
+        "id": 2,
+        "name": "trusted_templates_and_fpga_ip_binding"
+      },
+      "summary": {
+        "checker_results": [
+          {
+            "checker": "operator_coverage_check",
+            "errors": [],
+            "evidence": {
+              "missing_ops": [],
+              "required_ops": 11
+            },
+            "status": "pass",
+            "warnings": []
+          },
+          {
+            "checker": "template_parameter_binding_check",
+            "errors": [
+              "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024",
+              "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+            ],
+            "evidence": {
+              "binding_count": 14
+            },
+            "status": "fail",
+            "warnings": []
+          },
+          {
+            "checker": "template_source_and_interface_check",
+            "errors": [],
+            "evidence": {
+              "checked_templates": 14
+            },
+            "status": "pass",
+            "warnings": []
+          },
+          {
+            "checker": "mandatory_fpga_ip_binding_check",
+            "errors": [],
+            "evidence": {
+              "checked_source_hashes": {
+                "Activation.scala": "c77e42c70db8b3fb74c9563970edc90cd3a79a144d959eaa8a253008ae5f24ce",
+                "Attention.scala": "c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e",
+                "Common.scala": "f358026cf47764dcc732f6c8550b17ab759d089bc9ad6cccbca814143e899b73",
+                "DecoderBlock.scala": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+                "Elementwise.scala": "53f25bee2ff7dc030db606d1842a45ddd856b475c388ee82d6260779d4ec8870",
+                "FFN.scala": "1896b7ea12ac548124a1a25266baa7d9ea087af21ee60d57633f6843db91a58c",
+                "KVCache.scala": "727e172cfdfe380e30b9976ef77c443086ef088427eef31a84aa3a9e0da20069",
+                "Linear.scala": "cf74d94c7857b2bbb55b0447bffad0c261824fdbd534e118675f90b8b0430fe8",
+                "Mask.scala": "bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a",
+                "Norm.scala": "f3319af0d66c9e8c19e7cc789b9fc5799b62e0ad49811ef7da43ceb6dc2eeddf",
+                "PhysicalResources.scala": "8479cbbaf57cbd85912037dc807694623b1b9a754825a47d084b1b5be59dcdd4",
+                "QKVProjection.scala": "3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1",
+                "Residual.scala": "8bef8dac50264c2278438a18e5be48328ed1fd1bfb3f9bbee3c522f11258aca3",
+                "RoPE.scala": "ad42db5781d4f0906d4f28864570fc72f3763f94926144dc5a27275f129209f8",
+                "Softmax.scala": "4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2",
+                "WeightTileCache.scala": "ba0f85a03ce3ff2fd56fc28f07ed40ce6ce1327508222fe67b64d32108156873"
+              },
+              "checked_sources": [
+                "Activation.scala",
+                "Attention.scala",
+                "Common.scala",
+                "DecoderBlock.scala",
+                "Elementwise.scala",
+                "FFN.scala",
+                "KVCache.scala",
+                "Linear.scala",
+                "Mask.scala",
+                "Norm.scala",
+                "PhysicalResources.scala",
+                "QKVProjection.scala",
+                "Residual.scala",
+                "RoPE.scala",
+                "Softmax.scala",
+                "WeightTileCache.scala"
+              ],
+              "errors": [],
+              "physical_resource_source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/templates/operator_chisel/PhysicalResources.scala",
+              "required_bindings": {
+                "activations": "XPM BRAM",
+                "arithmetic": "signed integer DSP MAC/reduction inference",
+                "fifo": "XPM BRAM",
+                "large_cache": "XPM URAM",
+                "weights": "XPM URAM"
+              },
+              "schema_version": "spatialaccagent.fpga_ip_contract.v1",
+              "simulation": {
+                "behavioral_fallback_allowed": false,
+                "compute_models": "signed integer DSP arithmetic inferred from current Chisel sources; no floating-point IP",
+                "memory_models": "Xilinx XPM simulation library",
+                "required_libraries": [
+                  "unisims_ver",
+                  "xpm"
+                ],
+                "required_sources": [
+                  "glbl.v",
+                  "XPM simulation sources"
+                ],
+                "same_interface_and_cycle_latency_as_implementation": true,
+                "same_module_names_as_implementation": true
+              },
+              "status": "pass",
+              "violations": []
+            },
+            "status": "pass",
+            "warnings": []
+          },
+          {
+            "checker": "attention_semantic_expansion_check",
+            "errors": [],
+            "evidence": {
+              "components": [
+                {
+                  "component": "qkv_projection",
+                  "evidence_pattern": "Module(new QKVProjection",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": true,
+                  "source": "DecoderBlock.scala",
+                  "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+                  "status": "covered"
+                },
+                {
+                  "component": "rope",
+                  "evidence_pattern": "Module(new RoPE",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": true,
+                  "source": "DecoderBlock.scala",
+                  "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+                  "status": "covered"
+                },
+                {
+                  "component": "gqa_head_mapping",
+                  "evidence_pattern": "kvGroupSize",
+                  "evidence_type": "hash_bound_template_source",
+                  "gqa_group_size": 4,
+                  "params": {
+                    "num_kv_heads": 1,
+                    "num_q_heads": 4
+                  },
+                  "required": true,
+                  "source": "QKVProjection.scala",
+                  "source_sha256": "3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1",
+                  "status": "covered"
+                },
+                {
+                  "component": "softmax",
+                  "evidence_pattern": "template_id=softmax",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": true,
+                  "source": "Softmax.scala",
+                  "source_sha256": "4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2",
+                  "status": "covered"
+                },
+                {
+                  "component": "output_projection",
+                  "evidence_pattern": "val outputProjection = Module(new Linear(p.outLinear))",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": true,
+                  "source": "Attention.scala",
+                  "source_sha256": "c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e",
+                  "status": "covered"
+                },
+                {
+                  "component": "kv_cache",
+                  "evidence_pattern": "Module(new KVCache",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": false,
+                  "source": "DecoderBlock.scala",
+                  "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+                  "status": "not_required"
+                },
+                {
+                  "component": "causal_mask",
+                  "evidence_pattern": "template_id=mask",
+                  "evidence_type": "hash_bound_template_source",
+                  "required": true,
+                  "source": "Mask.scala",
+                  "source_sha256": "bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a",
+                  "status": "covered"
+                }
+              ],
+              "required": true
+            },
+            "status": "pass",
+            "warnings": []
+          },
+          {
+            "checker": "cross_layer_trace_check",
+            "errors": [],
+            "evidence": {
+              "constraints": [
+                {
+                  "constraint": "constraint.numeric.policy",
+                  "fact_keys": [
+                    "_llm_provenance",
+                    "_numeric_comparison_resolution",
+                    "default_rules",
+                    "notes",
+                    "policy_id",
+                    "schema_version",
+                    "tolerance"
+                  ],
+                  "present": true
+                },
+                {
+                  "constraint": "constraint.memory.board",
+                  "fact_keys": [
+                    "memory_system"
+                  ],
+                  "present": true
+                },
+                {
+                  "constraint": "constraint.runtime.board",
+                  "fact_keys": [
+                    "board_run_command",
+                    "c2h_device_template",
+                    "control_base",
+                    "control_protocol",
+                    "ctrl_base",
+                    "ddr_base",
+                    "ddr_image_default",
+                    "device_id",
+                    "h2c_device_template",
+                    "image_path",
+                    "mimic_dir",
+                    "output_abs",
+                    "output_address",
+                    "runtime_directory",
+                    "xdma_id_default"
+                  ],
+                  "present": true
+                },
+                {
+                  "constraint": "constraint.deployment.board",
+                  "fact_keys": [
+                    "board",
+                    "board_pass_criteria",
+                    "shell"
+                  ],
+                  "present": true
+                },
+                {
+                  "constraint": "constraint.cross_layer.input_consistency",
+                  "fact_keys": [
+                    "acceptance_boundary",
+                    "board",
+                    "conflict_rules",
+                    "evidence_by_field",
+                    "evidence_fields",
+                    "field_resolution",
+                    "materials",
+                    "model",
+                    "numeric_policy",
+                    "tools"
+                  ],
+                  "present": true
+                }
+              ],
+              "status": "pass"
+            },
+            "status": "pass",
+            "warnings": []
+          }
+        ],
+        "design_team": {
+          "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/team_aggregate.json",
+          "approval_required_for": [
+            "Any change to hidden_size, head_dim, query-head mapping, or other model-shape values not directly established by authoritative model inputs",
+            "Any change to the numeric policy or template internals.",
+            "Any new adapter, template substitution, template-internal change, or architecture change to make the current bindings legal",
+            "Any proposed change to authoritative hidden_size, num_q_heads, num_kv_heads, or head_dim, or any attention architecture/template-internal change; obtain explicit approval and authoritative model evidence before making such a change.",
+            "Any proposed change to authoritative model dimensions, attention semantics, or a major template adaptation needed to resolve hidden_size=1152 versus num_q_heads=4 and head_dim=256.",
+            "Any proposed change to model hidden_size, num_q_heads, num_kv_heads, or head_dim.",
+            "Any proposed change to the template attention shape contract or its interpretation as an architecture change."
+          ],
+          "completed_subtasks": 4,
+          "decomposer_error": null,
+          "decomposer_used_fallback": false,
+          "decomposition_source": "llm",
+          "errors": [],
+          "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/event_log.jsonl",
+          "executable_actions": [
+            {
+              "acceptance_checkers": [
+                "model_config_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check",
+                "template_coverage_check"
+              ],
+              "action_type": "bounded_evidence_reconciliation",
+              "consumes": [
+                "artifact.input.model_config",
+                "constraint.shape.model",
+                "artifact.stage.template_selection.attention_semantics",
+                "artifact.stage.template_selection.parameter_bindings",
+                "artifact.stage.template_selection.template_source_checks",
+                "artifact.stage.template_selection.checker_results"
+              ],
+              "id": "template_selection.reconcile_attention_shape_and_cache_evidence",
+              "on_failure": "Keep template selection blocked and report the exact unresolved authoritative dimension or KV-cache evidence. Do not alter model dimensions, template internals, or checker policy; request bounded architecture/model-owner clarification if the authoritative evidence remains contradictory.",
+              "produces": [
+                "artifact.stage.template_selection.attention_component_source_evidence_matrix",
+                "artifact.stage.template_selection.attention_shape_and_kv_cache_disposition",
+                "artifact.stage.template_selection.updated_checker_results"
+              ],
+              "rationale": "The current parameter checker identifies an illegal attention/block shape, and the candidate does not substantiate its KV-cache not-required disposition. Reconcile against authoritative model facts and existing hash-bound template evidence, then rerun current-stage checks; this is evidence review, not permission to alter the model or template.",
+              "requires_approval": false,
+              "stage": "template_selection",
+              "tool_roles": [
+                "model_config_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check",
+                "template_coverage_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "parameter_binding_static_check",
+                "template_binding_static_check",
+                "numeric_policy_check"
+              ],
+              "action_type": "sacg_constraint_review",
+              "consumes": [
+                "candidate_stage_artifact.parameter_bindings",
+                "candidate_stage_artifact.unsupported_bindings",
+                "candidate_stage_artifact.checker_results",
+                "candidate_stage_artifact.template_source_checks",
+                "candidate_stage_artifact.selected_templates",
+                "artifact.input.model_config",
+                "artifact.input.template_metadata",
+                "constraint.shape.model",
+                "constraint.template.library"
+              ],
+              "id": "template_selection.reconcile_attention_shape_predicate",
+              "on_failure": "Keep template_selection incomplete and report the predicate as unresolved to template_selection.cross_layer_evidence_gate. Do not change hidden_size, head_dim, head counts, numeric policy, or template internals; any proposed architecture or model change requires separate approval.",
+              "produces": [
+                "template_selection.binding_numeric_audit",
+                "template_selection.shape_predicate_disposition"
+              ],
+              "rationale": "The binding values establish the 1152 versus 1024 arithmetic difference, but the supplied source/interface evidence does not establish the equality as a required architectural invariant. Adjudicate the predicate without editing any model, numeric, or template value, and preserve the checker failure unless its basis is resolved.",
+              "requires_approval": false,
+              "stage": "template_selection",
+              "tool_roles": [
+                "architecture_review",
+                "parameter_binding_static_check",
+                "template_binding_static_check",
+                "numeric_policy_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "model_config_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check",
+                "sacg_static_check"
+              ],
+              "action_type": "evidence_reconciliation",
+              "consumes": [
+                "artifact.input.model_config",
+                "artifact.input.field_evidence",
+                "artifact.input.task_card",
+                "constraint.shape.model",
+                "candidate_stage_artifact.parameter_bindings",
+                "candidate_stage_artifact.checker_results"
+              ],
+              "id": "reconcile_authoritative_shape_bindings",
+              "on_failure": "Keep the selection blocked, preserve all authoritative input values, and route any field-level conflict to the cross-layer evidence gate for source reconciliation. Do not alter dimensions, choose an adapter, or waive legality.",
+              "produces": [
+                "template_selection/shape_source_reconciliation.json",
+                "template_selection/parameter_binding_checker_results.json"
+              ],
+              "rationale": "Compare the explicit parameter-binding citations with the field-level model_config and field_evidence, then rerun the applicable static checks. This action resolves evidence provenance without inventing or changing a model dimension.",
+              "requires_approval": false,
+              "stage": "template_selection",
+              "tool_roles": [
+                "model_config_check",
+                "parameter_binding_static_check",
+                "template_binding_static_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "template_coverage_check",
+                "sacg_static_check"
+              ],
+              "action_type": "coverage_and_order_review",
+              "consumes": [
+                "artifact.input.template_library",
+                "artifact.input.template_metadata",
+                "candidate_stage_artifact.operator_sequence",
+                "candidate_stage_artifact.selected_templates",
+                "candidate_stage_artifact.coverage",
+                "candidate_stage_artifact.attention_semantics",
+                "candidate_stage_artifact.template_source_checks"
+              ],
+              "id": "refresh_operator_template_coverage_record",
+              "on_failure": "Report any missing or untrusted mapping with its operator and source reference, preserve the supplied operator order, and keep promotion blocked until the checker-grounded discrepancy is resolved.",
+              "produces": [
+                "template_selection/operator_coverage_order_matrix.json",
+                "template_selection/residual_order_evidence_note.json"
+              ],
+              "rationale": "Produce a checker-grounded operator-to-template coverage record from the supplied sequence, selected templates, source checks, and attention expansion. Record residual sequence placement separately from operand wiring.",
+              "requires_approval": false,
+              "stage": "template_selection",
+              "tool_roles": [
+                "template_coverage_check",
+                "sacg_static_check"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "model_config_check",
+                "task_card_check",
+                "sacg_static_check",
+                "human_boundary_check"
+              ],
+              "action_type": "authoritative_input_reconciliation",
+              "consumes": [
+                "artifact.input.model_config",
+                "artifact.input.task_card",
+                "candidate_stage_artifact.parameter_bindings",
+                "candidate_stage_artifact.checker_results",
+                "candidate_stage_artifact.cross_layer_trace",
+                "parallel template-selection operator-coverage, binding/numeric, and attention-semantic review findings when available"
+              ],
+              "id": "template_selection.reconcile_attention_block_dimensions",
+              "on_failure": "If authoritative evidence does not resolve the dimensions, preserve the failed binding and blocked disposition; request a bounded human decision rather than guessing or changing template/model semantics.",
+              "produces": [
+                "artifact.template_selection.dimension_authority_reconciliation"
+              ],
+              "rationale": "The current binding evidence establishes 1152 != 4*256 for both the block wrapper and attention. Review authoritative model/task inputs and available operator, binding/numeric, and attention reviews to identify whether the source facts or their interpretation conflict; do not choose replacement dimensions by inference.",
+              "requires_approval": false,
+              "stage": "template_selection",
+              "tool_roles": [
+                "architecture_review",
+                "model_config_check",
+                "task_card_check",
+                "sacg_validate"
+              ]
+            },
+            {
+              "acceptance_checkers": [
+                "parameter_binding_static_check",
+                "template_binding_static_check",
+                "repair_boundary_check",
+                "sacg_static_check"
+              ],
+              "action_type": "bounded_parameter_binding_repair",
+              "consumes": [
+                "artifact.template_selection.dimension_authority_reconciliation",
+                "candidate_stage_artifact.parameter_bindings",
+                "candidate_stage_artifact.selected_templates",
+                "candidate_stage_artifact.template_source_checks",
+                "artifact.input.model_config",
+                "artifact.input.template_metadata"
+              ],
+              "id": "template_selection.repair_and_recheck_dimension_bindings",
+              "on_failure": "Keep template selection blocked if the authoritative values remain inconsistent, a repair exceeds the trusted-template boundary, approval is absent for a semantic change, or any required static checker fails; do not promote on partial evidence.",
+              "produces": [
+                "artifact.template_selection.revised_parameter_bindings",
+                "artifact.template_selection.refreshed_checker_results"
+              ],
+              "rationale": "After the reconciliation artifact establishes an authoritative legal resolution, update only the affected parameter binding(s) within the trusted-template boundary and rerun the binding/static checks. Any semantic model-dimension, attention, or major-template change must wait for explicit approval.",
+              "requires_approval": true,
+              "stage": "template_selection",
+              "tool_roles": [
+                "bounded_template_repair",
+                "targeted_failed_checker_rerun",
+                "template_binding_static_check"
+              ]
+            }
+          ],
+          "execution_groups": [
+            0,
+            1
+          ],
+          "llm_io_metrics": {
+            "executable_action_count": 6,
+            "max_duration_sec": 58.09661331604002,
+            "max_prompt_bytes": 79913,
+            "result_count": 4,
+            "subtasks_without_executable_actions": [],
+            "total_duration_sec": 208.05000108497916,
+            "total_prompt_bytes": 318497
+          },
+          "split_required": true,
+          "status": "ready",
+          "subtask_count": 4,
+          "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/subtask_plan.json",
+          "used_fallback_count": 0
+        },
+        "errors": [
+          "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024",
+          "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+        ],
+        "llm_agent": {},
+        "missing_ops": [],
+        "outputs": {
+          "llm_agent": null,
+          "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/sacg_state.json",
+          "team_aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/team_aggregate.json",
+          "team_subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/subtask_plan.json",
+          "template_selection": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/template_selection.json"
+        },
+        "required_adapters": [],
+        "sacg_transition_id": "transition.0001",
+        "schema_version": "spatialaccagent.template_selection_report.v0",
+        "selected_template_ids": [
+          "attention",
+          "decoder_block",
+          "elementwise",
+          "ffn",
+          "mask",
+          "norm",
+          "residual",
+          "softmax"
+        ],
+        "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/initial_design_graph.json",
+        "stage": "template_selection",
+        "status": "incomplete",
+        "unsupported_bindings": [
+          {
+            "kind": "parameter_binding",
+            "legality_errors": [
+              "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+            ],
+            "missing_params": [],
+            "op": "gemma3_text_block",
+            "template_id": "decoder_block"
+          },
+          {
+            "kind": "parameter_binding",
+            "legality_errors": [
+              "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+            ],
+            "missing_params": [],
+            "op": "self_attention",
+            "template_id": "attention"
+          }
+        ]
+      }
+    }
+  ],
+  "status": "running"
+}

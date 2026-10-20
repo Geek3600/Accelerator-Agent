@@ -196,7 +196,7 @@ class DseMaterializationTest(unittest.TestCase):
 
             def linear_pe_count(root: Path) -> int:
                 return sum(
-                    len(re.findall(rb"\bPhysicalFp32Mul\s+multipliers_[A-Za-z0-9_]+\s*\(", path.read_bytes()))
+                    len(re.findall(rb"\bPhysicalFp32Mul(?:Pipeline)?(?:_[0-9]+)?\s+multipliers_[A-Za-z0-9_]+\s*\(", path.read_bytes()))
                     for path in (root / "vivado").glob("Linear*.sv")
                 )
 

@@ -3,9 +3,88 @@ from __future__ import annotations
 import unittest
 
 from accagent.framework.llm_action_audit import build_audit_from_outputs
+from accagent.framework.stage_llm import ACTION_GROUNDING_REGISTRY
 
 
 class LlmActionAuditTests(unittest.TestCase):
+    def test_registered_checks_are_validation_operations_but_unknown_tools_fail(self) -> None:
+        checker = "real_weight_semantic_evidence_check"
+        self.assertIn(checker, ACTION_GROUNDING_REGISTRY["acceptance_checkers"])
+        result = build_audit_from_outputs([("planner", {"executable_actions": [{
+            "id": "validate_evidence", "tool_roles": [checker], "acceptance_checkers": [checker],
+        }]})])
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["actions"][0]["canonical_tool_roles"], [checker])
+        invalid = build_audit_from_outputs([("planner", {"executable_actions": [{
+            "id": "unknown", "tool_roles": ["unregistered_validation_operation"],
+        }]})])
+        self.assertEqual(invalid["status"], "fail")
+
+    def test_existing_backend_static_check_can_be_requested_as_validation_tool(self) -> None:
+        checker = "backend_app_shell_integration_contract_static_check"
+        self.assertIn(checker, ACTION_GROUNDING_REGISTRY["acceptance_checkers"])
+        result = build_audit_from_outputs([("planner", {"executable_actions": [{
+            "id": "layer3.backend_eligibility", "tool_roles": [checker],
+            "acceptance_checkers": [checker],
+        }]})])
+        self.assertEqual(result["status"], "pass")
+
+    def test_stage7_metrics_runner_is_registered_as_an_existing_tool(self) -> None:
+        self.assertIn("case_stage7_metrics", ACTION_GROUNDING_REGISTRY["tool_roles"])
+
+    def test_stage7_adapter_generator_is_registered_as_an_existing_tool(self) -> None:
+        self.assertIn("case_compute_slot_adapter_generate", ACTION_GROUNDING_REGISTRY["tool_roles"])
+
+    def test_stage7_adapter_generator_action_is_not_reported_as_missing_capability(self) -> None:
+        audit = build_audit_from_outputs(
+            [
+                (
+                    "flow_controller",
+                    {
+                        "executable_actions": [
+                            {
+                                "id": "repair_loader_mapping",
+                                "tool_roles": ["case_compute_slot_adapter_generate"],
+                                "acceptance_checkers": ["required_real_tool_evidence_check"],
+                            }
+                        ]
+                    },
+                )
+            ]
+        )
+
+        self.assertEqual(audit["status"], "pass")
+        self.assertEqual(
+            audit["actions"][0]["canonical_tool_roles"],
+            ["case_compute_slot_adapter_generate"],
+        )
+
+    def test_stage7_trust_audit_can_use_registered_component_checks(self) -> None:
+        audit = build_audit_from_outputs(
+            [
+                (
+                    "flow_controller",
+                    {
+                        "executable_actions": [
+                            {
+                                "id": "audit_stage7_artifact_trust",
+                                "tool_roles": ["sacg_validate", "artifact_hash_check"],
+                                "acceptance_checkers": [
+                                    "stage_artifact_trust_barrier_check",
+                                    "verification_action_audit_check",
+                                    "sacg_memory_check",
+                                    "stage_backtrack_request_check",
+                                    "stage_retry_request_check",
+                                ],
+                            }
+                        ]
+                    },
+                )
+            ]
+        )
+
+        self.assertEqual(audit["status"], "pass")
+
     def test_unqualified_real_tool_checker_is_normalized(self) -> None:
         audit = build_audit_from_outputs(
             [

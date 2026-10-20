@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -19,9 +21,21 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, sort_keys=True)
-        f.write("\n")
+    fd, temporary_name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, sort_keys=True)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary_name, path)
+    finally:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
 
 
 def copy_state(src: Path, dst: Path) -> dict[str, Any]:
@@ -257,22 +271,37 @@ _HIERARCHICAL_PROMOTION_LEVELS = (
     (
         "operator_leaf_closure",
         "operator_leaf_modules",
-        "artifact.stage7.operator_leaf_promotion_certificate",
+        "artifact.stage6.operator_leaf_promotion_certificate",
         "operator_leaf_functional",
     ),
     (
         "single_layer_closure",
         "single_transformer_layer_kernel",
-        "artifact.stage7.single_layer_promotion_certificate",
+        "artifact.stage6.single_layer_promotion_certificate",
         "single_layer_functional",
     ),
     (
         "board_axi_ddr_closure",
         "board_axi_ddr_wrapped_system",
-        "artifact.stage7.board_axi_ddr_promotion_certificate",
+        "artifact.stage6.board_axi_ddr_promotion_certificate",
         "axi_ddr_functional",
     ),
 )
+
+_HIERARCHICAL_PROMOTION_ARTIFACT_ALIASES = {
+    "artifact.stage6.operator_leaf_promotion_certificate": (
+        "artifact.stage6.operator_leaf_promotion_certificate",
+        "artifact.stage7.operator_leaf_promotion_certificate",
+    ),
+    "artifact.stage6.single_layer_promotion_certificate": (
+        "artifact.stage6.single_layer_promotion_certificate",
+        "artifact.stage7.single_layer_promotion_certificate",
+    ),
+    "artifact.stage6.board_axi_ddr_promotion_certificate": (
+        "artifact.stage6.board_axi_ddr_promotion_certificate",
+        "artifact.stage7.board_axi_ddr_promotion_certificate",
+    ),
+}
 
 
 def _file_sha256_if_current(path: Path, expected: Any = "") -> str | None:
@@ -487,7 +516,19 @@ def hierarchical_learning_context(
     ):
         if index >= target_index:
             break
-        artifact = artifacts.get(artifact_id, {})
+        artifact_id = next(
+            (
+                candidate
+                for candidate in _HIERARCHICAL_PROMOTION_ARTIFACT_ALIASES.get(
+                    artifact_id, (artifact_id,)
+                )
+                if candidate in artifacts
+            ),
+            "",
+        )
+        if not artifact_id:
+            continue
+        artifact = artifacts[artifact_id]
         try:
             producer_status = artifact_producer_status(state, artifact_id)
         except KeyError:

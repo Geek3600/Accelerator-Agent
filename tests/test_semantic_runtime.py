@@ -1,7 +1,6 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
-
 import torch
 
 from accagent.framework.semantic_runtime import (
@@ -242,6 +241,12 @@ class SemanticRuntimeContractTest(TestCase):
         self.assertIn("runtime_last = runtime_accepted == 1;", testbench)
         self.assertIn("runtime_valid = 0;", testbench)
         self.assertIn("runtime-constant loader made no progress", testbench)
+        self.assertIn("localparam integer HEARTBEAT_PERIOD_CYCLES = 1024;", testbench)
+        self.assertIn("$timeformat(-12, 0, \" ps\", 0);", testbench)
+        self.assertIn("SPATIALACC_LEAF_HEARTBEAT at time %0t", testbench)
+        self.assertIn('heartbeat_phase = "reset_release";', testbench)
+        self.assertIn('heartbeat_phase = "streaming";', testbench)
+        self.assertIn("if ((cycles % HEARTBEAT_PERIOD_CYCLES) == 0)", testbench)
         self.assertLess(
             testbench.index("real-weight load did not complete"),
             testbench.index("while (runtime_accepted < 2) begin"),

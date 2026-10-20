@@ -11,6 +11,7 @@ import torch
 from accagent.framework.board_weight_image import (
     BoardWeightImageError,
     PLAN_SCHEMA_VERSION,
+    _target_bytes,
     materialize_board_weight_image,
 )
 from accagent.framework.weight_layout import (
@@ -218,6 +219,46 @@ class BoardWeightImageTest(TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
+    def test_integer_image_reuses_and_copies_canonical_checkpoint_quantization(self) -> None:
+        class Reader:
+            def tensor(self, _row: dict[str, object]) -> torch.Tensor:
+                return torch.tensor([[-1.0, 1.0], [2.0, 4.0]], dtype=torch.float16)
+
+        canonical = {
+            "scheme": "symmetric_signed_per_output_channel",
+            "rounding": "nearest_even",
+            "scale": [1.0, 2.0],
+            "scale_fixed_point": {
+                "representation": "unsigned_q31_multiplier_times_power_of_two",
+                "fractional_bits": 31,
+                "channels": [{"multiplier": 11}, {"multiplier": 22}],
+            },
+        }
+        target = {
+            "target_id": "projection.weight",
+            "target_kind": "linear_weight_matrix",
+            "value_conversion": {"source_dtype": "fp16"},
+            "compose": {"kind": "identity"},
+            "logical_shape": [2, 2],
+            "storage_scalar_dtype": "int4",
+            "tile": {"out_lanes": 1, "in_lanes": 1},
+        }
+
+        packed, quantization = _target_bytes(
+            target,
+            [{}],
+            Reader(),
+            canonical_quantization=canonical,
+        )
+
+        self.assertEqual(len(packed), 4)
+        self.assertEqual(quantization, canonical)
+        self.assertIsNot(quantization, canonical)
+        quantization["scale"][0] = 3.0
+        quantization["scale_fixed_point"]["channels"][0]["multiplier"] = 33
+        self.assertEqual(canonical["scale"][0], 1.0)
+        self.assertEqual(canonical["scale_fixed_point"]["channels"][0]["multiplier"], 11)
+
     def make_requirements(self, catalog: dict[str, object]) -> dict[str, object]:
         return {
             "schema_version": "spatialaccagent.dut_weight_binding_requirements.v1",
@@ -278,6 +319,20 @@ class BoardWeightImageTest(TestCase):
             },
             "additional_runtime_fields": {"agent_owned": True},
         }
+
+    def largest_tile_bytes(self) -> int:
+        largest = 0
+        for layout in self.layouts:
+            for target in layout["storage_targets"]:
+                tile = target["tile"]
+                elements = (
+                    int(tile["out_lanes"]) * int(tile["in_lanes"])
+                    if target["target_kind"] == "linear_weight_matrix"
+                    else int(tile["elements_per_write"])
+                )
+                bits = int(target["storage_scalar_bits"])
+                largest = max(largest, (elements * bits + 7) // 8)
+        return (largest + 3) // 4 * 4
 
     def assert_no_partial_output(self, image: Path, manifest: Path) -> None:
         self.assertFalse(image.exists())
@@ -380,9 +435,23 @@ class BoardWeightImageTest(TestCase):
             materialize_board_weight_image(catalog, requirements, plan, image, manifest)
         self.assert_no_partial_output(image, manifest)
 
-    def test_bank_shortfall_fails_before_writing_output(self) -> None:
-        required = int(self.connected["word_count"]) * 4
-        plan = self.make_plan(self.catalog, self.requirements, bank_capacity=required - 4)
+    def test_complete_ddr_image_can_exceed_one_weight_bank_when_tiles_fit(self) -> None:
+        layer_bytes = int(self.connected["word_count"]) * 4
+        bank_capacity = layer_bytes - 4
+        self.assertGreaterEqual(bank_capacity, self.largest_tile_bytes())
+        plan = self.make_plan(self.catalog, self.requirements, bank_capacity=bank_capacity)
+        image = self.root / "multi-tile" / "weights.bin"
+        manifest = self.root / "multi-tile" / "full_weight_image_manifest.json"
+
+        materialize_board_weight_image(self.catalog, self.requirements, plan, image, manifest)
+
+        self.assertTrue(manifest.is_file())
+        self.assertGreater(image.stat().st_size, bank_capacity)
+
+    def test_tile_shortfall_fails_before_writing_output(self) -> None:
+        tile_bytes = self.largest_tile_bytes()
+        self.assertGreater(tile_bytes, 4)
+        plan = self.make_plan(self.catalog, self.requirements, bank_capacity=tile_bytes - 4)
         image = self.root / "small-bank" / "weights.bin"
         manifest = self.root / "small-bank" / "full_weight_image_manifest.json"
 

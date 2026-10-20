@@ -1,0 +1,112 @@
+{
+  "agent": "model_shape_specialist",
+  "duration_sec": 28.37838687101612,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "8185fd8b9ef4463c932748b33222ee92",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/model_shape_specialist_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "model_shape_specialist",
+    "approval_required_for": [
+      "Any change to the selected model, decoder semantics, model dimensions, head mapping, sequence contract, or operator order."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "task_card_check",
+          "model_config_check",
+          "llm_semantic_extraction_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.case_adapter",
+          "constraint.task.goal",
+          "constraint.model.decoder",
+          "constraint.shape.model"
+        ],
+        "id": "input_preparation.review_model_facts_and_gaps",
+        "on_failure": "Record failed or not-run checks and source-bound ambiguities in the review and fact-and-gap matrix. Do not claim pass or promote unsupported facts; route any established model contradiction to the cross-layer SACG gate for a bounded resolution.",
+        "produces": [
+          "artifact.stage0.model_intake_review",
+          "artifact.stage0.model_fact_and_gap_matrix"
+        ],
+        "rationale": "The available summary does not expose enough artifact content to establish decoder semantics, model shapes, or operator order. Review the full source artifacts with the registered checkers and bind each reported fact or gap to its source; do not infer model facts.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "task_card_check",
+          "model_config_check",
+          "llm_semantic_extraction",
+          "sacg_validate"
+        ]
+      }
+    ],
+    "observations": [
+      "The state summary lists artifact.input.task_card, artifact.input.model_config, and artifact.input.case_adapter as present. The candidate summary also confirms a case_adapter exists, but only exposes a subset of its keys and no substantive model facts.",
+      "The supplied view does not show values for decoder/block semantics, layer count, hidden or intermediate dimensions, attention-head or KV-head mapping, sequence length, head dimension, tensor layouts, or operator/residual/norm order. These facts are unverified in this view, not established as absent from the underlying artifacts.",
+      "No task_card_check, model_config_check, llm_semantic_extraction_check, or sacg_static_check results are supplied, so no checker pass is claimed.",
+      "The run directory contains both Qwen2-Accelerator and gemma3 naming. This is a provenance-label ambiguity only; it does not establish which model the inputs specify.",
+      "The accelerator scope remains Transformer blocks only. Embedding/tokenization, final model norm, LM head/logits, and sampling are outside DUT and golden/weight-consumption scope.",
+      "sacg_memory_truth reports zero active contamination barriers and zero open retry or backtrack requests; no current SACG-memory blocker is indicated."
+    ],
+    "proposed_actions": [
+      "Run the registered task, model-configuration, semantic-extraction, and SACG checks on the full artifacts; produce a source-cited fact-and-gap matrix that labels each model-facing fact supported, ambiguous, missing, or contradictory.",
+      "Keep unresolved facts explicit. Block SACG extraction only if the full artifacts or checker results establish a contradiction; do not infer missing facts from this compact prompt slice."
+    ],
+    "risks": [
+      "SACG extraction could encode unsupported model or shape assumptions if it proceeds from this compact summary rather than source-bound facts.",
+      "The Qwen2/Gemma3 naming discrepancy could contaminate model identity or source provenance if resolved by guessing; compare the actual task_card, model_config, and case_adapter contents.",
+      "After model facts are surfaced, cross-layer consistency still needs checking against numeric policy, data order, memory/runtime plans, implementation bindings, and board-facing contracts; no such consistency evidence is present in this summary."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.task_card",
+        "artifact.input.model_config",
+        "artifact.input.case_adapter",
+        "artifact.stage0.model_intake_review",
+        "artifact.stage0.model_fact_and_gap_matrix"
+      ],
+      "constraints": [
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model"
+      ],
+      "edges": [
+        "constraint.task.goal -> constraint.model.decoder: verify the task's requested decoder scope against source artifacts",
+        "constraint.model.decoder -> constraint.shape.model: verify decoder parameters and tensor shapes agree",
+        "artifact.input.case_adapter -> constraint.model.decoder: verify any case-specific semantics are explicitly sourced",
+        "artifact.input.case_adapter -> constraint.shape.model: verify any case-specific shape facts are explicitly sourced"
+      ],
+      "nodes": [
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "task-to-model semantic contract",
+        "model tensor and head shape contract",
+        "decoder operator-order contract"
+      ]
+    },
+    "schema_version": "spatialaccagent.model_intake_review.v0",
+    "stage": "input_preparation",
+    "status": "needs_source_bound_review",
+    "summary": "The supplied summary confirms that task_card, model_config, and case_adapter artifact classes exist, but does not expose their substantive contents or checker results. It is therefore not possible to determine whether they provide traceable decoder semantics, tensor/head/sequence shapes, or operator-order facts suitable for SACG extraction. Do not treat the omitted details as proof that the underlying artifacts lack them."
+  },
+  "prompt_bytes": 38782,
+  "prompt_hash": "fa84428cfbcbb645cdec390d8b60980d9fdc01ec62c1b0891908b6346694ca6b",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.model_intake_review.v0\",\n  \"agent\": \"model_shape_specialist\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"needs_source_bound_review\",\n  \"summary\": \"The supplied summary confirms that task_card, model_config, and case_adapter artifact classes exist, but does not expose their substantive contents or checker results. It is therefore not possible to determine whether they provide traceable decoder semantics, tensor/head/sequence shapes, or operator-order facts suitable for SACG extraction. Do not treat the omitted details as proof that the underlying artifacts lack them.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"constraint.task.goal\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"task-to-model semantic contract\",\n      \"model tensor and head shape contract\",\n      \"decoder operator-order contract\"\n    ],\n    \"edges\": [\n      \"constraint.task.goal -> constraint.model.decoder: verify the task's requested decoder scope against source artifacts\",\n      \"constraint.model.decoder -> constraint.shape.model: verify decoder parameters and tensor shapes agree\",\n      \"artifact.input.case_adapter -> constraint.model.decoder: verify any case-specific semantics are explicitly sourced\",\n      \"artifact.input.case_adapter -> constraint.shape.model: verify any case-specific shape facts are explicitly sourced\"\n    ],\n    \"constraints\": [\n      \"constraint.task.goal\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.task_card\",\n      \"artifact.input.model_config\",\n      \"artifact.input.case_adapter\",\n      \"artifact.stage0.model_intake_review\",\n      \"artifact.stage0.model_fact_and_gap_matrix\"\n    ]\n  },\n  \"observations\": [\n    \"The state summary lists artifact.input.task_card, artifact.input.model_config, and artifact.input.case_adapter as present. The candidate summary also confirms a case_adapter exists, but only exposes a subset of its keys and no substantive model facts.\",\n    \"The supplied view does not show values for decoder/block semantics, layer count, hidden or intermediate dimensions, attention-head or KV-head mapping, sequence length, head dimension, tensor layouts, or operator/residual/norm order. These facts are unverified in this view, not established as absent from the underlying artifacts.\",\n    \"No task_card_check, model_config_check, llm_semantic_extraction_check, or sacg_static_check results are supplied, so no checker pass is claimed.\",\n    \"The run directory contains both Qwen2-Accelerator and gemma3 naming. This is a provenance-label ambiguity only; it does not establish which model the inputs specify.\",\n    \"The accelerator scope remains Transformer blocks only. Embedding/tokenization, final model norm, LM head/logits, and sampling are outside DUT and golden/weight-consumption scope.\",\n    \"sacg_memory_truth reports zero active contamination barriers and zero open retry or backtrack requests; no current SACG-memory blocker is indicated.\"\n  ],\n  \"risks\": [\n    \"SACG extraction could encode unsupported model or shape assumptions if it proceeds from this compact summary rather than source-bound facts.\",\n    \"The Qwen2/Gemma3 naming discrepancy could contaminate model identity or source provenance if resolved by guessing; compare the actual task_card, model_config, and case_adapter contents.\",\n    \"After model facts are surfaced, cross-layer consistency still needs checking against numeric policy, data order, memory/runtime plans, implementation bindings, and board-facing contracts; no such consistency evidence is present in this summary.\"\n  ],\n  \"proposed_actions\": [\n    \"Run the registered task, model-configuration, semantic-extraction, and SACG checks on the full artifacts; produce a source-cited fact-and-gap matrix that labels each model-facing fact supported, ambiguous, missing, or contradictory.\",\n    \"Keep unresolved facts explicit. Block SACG extraction only if the full artifacts or checker results establish a contradiction; do not infer missing facts from this compact prompt slice.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"input_preparation.review_model_facts_and_gaps\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"The available summary does not expose enough artifact content to establish decoder semantics, model shapes, or operator order. Review the full source artifacts with the registered checkers and bind each reported fact or gap to its source; do not infer model facts.\",\n      \"consumes\": [\n        \"artifact.input.task_card\",\n        \"artifact.input.model_config\",\n        \"artifact.input.case_adapter\",\n        \"constraint.task.goal\",\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\"\n      ],\n      \"produces\": [\n        \"artifact.stage0.model_intake_review\",\n        \"artifact.stage0.model_fact_and_gap_matrix\"\n      ],\n      \"tool_roles\": [\n        \"task_card_check\",\n        \"model_config_check\",\n        \"llm_semantic_extraction\",\n        \"sacg_validate\"\n      ],\n      \"acceptance_checkers\": [\n        \"task_card_check\",\n        \"model_config_check\",\n        \"llm_semantic_extraction_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Record failed or not-run checks and source-bound ambiguities in the review and fact-and-gap matrix. Do not claim pass or promote unsupported facts; route any established model contradiction to the cross-layer SACG gate for a bounded resolution.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any change to the selected model, decoder semantics, model dimensions, head mapping, sequence contract, or operator order.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/model_shape_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/model_shape_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.model intake engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

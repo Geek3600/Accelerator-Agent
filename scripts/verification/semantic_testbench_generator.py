@@ -29,6 +29,7 @@ from accagent.framework.weight_layout import (
     build_stage_weight_layout,
     materialize_composite_weight_stream,
     materialize_stage_weight_stream,
+    weight_layout_binding_matches,
 )
 
 
@@ -221,6 +222,8 @@ def semantic_harness_tb(
     drive_lines: list[str] = []
     handshake_lines: list[str] = []
     done_terms: list[str] = []
+    heartbeat_values: list[str] = []
+    heartbeat_format: list[str] = []
     for index, (port, vector) in enumerate(zip(input_ports, input_vectors)):
         if not isinstance(port, dict):
             raise ValueError(f"input interface {index} is not an object")
@@ -263,6 +266,8 @@ def semantic_harness_tb(
             f"      if (input_{index}_valid && input_{index}_ready) input_{index}_accepted = input_{index}_accepted + 1;"
         )
         done_terms.append(f"input_{index}_accepted == {int(vector['beats'])}")
+        heartbeat_format.append(f" input_{index}_accepted=%0d")
+        heartbeat_values.append(f"input_{index}_accepted")
 
     output_width = int(expected_output["bits"]) * int(expected_output["lanes"])
     if int(output_port.get("data_width_bits") or 0) != output_width:
@@ -287,7 +292,6 @@ def semantic_harness_tb(
             f"    .{output_data_port}(output_data)",
         ]
     )
-
     setup_lines: list[str] = []
     for index, vector in enumerate(input_vectors):
         declarations.append(f"  string input_path_{index};")
@@ -314,6 +318,8 @@ def semantic_harness_tb(
         if addr_width <= 0:
             raise ValueError("semantic harness weight-loader address width is missing")
         count = int(weight_stream["word_count"])
+        heartbeat_format.append(" weight_accepted=%0d")
+        heartbeat_values.append("weight_accepted")
         declarations.extend(
             [
                 f"  reg [31:0] weight_mem [0:{count - 1}];",
@@ -345,6 +351,7 @@ def semantic_harness_tb(
         )
         weight_drive.extend(
             [
+                '    heartbeat_phase = "loading_weights";',
                 f"    while (weight_accepted < {count}) begin",
                 "      @(negedge clock);",
                 "      weight_valid = 1;",
@@ -384,6 +391,8 @@ def semantic_harness_tb(
         if addr_width <= 0:
             raise ValueError("semantic harness runtime-constant loader address width is missing")
         count = int(runtime_stream["word_count"])
+        heartbeat_format.append(" runtime_accepted=%0d")
+        heartbeat_values.append("runtime_accepted")
         declarations.extend(
             [
                 f"  reg [31:0] runtime_mem [0:{count - 1}];",
@@ -415,6 +424,7 @@ def semantic_harness_tb(
         )
         runtime_drive.extend(
             [
+                '    heartbeat_phase = "loading_runtime";',
                 f"    while (runtime_accepted < {count}) begin",
                 "      @(negedge clock);",
                 "      runtime_valid = 1;",
@@ -456,7 +466,21 @@ def semantic_harness_tb(
         start_lines = ["    start = 1;", "    @(posedge clock);", "    start = 0;"]
 
     connection_text = ",\n".join(connections)
-    declarations.append("  string output_path;")
+    heartbeat_line = (
+        '    $display("SPATIALACC_LEAF_HEARTBEAT at time %0t phase=%0s cycles=%0d '
+        + "".join(heartbeat_format)
+        + ' output_beats=%0d", $time, heartbeat_phase, {cycle_counter}'
+        + (", " + ", ".join(heartbeat_values) if heartbeat_values else "")
+        + ", output_produced);"
+    )
+    declarations.extend(
+        [
+            "  string output_path;",
+            "  string heartbeat_phase;",
+            "  integer loader_cycles = 0;",
+            "  localparam integer HEARTBEAT_PERIOD_CYCLES = 1024;",
+        ]
+    )
     return "\n".join(
         [
             "`timescale 1ns/1ps",
@@ -467,8 +491,17 @@ def semantic_harness_tb(
             connection_text,
             "  );",
             "  always #5 clock = ~clock;",
+            "  always @(posedge clock) begin",
+            '    if (!reset && (heartbeat_phase == "loading_weights" || heartbeat_phase == "loading_runtime")) begin',
+            "      loader_cycles = loader_cycles + 1;",
+            "      if ((loader_cycles % HEARTBEAT_PERIOD_CYCLES) == 0) begin",
+            heartbeat_line.format(cycle_counter="loader_cycles"),
+            "      end",
+            "    end",
+            "  end",
             "",
             "  initial begin",
+            '    $timeformat(-12, 0, " ps", 0);',
             *setup_lines,
             *weight_setup,
             *runtime_setup,
@@ -478,11 +511,14 @@ def semantic_harness_tb(
             "    if (!output_fd) $fatal(1, \"cannot open semantic RTL output capture\");",
             "    repeat (8) @(posedge clock);",
             "    reset = 0;",
+            '    heartbeat_phase = "reset_release";',
+            heartbeat_line.format(cycle_counter="cycles"),
             *weight_drive,
             f"    if (!({weight_done})) $fatal(1, \"real-weight load did not complete\");",
             *runtime_drive,
             f"    if (!({runtime_done})) $fatal(1, \"runtime-constant load did not complete\");",
             *start_lines,
+            '    heartbeat_phase = "streaming";',
             f"    while (cycles < 10000000 && output_produced < {int(expected_output['beats'])}) begin",
             "      @(negedge clock);",
             *drive_lines,
@@ -493,6 +529,8 @@ def semantic_harness_tb(
             "        output_produced = output_produced + 1;",
             "      end",
             "      cycles = cycles + 1;",
+            "      if ((cycles % HEARTBEAT_PERIOD_CYCLES) == 0)",
+            heartbeat_line.format(cycle_counter="cycles").replace("    $display", "        $display"),
             "    end",
             f"    if (!({' && '.join(done_terms)}) || output_produced != {int(expected_output['beats'])})",
             "      $fatal(1, \"semantic harness timeout or output-shape mismatch\");",
@@ -1167,8 +1205,10 @@ def validate_harness_weight_hashes(
     if required and harness.get("default_or_identity_weight_fallback_disabled") is not True:
         errors.append("semantic harness does not disable default/identity weight fallback")
     if required and isinstance(weight_layout, dict):
-        expected_layout_hash = str(weight_layout.get("contract_sha256") or "")
-        if harness.get("weight_layout_contract_sha256") != expected_layout_hash:
+        if not weight_layout_binding_matches(
+            weight_layout,
+            harness.get("weight_layout_contract_sha256"),
+        ):
             errors.append("semantic harness weight-layout contract hash does not match requirements")
     if isinstance(runtime_constant_stream, dict):
         expected_runtime_hash = str(runtime_constant_stream.get("contract_sha256") or "")

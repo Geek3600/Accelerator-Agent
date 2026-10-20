@@ -1,0 +1,114 @@
+{
+  "agent": "flow_controller_agent",
+  "duration_sec": 27.328299905988388,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "7d1948acdac349bb9832f89dfe985981",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/008_template_selection/llm/flow_controller_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "flow_controller_agent",
+    "approval_required_for": [
+      "Any change to authoritative hidden_size, num_q_heads, num_kv_heads, or head_dim.",
+      "Any change to attention semantics, the template attention shape contract or its interpretation, template internals, or a major template adaptation.",
+      "Any change to numeric policy or checker policy."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "task_card_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "bounded_evidence_reconciliation",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.field_evidence",
+          "artifact.input.task_card",
+          "constraint.shape.model",
+          "constraint.template.library",
+          "artifact.stage.template_selection.parameter_bindings",
+          "artifact.stage.template_selection.checker_results",
+          "artifact.stage.template_selection.template_source_checks"
+        ],
+        "id": "template_selection.retry_authoritative_shape_reconciliation",
+        "on_failure": "Keep template_selection incomplete and contamination_barrier.0001 active. Preserve authoritative values and the exact checker failure; do not repair dimensions, alter template internals, waive the predicate, or promote the rejected artifact. If authoritative evidence remains contradictory or the contract requires a semantic change, request explicit bounded approval and authoritative model-owner evidence.",
+        "produces": [
+          "artifact.template_selection.dimension_authority_reconciliation",
+          "artifact.template_selection.refreshed_parameter_binding_results",
+          "artifact.template_selection.retry_checker_results"
+        ],
+        "rationale": "The failed checker establishes a concrete 1152-versus-1024 binding mismatch, but the supplied summary does not establish which authoritative fact or contract interpretation resolves it. Reconcile cited model/task evidence and rerun current-stage checks without changing model, numeric, or template semantics. A successful candidate may supersede the rejected transition only after all required checks pass.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "architecture_review",
+          "model_config_check",
+          "task_card_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The current-stage result is incomplete: parameter binding failed for both gemma3_text_block and self_attention because hidden_size=1152 does not equal num_q_heads*head_dim=4*256=1024.",
+      "Operator coverage, template source/interface checks, mandatory FPGA IP bindings, attention semantic expansion, and cross-layer trace checks passed. No supplied evidence supports changing those results or treating them as a resolution of the shape failure.",
+      "SACG memory truth reports one active contamination barrier for artifact.stage2.template_selection and no open retry or backtrack requests. Keep that barrier active for downstream consumption until a successful retry is promoted.",
+      "The failure is a current template-selection binding check, not a framework/hash/provenance failure and not a cited RTL hardware-design failure. No hardware-stage backtrack is justified."
+    ],
+    "proposed_actions": [
+      "Retry template_selection after reconciling the failed bindings against authoritative model and task-card evidence; rerun the relevant current-stage checks.",
+      "If the authoritative facts leave the shape mismatch unresolved, keep the stage blocked and request bounded clarification/approval rather than guessing or modifying dimensions."
+    ],
+    "risks": [
+      "Changing hidden_size, head_dim, head counts, attention interpretation, template internals, or checker policy without authoritative evidence could corrupt model semantics.",
+      "Downstream planning from the rejected template-selection artifact could treat an invalid binding as validated input.",
+      "The supplied evidence does not resolve whether the authoritative model facts conflict with the template shape contract."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.model_config",
+        "artifact.input.task_card",
+        "artifact.input.field_evidence",
+        "artifact.stage.template_selection.parameter_bindings",
+        "artifact.stage.template_selection.checker_results",
+        "contamination_barrier.0001"
+      ],
+      "constraints": [
+        "Preserve authoritative model dimensions, attention semantics, and template internals unless approved changes are supported by authoritative evidence.",
+        "Rejected-transition artifacts are planning/debug evidence only until a successful retry is promoted."
+      ],
+      "edges": [
+        "authoritative model dimensions -> decoder_block parameter bindings",
+        "authoritative model dimensions -> attention parameter bindings",
+        "template_selection candidate -> downstream stages"
+      ],
+      "nodes": [
+        "constraint.shape.model",
+        "constraint.template.library",
+        "template_selection"
+      ]
+    },
+    "schema_version": "spatialaccagent.flow_controller_decision.v1",
+    "stage": "template_selection",
+    "status": "retry_current_stage",
+    "summary": "Retry template_selection with bounded authoritative-evidence reconciliation. The binding checker failed on hidden_size=1152 versus num_q_heads*head_dim=4*256=1024. Do not backtrack or allow downstream stages to consume the rejected artifact."
+  },
+  "prompt_bytes": 58795,
+  "prompt_hash": "452c99cf603010bf4386edec2b298334a0d092184152dde2777233d8e270f689",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.flow_controller_decision.v1\",\n  \"agent\": \"flow_controller_agent\",\n  \"stage\": \"template_selection\",\n  \"status\": \"retry_current_stage\",\n  \"summary\": \"Retry template_selection with bounded authoritative-evidence reconciliation. The binding checker failed on hidden_size=1152 versus num_q_heads*head_dim=4*256=1024. Do not backtrack or allow downstream stages to consume the rejected artifact.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"constraint.shape.model\",\n      \"constraint.template.library\",\n      \"template_selection\"\n    ],\n    \"edges\": [\n      \"authoritative model dimensions -> decoder_block parameter bindings\",\n      \"authoritative model dimensions -> attention parameter bindings\",\n      \"template_selection candidate -> downstream stages\"\n    ],\n    \"constraints\": [\n      \"Preserve authoritative model dimensions, attention semantics, and template internals unless approved changes are supported by authoritative evidence.\",\n      \"Rejected-transition artifacts are planning/debug evidence only until a successful retry is promoted.\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.model_config\",\n      \"artifact.input.task_card\",\n      \"artifact.input.field_evidence\",\n      \"artifact.stage.template_selection.parameter_bindings\",\n      \"artifact.stage.template_selection.checker_results\",\n      \"contamination_barrier.0001\"\n    ]\n  },\n  \"observations\": [\n    \"The current-stage result is incomplete: parameter binding failed for both gemma3_text_block and self_attention because hidden_size=1152 does not equal num_q_heads*head_dim=4*256=1024.\",\n    \"Operator coverage, template source/interface checks, mandatory FPGA IP bindings, attention semantic expansion, and cross-layer trace checks passed. No supplied evidence supports changing those results or treating them as a resolution of the shape failure.\",\n    \"SACG memory truth reports one active contamination barrier for artifact.stage2.template_selection and no open retry or backtrack requests. Keep that barrier active for downstream consumption until a successful retry is promoted.\",\n    \"The failure is a current template-selection binding check, not a framework/hash/provenance failure and not a cited RTL hardware-design failure. No hardware-stage backtrack is justified.\"\n  ],\n  \"risks\": [\n    \"Changing hidden_size, head_dim, head counts, attention interpretation, template internals, or checker policy without authoritative evidence could corrupt model semantics.\",\n    \"Downstream planning from the rejected template-selection artifact could treat an invalid binding as validated input.\",\n    \"The supplied evidence does not resolve whether the authoritative model facts conflict with the template shape contract.\"\n  ],\n  \"proposed_actions\": [\n    \"Retry template_selection after reconciling the failed bindings against authoritative model and task-card evidence; rerun the relevant current-stage checks.\",\n    \"If the authoritative facts leave the shape mismatch unresolved, keep the stage blocked and request bounded clarification/approval rather than guessing or modifying dimensions.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"template_selection.retry_authoritative_shape_reconciliation\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"bounded_evidence_reconciliation\",\n      \"rationale\": \"The failed checker establishes a concrete 1152-versus-1024 binding mismatch, but the supplied summary does not establish which authoritative fact or contract interpretation resolves it. Reconcile cited model/task evidence and rerun current-stage checks without changing model, numeric, or template semantics. A successful candidate may supersede the rejected transition only after all required checks pass.\",\n      \"consumes\": [\n        \"artifact.input.model_config\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.task_card\",\n        \"constraint.shape.model\",\n        \"constraint.template.library\",\n        \"artifact.stage.template_selection.parameter_bindings\",\n        \"artifact.stage.template_selection.checker_results\",\n        \"artifact.stage.template_selection.template_source_checks\"\n      ],\n      \"produces\": [\n        \"artifact.template_selection.dimension_authority_reconciliation\",\n        \"artifact.template_selection.refreshed_parameter_binding_results\",\n        \"artifact.template_selection.retry_checker_results\"\n      ],\n      \"tool_roles\": [\n        \"architecture_review\",\n        \"model_config_check\",\n        \"task_card_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"model_config_check\",\n        \"task_card_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Keep template_selection incomplete and contamination_barrier.0001 active. Preserve authoritative values and the exact checker failure; do not repair dimensions, alter template internals, waive the predicate, or promote the rejected artifact. If authoritative evidence remains contradictory or the contract requires a semantic change, request explicit bounded approval and authoritative model-owner evidence.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any change to authoritative hidden_size, num_q_heads, num_kv_heads, or head_dim.\",\n    \"Any change to attention semantics, the template attention shape contract or its interpretation, template internals, or a major template adaptation.\",\n    \"Any change to numeric policy or checker policy.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/008_template_selection/llm/flow_controller_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/008_template_selection/llm/flow_controller_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "flow_orchestration",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

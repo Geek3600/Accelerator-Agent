@@ -9,11 +9,16 @@ final case class ElementwiseMulParams(
   elemBits: Int = 16,
   outputBits: Int = 16,
   batchSize: Int = 16,
-  maxSeqLen: Int = 16
+  maxSeqLen: Int = 16,
+  integerMode: Boolean = false
 ) {
   require(hiddenSize % lanes == 0, "hiddenSize must be divisible by lanes")
-  require(elemBits == 16 || elemBits == 32, "ElementwiseMul inputs must be IEEE FP16 or FP32")
-  require(outputBits == 16 || outputBits == 32, "ElementwiseMul output must be IEEE FP16 or FP32")
+  if (integerMode) {
+    require(elemBits == 8 && outputBits == 8, "integer elementwise multiply requires INT8 inputs and output")
+  } else {
+    require(elemBits == 16 || elemBits == 32, "ElementwiseMul inputs must be IEEE FP16 or FP32")
+    require(outputBits == 16 || outputBits == 32, "ElementwiseMul output must be IEEE FP16 or FP32")
+  }
   val beats: Int = hiddenSize / lanes
   val inputBeatBits: Int = lanes * elemBits
   val outputBeatBits: Int = lanes * outputBits
@@ -38,6 +43,22 @@ class ElementwiseMul(p: ElementwiseMulParams) extends Module {
   io.rhs <> rhsQ.io.enq
   io.out <> outputQ.io.deq
 
+  if (p.integerMode) {
+    val pairReady = lhsQ.io.deq.valid && rhsQ.io.deq.valid && outputQ.io.enq.ready
+    lhsQ.io.deq.ready := pairReady
+    rhsQ.io.deq.ready := pairReady
+    outputQ.io.enq.valid := pairReady
+    val product = Wire(Vec(p.lanes, UInt(p.outputBits.W)))
+    val lhsValues = lhsQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, SInt(8.W)))
+    val rhsValues = rhsQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, SInt(8.W)))
+    for (lane <- 0 until p.lanes) {
+      product(lane) := AccMath.requantizeQ31(lhsValues(lane) * rhsValues(lane), (BigInt(1) << 24).U(32.W), p.outputBits)
+    }
+    outputQ.io.enq.bits.data := product.asUInt
+    outputQ.io.enq.bits.st := lhsQ.io.deq.bits.st
+    outputQ.io.enq.bits.addr := lhsQ.io.deq.bits.addr
+    outputQ.io.enq.bits.last := lhsQ.io.deq.bits.last
+  } else {
   val a = lhsQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
   val b = rhsQ.io.deq.bits.data.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
   val multipliers = Seq.tabulate(p.lanes) { lane =>
@@ -46,7 +67,6 @@ class ElementwiseMul(p: ElementwiseMulParams) extends Module {
     mul.io.b := PhysicalMath.toFp32(b(lane), p.elemBits)
     mul
   }
-
   val sPair :: sWait :: sEmit :: Nil = Enum(3)
   val state = RegInit(sPair)
   val resultData = Reg(Vec(p.lanes, UInt(p.outputBits.W)))
@@ -83,4 +103,5 @@ class ElementwiseMul(p: ElementwiseMulParams) extends Module {
   }
 
   dontTouch(io.cfg)
+  }
 }

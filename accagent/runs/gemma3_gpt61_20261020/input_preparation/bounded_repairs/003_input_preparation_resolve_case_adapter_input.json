@@ -1,0 +1,52 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "tool_protocol_check",
+      "required_real_tool_evidence_check",
+      "sacg_static_check"
+    ],
+    "action_type": "bounded_input_repair",
+    "consumes": [
+      "prepared_inputs.errors",
+      "input/case_adapter.json",
+      "input/tool_materials",
+      "input/tool_profile.json",
+      "input/tool_availability.json",
+      "input/tool_protocols.json",
+      "input/sample_project_index.json",
+      "input/field_evidence.json"
+    ],
+    "id": "input_preparation.resolve_case_adapter_input",
+    "on_failure": "Keep the original error active and input_preparation incomplete. Record which required adapter component or provenance link is unsupported; do not synthesize a default adapter, infer unread source-project contents, or consume the incomplete attempt downstream.",
+    "produces": [
+      "input/case_adapter.json",
+      "input_preparation/source_and_tool_evidence_audit.json",
+      "input_preparation/evidence_provenance_and_applicability.json"
+    ],
+    "rationale": "The current stage's explicit blocking error is a missing case adapter. Supply only a genuine, provenance-backed adapter from the supported environment/tool-material path, then check its protocol and real-tool applicability. This repairs an input contract; it does not authorize hardware or verification-contract changes.",
+    "requires_approval": false,
+    "stage": "input_preparation",
+    "tool_roles": [
+      "tool_protocol_check",
+      "required_real_tool_evidence_check",
+      "sacg_static_check"
+    ]
+  },
+  "attempt_count": 3,
+  "decision": "retry",
+  "flow_event_index": 3,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": null,
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/003_retry.json",
+  "source_identities": {
+    "flow_controller_result_sha256": "f04891bc7ee1f649fe7296771b876fb5a88d9e16fc9651c0af43d99cdf48b427",
+    "source_sacg_state_sha256": ""
+  },
+  "source_sacg_state": null,
+  "stage": "input_preparation"
+}

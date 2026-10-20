@@ -10,7 +10,10 @@ from accagent.framework.stage_verification import (
     check_stage6_action_audit,
     check_verification_artifact_contract,
     check_verification_plan,
+    build_hierarchical_maturity_report,
     build_stage6_gate_execution_plan,
+    compile_only_stage_gates,
+    compile_only_required_gates_by_level,
     gate_tool_roles,
     require_stage6_source_artifacts,
     reusable_exact_board_identity_evidence,
@@ -21,6 +24,7 @@ from accagent.framework.stage_verification import (
     stage6_source_artifact_path,
     stage6_selector_blockers,
     stage6_selected_gate_names,
+    write_stage6_promotion_certificates,
 )
 from accagent.framework.stage_verification_plan import (
     build_hierarchical_verification_plan,
@@ -32,6 +36,301 @@ from accagent.framework.stage_verification_plan import (
 
 
 class ThirdLayerProducerOrderTest(TestCase):
+    def test_compile_only_board_scope_keeps_board_preparation_chain(self) -> None:
+        adapter = {
+            "evidence_gates": {
+                "leaf_functional": "case_leaf_functional",
+                "single_layer_functional": "case_single_layer_functional",
+                "board_interface_discovery": "case_board_interface_discovery",
+                "multilayer_pipeline": "case_multilayer_pipeline",
+                "axi_ddr_interface": "case_axi_ddr_interface",
+                "functional_sim": "functional_sim",
+            }
+        }
+
+        selected = compile_only_stage_gates(
+            adapter,
+            [
+                "case_board_interface_discovery",
+                "case_multilayer_pipeline",
+                "case_axi_ddr_interface",
+                "functional_sim",
+            ],
+        )
+
+        self.assertEqual(
+            selected,
+            [
+                "case_board_interface_discovery",
+                "case_multilayer_pipeline",
+                "case_axi_ddr_interface",
+                "functional_sim",
+            ],
+        )
+
+    def test_compile_only_board_maturity_requires_the_real_vcs_gate(self) -> None:
+        adapter = {
+            "evidence_gates": {
+                "multilayer_pipeline": "case_multilayer_pipeline",
+                "axi_ddr_interface": "case_axi_ddr_interface",
+                "functional_sim": "functional_sim",
+            }
+        }
+
+        required = compile_only_required_gates_by_level(adapter)
+
+        self.assertEqual(required["multilayer_pipeline_functional"], ["functional_sim"])
+        self.assertEqual(required["axi_ddr_functional"], ["functional_sim"])
+        with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}):
+            self.assertEqual(
+                gate_tool_roles(adapter, "functional_sim"),
+                ["vcs_functional_sim", "vcs_evidence_analyzer"],
+            )
+
+    def test_compile_only_analyzer_runs_as_diagnostic_not_acceptance_gate(self) -> None:
+        with TemporaryDirectory() as temp_dir, patch.dict(
+            "os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}
+        ):
+            run_dir = Path(temp_dir)
+            protocols = run_dir / "tool_protocols.json"
+            protocols.write_text(json.dumps({"tools": []}), encoding="utf-8")
+            adapter = {"evidence_gates": {"functional_sim": "functional_sim"}}
+            nodes = [{"name": "functional_sim", "phase": "functional_simulation"}]
+            contract = {"verification_gate_dag": {"nodes": nodes}}
+            selector = {"gates": nodes}
+            specs = {
+                role: {
+                    "name": f"case_{role}",
+                    "kind": role,
+                    "scope": "local",
+                    "argv": ["python3", "diagnostic.py"],
+                    "required": True,
+                }
+                for role in ("vcs_functional_sim", "vcs_evidence_analyzer")
+            }
+
+            def runner_spec(role, spec, *_args, **_kwargs):
+                return {
+                    "name": spec["name"],
+                    "base_name": spec["name"],
+                    "required": spec["required"],
+                    "command": "python3 diagnostic.py",
+                    "execution": {},
+                    "consumes": [],
+                    "produces": [],
+                }
+
+            with patch(
+                "accagent.framework.stage_verification.stage6_verification_contract",
+                return_value=contract,
+            ), patch(
+                "accagent.framework.stage_verification.stage6_selector_contract",
+                return_value=selector,
+            ), patch(
+                "accagent.framework.stage_verification.case_adapter_for_state",
+                return_value=adapter,
+            ), patch(
+                "accagent.framework.stage_verification.write_debug_closure_artifacts",
+                return_value={},
+            ), patch(
+                "accagent.framework.stage_verification.artifact_path",
+                return_value=protocols,
+            ), patch(
+                "accagent.framework.stage_verification.stage6_selected_gate_names",
+                return_value=["functional_sim"],
+            ), patch(
+                "accagent.framework.stage_verification.reusable_stage6_certificate_evidence",
+                return_value={"gates": [], "certificates": [], "rejected_certificates": []},
+            ), patch(
+                "accagent.framework.stage_verification.adapter_tool",
+                side_effect=lambda _adapter, role: specs.get(role),
+            ), patch(
+                "accagent.framework.stage_verification.adapter_tool_runner_spec",
+                side_effect=runner_spec,
+            ), patch(
+                "accagent.framework.stage_verification.stage6_selector_blockers",
+                return_value=[],
+            ):
+                plan = build_stage6_gate_execution_plan({}, run_dir)
+
+        tools = plan["steps"][0]["tools"]
+        self.assertEqual([tool["base_name"] for tool in tools], ["case_vcs_functional_sim", "case_vcs_evidence_analyzer"])
+        self.assertTrue(tools[0]["required"])
+        self.assertFalse(tools[1]["required"])
+        self.assertEqual(
+            plan["compile_only_required_tool_roles_by_level"]["multilayer_pipeline_functional"],
+            ["vcs_functional_sim"],
+        )
+
+    def test_compile_only_maturity_uses_one_real_gate_per_selected_layer(self) -> None:
+        with TemporaryDirectory() as temp_dir, patch.dict(
+            "os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}
+        ):
+            root = Path(temp_dir)
+            plan_path = root / "verification_plan.json"
+            plan_path.write_text(
+                json.dumps(
+                    {
+                        "hierarchical_verification": {
+                            "maturity_contract": {
+                                "levels": [
+                                    {
+                                        "id": "operator_leaf_functional",
+                                        "required_gates": ["semantic_leaf_gate"],
+                                        "required_tool_roles": ["semantic_leaf_tool"],
+                                    },
+                                    {
+                                        "id": "single_layer_functional",
+                                        "required_gates": ["semantic_layer_gate"],
+                                        "required_tool_roles": ["semantic_layer_tool"],
+                                    },
+                                    {
+                                        "id": "multilayer_pipeline_functional",
+                                        "required_gates": ["semantic_board_gate"],
+                                    },
+                                    {
+                                        "id": "axi_ddr_functional",
+                                        "required_gates": ["semantic_board_gate"],
+                                    },
+                                ]
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            state = {
+                "artifacts": [
+                    {"id": "artifact.stage6.verification_plan", "path": str(plan_path)}
+                ]
+            }
+            gate_plan = {
+                "selected_gates": ["case_single_layer_functional"],
+                "steps": [
+                    {
+                        "gate": "case_single_layer_functional",
+                        "phase": "single_layer_functional",
+                    }
+                ],
+                "compile_only_required_gates_by_level": {
+                    "operator_leaf_functional": ["case_leaf_functional"],
+                    "single_layer_functional": ["case_single_layer_functional"],
+                    "multilayer_pipeline_functional": ["functional_sim"],
+                    "axi_ddr_functional": ["functional_sim"],
+                },
+                "compile_only_required_tool_roles_by_level": {
+                    "operator_leaf_functional": ["leaf_functional_sim"],
+                    "single_layer_functional": ["single_layer_functional_sim"],
+                },
+            }
+            summary = {
+                "required_gates": [
+                    {"name": "case_leaf_functional", "status": "pass"},
+                    {"name": "case_single_layer_functional", "status": "pass"},
+                ]
+            }
+
+            maturity = build_hierarchical_maturity_report(state, summary, gate_plan)
+
+        self.assertEqual(maturity["status"], "pass")
+        self.assertFalse(maturity["backend_ready"])
+        levels = {row["id"]: row for row in maturity["levels"]}
+        self.assertEqual(
+            levels["single_layer_functional"]["required_gates"],
+            [{"name": "case_single_layer_functional", "status": "pass"}],
+        )
+        self.assertEqual(
+            levels["single_layer_functional"]["required_tool_roles"],
+            ["single_layer_functional_sim"],
+        )
+
+    def test_compile_only_single_layer_certificate_binds_only_vcs_compile_gate(self) -> None:
+        with TemporaryDirectory() as temp_dir, patch.dict(
+            "os.environ",
+            {
+                "SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only",
+                "SPATIALACC_STAGE6_GATE_SCOPE": "single_layer_closure",
+            },
+        ):
+            root = Path(temp_dir)
+            selector_path = root / "selector.json"
+            selector_path.write_text(
+                json.dumps(
+                    {
+                        "single_layer_promotion_certificate": {
+                            "required_artifact": "artifact.stage6.single_layer_promotion_certificate",
+                            "required_gates": [
+                                "case_tb_scaffold",
+                                "single_transformer_layer",
+                                "case_single_layer_functional",
+                                "case_single_layer_golden_compare",
+                                "case_single_layer_semantic_evidence",
+                            ],
+                            "blocks_until_present": ["functional_sim"],
+                            "evidence_contract": {},
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            state = {
+                "artifacts": [
+                    {
+                        "id": "artifact.stage5.stage6_gate_selector_contract",
+                        "path": str(selector_path),
+                    }
+                ]
+            }
+            tool_log = root / "case_single_layer_functional.json"
+            tool_log.write_text(json.dumps({"status": "pass"}), encoding="utf-8")
+            gate = "case_single_layer_functional"
+            gate_summary = {
+                "required_gates": [
+                    {"name": gate, "status": "pass", "log_path": str(tool_log)}
+                ]
+            }
+            maturity = {
+                "status": "pass",
+                "levels": [
+                    {
+                        "id": "operator_leaf_functional",
+                        "status": "pass",
+                        "required_gates": [{"name": "case_leaf_functional", "status": "pass"}],
+                    },
+                    {
+                        "id": "single_layer_functional",
+                        "status": "pass",
+                        "required_gates": [{"name": gate, "status": "pass"}],
+                    },
+                ],
+            }
+            gate_plan = {
+                "selected_gates": [gate],
+                "selector_contract": str(selector_path),
+                "compile_only_required_gates_by_level": {
+                    "operator_leaf_functional": ["case_leaf_functional"],
+                    "single_layer_functional": [gate],
+                    "multilayer_pipeline_functional": ["functional_sim"],
+                    "axi_ddr_functional": ["functional_sim"],
+                },
+            }
+
+            written, errors = write_stage6_promotion_certificates(
+                state,
+                root,
+                gate_summary,
+                maturity,
+                gate_plan,
+                [{"status": "pass", "log_path": str(tool_log)}],
+                True,
+            )
+            certificate_path = Path(written["artifact.stage6.single_layer_promotion_certificate"])
+            certificate = json.loads(certificate_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(errors, [])
+        self.assertEqual(certificate["validation_policy"], "vcs_compile_only")
+        self.assertEqual(certificate["required_gates"], [{"name": gate, "status": "pass"}])
+
     def test_stage6_accepts_stage5_contract_provenance_and_retry_semantics(self) -> None:
         with TemporaryDirectory() as temp_dir:
             contract_path = Path(temp_dir) / "verification_artifact_contract.json"
@@ -634,6 +933,10 @@ class ThirdLayerProducerOrderTest(TestCase):
             )
             self.assertEqual(materialization["status"], "ready")
             self.assertEqual(stage_worker_errors(planner_output, {}, materialization), [])
+
+            planner_output["status"] = "contract_update_required_before_stage7"
+            self.assertEqual(stage_worker_errors(planner_output, {}, materialization), [])
+            self.assertTrue(stage_worker_errors(planner_output, {}, None))
 
     def test_materialized_stage5_refinement_keeps_materialization_failure_blocking(self) -> None:
         actions = [

@@ -26,6 +26,7 @@ from accagent.framework.simulation_checkpoint import (
     semantic_checkpoint_cut_sha256,
 )
 from scripts.verification import case_board_vcs_functional as board_vcs
+from scripts.verification import case_vcs_evidence_analyzer as board_analyzer
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -172,6 +173,272 @@ def fixed_checkpoint_request(manifest: dict) -> dict:
 
 
 class BoardVcsFunctionalTest(unittest.TestCase):
+    def test_changed_compile_manifest_does_not_attach_a_stale_job(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            manifest_path = run_dir / "manifest.json"
+            write_json(manifest_path, {"top_module": "current_top"})
+            pending = {
+                "job": {"preflight_manifest_projection_sha256": "old_projection"},
+                "manifest_path": manifest_path,
+            }
+            with patch.object(board_vcs, "pending_exact_board_job", return_value=pending), patch.object(
+                board_vcs, "execute_pending_exact_board_job", side_effect=AssertionError("must not attach superseded inputs")
+            ), patch.object(board_vcs, "validate_manifest", return_value=(
+                {}, {"exact_board_preflight": {}, "evidence": {}, "weight_binding_evidence": {}},
+                ["stop before launching tools"],
+            )) as validate:
+                report = board_vcs.execute(run_dir, 0)
+            validate.assert_called_once_with(run_dir)
+            self.assertEqual(report["phase"], "manifest_validation")
+
+    def test_tool_environment_uses_configured_compiler_for_all_ip_commands(self) -> None:
+        prefix = board_vcs.vcs_tool_environment({
+            "executable": "/opt/vcs/new/bin/vcs",
+            "env": {"HOME": "/workspace/compatible libraries", "VCS_TARGET_ARCH": "linux64"},
+        })
+        self.assertIn("export VCS_HOME=/opt/vcs/new;", prefix)
+        self.assertIn("export PATH=/opt/vcs/new/bin:/usr/bin:/bin:$PATH;", prefix)
+        self.assertIn("export HOME='/workspace/compatible libraries';", prefix)
+        with self.assertRaises(ValueError):
+            board_vcs.vcs_tool_environment({"executable": "/opt/vcs/bin/vcs", "env": {"HOME;bad": "value"}})
+
+    def test_compile_only_elaboration_drops_debug_generation_options(self) -> None:
+        argv = [
+            "-full64",
+            "-debug_acc+pp+dmptf",
+            "-debug_access+all",
+            "-t",
+            "ps",
+            "-licqueue",
+        ]
+
+        self.assertEqual(
+            board_vcs.vcs_elaboration_args(argv),
+            ["-full64", "-t", "ps", "-licqueue"],
+        )
+
+    def test_integer_dsp_board_runtime_uses_compile_library_without_fp_ip_sources(self) -> None:
+        commands = [
+            {
+                "phase": "compile",
+                "work_library": "xil_defaultlib",
+                "source_ids": ["generated.kernel"],
+            }
+        ]
+
+        self.assertEqual(
+            board_vcs.fpga_ip_runtime_default_library("integer_dsp", [], commands),
+            "xil_defaultlib",
+        )
+        with self.assertRaisesRegex(ValueError, "exactly one explicit logical library"):
+            board_vcs.fpga_ip_runtime_default_library(
+                "integer_dsp",
+                [],
+                [
+                    *commands,
+                    {"phase": "compile", "work_library": "other_lib", "source_ids": []},
+                ],
+            )
+
+    def test_exact_board_compile_uses_staged_integer_runtime_environment(self) -> None:
+        compile_command = board_vcs.fpga_ip_runtime_compile_setup(
+            {
+                "status": "ready",
+                "provision_command": (
+                    "mkdir -p vcs_lib/xil_defaultlib vcs_lib/xpm "
+                    "vcs_lib/unisims_ver fpga_ip/isolated_home;"
+                ),
+                "runtime_environment_command": (
+                    'export HOME="$PWD/fpga_ip/isolated_home";'
+                ),
+                "compile_command": "bash fpga_ip/compile_ip_models.sh",
+            },
+            Path("execution/vcs.log"),
+        )
+        self.assertLess(
+            compile_command.index("mkdir -p vcs_lib/xil_defaultlib"),
+            compile_command.index('export HOME="$PWD/fpga_ip/isolated_home";'),
+        )
+        self.assertLess(
+            compile_command.index('export HOME="$PWD/fpga_ip/isolated_home";'),
+            compile_command.index("bash fpga_ip/compile_ip_models.sh"),
+        )
+        self.assertEqual(
+            board_vcs.fpga_ip_runtime_compile_setup(
+                {"status": "not_required"}, Path("execution/vcs.log")
+            ),
+            "",
+        )
+
+    def test_compile_only_tool_crash_requests_same_fingerprint_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            runner_path = run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
+            compile_log = run_dir / "verification" / "board_simulation" / "reports" / "vcs_compile.log"
+            compile_log.parent.mkdir(parents=True, exist_ok=True)
+            compile_log.write_text(
+                'Assertion failed "vg_safe_write: Broken pipe" at line 101\n'
+                "An unexpected termination has occurred in vcs1\n",
+                encoding="utf-8",
+            )
+            fingerprint = "8" * 64
+            remote_workdir = "/home/hyyuan/workspace/spatialaccagent_artifacts/board_vcs/tool-crash"
+            write_json(
+                runner_path,
+                {
+                    "status": "fail",
+                    "phase": "remote_vcs",
+                    "validation_policy": "vcs_compile_only",
+                    "input_fingerprint_sha256": fingerprint,
+                    "remote_workdir": remote_workdir,
+                    "compile_evidence": {
+                        "log_path": str(compile_log),
+                        "log_sha256": board_analyzer.sha256_file(compile_log),
+                    },
+                    "compile": {
+                        "status": "fail",
+                        "returncode": 1,
+                        "failure_class": "remote_tool_failure",
+                        "remote_workdir": remote_workdir,
+                    },
+                },
+            )
+
+            with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}):
+                report = board_analyzer.analyze_manifest_board(run_dir)
+
+            retry = json.loads(
+                (runner_path.parent / board_analyzer.REMOTE_JOB_RETRY_REQUEST).read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(report["failure_class"], "vcs_tool_process_failure")
+        self.assertEqual(report["repair_handoff"]["repair_scope"], "execution_environment_retry")
+        self.assertFalse(report["repair_handoff"]["agent_should_apply_code_changes"])
+        self.assertEqual(retry["input_fingerprint_sha256"], fingerprint)
+        self.assertEqual(retry["remote_workdir"], remote_workdir)
+        self.assertTrue(retry["policy"]["hardware_edits_forbidden"])
+
+    def test_compile_only_refreshes_stale_timescale(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            write_json(
+                run_dir / "verification" / "board_interface" / "board_source_identity.json",
+                {"timing_contract": {"timescale": "1ps", "timeprecision": "1ps"}},
+            )
+            plan = {
+                "schema_version": board_vcs.VCS_COMPILE_PLAN_SCHEMA_VERSION,
+                "status": "ready",
+                "ordered_commands": [
+                    {
+                        "order": 0,
+                        "phase": "compile",
+                        "executable": "vlogan",
+                        "argv": ["-work", "xil_defaultlib", {"source_id": "tb"}],
+                        "source_ids": ["tb"],
+                    },
+                    {
+                        "order": 1,
+                        "phase": "elaborate",
+                        "executable": "vcs",
+                        "argv": ["board_tb", "-o", "simv"],
+                        "source_ids": [],
+                    },
+                ],
+            }
+            manifest = {
+                "vcs_compile_plan": plan,
+                "vcs_compile_plan_sha256": board_vcs.canonical_contract_sha256(plan),
+            }
+            with patch.dict(
+                "os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}
+            ):
+                refreshed, changed = board_vcs.refresh_compile_only_timescale(
+                    run_dir, manifest
+                )
+
+        self.assertTrue(changed)
+        self.assertEqual(
+            refreshed["vcs_compile_plan"]["ordered_commands"][0]["argv"][2],
+            "-timescale=1ps/1ps",
+        )
+        self.assertEqual(
+            refreshed["vcs_compile_plan_sha256"],
+            board_vcs.canonical_contract_sha256(refreshed["vcs_compile_plan"]),
+        )
+
+    def test_compile_only_does_not_consume_runtime_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            with patch.object(board_vcs, "pending_exact_board_job", return_value=None), \
+                patch.object(board_vcs, "validate_manifest", return_value=(
+                    {}, {"weight_binding_evidence": {"validation_policy": "vcs_compile_only"}}, []
+                )), \
+                patch.object(board_vcs, "checkpoint_execution_plan") as checkpoint, \
+                patch.object(board_vcs, "tool_profile", return_value={}):
+                result = board_vcs._execute_board_vcs(run_dir, 0)
+            checkpoint.assert_not_called()
+            self.assertEqual(result["phase"], "tool_resolution")
+
+    def test_compile_only_defaults_missing_runtime_timescale(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            write_json(
+                run_dir / "verification" / "board_interface" / "board_source_identity.json",
+                {"timing_contract": {"clock_domains": []}},
+            )
+            manifest = {"vcs_compile_plan": {"ordered_commands": [
+                {"phase": "compile", "argv": ["-sverilog", {"source_id": "dut"}]},
+                {"phase": "elaborate", "argv": ["tb", "-o", "simv"]},
+            ]}}
+            refreshed, changed = board_vcs.refresh_compile_only_timescale(run_dir, manifest)
+            self.assertTrue(changed)
+            self.assertEqual(refreshed["vcs_compile_plan"]["ordered_commands"][0]["argv"],
+                             ["-sverilog", "-timescale=1ns/1ps", {"source_id": "dut"}])
+            self.assertEqual(refreshed["vcs_compile_plan"]["ordered_commands"][1]["argv"],
+                             ["tb", "-o", "simv"])
+            _, changed_again = board_vcs.refresh_compile_only_timescale(run_dir, refreshed)
+            self.assertFalse(changed_again)
+
+    def test_tool_profile_normalizes_functional_verification_role(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            write_json(
+                run_dir / "input" / "tool_profile.json",
+                {
+                    "tools": [
+                        {
+                            "name": "vcs",
+                            "role": "functional verification",
+                            "host": "vcs.example",
+                            "port": 22,
+                            "executable": "/opt/vcs/bin/vcs",
+                        }
+                    ]
+                },
+            )
+
+            profile = board_vcs.tool_profile(run_dir)
+
+        self.assertEqual(profile["role"], "functional_verification")
+        self.assertEqual(profile["host"], "vcs.example")
+        self.assertEqual(profile["executable"], "/opt/vcs/bin/vcs")
+
+    def test_compile_only_output_plan_requires_only_a_vcs_compile_log(self) -> None:
+        errors: list[str] = []
+        plan = board_vcs.execution_output_plan(
+            {"execution_outputs": {"protocol_monitor_reports": []}},
+            errors,
+        )
+
+        self.assertFalse(errors)
+        self.assertEqual(
+            plan,
+            {"compile_log": {"path": Path("reports/vcs_compile.log"), "schema_version": ""}},
+        )
+
     def test_cold_capture_stops_after_the_checkpoint_is_durable(self) -> None:
         plan = {
             "enabled": True,
@@ -4533,6 +4800,54 @@ endmodule
                     / "vcs_stage.tar.gz"
                 ).exists()
             )
+
+    def test_completed_compile_only_exact_job_promotes_without_simulation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir, _, manifest = self.make_run(Path(tmp))
+            manifest_path = run_dir / "verification" / "board_simulation" / "board_simulation_manifest.json"
+            job_path = run_dir / "verification" / "board_simulation" / "vcs_stage" / board_vcs.REMOTE_SEMANTIC_JOB_CONTRACT
+            write_json(job_path, {"input_fingerprint_sha256": "a" * 64})
+            compile_log = run_dir / "verification" / "board_simulation" / "reports" / "vcs_compile.log"
+            compile_log.parent.mkdir(parents=True, exist_ok=True)
+            compile_log.write_text("VCS compile complete\n", encoding="utf-8")
+            recovered = {
+                "recovery_state": "recovered",
+                "remote_dir": "/remote/board/exact_job",
+                "compile": {"status": "pass", "returncode": 0},
+                "simulate": {"status": "not_run"},
+                "identity": {"identity_source": "full_remote_job_contract"},
+            }
+
+            def successful_transfer(argv, timeout_sec=None):
+                if argv and argv[0] == "scp":
+                    Path(argv[-1]).write_text("VCS compile complete\n", encoding="utf-8")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+
+            with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}), \
+                patch.object(board_vcs, "recover_exact_remote_semantic_job", return_value=recovered), \
+                patch.object(board_vcs, "run_transfer_command", side_effect=successful_transfer):
+                result = board_vcs.execute_pending_exact_board_job(
+                    run_dir,
+                    0,
+                    {
+                        "job": {
+                            "input_fingerprint_sha256": "a" * 64,
+                            "remote_workdir": "/remote/board/exact_job",
+                            "remote_stage_root": "/remote/board",
+                            "payload": [{"path": "sources/board_tb.sv", "sha256": "b" * 64}],
+                            "preflight_manifest_projection_sha256": board_vcs.preflight_manifest_projection_sha256(manifest),
+                            "source_identity_sha256": manifest["source_identity_sha256"],
+                            "source_closure_sha256": manifest["source_closure_sha256"],
+                            "compile_source_set_sha256": manifest["compile_source_set_sha256"],
+                        },
+                        "job_path": job_path,
+                        "manifest_path": manifest_path,
+                    },
+                )
+
+        self.assertEqual(result["status"], "pass")
+        self.assertTrue(result["stage_pass_eligible"])
+        self.assertEqual(result["run"]["status"], "not_run")
 
     def test_proven_semantic_stall_reuses_live_progress_without_full_log_download(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

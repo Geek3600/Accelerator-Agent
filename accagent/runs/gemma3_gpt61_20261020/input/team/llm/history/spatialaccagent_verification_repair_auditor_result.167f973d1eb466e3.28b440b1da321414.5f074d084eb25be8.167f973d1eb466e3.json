@@ -1,0 +1,157 @@
+{
+  "agent": "spatialaccagent_verification_repair_auditor",
+  "duration_sec": 36.63807092397474,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "ed6218c84a38403bb9564fe7c8178407",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_verification_repair_auditor_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "spatialaccagent_verification_repair_auditor",
+    "approval_required_for": [
+      "Any proposed change to model scope, architecture, pipeline, trusted template, numeric precision or tolerance, or memory layout; seek the applicable human approval before such a change.",
+      "Any human-boundary decision whose required approval cannot be determined from the supplied boundary artifact; resolve through the authorized approval process rather than assuming permission."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check"
+        ],
+        "action_type": "cross_layer_sacg_readiness_audit",
+        "consumes": [
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.case_adapter",
+          "artifact.input.tool_protocols",
+          "artifact.input.human_agent_boundary",
+          "prepared_inputs.errors",
+          "input_preparation/model_intake_audit.json",
+          "input_preparation/numeric_template_audit.json",
+          "input_preparation/board_memory_runtime_audit.json",
+          "input_preparation/source_and_tool_evidence_audit.json"
+        ],
+        "id": "input_preparation.aggregate_cross_layer_evidence_and_gate_sacg_extraction",
+        "on_failure": "Keep SACG extraction blocked. Record each failed or not-run checker against its affected constraints and source artifact, preserve the exact prepared-input error, and hand off only evidence-supported repair items to the responsible specialist or coordinator. Do not infer missing details from this compact summary, bypass a checker, alter trusted templates or numeric policy, or add runtime/golden/simulation prerequisites.",
+        "produces": [
+          "input_preparation/cross_layer_input_readiness.json",
+          "input_preparation/constraint_to_evidence_gap_map.json",
+          "input_preparation/human_and_repair_boundary_audit.json"
+        ],
+        "rationale": "The supplied summary does not provide the detailed specialist findings, checker outcomes, or the single prepared-input error. Aggregate the actual source artifacts, run the registered readiness checks, and produce explicit constraint-to-evidence bindings and blockers without inventing readiness.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_validate"
+        ]
+      }
+    ],
+    "observations": [
+      "The state summary lists the relevant input artifact classes, but their substantive values are not included in the supplied candidate summary; artifact existence alone does not establish consistency.",
+      "The candidate summary reports prepared_inputs.errors with one entry, but omits the error details. Its classification and repair owner therefore remain unresolved.",
+      "The four specialist audit paths are named as required inputs to this role, but their findings and registered checker outcomes are not visible in the supplied summary. Treat this as a handoff/evidence requirement, not proof that the artifacts are absent or that a particular checker failed.",
+      "The current SACG state has zero nodes and edges, so no extracted constraint graph or cross-layer evidence bindings are shown yet.",
+      "The configured LLM policy is enforce=true with a configured model and endpoint. This does not establish that the required specialist reviews completed successfully or provide their checker-grounded results.",
+      "sacg_memory_truth reports zero active contamination barriers and zero open retry or backtrack requests; none are current blockers.",
+      "The registered verification policy defines current-source VCS compilation, elaboration, and linking as the verification acceptance standard. No current hardware verification evidence is supplied here, and no runtime, golden-output, simulation-execution, or weight-loading prerequisite should be added to this input-readiness gate."
+    ],
+    "proposed_actions": [
+      "Collect the complete specialist audit findings and exact prepared_inputs.errors entry, run the registered cross-layer and boundary checkers, and emit a constraint-to-evidence gap map that distinguishes verified facts, not-run checks, and unresolved blockers.",
+      "Keep SACG extraction blocked until the current-stage checks pass and the prepared-input error is explicitly classified and resolved or accepted through an authorized, evidence-backed disposition.",
+      "Route any identified failure to its bounded specialist repair owner; do not silently rewrite specialist findings or infer a root cause from the compact summary."
+    ],
+    "risks": [
+      "Model, shape, numeric policy, template binding, and architecture consistency cannot be confirmed without the detailed model-intake and numeric/template audit findings and their checker results.",
+      "Board memory/runtime/deployment facts and their consistency with transfer and implementation constraints cannot be confirmed from the compact summary.",
+      "Tool protocol and human-boundary contents are not exposed, so forbidden actions, approval boundaries, and whether proposed repairs stay within those boundaries are unverified.",
+      "Promoting readiness from the artifact inventory, LLM configuration, or a count of prepared-input errors would be an unsupported claim.",
+      "Do not modify numeric policy, tolerance, trusted templates, architecture, pipeline, or memory layout to resolve an as-yet-unclassified error. Such changes require the applicable approval and evidence."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.human_agent_boundary",
+        "prepared_inputs.errors",
+        "input_preparation/model_intake_audit.json",
+        "input_preparation/numeric_template_audit.json",
+        "input_preparation/board_memory_runtime_audit.json",
+        "input_preparation/source_and_tool_evidence_audit.json"
+      ],
+      "constraints": [
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.tool.protocols",
+        "constraint.human.boundary"
+      ],
+      "edges": [
+        "constraint.model.decoder -> constraint.shape.model",
+        "constraint.shape.model -> constraint.numeric.policy",
+        "constraint.numeric.policy -> constraint.template.library",
+        "constraint.template.library -> constraint.arch.design_space",
+        "constraint.arch.design_space -> constraint.memory.board",
+        "constraint.memory.board -> constraint.runtime.board",
+        "constraint.runtime.board -> constraint.deployment.board",
+        "constraint.tool.protocols -> constraint.human.boundary",
+        "constraint.human.boundary -> bounded repair and approval decisions"
+      ],
+      "nodes": [
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.tool.protocols",
+        "constraint.human.boundary"
+      ]
+    },
+    "schema_version": "spatialaccagent.verification_repair_auditor.v0",
+    "stage": "input_preparation",
+    "status": "blocked",
+    "summary": "SACG extraction readiness is not established. The supplied summary identifies the relevant input artifacts and the specialist audit paths, but does not expose their detailed findings or checker outcomes. It reports one prepared-input error without its contents. Preserve these as unresolved evidence and error-classification blockers; do not claim a cross-layer pass or infer a specific contradiction."
+  },
+  "prompt_bytes": 40122,
+  "prompt_hash": "5f074d084eb25be85954745cceed8895038400f870e72d69338752dab84f2a59",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.verification_repair_auditor.v0\",\n  \"agent\": \"spatialaccagent_verification_repair_auditor\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"blocked\",\n  \"summary\": \"SACG extraction readiness is not established. The supplied summary identifies the relevant input artifacts and the specialist audit paths, but does not expose their detailed findings or checker outcomes. It reports one prepared-input error without its contents. Preserve these as unresolved evidence and error-classification blockers; do not claim a cross-layer pass or infer a specific contradiction.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"constraint.task.goal\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.deployment.board\",\n      \"constraint.tool.protocols\",\n      \"constraint.human.boundary\"\n    ],\n    \"edges\": [\n      \"constraint.model.decoder -> constraint.shape.model\",\n      \"constraint.shape.model -> constraint.numeric.policy\",\n      \"constraint.numeric.policy -> constraint.template.library\",\n      \"constraint.template.library -> constraint.arch.design_space\",\n      \"constraint.arch.design_space -> constraint.memory.board\",\n      \"constraint.memory.board -> constraint.runtime.board\",\n      \"constraint.runtime.board -> constraint.deployment.board\",\n      \"constraint.tool.protocols -> constraint.human.boundary\",\n      \"constraint.human.boundary -> bounded repair and approval decisions\"\n    ],\n    \"constraints\": [\n      \"constraint.task.goal\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.deployment.board\",\n      \"constraint.tool.protocols\",\n      \"constraint.human.boundary\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.model_config\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"artifact.input.design_space\",\n      \"artifact.input.target_board_profile\",\n      \"artifact.input.tool_profile\",\n      \"artifact.input.tool_availability\",\n      \"artifact.input.tool_protocols\",\n      \"artifact.input.human_agent_boundary\",\n      \"prepared_inputs.errors\",\n      \"input_preparation/model_intake_audit.json\",\n      \"input_preparation/numeric_template_audit.json\",\n      \"input_preparation/board_memory_runtime_audit.json\",\n      \"input_preparation/source_and_tool_evidence_audit.json\"\n    ]\n  },\n  \"observations\": [\n    \"The state summary lists the relevant input artifact classes, but their substantive values are not included in the supplied candidate summary; artifact existence alone does not establish consistency.\",\n    \"The candidate summary reports prepared_inputs.errors with one entry, but omits the error details. Its classification and repair owner therefore remain unresolved.\",\n    \"The four specialist audit paths are named as required inputs to this role, but their findings and registered checker outcomes are not visible in the supplied summary. Treat this as a handoff/evidence requirement, not proof that the artifacts are absent or that a particular checker failed.\",\n    \"The current SACG state has zero nodes and edges, so no extracted constraint graph or cross-layer evidence bindings are shown yet.\",\n    \"The configured LLM policy is enforce=true with a configured model and endpoint. This does not establish that the required specialist reviews completed successfully or provide their checker-grounded results.\",\n    \"sacg_memory_truth reports zero active contamination barriers and zero open retry or backtrack requests; none are current blockers.\",\n    \"The registered verification policy defines current-source VCS compilation, elaboration, and linking as the verification acceptance standard. No current hardware verification evidence is supplied here, and no runtime, golden-output, simulation-execution, or weight-loading prerequisite should be added to this input-readiness gate.\"\n  ],\n  \"risks\": [\n    \"Model, shape, numeric policy, template binding, and architecture consistency cannot be confirmed without the detailed model-intake and numeric/template audit findings and their checker results.\",\n    \"Board memory/runtime/deployment facts and their consistency with transfer and implementation constraints cannot be confirmed from the compact summary.\",\n    \"Tool protocol and human-boundary contents are not exposed, so forbidden actions, approval boundaries, and whether proposed repairs stay within those boundaries are unverified.\",\n    \"Promoting readiness from the artifact inventory, LLM configuration, or a count of prepared-input errors would be an unsupported claim.\",\n    \"Do not modify numeric policy, tolerance, trusted templates, architecture, pipeline, or memory layout to resolve an as-yet-unclassified error. Such changes require the applicable approval and evidence.\"\n  ],\n  \"proposed_actions\": [\n    \"Collect the complete specialist audit findings and exact prepared_inputs.errors entry, run the registered cross-layer and boundary checkers, and emit a constraint-to-evidence gap map that distinguishes verified facts, not-run checks, and unresolved blockers.\",\n    \"Keep SACG extraction blocked until the current-stage checks pass and the prepared-input error is explicitly classified and resolved or accepted through an authorized, evidence-backed disposition.\",\n    \"Route any identified failure to its bounded specialist repair owner; do not silently rewrite specialist findings or infer a root cause from the compact summary.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"input_preparation.aggregate_cross_layer_evidence_and_gate_sacg_extraction\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"cross_layer_sacg_readiness_audit\",\n      \"rationale\": \"The supplied summary does not provide the detailed specialist findings, checker outcomes, or the single prepared-input error. Aggregate the actual source artifacts, run the registered readiness checks, and produce explicit constraint-to-evidence bindings and blockers without inventing readiness.\",\n      \"consumes\": [\n        \"artifact.input.task_card\",\n        \"artifact.input.model_config\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.design_space\",\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.tool_profile\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.case_adapter\",\n        \"artifact.input.tool_protocols\",\n        \"artifact.input.human_agent_boundary\",\n        \"prepared_inputs.errors\",\n        \"input_preparation/model_intake_audit.json\",\n        \"input_preparation/numeric_template_audit.json\",\n        \"input_preparation/board_memory_runtime_audit.json\",\n        \"input_preparation/source_and_tool_evidence_audit.json\"\n      ],\n      \"produces\": [\n        \"input_preparation/cross_layer_input_readiness.json\",\n        \"input_preparation/constraint_to_evidence_gap_map.json\",\n        \"input_preparation/human_and_repair_boundary_audit.json\"\n      ],\n      \"tool_roles\": [\n        \"team_aggregate\",\n        \"sacg_validate\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"template_binding_static_check\",\n        \"tool_protocol_check\",\n        \"human_boundary_check\",\n        \"repair_boundary_check\",\n        \"verification_plan_static_check\"\n      ],\n      \"on_failure\": \"Keep SACG extraction blocked. Record each failed or not-run checker against its affected constraints and source artifact, preserve the exact prepared-input error, and hand off only evidence-supported repair items to the responsible specialist or coordinator. Do not infer missing details from this compact summary, bypass a checker, alter trusted templates or numeric policy, or add runtime/golden/simulation prerequisites.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any proposed change to model scope, architecture, pipeline, trusted template, numeric precision or tolerance, or memory layout; seek the applicable human approval before such a change.\",\n    \"Any human-boundary decision whose required approval cannot be determined from the supplied boundary artifact; resolve through the authorized approval process rather than assuming permission.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_verification_repair_auditor_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_verification_repair_auditor_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.cross-layer input readiness auditor",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

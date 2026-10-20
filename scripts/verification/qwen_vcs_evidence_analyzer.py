@@ -230,6 +230,11 @@ ELABORATION_ERROR_RE = re.compile(
 EXECUTION_ENVIRONMENT_ERROR_RE = re.compile(
     r"(?i)(?:no space left on device|disk quota exceeded)"
 )
+VCS_TOOL_PROCESS_FAILURE_RE = re.compile(
+    r"(?i)(?:vg_safe_write:\s*broken pipe|"
+    r"assertion failed[^\n]*(?:broken pipe|vg_safe_write)|"
+    r"an unexpected termination has occurred[^\n]*\bvcs1\b)"
+)
 TRANSPORT_FAILURE_CLASSES = {
     "remote_transport_failure",
     "remote_semantic_recovery_indeterminate",
@@ -771,6 +776,8 @@ def classify_manifest_runner_failure(
         if nested_class == "remote_stage_cleanup_failure":
             return "vcs_execution_environment_failure", "execution_environment_retry"
         compile_diagnostic = real_error_context(compile_text)
+        if VCS_TOOL_PROCESS_FAILURE_RE.search(compile_diagnostic):
+            return "vcs_tool_process_failure", "execution_environment_retry"
         if EXECUTION_ENVIRONMENT_ERROR_RE.search(compile_diagnostic):
             return "vcs_execution_environment_failure", "execution_environment_retry"
         if LIBRARY_ERROR_RE.search(compile_diagnostic):
@@ -894,6 +901,9 @@ def failure_summary(failure_class: str, first_error: str | None) -> str:
         "simulation_checkpoint_capability_missing_or_invalid": "required simulation checkpoint capture or restore evidence is missing or invalid",
         "vcs_library_resolution_failure": "VCS could not resolve a required compiled simulation library",
         "vcs_execution_environment_failure": "the remote VCS execution environment exhausted required storage",
+        "vcs_tool_process_failure": (
+            "the remote VCS process terminated internally before producing a valid compile result"
+        ),
         "vcs_compile_failure": "VCS source compilation failed",
         "vcs_elaboration_failure": "VCS elaboration of the exact-board hierarchy failed",
         "vcs_runtime_failure": "the compiled exact-board simulator exited with failure",
@@ -1475,7 +1485,10 @@ def analyze_manifest_board(run_dir: Path) -> dict[str, Any]:
         or ""
     )
     if (
-        failure_class == "vcs_execution_environment_failure"
+        failure_class in {
+            "vcs_execution_environment_failure",
+            "vcs_tool_process_failure",
+        }
         and runner.get("input_fingerprint_sha256")
         and remote_workdir
     ):
@@ -1493,7 +1506,6 @@ def analyze_manifest_board(run_dir: Path) -> dict[str, Any]:
                 ),
                 "remote_workdir": remote_workdir,
                 "runner_report_path": str(runner_path),
-                "runner_report_sha256": sha256_file(runner_path),
                 "compile_log_path": str(compile_log_path),
                 "compile_log_sha256": (
                     sha256_file(compile_log_path)
@@ -1945,6 +1957,8 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "last_progress": latest(progress),
         "fatal": fatal,
         "pass_fields": pass_fields,
+        "measured_cycles": int(pass_fields.get("cycles", 0)) if isinstance(pass_fields, dict) and int(pass_fields.get("cycles", 0) or 0) > 0 else None,
+        "measurement_kind": "rtl_simulation" if isinstance(pass_fields, dict) and int(pass_fields.get("cycles", 0) or 0) > 0 else None,
     }
     debug_status = "pass" if sim_pass else ("trace_ready" if boundary_trace.get("status") == "ready" and boundary_trace.get("record_count", 0) else "needs_boundary_trace")
     return {
@@ -1954,6 +1968,12 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "run_dir": str(run_dir),
         "sources": sources,
         "sim_pass": sim_pass,
+        # RTL cycle counters remain in observed for debugging only. Performance
+        # reporting uses the DSE/source-cycle model as the single cycle source.
+        "latency_cycles": None,
+        "measurement_kind": "rtl_simulation_ignored_for_performance"
+        if observed["measured_cycles"] is not None
+        else observed["measurement_kind"],
         "root_cause_class": root_cause,
         "summary": summary,
         "debug_closure": {

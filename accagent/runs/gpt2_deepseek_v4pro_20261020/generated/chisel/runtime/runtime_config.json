@@ -1,0 +1,403 @@
+{
+  "board": {
+    "board_document_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/input_materials/board/mimic_computer_v6.0\u677f\u5361\u4f7f\u7528\u6587\u6863.docx",
+    "board_name": "mimic_computer_v6.0",
+    "fpga_part": "xcvu9p_CIV-flgb2104-2-i",
+    "resource_budget": {
+      "bram": 2160,
+      "bram18": 4320,
+      "bram36": 2160,
+      "dsp": 6840,
+      "ff": 2364480,
+      "lut": 1182240,
+      "uram": 960
+    },
+    "resource_budget_source": "real_vivado_target_part_probe"
+  },
+  "chisel_top": "GPT2PreLNBlock",
+  "design_id": "gpt2_deepseek_v4pro_20261020",
+  "memory_layout": {
+    "alignment_bytes": 64,
+    "axi_data_width_bits": 512,
+    "design_id": "gpt2_deepseek_v4pro_20261020",
+    "element_bits": {
+      "block_input_bits": 8,
+      "block_output_bits": 8,
+      "internal_elem_bits": 8
+    },
+    "layout_policy": "aligned_static_regions_with_double_buffered_layer_weights",
+    "num_layers": 12,
+    "regions": [
+      {
+        "alignment_bytes": 64,
+        "base_addr": 0,
+        "meta": {
+          "stage3_size_bytes": 12288,
+          "stage3_size_bytes_formula": "semantic block-input tensor elements * declared block-input bits / 8"
+        },
+        "name": "input_tokens",
+        "role": "activation_input",
+        "size_bytes": 12288
+      },
+      {
+        "alignment_bytes": 64,
+        "base_addr": 12288,
+        "meta": {
+          "stage3_size_bytes": 12288,
+          "stage3_size_bytes_formula": "semantic block-output tensor elements * declared block-output bits / 8"
+        },
+        "name": "output_tokens",
+        "role": "activation_output",
+        "size_bytes": 12288
+      },
+      {
+        "alignment_bytes": 64,
+        "base_addr": 24576,
+        "meta": {
+          "stage3_size_bytes": 49152,
+          "stage3_size_bytes_formula": "max(declared semantic stage input/output tensor bytes)"
+        },
+        "name": "activation_ping",
+        "role": "activation_buffer",
+        "size_bytes": 49152
+      },
+      {
+        "alignment_bytes": 64,
+        "base_addr": 73728,
+        "meta": {
+          "stage3_size_bytes": 49152,
+          "stage3_size_bytes_formula": "same as activation_ping"
+        },
+        "name": "activation_pong",
+        "role": "activation_buffer",
+        "size_bytes": 49152
+      },
+      {
+        "alignment_bytes": 64,
+        "base_addr": 122880,
+        "meta": {
+          "stage3_size_bytes": 3568128,
+          "stage3_size_bytes_formula": "sum(model-semantic weight_storage_terms)"
+        },
+        "name": "weight_buffer_a",
+        "role": "weight_buffer",
+        "size_bytes": 3568128
+      },
+      {
+        "alignment_bytes": 64,
+        "base_addr": 3691008,
+        "meta": {
+          "stage3_size_bytes": 3568128,
+          "stage3_size_bytes_formula": "same as weight_buffer_a"
+        },
+        "name": "weight_buffer_b",
+        "role": "weight_buffer",
+        "size_bytes": 3568128
+      },
+      {
+        "alignment_bytes": 64,
+        "base_addr": 7259136,
+        "meta": {
+          "status_words": 16
+        },
+        "name": "runtime_status",
+        "role": "runtime_status",
+        "size_bytes": 64
+      }
+    ],
+    "schema_version": "spatialaccagent.memory_layout.v0",
+    "tensor_shape": {
+      "head_dim": 64,
+      "hidden_size": 768,
+      "intermediate_size": 3072,
+      "num_kv_heads": 12,
+      "num_q_heads": 12,
+      "seq_len": 16
+    },
+    "total_bytes": 7259200,
+    "transfer_rules": [
+      "all addresses are byte offsets from the accelerator DDR window base",
+      "all transfer byte counts are aligned to axi_data_width_bits",
+      "weight_buffer_a and weight_buffer_b alternate by layer to allow prefetch of layer N+1 while layer N computes"
+    ],
+    "weight_storage_terms": [
+      {
+        "bytes": 384,
+        "dtype_role": "weight",
+        "element_bits": 4,
+        "elements": 768,
+        "factors": [
+          "hidden_size"
+        ],
+        "id": "ln_1_weight",
+        "physical_role": "weight",
+        "stage": "layer_norm_1"
+      },
+      {
+        "bytes": 384,
+        "dtype_role": "weight",
+        "element_bits": 4,
+        "elements": 768,
+        "factors": [
+          "hidden_size"
+        ],
+        "id": "ln_1_bias",
+        "physical_role": "weight",
+        "stage": "layer_norm_1"
+      },
+      {
+        "bytes": 884736,
+        "dtype_role": "weight",
+        "element_bits": 4,
+        "elements": 1769472,
+        "factors": [
+          "hidden_size",
+          3,
+          "num_q_heads",
+          "head_dim"
+        ],
+        "id": "attn_c_attn_weight",
+        "physical_role": "weight_qkv",
+        "stage": "self_attention"
+      },
+      {
+        "bytes": 9216,
+        "dtype_role": "weight",
+        "element_bits": 32,
+        "elements": 2304,
+        "factors": [
+          3,
+          "num_q_heads",
+          "head_dim"
+        ],
+        "id": "attn_c_attn_bias",
+        "physical_role": "weight_qkv_bias",
+        "stage": "self_attention"
+      },
+      {
+        "bytes": 294912,
+        "dtype_role": "weight",
+        "element_bits": 4,
+        "elements": 589824,
+        "factors": [
+          "hidden_size",
+          "hidden_size"
+        ],
+        "id": "attn_c_proj_weight",
+        "physical_role": "weight_attn_out",
+        "stage": "self_attention"
+      },
+      {
+        "bytes": 3072,
+        "dtype_role": "weight",
+        "element_bits": 32,
+        "elements": 768,
+        "factors": [
+          "hidden_size"
+        ],
+        "id": "attn_c_proj_bias",
+        "physical_role": "weight_attn_out_bias",
+        "stage": "self_attention"
+      },
+      {
+        "bytes": 384,
+        "dtype_role": "weight",
+        "element_bits": 4,
+        "elements": 768,
+        "factors": [
+          "hidden_size"
+        ],
+        "id": "ln_2_weight",
+        "physical_role": "weight",
+        "stage": "layer_norm_2"
+      },
+      {
+        "bytes": 384,
+        "dtype_role": "weight",
+        "element_bits": 4,
+        "elements": 768,
+        "factors": [
+          "hidden_size"
+        ],
+        "id": "ln_2_bias",
+        "physical_role": "weight",
+        "stage": "layer_norm_2"
+      },
+      {
+        "bytes": 1179648,
+        "dtype_role": "weight",
+        "element_bits": 4,
+        "elements": 2359296,
+        "factors": [
+          "hidden_size",
+          "intermediate_size"
+        ],
+        "id": "mlp_c_fc_weight",
+        "physical_role": "weight_mlp_up",
+        "stage": "mlp_fc"
+      },
+      {
+        "bytes": 12288,
+        "dtype_role": "weight",
+        "element_bits": 32,
+        "elements": 3072,
+        "factors": [
+          "intermediate_size"
+        ],
+        "id": "mlp_c_fc_bias",
+        "physical_role": "weight_mlp_up_bias",
+        "stage": "mlp_fc"
+      },
+      {
+        "bytes": 1179648,
+        "dtype_role": "weight",
+        "element_bits": 4,
+        "elements": 2359296,
+        "factors": [
+          "intermediate_size",
+          "hidden_size"
+        ],
+        "id": "mlp_c_proj_weight",
+        "physical_role": "weight_mlp_down",
+        "stage": "mlp_proj"
+      },
+      {
+        "bytes": 3072,
+        "dtype_role": "weight",
+        "element_bits": 32,
+        "elements": 768,
+        "factors": [
+          "hidden_size"
+        ],
+        "id": "mlp_c_proj_bias",
+        "physical_role": "weight_mlp_down_bias",
+        "stage": "mlp_proj"
+      }
+    ]
+  },
+  "params": {
+    "acc_bits": 32,
+    "activation_banks": 4,
+    "activation_memory": "xpm_bram",
+    "board_axi_data_width_bits": 512,
+    "burst_beats": 1,
+    "cache_refill_data_width_bits": 512,
+    "cache_tile_count": 2,
+    "cache_tile_words": 256,
+    "clock_target_mhz": 0,
+    "compute_backend": "integer_dsp",
+    "cross_token_reuse_tokens": 8,
+    "elem_bits": 8,
+    "fifo_depth": 128,
+    "fifo_memory": "xpm_bram",
+    "head_dim": 64,
+    "hidden_size": 768,
+    "input_bits": 8,
+    "integer_mode": true,
+    "intermediate_size": 3072,
+    "lanes": 16,
+    "large_cache_memory": "xpm_uram",
+    "max_seq_len": 16,
+    "num_kv_heads": 12,
+    "num_q_heads": 12,
+    "output_bits": 8,
+    "pipeline_depth": 1,
+    "rounding_mode": "nearest_even",
+    "saturation_enabled": true,
+    "scale_bits": 32,
+    "scale_shift": 31,
+    "weight_banks": 1,
+    "weight_banks_by_role": {
+      "weight": 1,
+      "weight_attn_out": 1,
+      "weight_attn_out_bias": 1,
+      "weight_mlp_down": 1,
+      "weight_mlp_down_bias": 1,
+      "weight_mlp_up": 1,
+      "weight_mlp_up_bias": 1,
+      "weight_qkv": 1,
+      "weight_qkv_bias": 1
+    },
+    "weight_bits": 4,
+    "weight_memory": "xpm_uram"
+  },
+  "pass_criteria": {
+    "bit_exact_float_model": false,
+    "required": [
+      "no_deadlock",
+      "done_asserted",
+      "valid_output_bytes"
+    ]
+  },
+  "performance_counter": {
+    "counter_source": "synthesizable_dut_counter",
+    "counter_width_bits": 64,
+    "counting_rule": "exclude the accepted start edge and include the completion edge",
+    "cycles_signal": "performanceCycles",
+    "end_event": "final_output_transfer",
+    "qor_metric_inputs": [
+      "clock_frequency_mhz",
+      "performance_tokens_per_second"
+    ],
+    "start_event": "accepted_run_start",
+    "valid_signal": "performanceValid"
+  },
+  "physical_implementation": {
+    "acc_bits": 32,
+    "activation_banks": 4,
+    "activation_memory": "xpm_bram",
+    "burst_beats": 1,
+    "cache_refill_data_width_bits": 512,
+    "cache_tile_count": 2,
+    "cache_tile_words": 256,
+    "compute_backend": "integer_dsp",
+    "cross_token_reuse_tokens": 8,
+    "elem_bits": 8,
+    "fifo_depth": 128,
+    "fifo_memory": "xpm_bram",
+    "integer_mode": true,
+    "large_cache_memory": "xpm_uram",
+    "pipeline_depth": 1,
+    "rounding_mode": "nearest_even",
+    "saturation_enabled": true,
+    "scale_bits": 32,
+    "scale_shift": 31,
+    "weight_banks": 1,
+    "weight_banks_by_role": {
+      "weight": 1,
+      "weight_attn_out": 1,
+      "weight_attn_out_bias": 1,
+      "weight_mlp_down": 1,
+      "weight_mlp_down_bias": 1,
+      "weight_mlp_up": 1,
+      "weight_mlp_up_bias": 1,
+      "weight_qkv": 1,
+      "weight_qkv_bias": 1
+    },
+    "weight_bits": 4,
+    "weight_memory": "xpm_uram"
+  },
+  "run_sequence": [
+    "load input_tokens",
+    "load layer 0 weights into weight_buffer_a",
+    "start accelerator",
+    "prefetch next layer weights into inactive weight buffer while active layer computes",
+    "poll runtime_status or done",
+    "read output_tokens"
+  ],
+  "runtime_interface": {
+    "board_run_command": "scripts/board/run_pyjm12_smoke.sh",
+    "c2h_device_template": "/dev/xdma${XDMA_ID}_c2h_0",
+    "control_protocol": "xdma_raw_register_and_ddr",
+    "ctrl_base": "0x3000000000",
+    "ddr_base": "0x2800000000",
+    "ddr_image_default": "/home/test/pyjm12_alllayers_9p_fullseq/pyjm12_alllayers_9p_fullseq/artifacts/ddr_image.u32.bin",
+    "h2c_device_template": "/dev/xdma${XDMA_ID}_h2c_0",
+    "mimic_dir": "/home/test/mimic_driver_c6",
+    "output_abs": "0x28092f1000",
+    "remote_host": "hyyuan@10.12.133.23",
+    "xdma_id_default": 1
+  },
+  "schema_version": "spatialaccagent.runtime_config.v0",
+  "top_module": "GeneratedAxiDdrTop"
+}

@@ -60,7 +60,7 @@ set common_single [list \
   CONFIG.Axi_Optimize_Goal {Resources} \
   CONFIG.Flow_Control {Blocking} \
   CONFIG.Maximum_Latency {false} \
-  CONFIG.Has_RESULT_TREADY {false}]
+  CONFIG.Has_RESULT_TREADY {true}]
 
 proc create_i2f_ip {name in_width latency ip_dir} {
   create_fp_ip $name [list \
@@ -74,7 +74,7 @@ proc create_i2f_ip {name in_width latency ip_dir} {
     CONFIG.Flow_Control {Blocking} \
     CONFIG.Maximum_Latency {false} \
     CONFIG.C_Latency $latency \
-    CONFIG.Has_RESULT_TREADY {false}] $ip_dir
+    CONFIG.Has_RESULT_TREADY {true}] $ip_dir
 }
 
 proc create_f2i_ip {name out_width latency ip_dir} {
@@ -89,7 +89,7 @@ proc create_f2i_ip {name out_width latency ip_dir} {
     CONFIG.Flow_Control {Blocking} \
     CONFIG.Maximum_Latency {false} \
     CONFIG.C_Latency $latency \
-    CONFIG.Has_RESULT_TREADY {false}] $ip_dir
+    CONFIG.Has_RESULT_TREADY {true}] $ip_dir
 }
 
 foreach name $requested_modules {
@@ -107,6 +107,9 @@ foreach name $requested_modules {
       mul { set config [list CONFIG.Operation_Type {Multiply} CONFIG.C_Mult_Usage {Full_Usage}] }
       div { set config [list CONFIG.Operation_Type {Divide}] }
       sqrt { set config [list CONFIG.Operation_Type {Square_root}] }
+    }
+    if {$operation in {add sub mul}} {
+      lappend config CONFIG.C_Rate {1}
     }
     create_fp_ip $name [concat $common_single $config [list CONFIG.C_Latency $latency]] $ip_dir
   } elseif {[regexp {^fp_cmp_(lt|eq|gt)_sp_([0-9]+)$} $name -> comparison latency]} {

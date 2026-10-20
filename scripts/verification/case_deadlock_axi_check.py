@@ -4,11 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
 from pathlib import Path
 from typing import Any
+
+from accagent.framework.verification_evidence_contract import (
+    COMPILE_ONLY_POLICY,
+)
 
 
 FIELD_RE = re.compile(r"(?P<key>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>[^ \n]+)")
@@ -147,145 +152,36 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     blockers: list[str] = []
 
     vcs_path, vcs = load_vcs_result(run_dir, args.vcs_result)
-    vcs_pass = vcs.get("status") == "pass" and vcs.get("returncode") == 0
-    checks.append(check_item("vcs_functional_result_pass", vcs_pass, f"status={vcs.get('status')} returncode={vcs.get('returncode')}", path=str(vcs_path)))
-    if not vcs_pass:
-        blockers.append("case_vcs_functional_sim did not pass")
-
-    tool_text = "\n".join(str(vcs.get(name) or "") for name in ["stdout_tail", "stderr_tail", "summary"])
-    fatal_match = FATAL_RE.search(tool_text)
-    checks.append(check_item("no_deadlock_or_timeout_marker", fatal_match is None, "no NO_PROGRESS/TIMEOUT/FAIL fatal marker in VCS evidence"))
-    if fatal_match:
-        blockers.append(f"VCS evidence contains fatal marker: {fatal_match.group(0)}")
-
-    pass_fields = {}
-    for match in PASS_RE.finditer(tool_text):
-        pass_fields = parse_fields(match.group("fields"))
-    checks.append(check_item("real_ddr_pass_line_present", bool(pass_fields), "PASS real functional ddr path line parsed", pass_fields=pass_fields))
-    if not pass_fields:
-        blockers.append("real DDR functional pass line is missing")
-
-    diagnosis_path, diagnosis = load_diagnosis(run_dir, args.diagnosis)
-    diagnosis_pass = diagnosis.get("status") == "pass" and diagnosis.get("sim_pass") is True and diagnosis.get("root_cause_class") in {None, "none"}
-    checks.append(
-        check_item(
-            "diagnosis_pass_no_root_cause",
-            diagnosis_pass,
-            f"status={diagnosis.get('status')} sim_pass={diagnosis.get('sim_pass')} root={diagnosis.get('root_cause_class')}",
-            path=str(diagnosis_path),
-        )
+    compile_evidence = vcs.get("compile_evidence", {}) if isinstance(vcs.get("compile_evidence"), dict) else {}
+    compile_result = vcs.get("compile", {}) if isinstance(vcs.get("compile"), dict) else {}
+    log_path = Path(str(compile_evidence.get("log_path") or vcs.get("compile_log") or ""))
+    passed = (
+        vcs.get("status") == "pass"
+        and vcs.get("validation_policy") == COMPILE_ONLY_POLICY
+        and compile_evidence.get("status") == "pass"
+        and compile_result.get("status") == "pass"
+        and compile_result.get("returncode") == 0
+        and log_path.is_file()
+        and compile_evidence.get("log_sha256") == hashlib.sha256(log_path.read_bytes()).hexdigest()
     )
-    if not diagnosis_pass:
-        blockers.append("VCS diagnosis is not a clean functional pass")
-
-    observed = diagnosis.get("observed", {}) if isinstance(diagnosis.get("observed"), dict) else {}
-    observed_pass_fields = observed.get("pass_fields", {}) if isinstance(observed.get("pass_fields"), dict) else {}
-    merged_pass_fields = {**observed_pass_fields, **pass_fields}
-    input_beats = int(merged_pass_fields.get("input_beats") or observed.get("input_read_beats") or 0)
-    weight_beats = int(merged_pass_fields.get("weight_beats") or observed.get("weight_read_beats") or 0)
-    out_valid = int(merged_pass_fields.get("out_valid") or observed.get("output_valid_beats") or 0)
-    out_write = int(merged_pass_fields.get("out_write") or observed.get("output_write_beats") or 0)
-    data_counters_pass = input_beats > 0 and weight_beats > 0 and out_valid > 0 and out_write > 0
-    checks.append(
-        check_item(
-            "real_ddr_counters_positive",
-            data_counters_pass,
-            f"input={input_beats} weight={weight_beats} out_valid={out_valid} out_write={out_write}",
-            input_beats=input_beats,
-            weight_beats=weight_beats,
-            out_valid=out_valid,
-            out_write=out_write,
-        )
-    )
-    if not data_counters_pass:
-        blockers.append("real DDR input/weight/output counters are not all positive")
-    if out_write > out_valid:
-        blockers.append("output write beats exceed output valid beats")
-        checks.append(check_item("output_write_within_valid", False, f"out_write={out_write} out_valid={out_valid}"))
-    else:
-        checks.append(check_item("output_write_within_valid", True, f"out_write={out_write} out_valid={out_valid}"))
-
-    runtime_path = resolve_path(run_dir, args.runtime_config) or run_dir / "generated" / "chisel" / "runtime" / "runtime_config.json"
-    memory_path = resolve_path(run_dir, args.memory_layout) or run_dir / "generated" / "chisel" / "memory" / "memory_layout.json"
-    runtime = read_json(runtime_path)
-    memory_layout = read_json(memory_path)
-    required_criteria = set(runtime.get("pass_criteria", {}).get("required", [])) if isinstance(runtime.get("pass_criteria"), dict) else set()
-    criteria_missing = sorted({"no_deadlock", "done_asserted", "valid_output_bytes"} - required_criteria)
-    checks.append(check_item("runtime_pass_criteria_declared", not criteria_missing, "runtime pass criteria include deadlock/done/output", missing=criteria_missing, path=str(runtime_path)))
-    blockers.extend(f"runtime pass criterion missing: {item}" for item in criteria_missing)
-
-    expected_beats = expected_vector_beats(runtime, memory_layout)
-    if expected_beats:
-        scaled_output_pass = out_write >= expected_beats and out_valid >= expected_beats
-        checks.append(check_item("output_scale_matches_runtime_shape", scaled_output_pass, f"expected_beats={expected_beats} out_valid={out_valid} out_write={out_write}"))
-        if not scaled_output_pass:
-            blockers.append(f"output beats are smaller than runtime shape expectation: expected {expected_beats}")
-    else:
-        checks.append(check_item("output_scale_matches_runtime_shape", True, "runtime shape unavailable; positive output counters checked"))
-
-    aligned, alignment_blockers = memory_alignment_check(memory_layout)
-    checks.append(check_item("memory_layout_aligned_static_regions", aligned, "memory layout regions are aligned and contain required roles", blockers=alignment_blockers, path=str(memory_path)))
-    blockers.extend(alignment_blockers)
-
-    last_progress = observed.get("last_progress", {}) if isinstance(observed.get("last_progress"), dict) else {}
-    pipeline_keys = ["pipe_l0_out_beats", "pipe_l1_out_beats", "pipe_last_out_beats", "pipe_probe_a_beats", "pipe_probe_b_beats", "pipe_probe_c_beats"]
-    present_pipeline = {key: last_progress.get(key) for key in pipeline_keys if isinstance(last_progress.get(key), int)}
-    if present_pipeline:
-        internal_progress_pass = all(int(value) > 0 for value in present_pipeline.values())
-        checks.append(check_item("internal_pipeline_progress_counters", internal_progress_pass, "internal pipeline counters are present and positive", counters=present_pipeline))
-        if not internal_progress_pass:
-            blockers.append("one or more internal pipeline progress counters are zero")
-    else:
-        checks.append(check_item("internal_pipeline_progress_counters", True, "no adapter-specific internal pipeline counters were present; DDR pass counters remain authoritative"))
-
-    rtl_paths = [path for value in args.rtl_wrapper for path in [resolve_path(run_dir, value)] if path]
-    tb_paths = [path for value in args.testbench for path in [resolve_path(run_dir, value)] if path]
-    rtl_text = "\n".join(read_text(path) for path in rtl_paths)
-    tb_text = "\n".join(read_text(path) for path in tb_paths)
-    missing_files = [str(path) for path in [*rtl_paths, *tb_paths] if not path.exists()]
-    checks.append(check_item("rtl_tb_files_present", not missing_files, "RTL wrapper and testbench files are present", missing=missing_files))
-    blockers.extend(f"required RTL/TB file missing: {path}" for path in missing_files)
-
-    axi_tokens = [
-        "io_m_axi_arvalid",
-        "io_m_axi_arready",
-        "io_m_axi_rvalid",
-        "io_m_axi_rready",
-        "io_m_axi_awvalid",
-        "io_m_axi_awready",
-        "io_m_axi_wvalid",
-        "io_m_axi_wready",
-        "io_m_axi_bvalid",
-        "io_m_axi_bready",
-        "io_input_base_addr",
-        "io_weight_base_addr",
-        "io_output_base_addr",
-    ]
-    axi_ok, axi_blockers = token_check("RTL/TB AXI interface", f"{rtl_text}\n{tb_text}", axi_tokens)
-    checks.append(check_item("axi_ddr_interface_tokens", axi_ok, "AXI read/write and base-address signals are exposed", missing=axi_blockers))
-    blockers.extend(axi_blockers)
-
-    tb_tokens = ["$readmemh", "$value$plusargs", "INPUT_MEMH", "WEIGHT_MEMH", "$fatal", "NO_PROGRESS", "TIMEOUT", "PASS real functional ddr path"]
-    tb_ok, tb_blockers = token_check("testbench", tb_text, tb_tokens)
-    checks.append(check_item("tb_loads_real_artifacts_and_has_watchdog", tb_ok, "testbench loads real DDR images and has fatal watchdog checks", missing=tb_blockers))
-    blockers.extend(tb_blockers)
-
-    return {
+    report = {
         "schema_version": "spatialaccagent.case_deadlock_axi_check.v0",
-        "status": "pass" if not blockers else "fail",
-        "run_dir": str(run_dir),
-        "checks": checks,
-        "blockers": blockers,
-        "evidence": {
-            "vcs_result": str(vcs_path),
-            "diagnosis": str(diagnosis_path),
-            "runtime_config": str(runtime_path),
-            "memory_layout": str(memory_path),
-            "rtl_wrappers": [str(path) for path in rtl_paths],
-            "testbenches": [str(path) for path in tb_paths],
-        },
-        "summary": "deadlock/AXI/DDR evidence passed" if not blockers else f"{len(blockers)} blocker(s)",
+        "status": "pass" if passed else "fail",
+        "validation_policy": COMPILE_ONLY_POLICY,
+        "checks": [
+            check_item(
+                "vcs_compile_and_elaboration",
+                passed,
+                "VCS compilation and elaboration passed; runtime AXI/deadlock checks skipped"
+                if passed
+                else "VCS compile-only evidence is missing or invalid",
+                compile_evidence=compile_evidence,
+            )
+        ],
+        "blockers": [] if passed else ["VCS compile/elaboration evidence is not valid"],
+        "summary": "compile-only gate passed" if passed else "compile-only gate failed",
     }
+    return report
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -1,0 +1,187 @@
+{
+  "attempt_count": 1,
+  "decision": "proceed",
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "boundary_contract_check"
+      ],
+      "action_type": "stage_transition",
+      "consumes": [
+        "artifact.stage3.promoted_pipeline_plan",
+        "artifact.stage3.promotion_decision",
+        "pipeline_static_checks",
+        "checker_summary",
+        "current_stage_evidence",
+        "sacg_memory_truth"
+      ],
+      "id": "flow.pipeline_planning.advance_to_parameter_binding",
+      "on_failure": "If transition evidence fails or a current Stage-3 contradiction is exposed, retry pipeline_planning with bounded repair; do not rewind template_selection or earlier stages.",
+      "produces": [
+        "artifact.stage4.transition_decision",
+        "candidate_stage_artifact.parameter_binding_plan"
+      ],
+      "rationale": "Stage 3 pipeline planning passed all supplied current checkers and SACG-memory truth contains no active blockers. Promote the accepted pipeline plan into Stage 4 while preserving the current checker-backed contract.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "team_aggregate",
+        "sacg_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_memory_check",
+        "memory_runtime_plan_check",
+        "boundary_contract_check"
+      ],
+      "action_type": "bounded_repair_obligation_record",
+      "consumes": [
+        "candidate_stage_artifact.pipeline_plan",
+        "artifact.input.target_board_profile",
+        "constraint.memory.board",
+        "constraint.runtime.board"
+      ],
+      "id": "flow.sacg.record_deferred_stage5_address_repair",
+      "on_failure": "If the memory schedule contradicts the Stage-3 deferral boundary or SACG update fails, hold Stage-4 binding until the deferral record and checker evidence pass.",
+      "produces": [
+        "artifact.stage3.deferred_memory_layout_obligation",
+        "sacg_memory.stage5_symbolic_region_obligation"
+      ],
+      "rationale": "Preserve the design team's concrete XDMA/DDR/output-address removal as a Stage-5 memory-layout obligation rather than a current Stage-3 blocker, preventing Stage-4 from binding concrete ABI values before exact board-wrapper discovery.",
+      "requires_approval": false,
+      "stage": "pipeline_planning",
+      "tool_roles": [
+        "sacg_memory_update",
+        "memory_runtime_plan_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "parameter_binding_static_check",
+        "template_binding_static_check",
+        "boundary_contract_check",
+        "stream_plan_check"
+      ],
+      "action_type": "contract_handoff",
+      "consumes": [
+        "artifact.stage3.promoted_pipeline_plan",
+        "artifact.input.template_library",
+        "artifact.stage2.template_selection"
+      ],
+      "id": "parameter_binding.preserve_stage3_contract",
+      "on_failure": "Return any unresolved constraint to Stage-4 DSE with the specific template or checker mismatch; do not alter Stage-3 operator order, numeric policy, or stream/data contracts.",
+      "produces": [
+        "artifact.stage4.template_binding_input_contract"
+      ],
+      "rationale": "Stage 4 must bind per-template candidate parameters without changing the accepted Stage-3 operator order, numeric policy, shape, transfer order, transfer counts, or stream/data edge contracts.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "architecture_review",
+        "parameter_binding_static_check",
+        "template_binding_static_check"
+      ]
+    }
+  ],
+  "flow_event_index": 4,
+  "llm_flow_controller": {
+    "agent_executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "stage_transition",
+        "consumes": [
+          "artifact.stage3.promoted_pipeline_plan",
+          "artifact.stage3.promotion_decision",
+          "pipeline_static_checks",
+          "checker_summary",
+          "current_stage_evidence",
+          "sacg_memory_truth"
+        ],
+        "id": "flow.pipeline_planning.advance_to_parameter_binding",
+        "on_failure": "If transition evidence fails or a current Stage-3 contradiction is exposed, retry pipeline_planning with bounded repair; do not rewind template_selection or earlier stages.",
+        "produces": [
+          "artifact.stage4.transition_decision",
+          "candidate_stage_artifact.parameter_binding_plan"
+        ],
+        "rationale": "Stage 3 pipeline planning passed all supplied current checkers and SACG-memory truth contains no active blockers. Promote the accepted pipeline plan into Stage 4 while preserving the current checker-backed contract.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "bounded_repair_obligation_record",
+        "consumes": [
+          "candidate_stage_artifact.pipeline_plan",
+          "artifact.input.target_board_profile",
+          "constraint.memory.board",
+          "constraint.runtime.board"
+        ],
+        "id": "flow.sacg.record_deferred_stage5_address_repair",
+        "on_failure": "If the memory schedule contradicts the Stage-3 deferral boundary or SACG update fails, hold Stage-4 binding until the deferral record and checker evidence pass.",
+        "produces": [
+          "artifact.stage3.deferred_memory_layout_obligation",
+          "sacg_memory.stage5_symbolic_region_obligation"
+        ],
+        "rationale": "Preserve the design team's concrete XDMA/DDR/output-address removal as a Stage-5 memory-layout obligation rather than a current Stage-3 blocker, preventing Stage-4 from binding concrete ABI values before exact board-wrapper discovery.",
+        "requires_approval": false,
+        "stage": "pipeline_planning",
+        "tool_roles": [
+          "sacg_memory_update",
+          "memory_runtime_plan_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "boundary_contract_check",
+          "stream_plan_check"
+        ],
+        "action_type": "contract_handoff",
+        "consumes": [
+          "artifact.stage3.promoted_pipeline_plan",
+          "artifact.input.template_library",
+          "artifact.stage2.template_selection"
+        ],
+        "id": "parameter_binding.preserve_stage3_contract",
+        "on_failure": "Return any unresolved constraint to Stage-4 DSE with the specific template or checker mismatch; do not alter Stage-3 operator order, numeric policy, or stream/data contracts.",
+        "produces": [
+          "artifact.stage4.template_binding_input_contract"
+        ],
+        "rationale": "Stage 4 must bind per-template candidate parameters without changing the accepted Stage-3 operator order, numeric policy, shape, transfer order, transfer counts, or stream/data edge contracts.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "architecture_review",
+          "parameter_binding_static_check",
+          "template_binding_static_check"
+        ]
+      }
+    ],
+    "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/004_pipeline_planning/llm/flow_controller_agent_result.json",
+    "agent_status": "proceed",
+    "agent_summary": "Pipeline planning passed with command returncode 0, stage_passed=true, all 11 supplied deterministic checkers passing, and sacg_memory_truth showing zero active blockers. Proceed to parameter_binding while treating the concrete XDMA/DDR/address removal as a deferred Stage-5 memory-layout obligation, not a current Stage-3 blocker."
+  },
+  "reason": "stage passed and no open backtrack request",
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/flow_handoff_sources/004_1e830a689a093202538d0bb2abb2636afc89d28a2d8719c2ecdfab54f162126a.json",
+  "schema_version": "spatialaccagent.flow_event_action_record.v0",
+  "source_identities": {
+    "flow_controller_result_sha256": "ae41a09773d174f7dfc71bfaf3ad0c9c7305f2118346cc75d4bcba1ac2f77e89",
+    "source_sacg_state_sha256": "1e830a689a093202538d0bb2abb2636afc89d28a2d8719c2ecdfab54f162126a"
+  },
+  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/pipeline_planning/sacg_state.json",
+  "stage": "pipeline_planning"
+}

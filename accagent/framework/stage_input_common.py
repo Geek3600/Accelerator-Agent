@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,25 @@ DEFAULT_TOOL_MATERIALS_DIR = FRAMEWORK_ROOT / "input_materials" / "tools"
 
 class InputPreparationError(ValueError):
     pass
+
+
+def canonical_tool_role(value: Any) -> str:
+    """Normalize separator-only variations in tool role identifiers."""
+
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").lower()).strip("_")
+
+
+def normalized_functional_verification_role(value: Any) -> str:
+    """Map detailed functional-verification capabilities to their tool role."""
+
+    role = canonical_tool_role(value)
+    if role == "functional_verification":
+        return role
+    if role.startswith("functional_verification_") and not any(
+        token in role for token in ("alternative", "unconfigured", "fallback")
+    ):
+        return "functional_verification"
+    return ""
 
 
 def read_json(path: Path) -> dict[str, Any]:

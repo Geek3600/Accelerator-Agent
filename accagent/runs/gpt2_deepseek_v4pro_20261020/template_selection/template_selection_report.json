@@ -1,0 +1,588 @@
+{
+  "checker_results": [
+    {
+      "checker": "operator_coverage_check",
+      "errors": [],
+      "evidence": {
+        "missing_ops": [],
+        "required_ops": 8
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "template_parameter_binding_check",
+      "errors": [],
+      "evidence": {
+        "binding_count": 11
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "template_source_and_interface_check",
+      "errors": [],
+      "evidence": {
+        "checked_templates": 11
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "mandatory_fpga_ip_binding_check",
+      "errors": [],
+      "evidence": {
+        "checked_source_hashes": {
+          "Activation.scala": "c77e42c70db8b3fb74c9563970edc90cd3a79a144d959eaa8a253008ae5f24ce",
+          "Attention.scala": "c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e",
+          "Common.scala": "f358026cf47764dcc732f6c8550b17ab759d089bc9ad6cccbca814143e899b73",
+          "DecoderBlock.scala": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+          "Elementwise.scala": "53f25bee2ff7dc030db606d1842a45ddd856b475c388ee82d6260779d4ec8870",
+          "FFN.scala": "1896b7ea12ac548124a1a25266baa7d9ea087af21ee60d57633f6843db91a58c",
+          "KVCache.scala": "727e172cfdfe380e30b9976ef77c443086ef088427eef31a84aa3a9e0da20069",
+          "Linear.scala": "cf74d94c7857b2bbb55b0447bffad0c261824fdbd534e118675f90b8b0430fe8",
+          "Mask.scala": "bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a",
+          "Norm.scala": "f3319af0d66c9e8c19e7cc789b9fc5799b62e0ad49811ef7da43ceb6dc2eeddf",
+          "PhysicalResources.scala": "8479cbbaf57cbd85912037dc807694623b1b9a754825a47d084b1b5be59dcdd4",
+          "QKVProjection.scala": "3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1",
+          "Residual.scala": "8bef8dac50264c2278438a18e5be48328ed1fd1bfb3f9bbee3c522f11258aca3",
+          "RoPE.scala": "ad42db5781d4f0906d4f28864570fc72f3763f94926144dc5a27275f129209f8",
+          "Softmax.scala": "4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2",
+          "WeightTileCache.scala": "ba0f85a03ce3ff2fd56fc28f07ed40ce6ce1327508222fe67b64d32108156873"
+        },
+        "checked_sources": [
+          "Activation.scala",
+          "Attention.scala",
+          "Common.scala",
+          "DecoderBlock.scala",
+          "Elementwise.scala",
+          "FFN.scala",
+          "KVCache.scala",
+          "Linear.scala",
+          "Mask.scala",
+          "Norm.scala",
+          "PhysicalResources.scala",
+          "QKVProjection.scala",
+          "Residual.scala",
+          "RoPE.scala",
+          "Softmax.scala",
+          "WeightTileCache.scala"
+        ],
+        "errors": [],
+        "physical_resource_source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/templates/operator_chisel/PhysicalResources.scala",
+        "required_bindings": {
+          "activations": "XPM BRAM",
+          "arithmetic": "signed integer DSP MAC/reduction inference",
+          "fifo": "XPM BRAM",
+          "large_cache": "XPM URAM",
+          "weights": "XPM URAM"
+        },
+        "schema_version": "spatialaccagent.fpga_ip_contract.v1",
+        "simulation": {
+          "behavioral_fallback_allowed": false,
+          "compute_models": "signed integer DSP arithmetic inferred from current Chisel sources; no floating-point IP",
+          "memory_models": "Xilinx XPM simulation library",
+          "required_libraries": [
+            "unisims_ver",
+            "xpm"
+          ],
+          "required_sources": [
+            "glbl.v",
+            "XPM simulation sources"
+          ],
+          "same_interface_and_cycle_latency_as_implementation": true,
+          "same_module_names_as_implementation": true
+        },
+        "status": "pass",
+        "violations": []
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "attention_semantic_expansion_check",
+      "errors": [],
+      "evidence": {
+        "components": [
+          {
+            "component": "qkv_projection",
+            "evidence_pattern": "Module(new QKVProjection",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "DecoderBlock.scala",
+            "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+            "status": "covered"
+          },
+          {
+            "activation_policy": "template support alone is not activation; no rotary path may be bound when the model positional encoding is not rope",
+            "component": "rope",
+            "evidence_pattern": "Module(new RoPE",
+            "evidence_type": "hash_bound_template_source",
+            "model_position_encoding_type": "learned_absolute",
+            "required": false,
+            "source": "DecoderBlock.scala",
+            "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+            "status": "not_applicable"
+          },
+          {
+            "component": "gqa_head_mapping",
+            "evidence_pattern": "kvGroupSize",
+            "evidence_type": "hash_bound_template_source",
+            "gqa_group_size": 1,
+            "params": {
+              "num_kv_heads": 12,
+              "num_q_heads": 12
+            },
+            "required": false,
+            "source": "QKVProjection.scala",
+            "source_sha256": "3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1",
+            "status": "covered"
+          },
+          {
+            "component": "softmax",
+            "evidence_pattern": "template_id=softmax",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "Softmax.scala",
+            "source_sha256": "4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2",
+            "status": "covered"
+          },
+          {
+            "component": "output_projection",
+            "evidence_pattern": "val outputProjection = Module(new Linear(p.outLinear))",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "Attention.scala",
+            "source_sha256": "c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e",
+            "status": "covered"
+          },
+          {
+            "component": "kv_cache",
+            "evidence_pattern": "Module(new KVCache",
+            "evidence_type": "hash_bound_template_source",
+            "required": false,
+            "source": "DecoderBlock.scala",
+            "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+            "status": "not_required"
+          },
+          {
+            "component": "causal_mask",
+            "evidence_pattern": "template_id=mask",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "Mask.scala",
+            "source_sha256": "bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a",
+            "status": "covered"
+          }
+        ],
+        "required": true
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "cross_layer_trace_check",
+      "errors": [],
+      "evidence": {
+        "constraints": [
+          {
+            "constraint": "constraint.numeric.policy",
+            "fact_keys": [
+              "_llm_provenance",
+              "_numeric_comparison_resolution",
+              "default_rules",
+              "notes",
+              "policy_id",
+              "schema_version",
+              "tolerance"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.memory.board",
+            "fact_keys": [
+              "memory_system"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.runtime.board",
+            "fact_keys": [
+              "board_run_command",
+              "c2h_device_template",
+              "control_protocol",
+              "ctrl_base",
+              "ddr_base",
+              "ddr_image_default",
+              "h2c_device_template",
+              "mimic_dir",
+              "output_abs",
+              "remote_host",
+              "xdma_id_default"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.deployment.board",
+            "fact_keys": [
+              "board",
+              "board_pass_criteria",
+              "shell"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.cross_layer.input_consistency",
+            "fact_keys": [
+              "acceptance_boundary",
+              "board",
+              "conflict_rules",
+              "evidence_by_field",
+              "evidence_fields",
+              "field_resolution",
+              "materials",
+              "model",
+              "numeric_policy",
+              "tools"
+            ],
+            "present": true
+          }
+        ],
+        "status": "pass"
+      },
+      "status": "pass",
+      "warnings": []
+    }
+  ],
+  "design_team": {
+    "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/team/team_aggregate.json",
+    "approval_required_for": [],
+    "completed_subtasks": 4,
+    "decomposer_error": null,
+    "decomposer_used_fallback": false,
+    "decomposition_source": "llm",
+    "errors": [],
+    "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/team/event_log.jsonl",
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_compare",
+          "sacg_static_check"
+        ],
+        "action_type": "evidence_and_repair_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.cross_layer.input_consistency",
+          "candidate attention_semantics",
+          "candidate parameter_bindings",
+          "candidate checker_results"
+        ],
+        "id": "template_selection.attention_semantic_engineer.promote_to_cross_layer",
+        "on_failure": "Block promotion to the cross-layer gate and record the concrete current-stage attention semantic, parameter-binding, numeric-policy, or SACG contradiction; do not silently modify the candidate artifact.",
+        "produces": [
+          "artifact.template_selection.attention_semantic_review"
+        ],
+        "rationale": "All supplied deterministic checker results pass and the candidate attention semantics show no concrete current-stage contradiction. Promote the attention semantic review to the cross-layer gate while preserving the RoPE and KV-cache policies already recorded in the candidate artifact.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_compare",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "template_coverage_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "evidence_and_repair_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "candidate selected_templates",
+          "candidate operator_sequence",
+          "candidate coverage",
+          "candidate missing_ops",
+          "candidate checker_results"
+        ],
+        "id": "template_selection.operator_coverage_review.publish",
+        "on_failure": "If any checker reports errors or hidden unmatched/missing coverage, block template_selection and route the specific operator/constraint to bounded template/coverage repair with current SACG evidence; do not close with free-form RTL or implicit Chisel defaults.",
+        "produces": [
+          "artifact.template_selection.operator_coverage_review"
+        ],
+        "rationale": "Re-run current-source coverage, binding-static, and SACG-static checkers over the candidate selection and publish a deterministic checker-backed coverage review; this prevents promoting a completed coverage matrix without current checker evidence.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "template_coverage_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "numeric_compare",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "candidate_stage_artifact.template_selection"
+        ],
+        "id": "template_selection.binding_engineer.record_stage2_binding_review",
+        "on_failure": "Do not promote the stage; record the concrete contradiction in sacg_memory and schedule a bounded rerun of the failed checker.",
+        "produces": [
+          "artifact.template_selection.template_binding_review"
+        ],
+        "rationale": "Persist a checker-grounded Stage-2 binding review and rerun the specialized parameter/source/numeric/SACG static checkers against the current candidate evidence before handing off to peer specialists.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "numeric_compare",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check"
+        ],
+        "action_type": "team_handoff",
+        "consumes": [
+          "artifact.template_selection.template_binding_review"
+        ],
+        "id": "template_selection.binding_engineer.handoff_ready_to_peers",
+        "on_failure": "Keep downstream template_selection peers blocked and open a bounded retry/backtrack request if SACG aggregation or memory update rejects the ready status.",
+        "produces": [
+          "sacg_memory.stage_outcome.template_binding_review_ready"
+        ],
+        "rationale": "Hand off the current ready Stage-2 binding review and checker evidence to attention_semantic_engineer and cross_layer_gate_engineer, preserving SACG memory for downstream traceability.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check",
+          "numeric_compare"
+        ],
+        "action_type": "stage_gate_decision_handoff",
+        "consumes": [
+          "artifact.template_selection.operator_coverage_review",
+          "artifact.template_selection.template_binding_review",
+          "artifact.template_selection.attention_semantic_review",
+          "artifact.template_selection.cross_layer_trace",
+          "artifact.template_selection.checker_results",
+          "artifact.template_selection.stage_gate_policy",
+          "candidate_stage_artifact"
+        ],
+        "id": "template_selection.gate_decision.ready_handoff",
+        "on_failure": "If team_aggregate rejects the gate decision, return the rejection as a current-stage evidence gap and rerun the relevant specialist/checker; do not promote past template_selection.",
+        "produces": [
+          "artifact.template_selection.stage_gate_decision"
+        ],
+        "rationale": "All deterministic current-stage checker_results pass, the cross_layer_trace contains the required numeric, board memory, board runtime, board deployment, and input-consistency facts, and no active SACG-memory blockers remain. The gate decision is ready for team_aggregate consumption.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "team_aggregate"
+        ]
+      }
+    ],
+    "execution_groups": [
+      0,
+      1
+    ],
+    "llm_io_metrics": {
+      "executable_action_count": 5,
+      "max_duration_sec": 91.67410031502368,
+      "max_prompt_bytes": 70767,
+      "result_count": 4,
+      "subtasks_without_executable_actions": [],
+      "total_duration_sec": 305.99405312904855,
+      "total_prompt_bytes": 282604
+    },
+    "split_required": true,
+    "status": "ready",
+    "subtask_count": 4,
+    "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/team/subtask_plan.json",
+    "used_fallback_count": 0
+  },
+  "errors": [],
+  "llm_agent": {
+    "agent": "template_selection_agent",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_compare"
+        ],
+        "action_type": "stage_gate_decision_handoff",
+        "consumes": [
+          "candidate_stage_artifact.template_selection",
+          "artifact.template_selection.operator_coverage_review",
+          "artifact.template_selection.template_binding_review",
+          "artifact.template_selection.attention_semantic_review",
+          "artifact.template_selection.cross_layer_trace",
+          "artifact.template_selection.checker_results",
+          "artifact.template_selection.stage_gate_policy"
+        ],
+        "id": "template_selection.gate_decision.ready_handoff",
+        "on_failure": "If team_aggregate or sacg_memory_update rejects the ready decision, treat the rejection as an unresolved Stage-2 evidence gap and rerun the specific failing specialist/checker; do not promote past template_selection.",
+        "produces": [
+          "artifact.template_selection.stage_gate_decision",
+          "sacg_memory.stage_outcome.template_selection_ready"
+        ],
+        "rationale": "All deterministic current-source Stage-2 checkers pass and no concrete current-stage contradiction remains; publish the ready gate decision and preserve the candidate_bound design-space domains for Stage 4 DSE.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check"
+        ],
+        "action_type": "data_handoff",
+        "consumes": [
+          "candidate_stage_artifact.template_selection",
+          "artifact.input.design_space"
+        ],
+        "id": "template_selection.candidate_bound.handoff_stage4_dse",
+        "on_failure": "If memory update fails or records candidate_bound domains as unbound Stage-2 parameters, block the handoff and rerun sacg_static_check; do not supply concrete DSE values outside Stage 4 authority.",
+        "produces": [
+          "sacg_memory.stage_outcome.candidate_bound_design_space"
+        ],
+        "rationale": "Persist the validated candidate_bound values and their legal domains in shared SACG memory so later DSE uses them as Stage-4 concrete selection authority rather than as unbound Stage-2 parameters.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "All supplied deterministic checker_results pass: operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, mandatory_fpga_ip_binding_check, attention_semantic_expansion_check, and cross_layer_trace_check report no errors.",
+      "The selected template closure covers all 8 required operators with no missing_ops and no required_adapters.",
+      "All selected template source/interface checks report exists=true, status=pass, no missing required constructor parameters, and no numeric constructor parameters left unbound by metadata.",
+      "Attention semantics are satisfied for the current GPT-2 model: QKV projection, GQA/MQA mapping with group size 1, softmax, output projection, and causal mask are covered; RoPE is not applicable for learned_absolute position encoding; KV-cache is not required.",
+      "The mandatory FPGA-IP contract passes with no HardFloat/SyncReadMem violations and required Xilinx XPM BRAM/URAM and signed integer DSP MAC/reduction inference bindings present.",
+      "The cross-layer trace contains numeric policy, board memory, board runtime, board deployment, and cross-layer input-consistency constraints.",
+      "lanes, compute_array_rows, and compute_array_cols are candidate_bound with complete legal candidate domains; this is a Stage 4 DSE obligation, not an unbound Stage 2 parameter.",
+      "current source_sha256 and checked_source_hashes are treated as immutable source identity for this review.",
+      "sacg_memory_truth reports zero active contamination barriers, zero open backtrack requests, and zero open retry requests.",
+      "The team decomposition reports status ready with no errors and no current-stage contradiction."
+    ],
+    "proposed_actions": [
+      "Stage 4 DSE must select concrete values for lanes from [8, 16], compute_array_rows from [4, 8, 16], and compute_array_cols from [4, 8, 16, 32] using the already validated candidate_bound domains; do not resolve them at Stage 2.",
+      "Future verification_artifacts planning must execute current-source VCS compilation, elaboration, and linking bottom-up through leaf operator, connected single-transformer-layer kernel, and exact board wrapper using the existing compile-only tool modes; simulation execution, weight loading, and numerical golden comparison are not acceptance prerequisites.",
+      "Code generation must later emit the accelerator from the immutable selected template hashes and bound parameters; this is a downstream obligation, not a Stage 2 audit.",
+      "Vivado synthesis, implementation, timing closure, and bitstream generation are downstream backend obligations.",
+      "Runtime driver, exact board wrapper/AXI/DDR integration, DDR image roundtrip, and board bring-up are downstream board/runtime obligations and must not be added to Stage 2 acceptance.",
+      "Later-stage numeric accuracy comparison and board diagnostics remain downstream; no architecture, pipeline, memory layout, numeric policy, or major template change is currently proposed."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.template_selection",
+        "artifact.input.model_config",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.template_selection.operator_coverage_review",
+        "artifact.template_selection.template_binding_review",
+        "artifact.template_selection.attention_semantic_review",
+        "artifact.template_selection.cross_layer_trace",
+        "artifact.template_selection.checker_results",
+        "artifact.template_selection.stage_gate_policy"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "gpt2_block -> layer_norm_1 -> self_attention -> residual_add_1 -> layer_norm_2 -> mlp_fc -> activation -> mlp_proj -> residual_add_2",
+        "self_attention -> softmax",
+        "self_attention -> causal_mask",
+        "constraint.arch.design_space -> candidate_bound_design_space -> Stage 4 DSE concrete selection"
+      ],
+      "nodes": [
+        "gpt2_block",
+        "layer_norm_1",
+        "self_attention",
+        "residual_add_1",
+        "layer_norm_2",
+        "mlp_fc",
+        "activation",
+        "mlp_proj",
+        "residual_add_2",
+        "softmax",
+        "causal_mask",
+        "candidate_bound_design_space"
+      ]
+    },
+    "schema_version": "spatialaccagent.template_selection_review.v0",
+    "stage": "template_selection",
+    "status": "ready",
+    "summary": "Stage 2 template selection is ready. All deterministic checker_results pass against the current immutable template source hashes, selected operator coverage is complete, required attention semantics are covered with RoPE not applicable and KV-cache not required, and the required numeric/board/cross-layer constraints are present in the trace. The remaining candidate_bound physical DSE values are validated legal domains deliberately deferred to Stage 4, not unresolved Stage 2 parameters. No active SACG-memory blockers exist."
+  },
+  "missing_ops": [],
+  "outputs": {
+    "llm_agent": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/llm/template_selection_agent_result.json",
+    "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/sacg_state.json",
+    "team_aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/team/team_aggregate.json",
+    "team_subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/team/subtask_plan.json",
+    "template_selection": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/template_selection.json"
+  },
+  "required_adapters": [],
+  "sacg_transition_id": "transition.0001",
+  "schema_version": "spatialaccagent.template_selection_report.v0",
+  "selected_template_ids": [
+    "activation",
+    "attention",
+    "decoder_block",
+    "ffn",
+    "mask",
+    "norm",
+    "residual",
+    "softmax"
+  ],
+  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/initial_design_graph.json",
+  "stage": "template_selection",
+  "status": "ready",
+  "unsupported_bindings": []
+}

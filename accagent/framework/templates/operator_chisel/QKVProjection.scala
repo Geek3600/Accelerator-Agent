@@ -17,14 +17,27 @@ final case class QKVProjectionParams(
   weightRole: String = "weight_qkv",
   biasRole: String = "weight_qkv_bias",
   computeArrayRows: Int = 0,
-  computeArrayCols: Int = 0
+  computeArrayCols: Int = 0,
+  cacheTileWords: Int = PhysicalImplementation.resolveCacheTileWords(256),
+  cacheTileCount: Int = PhysicalImplementation.resolveCacheTileCount(2),
+  refillDataWidthBits: Int = PhysicalImplementation.resolveRefillDataWidthBits(512),
+  crossTokenReuseTokens: Int = PhysicalImplementation.resolveCrossTokenReuseTokens(16),
+  weightBits: Int = 0,
+  integerMode: Boolean = false,
+  accBits: Int = 32
 ) {
   require(hiddenSize > 0, "hiddenSize must be positive")
   require(qHeads > 0 && kvHeads > 0, "attention head counts must be positive")
   require(qHeads % kvHeads == 0, "qHeads must be divisible by kvHeads")
   require(headDim > 0, "headDim must be positive")
   require(hiddenSize == qHeads * headDim, "Qwen2 attention input size must equal qHeads * headDim")
-  require(elemBits == 16, "the immutable attention boundary uses IEEE FP16 Q/K/V elements")
+  if (integerMode) {
+    require(elemBits == 8, "integer QKV projection activations must be signed INT8")
+    require((if (weightBits == 0) 4 else weightBits) == 4, "integer QKV projection matrix weights must be signed INT4")
+    require(accBits == 32, "integer QKV projection accumulation must be signed INT32")
+  } else {
+    require(elemBits == 16, "the legacy attention boundary uses IEEE FP16 Q/K/V elements")
+  }
   require(qkvElemsPerBeat > 0, "qkvElemsPerBeat must be positive")
   require(headDim % qkvElemsPerBeat == 0, "headDim must be divisible by qkvElemsPerBeat")
 
@@ -38,7 +51,9 @@ final case class QKVProjectionParams(
     inLanes = lanes,
     outLanes = lanes,
     elemBits = elemBits,
-    accBits = 32,
+    weightBits = if (integerMode) (if (weightBits == 0) 4 else weightBits) else elemBits,
+    integerMode = integerMode,
+    accBits = accBits,
     outputBits = elemBits,
     batchSize = batchSize,
     maxSeqLen = maxSeqLen,
@@ -46,7 +61,11 @@ final case class QKVProjectionParams(
     weightRole = weightRole,
     biasRole = biasRole,
     computeArrayRows = computeArrayRows,
-    computeArrayCols = computeArrayCols
+    computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords,
+    cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits,
+    crossTokenReuseTokens = crossTokenReuseTokens
   )
   val headBeats: Int = headDim / qkvElemsPerBeat
   val qkvBeatBits: Int = 3 * qkvElemsPerBeat * elemBits
@@ -70,9 +89,22 @@ class QKVProjection(p: QKVProjectionParams) extends Module {
     val cfgValid = Input(Bool())
     val weight = Flipped(Decoupled(new WeightWrite(p.linear.weightTileBits, p.linear.weightAddrBits)))
     val bias = Flipped(Decoupled(new WeightWrite(p.linear.biasBeatBits, log2Ceil(p.linear.outBeats max 2))))
+    val tile = new WeightTileServiceIO(p.linear.refillDataWidthBits)
     val qScale = Input(UInt(32.W))
+    val qScaleShift = Input(SInt(8.W))
     val kScale = Input(UInt(32.W))
+    val kScaleShift = Input(SInt(8.W))
     val vScale = Input(UInt(32.W))
+    val vScaleShift = Input(SInt(8.W))
+    // Matrix channel scales and their independent binary exponents are
+    // checkpoint-derived operands. They remain separate from activation and
+    // output calibration scales throughout the fused integer projection.
+    val channelScale = Input(Vec(p.linear.outDim, UInt(32.W)))
+    val channelScaleShift = Input(Vec(p.linear.outDim, SInt(8.W)))
+    val activationScale = Input(UInt(32.W))
+    val activationScaleShift = Input(SInt(8.W))
+    val outputScale = Input(UInt(32.W))
+    val outputScaleShift = Input(SInt(8.W))
     val in = Flipped(Decoupled(new StreamBeat(StreamSpec(p.linear.inputBeatBits, p.linear.inputAddrBits))))
     val out = Decoupled(new QKVStreamBeat(p))
   })
@@ -83,8 +115,18 @@ class QKVProjection(p: QKVProjectionParams) extends Module {
   projection.io.cfgValid := io.cfgValid
   projection.io.weight <> io.weight
   projection.io.bias <> io.bias
-  projection.io.scale.outScale := io.qScale
-  projection.io.scale.biasScale := PhysicalMath.fp32One
+  projection.io.tile <> io.tile
+  // In the integer hierarchy the fused projection must first produce raw INT8
+  // codes. Apply the independent Q/K/V Q31 requantizers after splitting the
+  // fused stream, rather than scaling every output channel with qScale.
+  projection.io.scale.outScale := (if (p.integerMode) io.outputScale else io.qScale)
+  projection.io.scale.biasScale := (if (p.integerMode) "h80000000".U(32.W) else PhysicalMath.fp32One)
+  projection.io.scale.channelScale := io.channelScale
+  projection.io.scale.channelShift := io.channelScaleShift
+  projection.io.scale.activationScale := io.activationScale
+  projection.io.scale.activationShift := io.activationScaleShift
+  projection.io.scale.outputShift := io.outputScaleShift
+  projection.io.scale.biasShift := 0.S
   projection.io.in <> io.in
 
   // These ports are retained as part of the established template ABI. Linear
@@ -156,11 +198,14 @@ class QKVProjection(p: QKVProjectionParams) extends Module {
   val readValue = readBeatValues(AccMath.boundedIndex(selectedLane, p.lanes))
   when(state === sReadCapture) {
     when(readField === 0.U) {
-      qValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := readValue
+      val qValue = if (p.integerMode) AccMath.requantizeQ31WithShift(readValue.asSInt, io.qScale, io.qScaleShift, 8) else readValue
+      qValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := qValue
     }.elsewhen(readField === 1.U) {
-      kValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := readValue
+      val kValue = if (p.integerMode) AccMath.requantizeQ31WithShift(readValue.asSInt, io.kScale, io.kScaleShift, 8) else readValue
+      kValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := kValue
     }.otherwise {
-      vValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := readValue
+      val vValue = if (p.integerMode) AccMath.requantizeQ31WithShift(readValue.asSInt, io.vScale, io.vScaleShift, 8) else readValue
+      vValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := vValue
     }
 
     when(readLane === (p.qkvElemsPerBeat - 1).U) {

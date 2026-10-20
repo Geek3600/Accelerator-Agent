@@ -24,6 +24,160 @@ class _FailingRunner:
 
 
 class GenericStageAgentTests(unittest.TestCase):
+    def test_completed_timing_scope_stops_without_deployment_or_extra_flow_llm(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cfg = RunCfg(out=root / "run", model_source=root / "model.json", model_dir=root / "model")
+            state = cfg.out / "backend_board/sacg_state.json"
+            write_json(state, {})
+            write_json(cfg.out / "backend_board/optimization_request.json", {"scope": "existing_design_timing"})
+            command = CommandResult(name="stage", command=["stage"], cwd=str(root), returncode=0,
+                stdout="", stderr="", duration_sec=0, log_path=str(root / "stage.log"))
+            result = StageResult(name="backend_board", passed=True, command_result=command,
+                output_path="backend.json", summary={"status": "ready", "final_design_pass": True,
+                    "outputs": {"sacg_state": str(state)}})
+            agent = TopAgent(cfg)
+            with patch("accagent.framework.agent.GenericStageAgent") as stage, patch.object(
+                agent, "choose_next_stage", side_effect=AssertionError("timing scope already complete")
+            ), patch.object(agent, "reusable_stage_result", return_value=None):
+                stage.return_value.run.return_value = result
+                self.assertTrue(agent.run(start_stage="backend_board", source_state=state))
+            self.assertEqual(agent.flow_events[-1]["decision"], "complete_existing_design_timing")
+
+    def test_source_repair_and_passing_stage6_do_not_need_extra_flow_llm_calls(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cfg = RunCfg(out=root / "run", model_source=root / "model.json", model_dir=root / "model")
+            source_state = cfg.out / "verification" / "sacg_state.json"
+            write_json(source_state, {})
+            command = CommandResult(
+                name="stage", command=["stage"], cwd=str(root), returncode=0,
+                stdout="", stderr="", duration_sec=0.0, log_path=str(root / "stage.log"),
+            )
+            repair = StageResult(
+                name="backend_board", passed=False, command_result=command,
+                output_path="repair.json", summary={"status": "incomplete",
+                    "outputs": {"sacg_state": str(source_state)},
+                    "real_tool_results": [{"source_change_requires_stage6_refresh": True}]},
+            )
+            verified = StageResult(
+                name="debug_loop", passed=True, command_result=command,
+                output_path="verified.json", summary={"status": "pass", "outputs": {"sacg_state": str(source_state)}},
+            )
+            backend = StageResult(
+                name="backend_board", passed=True, command_result=command,
+                output_path="backend.json", summary={"status": "ready", "outputs": {"sacg_state": str(source_state)}},
+            )
+            agent = TopAgent(cfg)
+            with patch(
+                "accagent.framework.agent.GenericStageAgent"
+            ) as stage, patch(
+                "accagent.framework.agent.SACGValidationAgent"
+            ) as validation, patch.object(
+                agent, "choose_next_stage", return_value=(None, source_state, {"decision": "complete"})
+            ) as controller, patch.object(agent, "reusable_stage_result", return_value=None):
+                stage.return_value.run.side_effect = [repair, verified, backend]
+                validation.return_value.run.return_value = backend
+                passed = agent.run(start_stage="backend_board", source_state=source_state)
+
+        self.assertTrue(passed)
+        self.assertEqual([call.args[1] for call in stage.call_args_list], ["backend_board", "debug_loop", "backend_board"])
+        controller.assert_called_once()
+
+    def test_pending_timing_repair_runs_stage6_before_backend_routing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cfg = RunCfg(out=root / "run", model_source=root / "model.json", model_dir=root / "model")
+            source_state = cfg.out / "verification" / "sacg_state.json"
+            write_json(source_state, {})
+            command = CommandResult(
+                name="stage", command=["stage"], cwd=str(root), returncode=0,
+                stdout="", stderr="", duration_sec=0.0, log_path=str(root / "stage.log"),
+            )
+            repaired = StageResult(
+                name="backend_board", passed=True, command_result=command,
+                output_path="backend.json", summary={
+                    "status": "ready",
+                    "outputs": {"sacg_state": str(source_state)},
+                    "timing_source_repair": {"status": "compiled_pending_vcs"},
+                },
+            )
+            verified = StageResult(
+                name="debug_loop", passed=True, command_result=command,
+                output_path="verified.json", summary={
+                    "status": "pass", "outputs": {"sacg_state": str(source_state)},
+                },
+            )
+            measured = StageResult(
+                name="backend_board", passed=True, command_result=command,
+                output_path="backend.json", summary={
+                    "status": "ready", "outputs": {"sacg_state": str(source_state)},
+                },
+            )
+            agent = TopAgent(cfg)
+            with patch("accagent.framework.agent.GenericStageAgent") as stage, patch(
+                "accagent.framework.agent.SACGValidationAgent"
+            ) as validation, patch.object(
+                agent, "choose_next_stage", return_value=(None, source_state, {"decision": "complete"})
+            ) as controller, patch.object(agent, "reusable_stage_result", return_value=None):
+                stage.return_value.run.side_effect = [repaired, verified, measured]
+                validation.return_value.run.return_value = measured
+                passed = agent.run(start_stage="backend_board", source_state=source_state)
+
+        self.assertTrue(passed)
+        self.assertEqual(
+            [call.args[1] for call in stage.call_args_list],
+            ["backend_board", "debug_loop", "backend_board"],
+        )
+        self.assertEqual(agent.flow_events[0]["decision"], "refresh_stage6_compile_evidence")
+        self.assertEqual(agent.flow_events[0]["target_stage"], "debug_loop")
+        controller.assert_called_once()
+
+    def test_top_agent_can_resume_backend_and_keep_the_flow_controller(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cfg = RunCfg(
+                out=root / "run", model_source=root / "model.json", model_dir=root / "model",
+            )
+            source_state = cfg.out / "verification" / "sacg_state.json"
+            write_json(source_state, {"status": "ready"})
+            command = CommandResult(
+                name="backend_board", command=["backend"], cwd=str(root), returncode=0,
+                stdout="", stderr="", duration_sec=0.0, log_path=str(root / "backend.log"),
+            )
+            result = StageResult(
+                name="backend_board", passed=True, command_result=command,
+                output_path=str(cfg.out / "backend_board" / "backend_board_report.json"),
+                summary={"status": "ready", "outputs": {"sacg_state": str(source_state)}},
+            )
+            agent = TopAgent(cfg)
+            with patch(
+                "accagent.framework.agent.GenericStageAgent"
+            ) as stage, patch(
+                "accagent.framework.agent.SACGValidationAgent"
+            ) as validation, patch.object(
+                agent, "choose_next_stage", return_value=(None, source_state, {"decision": "complete"})
+            ), patch.object(agent, "reusable_stage_result", return_value=None):
+                stage.return_value.run.return_value = result
+                validation.return_value.run.return_value = result
+                passed = agent.run(start_stage="backend_board", source_state=source_state)
+
+        self.assertTrue(passed)
+        self.assertEqual(stage.call_count, 1)
+        self.assertEqual(stage.call_args.args[1], "backend_board")
+        stage.return_value.run.assert_called_once_with(source_state.resolve())
+
+    def test_top_agent_resume_rejects_a_state_from_another_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cfg = RunCfg(out=root / "run", model_source=root / "model.json", model_dir=root / "model")
+            source = root / "other_run" / "verification" / "sacg_state.json"
+            write_json(source, {})
+            agent = TopAgent(cfg)
+            with self.assertRaisesRegex(ValueError, "current-run SACG"):
+                agent.run(start_stage="backend_board", source_state=source)
+            self.assertFalse(agent.report_path.exists())
+
     def test_failed_stage_surfaces_its_current_structured_report(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             run_dir = Path(temp) / "run"
@@ -66,6 +220,75 @@ class StageCheckpointReuseTests(unittest.TestCase):
                 resume_existing=True,
             )
         )
+
+    def test_dse_measurement_arrival_invalidates_parameter_checkpoint_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            agent = self._agent(Path(temp))
+            first = agent.stage_input_hash("parameter_binding")
+            ledger = agent.out / "parameter_binding/dse_measurements.jsonl"
+            ledger.parent.mkdir(parents=True, exist_ok=True)
+            ledger.write_text('{"measurement_status": "measured"}\n')
+            self.assertNotEqual(first, agent.stage_input_hash("parameter_binding"))
+
+    def test_old_dse_decision_is_not_reused_even_with_current_checkpoint_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            agent = self._agent(Path(temp))
+            report = agent.out / "parameter_binding/parameter_binding_report.json"
+            write_json(report, {"status": "ready", "dse_selection_rationale": {
+                "qor_estimator": {"model": "old_estimator"},
+            }})
+            module = "accagent.framework.stage_params"
+            write_json(agent.checkpoint_path("parameter_binding"), {
+                "status": "pass", "stage_code_hash": agent.stage_code_hash(module),
+                "stage_input_hash": agent.stage_input_hash("parameter_binding"),
+            })
+            self.assertIsNone(agent.reusable_stage_result(
+                stage="parameter_binding", module=module, report_path=report,
+            ))
+
+    def test_backend_checkpoint_changes_with_actual_synthesis_rtl(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            agent = self._agent(Path(temp))
+            rtl = agent.out / "generated/chisel/vivado/Kernel.sv"
+            rtl.parent.mkdir(parents=True)
+            rtl.write_text("module Kernel; endmodule")
+            first = agent.stage_input_hash("backend_board")
+            self.assertEqual(first, agent.stage_input_hash("backend_board"))
+            rtl.write_text("module Kernel; wire changed; endmodule")
+            self.assertNotEqual(first, agent.stage_input_hash("backend_board"))
+
+    def test_backend_tool_pass_with_pending_qor_repair_is_not_final_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            agent = self._agent(Path(temp))
+            report = agent.out / "backend_board/backend_board_report.json"
+            module = "accagent.framework.stage_backend"
+            write_json(agent.checkpoint_path("backend_board"), {
+                "status": "pass", "stage_code_hash": agent.stage_code_hash(module),
+                "stage_input_hash": agent.stage_input_hash("backend_board"),
+            })
+            write_json(report, {"status": "ready", "final_design_pass": False,
+                                "qor_optimization": {"decision": "local_optimization"},
+                                "timing_source_repair": {"status": "compile_failed"}})
+            self.assertIsNone(agent.reusable_stage_result(
+                stage="backend_board", module=module, report_path=report,
+            ))
+
+    def test_raised_clock_target_does_not_reuse_previously_complete_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            agent = self._agent(Path(temp))
+            report = agent.out / "backend_board/backend_board_report.json"
+            module = "accagent.framework.stage_backend"
+            write_json(report, {"status": "ready", "final_design_pass": True,
+                                "qor": {"clock_frequency_mhz": 121.08}})
+            request = agent.out / "backend_board/optimization_request.json"
+            write_json(request, {"scope": "existing_design_timing", "clock_frequency_mhz": 150})
+            write_json(agent.checkpoint_path("backend_board"), {
+                "status": "pass", "stage_code_hash": agent.stage_code_hash(module),
+                "stage_input_hash": agent.stage_input_hash("backend_board"),
+            })
+            self.assertIsNone(agent.reusable_stage_result(stage="backend_board", module=module, report_path=report))
+            write_json(request, {"scope": "existing_design_timing", "clock_frequency_mhz": 100})
+            self.assertIsNotNone(agent.reusable_stage_result(stage="backend_board", module=module, report_path=report))
 
     def test_stage0_reuses_passed_input_after_current_semantic_revalidation(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -191,6 +414,40 @@ class StageCheckpointReuseTests(unittest.TestCase):
         self.assertIsNone(result)
         revalidate.assert_called_once_with("pipeline_planning", report)
 
+    def test_code_generation_input_hash_tracks_physical_templates(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            write_json(
+                agent.out / "parameter_binding" / "sacg_state.json",
+                {"sacg_version": "1.0"},
+            )
+            template_dir = root / "templates"
+            template_dir.mkdir()
+            template = template_dir / "PhysicalResources.scala"
+            template.write_text("initial\n", encoding="utf-8")
+
+            with patch("accagent.framework.agent.DEFAULT_TEMPLATE_DIR", template_dir):
+                before = agent.stage_input_hash("code_generation")
+                template.write_text("updated\n", encoding="utf-8")
+                after = agent.stage_input_hash("code_generation")
+
+        self.assertNotEqual(before, after)
+
+    def test_verification_artifacts_input_hash_tracks_codegen_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            write_json(agent.out / "code_generation" / "sacg_state.json", {"status": "ready"})
+            write_json(agent.out / "code_generation" / "code_generation_manifest.json", {"version": 1})
+            write_json(agent.out / "code_generation" / "code_generation_report.json", {"status": "ready"})
+
+            before = agent.stage_input_hash("verification_artifacts")
+            write_json(agent.out / "code_generation" / "code_generation_manifest.json", {"version": 2})
+            after = agent.stage_input_hash("verification_artifacts")
+
+        self.assertNotEqual(before, after)
+
     def test_stage3_and_stage4_dispatch_to_semantic_revalidators(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             agent = self._agent(Path(temp))
@@ -293,6 +550,410 @@ class TopAgentBootstrapRecoveryTests(unittest.TestCase):
 
         self.assertEqual(template_attempts, 2)
         self.assertEqual(routed_failures, [(2, "template_selection")])
+
+
+class TopAgentFlowControllerBacktrackTests(unittest.TestCase):
+    @staticmethod
+    def _agent(root: Path) -> TopAgent:
+        return TopAgent(
+            RunCfg(
+                root=root,
+                out=root / "run",
+                design="test",
+                task_spec=root / "task.md",
+                model_source=root / "model.json",
+                model_dir=root / "model",
+                board_materials_dir=root / "board",
+                quantization_materials_dir=root / "quantization",
+                tool_materials_dir=root / "tools",
+                resume_existing=False,
+            )
+        )
+
+    @staticmethod
+    def _stage_specs() -> list[tuple[str, str, str, str]]:
+        names = [
+            "input_preparation",
+            "constraint_extraction",
+            "template_selection",
+            "pipeline_planning",
+            "parameter_binding",
+            "code_generation",
+            "verification_artifacts",
+            "debug_loop",
+            "backend_board",
+        ]
+        return [(name, "", "", "") for name in names]
+
+    @staticmethod
+    def _failed_debug_result(root: Path) -> StageResult:
+        return StageResult(
+            name="debug_loop",
+            passed=False,
+            command_result=CommandResult(
+                name="debug_loop",
+                command=["fake", "debug_loop"],
+                cwd=str(root),
+                returncode=1,
+                stdout="",
+                stderr="verification gate failed",
+                duration_sec=0.0,
+                log_path=str(root / "debug_loop.log"),
+            ),
+            output_path=str(root / "debug_loop.json"),
+            summary={"status": "needs_repair"},
+        )
+
+    def _choose(self, action: dict) -> tuple[int | None, dict]:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            review = {
+                "agent_status": "backtrack",
+                "agent_summary": "restore trusted verification artifacts before retrying Stage-6",
+                "agent_executable_actions": [action],
+            }
+            with patch.object(agent, "flow_controller_review", return_value=review):
+                next_index, _, event = agent.choose_next_stage(
+                    current_index=7,
+                    result=self._failed_debug_result(root),
+                    sacg_state=None,
+                    stage_specs=self._stage_specs(),
+                    attempt_counts={"debug_loop": 1},
+                    backtrack_count=0,
+                )
+        return next_index, event
+
+    def test_backend_flow_controller_receives_run_local_timing_capability(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            result = StageResult(
+                name="backend_board",
+                passed=False,
+                command_result=self._failed_debug_result(root).command_result,
+                output_path=str(root / "backend_board.json"),
+                summary={"timing_source_repair": {"status": "compiled_pending_vcs"}},
+            )
+            with patch(
+                "accagent.framework.agent.run_stage_agent",
+                return_value={"result_path": "flow.json", "output": {"status": "retry_current_stage"}},
+            ) as run_agent:
+                agent.flow_controller_review(
+                    current_stage="backend_board",
+                    result=result,
+                    sacg_state=None,
+                    stage_names=[name for name, *_ in self._stage_specs()],
+                    attempt_count=1,
+                )
+
+        inputs = run_agent.call_args.kwargs["inputs"]
+        self.assertIn("repair_timing_sources", inputs["stage_local_capabilities"]["backend_board"]["run_local_timing_repair"])
+        self.assertEqual(inputs["recent_stage_summary"]["timing_source_repair"]["status"], "compiled_pending_vcs")
+        self.assertTrue(inputs["flow_policy"]["compiled_pending_vcs_must_not_restart_code_generation"])
+
+    def test_failed_debug_loop_defers_a_later_stage_backtrack_request(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            state_path = root / "sacg_state.json"
+            write_json(state_path, {"memory": {"backtrack_requests": [{
+                "id": "old_backend_request", "status": "open", "target_stage": "backend_board",
+                "failure_category": "design_target_miss",
+                "failed_gates": ["case_stage7_metrics"],
+                "evidence": ["artifact.stage7.backend_real_tool_results"],
+            }]}})
+            with patch.object(agent, "flow_controller_review", return_value={}):
+                next_index, _, event = agent.choose_next_stage(
+                    current_index=7,
+                    result=self._failed_debug_result(root),
+                    sacg_state=state_path,
+                    stage_specs=self._stage_specs(),
+                    attempt_counts={"debug_loop": 1},
+                    backtrack_count=0,
+                )
+
+        self.assertEqual(next_index, 7)
+        self.assertEqual(event["decision"], "retry_replan")
+        self.assertEqual(event["deferred_request_id"], "old_backend_request")
+        self.assertEqual(event["target_stage"], "debug_loop")
+
+    def test_passed_stage_advances_in_order_before_later_backtrack_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            state_path = root / "sacg_state.json"
+            write_json(state_path, {"memory": {"backtrack_requests": [{
+                "id": "old_backend_request",
+                "status": "open",
+                "target_stage": "backend_board",
+                "failure_category": "design_target_miss",
+                "failed_gates": ["case_stage7_metrics"],
+                "evidence": ["artifact.stage7.backend_real_tool_results"],
+            }]}})
+            result = StageResult(
+                name="parameter_binding",
+                passed=True,
+                command_result=CommandResult(
+                    name="parameter_binding",
+                    command=["fake", "parameter_binding"],
+                    cwd=str(root),
+                    returncode=0,
+                    stdout="",
+                    stderr="",
+                    duration_sec=0.0,
+                    log_path=str(root / "parameter_binding.log"),
+                ),
+                output_path=str(root / "parameter_binding.json"),
+                summary={"status": "ready"},
+            )
+            with patch.object(agent, "flow_controller_review", return_value={}):
+                next_index, _, event = agent.choose_next_stage(
+                    current_index=4,
+                    result=result,
+                    sacg_state=state_path,
+                    stage_specs=self._stage_specs(),
+                    attempt_counts={"parameter_binding": 1},
+                    backtrack_count=0,
+                )
+
+        self.assertEqual(next_index, 5)
+        self.assertEqual(event["decision"], "proceed")
+        self.assertEqual(
+            event["deferred_backtrack_requests"],
+            [{"id": "old_backend_request", "target_stage": "backend_board"}],
+        )
+
+    def test_invalid_backtrack_target_does_not_mask_current_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            state_path = root / "sacg_state.json"
+            write_json(
+                state_path,
+                {
+                    "memory": {
+                        "backtrack_requests": [{
+                            "id": "malformed_request",
+                            "status": "open",
+                            "target_stage": "repair the current backend package before retry",
+                            "failure_category": "design_target_miss",
+                            "failed_gates": ["case_stage7_metrics"],
+                            "evidence": ["artifact.stage7.backend_real_tool_results"],
+                        }],
+                        "retry_requests": [{
+                            "id": "retry_current_stage",
+                            "status": "open",
+                            "target_stage": "backend_board",
+                        }],
+                    }
+                },
+            )
+            with patch.object(agent, "flow_controller_review", return_value={}):
+                next_index, _, event = agent.choose_next_stage(
+                    current_index=8,
+                    result=StageResult(
+                        name="backend_board",
+                        passed=False,
+                        command_result=CommandResult(
+                            name="backend_board",
+                            command=["fake", "backend_board"],
+                            cwd=str(root),
+                            returncode=1,
+                            stdout="",
+                            stderr="failed",
+                            duration_sec=0.0,
+                            log_path=str(root / "backend_board.log"),
+                        ),
+                        output_path=str(root / "backend_board.json"),
+                        summary={"status": "incomplete"},
+                    ),
+                    sacg_state=state_path,
+                    stage_specs=self._stage_specs(),
+                    attempt_counts={"backend_board": 1},
+                    backtrack_count=0,
+                )
+
+        self.assertEqual(next_index, 8)
+        self.assertEqual(event["decision"], "retry")
+        self.assertEqual(event["request_id"], "retry_current_stage")
+        self.assertEqual(event["ignored_invalid_backtrack_requests"][0]["id"], "malformed_request")
+
+    def test_llm_backtrack_routes_to_unique_unapproved_earlier_stage(self) -> None:
+        next_index, event = self._choose(
+            {
+                "id": "bounded_verification_artifact_repair",
+                "stage": "verification_artifacts",
+                "failure_category": "functional_design_failure",
+                "failed_gates": ["case_single_layer_stream_sim"],
+                "evidence": ["artifact.stage6.verification_result"],
+                "requires_approval": False,
+                "rationale": "RTL integration evidence shows the streaming design fails its functional gate",
+            }
+        )
+
+        self.assertEqual(next_index, 6)
+        self.assertEqual(event["decision"], "backtrack")
+        self.assertEqual(event["target_stage"], "verification_artifacts")
+        self.assertEqual(event["target_index"], 6)
+        self.assertEqual(event["source"], "llm_flow_controller")
+
+    def test_sacg_hash_or_manifest_failure_retries_current_stage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            state_path = root / "sacg_state.json"
+            write_json(state_path, {"memory": {"backtrack_requests": [{
+                "id": "manifest_hash_drift",
+                "status": "open",
+                "target_stage": "code_generation",
+                "reason": "Stage-6 promotion rejected because manifest hash drifted",
+            }]}})
+            with patch.object(agent, "flow_controller_review", return_value={}):
+                next_index, _, event = agent.choose_next_stage(
+                    current_index=7,
+                    result=self._failed_debug_result(root),
+                    sacg_state=state_path,
+                    stage_specs=self._stage_specs(),
+                    attempt_counts={"debug_loop": 1},
+                    backtrack_count=0,
+                )
+
+        self.assertEqual(next_index, 7)
+        self.assertEqual(event["decision"], "retry_framework_failure_current_stage")
+        self.assertEqual(event["target_stage"], "debug_loop")
+        self.assertEqual(event["ignored_framework_backtrack_request_id"], "manifest_hash_drift")
+
+    def test_local_qor_miss_with_report_evidence_can_enter_verification_loop(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            state_path = root / "sacg_state.json"
+            write_json(state_path, {"memory": {"backtrack_requests": [{
+                "id": "local_timing_optimization",
+                "status": "open",
+                "target_stage": "stage6.verification",
+                "verification_scope": "local_qor_optimization",
+                "reason": "The measured design clock is below the requested target",
+                "missing_or_invalid_contracts": ["clock_frequency_mhz"],
+                "evidence": ["artifact.stage7.backend_real_tool_results"],
+            }]}})
+            with patch.object(agent, "flow_controller_review", return_value={}):
+                next_index, _, event = agent.choose_next_stage(
+                    current_index=8,
+                    result=self._failed_debug_result(root),
+                    sacg_state=state_path,
+                    stage_specs=self._stage_specs(),
+                    attempt_counts={"backend_board": 1},
+                    backtrack_count=0,
+                )
+
+        self.assertEqual(next_index, 7)
+        self.assertEqual(event["decision"], "backtrack")
+        self.assertEqual(event["target_stage"], "debug_loop")
+
+    def test_llm_framework_failure_action_cannot_rewind_design_stages(self) -> None:
+        next_index, event = self._choose(
+            {
+                "id": "repair_agent_routing",
+                "stage": "code_generation",
+                "failure_category": "framework_bug",
+                "requires_approval": False,
+                "rationale": "The flow controller routed an evidence binding failure to code generation",
+            }
+        )
+
+        self.assertEqual(next_index, 7)
+        self.assertEqual(event["decision"], "retry_framework_failure_current_stage")
+        self.assertEqual(event["target_stage"], "debug_loop")
+        self.assertEqual(event["ignored_framework_backtrack_actions"][0]["id"], "repair_agent_routing")
+
+    def test_passed_stage_ignores_stale_framework_backtrack_and_proceeds(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            state_path = root / "sacg_state.json"
+            write_json(state_path, {"memory": {"backtrack_requests": [{
+                "id": "stale_hash_drift",
+                "status": "open",
+                "target_stage": "code_generation",
+                "reason": "Old manifest SHA256 binding failed before framework repair",
+            }]}})
+            passed = StageResult(
+                name="debug_loop",
+                passed=True,
+                command_result=self._failed_debug_result(root).command_result,
+                output_path=str(root / "debug_loop.json"),
+                summary={"status": "pass"},
+            )
+            with patch.object(agent, "flow_controller_review", return_value={}):
+                next_index, _, event = agent.choose_next_stage(
+                    current_index=7,
+                    result=passed,
+                    sacg_state=state_path,
+                    stage_specs=self._stage_specs(),
+                    attempt_counts={"debug_loop": 2},
+                    backtrack_count=0,
+                )
+
+        self.assertEqual(next_index, 8)
+        self.assertEqual(event["decision"], "proceed")
+        self.assertEqual(event["ignored_framework_backtrack_requests"][0]["id"], "stale_hash_drift")
+
+    def test_ambiguous_stage5_verification_repair_routes_to_verification_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            agent = self._agent(Path(temp))
+            action = {
+                "id": "repair_verification_contract_provenance",
+                "stage": "stage5",
+                "requires_approval": False,
+                "consumes": [
+                    "artifact.stage5.verification_artifact_contract",
+                    "artifact.stage5.llm_action_audit",
+                ],
+                "produces": ["artifact.stage5.verification_plan"],
+            }
+            target = agent.stage_key_for_action(action, [name for name, *_ in self._stage_specs()])
+
+        self.assertEqual(target, "verification_artifacts")
+        next_index, event = self._choose(action)
+        self.assertEqual(next_index, 7)
+        self.assertEqual(event["decision"], "retry_replan")
+        self.assertEqual(event["ignored_unsupported_design_backtrack_actions"][0]["id"], action["id"])
+
+    def test_ambiguous_stage5_codegen_target_keeps_codegen_route(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            agent = self._agent(Path(temp))
+            target = agent.stage_key_for_action(
+                {
+                    "id": "repair_generated_hardware_package",
+                    "stage": "stage5",
+                    "requires_approval": False,
+                    "produces": ["artifact.stage5.generated_code_package"],
+                },
+                [name for name, *_ in self._stage_specs()],
+            )
+
+        self.assertEqual(target, "code_generation")
+
+    def test_llm_backtrack_rejects_approval_or_non_earlier_actions(self) -> None:
+        for action in (
+            {
+                "id": "approval_required_repair",
+                "stage": "verification_artifacts",
+                "requires_approval": True,
+            },
+            {
+                "id": "same_stage_repair",
+                "stage": "debug_loop",
+                "requires_approval": False,
+            },
+        ):
+            with self.subTest(action=action["id"]):
+                next_index, event = self._choose(action)
+                self.assertEqual(next_index, 7)
+                self.assertEqual(event["decision"], "retry_replan")
+                self.assertEqual(event["target_stage"], "debug_loop")
 
 
 if __name__ == "__main__":

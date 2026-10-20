@@ -31,7 +31,7 @@ from accagent.framework.sacg_utils import (
 from accagent.framework.stage_entry import run_sacg_stage
 from accagent.framework.llm_action_audit import build_audit_from_outputs
 from accagent.framework.llm_io_quality import build_quality_report, rows_from_stage_records
-from accagent.framework.stage_llm import run_stage_agent
+from accagent.framework.stage_llm import ACTION_GROUNDING_REGISTRY, run_stage_agent
 from accagent.framework.stage_pipeline import normalize_attention_contract
 from accagent.framework.stage_team import (
     compact_prompt_value,
@@ -1940,7 +1940,7 @@ def stage_worker_errors(
     )
     refinement_required_status = (
         ("stage5" in status or has_stage5_refinement_actions)
-        and "refinement" in status
+        and ("refinement" in status or "contract_update" in status)
         and ("required" in status or "need" in status)
     )
     status_accepted = (
@@ -2111,6 +2111,7 @@ def compact_plan_for_planner(plan: dict[str, Any]) -> dict[str, Any]:
     maturity = hierarchy.get("maturity_contract", {}) if isinstance(hierarchy.get("maturity_contract"), dict) else {}
     return {
         "schema_version": plan.get("schema_version"),
+        "verification_execution_policy": plan.get("verification_execution_policy", {}),
         "stage": plan.get("stage"),
         "status": plan.get("status"),
         "checker_summary": plan.get("checker_summary", {}),
@@ -3614,6 +3615,11 @@ def plan_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     plan = build_verification_plan(source_data)
     artifact_contract = build_verification_artifact_contract(source_data, plan, run_dir)
     review_artifact = build_verification_review_artifact(source_data, plan, artifact_contract)
+    # Describe the same execution modes used by Stage-7's existing executor.
+    # Keep optional functional diagnostics out of compile-only capability discovery.
+    execution_policy = ACTION_GROUNDING_REGISTRY["verification_execution_policy"]
+    for artifact in (plan, artifact_contract, review_artifact):
+        artifact["verification_execution_policy"] = execution_policy
     write_json(plan_path, plan)
     write_json(contract_path, artifact_contract)
     write_json(review_path, review_artifact)

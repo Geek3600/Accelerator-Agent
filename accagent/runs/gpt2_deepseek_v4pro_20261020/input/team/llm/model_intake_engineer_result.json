@@ -1,0 +1,132 @@
+{
+  "agent": "model_intake_engineer",
+  "duration_sec": 66.69880131602986,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "5b9938f7b9054303a9337cdeac92f174",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input/team/llm/model_intake_engineer_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "model_intake_engineer",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "task_card_check"
+        ],
+        "action_type": "static_evidence_gathering",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.task_card",
+          "state_summary.sacg_memory_truth"
+        ],
+        "id": "stage0.run_model_task_checks",
+        "on_failure": "Do not pass stage0 or promote to SACG extraction; record missing model facts as artifact.stage0.model_open_facts and request case-adapter model_config/task_card evidence.",
+        "produces": [
+          "artifact.stage0.model_input_audit",
+          "artifact.stage0.model_open_facts"
+        ],
+        "rationale": "Run the registered model_config and task_card checkers on the declared input artifacts to determine whether decoder-block, shape, head, sequence, attention, residual, and operator-order facts are present and bound to model constraints rather than inferred from board or numeric artifacts.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_validate",
+          "model_config_check",
+          "task_card_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check"
+        ],
+        "action_type": "sacg_memory_handoff",
+        "consumes": [
+          "artifact.stage0.model_input_audit",
+          "artifact.stage0.model_open_facts"
+        ],
+        "id": "stage0.record_model_open_facts",
+        "on_failure": "Keep artifact.stage0.model_open_facts open and route to the toolchain boundary gate; do not treat missing model facts as hidden or inferred details.",
+        "produces": [
+          "sacg_memory.model_intake_open_facts_record"
+        ],
+        "rationale": "Persist the audit and open model facts in shared sacg_memory so downstream toolchain_boundary_engineer and stage_sacg_extraction consume only checker-bound model evidence.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "artifact.input.model_config and artifact.input.task_card are declared in state_summary.artifacts, but the supplied candidate_stage_artifact surfaces only prepared inputs and does not expose their field-level model facts in this prompt slice.",
+      "No model_config_check or task_card_check result is supplied, so decoder-block topology, shape, head count, hidden dimension, sequence facts, attention structure, residual connections, and operator order cannot yet be certified as SACG-extractable.",
+      "No active contamination barriers, open retry requests, or open backtrack requests are present in sacg_memory_truth; historical or empty memory records are not treated as active blockers.",
+      "hierarchical_learning_context is empty and contains no validated lower-layer evidence or certified invariants to preserve at this stage.",
+      "The model intake role is out of scope for numeric_policy audit, board/DDR/runtime audit, template binding audit, and tool/human-boundary audit; those must remain with the appropriate specialists.",
+      "Model facts must not be inferred from target_board_profile, numeric_policy, template_library, or other non-model artifacts because that would violate the model intake boundary."
+    ],
+    "proposed_actions": [
+      "Run model_config_check and task_card_check against artifact.input.model_config and artifact.input.task_card and bind results to constraint.model.decoder, constraint.shape.model, and constraint.task.goal.",
+      "Produce artifact.stage0.model_input_audit with explicit present/gapped fields and artifact.stage0.model_open_facts for any missing or implicit decoder-block, shape, head, sequence, attention, residual, or operator-order facts.",
+      "If model facts are missing, implicit, or checker-blocked, request case-adapter model_config/task_card evidence and hand the open facts to input_preparation.toolchain_boundary_engineer and stage_sacg_extraction.",
+      "Persist checker-bound model open facts in sacg_memory without adding numeric, board, DDR, runtime, or template constraints to the model-intake record."
+    ],
+    "risks": [
+      "The supplied artifact summary may be compact and could omit model_config/task_card details that exist in the full case; this must be resolved by checker execution, not by guessing.",
+      "Decoder-block operator order, residual-connection naming, attention head mapping, and sequence-dimension facts may be only implicit in the case adapter and therefore insufficient for downstream SACG extraction unless explicitly recorded.",
+      "Declaring model-facing readiness without visible checker evidence would violate the evidence rule and could contaminate downstream model facts with board or numeric assumptions.",
+      "Missing model facts may later be misclassified as numeric/board or template issues unless the model intake audit explicitly separates model-open facts from other cross-layer gaps.",
+      "Holding all downstream stages on absence of visible details would also be incorrect if the detail exists in the full case; therefore checker-backed evidence gathering is the correct next step."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.model_config",
+        "artifact.input.task_card",
+        "artifact.stage0.model_input_audit",
+        "artifact.stage0.model_open_facts"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.task.goal"
+      ],
+      "edges": [
+        "artifact.input.model_config -> artifact.stage0.model_input_audit",
+        "artifact.input.task_card -> artifact.stage0.model_input_audit",
+        "constraint.model.decoder -> artifact.stage0.model_input_audit",
+        "constraint.shape.model -> artifact.stage0.model_input_audit",
+        "constraint.task.goal -> artifact.stage0.model_input_audit",
+        "artifact.stage0.model_input_audit -> artifact.stage0.model_open_facts"
+      ],
+      "nodes": [
+        "artifact.input.model_config",
+        "artifact.input.task_card",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.task.goal",
+        "artifact.stage0.model_input_audit",
+        "artifact.stage0.model_open_facts"
+      ]
+    },
+    "schema_version": "spatialaccagent.stage_response.v0",
+    "stage": "input_preparation",
+    "status": "needs_evidence",
+    "summary": "Cannot declare model-facing inputs ready because the supplied slice does not expose field-level model_config or task_card facts and the model_config_check/task_card_check results are not provided. The next bounded actions are to run the registered checkers on artifact.input.model_config and artifact.input.task_card, bind results to constraint.model.decoder, constraint.shape.model, and constraint.task.goal, and record any missing decoder-block, shape, head, sequence, attention, residual, or operator-order facts as open model facts for downstream consumers."
+  },
+  "prompt_bytes": 38560,
+  "prompt_hash": "933c1cc90ed2a69158fe9f132d7b5044edd249884b9c416eabdfaeb68c6f4d8c",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.stage_response.v0\",\n  \"agent\": \"model_intake_engineer\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"needs_evidence\",\n  \"summary\": \"Cannot declare model-facing inputs ready because the supplied slice does not expose field-level model_config or task_card facts and the model_config_check/task_card_check results are not provided. The next bounded actions are to run the registered checkers on artifact.input.model_config and artifact.input.task_card, bind results to constraint.model.decoder, constraint.shape.model, and constraint.task.goal, and record any missing decoder-block, shape, head, sequence, attention, residual, or operator-order facts as open model facts for downstream consumers.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"artifact.input.model_config\",\n      \"artifact.input.task_card\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.task.goal\",\n      \"artifact.stage0.model_input_audit\",\n      \"artifact.stage0.model_open_facts\"\n    ],\n    \"edges\": [\n      \"artifact.input.model_config -> artifact.stage0.model_input_audit\",\n      \"artifact.input.task_card -> artifact.stage0.model_input_audit\",\n      \"constraint.model.decoder -> artifact.stage0.model_input_audit\",\n      \"constraint.shape.model -> artifact.stage0.model_input_audit\",\n      \"constraint.task.goal -> artifact.stage0.model_input_audit\",\n      \"artifact.stage0.model_input_audit -> artifact.stage0.model_open_facts\"\n    ],\n    \"constraints\": [\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.task.goal\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.model_config\",\n      \"artifact.input.task_card\",\n      \"artifact.stage0.model_input_audit\",\n      \"artifact.stage0.model_open_facts\"\n    ]\n  },\n  \"observations\": [\n    \"artifact.input.model_config and artifact.input.task_card are declared in state_summary.artifacts, but the supplied candidate_stage_artifact surfaces only prepared inputs and does not expose their field-level model facts in this prompt slice.\",\n    \"No model_config_check or task_card_check result is supplied, so decoder-block topology, shape, head count, hidden dimension, sequence facts, attention structure, residual connections, and operator order cannot yet be certified as SACG-extractable.\",\n    \"No active contamination barriers, open retry requests, or open backtrack requests are present in sacg_memory_truth; historical or empty memory records are not treated as active blockers.\",\n    \"hierarchical_learning_context is empty and contains no validated lower-layer evidence or certified invariants to preserve at this stage.\",\n    \"The model intake role is out of scope for numeric_policy audit, board/DDR/runtime audit, template binding audit, and tool/human-boundary audit; those must remain with the appropriate specialists.\",\n    \"Model facts must not be inferred from target_board_profile, numeric_policy, template_library, or other non-model artifacts because that would violate the model intake boundary.\"\n  ],\n  \"risks\": [\n    \"The supplied artifact summary may be compact and could omit model_config/task_card details that exist in the full case; this must be resolved by checker execution, not by guessing.\",\n    \"Decoder-block operator order, residual-connection naming, attention head mapping, and sequence-dimension facts may be only implicit in the case adapter and therefore insufficient for downstream SACG extraction unless explicitly recorded.\",\n    \"Declaring model-facing readiness without visible checker evidence would violate the evidence rule and could contaminate downstream model facts with board or numeric assumptions.\",\n    \"Missing model facts may later be misclassified as numeric/board or template issues unless the model intake audit explicitly separates model-open facts from other cross-layer gaps.\",\n    \"Holding all downstream stages on absence of visible details would also be incorrect if the detail exists in the full case; therefore checker-backed evidence gathering is the correct next step.\"\n  ],\n  \"proposed_actions\": [\n    \"Run model_config_check and task_card_check against artifact.input.model_config and artifact.input.task_card and bind results to constraint.model.decoder, constraint.shape.model, and constraint.task.goal.\",\n    \"Produce artifact.stage0.model_input_audit with explicit present/gapped fields and artifact.stage0.model_open_facts for any missing or implicit decoder-block, shape, head, sequence, attention, residual, or operator-order facts.\",\n    \"If model facts are missing, implicit, or checker-blocked, request case-adapter model_config/task_card evidence and hand the open facts to input_preparation.toolchain_boundary_engineer and stage_sacg_extraction.\",\n    \"Persist checker-bound model open facts in sacg_memory without adding numeric, board, DDR, runtime, or template constraints to the model-intake record.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"stage0.run_model_task_checks\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"static_evidence_gathering\",\n      \"rationale\": \"Run the registered model_config and task_card checkers on the declared input artifacts to determine whether decoder-block, shape, head, sequence, attention, residual, and operator-order facts are present and bound to model constraints rather than inferred from board or numeric artifacts.\",\n      \"consumes\": [\n        \"artifact.input.model_config\",\n        \"artifact.input.task_card\",\n        \"state_summary.sacg_memory_truth\"\n      ],\n      \"produces\": [\n        \"artifact.stage0.model_input_audit\",\n        \"artifact.stage0.model_open_facts\"\n      ],\n      \"tool_roles\": [\n        \"sacg_validate\",\n        \"model_config_check\",\n        \"task_card_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"model_config_check\",\n        \"task_card_check\"\n      ],\n      \"on_failure\": \"Do not pass stage0 or promote to SACG extraction; record missing model facts as artifact.stage0.model_open_facts and request case-adapter model_config/task_card evidence.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"stage0.record_model_open_facts\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"sacg_memory_handoff\",\n      \"rationale\": \"Persist the audit and open model facts in shared sacg_memory so downstream toolchain_boundary_engineer and stage_sacg_extraction consume only checker-bound model evidence.\",\n      \"consumes\": [\n        \"artifact.stage0.model_input_audit\",\n        \"artifact.stage0.model_open_facts\"\n      ],\n      \"produces\": [\n        \"sacg_memory.model_intake_open_facts_record\"\n      ],\n      \"tool_roles\": [\n        \"sacg_memory_update\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_memory_check\"\n      ],\n      \"on_failure\": \"Keep artifact.stage0.model_open_facts open and route to the toolchain boundary gate; do not treat missing model facts as hidden or inferred details.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input/team/llm/model_intake_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input/team/llm/model_intake_engineer_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.model intake engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

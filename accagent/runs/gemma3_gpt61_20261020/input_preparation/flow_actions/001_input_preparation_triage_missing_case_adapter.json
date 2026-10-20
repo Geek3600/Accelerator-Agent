@@ -1,0 +1,47 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "llm_semantic_extraction_check",
+      "sacg_static_check"
+    ],
+    "action_type": "prepared_input_error_triage",
+    "consumes": [
+      "prepared_inputs.errors",
+      "artifact.input.case_adapter",
+      "artifact.input.material_index",
+      "artifact.input.sample_project_index",
+      "artifact.input.tool_availability",
+      "artifact.input.tool_protocols"
+    ],
+    "id": "input_preparation.triage_missing_case_adapter",
+    "on_failure": "Preserve the exact error and any retrieval gap, leave the adapter unresolved, and request the real source-backed adapter through the authorized input path. Do not fabricate testbench, RTL, simulator, diagnosis, or weight evidence, and do not promote the stage.",
+    "produces": [
+      "input_preparation/prepared_input_error_triage.json",
+      "input_preparation/case_adapter_provenance_handoff.json"
+    ],
+    "rationale": "Inspect and preserve the original prepared_inputs.errors entry and trace the adapter requirement to the supplied material and tool evidence. The visible error identifies a missing adapter, but does not authorize creating or guessing one.",
+    "requires_approval": false,
+    "stage": "input_preparation",
+    "tool_roles": [
+      "sacg_validate",
+      "llm_semantic_extraction"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "retry",
+  "flow_event_index": 1,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": null,
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/001_retry.json",
+  "source_identities": {
+    "flow_controller_result_sha256": "cdd22dc984b482dd234a613bb457b14069bf972e85795ce03b629b0bc79c1e75",
+    "source_sacg_state_sha256": ""
+  },
+  "source_sacg_state": null,
+  "stage": "input_preparation"
+}

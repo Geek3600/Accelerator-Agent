@@ -1,0 +1,153 @@
+{
+  "agent": "template_binding_engineer",
+  "duration_sec": 80.79751436697552,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "4060948cd841449b8718fa31f99693bb",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/team/llm/template_binding_engineer_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "template_binding_engineer",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "numeric_compare",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "candidate_stage_artifact.template_selection"
+        ],
+        "id": "template_selection.binding_engineer.record_stage2_binding_review",
+        "on_failure": "Do not promote the stage; record the concrete contradiction in sacg_memory and schedule a bounded rerun of the failed checker.",
+        "produces": [
+          "artifact.template_selection.template_binding_review"
+        ],
+        "rationale": "Persist a checker-grounded Stage-2 binding review and rerun the specialized parameter/source/numeric/SACG static checkers against the current candidate evidence before handing off to peer specialists.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "numeric_compare",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check"
+        ],
+        "action_type": "team_handoff",
+        "consumes": [
+          "artifact.template_selection.template_binding_review"
+        ],
+        "id": "template_selection.binding_engineer.handoff_ready_to_peers",
+        "on_failure": "Keep downstream template_selection peers blocked and open a bounded retry/backtrack request if SACG aggregation or memory update rejects the ready status.",
+        "produces": [
+          "sacg_memory.stage_outcome.template_binding_review_ready"
+        ],
+        "rationale": "Hand off the current ready Stage-2 binding review and checker evidence to attention_semantic_engineer and cross_layer_gate_engineer, preserving SACG memory for downstream traceability.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "All 8 required operator sequence entries are covered: layer_norm_1, self_attention, residual_add_1, layer_norm_2, mlp_fc, activation, mlp_proj, residual_add_2; block wrapper coverage is present.",
+      "The candidate contains 11 selected templates; parameter_bindings show no legality_errors, no missing_params, and unsupported_bindings is empty.",
+      "lanes, compute_array_rows, and compute_array_cols are explicitly candidate_bound with value null and sources in design_space/memory/numeric constraints; Stage 2 policy classifies unresolved concrete DSE selection as not-current-stage.",
+      "Bound numeric policy values are consistent: activation/input/output 8 bits, weight 4 bits, accumulator 32 bits, integer_mode true; model shape values include hidden_size 768, intermediate_size 3072, num_q_heads 12, num_kv_heads 12, head_dim 64, max_seq_len 16.",
+      "Template source checks report exists=true, SHA256 hashes present, no missing required constructor params, and no numeric constructor params unbounded by metadata for DecoderBlock, Norm, Attention, Residual, FFN, Activation, Softmax, and Mask.",
+      "Attention semantics are grounded: qkv_projection, softmax, output_projection, and causal_mask covered; RoPE is not_applicable because model positional encoding is learned_absolute; gqa_group_size is 1 with 12 q heads and 12 kv heads; kv_cache is not_required.",
+      "Supplied checker_results include passes for operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, mandatory_fpga_ip_binding_check, attention_semantic_expansion_check, and cross_layer_trace_check.",
+      "sacg_memory_truth reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests.",
+      "No concrete contradiction in the current Stage-2 evidence was identified; remaining unselected physical DSE values are downstream obligations."
+    ],
+    "proposed_actions": [
+      "Promote the current Stage-2 binding review to downstream attention-semantic and cross-layer gate consumers without selecting concrete lanes, compute_array_rows, or compute_array_cols.",
+      "Preserve the supplied source SHA256 hashes and case-class constructor identities as immutable boundaries into code generation; any future free-form RTL or required adapter insertion should reopen template binding review.",
+      "At board integration, derive exact wrapper/model/board names from the current user-supplied sample project and real tool evidence, not from workspace path strings or framework-core defaults."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "candidate_stage_artifact.template_selection",
+        "artifact.template_selection.template_binding_review"
+      ],
+      "constraints": [
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "gpt2_block -> layer_norm_1",
+        "gpt2_block -> self_attention",
+        "self_attention -> softmax",
+        "self_attention -> causal_mask",
+        "gpt2_block -> residual_add_1",
+        "gpt2_block -> layer_norm_2",
+        "gpt2_block -> mlp_fc",
+        "mlp_fc -> activation",
+        "activation -> mlp_proj",
+        "mlp_proj -> residual_add_2",
+        "parameter_bindings -> constraint.numeric.policy",
+        "parameter_bindings -> constraint.shape.model",
+        "parameter_bindings -> constraint.arch.design_space",
+        "template_source_checks -> constraint.template.library"
+      ],
+      "nodes": [
+        "gpt2_block",
+        "layer_norm_1",
+        "self_attention",
+        "residual_add_1",
+        "layer_norm_2",
+        "mlp_fc",
+        "activation",
+        "mlp_proj",
+        "residual_add_2",
+        "softmax",
+        "causal_mask",
+        "constraint.numeric.policy",
+        "constraint.shape.model",
+        "constraint.template.library",
+        "constraint.arch.design_space"
+      ]
+    },
+    "schema_version": "spatialaccagent.agent_response.v0",
+    "stage": "template_selection",
+    "status": "ready",
+    "summary": "Reviewed candidate Stage-2 template-selection artifact. All 8 required Transformer-block operators have trusted template coverage; required parameters are either explicitly bound or declared as Stage-2 candidate_bound; source/interface checks are hash-bound and pass; unsupported_bindings and required_adapters are empty; all supplied Stage-2 checkers pass. No active SACG-memory blockers. Stage 2 is ready with physical DSE values deferred to Stage 4."
+  },
+  "prompt_bytes": 70767,
+  "prompt_hash": "f91b9ad5ddaac89a59de116742255527cd75ec07ee35ab36c860ce9663db9ab4",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.agent_response.v0\",\n  \"agent\": \"template_binding_engineer\",\n  \"stage\": \"template_selection\",\n  \"status\": \"ready\",\n  \"summary\": \"Reviewed candidate Stage-2 template-selection artifact. All 8 required Transformer-block operators have trusted template coverage; required parameters are either explicitly bound or declared as Stage-2 candidate_bound; source/interface checks are hash-bound and pass; unsupported_bindings and required_adapters are empty; all supplied Stage-2 checkers pass. No active SACG-memory blockers. Stage 2 is ready with physical DSE values deferred to Stage 4.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"gpt2_block\",\n      \"layer_norm_1\",\n      \"self_attention\",\n      \"residual_add_1\",\n      \"layer_norm_2\",\n      \"mlp_fc\",\n      \"activation\",\n      \"mlp_proj\",\n      \"residual_add_2\",\n      \"softmax\",\n      \"causal_mask\",\n      \"constraint.numeric.policy\",\n      \"constraint.shape.model\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\"\n    ],\n    \"edges\": [\n      \"gpt2_block -> layer_norm_1\",\n      \"gpt2_block -> self_attention\",\n      \"self_attention -> softmax\",\n      \"self_attention -> causal_mask\",\n      \"gpt2_block -> residual_add_1\",\n      \"gpt2_block -> layer_norm_2\",\n      \"gpt2_block -> mlp_fc\",\n      \"mlp_fc -> activation\",\n      \"activation -> mlp_proj\",\n      \"mlp_proj -> residual_add_2\",\n      \"parameter_bindings -> constraint.numeric.policy\",\n      \"parameter_bindings -> constraint.shape.model\",\n      \"parameter_bindings -> constraint.arch.design_space\",\n      \"template_source_checks -> constraint.template.library\"\n    ],\n    \"constraints\": [\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.cross_layer.input_consistency\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.model_config\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"artifact.input.design_space\",\n      \"candidate_stage_artifact.template_selection\",\n      \"artifact.template_selection.template_binding_review\"\n    ]\n  },\n  \"observations\": [\n    \"All 8 required operator sequence entries are covered: layer_norm_1, self_attention, residual_add_1, layer_norm_2, mlp_fc, activation, mlp_proj, residual_add_2; block wrapper coverage is present.\",\n    \"The candidate contains 11 selected templates; parameter_bindings show no legality_errors, no missing_params, and unsupported_bindings is empty.\",\n    \"lanes, compute_array_rows, and compute_array_cols are explicitly candidate_bound with value null and sources in design_space/memory/numeric constraints; Stage 2 policy classifies unresolved concrete DSE selection as not-current-stage.\",\n    \"Bound numeric policy values are consistent: activation/input/output 8 bits, weight 4 bits, accumulator 32 bits, integer_mode true; model shape values include hidden_size 768, intermediate_size 3072, num_q_heads 12, num_kv_heads 12, head_dim 64, max_seq_len 16.\",\n    \"Template source checks report exists=true, SHA256 hashes present, no missing required constructor params, and no numeric constructor params unbounded by metadata for DecoderBlock, Norm, Attention, Residual, FFN, Activation, Softmax, and Mask.\",\n    \"Attention semantics are grounded: qkv_projection, softmax, output_projection, and causal_mask covered; RoPE is not_applicable because model positional encoding is learned_absolute; gqa_group_size is 1 with 12 q heads and 12 kv heads; kv_cache is not_required.\",\n    \"Supplied checker_results include passes for operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, mandatory_fpga_ip_binding_check, attention_semantic_expansion_check, and cross_layer_trace_check.\",\n    \"sacg_memory_truth reports zero active contamination barriers, zero open retry requests, and zero open backtrack requests.\",\n    \"No concrete contradiction in the current Stage-2 evidence was identified; remaining unselected physical DSE values are downstream obligations.\"\n  ],\n  \"risks\": [],\n  \"proposed_actions\": [\n    \"Promote the current Stage-2 binding review to downstream attention-semantic and cross-layer gate consumers without selecting concrete lanes, compute_array_rows, or compute_array_cols.\",\n    \"Preserve the supplied source SHA256 hashes and case-class constructor identities as immutable boundaries into code generation; any future free-form RTL or required adapter insertion should reopen template binding review.\",\n    \"At board integration, derive exact wrapper/model/board names from the current user-supplied sample project and real tool evidence, not from workspace path strings or framework-core defaults.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"template_selection.binding_engineer.record_stage2_binding_review\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"Persist a checker-grounded Stage-2 binding review and rerun the specialized parameter/source/numeric/SACG static checkers against the current candidate evidence before handing off to peer specialists.\",\n      \"consumes\": [\n        \"artifact.input.model_config\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.design_space\",\n        \"candidate_stage_artifact.template_selection\"\n      ],\n      \"produces\": [\n        \"artifact.template_selection.template_binding_review\"\n      ],\n      \"tool_roles\": [\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"numeric_compare\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"numeric_compare\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Do not promote the stage; record the concrete contradiction in sacg_memory and schedule a bounded rerun of the failed checker.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"template_selection.binding_engineer.handoff_ready_to_peers\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"team_handoff\",\n      \"rationale\": \"Hand off the current ready Stage-2 binding review and checker evidence to attention_semantic_engineer and cross_layer_gate_engineer, preserving SACG memory for downstream traceability.\",\n      \"consumes\": [\n        \"artifact.template_selection.template_binding_review\"\n      ],\n      \"produces\": [\n        \"sacg_memory.stage_outcome.template_binding_review_ready\"\n      ],\n      \"tool_roles\": [\n        \"team_aggregate\",\n        \"sacg_memory_update\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Keep downstream template_selection peers blocked and open a bounded retry/backtrack request if SACG aggregation or memory update rejects the ready status.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/team/llm/template_binding_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/team/llm/template_binding_engineer_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "template_selection.template binding engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

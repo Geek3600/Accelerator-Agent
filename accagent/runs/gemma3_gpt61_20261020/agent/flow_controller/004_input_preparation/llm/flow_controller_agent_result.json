@@ -1,0 +1,281 @@
+{
+  "agent": "flow_controller_agent",
+  "duration_sec": 603.9979062360362,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "efa61af0a5554b638ca8540849112565",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/004_input_preparation/llm/flow_controller_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "flow_controller_agent",
+    "approval_required_for": [
+      "Provisioning and accepting a new model-family verification case adapter when no registered adapter-generation capability exists; approval must cover its source/tool provenance, real-weight binding, TB/RTL references, and transformer-block-only scope.",
+      "Any change to accelerator architecture, pipeline structure, memory layout, DDR/AXI semantics, runtime ABI, model dimensions, tensor layout, decoder or attention semantics, numeric policy, precision, or trusted templates.",
+      "Any change to the human approval or forbidden-action boundary, or any attempt to promote a candidate artifact before its current-stage trust and evidence checks pass."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "prepared_input_error_triage",
+        "consumes": [
+          "prepared_inputs.errors",
+          "input/case_adapter.json",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "input_preparation.triage_missing_case_adapter",
+        "on_failure": "Preserve the exact error, failed checker, source identity, and unresolved fields in the triage artifact. Keep input_preparation blocked; do not guess a case adapter, board target, tool path, or sample-project identity.",
+        "produces": [
+          "input_preparation/prepared_input_error_triage.json"
+        ],
+        "rationale": "Read the exact prepared_inputs.errors entry and the declared source/tool indexes, bind the missing case-adapter diagnosis to current evidence, and preserve unresolved sample-project references. This is a read-only current-stage triage and does not promote or modify any downstream artifact.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "tool_protocol_check",
+          "artifact_hash_check",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check",
+          "stage_artifact_trust_barrier_check",
+          "case_real_weight_artifacts",
+          "case_target_model_reference",
+          "case_semantic_testbench"
+        ],
+        "action_type": "system_capability_gap",
+        "consumes": [
+          "input_preparation/prepared_input_error_triage.json",
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.target_board_profile",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "source_specs.model_dir",
+          "source_specs.board_materials_dir",
+          "source_specs.tool_materials_dir"
+        ],
+        "id": "input_preparation.provision_case_adapter_candidate",
+        "on_failure": "Keep the candidate unpromoted and retain the missing-adapter error as the active current-stage blocker. Do not use candidate fields as validated downstream inputs, substitute a legacy adapter, or add random/identity model behavior, runtime-weight loading, simulation, or golden-output prerequisites.",
+        "produces": [
+          "input/case_adapter.candidate.json",
+          "input/case_adapter.candidate.provenance.json",
+          "input/case_adapter.json (promoted only after candidate checks pass)"
+        ],
+        "rationale": "No registered tool can create the missing model-family case adapter. Implement or invoke planned_tool.case_adapter_provision to assemble a candidate from the supplied model, board, tool, and sample-project materials, including real weight references, TB/RTL references, compile-only VCS/simulator protocol declarations, and diagnosis-tool bindings. The candidate must be hash/provenance bound and must exclude model-tail operations from DUT weight coverage. This is a capability implementation gap, not a hardware correctness result.",
+        "requires_approval": true,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "planned_tool.case_adapter_provision"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "addr_map_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "artifact_hash_check",
+          "stage_artifact_trust_barrier_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check",
+          "llm_io_quality_check",
+          "llm_semantic_extraction_check",
+          "no_static_keyword_semantic_matching_check"
+        ],
+        "action_type": "retry_current_stage",
+        "consumes": [
+          "input/case_adapter.json",
+          "input/case_adapter.candidate.provenance.json",
+          "input_preparation/prepared_input_error_triage.json",
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.case_adapter",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.human_agent_boundary",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "constraint.task.goal",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board",
+          "constraint.stream.order",
+          "constraint.beat.pipeline",
+          "constraint.tool.protocols",
+          "action_grounding_registry.verification_execution_policy"
+        ],
+        "id": "input_preparation.retry_after_case_adapter_promotion",
+        "on_failure": "Keep input_preparation incomplete, preserve every failed or not-run checker and the exact prepared-input error, and route only the checker-localized issue to another bounded current-stage repair. Do not promote to constraint_extraction, alter trusted templates or numeric policy, modify golden outputs, infer missing board facts, or rewind any hardware design stage.",
+        "produces": [
+          "input_preparation/model_intake_audit.json",
+          "input_preparation/model_shape_assumptions_and_gaps.json",
+          "input_preparation/numeric_template_audit.json",
+          "input_preparation/template_binding_gaps.json",
+          "input_preparation/board_memory_runtime_audit.json",
+          "input_preparation/data_order_and_transfer_assumptions.json",
+          "input_preparation/source_and_tool_evidence_audit.json",
+          "input_preparation/evidence_provenance_and_applicability.json",
+          "input_preparation/cross_layer_input_readiness.json",
+          "input_preparation/constraint_to_evidence_gap_map.json",
+          "input_preparation/human_and_repair_boundary_audit.json",
+          "input_preparation/prepared_input_error_disposition.json"
+        ],
+        "rationale": "Once the case adapter candidate has passed all checks and has been explicitly promoted with immutable provenance, rerun the complete current-stage input audits and aggregate gate. This honors the framework policy that input, provenance, evidence-binding, and orchestration failures retry the failed current stage rather than rewind hardware design.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_validate",
+          "sacg_static_check",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "addr_map_check",
+          "tool_protocol_check",
+          "real_tool_evidence_check",
+          "artifact_hash_check",
+          "stage_artifact_trust_barrier",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check",
+          "llm_io_quality_check",
+          "llm_semantic_extraction",
+          "no_static_keyword_semantic_matching"
+        ]
+      }
+    ],
+    "observations": [
+      "stage_passed is false and the latest stage command returned 1; this is an input_preparation failure, not evidence of a hardware design failure.",
+      "The exact current blocker is case_adapter status=missing: no verification case adapter was provided for this model family, including the required real-weight, TB/RTL, simulator, and diagnosis-tool references.",
+      "The design-team aggregate reports ready with five completed subtasks, but its audits and proposed actions do not establish a stage pass; the aggregate must be rerun after the blocker is resolved.",
+      "sacg_memory and sacg_memory_truth contain no active contamination barriers, retry requests, or backtrack requests. The attempt count is observability only and does not justify stopping or backtracking.",
+      "sample_project_index also reported a read failure. Treat this as an evidence/provenance risk requiring bounded revalidation; do not infer board, tool, module, or path facts from the compact summary.",
+      "No timing, synthesis, VCS, RTL, or board evidence is supplied, so no hardware-design backtrack category is justified. No compiled_pending_vcs backend condition is present.",
+      "The accelerator acceptance boundary remains Transformer blocks only; any case-adapter weight manifest or semantic reference must exclude embedding/tokenization, final norm, LM head/logits, sampling, and other model-tail work from DUT coverage and golden boundaries."
+    ],
+    "proposed_actions": [
+      "Triage and hash-bind the exact prepared-input error without changing downstream artifacts.",
+      "Perform a bounded, approval-gated repair to provision a candidate case adapter with real source/tool references and transformer-block-only scope; no candidate is valid downstream input until all checks pass.",
+      "Promote the candidate only after static, provenance, tool-protocol, and evidence checks pass, then retry input_preparation in the current stage and rerun the aggregate readiness gate.",
+      "Do not backtrack to code_generation, parameter_binding, or any hardware stage; do not declare readiness or hardware pass on the current evidence."
+    ],
+    "risks": [
+      "Promoting an unvalidated case adapter could contaminate downstream provenance, tool identity, model binding, or board integration artifacts.",
+      "Proceeding without the adapter would leave real-weight, target-model, TB/RTL, and diagnosis-tool bindings unresolved and would make later evidence non-actionable.",
+      "The unreadable sample-project reference can cause incorrect target or interface assumptions if not confirmed with current supplied materials and real-tool evidence.",
+      "Model shape, decoder semantics, numeric policy, data order, memory/runtime contract, implementation contract, and board facts remain unverified until the input audits pass.",
+      "A candidate adapter must not introduce runtime simulation, golden comparison, or weight-loading prerequisites into the compile-only acceptance standard; those references are metadata and verification inputs, not a new hardware acceptance gate."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "input/case_adapter.json",
+        "input/material_index.json",
+        "input/sample_project_index.json",
+        "input/tool_profile.json",
+        "input/tool_availability.json",
+        "input/tool_protocols.json",
+        "prepared_inputs.errors",
+        "input_preparation/prepared_input_error_triage.json",
+        "input_preparation/cross_layer_input_readiness.json",
+        "input_preparation/constraint_to_evidence_gap_map.json"
+      ],
+      "constraints": [
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.tool.protocols",
+        "constraint.human.boundary",
+        "verification_plan"
+      ],
+      "edges": [
+        "task/model/source artifacts -> case_adapter_provenance",
+        "case_adapter_provenance -> tool_protocol_and_real_evidence_checks",
+        "input specialist audits -> cross_layer_input_readiness",
+        "cross_layer_input_readiness -> constraint_extraction"
+      ],
+      "nodes": [
+        "input_preparation",
+        "prepared_inputs.errors",
+        "case_adapter_provenance",
+        "model_shape_intake",
+        "numeric_template_contract",
+        "board_memory_runtime_contract",
+        "source_tool_evidence",
+        "cross_layer_input_readiness",
+        "constraint_extraction"
+      ]
+    },
+    "schema_version": "spatialaccagent.flow_controller_decision.v0",
+    "stage": "input_preparation",
+    "status": "bounded_repair_required_before_retry",
+    "summary": "Do not proceed downstream or backtrack hardware stages. The current input_preparation attempt failed with return code 1 because the verification case adapter is missing, while the stage aggregate remains incomplete. Preserve all current artifacts, provision and validate a candidate case adapter through a bounded repair, promote it only after provenance and tool checks pass, then retry input_preparation."
+  },
+  "prompt_bytes": 47902,
+  "prompt_hash": "96971ebf4f4cc29af8c185e0a5b5cce49d9385f70888e78f876582dc891824f9",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.flow_controller_decision.v0\",\"agent\":\"flow_controller_agent\",\"stage\":\"input_preparation\",\"status\":\"bounded_repair_required_before_retry\",\"summary\":\"Do not proceed downstream or backtrack hardware stages. The current input_preparation attempt failed with return code 1 because the verification case adapter is missing, while the stage aggregate remains incomplete. Preserve all current artifacts, provision and validate a candidate case adapter through a bounded repair, promote it only after provenance and tool checks pass, then retry input_preparation.\",\"sacg_focus\":{\"nodes\":[\"input_preparation\",\"prepared_inputs.errors\",\"case_adapter_provenance\",\"model_shape_intake\",\"numeric_template_contract\",\"board_memory_runtime_contract\",\"source_tool_evidence\",\"cross_layer_input_readiness\",\"constraint_extraction\"],\"edges\":[\"task/model/source artifacts -> case_adapter_provenance\",\"case_adapter_provenance -> tool_protocol_and_real_evidence_checks\",\"input specialist audits -> cross_layer_input_readiness\",\"cross_layer_input_readiness -> constraint_extraction\"],\"constraints\":[\"constraint.task.goal\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.tool.protocols\",\"constraint.human.boundary\",\"verification_plan\"],\"artifacts\":[\"input/case_adapter.json\",\"input/material_index.json\",\"input/sample_project_index.json\",\"input/tool_profile.json\",\"input/tool_availability.json\",\"input/tool_protocols.json\",\"prepared_inputs.errors\",\"input_preparation/prepared_input_error_triage.json\",\"input_preparation/cross_layer_input_readiness.json\",\"input_preparation/constraint_to_evidence_gap_map.json\"]},\"observations\":[\"stage_passed is false and the latest stage command returned 1; this is an input_preparation failure, not evidence of a hardware design failure.\",\"The exact current blocker is case_adapter status=missing: no verification case adapter was provided for this model family, including the required real-weight, TB/RTL, simulator, and diagnosis-tool references.\",\"The design-team aggregate reports ready with five completed subtasks, but its audits and proposed actions do not establish a stage pass; the aggregate must be rerun after the blocker is resolved.\",\"sacg_memory and sacg_memory_truth contain no active contamination barriers, retry requests, or backtrack requests. The attempt count is observability only and does not justify stopping or backtracking.\",\"sample_project_index also reported a read failure. Treat this as an evidence/provenance risk requiring bounded revalidation; do not infer board, tool, module, or path facts from the compact summary.\",\"No timing, synthesis, VCS, RTL, or board evidence is supplied, so no hardware-design backtrack category is justified. No compiled_pending_vcs backend condition is present.\",\"The accelerator acceptance boundary remains Transformer blocks only; any case-adapter weight manifest or semantic reference must exclude embedding/tokenization, final norm, LM head/logits, sampling, and other model-tail work from DUT coverage and golden boundaries.\"],\"risks\":[\"Promoting an unvalidated case adapter could contaminate downstream provenance, tool identity, model binding, or board integration artifacts.\",\"Proceeding without the adapter would leave real-weight, target-model, TB/RTL, and diagnosis-tool bindings unresolved and would make later evidence non-actionable.\",\"The unreadable sample-project reference can cause incorrect target or interface assumptions if not confirmed with current supplied materials and real-tool evidence.\",\"Model shape, decoder semantics, numeric policy, data order, memory/runtime contract, implementation contract, and board facts remain unverified until the input audits pass.\",\"A candidate adapter must not introduce runtime simulation, golden comparison, or weight-loading prerequisites into the compile-only acceptance standard; those references are metadata and verification inputs, not a new hardware acceptance gate.\"],\"proposed_actions\":[\"Triage and hash-bind the exact prepared-input error without changing downstream artifacts.\",\"Perform a bounded, approval-gated repair to provision a candidate case adapter with real source/tool references and transformer-block-only scope; no candidate is valid downstream input until all checks pass.\",\"Promote the candidate only after static, provenance, tool-protocol, and evidence checks pass, then retry input_preparation in the current stage and rerun the aggregate readiness gate.\",\"Do not backtrack to code_generation, parameter_binding, or any hardware stage; do not declare readiness or hardware pass on the current evidence.\"],\"executable_actions\":[{\"id\":\"input_preparation.triage_missing_case_adapter\",\"stage\":\"input_preparation\",\"action_type\":\"prepared_input_error_triage\",\"rationale\":\"Read the exact prepared_inputs.errors entry and the declared source/tool indexes, bind the missing case-adapter diagnosis to current evidence, and preserve unresolved sample-project references. This is a read-only current-stage triage and does not promote or modify any downstream artifact.\",\"consumes\":[\"prepared_inputs.errors\",\"input/case_adapter.json\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\"],\"produces\":[\"input_preparation/prepared_input_error_triage.json\"],\"tool_roles\":[\"sacg_validate\",\"sacg_static_check\",\"tool_protocol_check\",\"artifact_hash_check\",\"stage_artifact_trust_barrier\"],\"acceptance_checkers\":[\"sacg_static_check\",\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"artifact_hash_check\",\"stage_artifact_trust_barrier_check\"],\"on_failure\":\"Preserve the exact error, failed checker, source identity, and unresolved fields in the triage artifact. Keep input_preparation blocked; do not guess a case adapter, board target, tool path, or sample-project identity.\",\"requires_approval\":false},{\"id\":\"input_preparation.provision_case_adapter_candidate\",\"stage\":\"input_preparation\",\"action_type\":\"system_capability_gap\",\"rationale\":\"No registered tool can create the missing model-family case adapter. Implement or invoke planned_tool.case_adapter_provision to assemble a candidate from the supplied model, board, tool, and sample-project materials, including real weight references, TB/RTL references, compile-only VCS/simulator protocol declarations, and diagnosis-tool bindings. The candidate must be hash/provenance bound and must exclude model-tail operations from DUT weight coverage. This is a capability implementation gap, not a hardware correctness result.\",\"consumes\":[\"input_preparation/prepared_input_error_triage.json\",\"artifact.input.task_card\",\"artifact.input.model_config\",\"artifact.input.numeric_policy\",\"artifact.input.target_board_profile\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"source_specs.model_dir\",\"source_specs.board_materials_dir\",\"source_specs.tool_materials_dir\"],\"produces\":[\"input/case_adapter.candidate.json\",\"input/case_adapter.candidate.provenance.json\",\"input/case_adapter.json (promoted only after candidate checks pass)\"],\"tool_roles\":[\"planned_tool.case_adapter_provision\"],\"acceptance_checkers\":[\"sacg_static_check\",\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"artifact_hash_check\",\"stage_artifact_trust_barrier_check\",\"case_real_weight_artifacts\",\"case_target_model_reference\",\"case_semantic_testbench\"],\"on_failure\":\"Keep the candidate unpromoted and retain the missing-adapter error as the active current-stage blocker. Do not use candidate fields as validated downstream inputs, substitute a legacy adapter, or add random/identity model behavior, runtime-weight loading, simulation, or golden-output prerequisites.\",\"requires_approval\":true},{\"id\":\"input_preparation.retry_after_case_adapter_promotion\",\"stage\":\"input_preparation\",\"action_type\":\"retry_current_stage\",\"rationale\":\"Once the case adapter candidate has passed all checks and has been explicitly promoted with immutable provenance, rerun the complete current-stage input audits and aggregate gate. This honors the framework policy that input, provenance, evidence-binding, and orchestration failures retry the failed current stage rather than rewind hardware design.\",\"consumes\":[\"input/case_adapter.json\",\"input/case_adapter.candidate.provenance.json\",\"input_preparation/prepared_input_error_triage.json\",\"artifact.input.task_card\",\"artifact.input.model_config\",\"artifact.input.case_adapter\",\"artifact.input.numeric_policy\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.input.design_space\",\"artifact.input.target_board_profile\",\"artifact.input.tool_profile\",\"artifact.input.tool_availability\",\"artifact.input.tool_protocols\",\"artifact.input.human_agent_boundary\",\"artifact.input.material_index\",\"artifact.input.sample_project_index\",\"constraint.task.goal\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.arch.design_space\",\"constraint.memory.board\",\"constraint.runtime.board\",\"constraint.deployment.board\",\"constraint.stream.order\",\"constraint.beat.pipeline\",\"constraint.tool.protocols\",\"action_grounding_registry.verification_execution_policy\"],\"produces\":[\"input_preparation/model_intake_audit.json\",\"input_preparation/model_shape_assumptions_and_gaps.json\",\"input_preparation/numeric_template_audit.json\",\"input_preparation/template_binding_gaps.json\",\"input_preparation/board_memory_runtime_audit.json\",\"input_preparation/data_order_and_transfer_assumptions.json\",\"input_preparation/source_and_tool_evidence_audit.json\",\"input_preparation/evidence_provenance_and_applicability.json\",\"input_preparation/cross_layer_input_readiness.json\",\"input_preparation/constraint_to_evidence_gap_map.json\",\"input_preparation/human_and_repair_boundary_audit.json\",\"input_preparation/prepared_input_error_disposition.json\"],\"tool_roles\":[\"team_aggregate\",\"sacg_validate\",\"sacg_static_check\",\"task_card_check\",\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"memory_runtime_plan_check\",\"stream_plan_check\",\"addr_map_check\",\"tool_protocol_check\",\"real_tool_evidence_check\",\"artifact_hash_check\",\"stage_artifact_trust_barrier\",\"human_boundary_check\",\"repair_boundary_check\",\"verification_plan_static_check\",\"llm_io_quality_check\",\"llm_semantic_extraction\",\"no_static_keyword_semantic_matching\"],\"acceptance_checkers\":[\"sacg_static_check\",\"task_card_check\",\"model_config_check\",\"numeric_policy_check\",\"template_coverage_check\",\"parameter_binding_static_check\",\"template_binding_static_check\",\"memory_runtime_plan_check\",\"stream_plan_check\",\"addr_map_check\",\"tool_protocol_check\",\"required_real_tool_evidence_check\",\"artifact_hash_check\",\"stage_artifact_trust_barrier_check\",\"human_boundary_check\",\"repair_boundary_check\",\"verification_plan_static_check\",\"llm_io_quality_check\",\"llm_semantic_extraction_check\",\"no_static_keyword_semantic_matching_check\"],\"on_failure\":\"Keep input_preparation incomplete, preserve every failed or not-run checker and the exact prepared-input error, and route only the checker-localized issue to another bounded current-stage repair. Do not promote to constraint_extraction, alter trusted templates or numeric policy, modify golden outputs, infer missing board facts, or rewind any hardware design stage.\",\"requires_approval\":false}],\"approval_required_for\":[\"Provisioning and accepting a new model-family verification case adapter when no registered adapter-generation capability exists; approval must cover its source/tool provenance, real-weight binding, TB/RTL references, and transformer-block-only scope.\",\"Any change to accelerator architecture, pipeline structure, memory layout, DDR/AXI semantics, runtime ABI, model dimensions, tensor layout, decoder or attention semantics, numeric policy, precision, or trusted templates.\",\"Any change to the human approval or forbidden-action boundary, or any attempt to promote a candidate artifact before its current-stage trust and evidence checks pass.\"]}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/004_input_preparation/llm/flow_controller_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/004_input_preparation/llm/flow_controller_agent_result.json",
+  "retry_errors": [
+    "attempt 1: HTTP Error 502: Bad Gateway; response_body={\"error\":{\"message\":\"Upstream access forbidden, please contact administrator\",\"type\":\"upstream_error\"}}"
+  ],
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "flow_orchestration",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

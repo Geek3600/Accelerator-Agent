@@ -117,6 +117,13 @@ class CurlDirectHttpTransportTests(unittest.TestCase):
 
         self.assertEqual(payload["max_output_tokens"], 32768)
 
+    def test_responses_request_headers_use_codex_route_user_agent(self) -> None:
+        headers = llm_io.responses_request_headers("secret-for-test", stream=False)
+
+        self.assertEqual(headers["User-Agent"], "codex-cli")
+        self.assertEqual(headers["Accept"], "application/json")
+        self.assertEqual(headers["Connection"], "close")
+
     def test_curl_direct_http1_preserves_http_error_semantics(self) -> None:
         with (
             patch.object(

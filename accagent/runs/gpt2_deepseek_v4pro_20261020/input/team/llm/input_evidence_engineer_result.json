@@ -1,0 +1,163 @@
+{
+  "agent": "input_evidence_engineer",
+  "duration_sec": 93.36931610002648,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "19d3185405f649529574db8fd615b266",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input/team/llm/input_evidence_engineer_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "input_evidence_engineer",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.case_adapter",
+          "candidate_stage_artifact.prepared_inputs"
+        ],
+        "id": "input_preparation.input_evidence_engineer.reify_source_material_trace",
+        "on_failure": "Keep input-preparation readiness blocked, record the missing or conflicting source identity as not_run/gap in artifact.stage0.source_material_trace, and request upstream material_index/sample_project_index rows before SACG extraction.",
+        "produces": [
+          "artifact.stage0.source_material_trace"
+        ],
+        "rationale": "material_index and sample_project_index are not visible in the compact prepared_inputs.inputs slice, so the current run identity and source-project scope must be bound to the visible run_dir and case_adapter case_id before the evidence audit can pass.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_static_check",
+          "boundary_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "boundary_contract_check"
+        ],
+        "action_type": "tool_protocol_review",
+        "consumes": [
+          "artifact.input.case_adapter",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols"
+        ],
+        "id": "input_preparation.input_evidence_engineer.align_tool_capability_protocols",
+        "on_failure": "Mark tool capability alignment as not_run or conflicted in the audit, block promotion to SACG extraction, and request current-run tool_profile/tool_availability details from the upstream input registry.",
+        "produces": [
+          "artifact.stage0.input_evidence_audit.tool_alignment"
+        ],
+        "rationale": "case_adapter exposes acceptance and protocol-related keys, but tool_profile and tool_availability detailed rows are not visible in the compact slice; tool_protocol_check must confirm that case-adapter protocols are supported by the current tool set.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "tool_protocol_check",
+          "boundary_contract_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "boundary_contract_check",
+          "sacg_static_check"
+        ],
+        "action_type": "evidence_gate_review",
+        "consumes": [
+          "artifact.input.case_adapter",
+          "artifact.input.field_evidence_candidates",
+          "artifact.input.field_evidence"
+        ],
+        "id": "input_preparation.input_evidence_engineer.gate_field_evidence",
+        "on_failure": "Keep field_evidence outside the accepted-evidence boundary, record the gate as not_run/failed, and do not allow downstream SACG extraction to consume it as accepted evidence.",
+        "produces": [
+          "artifact.stage0.input_evidence_audit"
+        ],
+        "rationale": "field_evidence_candidates and field_evidence are present, but the visible candidate artifact does not show checker evidence that the candidates were accepted through case_adapter.evidence_gates; this must be verified before accepted field evidence enters SACG extraction.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "tool_protocol_check",
+          "boundary_contract_check",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "sacg_memory_truth reports zero active contamination barriers, zero open backtrack requests, and zero open retry requests, so no current SACG-memory blockers apply to this stage.",
+      "candidate_stage_artifact.prepared_inputs shows mode=independent_from_scratch_design and run_dir=/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020, creating a run-identity consistency risk because the supplied path mixes Qwen2-Accelerator workspace context with gpt2/deepseek run naming.",
+      "The visible prepared_inputs.inputs keys are case_adapter, design_space, field_evidence, field_evidence_candidates, and human_agent_boundary; material_index, sample_project_index, tool_profile, and tool_availability are not visible in this compact slice, so their detailed rows must be retrieved before readiness is claimed.",
+      "case_adapter is present at key level with acceptance, case_id, diagnosis, errors, and evidence_gates, but its values are not visible, so current-run target identity and evidence-gate acceptance cannot yet be verified.",
+      "field_evidence_candidates and field_evidence both expose policy and schema_version keys, and field_evidence additionally exposes _domain_result_paths, _regex_candidate_count, and evidence, but no visible checker result proves that candidates were accepted through case_adapter.evidence_gates.",
+      "tool_profile and tool_availability are listed as available input artifacts in the state summary, but no visible tool names, modes, or availability status are present in the candidate stage artifact, so tool-protocol alignment is undetermined.",
+      "The supplied action_grounding_registry includes registered sacg_static_check, tool_protocol_check, and boundary_contract_check roles, so these evidence-audit checks are executable without declaring a planned tool gap."
+    ],
+    "proposed_actions": [
+      "Retrieve and bind current-run material_index and sample_project_index with the visible run_dir and case_adapter case identity.",
+      "Run tool_protocol_check over case_adapter against tool_profile and tool_availability; if their detailed rows are absent from the compact slice, request them from the upstream registry.",
+      "Run boundary_contract_check and tool_protocol_check to verify field_evidence_candidates were gated into field_evidence through case_adapter.evidence_gates.",
+      "Emit artifact.stage0.input_evidence_audit and artifact.stage0.source_material_trace with each focus artifact explicitly marked pass/not_run/gap; do not promote until sacg_static_check, tool_protocol_check, and boundary_contract_check pass."
+    ],
+    "risks": [
+      "Run identity may be ambiguous because material_index/sample_project_index/case_adapter case_id are not fully bound to the visible run_dir, risking downstream extraction against the wrong transformer-block scope.",
+      "tool_profile/tool_availability may conflict with case_adapter acceptance or protocol expectations, but this cannot be checked from the visible slice.",
+      "field_evidence may be treated as accepted merely because it is present, even though no checker-grounded evidence shows the candidate-to-evidence gate was applied.",
+      "A compact-slice omission could be misread as a missing artifact class; the safer current-stage position is not_run/needs_evidence, not a hard blocker assertion.",
+      "Promoting input preparation without the focused artifacts bound to SACG constraints would violate the handoff evidence rule."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.case_adapter",
+        "artifact.input.field_evidence_candidates",
+        "artifact.input.field_evidence",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.stage0.input_evidence_audit",
+        "artifact.stage0.source_material_trace"
+      ],
+      "constraints": [
+        "constraint.task.goal",
+        "constraint.tool.protocols"
+      ],
+      "edges": [
+        "material_index + sample_project_index -> case_adapter.case_id -> run_dir identity",
+        "case_adapter.evidence_gates -> field_evidence_candidates -> field_evidence acceptance",
+        "tool_profile -> tool_availability -> case_adapter.acceptance/tool protocols"
+      ],
+      "nodes": [
+        "material_index",
+        "sample_project_index",
+        "case_adapter",
+        "field_evidence_candidates",
+        "field_evidence",
+        "tool_profile",
+        "tool_availability"
+      ]
+    },
+    "schema_version": "spatialaccagent.stage_agent_response.v0",
+    "stage": "input_preparation",
+    "status": "needs_evidence",
+    "summary": "Visible prepared-inputs evidence is not yet sufficient to declare the input evidence sources ready. The compact slice exposes case_adapter, field_evidence, and field_evidence_candidates at key level, but material_index, sample_project_index, tool_profile, and tool_availability details are not shown in the prepared_inputs.inputs keys, so run identity, accepted evidence gates, and tool capability alignment remain unproven. No active SACG-memory blockers are present. Promotion should wait for checker-grounded binding of source scope and tool/field evidence."
+  },
+  "prompt_bytes": 39112,
+  "prompt_hash": "08c4abea8ae0be40921b2d80a24c81559ef5b51eef3c4dfa118e7095ff00052a",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.stage_agent_response.v0\",\n  \"agent\": \"input_evidence_engineer\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"needs_evidence\",\n  \"summary\": \"Visible prepared-inputs evidence is not yet sufficient to declare the input evidence sources ready. The compact slice exposes case_adapter, field_evidence, and field_evidence_candidates at key level, but material_index, sample_project_index, tool_profile, and tool_availability details are not shown in the prepared_inputs.inputs keys, so run identity, accepted evidence gates, and tool capability alignment remain unproven. No active SACG-memory blockers are present. Promotion should wait for checker-grounded binding of source scope and tool/field evidence.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"material_index\",\n      \"sample_project_index\",\n      \"case_adapter\",\n      \"field_evidence_candidates\",\n      \"field_evidence\",\n      \"tool_profile\",\n      \"tool_availability\"\n    ],\n    \"edges\": [\n      \"material_index + sample_project_index -> case_adapter.case_id -> run_dir identity\",\n      \"case_adapter.evidence_gates -> field_evidence_candidates -> field_evidence acceptance\",\n      \"tool_profile -> tool_availability -> case_adapter.acceptance/tool protocols\"\n    ],\n    \"constraints\": [\n      \"constraint.task.goal\",\n      \"constraint.tool.protocols\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.material_index\",\n      \"artifact.input.sample_project_index\",\n      \"artifact.input.case_adapter\",\n      \"artifact.input.field_evidence_candidates\",\n      \"artifact.input.field_evidence\",\n      \"artifact.input.tool_profile\",\n      \"artifact.input.tool_availability\",\n      \"artifact.input.tool_protocols\",\n      \"artifact.stage0.input_evidence_audit\",\n      \"artifact.stage0.source_material_trace\"\n    ]\n  },\n  \"observations\": [\n    \"sacg_memory_truth reports zero active contamination barriers, zero open backtrack requests, and zero open retry requests, so no current SACG-memory blockers apply to this stage.\",\n    \"candidate_stage_artifact.prepared_inputs shows mode=independent_from_scratch_design and run_dir=/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020, creating a run-identity consistency risk because the supplied path mixes Qwen2-Accelerator workspace context with gpt2/deepseek run naming.\",\n    \"The visible prepared_inputs.inputs keys are case_adapter, design_space, field_evidence, field_evidence_candidates, and human_agent_boundary; material_index, sample_project_index, tool_profile, and tool_availability are not visible in this compact slice, so their detailed rows must be retrieved before readiness is claimed.\",\n    \"case_adapter is present at key level with acceptance, case_id, diagnosis, errors, and evidence_gates, but its values are not visible, so current-run target identity and evidence-gate acceptance cannot yet be verified.\",\n    \"field_evidence_candidates and field_evidence both expose policy and schema_version keys, and field_evidence additionally exposes _domain_result_paths, _regex_candidate_count, and evidence, but no visible checker result proves that candidates were accepted through case_adapter.evidence_gates.\",\n    \"tool_profile and tool_availability are listed as available input artifacts in the state summary, but no visible tool names, modes, or availability status are present in the candidate stage artifact, so tool-protocol alignment is undetermined.\",\n    \"The supplied action_grounding_registry includes registered sacg_static_check, tool_protocol_check, and boundary_contract_check roles, so these evidence-audit checks are executable without declaring a planned tool gap.\"\n  ],\n  \"risks\": [\n    \"Run identity may be ambiguous because material_index/sample_project_index/case_adapter case_id are not fully bound to the visible run_dir, risking downstream extraction against the wrong transformer-block scope.\",\n    \"tool_profile/tool_availability may conflict with case_adapter acceptance or protocol expectations, but this cannot be checked from the visible slice.\",\n    \"field_evidence may be treated as accepted merely because it is present, even though no checker-grounded evidence shows the candidate-to-evidence gate was applied.\",\n    \"A compact-slice omission could be misread as a missing artifact class; the safer current-stage position is not_run/needs_evidence, not a hard blocker assertion.\",\n    \"Promoting input preparation without the focused artifacts bound to SACG constraints would violate the handoff evidence rule.\"\n  ],\n  \"proposed_actions\": [\n    \"Retrieve and bind current-run material_index and sample_project_index with the visible run_dir and case_adapter case identity.\",\n    \"Run tool_protocol_check over case_adapter against tool_profile and tool_availability; if their detailed rows are absent from the compact slice, request them from the upstream registry.\",\n    \"Run boundary_contract_check and tool_protocol_check to verify field_evidence_candidates were gated into field_evidence through case_adapter.evidence_gates.\",\n    \"Emit artifact.stage0.input_evidence_audit and artifact.stage0.source_material_trace with each focus artifact explicitly marked pass/not_run/gap; do not promote until sacg_static_check, tool_protocol_check, and boundary_contract_check pass.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"input_preparation.input_evidence_engineer.reify_source_material_trace\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"material_index and sample_project_index are not visible in the compact prepared_inputs.inputs slice, so the current run identity and source-project scope must be bound to the visible run_dir and case_adapter case_id before the evidence audit can pass.\",\n      \"consumes\": [\n        \"artifact.input.material_index\",\n        \"artifact.input.sample_project_index\",\n        \"artifact.input.case_adapter\",\n        \"candidate_stage_artifact.prepared_inputs\"\n      ],\n      \"produces\": [\n        \"artifact.stage0.source_material_trace\"\n      ],\n      \"tool_roles\": [\n        \"sacg_static_check\",\n        \"boundary_contract_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"boundary_contract_check\"\n      ],\n      \"on_failure\": \"Keep input-preparation readiness blocked, record the missing or conflicting source identity as not_run/gap in artifact.stage0.source_material_trace, and request upstream material_index/sample_project_index rows before SACG extraction.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"input_preparation.input_evidence_engineer.align_tool_capability_protocols\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"tool_protocol_review\",\n      \"rationale\": \"case_adapter exposes acceptance and protocol-related keys, but tool_profile and tool_availability detailed rows are not visible in the compact slice; tool_protocol_check must confirm that case-adapter protocols are supported by the current tool set.\",\n      \"consumes\": [\n        \"artifact.input.case_adapter\",\n        \"artifact.input.tool_profile\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.tool_protocols\"\n      ],\n      \"produces\": [\n        \"artifact.stage0.input_evidence_audit.tool_alignment\"\n      ],\n      \"tool_roles\": [\n        \"tool_protocol_check\",\n        \"boundary_contract_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"tool_protocol_check\",\n        \"boundary_contract_check\"\n      ],\n      \"on_failure\": \"Mark tool capability alignment as not_run or conflicted in the audit, block promotion to SACG extraction, and request current-run tool_profile/tool_availability details from the upstream input registry.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"input_preparation.input_evidence_engineer.gate_field_evidence\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"evidence_gate_review\",\n      \"rationale\": \"field_evidence_candidates and field_evidence are present, but the visible candidate artifact does not show checker evidence that the candidates were accepted through case_adapter.evidence_gates; this must be verified before accepted field evidence enters SACG extraction.\",\n      \"consumes\": [\n        \"artifact.input.case_adapter\",\n        \"artifact.input.field_evidence_candidates\",\n        \"artifact.input.field_evidence\"\n      ],\n      \"produces\": [\n        \"artifact.stage0.input_evidence_audit\"\n      ],\n      \"tool_roles\": [\n        \"tool_protocol_check\",\n        \"boundary_contract_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"tool_protocol_check\",\n        \"boundary_contract_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Keep field_evidence outside the accepted-evidence boundary, record the gate as not_run/failed, and do not allow downstream SACG extraction to consume it as accepted evidence.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input/team/llm/input_evidence_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input/team/llm/input_evidence_engineer_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.input evidence engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

@@ -11,6 +11,8 @@ from accagent.framework.weight_layout import (
     materialize_composite_weight_stream,
     materialize_stage_weight_stream,
     sha256_json,
+    weight_layout_binding_matches,
+    weight_layout_hash_matches,
 )
 
 
@@ -113,6 +115,7 @@ class WeightLayoutTest(TestCase):
                 NUMERIC_POLICY,
             )
 
+            self.assertNotIn("source_transform", contract["storage_targets"][0])
             stream = materialize_stage_weight_stream(root / "weight.memh", contract, [row])
             actual = [int(line, 16) for line in Path(stream["path"]).read_text().splitlines()]
             ordered = torch.tensor([1.0, 2.0, 5.0, 6.0, 3.0, 4.0, 7.0, 8.0]).half()
@@ -122,6 +125,70 @@ class WeightLayoutTest(TestCase):
             self.assertEqual(actual, expected)
             self.assertEqual(stream["word_count"], 4)
             self.assertEqual(stream["layout_contract_sha256"], contract["contract_sha256"])
+
+    def test_wide_compute_columns_change_physical_weight_tiles_not_stream_lanes(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tensor_path = root / "weight.pt"
+            tensor = torch.arange(8 * 32, dtype=torch.float32).reshape(8, 32)
+            torch.save(tensor, tensor_path)
+            row = binding("mlp.gate_proj.weight", [8, 32], tensor_path)
+            contract = build_stage_weight_layout(
+                stage("gate", "mlp_gate_proj", lanes=4, compute_array_rows=4, compute_array_cols=16),
+                {},
+                [row],
+                NUMERIC_POLICY,
+            )
+
+            target = contract["storage_targets"][0]
+            self.assertEqual(target["tile"]["out_lanes"], 4)
+            self.assertEqual(target["tile"]["in_lanes"], 16)
+            self.assertEqual(target["port"]["data_width_bits"], 1024)
+            self.assertEqual(target["port"]["address_count"], 4)
+            stream = materialize_stage_weight_stream(root / "weight.memh", contract, [row])
+            self.assertEqual(stream["word_count"], 128)
+
+    def test_identity_transform_keeps_legacy_contract_digest(self) -> None:
+        contract = build_stage_weight_layout(
+            stage("gate", "mlp_gate_proj", lanes=2),
+            {},
+            [binding("mlp.gate_proj.weight", [2, 4])],
+            NUMERIC_POLICY,
+        )
+
+        self.assertNotIn("source_transform", contract["storage_targets"][0])
+        self.assertEqual(
+            contract["contract_sha256"],
+            "c610d32d51f407a628f21883c4d4919a74175cc4ac75fb67ea8aabd0ef19c3a6",
+        )
+
+    def test_layout_validator_accepts_only_the_explicit_identity_legacy_projection(self) -> None:
+        contract = build_stage_weight_layout(
+            stage("gate", "mlp_gate_proj", lanes=2),
+            {},
+            [binding("mlp.gate_proj.weight", [2, 4])],
+            NUMERIC_POLICY,
+        )
+        legacy = deepcopy(contract)
+        legacy["storage_targets"][0]["source_transform"] = {"kind": "identity"}
+        legacy["contract_sha256"] = sha256_json(
+            {key: value for key, value in legacy.items() if key != "contract_sha256"}
+        )
+
+        self.assertTrue(weight_layout_hash_matches(legacy, legacy["contract_sha256"]))
+        self.assertTrue(weight_layout_binding_matches(legacy, contract["contract_sha256"]))
+
+        changed = deepcopy(legacy)
+        changed["storage_targets"][0]["source_transform"] = {"kind": "transpose_2d"}
+        self.assertFalse(weight_layout_hash_matches(changed, legacy["contract_sha256"]))
+
+        changed = deepcopy(legacy)
+        changed["logical_shape"] = [4, 2]
+        self.assertFalse(weight_layout_hash_matches(changed, legacy["contract_sha256"]))
+
+        changed = deepcopy(legacy)
+        changed["logical_shape"] = [4, 2]
+        self.assertFalse(weight_layout_binding_matches(changed, contract["contract_sha256"]))
 
     def test_transposed_linear_stream_materializes_source_rows_in_dut_order(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -238,6 +305,10 @@ class WeightLayoutTest(TestCase):
             attention["storage_targets"][0]["source_axis_order"],
             ["input_feature", "output_feature"],
         )
+        self.assertEqual(
+            attention["storage_targets"][0]["source_transform"],
+            {"kind": "transpose_2d"},
+        )
 
         mlp = build_stage_weight_layout(
             stage("mlp", "mlp_fc", lanes=2),
@@ -246,6 +317,10 @@ class WeightLayoutTest(TestCase):
             NUMERIC_POLICY,
         )
         self.assertEqual(mlp["storage_targets"][0]["logical_shape"], [8, 4])
+        self.assertEqual(
+            mlp["storage_targets"][0]["source_transform"],
+            {"kind": "transpose_2d"},
+        )
         self.assertEqual(mlp["storage_targets"][1]["dut_port_role"], "weight_mlp_up_bias")
 
     def test_unknown_weighted_op_requires_explicit_adapter_layout(self) -> None:

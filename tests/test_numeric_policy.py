@@ -1,6 +1,7 @@
 from unittest import TestCase
 
 from accagent.framework.numeric_policy import (
+    canonical_dtype,
     LOOSE_NUMERIC_COMPARISON_DEFAULTS,
     numeric_comparison,
     resolve_numeric_policy,
@@ -8,6 +9,28 @@ from accagent.framework.numeric_policy import (
 
 
 class NumericPolicyTest(TestCase):
+    def test_signed_and_fixed_point_descriptions_keep_numeric_identity(self) -> None:
+        for source, expected in [
+            ("signed INT4", "INT4"), ("signed INT8", "INT8"),
+            ("INT32 fixed-point", "INT32"), ("unsigned int8", "UINT8"),
+            ("I4", "INT4"), ("FP16", "FP16"),
+        ]:
+            with self.subTest(source=source):
+                self.assertEqual(canonical_dtype(source), expected)
+        self.assertEqual(canonical_dtype("signed UINT8"), "SIGNED UINT8")
+
+    def test_all_design_stages_agree_on_descriptive_integer_widths(self) -> None:
+        from accagent.framework import stage_artifacts, stage_params, stage_pipeline, stage_templates
+        for source, expected in [("signed INT4", 4), ("signed INT8", 8), ("INT32 fixed-point", 32)]:
+            for module in (stage_artifacts, stage_params, stage_pipeline):
+                with self.subTest(source=source, module=module.__name__):
+                    self.assertEqual(module.dtype_bits(source, 16), expected)
+            self.assertEqual(stage_templates.dtype_bits(source), expected)
+        self.assertEqual(stage_params.numeric_compute_backend({"default_rules": {
+            "weight_dtype": "signed INT4", "activation_dtype": "signed INT8",
+            "acc_dtype": "INT32",
+        }}), "integer_dsp")
+
     def test_missing_quantitative_values_use_loose_defaults(self) -> None:
         policy = {
             "tolerance": {

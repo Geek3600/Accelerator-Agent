@@ -1,0 +1,53 @@
+{
+  "_llm_provenance": {
+    "mode": "llm",
+    "sub_agent": "task_card_agent",
+    "used_fallback": false
+  },
+  "acceptance_policy": {
+    "bit_exact_numeric_matching_required": false,
+    "board_execution_required": true,
+    "dse_selection_policy": "Select highest end-to-end throughput within discovered VU9P resource and timing limits; measured QoR is authoritative; analytical estimates are separate and cannot replace measured QoR.",
+    "functional_acceptance": "Valid nonzero output and no deadlock satisfy functional acceptance when real tool gates pass; preserve full layer computation and pipeline overlap.",
+    "no_deadlock_required": true,
+    "numeric_policy": "W4A8 signed INT4 weights, INT8 activations, INT32 accumulation, integer DSP MACs; no floating-point IP in elaborated W4A8 datapath.",
+    "throughput_objective_token_per_sec": 200,
+    "tool_gates": [
+      "operator/leaf validation",
+      "connected single-layer validation",
+      "exact board AXI/DDR wrapper validation"
+    ],
+    "valid_output_required": true,
+    "verification_weights_and_inputs": "real model weights and inputs required"
+  },
+  "design_goal": "Complete FPGA-runnable spatial accelerator for the GPT-2 decoder-only Transformer workload through board execution, using W4A8 signed INT4/INT8/INT32 integer datapath, 512-bit DDR loading and refill, bounded active/shadow weight caches, next-layer/tile prefetch, activation ping-pong, ready/valid backpressure, token-level operator overlap, and the exact VU9P AXI/DDR wrapper and compute-slot behavior; run Stage 0-7 with real tools, enumerate and measure the complete legal FPGA-effective DSE universe, and select for highest measured end-to-end throughput within discovered VU9P resource and timing limits.",
+  "human_inputs": [
+    "human_task_spec: Design a complete FPGA-runnable spatial accelerator for the supplied GPT-2 checkpoint and complete Transformer-block workload. Derive model architecture, tensor shapes, layer count, sequence length, checkpoint tensor names, and operator order from supplied model source/checkpoint; do not substitute fixed project dimensions. Run Stage 0-7 with real tools and VU9P board sample project. Preserve OPT-aligned architecture/schedule: W4A8 signed INT4 weights, INT8 activations, INT32 accumulation, integer DSP MACs; complete weights in external DDR; 512-bit DDR loader/refill; bounded active/shadow weight caches; next layer/tile prefetch; activation ping-pong; ready/valid backpressure; token-level operator overlap; exact board AXI/DDR wrapper and compute-slot behavior. No floating-point IP for W4A8 datapath. Stage 4 must enumerate and measure the complete legal FPGA-effective DSE candidate universe with real synthesis evidence. Select for highest end-to-end throughput within VU9P resource/timing limits, not minimum resources; analytical estimates may prioritize candidates but cannot replace measured QoR. Throughput objective is 200 token/s; if missed, continue normal DSE/optimization within physical limits. Preserve source-bound timing and throughput history for every measured candidate. Verification: real weights/inputs, operator/leaf validation, connected single-layer validation, then exact board AXI/DDR wrapper with real DDR weight loading, active/shadow switching, prefetch, activation ping-pong, and final writeback. Valid nonzero output and no deadlock satisfy functional acceptance when real tool gates pass; preserve full layer computation and pipeline overlap. Two runs share target-model task, board, numeric policy, templates, and workflow; sole experimental variable is upstream LLM model, recorded in each run's LLM configuration. Start from Stage 0 in independent run directory; do not reuse generated RTL, DSE results, or verification evidence from another run.",
+    "hardware_model_facts: gpt2 decoder; num_layers=12; hidden_size=768; intermediate_size=3072; qkv heads=12; kv heads=12; head_dim=64; causal MHA; learned_absolute position encoding; qkv_bias=true; out_bias=true; layer_norm pre position eps=1e-05 has_bias=true; mlp activation=gelu_new with up/down bias; operator_sequence=layer_norm_1,self_attention,residual_add_1,layer_norm_2,mlp_fc,activation,mlp_proj,residual_add_2; weight_layout qkv=fused_qkv, mlp=c_fc_c_proj, out_proj=dense, norm=weight_bias; target_max_seq_len=16; model_dir supplied; provenance mode=llm, sub_agent=model_config_agent, used_fallback=false."
+  ],
+  "notes": [
+    "No missing or conflicting model/board/numeric facts were encountered; hardware facts are marked as LLM-extracted model_config_agent evidence with used_fallback=false.",
+    "target_seq_len is taken from supplied hardware_model_facts target_max_seq_len=16 and should be re-confirmed against the checkpoint/model source.",
+    "Run must start from Stage 0 in an independent run directory; generated RTL, DSE results, and verification evidence must not be reused from other runs."
+  ],
+  "required_outputs": [
+    "Task card JSON for the run",
+    "Model architecture, tensor shape, checkpoint tensor, and operator-order extraction report",
+    "Numeric precision, quantization, tolerance, rounding, and missing-policy report",
+    "Board/platform/toolchain report for VU9P, DDR/AXI width, shell/runtime, remote execution, and board pass criteria",
+    "Generated accelerator code and RTL for the complete board-runnable design",
+    "Operator/leaf validation evidence with real model weights and inputs",
+    "Connected single-layer validation evidence",
+    "Exact board AXI/DDR wrapper validation evidence including DDR weight loading, active/shadow switching, prefetch, activation ping-pong, and final writeback",
+    "Real synthesis evidence for the complete legal FPGA-effective DSE candidate universe",
+    "Measured QoR, throughput, resource, and timing history for every measured candidate",
+    "Selected candidate implementation report",
+    "Bitstream generation evidence",
+    "Board execution output and pass/fail evidence",
+    "LLM configuration record for the run"
+  ],
+  "schema_version": "1.0",
+  "target_layers": 12,
+  "target_model": "gpt2",
+  "target_seq_len": 16
+}

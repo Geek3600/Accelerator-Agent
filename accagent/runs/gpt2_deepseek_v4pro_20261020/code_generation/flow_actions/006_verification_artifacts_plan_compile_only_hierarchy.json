@@ -1,0 +1,58 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "verification_plan_static_check",
+      "hierarchical_verification_plan_check",
+      "verification_artifact_contract_check",
+      "tool_protocol_check",
+      "human_boundary_check",
+      "sacg_memory_check"
+    ],
+    "action_type": "verification_planning",
+    "consumes": [
+      "artifact.code_generation_handoff.ready",
+      "artifact.code_generation_manifest",
+      "generated/chisel/memory/memory_layout.json",
+      "generated/chisel/runtime/runtime_config.json",
+      "generated/chisel/GeneratedAcceleratorTop.sv",
+      "generated/chisel/GeneratedAxiDdrTop.sv",
+      "sacg_memory_truth"
+    ],
+    "id": "verification_artifacts.plan_compile_only_hierarchy",
+    "on_failure": "Stay in verification_artifacts and repair the verification plan or artifact contract against the failing static/checker evidence. Do not rewind to code_generation for verification-planning, contract, protocol, or audit failures; do not promote any verification layer without current-source VCS compile-only evidence.",
+    "produces": [
+      "artifact.stage6.verification_plan",
+      "artifact.stage6.verification_artifact_contract",
+      "sacg_memory.recent_stage_outcome.stage6.verification_planning"
+    ],
+    "rationale": "With code_generation promoted, the next bounded action is to plan verification artifacts in bottom-up order: operator/leaf modules, connected single-transformer-layer kernel, then the exact board-accurate AXI/DDR wrapper. The plan must use the existing compile-only VCS execution modes and make successful current-source VCS compilation, elaboration, and linking the sole acceptance standard; it must not require simulation execution, runtime weight loading, golden comparisons, or numerical correctness.",
+    "requires_approval": false,
+    "stage": "verification_artifacts",
+    "tool_roles": [
+      "verification_plan_static_check",
+      "hierarchical_verification_plan_check",
+      "verification_artifact_contract_check",
+      "tool_protocol_check",
+      "human_boundary_check",
+      "sacg_memory_check",
+      "sacg_memory_update"
+    ]
+  },
+  "attempt_count": 1,
+  "decision": "proceed",
+  "flow_event_index": 6,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/flow_handoff_sources/006_c2214e5c28a6b5c1fd919abebdaea72fd42cfea6d70f3b97fb4e045df29a2b83.json",
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/flow_events/006_proceed.json",
+  "source_identities": {
+    "flow_controller_result_sha256": "f7bb4095db02ce482eedb5e2d02be97d7871f8766322f21489eed7f04fdd8b9d",
+    "source_sacg_state_sha256": "c2214e5c28a6b5c1fd919abebdaea72fd42cfea6d70f3b97fb4e045df29a2b83"
+  },
+  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/sacg_state.json",
+  "stage": "code_generation"
+}

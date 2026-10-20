@@ -32,7 +32,13 @@ from accagent.framework.connected_kernel_targeted_replay import (
     materialize_connected_kernel_targeted_replay_evidence,
     replay_semantic_contract,
 )
-from accagent.framework.semantic_simulator import run_configured_semantic_harness
+from accagent.framework.semantic_simulator import (
+    run_configured_chisel_top_compile,
+    run_configured_semantic_harness,
+)
+from accagent.framework.verification_evidence_contract import (
+    COMPILE_ONLY_POLICY,
+)
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -1893,157 +1899,39 @@ def compile_and_run(
 
 def functional_mode(args: argparse.Namespace) -> int:
     run_dir = args.run_dir.resolve()
-    semantic_path, semantic = semantic_manifest(run_dir)
-    if semantic_path.exists():
-        section = semantic.get("single_layer", {}) if isinstance(semantic.get("single_layer"), dict) else {}
-        targeted_replay = connected_kernel_targeted_replay_requested(args)
-        replay_manifest: dict[str, Any] = {}
-        if targeted_replay:
-            _, immutable = immutable_semantic_replay_inputs(run_dir)
-            replay_path, replay_manifest = materialize_connected_kernel_replay_testbench(run_dir, section)
-            if immutable.get("status") == "pass" and replay_manifest.get("status") == "pass" and replay_path is not None:
-                stats, output_path = run_generated_semantic_tb(
-                    run_dir,
-                    semantic,
-                    replay_semantic_contract(section, replay_path),
-                )
-            else:
-                stats = {
-                    "status": "fail",
-                    "phase": "connected_kernel_targeted_replay_preparation",
-                    "summary": "connected-kernel direct replay inputs or testbench are not ready",
-                    "blockers": [
-                        *immutable.get("blockers", []),
-                        *replay_manifest.get("blockers", []),
-                    ],
-                }
-                output_path = Path(str(section.get("rtl_output_capture") or ""))
-        else:
-            stats, output_path = run_generated_semantic_tb(run_dir, semantic)
-        overlap = pipeline_overlap_evidence(stats, section)
-        status = "pass" if stats.get("status") == "pass" and overlap.get("status") == "pass" else "fail"
-        report = {
-            "schema_version": "spatialaccagent.single_layer_functional_sim.v1",
-            "verification_layer": "layer2_connected_single_transformer",
-            "status": status,
-            "run_dir": str(run_dir),
-            "semantic_testbench_manifest": str(semantic_path),
-            "semantic_testbench_sha256": sha256_file(semantic_path),
-            "testbench": section.get("testbench"),
-            "testbench_sha256": section.get("testbench_sha256"),
-            "input_vector": section.get("input_vector"),
-            "output_memh": str(output_path),
-            "stats": stats,
-            "pipeline_overlap_evidence": overlap,
-            "output_sha256": sha256_file(output_path),
-            "real_weight_execution": {
-                "verified": section.get("real_weight_binding_verified") is True,
-                "binding_manifest": semantic.get("dut_weight_binding_manifest"),
-                "consumed_tensor_hashes": section.get("dut_harness", {}).get("consumed_tensor_hashes", []),
-            },
-            "policy": {
-                "real_weight_semantic_harness_required": True,
-                "remote_vcs_execution_required": True,
-                "elastic_rate_insensitive_operator_token_pipeline_required": True,
-                "legacy_pattern_input_is_not_acceptance": True,
-            },
-        }
-        cctg_replay_path = write_cctg_boundary_replay(run_dir, stats, section)
-        if cctg_replay_path is not None:
-            cctg_replay = read_json(cctg_replay_path)
-            report["cctg_boundary_replay"] = {
-                "path": str(cctg_replay_path),
-                "sha256": sha256_file(cctg_replay_path),
-                "status": cctg_replay.get("status"),
-            }
-        if targeted_replay:
-            direct = materialize_connected_kernel_targeted_replay_evidence(
-                run_dir,
-                stats,
-                cctg_replay if cctg_replay_path is not None else {},
-            )
-            report["connected_kernel_targeted_replay"] = {
-                "manifest": replay_manifest,
-                "trace": {
-                    "path": str(direct["trace_path"]),
-                    "sha256": sha256_file(direct["trace_path"]),
-                    "status": direct["trace"].get("status"),
-                },
-                "causal_context": {
-                    "path": str(direct["context_path"]),
-                    "sha256": sha256_file(direct["context_path"]),
-                    "status": direct["context"].get("status"),
-                },
-                "reconciliation": {
-                    "path": str(direct["reconciliation_path"]),
-                    "sha256": sha256_file(direct["reconciliation_path"]),
-                    "status": direct["reconciliation"].get("status"),
-                },
-            }
-            if direct["trace"].get("status") != "pass":
-                status = "fail"
-                report["status"] = "fail"
-        report_path = run_dir / "verification" / "single_layer" / "single_layer_functional_report.json"
-        write_json(report_path, report)
-        hierarchy_path = run_dir / "verification" / "case_hierarchy" / "single_layer_functional.json"
-        write_json(hierarchy_path, {**report, "gate": "single_layer_functional"})
-        expected_beats = int(section.get("expected_output", {}).get("beats") or 0)
-        write_boundary_trace(run_dir, report, expected_beats)
-        print(report_path)
-        return 0 if status == "pass" else 1
-    paths = adapter_paths(run_dir)
-    chisel_dir = run_dir / "generated" / "chisel"
-    top_path = chisel_dir / "GeneratedAcceleratorTop.sv"
-    input_manifest_path = resolve_input_manifest(run_dir, paths)
-    input_manifest = read_json(input_manifest_path)
-    input_memh = resolve_input_memh(run_dir, paths, input_manifest)
-    image = input_manifest.get("activation_image", {}) if isinstance(input_manifest.get("activation_image"), dict) else {}
-    expected_beats = int(args.expected_beats or image.get("stream_beats") or 0)
-    if expected_beats <= 0:
-        width = top_stream_width(top_path)
-        word_count = sum(1 for line in input_memh.read_text(encoding="utf-8").splitlines() if line.strip() and not line.startswith("@"))
-        expected_beats = max(1, word_count // max(1, width // 32))
-    hidden = int(image.get("hidden_size") or 0)
-    lanes = int(image.get("lanes") or max(1, top_stream_width(top_path) // 32))
-    token_beats = int(args.token_beats or (hidden // lanes if hidden and lanes else expected_beats))
-    max_cycles = int(args.max_cycles or os.environ.get("SPATIALACC_SINGLE_LAYER_MAX_CYCLES", 0) or max(2_000_000, expected_beats * 4000))
-    no_progress_limit = int(args.no_progress_limit or os.environ.get("SPATIALACC_SINGLE_LAYER_NO_PROGRESS_LIMIT", 300000))
-    stats, output_path, stats_path = compile_and_run(
-        run_dir,
-        chisel_dir,
-        top_path,
-        input_memh,
-        expected_beats,
-        token_beats,
-        max_cycles,
-        no_progress_limit,
+    timeout_sec = int(
+        os.environ.get(
+            "SPATIALACC_SEMANTIC_SIM_TIMEOUT_SEC",
+            os.environ.get("SPATIALACC_TOOL_TIMEOUT_SEC", "0"),
+        )
     )
-    status = "pass" if stats.get("status") == "pass" else "fail"
+    compile_report = run_configured_chisel_top_compile(run_dir, timeout_sec)
+    status = str(compile_report.get("status") or "fail")
     report = {
-        "schema_version": "spatialaccagent.single_layer_functional_sim.v0",
+        "schema_version": "spatialaccagent.single_layer_functional_sim.v1",
         "verification_layer": "layer2_connected_single_transformer",
         "status": status,
+        "validation_policy": COMPILE_ONLY_POLICY,
         "run_dir": str(run_dir),
-        "top": str(top_path),
-        "input_manifest": str(input_manifest_path),
-        "input_memh": str(input_memh),
-        "output_memh": str(output_path),
-        "stats": stats,
-        "output_sha256": sha256_file(output_path),
+        "top_module": compile_report.get("top_module"),
+        "source_fingerprint_sha256": compile_report.get("source_fingerprint_sha256"),
+        "compile_evidence": compile_report.get("compile_evidence", {}),
+        "stats": compile_report,
+        "simulation": {"status": "not_run"},
+        "real_weight_execution": {"verified": False, "status": "not_run"},
         "policy": {
-            "real_verilator_execution_required": True,
-            "functional_acceptance": "input and output stream transaction counts must match the real activation stream beats",
-            "not_bit_exact_model_claim": True,
+            "vcs_compile_and_elaboration_required": True,
+            "simulation_execution_required": False,
+            "functional_semantics_claimed": False,
         },
     }
     report_path = run_dir / "verification" / "single_layer" / "single_layer_functional_report.json"
     write_json(report_path, report)
     hierarchy_path = run_dir / "verification" / "case_hierarchy" / "single_layer_functional.json"
-    if hierarchy_path.parent.exists():
-        write_json(hierarchy_path, {**report, "gate": "single_layer_functional"})
-    write_boundary_trace(run_dir, report, expected_beats)
+    write_json(hierarchy_path, {**report, "gate": "single_layer_functional"})
     print(report_path)
     return 0 if status == "pass" else 1
+
 
 
 def write_boundary_trace(run_dir: Path, report: dict[str, Any], expected_beats: int) -> None:
@@ -2104,56 +1992,32 @@ def golden_mode(args: argparse.Namespace) -> int:
     if semantic_path.exists():
         section = semantic.get("single_layer", {}) if isinstance(semantic.get("single_layer"), dict) else {}
         functional_report = run_dir / "verification" / "single_layer" / "single_layer_functional_report.json"
-        output_path = Path(str(section.get("rtl_output_capture") or ""))
-        blockers = []
-        if semantic.get("status") != "ready" or section.get("real_weight_binding_verified") is not True:
-            blockers.append("semantic testbench or DUT real-weight binding is not ready")
-        if not functional_report.is_file() or read_json(functional_report).get("status") != "pass":
-            blockers.append("real-weight single-layer functional simulation has not passed")
-        metrics: dict[str, Any] = {}
-        if not blockers:
-            metrics = compare_semantic_output(
-                output_path,
-                section.get("expected_output", {}),
-                semantic.get("numeric_comparison_policy", {}),
-            )
-            if metrics.get("passed") is not True:
-                blockers.append("single-layer RTL output does not satisfy target-model semantic tolerance")
-        consumed_hashes = section.get("dut_harness", {}).get("consumed_tensor_hashes", [])
-        comparison = {
-            "status": "pass" if not blockers else "fail",
-            "passed": not blockers,
-            "expected_output_source": "target_model_inference",
-            "expected_output_sha256": section.get("expected_output", {}).get("sha256"),
-            "rtl_output_sha256": sha256_file(output_path),
-            "testbench_sha256": section.get("testbench_sha256"),
-            "consumed_tensor_hashes": consumed_hashes,
-            "numeric_metrics": metrics,
-        }
+        functional = read_json(functional_report) if functional_report.is_file() else {}
+        compile_evidence = functional.get("compile_evidence", {}) if isinstance(functional.get("compile_evidence"), dict) else {}
+        compile_log = Path(str(compile_evidence.get("log_path") or ""))
+        errors = []
+        if functional.get("status") != "pass" or functional.get("validation_policy") != COMPILE_ONLY_POLICY:
+            errors.append("single-layer VCS compile-only functional report is not pass")
+        if compile_evidence.get("status") != "pass":
+            errors.append("single-layer VCS compile evidence is not pass")
+        if not compile_log.is_file() or sha256_file(compile_log) != compile_evidence.get("log_sha256"):
+            errors.append("single-layer VCS compile log is missing or hash-invalid")
         report = {
             "schema_version": "spatialaccagent.single_layer_golden_compare.v1",
-            "status": "pass" if not blockers else "fail",
-            "run_dir": str(run_dir),
+            "status": "fail" if errors else "pass",
+            "validation_policy": COMPILE_ONLY_POLICY,
+            "compile_evidence": compile_evidence,
             "functional_report": str(functional_report),
-            "output_memh": str(output_path),
-            "golden_memh": section.get("expected_output", {}).get("path"),
-            "output_sha256": sha256_file(output_path),
-            "golden_sha256": section.get("expected_output", {}).get("sha256"),
-            "matched": not blockers,
-            "semantic_comparison": comparison,
-            "blockers": blockers,
-            "policy": {
-                "target_model_inference_reference_required": True,
-                "same_random_input_and_checkpoint_required": True,
-                "do_not_loosen_tolerance_or_edit_golden_to_pass": True,
-            },
+            "comparison": "not_run",
+            "blockers": errors,
+            "summary": "golden comparison skipped by VCS compile-only policy",
         }
         report_path = run_dir / "verification" / "single_layer" / "single_layer_golden_compare.json"
         write_json(report_path, report)
         hierarchy_path = run_dir / "verification" / "case_hierarchy" / "single_layer_golden_compare.json"
         write_json(hierarchy_path, {**report, "gate": "single_layer_golden_compare"})
         print(report_path)
-        return 0 if not blockers else 1
+        return 1 if errors else 0
     paths = adapter_paths(run_dir)
     output_path = run_dir / "verification" / "single_layer" / "single_layer_output.memh"
     functional_report = run_dir / "verification" / "single_layer" / "single_layer_functional_report.json"

@@ -1,0 +1,119 @@
+{
+  "blockers": [],
+  "contract_sha256": "b9c3e974c3a1baa2563531026b569cab16a3133005aed734326823bb2655b382",
+  "exp_for_shifted_softmax": {
+    "input_domain": [
+      -16,
+      0
+    ],
+    "input_fixed_format": {
+      "fraction_bits": 11,
+      "signed": true
+    },
+    "outside_domain": {
+      "x_ge_zero": 1.0,
+      "x_le_minimum": 0.0
+    },
+    "range_reduction": {
+      "formula": "exp(x) = 2^(x * log2(e))",
+      "fractional_address_bits": 11,
+      "integer_rule": "arithmetic right shift; integer part is floor for negative values",
+      "log2e_fixed": 2955
+    },
+    "required_input_invariant": "x is score minus row maximum, therefore x <= 0",
+    "semantic_function": "exp(x)",
+    "table": {
+      "address_order": "ascending",
+      "entry_count": 2048,
+      "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/src/main/resources/spatialaccagent/numeric/exp2_fraction_q24.memh",
+      "sha256": "5093afd06e5aec5ec2ba868aa8231300546a19abe76c65dfbac601daa6addc88",
+      "word_width_bits": 26
+    },
+    "table_value_format": {
+      "fraction_bits": 24,
+      "unsigned": true
+    },
+    "validation": {
+      "acceptance_bound": {
+        "max_absolute_error": 0.001,
+        "status": "pass"
+      },
+      "max_absolute_error": {
+        "error": 0.00033076369409834605,
+        "input": -0.0341796875,
+        "observed": 0.9660670757293701,
+        "reference": 0.9663978394234685
+      },
+      "max_relative_error_where_reference_ge_1e-4": {
+        "error": 0.002034830986099707,
+        "input": -9.1962890625,
+        "observed": 0.00010120868682861328,
+        "reference": 0.00010141504931341304
+      },
+      "method": "exhaustive_over_every_representable_input_in_declared_fixed_point_domain",
+      "points": 32769
+    }
+  },
+  "implementation_boundary": {
+    "hardware_must_implement_the_declared_integer_rules_exactly": true,
+    "hardware_still_requires_real_simulator_comparison_against_target_model_outputs": true,
+    "no_sine_or_cosine_operator_is_required_when_hash_bound_runtime_RoPE_tables_are_consumed": true,
+    "tables_are_constants_not_expected_outputs": true,
+    "tables_are_independent_of_rtl_outputs": true
+  },
+  "schema_version": "spatialaccagent.transcendental_approximation_contract.v1",
+  "sigmoid_and_silu": {
+    "input_fixed_format": {
+      "fraction_bits": 11,
+      "signed": true
+    },
+    "interpolation": "linear with nearest-integer rounding after multiplying the table delta by the within-segment remainder",
+    "interpolation_domain": [
+      -8,
+      8
+    ],
+    "outside_domain": {
+      "x_ge_8_sigmoid": 1.0,
+      "x_le_minus8_sigmoid": 0.0
+    },
+    "segment_count": 128,
+    "segment_width": 0.125,
+    "semantic_functions": {
+      "sigmoid": "1/(1+exp(-x))",
+      "silu": "x*sigmoid(x)"
+    },
+    "table": {
+      "address_order": "ascending",
+      "entry_count": 129,
+      "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/src/main/resources/spatialaccagent/numeric/sigmoid_pwl_q18.memh",
+      "sha256": "a285a0b32c9b233afc4761e4b35ae25a5ec99d9d9ee6b691ae39dfb08c5e97e6",
+      "word_width_bits": 19
+    },
+    "table_value_format": {
+      "fraction_bits": 18,
+      "integer_bits": 1,
+      "unsigned": true
+    },
+    "validation": {
+      "acceptance_bound": {
+        "max_silu_absolute_error": 0.005,
+        "status": "pass"
+      },
+      "max_sigmoid_absolute_error": {
+        "error": 0.0003353501304664781,
+        "input": -8.0,
+        "observed": 0.0,
+        "reference": 0.0003353501304664781
+      },
+      "max_silu_absolute_error": {
+        "error": 0.002682801043731825,
+        "input": -8.0,
+        "observed": -0.0,
+        "reference": -0.002682801043731825
+      },
+      "method": "exhaustive_over_every_representable_q_input_on_extended_minus12_to12_domain",
+      "points": 49153
+    }
+  },
+  "status": "pass"
+}

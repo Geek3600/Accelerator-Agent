@@ -297,6 +297,8 @@ def pending_stage6_flow_handoff(run_dir: Path, source_sacg_state: Path) -> dict[
         if candidate is not None:
             candidates.append((int(candidate["source_flow_event"]["index"]), event_path, candidate))
             continue
+        if errors == ["flow event source SACG identity is stale"]:
+            continue
         if errors:
             event_stage_path, event_state_sha = source_sacg_identity(event, run_dir)
             actions = event.get("executable_actions", [])

@@ -1,0 +1,105 @@
+{
+  "agent": "numeric_template_specialist",
+  "duration_sec": 28.96108517399989,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "16d62fd1a8e14a809f89deb465fea7a8",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/numeric_template_specialist_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "numeric_template_specialist",
+    "approval_required_for": [
+      "Any change or selection of numeric precision, quantization behavior, or numeric-policy assumptions.",
+      "Adding or materially changing a trusted template, template parameter, or design-space target."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space"
+        ],
+        "id": "input_preparation.audit_numeric_template_bindings",
+        "on_failure": "Record the failing or not_run checker, the affected artifact and constraint, and the unresolved binding in the review and gap matrix; hand off to input_preparation.cross_layer_sacg_gate. Do not promote an unverified binding or modify numeric policy, templates, or design-space targets.",
+        "produces": [
+          "artifact.stage0.numeric_template_review",
+          "artifact.stage0.template_binding_gap_matrix"
+        ],
+        "rationale": "Evaluate only the supplied numeric policy, template library and metadata, and design space against their named SACG constraints. Record unavailable detail as unresolved or not_run; do not invent formats, template support, or parameter values.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "numeric_policy_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The state summary lists all four in-scope artifact classes. The visible candidate summary exposes only abbreviated key summaries, not the policy values, template entries, metadata, design-space targets, or parameter bindings.",
+      "No supported precision formats, quantization behavior, or numeric-policy compatibility findings can be established from the visible artifact details.",
+      "No trusted template coverage or template-to-parameter binding can be confirmed from the visible details.",
+      "The prepared-input errors list is empty, but that is not evidence that the numeric, template, or parameter-binding checkers passed.",
+      "The current SACG summary reports zero nodes and edges and no failed invariants; it does not provide checker-grounded bindings among these artifacts and constraints.",
+      "Model and shape artifacts are listed, but their relevant details are not visible here; numeric and parameter consistency against those facts remains for the integration gate to assess."
+    ],
+    "proposed_actions": [
+      "Run the registered static numeric, template-coverage, template-binding, parameter-binding, and SACG checks against the supplied artifacts and record checker-grounded findings in the two expected stage-0 review artifacts.",
+      "Send any unsupported, incomplete, or inconsistent bindings to input_preparation.cross_layer_sacg_gate for resolution; do not alter policy, templates, or design-space targets in this review."
+    ],
+    "risks": [
+      "Unsupported or underspecified precision and quantization assumptions may be carried into template selection unless the numeric-policy checker reports their evidence and status.",
+      "A design-space target may lack trusted-template or metadata support; this is unresolved, not evidence that a field or template is absent.",
+      "Parameter names, ranges, and bindings cannot be validated from the supplied summary. Inventing or assuming such values would violate the specialist boundary.",
+      "Cross-layer numeric compatibility with model shape, data order, and memory/implementation assumptions is not established by the visible evidence."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space"
+      ],
+      "constraints": [
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space"
+      ],
+      "edges": [],
+      "nodes": [
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space"
+      ]
+    },
+    "schema_version": "spatialaccagent.stage_review.v0",
+    "stage": "input_preparation",
+    "status": "incomplete",
+    "summary": "The supplied summaries identify the numeric policy, template library, template metadata, and design space artifacts, but do not expose their substantive values or checker results. Precision support, trusted-template coverage, and parameter-binding validity therefore remain unverified; no values or bindings are inferred."
+  },
+  "prompt_bytes": 39155,
+  "prompt_hash": "d6dfb09cc2d2ac7a1ac6728342c4e1304434a2e57b67c09e7f6147428aa9f1ff",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.stage_review.v0\",\n  \"agent\": \"numeric_template_specialist\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"incomplete\",\n  \"summary\": \"The supplied summaries identify the numeric policy, template library, template metadata, and design space artifacts, but do not expose their substantive values or checker results. Precision support, trusted-template coverage, and parameter-binding validity therefore remain unverified; no values or bindings are inferred.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\"\n    ],\n    \"edges\": [],\n    \"constraints\": [\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"artifact.input.design_space\"\n    ]\n  },\n  \"observations\": [\n    \"The state summary lists all four in-scope artifact classes. The visible candidate summary exposes only abbreviated key summaries, not the policy values, template entries, metadata, design-space targets, or parameter bindings.\",\n    \"No supported precision formats, quantization behavior, or numeric-policy compatibility findings can be established from the visible artifact details.\",\n    \"No trusted template coverage or template-to-parameter binding can be confirmed from the visible details.\",\n    \"The prepared-input errors list is empty, but that is not evidence that the numeric, template, or parameter-binding checkers passed.\",\n    \"The current SACG summary reports zero nodes and edges and no failed invariants; it does not provide checker-grounded bindings among these artifacts and constraints.\",\n    \"Model and shape artifacts are listed, but their relevant details are not visible here; numeric and parameter consistency against those facts remains for the integration gate to assess.\"\n  ],\n  \"risks\": [\n    \"Unsupported or underspecified precision and quantization assumptions may be carried into template selection unless the numeric-policy checker reports their evidence and status.\",\n    \"A design-space target may lack trusted-template or metadata support; this is unresolved, not evidence that a field or template is absent.\",\n    \"Parameter names, ranges, and bindings cannot be validated from the supplied summary. Inventing or assuming such values would violate the specialist boundary.\",\n    \"Cross-layer numeric compatibility with model shape, data order, and memory/implementation assumptions is not established by the visible evidence.\"\n  ],\n  \"proposed_actions\": [\n    \"Run the registered static numeric, template-coverage, template-binding, parameter-binding, and SACG checks against the supplied artifacts and record checker-grounded findings in the two expected stage-0 review artifacts.\",\n    \"Send any unsupported, incomplete, or inconsistent bindings to input_preparation.cross_layer_sacg_gate for resolution; do not alter policy, templates, or design-space targets in this review.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"input_preparation.audit_numeric_template_bindings\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"Evaluate only the supplied numeric policy, template library and metadata, and design space against their named SACG constraints. Record unavailable detail as unresolved or not_run; do not invent formats, template support, or parameter values.\",\n      \"consumes\": [\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.design_space\"\n      ],\n      \"produces\": [\n        \"artifact.stage0.numeric_template_review\",\n        \"artifact.stage0.template_binding_gap_matrix\"\n      ],\n      \"tool_roles\": [\n        \"numeric_policy_check\",\n        \"template_coverage_check\",\n        \"template_binding_static_check\",\n        \"parameter_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"numeric_policy_check\",\n        \"template_coverage_check\",\n        \"template_binding_static_check\",\n        \"parameter_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Record the failing or not_run checker, the affected artifact and constraint, and the unresolved binding in the review and gap matrix; hand off to input_preparation.cross_layer_sacg_gate. Do not promote an unverified binding or modify numeric policy, templates, or design-space targets.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any change or selection of numeric precision, quantization behavior, or numeric-policy assumptions.\",\n    \"Adding or materially changing a trusted template, template parameter, or design-space target.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/numeric_template_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/numeric_template_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.numeric and template binding engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

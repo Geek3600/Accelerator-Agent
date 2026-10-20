@@ -1,0 +1,175 @@
+{
+  "agent": "input_evidence_engineer",
+  "duration_sec": 69.22727666801075,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "ab2088de597549abb82318c5562766a7",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/llm/input_evidence_engineer_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "input_evidence_engineer",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.candidate.candidate_design_graph_summary",
+          "artifact.candidate.prepared_inputs_manifest",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.field_evidence",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary",
+          "constraint.source.materials",
+          "constraint.source.evidence",
+          "constraint.tool.profile",
+          "constraint.tool.protocols",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "constraint_extraction.input_evidence_review.run_sacg_static_check",
+        "on_failure": "Block stage handoff and emit a bounded repair/backtrack request listing the specific omitted or dangling material/evidence/tool input references; do not claim input coverage from the compact summary.",
+        "produces": [
+          "constraint_extraction.input_evidence_review_evidence.json"
+        ],
+        "rationale": "The compact candidate graph summary is not sufficient to prove that board materials, quantization materials, sample projects, extracted field evidence, tool profiles, tool availability, and real tool probe results are represented without dangling references. A static SACG check binds the graph to the prepared inputs before peer handoff.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_reference_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_reference_check",
+        "consumes": [
+          "artifact.candidate.candidate_design_graph_summary",
+          "artifact.candidate.prepared_inputs_manifest",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.field_evidence",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "constraint.source.materials",
+          "constraint.source.evidence",
+          "constraint.tool.profile",
+          "constraint.tool.protocols",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "constraint_extraction.input_evidence_review.verify_input_reference_bindings",
+        "on_failure": "Record unresolved references as current-stage handoff blockers and request targeted graph node/edge additions from the model graph engineer, template platform engineer, or constraint graph auditor; do not silently infer missing bindings.",
+        "produces": [
+          "constraint_extraction.input_evidence_review_reference_report.json"
+        ],
+        "rationale": "The role requires verifying that source-material, source-evidence, and tool-profile/protocol constraints are traceable to explicit graph nodes and that real tool availability/probe facts are not dangling. A reference check produces citable evidence for the downstream graph engineers and auditor.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_reference_check",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The supplied state summary contains 15 input artifacts and 16 constraints, matching the candidate graph summary's num_constraints=16 and node count=20.",
+      "candidate_design_graph_summary contains input_groups.evidence, input_groups.materials, and input_groups.tools, so evidence, board/quantization/sample materials, and tool facts appear structurally represented.",
+      "constraint.source.materials, constraint.source.evidence, constraint.tool.profile, and constraint.cross_layer.input_consistency are present in the supplied constraint list and need explicit graph node/edge bindings.",
+      "The compact candidate summary reports 109 evidence_fields and validation_errors=[], but it does not expose actual node_ids, constraint_ids, or edge endpoints, so dangling input references cannot be ruled out from this prompt slice alone.",
+      "Real tool probe results may be represented through artifact.input.tool_availability, artifact.input.tool_protocols, and artifact.input.field_evidence, but the compact graph summary does not separately expose a real_tool_probe_result node/edge binding; this must be confirmed by checker output.",
+      "sacg_memory_truth shows zero active contamination barriers, open retry requests, and open backtrack requests, so there are no current SACG-memory blockers for this stage.",
+      "hierarchical_learning_context reports status=no_validated_lower_layer_evidence and no validated lower-layer certificates; it does not constrain this input-evidence review stage."
+    ],
+    "proposed_actions": [
+      "Run sacg_static_check on the current candidate_design_graph_summary together with prepared_inputs_manifest and the relevant input artifacts.",
+      "Run sacg_reference_check to verify no dangling input references for materials, field evidence, tool profiles, tool availability/protocols, and real tool probe facts.",
+      "If checker evidence confirms all source/evidence/tool inputs trace to graph nodes and constraints, produce constraint_extraction.input_evidence_review_evidence.json and hand off to constraint_extraction.model_graph_engineer, constraint_extraction.template_platform_engineer, and constraint_extraction.constraint_graph_auditor.",
+      "If checker evidence reports dangling or omitted input references, record a bounded graph-repair request with the specific missing node/edge names rather than silently promoting the stage."
+    ],
+    "risks": [
+      "The compact candidate_design_graph_summary may hide dangling references from input_artifacts to constraints or graph nodes; a pass claim without sacg_static_check/reference evidence would be unsupported.",
+      "Quantization materials and sample-project facts may be collapsed under input_groups.materials; static check must confirm they are not omitted from graph nodes or dangling from constraint.source.materials.",
+      "Real tool probe results may be merged with tool availability/protocol evidence; if no explicit edge exists, downstream template/platform engineers could consume an untraced tool fact.",
+      "Board material, sample_project_index, target_board_profile, and tool profile facts must each trace to distinct deployment/tool constraints; a compact summary alone cannot show cross-layer input consistency.",
+      "The candidate graph summary reports 7 edges in state_summary, but the compact candidate artifact does not enumerate edge endpoints; missing tool, evidence, or material edges would be a current-stage handoff blocker."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.candidate.candidate_design_graph_summary",
+        "artifact.candidate.prepared_inputs_manifest",
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.field_evidence",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary"
+      ],
+      "constraints": [
+        "constraint.source.materials",
+        "constraint.source.evidence",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.cross_layer.input_consistency",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.case.adapter",
+        "constraint.human.boundary"
+      ],
+      "edges": [
+        "artifact.input.material_index -> constraint.source.materials",
+        "artifact.input.sample_project_index -> constraint.source.materials",
+        "artifact.input.field_evidence -> constraint.source.evidence",
+        "artifact.input.target_board_profile -> constraint.deployment.board",
+        "artifact.input.tool_profile -> constraint.tool.profile",
+        "artifact.input.tool_availability -> constraint.tool.profile",
+        "artifact.input.tool_protocols -> constraint.tool.protocols",
+        "real tool probe results/availability -> constraint.tool.profile and constraint.tool.protocols",
+        "artifact.input.case_adapter -> constraint.case.adapter",
+        "prepared_inputs_manifest -> candidate_design_graph_summary input references"
+      ],
+      "nodes": [
+        "candidate_design_graph_summary.node_ids",
+        "input_groups.evidence",
+        "input_groups.materials",
+        "input_groups.tools",
+        "node:constraint.source.materials",
+        "node:constraint.source.evidence",
+        "node:constraint.tool.profile",
+        "node:constraint.tool.protocols",
+        "node:constraint.cross_layer.input_consistency"
+      ]
+    },
+    "schema_version": "spatialaccagent.executable_action.v0",
+    "stage": "constraint_extraction",
+    "status": "needs_action",
+    "summary": "The compact candidate design graph summary reports 20 nodes, 16 constraints, 7 edges, input groups for evidence/materials/tools, and 109 evidence fields, with validation_errors empty. This suggests that the supplied input artifacts and constraints are present, but the compact form does not expose exact node IDs, edge endpoints, tool probe bindings, or material/evidence traceability. A bounded SACG static/reference check is required before handoff to the graph engineers and auditor."
+  },
+  "prompt_bytes": 39188,
+  "prompt_hash": "faf8b118f65798f1c899b94ebfbfd06e8d1d1625a4c446ccdf14fd2ab209ec9f",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.executable_action.v0\",\n  \"agent\": \"input_evidence_engineer\",\n  \"stage\": \"constraint_extraction\",\n  \"status\": \"needs_action\",\n  \"summary\": \"The compact candidate design graph summary reports 20 nodes, 16 constraints, 7 edges, input groups for evidence/materials/tools, and 109 evidence fields, with validation_errors empty. This suggests that the supplied input artifacts and constraints are present, but the compact form does not expose exact node IDs, edge endpoints, tool probe bindings, or material/evidence traceability. A bounded SACG static/reference check is required before handoff to the graph engineers and auditor.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"candidate_design_graph_summary.node_ids\",\n      \"input_groups.evidence\",\n      \"input_groups.materials\",\n      \"input_groups.tools\",\n      \"node:constraint.source.materials\",\n      \"node:constraint.source.evidence\",\n      \"node:constraint.tool.profile\",\n      \"node:constraint.tool.protocols\",\n      \"node:constraint.cross_layer.input_consistency\"\n    ],\n    \"edges\": [\n      \"artifact.input.material_index -> constraint.source.materials\",\n      \"artifact.input.sample_project_index -> constraint.source.materials\",\n      \"artifact.input.field_evidence -> constraint.source.evidence\",\n      \"artifact.input.target_board_profile -> constraint.deployment.board\",\n      \"artifact.input.tool_profile -> constraint.tool.profile\",\n      \"artifact.input.tool_availability -> constraint.tool.profile\",\n      \"artifact.input.tool_protocols -> constraint.tool.protocols\",\n      \"real tool probe results/availability -> constraint.tool.profile and constraint.tool.protocols\",\n      \"artifact.input.case_adapter -> constraint.case.adapter\",\n      \"prepared_inputs_manifest -> candidate_design_graph_summary input references\"\n    ],\n    \"constraints\": [\n      \"constraint.source.materials\",\n      \"constraint.source.evidence\",\n      \"constraint.tool.profile\",\n      \"constraint.tool.protocols\",\n      \"constraint.cross_layer.input_consistency\",\n      \"constraint.deployment.board\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.case.adapter\",\n      \"constraint.human.boundary\"\n    ],\n    \"artifacts\": [\n      \"artifact.candidate.candidate_design_graph_summary\",\n      \"artifact.candidate.prepared_inputs_manifest\",\n      \"artifact.input.material_index\",\n      \"artifact.input.sample_project_index\",\n      \"artifact.input.field_evidence\",\n      \"artifact.input.target_board_profile\",\n      \"artifact.input.tool_profile\",\n      \"artifact.input.tool_availability\",\n      \"artifact.input.tool_protocols\",\n      \"artifact.input.case_adapter\",\n      \"artifact.input.human_agent_boundary\"\n    ]\n  },\n  \"observations\": [\n    \"The supplied state summary contains 15 input artifacts and 16 constraints, matching the candidate graph summary's num_constraints=16 and node count=20.\",\n    \"candidate_design_graph_summary contains input_groups.evidence, input_groups.materials, and input_groups.tools, so evidence, board/quantization/sample materials, and tool facts appear structurally represented.\",\n    \"constraint.source.materials, constraint.source.evidence, constraint.tool.profile, and constraint.cross_layer.input_consistency are present in the supplied constraint list and need explicit graph node/edge bindings.\",\n    \"The compact candidate summary reports 109 evidence_fields and validation_errors=[], but it does not expose actual node_ids, constraint_ids, or edge endpoints, so dangling input references cannot be ruled out from this prompt slice alone.\",\n    \"Real tool probe results may be represented through artifact.input.tool_availability, artifact.input.tool_protocols, and artifact.input.field_evidence, but the compact graph summary does not separately expose a real_tool_probe_result node/edge binding; this must be confirmed by checker output.\",\n    \"sacg_memory_truth shows zero active contamination barriers, open retry requests, and open backtrack requests, so there are no current SACG-memory blockers for this stage.\",\n    \"hierarchical_learning_context reports status=no_validated_lower_layer_evidence and no validated lower-layer certificates; it does not constrain this input-evidence review stage.\"\n  ],\n  \"risks\": [\n    \"The compact candidate_design_graph_summary may hide dangling references from input_artifacts to constraints or graph nodes; a pass claim without sacg_static_check/reference evidence would be unsupported.\",\n    \"Quantization materials and sample-project facts may be collapsed under input_groups.materials; static check must confirm they are not omitted from graph nodes or dangling from constraint.source.materials.\",\n    \"Real tool probe results may be merged with tool availability/protocol evidence; if no explicit edge exists, downstream template/platform engineers could consume an untraced tool fact.\",\n    \"Board material, sample_project_index, target_board_profile, and tool profile facts must each trace to distinct deployment/tool constraints; a compact summary alone cannot show cross-layer input consistency.\",\n    \"The candidate graph summary reports 7 edges in state_summary, but the compact candidate artifact does not enumerate edge endpoints; missing tool, evidence, or material edges would be a current-stage handoff blocker.\"\n  ],\n  \"proposed_actions\": [\n    \"Run sacg_static_check on the current candidate_design_graph_summary together with prepared_inputs_manifest and the relevant input artifacts.\",\n    \"Run sacg_reference_check to verify no dangling input references for materials, field evidence, tool profiles, tool availability/protocols, and real tool probe facts.\",\n    \"If checker evidence confirms all source/evidence/tool inputs trace to graph nodes and constraints, produce constraint_extraction.input_evidence_review_evidence.json and hand off to constraint_extraction.model_graph_engineer, constraint_extraction.template_platform_engineer, and constraint_extraction.constraint_graph_auditor.\",\n    \"If checker evidence reports dangling or omitted input references, record a bounded graph-repair request with the specific missing node/edge names rather than silently promoting the stage.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"constraint_extraction.input_evidence_review.run_sacg_static_check\",\n      \"stage\": \"constraint_extraction\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"The compact candidate graph summary is not sufficient to prove that board materials, quantization materials, sample projects, extracted field evidence, tool profiles, tool availability, and real tool probe results are represented without dangling references. A static SACG check binds the graph to the prepared inputs before peer handoff.\",\n      \"consumes\": [\n        \"artifact.candidate.candidate_design_graph_summary\",\n        \"artifact.candidate.prepared_inputs_manifest\",\n        \"artifact.input.material_index\",\n        \"artifact.input.sample_project_index\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.tool_profile\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.tool_protocols\",\n        \"artifact.input.case_adapter\",\n        \"artifact.input.human_agent_boundary\",\n        \"constraint.source.materials\",\n        \"constraint.source.evidence\",\n        \"constraint.tool.profile\",\n        \"constraint.tool.protocols\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"produces\": [\n        \"constraint_extraction.input_evidence_review_evidence.json\"\n      ],\n      \"tool_roles\": [\n        \"sacg_validate\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Block stage handoff and emit a bounded repair/backtrack request listing the specific omitted or dangling material/evidence/tool input references; do not claim input coverage from the compact summary.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"constraint_extraction.input_evidence_review.verify_input_reference_bindings\",\n      \"stage\": \"constraint_extraction\",\n      \"action_type\": \"sacg_reference_check\",\n      \"rationale\": \"The role requires verifying that source-material, source-evidence, and tool-profile/protocol constraints are traceable to explicit graph nodes and that real tool availability/probe facts are not dangling. A reference check produces citable evidence for the downstream graph engineers and auditor.\",\n      \"consumes\": [\n        \"artifact.candidate.candidate_design_graph_summary\",\n        \"artifact.candidate.prepared_inputs_manifest\",\n        \"artifact.input.tool_profile\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.tool_protocols\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.material_index\",\n        \"artifact.input.sample_project_index\",\n        \"constraint.source.materials\",\n        \"constraint.source.evidence\",\n        \"constraint.tool.profile\",\n        \"constraint.tool.protocols\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"produces\": [\n        \"constraint_extraction.input_evidence_review_reference_report.json\"\n      ],\n      \"tool_roles\": [\n        \"sacg_reference_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_reference_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Record unresolved references as current-stage handoff blockers and request targeted graph node/edge additions from the model graph engineer, template platform engineer, or constraint graph auditor; do not silently infer missing bindings.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/llm/input_evidence_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/llm/input_evidence_engineer_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction.input evidence engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

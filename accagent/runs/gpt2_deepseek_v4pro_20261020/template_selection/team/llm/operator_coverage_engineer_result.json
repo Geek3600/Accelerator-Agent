@@ -1,0 +1,125 @@
+{
+  "agent": "operator_coverage_engineer",
+  "duration_sec": 91.67410031502368,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "d779bb6ffd134b939d64041f17b57fd0",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/team/llm/operator_coverage_engineer_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "operator_coverage_engineer",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "template_coverage_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "evidence_and_repair_review",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "candidate selected_templates",
+          "candidate operator_sequence",
+          "candidate coverage",
+          "candidate missing_ops",
+          "candidate checker_results"
+        ],
+        "id": "template_selection.operator_coverage_review.publish",
+        "on_failure": "If any checker reports errors or hidden unmatched/missing coverage, block template_selection and route the specific operator/constraint to bounded template/coverage repair with current SACG evidence; do not close with free-form RTL or implicit Chisel defaults.",
+        "produces": [
+          "artifact.template_selection.operator_coverage_review"
+        ],
+        "rationale": "Re-run current-source coverage, binding-static, and SACG-static checkers over the candidate selection and publish a deterministic checker-backed coverage review; this prevents promoting a completed coverage matrix without current checker evidence.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "template_coverage_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "operator_coverage_check reports pass and coverage.covered_ops equals coverage.required_ops (8/8); missing_ops=[] and required_adapters=[].",
+      "All eight operator_sequence entries (layer_norm_1, self_attention, residual_add_1, layer_norm_2, mlp_fc, activation, mlp_proj, residual_add_2) have selected trusted templates with status ready in parameter_bindings.",
+      "The gpt2_block block wrapper is present via the decoder_block template from DecoderBlock.scala and coverage.has_block_wrapper=true.",
+      "Residual/operator order is preserved as LayerNorm->Attention->ResidualAdd->LayerNorm->MLP-FC->Activation->MLP-Proj->ResidualAdd, matching the GPT-2 decoder block order.",
+      "Attention submodules qkv_projection, softmax, output_projection, and causal_mask are covered; rope is not_applicable for learned_absolute positional encoding; gqa_head_mapping is covered with group size 1; kv_cache is explicitly marked not_required.",
+      "Coverage closure is backed by deterministic checker evidence: template_source_checks list existing source files with sha256 for every selected template, and mandatory_fpga_ip_binding_check plus template_source_and_interface_check pass.",
+      "Template workspace path contains 'Qwen2-Accelerator' while model_type is gpt2; this is treated as non-blocking workspace naming because current source hashes, template ids, and model shape bindings are internally consistent. Downstream cross-layer gate may record provenance.",
+      "lanes, compute_array_rows, and compute_array_cols are candidate_bound with null values; per stage_gate_policy these are Stage-4 DSE authority and are not current template_selection blockers.",
+      "No active sacg_memory_truth contamination barriers, open retry requests, or open backtrack requests are present."
+    ],
+    "proposed_actions": [
+      "Template binding engineer should consume this coverage review and validate detailed parameter/template-source binding during handoff.",
+      "Attention semantic engineer should preserve the learned_absolute/no-RoPE decision, GQA group_size=1, and kv_cache not_required policy during downstream RTL generation.",
+      "Cross-layer gate engineer should preserve the Stage-4 DSE boundary for lanes/compute_array dimensions and record the Qwen2 workspace naming observation without blocking template_selection."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.model_config",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "candidate selected_templates",
+        "candidate operator_sequence",
+        "candidate coverage",
+        "candidate missing_ops",
+        "candidate checker_results",
+        "artifact.template_selection.operator_coverage_review"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.template.library",
+        "constraint.source.evidence",
+        "constraint.numeric.policy",
+        "constraint.arch.design_space",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "gpt2_block -> [layer_norm_1, self_attention, residual_add_1, layer_norm_2, mlp_fc, activation, mlp_proj, residual_add_2]",
+        "selected_templates -> operator_sequence",
+        "coverage.covered_ops -> coverage.required_ops",
+        "checker_results -> operator_coverage_closure",
+        "template_source_checks -> selected_templates",
+        "attention_semantics -> self_attention",
+        "cross_layer_trace -> [constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, constraint.deployment.board, constraint.cross_layer.input_consistency]"
+      ],
+      "nodes": [
+        "selected_templates",
+        "operator_sequence",
+        "coverage",
+        "missing_ops",
+        "required_adapters",
+        "parameter_bindings",
+        "template_source_checks",
+        "attention_semantics",
+        "checker_results",
+        "cross_layer_trace",
+        "gpt2_block_wrapper"
+      ]
+    },
+    "schema_version": "spatialaccagent.operator_coverage_review.v0",
+    "stage": "template_selection",
+    "status": "ready",
+    "summary": "Candidate template selection has complete decoder operator coverage: all 8 required GPT-2 block operators map to trusted selected templates, missing_ops is empty, the gpt2_block wrapper is present with preserved residual/operator order, and deterministic checker_results for operator coverage, source/interface, parameter binding, mandatory FPGA-IP, attention semantic expansion, and cross-layer trace all pass. No current-stage coverage blocker remains."
+  },
+  "prompt_bytes": 70672,
+  "prompt_hash": "5a64959086993116318bd779d63b1161fe29d06d7066d48da97ebf16cf1e50dd",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.operator_coverage_review.v0\",\n  \"agent\": \"operator_coverage_engineer\",\n  \"stage\": \"template_selection\",\n  \"status\": \"ready\",\n  \"summary\": \"Candidate template selection has complete decoder operator coverage: all 8 required GPT-2 block operators map to trusted selected templates, missing_ops is empty, the gpt2_block wrapper is present with preserved residual/operator order, and deterministic checker_results for operator coverage, source/interface, parameter binding, mandatory FPGA-IP, attention semantic expansion, and cross-layer trace all pass. No current-stage coverage blocker remains.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"selected_templates\",\n      \"operator_sequence\",\n      \"coverage\",\n      \"missing_ops\",\n      \"required_adapters\",\n      \"parameter_bindings\",\n      \"template_source_checks\",\n      \"attention_semantics\",\n      \"checker_results\",\n      \"cross_layer_trace\",\n      \"gpt2_block_wrapper\"\n    ],\n    \"edges\": [\n      \"gpt2_block -> [layer_norm_1, self_attention, residual_add_1, layer_norm_2, mlp_fc, activation, mlp_proj, residual_add_2]\",\n      \"selected_templates -> operator_sequence\",\n      \"coverage.covered_ops -> coverage.required_ops\",\n      \"checker_results -> operator_coverage_closure\",\n      \"template_source_checks -> selected_templates\",\n      \"attention_semantics -> self_attention\",\n      \"cross_layer_trace -> [constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, constraint.deployment.board, constraint.cross_layer.input_consistency]\"\n    ],\n    \"constraints\": [\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.template.library\",\n      \"constraint.source.evidence\",\n      \"constraint.numeric.policy\",\n      \"constraint.arch.design_space\",\n      \"constraint.cross_layer.input_consistency\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.model_config\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"candidate selected_templates\",\n      \"candidate operator_sequence\",\n      \"candidate coverage\",\n      \"candidate missing_ops\",\n      \"candidate checker_results\",\n      \"artifact.template_selection.operator_coverage_review\"\n    ]\n  },\n  \"observations\": [\n    \"operator_coverage_check reports pass and coverage.covered_ops equals coverage.required_ops (8/8); missing_ops=[] and required_adapters=[].\",\n    \"All eight operator_sequence entries (layer_norm_1, self_attention, residual_add_1, layer_norm_2, mlp_fc, activation, mlp_proj, residual_add_2) have selected trusted templates with status ready in parameter_bindings.\",\n    \"The gpt2_block block wrapper is present via the decoder_block template from DecoderBlock.scala and coverage.has_block_wrapper=true.\",\n    \"Residual/operator order is preserved as LayerNorm->Attention->ResidualAdd->LayerNorm->MLP-FC->Activation->MLP-Proj->ResidualAdd, matching the GPT-2 decoder block order.\",\n    \"Attention submodules qkv_projection, softmax, output_projection, and causal_mask are covered; rope is not_applicable for learned_absolute positional encoding; gqa_head_mapping is covered with group size 1; kv_cache is explicitly marked not_required.\",\n    \"Coverage closure is backed by deterministic checker evidence: template_source_checks list existing source files with sha256 for every selected template, and mandatory_fpga_ip_binding_check plus template_source_and_interface_check pass.\",\n    \"Template workspace path contains 'Qwen2-Accelerator' while model_type is gpt2; this is treated as non-blocking workspace naming because current source hashes, template ids, and model shape bindings are internally consistent. Downstream cross-layer gate may record provenance.\",\n    \"lanes, compute_array_rows, and compute_array_cols are candidate_bound with null values; per stage_gate_policy these are Stage-4 DSE authority and are not current template_selection blockers.\",\n    \"No active sacg_memory_truth contamination barriers, open retry requests, or open backtrack requests are present.\"\n  ],\n  \"risks\": [],\n  \"proposed_actions\": [\n    \"Template binding engineer should consume this coverage review and validate detailed parameter/template-source binding during handoff.\",\n    \"Attention semantic engineer should preserve the learned_absolute/no-RoPE decision, GQA group_size=1, and kv_cache not_required policy during downstream RTL generation.\",\n    \"Cross-layer gate engineer should preserve the Stage-4 DSE boundary for lanes/compute_array dimensions and record the Qwen2 workspace naming observation without blocking template_selection.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"template_selection.operator_coverage_review.publish\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"evidence_and_repair_review\",\n      \"rationale\": \"Re-run current-source coverage, binding-static, and SACG-static checkers over the candidate selection and publish a deterministic checker-backed coverage review; this prevents promoting a completed coverage matrix without current checker evidence.\",\n      \"consumes\": [\n        \"artifact.input.model_config\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"candidate selected_templates\",\n        \"candidate operator_sequence\",\n        \"candidate coverage\",\n        \"candidate missing_ops\",\n        \"candidate checker_results\"\n      ],\n      \"produces\": [\n        \"artifact.template_selection.operator_coverage_review\"\n      ],\n      \"tool_roles\": [\n        \"template_coverage_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"template_coverage_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"If any checker reports errors or hidden unmatched/missing coverage, block template_selection and route the specific operator/constraint to bounded template/coverage repair with current SACG evidence; do not close with free-form RTL or implicit Chisel defaults.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/team/llm/operator_coverage_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/team/llm/operator_coverage_engineer_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "template_selection.operator coverage engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

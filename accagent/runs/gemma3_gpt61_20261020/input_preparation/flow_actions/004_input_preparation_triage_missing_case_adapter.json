@@ -1,0 +1,53 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "sacg_static_check",
+      "tool_protocol_check",
+      "required_real_tool_evidence_check",
+      "artifact_hash_check",
+      "stage_artifact_trust_barrier_check"
+    ],
+    "action_type": "prepared_input_error_triage",
+    "consumes": [
+      "prepared_inputs.errors",
+      "input/case_adapter.json",
+      "artifact.input.material_index",
+      "artifact.input.sample_project_index",
+      "artifact.input.tool_profile",
+      "artifact.input.tool_availability",
+      "artifact.input.tool_protocols"
+    ],
+    "id": "input_preparation.triage_missing_case_adapter",
+    "on_failure": "Preserve the exact error, failed checker, source identity, and unresolved fields in the triage artifact. Keep input_preparation blocked; do not guess a case adapter, board target, tool path, or sample-project identity.",
+    "produces": [
+      "input_preparation/prepared_input_error_triage.json"
+    ],
+    "rationale": "Read the exact prepared_inputs.errors entry and the declared source/tool indexes, bind the missing case-adapter diagnosis to current evidence, and preserve unresolved sample-project references. This is a read-only current-stage triage and does not promote or modify any downstream artifact.",
+    "requires_approval": false,
+    "stage": "input_preparation",
+    "tool_roles": [
+      "sacg_validate",
+      "sacg_static_check",
+      "tool_protocol_check",
+      "artifact_hash_check",
+      "stage_artifact_trust_barrier"
+    ]
+  },
+  "attempt_count": 4,
+  "decision": "retry",
+  "flow_event_index": 4,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": null,
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/004_retry.json",
+  "source_identities": {
+    "flow_controller_result_sha256": "a9ddb0042f2c0a4db433f3ca61e0d1b8b52b817718dfd545bc83c254a73eba33",
+    "source_sacg_state_sha256": ""
+  },
+  "source_sacg_state": null,
+  "stage": "input_preparation"
+}

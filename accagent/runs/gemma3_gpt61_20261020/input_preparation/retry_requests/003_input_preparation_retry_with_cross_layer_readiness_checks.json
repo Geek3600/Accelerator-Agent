@@ -1,0 +1,93 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "task_card_check",
+      "model_config_check",
+      "numeric_policy_check",
+      "template_coverage_check",
+      "parameter_binding_static_check",
+      "template_binding_static_check",
+      "stream_plan_check",
+      "memory_runtime_plan_check",
+      "addr_map_check",
+      "tool_protocol_check",
+      "required_real_tool_evidence_check",
+      "human_boundary_check",
+      "repair_boundary_check",
+      "verification_plan_static_check",
+      "sacg_static_check"
+    ],
+    "action_type": "stage_retry",
+    "consumes": [
+      "input/task_card.json",
+      "input/model_config.json",
+      "input/case_adapter.json",
+      "input/numeric_policy.json",
+      "input/template_library.json",
+      "input/template_metadata.json",
+      "input/design_space.json",
+      "input/target_board_profile.json",
+      "input/field_evidence.json",
+      "input/field_evidence_candidates.json",
+      "input/material_index.json",
+      "input/sample_project_index.json",
+      "input/tool_profile.json",
+      "input/tool_availability.json",
+      "input/tool_protocols.json",
+      "input/human_agent_boundary.json",
+      "prepared_inputs.errors",
+      "input_preparation/source_and_tool_evidence_audit.json"
+    ],
+    "id": "input_preparation.retry_with_cross_layer_readiness_checks",
+    "on_failure": "Keep input_preparation blocked and record the exact checker, constraint, source artifact, and evidence gap. Preserve the original prepared-input error unless the complete artifact evidence resolves it. Do not promote incomplete outputs or route to an earlier hardware stage.",
+    "produces": [
+      "input_preparation/model_intake_audit.json",
+      "input_preparation/numeric_template_audit.json",
+      "input_preparation/board_memory_runtime_audit.json",
+      "input_preparation/source_and_tool_evidence_audit.json",
+      "input_preparation/human_and_repair_boundary_audit.json",
+      "input_preparation/cross_layer_input_readiness.json",
+      "input_preparation/constraint_to_evidence_gap_map.json",
+      "input_preparation/prepared_input_error_triage.json",
+      "current input_preparation stage result"
+    ],
+    "rationale": "After the adapter input is supplied and checked, rerun the current input_preparation command and perform the registered input and cross-layer readiness checks against the actual artifacts. The current failure is an input-stage blocker, so retry this stage rather than rewinding hardware design stages.",
+    "requires_approval": false,
+    "stage": "input_preparation",
+    "tool_roles": [
+      "team_aggregate",
+      "task_card_check",
+      "model_config_check",
+      "numeric_policy_check",
+      "template_coverage_check",
+      "parameter_binding_static_check",
+      "template_binding_static_check",
+      "stream_plan_check",
+      "memory_runtime_plan_check",
+      "addr_map_check",
+      "tool_protocol_check",
+      "required_real_tool_evidence_check",
+      "human_boundary_check",
+      "repair_boundary_check",
+      "verification_plan_static_check",
+      "sacg_static_check"
+    ]
+  },
+  "attempt_count": 3,
+  "decision": "retry",
+  "flow_event_index": 3,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": null,
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/003_retry.json",
+  "source_identities": {
+    "flow_controller_result_sha256": "f04891bc7ee1f649fe7296771b876fb5a88d9e16fc9651c0af43d99cdf48b427",
+    "source_sacg_state_sha256": ""
+  },
+  "source_sacg_state": null,
+  "stage": "input_preparation"
+}

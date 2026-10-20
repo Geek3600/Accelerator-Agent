@@ -11,6 +11,7 @@ from accagent.framework.board_progress import (
     REQUIRED_PROGRESS_EVENT_FIELDS,
 )
 from scripts.verification import qwen_vcs_evidence_analyzer as analyzer
+from scripts.verification import case_vcs_evidence_analyzer as case_analyzer
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -682,6 +683,55 @@ class QwenVcsEvidenceAnalyzerTest(unittest.TestCase):
         self.assertEqual(retry["remote_workdir"], remote_workdir)
         self.assertTrue(retry["policy"]["hardware_edits_forbidden"])
 
+    def test_vcs_tool_process_failure_requests_unchanged_job_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir, _ = self.make_run(Path(tmp))
+            compile_log = run_dir / "verification" / "board_simulation" / "reports" / "vcs_compile.log"
+            compile_log.parent.mkdir(parents=True, exist_ok=True)
+            compile_log.write_text(
+                "All of 35 modules done\n"
+                "Assertion failed \"vg_safe_write: Broken pipe\" at line 101\n"
+                "An unexpected termination has occurred in vcs1\n",
+                encoding="utf-8",
+            )
+            fingerprint = "8" * 64
+            remote_workdir = "/home/hyyuan/workspace/spatialaccagent_artifacts/board_vcs/tool-crash"
+            report = self.analyze(
+                run_dir,
+                {
+                    "status": "fail",
+                    "phase": "remote_vcs",
+                    "compile_log": str(compile_log),
+                    "input_fingerprint_sha256": fingerprint,
+                    "remote_workdir": remote_workdir,
+                    "compile": {
+                        "status": "fail",
+                        "returncode": 1,
+                        "failure_class": "remote_tool_failure",
+                        "remote_workdir": remote_workdir,
+                    },
+                    "run": {"status": "not_run"},
+                },
+            )
+            retry = json.loads(
+                (
+                    run_dir
+                    / "verification"
+                    / "vcs"
+                    / analyzer.REMOTE_JOB_RETRY_REQUEST
+                ).read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(report["failure_class"], "vcs_tool_process_failure")
+        self.assertEqual(
+            report["repair_handoff"]["repair_scope"],
+            "execution_environment_retry",
+        )
+        self.assertFalse(report["repair_handoff"]["agent_should_apply_code_changes"])
+        self.assertEqual(retry["input_fingerprint_sha256"], fingerprint)
+        self.assertEqual(retry["remote_workdir"], remote_workdir)
+        self.assertTrue(retry["policy"]["hardware_edits_forbidden"])
+
     def test_signal_termination_is_not_routed_to_hardware_repair(self) -> None:
         provenance = {
             "schema_version": (
@@ -1065,6 +1115,65 @@ class QwenVcsEvidenceAnalyzerTest(unittest.TestCase):
         )
         self.assertEqual(normalized["source_format"], "jsonl")
         self.assertEqual(normalized["record_count"], 1)
+
+
+class CaseCompileOnlyDiagnosisTest(unittest.TestCase):
+    def test_compile_diagnostic_reaches_repair_without_runtime_requirements(self) -> None:
+        diagnostic = (
+            '#   error "floating-point module manifest is missing: $module_manifest"\n'
+            "Error-[URMI] Unresolved modules\n"
+            "../sources/board_tb.sv, 5\n"
+            '"app_shell_9p_wrapper exact_sample_board();"\n'
+            "  Module definition of above instance is not found in the design.\n"
+        )
+        for log_text, log_matches, expected_class, source_repair in (
+            (diagnostic, True, "vcs_elaboration_failure", True),
+            (diagnostic, False, "vcs_compile_failure", False),
+            ("touch: No space left on device\n", True, "vcs_execution_environment_failure", False),
+        ):
+            with self.subTest(log_matches=log_matches, log_text=log_text), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                log = root / "compile.log"
+                log.write_text(log_text, encoding="utf-8")
+                write_json(root / "verification/vcs/case_board_vcs_functional.json", {
+                    "status": "fail", "phase": "remote_vcs", "validation_policy": "vcs_compile_only",
+                    "compile": {"status": "fail", "returncode": 1},
+                    "compile_evidence": {
+                        "log_path": str(log),
+                        "log_sha256": case_analyzer.sha256_file(log) if log_matches else "0" * 64,
+                    },
+                })
+                with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}):
+                    report = case_analyzer.analyze_manifest_board(root)
+            self.assertEqual(report["status"], "needs_repair")
+            self.assertEqual(report["failure_class"], expected_class)
+            self.assertEqual(report["repair_handoff"]["agent_should_apply_code_changes"], source_repair)
+            self.assertEqual(report["failure_evidence"]["compile_log_valid"], log_matches)
+            self.assertIn(log_text.strip(), report["repair_handoff"]["log_tail"])
+            self.assertEqual(report["semantic_comparison"]["status"], "not_run")
+            self.assertIn(str(root / "verification/vcs/case_board_vcs_functional.json"), report["sources"])
+            if log_matches and source_repair:
+                self.assertEqual(report["first_real_error"], "Error-[URMI] Unresolved modules")
+                self.assertIn("app_shell_9p_wrapper", report["failure_evidence"]["first_real_error_context"])
+            if not log_matches:
+                self.assertIn("VCS compile log hash mismatch", report["blockers"])
+
+    def test_successful_compile_does_not_request_hardware_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            log = root / "compile.log"
+            log.write_text("simv up to date\n", encoding="utf-8")
+            write_json(root / "verification/vcs/case_board_vcs_functional.json", {
+                "status": "pass", "validation_policy": "vcs_compile_only",
+                "compile": {"status": "pass", "returncode": 0},
+                "compile_evidence": {"log_path": str(log), "log_sha256": case_analyzer.sha256_file(log)},
+            })
+            with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}):
+                report = case_analyzer.analyze_manifest_board(root)
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["failure_class"], "none")
+        self.assertFalse(report["repair_handoff"]["agent_should_apply_code_changes"])
+        self.assertEqual(report["blockers"], [])
 
 
 if __name__ == "__main__":

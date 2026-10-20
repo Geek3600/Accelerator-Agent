@@ -1,0 +1,156 @@
+{
+  "agent": "flow_controller_agent",
+  "duration_sec": 39.624197767989244,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "cc2549dabf624fc7a7fe9d91ea99e3c4",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/005_input_preparation/llm/flow_controller_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "flow_controller_agent",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "input_repair_and_stage_retry",
+        "consumes": [
+          "prepared_inputs.errors",
+          "input/material_index.json",
+          "input/sample_project_index.json",
+          "input/tool_availability.json",
+          "input/tool_profile.json",
+          "input/tool_protocols.json",
+          "input/target_board_profile.json",
+          "input/model_config.json",
+          "input/task_card.json",
+          "input/numeric_policy.json",
+          "input/template_library.json",
+          "input/template_metadata.json",
+          "input/design_space.json",
+          "input/human_agent_boundary.json",
+          "declared tool materials and explicit SPATIALACC_CASE_ADAPTER configuration"
+        ],
+        "id": "input_preparation.resolve_case_adapter_and_retry_with_evidence_checks",
+        "on_failure": "Keep input_preparation blocked and retry this same stage after addressing the specific unresolved input or checker finding. Preserve the exact prepared-input error and provenance gaps; do not promote incomplete artifacts, proceed downstream, invent adapter contents, or backtrack hardware stages.",
+        "produces": [
+          "input/case_adapter.json",
+          "input_preparation/source_and_tool_evidence_audit.json",
+          "input_preparation/evidence_provenance_and_applicability.json",
+          "input_preparation/prepared_input_error_triage.json",
+          "input_preparation/model_intake_audit.json",
+          "input_preparation/model_shape_assumptions_and_gaps.json",
+          "input_preparation/numeric_template_audit.json",
+          "input_preparation/template_binding_gaps.json",
+          "input_preparation/board_memory_runtime_audit.json",
+          "input_preparation/cross_layer_input_readiness.json",
+          "input_preparation/constraint_to_evidence_gap_map.json",
+          "input_preparation/registered_checker_results.json",
+          "updated prepared_inputs readiness result"
+        ],
+        "rationale": "The current-stage error explicitly identifies a missing case adapter, not a hardware-design defect. Source a real adapter from the declared materials or explicit runtime configuration; do not synthesize its contents. Then rerun the current input_preparation command and validate the model, numeric/template, board/memory/runtime, tool-provenance, and cross-layer readiness contracts. Review the unreadable sample-project warning against actual source evidence without guessing.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "task_card_check",
+          "model_config_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "stream_plan_check",
+          "memory_runtime_plan_check",
+          "boundary_contract_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "verification_plan_static_check",
+          "sacg_static_check",
+          "sacg_validate"
+        ]
+      }
+    ],
+    "observations": [
+      "The latest input_preparation result is incomplete, the stage did not pass, and the command returned code 1.",
+      "The exact reported blocker is: case_adapter is not ready because no verification case adapter was provided; the error requests a real adapter with weight, TB/RTL, simulator, and diagnosis tools.",
+      "A warning also says one or more declared sample projects could not be read. The supplied summary does not establish which references are affected, so their applicability needs evidence-based review.",
+      "The attempt count of 5 is observability only; it does not justify stopping or rewinding.",
+      "sacg_memory and sacg_memory_truth are empty. There are no supplied active contamination barriers, retry requests, or backtrack requests."
+    ],
+    "proposed_actions": [
+      "Obtain the real case adapter from the supplied tool materials or an explicit SPATIALACC_CASE_ADAPTER configuration, then retry input_preparation and run its registered readiness and provenance checks.",
+      "Preserve and classify the sample-project read warning during the retry; keep any uninspectable or unbound claims unresolved and block promotion if required evidence remains unsupported."
+    ],
+    "risks": [
+      "Proceeding without a real case adapter would leave verification-tool and evidence provenance claims unsupported and keep input preparation incomplete.",
+      "Do not fabricate an adapter, infer board or tool details, or treat unreadable sample-project references as verified.",
+      "No hardware-design failure category, failed hardware gate, measurement, critical path, or hardware tool evidence is supplied; backtracking is not warranted."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "input/case_adapter.json",
+        "input/tool_availability.json",
+        "input/tool_profile.json",
+        "input/tool_protocols.json",
+        "input/sample_project_index.json",
+        "prepared_inputs.errors",
+        "input_preparation/source_and_tool_evidence_audit.json",
+        "input_preparation/cross_layer_input_readiness.json"
+      ],
+      "constraints": [
+        "A real verification case adapter must be available and ready before input preparation can promote.",
+        "Tool, implementation, and board claims require source-bound evidence; unresolved sample-project references must not be guessed.",
+        "Do not consume failed or incomplete input-preparation artifacts as validated downstream inputs."
+      ],
+      "edges": [
+        "tool materials and configured case-adapter source -> input.case_adapter",
+        "input.case_adapter and tool declarations -> input-preparation readiness",
+        "input-preparation readiness -> downstream stage eligibility"
+      ],
+      "nodes": [
+        "input.case_adapter",
+        "input.tool_availability",
+        "input.tool_protocols",
+        "input.sample_project_index",
+        "input.model_config",
+        "constraint.tool.protocols",
+        "constraint.deployment.board",
+        "constraint.memory.board"
+      ]
+    },
+    "schema_version": "spatialaccagent.flow_controller_agent.v0",
+    "stage": "input_preparation",
+    "status": "retry_current_stage",
+    "summary": "Retry input_preparation after resolving the explicitly reported missing case adapter. The latest attempt is incomplete and returned code 1; there is no hardware-design failure evidence to justify backtracking. SACG memory and sacg_memory_truth show no active barriers or open requests."
+  },
+  "prompt_bytes": 46579,
+  "prompt_hash": "95cd48ee16923ba3882b81c09572f8e1b10a29efb3e0439d6031114a94542681",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.flow_controller_agent.v0\",\n  \"agent\": \"flow_controller_agent\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"retry_current_stage\",\n  \"summary\": \"Retry input_preparation after resolving the explicitly reported missing case adapter. The latest attempt is incomplete and returned code 1; there is no hardware-design failure evidence to justify backtracking. SACG memory and sacg_memory_truth show no active barriers or open requests.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"input.case_adapter\",\n      \"input.tool_availability\",\n      \"input.tool_protocols\",\n      \"input.sample_project_index\",\n      \"input.model_config\",\n      \"constraint.tool.protocols\",\n      \"constraint.deployment.board\",\n      \"constraint.memory.board\"\n    ],\n    \"edges\": [\n      \"tool materials and configured case-adapter source -> input.case_adapter\",\n      \"input.case_adapter and tool declarations -> input-preparation readiness\",\n      \"input-preparation readiness -> downstream stage eligibility\"\n    ],\n    \"constraints\": [\n      \"A real verification case adapter must be available and ready before input preparation can promote.\",\n      \"Tool, implementation, and board claims require source-bound evidence; unresolved sample-project references must not be guessed.\",\n      \"Do not consume failed or incomplete input-preparation artifacts as validated downstream inputs.\"\n    ],\n    \"artifacts\": [\n      \"input/case_adapter.json\",\n      \"input/tool_availability.json\",\n      \"input/tool_profile.json\",\n      \"input/tool_protocols.json\",\n      \"input/sample_project_index.json\",\n      \"prepared_inputs.errors\",\n      \"input_preparation/source_and_tool_evidence_audit.json\",\n      \"input_preparation/cross_layer_input_readiness.json\"\n    ]\n  },\n  \"observations\": [\n    \"The latest input_preparation result is incomplete, the stage did not pass, and the command returned code 1.\",\n    \"The exact reported blocker is: case_adapter is not ready because no verification case adapter was provided; the error requests a real adapter with weight, TB/RTL, simulator, and diagnosis tools.\",\n    \"A warning also says one or more declared sample projects could not be read. The supplied summary does not establish which references are affected, so their applicability needs evidence-based review.\",\n    \"The attempt count of 5 is observability only; it does not justify stopping or rewinding.\",\n    \"sacg_memory and sacg_memory_truth are empty. There are no supplied active contamination barriers, retry requests, or backtrack requests.\"\n  ],\n  \"risks\": [\n    \"Proceeding without a real case adapter would leave verification-tool and evidence provenance claims unsupported and keep input preparation incomplete.\",\n    \"Do not fabricate an adapter, infer board or tool details, or treat unreadable sample-project references as verified.\",\n    \"No hardware-design failure category, failed hardware gate, measurement, critical path, or hardware tool evidence is supplied; backtracking is not warranted.\"\n  ],\n  \"proposed_actions\": [\n    \"Obtain the real case adapter from the supplied tool materials or an explicit SPATIALACC_CASE_ADAPTER configuration, then retry input_preparation and run its registered readiness and provenance checks.\",\n    \"Preserve and classify the sample-project read warning during the retry; keep any uninspectable or unbound claims unresolved and block promotion if required evidence remains unsupported.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"input_preparation.resolve_case_adapter_and_retry_with_evidence_checks\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"input_repair_and_stage_retry\",\n      \"rationale\": \"The current-stage error explicitly identifies a missing case adapter, not a hardware-design defect. Source a real adapter from the declared materials or explicit runtime configuration; do not synthesize its contents. Then rerun the current input_preparation command and validate the model, numeric/template, board/memory/runtime, tool-provenance, and cross-layer readiness contracts. Review the unreadable sample-project warning against actual source evidence without guessing.\",\n      \"consumes\": [\n        \"prepared_inputs.errors\",\n        \"input/material_index.json\",\n        \"input/sample_project_index.json\",\n        \"input/tool_availability.json\",\n        \"input/tool_profile.json\",\n        \"input/tool_protocols.json\",\n        \"input/target_board_profile.json\",\n        \"input/model_config.json\",\n        \"input/task_card.json\",\n        \"input/numeric_policy.json\",\n        \"input/template_library.json\",\n        \"input/template_metadata.json\",\n        \"input/design_space.json\",\n        \"input/human_agent_boundary.json\",\n        \"declared tool materials and explicit SPATIALACC_CASE_ADAPTER configuration\"\n      ],\n      \"produces\": [\n        \"input/case_adapter.json\",\n        \"input_preparation/source_and_tool_evidence_audit.json\",\n        \"input_preparation/evidence_provenance_and_applicability.json\",\n        \"input_preparation/prepared_input_error_triage.json\",\n        \"input_preparation/model_intake_audit.json\",\n        \"input_preparation/model_shape_assumptions_and_gaps.json\",\n        \"input_preparation/numeric_template_audit.json\",\n        \"input_preparation/template_binding_gaps.json\",\n        \"input_preparation/board_memory_runtime_audit.json\",\n        \"input_preparation/cross_layer_input_readiness.json\",\n        \"input_preparation/constraint_to_evidence_gap_map.json\",\n        \"input_preparation/registered_checker_results.json\",\n        \"updated prepared_inputs readiness result\"\n      ],\n      \"tool_roles\": [\n        \"tool_protocol_check\",\n        \"required_real_tool_evidence_check\",\n        \"task_card_check\",\n        \"model_config_check\",\n        \"numeric_policy_check\",\n        \"template_coverage_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"stream_plan_check\",\n        \"memory_runtime_plan_check\",\n        \"boundary_contract_check\",\n        \"human_boundary_check\",\n        \"repair_boundary_check\",\n        \"verification_plan_static_check\",\n        \"sacg_static_check\",\n        \"sacg_validate\"\n      ],\n      \"acceptance_checkers\": [\n        \"tool_protocol_check\",\n        \"required_real_tool_evidence_check\",\n        \"task_card_check\",\n        \"model_config_check\",\n        \"numeric_policy_check\",\n        \"template_coverage_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"stream_plan_check\",\n        \"memory_runtime_plan_check\",\n        \"boundary_contract_check\",\n        \"human_boundary_check\",\n        \"repair_boundary_check\",\n        \"verification_plan_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Keep input_preparation blocked and retry this same stage after addressing the specific unresolved input or checker finding. Preserve the exact prepared-input error and provenance gaps; do not promote incomplete artifacts, proceed downstream, invent adapter contents, or backtrack hardware stages.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/005_input_preparation/llm/flow_controller_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/agent/flow_controller/005_input_preparation/llm/flow_controller_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "flow_orchestration",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

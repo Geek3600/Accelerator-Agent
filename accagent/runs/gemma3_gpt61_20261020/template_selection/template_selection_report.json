@@ -1,0 +1,539 @@
+{
+  "checker_results": [
+    {
+      "checker": "operator_coverage_check",
+      "errors": [],
+      "evidence": {
+        "missing_ops": [],
+        "required_ops": 11
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "template_parameter_binding_check",
+      "errors": [
+        "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024",
+        "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+      ],
+      "evidence": {
+        "binding_count": 14
+      },
+      "status": "fail",
+      "warnings": []
+    },
+    {
+      "checker": "template_source_and_interface_check",
+      "errors": [],
+      "evidence": {
+        "checked_templates": 14
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "mandatory_fpga_ip_binding_check",
+      "errors": [],
+      "evidence": {
+        "checked_source_hashes": {
+          "Activation.scala": "c77e42c70db8b3fb74c9563970edc90cd3a79a144d959eaa8a253008ae5f24ce",
+          "Attention.scala": "c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e",
+          "Common.scala": "f358026cf47764dcc732f6c8550b17ab759d089bc9ad6cccbca814143e899b73",
+          "DecoderBlock.scala": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+          "Elementwise.scala": "53f25bee2ff7dc030db606d1842a45ddd856b475c388ee82d6260779d4ec8870",
+          "FFN.scala": "1896b7ea12ac548124a1a25266baa7d9ea087af21ee60d57633f6843db91a58c",
+          "KVCache.scala": "727e172cfdfe380e30b9976ef77c443086ef088427eef31a84aa3a9e0da20069",
+          "Linear.scala": "cf74d94c7857b2bbb55b0447bffad0c261824fdbd534e118675f90b8b0430fe8",
+          "Mask.scala": "bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a",
+          "Norm.scala": "f3319af0d66c9e8c19e7cc789b9fc5799b62e0ad49811ef7da43ceb6dc2eeddf",
+          "PhysicalResources.scala": "8479cbbaf57cbd85912037dc807694623b1b9a754825a47d084b1b5be59dcdd4",
+          "QKVProjection.scala": "3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1",
+          "Residual.scala": "8bef8dac50264c2278438a18e5be48328ed1fd1bfb3f9bbee3c522f11258aca3",
+          "RoPE.scala": "ad42db5781d4f0906d4f28864570fc72f3763f94926144dc5a27275f129209f8",
+          "Softmax.scala": "4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2",
+          "WeightTileCache.scala": "ba0f85a03ce3ff2fd56fc28f07ed40ce6ce1327508222fe67b64d32108156873"
+        },
+        "checked_sources": [
+          "Activation.scala",
+          "Attention.scala",
+          "Common.scala",
+          "DecoderBlock.scala",
+          "Elementwise.scala",
+          "FFN.scala",
+          "KVCache.scala",
+          "Linear.scala",
+          "Mask.scala",
+          "Norm.scala",
+          "PhysicalResources.scala",
+          "QKVProjection.scala",
+          "Residual.scala",
+          "RoPE.scala",
+          "Softmax.scala",
+          "WeightTileCache.scala"
+        ],
+        "errors": [],
+        "physical_resource_source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/templates/operator_chisel/PhysicalResources.scala",
+        "required_bindings": {
+          "activations": "XPM BRAM",
+          "arithmetic": "signed integer DSP MAC/reduction inference",
+          "fifo": "XPM BRAM",
+          "large_cache": "XPM URAM",
+          "weights": "XPM URAM"
+        },
+        "schema_version": "spatialaccagent.fpga_ip_contract.v1",
+        "simulation": {
+          "behavioral_fallback_allowed": false,
+          "compute_models": "signed integer DSP arithmetic inferred from current Chisel sources; no floating-point IP",
+          "memory_models": "Xilinx XPM simulation library",
+          "required_libraries": [
+            "unisims_ver",
+            "xpm"
+          ],
+          "required_sources": [
+            "glbl.v",
+            "XPM simulation sources"
+          ],
+          "same_interface_and_cycle_latency_as_implementation": true,
+          "same_module_names_as_implementation": true
+        },
+        "status": "pass",
+        "violations": []
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "attention_semantic_expansion_check",
+      "errors": [],
+      "evidence": {
+        "components": [
+          {
+            "component": "qkv_projection",
+            "evidence_pattern": "Module(new QKVProjection",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "DecoderBlock.scala",
+            "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+            "status": "covered"
+          },
+          {
+            "component": "rope",
+            "evidence_pattern": "Module(new RoPE",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "DecoderBlock.scala",
+            "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+            "status": "covered"
+          },
+          {
+            "component": "gqa_head_mapping",
+            "evidence_pattern": "kvGroupSize",
+            "evidence_type": "hash_bound_template_source",
+            "gqa_group_size": 4,
+            "params": {
+              "num_kv_heads": 1,
+              "num_q_heads": 4
+            },
+            "required": true,
+            "source": "QKVProjection.scala",
+            "source_sha256": "3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1",
+            "status": "covered"
+          },
+          {
+            "component": "softmax",
+            "evidence_pattern": "template_id=softmax",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "Softmax.scala",
+            "source_sha256": "4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2",
+            "status": "covered"
+          },
+          {
+            "component": "output_projection",
+            "evidence_pattern": "val outputProjection = Module(new Linear(p.outLinear))",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "Attention.scala",
+            "source_sha256": "c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e",
+            "status": "covered"
+          },
+          {
+            "component": "kv_cache",
+            "evidence_pattern": "Module(new KVCache",
+            "evidence_type": "hash_bound_template_source",
+            "required": false,
+            "source": "DecoderBlock.scala",
+            "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+            "status": "not_required"
+          },
+          {
+            "component": "causal_mask",
+            "evidence_pattern": "template_id=mask",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "Mask.scala",
+            "source_sha256": "bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a",
+            "status": "covered"
+          }
+        ],
+        "required": true
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "cross_layer_trace_check",
+      "errors": [],
+      "evidence": {
+        "constraints": [
+          {
+            "constraint": "constraint.numeric.policy",
+            "fact_keys": [
+              "_llm_provenance",
+              "_numeric_comparison_resolution",
+              "default_rules",
+              "notes",
+              "policy_id",
+              "schema_version",
+              "tolerance"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.memory.board",
+            "fact_keys": [
+              "memory_system"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.runtime.board",
+            "fact_keys": [
+              "board_run_command",
+              "c2h_device_template",
+              "control_base",
+              "control_protocol",
+              "ctrl_base",
+              "ddr_base",
+              "ddr_image_default",
+              "device_id",
+              "h2c_device_template",
+              "image_path",
+              "mimic_dir",
+              "output_abs",
+              "output_address",
+              "runtime_directory",
+              "xdma_id_default"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.deployment.board",
+            "fact_keys": [
+              "board",
+              "board_pass_criteria",
+              "shell"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.cross_layer.input_consistency",
+            "fact_keys": [
+              "acceptance_boundary",
+              "board",
+              "conflict_rules",
+              "evidence_by_field",
+              "evidence_fields",
+              "field_resolution",
+              "materials",
+              "model",
+              "numeric_policy",
+              "tools"
+            ],
+            "present": true
+          }
+        ],
+        "status": "pass"
+      },
+      "status": "pass",
+      "warnings": []
+    }
+  ],
+  "design_team": {
+    "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/team_aggregate.json",
+    "approval_required_for": [
+      "Any change to hidden_size, head_dim, query-head mapping, or other model-shape values not directly established by authoritative model inputs",
+      "Any change to the numeric policy or template internals.",
+      "Any new adapter, template substitution, template-internal change, or architecture change to make the current bindings legal",
+      "Any proposed change to authoritative hidden_size, num_q_heads, num_kv_heads, or head_dim, or any attention architecture/template-internal change; obtain explicit approval and authoritative model evidence before making such a change.",
+      "Any proposed change to authoritative model dimensions, attention semantics, or a major template adaptation needed to resolve hidden_size=1152 versus num_q_heads=4 and head_dim=256.",
+      "Any proposed change to model hidden_size, num_q_heads, num_kv_heads, or head_dim.",
+      "Any proposed change to the template attention shape contract or its interpretation as an architecture change."
+    ],
+    "completed_subtasks": 4,
+    "decomposer_error": null,
+    "decomposer_used_fallback": false,
+    "decomposition_source": "llm",
+    "errors": [],
+    "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/event_log.jsonl",
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "template_coverage_check"
+        ],
+        "action_type": "bounded_evidence_reconciliation",
+        "consumes": [
+          "artifact.input.model_config",
+          "constraint.shape.model",
+          "artifact.stage.template_selection.attention_semantics",
+          "artifact.stage.template_selection.parameter_bindings",
+          "artifact.stage.template_selection.template_source_checks",
+          "artifact.stage.template_selection.checker_results"
+        ],
+        "id": "template_selection.reconcile_attention_shape_and_cache_evidence",
+        "on_failure": "Keep template selection blocked and report the exact unresolved authoritative dimension or KV-cache evidence. Do not alter model dimensions, template internals, or checker policy; request bounded architecture/model-owner clarification if the authoritative evidence remains contradictory.",
+        "produces": [
+          "artifact.stage.template_selection.attention_component_source_evidence_matrix",
+          "artifact.stage.template_selection.attention_shape_and_kv_cache_disposition",
+          "artifact.stage.template_selection.updated_checker_results"
+        ],
+        "rationale": "The current parameter checker identifies an illegal attention/block shape, and the candidate does not substantiate its KV-cache not-required disposition. Reconcile against authoritative model facts and existing hash-bound template evidence, then rerun current-stage checks; this is evidence review, not permission to alter the model or template.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "model_config_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "template_coverage_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "numeric_policy_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_stage_artifact.parameter_bindings",
+          "candidate_stage_artifact.unsupported_bindings",
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.template_source_checks",
+          "candidate_stage_artifact.selected_templates",
+          "artifact.input.model_config",
+          "artifact.input.template_metadata",
+          "constraint.shape.model",
+          "constraint.template.library"
+        ],
+        "id": "template_selection.reconcile_attention_shape_predicate",
+        "on_failure": "Keep template_selection incomplete and report the predicate as unresolved to template_selection.cross_layer_evidence_gate. Do not change hidden_size, head_dim, head counts, numeric policy, or template internals; any proposed architecture or model change requires separate approval.",
+        "produces": [
+          "template_selection.binding_numeric_audit",
+          "template_selection.shape_predicate_disposition"
+        ],
+        "rationale": "The binding values establish the 1152 versus 1024 arithmetic difference, but the supplied source/interface evidence does not establish the equality as a required architectural invariant. Adjudicate the predicate without editing any model, numeric, or template value, and preserve the checker failure unless its basis is resolved.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "architecture_review",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "numeric_policy_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "evidence_reconciliation",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.field_evidence",
+          "artifact.input.task_card",
+          "constraint.shape.model",
+          "candidate_stage_artifact.parameter_bindings",
+          "candidate_stage_artifact.checker_results"
+        ],
+        "id": "reconcile_authoritative_shape_bindings",
+        "on_failure": "Keep the selection blocked, preserve all authoritative input values, and route any field-level conflict to the cross-layer evidence gate for source reconciliation. Do not alter dimensions, choose an adapter, or waive legality.",
+        "produces": [
+          "template_selection/shape_source_reconciliation.json",
+          "template_selection/parameter_binding_checker_results.json"
+        ],
+        "rationale": "Compare the explicit parameter-binding citations with the field-level model_config and field_evidence, then rerun the applicable static checks. This action resolves evidence provenance without inventing or changing a model dimension.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "model_config_check",
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "template_coverage_check",
+          "sacg_static_check"
+        ],
+        "action_type": "coverage_and_order_review",
+        "consumes": [
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "candidate_stage_artifact.operator_sequence",
+          "candidate_stage_artifact.selected_templates",
+          "candidate_stage_artifact.coverage",
+          "candidate_stage_artifact.attention_semantics",
+          "candidate_stage_artifact.template_source_checks"
+        ],
+        "id": "refresh_operator_template_coverage_record",
+        "on_failure": "Report any missing or untrusted mapping with its operator and source reference, preserve the supplied operator order, and keep promotion blocked until the checker-grounded discrepancy is resolved.",
+        "produces": [
+          "template_selection/operator_coverage_order_matrix.json",
+          "template_selection/residual_order_evidence_note.json"
+        ],
+        "rationale": "Produce a checker-grounded operator-to-template coverage record from the supplied sequence, selected templates, source checks, and attention expansion. Record residual sequence placement separately from operand wiring.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "template_coverage_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "task_card_check",
+          "sacg_static_check",
+          "human_boundary_check"
+        ],
+        "action_type": "authoritative_input_reconciliation",
+        "consumes": [
+          "artifact.input.model_config",
+          "artifact.input.task_card",
+          "candidate_stage_artifact.parameter_bindings",
+          "candidate_stage_artifact.checker_results",
+          "candidate_stage_artifact.cross_layer_trace",
+          "parallel template-selection operator-coverage, binding/numeric, and attention-semantic review findings when available"
+        ],
+        "id": "template_selection.reconcile_attention_block_dimensions",
+        "on_failure": "If authoritative evidence does not resolve the dimensions, preserve the failed binding and blocked disposition; request a bounded human decision rather than guessing or changing template/model semantics.",
+        "produces": [
+          "artifact.template_selection.dimension_authority_reconciliation"
+        ],
+        "rationale": "The current binding evidence establishes 1152 != 4*256 for both the block wrapper and attention. Review authoritative model/task inputs and available operator, binding/numeric, and attention reviews to identify whether the source facts or their interpretation conflict; do not choose replacement dimensions by inference.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "architecture_review",
+          "model_config_check",
+          "task_card_check",
+          "sacg_validate"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "repair_boundary_check",
+          "sacg_static_check"
+        ],
+        "action_type": "bounded_parameter_binding_repair",
+        "consumes": [
+          "artifact.template_selection.dimension_authority_reconciliation",
+          "candidate_stage_artifact.parameter_bindings",
+          "candidate_stage_artifact.selected_templates",
+          "candidate_stage_artifact.template_source_checks",
+          "artifact.input.model_config",
+          "artifact.input.template_metadata"
+        ],
+        "id": "template_selection.repair_and_recheck_dimension_bindings",
+        "on_failure": "Keep template selection blocked if the authoritative values remain inconsistent, a repair exceeds the trusted-template boundary, approval is absent for a semantic change, or any required static checker fails; do not promote on partial evidence.",
+        "produces": [
+          "artifact.template_selection.revised_parameter_bindings",
+          "artifact.template_selection.refreshed_checker_results"
+        ],
+        "rationale": "After the reconciliation artifact establishes an authoritative legal resolution, update only the affected parameter binding(s) within the trusted-template boundary and rerun the binding/static checks. Any semantic model-dimension, attention, or major-template change must wait for explicit approval.",
+        "requires_approval": true,
+        "stage": "template_selection",
+        "tool_roles": [
+          "bounded_template_repair",
+          "targeted_failed_checker_rerun",
+          "template_binding_static_check"
+        ]
+      }
+    ],
+    "execution_groups": [
+      0,
+      1
+    ],
+    "llm_io_metrics": {
+      "executable_action_count": 6,
+      "max_duration_sec": 58.09661331604002,
+      "max_prompt_bytes": 79913,
+      "result_count": 4,
+      "subtasks_without_executable_actions": [],
+      "total_duration_sec": 208.05000108497916,
+      "total_prompt_bytes": 318497
+    },
+    "split_required": true,
+    "status": "ready",
+    "subtask_count": 4,
+    "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/subtask_plan.json",
+    "used_fallback_count": 0
+  },
+  "errors": [
+    "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024",
+    "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+  ],
+  "llm_agent": {},
+  "missing_ops": [],
+  "outputs": {
+    "llm_agent": null,
+    "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/sacg_state.json",
+    "team_aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/team_aggregate.json",
+    "team_subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/subtask_plan.json",
+    "template_selection": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/template_selection.json"
+  },
+  "required_adapters": [],
+  "sacg_transition_id": "transition.0001",
+  "schema_version": "spatialaccagent.template_selection_report.v0",
+  "selected_template_ids": [
+    "attention",
+    "decoder_block",
+    "elementwise",
+    "ffn",
+    "mask",
+    "norm",
+    "residual",
+    "softmax"
+  ],
+  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/constraint_extraction/initial_design_graph.json",
+  "stage": "template_selection",
+  "status": "incomplete",
+  "unsupported_bindings": [
+    {
+      "kind": "parameter_binding",
+      "legality_errors": [
+        "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+      ],
+      "missing_params": [],
+      "op": "gemma3_text_block",
+      "template_id": "decoder_block"
+    },
+    {
+      "kind": "parameter_binding",
+      "legality_errors": [
+        "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
+      ],
+      "missing_params": [],
+      "op": "self_attention",
+      "template_id": "attention"
+    }
+  ]
+}

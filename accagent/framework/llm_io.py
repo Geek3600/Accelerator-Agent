@@ -18,6 +18,7 @@ from .llm_config import resolved_llm_cfg
 
 PROMPT_PROTOCOL = "spatialaccagent.llm_io.v0"
 MAX_SCHEMA_NAME_LEN = 64
+RESPONSES_USER_AGENT = "codex-cli"
 
 
 ORDER_PROMPT = """Your response will be processed by a program, not a human.
@@ -108,6 +109,18 @@ def response_payload(
     if stream:
         payload["stream"] = True
     return payload
+
+
+def responses_request_headers(api_key: str, stream: bool) -> dict[str, str]:
+    """Build headers accepted by the active Codex Responses route."""
+
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream" if stream else "application/json",
+        "Connection": "close",
+        "User-Agent": RESPONSES_USER_AGENT,
+    }
 
 
 def _message_content_texts(value: Any) -> list[str]:

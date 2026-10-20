@@ -244,8 +244,10 @@ def build_audit_from_action_items(
     case_adapter: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     adapter_names = case_adapter_registry_names(case_adapter)
-    known_tools = set(ACTION_GROUNDING_REGISTRY["tool_roles"]) | adapter_names
     known_checkers = set(ACTION_GROUNDING_REGISTRY["acceptance_checkers"]) | adapter_names
+    # Registered checks are executable validation operations too. Naming one in
+    # tool_roles must not invent a missing capability or discard its evidence gate.
+    known_tools = set(ACTION_GROUNDING_REGISTRY["tool_roles"]) | known_checkers
     aliases = {
         **automatic_aliases(known_tools | known_checkers),
         **case_adapter_aliases(case_adapter),

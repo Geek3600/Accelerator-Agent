@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -47,6 +48,9 @@ from accagent.framework.fpga_ip_runtime import (
     stage_fpga_ip_runtime,
 )
 from accagent.framework.fpga_ip_contract import FP_MODULE_NAME
+from accagent.framework.stage_input_common import (
+    normalized_functional_verification_role,
+)
 from accagent.framework.live_state import (
     activate_live_state_slot,
     board_run_binding,
@@ -76,6 +80,7 @@ from accagent.framework.semantic_simulator import (
     remote_background_job_state,
     run_remote_background_command,
     semantic_vcs_compile_jobs,
+    vcs_tool_environment,
     wait_for_existing_remote_job,
 )
 from accagent.framework.simulation_checkpoint import (
@@ -90,6 +95,9 @@ from accagent.framework.simulation_checkpoint import (
     framework_checkpoint_contract,
     heavy_job_lease,
     simulation_execution_identity,
+)
+from accagent.framework.verification_evidence_contract import (
+    COMPILE_ONLY_POLICY,
 )
 
 
@@ -186,41 +194,6 @@ def _systemverilog_code_and_string_literals(text: str) -> tuple[str, list[str]]:
     return "".join(code), literals
 
 
-def _systemverilog_system_call_argument_counts(
-    code: str, function_name: str
-) -> tuple[list[int], bool]:
-    pattern = re.compile(
-        rf"(?<![A-Za-z0-9_$])\${re.escape(function_name)}\s*\("
-    )
-    counts: list[int] = []
-    balanced = True
-    matching = {")": "(", "]": "[", "}": "{"}
-    for match in pattern.finditer(code):
-        stack = ["("]
-        cursor = match.end()
-        comma_count = 0
-        has_argument_text = False
-        while cursor < len(code) and stack:
-            character = code[cursor]
-            if character in "([{":
-                stack.append(character)
-            elif character in matching:
-                if not stack or stack[-1] != matching[character]:
-                    balanced = False
-                    break
-                stack.pop()
-                if not stack:
-                    break
-            elif character == "," and len(stack) == 1:
-                comma_count += 1
-            elif not character.isspace() and len(stack) == 1:
-                has_argument_text = True
-            cursor += 1
-        if stack:
-            balanced = False
-            continue
-        counts.append(comma_count + 1 if has_argument_text else 0)
-    return counts, balanced
 
 
 def checkpoint_hook_source_errors(
@@ -1428,6 +1401,65 @@ def preflight_manifest_projection_sha256(manifest: dict[str, Any]) -> str:
     return canonical_contract_sha256(projection)
 
 
+def refresh_compile_only_timescale(
+    run_dir: Path, manifest: dict[str, Any]
+) -> tuple[dict[str, Any], bool]:
+    """Bind the exact board timing contract to stale compile-only commands."""
+
+    identity = read_json(
+        run_dir / "verification" / "board_interface" / "board_source_identity.json"
+    )
+    timing = identity.get("timing_contract")
+    timing = timing if isinstance(timing, dict) else {}
+    timescale = str(timing.get("timescale") or "").strip()
+    timeprecision = str(timing.get("timeprecision") or "").strip()
+    pair = timescale if "/" in timescale else (
+        f"{timescale}/{timeprecision}" if timescale and timeprecision else ""
+    )
+    # Compile-only board discovery can omit runtime timing fields. Supply a
+    # compiler default for modules without directives; explicit RTL timescales
+    # remain authoritative (unlike an override_timescale option).
+    if not timescale and not timeprecision:
+        pair = "1ns/1ps"
+    if re.fullmatch(
+        r"[1-9][0-9]*(?:s|ms|us|ns|ps|fs)/[1-9][0-9]*(?:s|ms|us|ns|ps|fs)",
+        pair,
+    ) is None:
+        return manifest, False
+    option = f"-timescale={pair}"
+    plan = manifest.get("vcs_compile_plan")
+    if not isinstance(plan, dict):
+        return manifest, False
+    refreshed = copy.deepcopy(manifest)
+    refreshed_plan = copy.deepcopy(plan)
+    changed = False
+    for command in refreshed_plan.get("ordered_commands", []):
+        if not isinstance(command, dict) or command.get("phase") != "compile":
+            continue
+        argv = command.get("argv")
+        if not isinstance(argv, list) or option in argv:
+            continue
+        source_index = next(
+            (
+                index
+                for index, token in enumerate(argv)
+                if isinstance(token, dict) and "source_id" in token
+            ),
+            len(argv),
+        )
+        argv.insert(source_index, option)
+        changed = True
+    if not changed:
+        return manifest, False
+    refreshed["vcs_compile_plan"] = refreshed_plan
+    refreshed["vcs_compile_plan_sha256"] = canonical_contract_sha256(refreshed_plan)
+    write_json(
+        run_dir / "verification" / "board_simulation" / "board_simulation_manifest.json",
+        refreshed,
+    )
+    return refreshed, True
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -1888,7 +1920,7 @@ def safe_relative_cwd(value: Any) -> Path | None:
 
 
 def external_fixture_staging_contract(
-    manifest: dict[str, Any], errors: list[str]
+    manifest: dict[str, Any], errors: list[str], *, include_runtime_files: bool = True
 ) -> dict[str, Any]:
     """Validate portable, hash-bound files already admitted by board preflight."""
 
@@ -2020,8 +2052,8 @@ def external_fixture_staging_contract(
         if isinstance(row, dict) and str(row.get("artifact_id") or "")
     }
     runtime_files: list[dict[str, Any]] = []
-    runtime_rows = fixture.get("runtime_auxiliary_files", [])
-    if not isinstance(runtime_rows, list):
+    runtime_rows = fixture.get("runtime_auxiliary_files", []) if include_runtime_files else []
+    if include_runtime_files and not isinstance(runtime_rows, list):
         errors.append(
             "external_simulation_fixture.runtime_auxiliary_files is not a list"
         )
@@ -2248,7 +2280,12 @@ def validated_vcs_compile_plan(
         expected_tool = dict(configured_tool)
         expected_tool["port"] = int(configured_tool.get("port") or 22)
         for field in ("role", "name", "host", "port", "executable"):
-            if tool_binding.get(field) != expected_tool.get(field):
+            planned_value = tool_binding.get(field)
+            configured_value = expected_tool.get(field)
+            if field == "role":
+                planned_value = normalized_functional_verification_role(planned_value)
+                configured_value = normalized_functional_verification_role(configured_value)
+            if planned_value != configured_value:
                 errors.append(f"vcs_compile_plan tool_binding differs from tool profile: {field}")
     authority = plan.get("compile_authority")
     if not isinstance(authority, dict):
@@ -2294,7 +2331,9 @@ def validated_vcs_compile_plan(
         executable = raw.get("executable")
         if not tool_role:
             errors.append(f"{label}.tool_role is missing")
-        elif tool_role != str(configured_tool.get("role") or ""):
+        elif normalized_functional_verification_role(tool_role) != normalized_functional_verification_role(
+            configured_tool.get("role")
+        ):
             errors.append(f"{label}.tool_role differs from the configured simulator role")
         if (
             not isinstance(executable, str)
@@ -2436,106 +2475,21 @@ def execution_output_plan(
     errors: list[str],
 ) -> dict[str, Any]:
     raw = manifest.get("execution_outputs")
-    if not isinstance(raw, dict):
-        errors.append("board simulation execution_outputs is missing")
+    raw = raw if isinstance(raw, dict) else {}
+    row = raw.get("compile_log") if isinstance(raw.get("compile_log"), dict) else {}
+    path = safe_relative_path(row.get("path"))
+    if row and path is None:
+        errors.append("board simulation execution_outputs.compile_log is invalid")
         return {}
-    plan: dict[str, Any] = {}
-    for key in (
-        "compile_log",
-        "simulation_log",
-        "progress_event_log",
-        "elaborated_hierarchy_report",
-        "pipeline_overlap_report",
-    ):
-        row = raw.get(key) if isinstance(raw.get(key), dict) else {}
-        path = safe_relative_path(row.get("path"))
-        schema_version = str(row.get("schema_version") or "")
-        if path is None or (
-            (key.endswith("_report") or key == "progress_event_log")
-            and not schema_version
-        ):
-            errors.append(f"board simulation execution_outputs.{key} is invalid")
-            continue
-        if (
-            key == "progress_event_log"
-            and schema_version != BOARD_PROGRESS_EVENT_SCHEMA_VERSION
-        ):
-            errors.append(
-                "board simulation execution_outputs.progress_event_log has an unsupported schema_version"
-            )
-            continue
-        plan[key] = {"path": path, "schema_version": schema_version}
-    runtime_binding = manifest.get("runtime_constant_binding")
-    if isinstance(runtime_binding, dict) and runtime_binding.get("enabled") is True:
-        row = (
-            raw.get("runtime_loader_report")
-            if isinstance(raw.get("runtime_loader_report"), dict)
-            else {}
-        )
-        path = safe_relative_path(row.get("path"))
-        schema_version = str(row.get("schema_version") or "")
-        if path is None or not schema_version:
-            errors.append(
-                "board simulation execution_outputs.runtime_loader_report is invalid"
-            )
-        else:
-            plan["runtime_loader_report"] = {
-                "path": path,
-                "schema_version": schema_version,
-            }
-    performance_row = (
-        raw.get("performance_counter_report")
-        if isinstance(raw.get("performance_counter_report"), dict)
-        else {}
-    )
-    if performance_row:
-        path = safe_relative_path(performance_row.get("path"))
-        schema_version = str(performance_row.get("schema_version") or "")
-        if path is None or not schema_version:
-            errors.append(
-                "board simulation execution_outputs.performance_counter_report is invalid"
-            )
-        else:
-            plan["performance_counter_report"] = {
-                "path": path,
-                "schema_version": schema_version,
-            }
-    protocol_rows = raw.get("protocol_monitor_reports", [])
-    protocol: list[dict[str, Any]] = []
-    if not isinstance(protocol_rows, list):
-        errors.append("board simulation execution_outputs.protocol_monitor_reports is not a list")
-        protocol_rows = []
-    seen_interfaces: set[str] = set()
-    seen_paths: set[Path] = set()
-    for index, row in enumerate(protocol_rows):
-        row = row if isinstance(row, dict) else {}
-        interface = str(row.get("interface") or "")
-        path = safe_relative_path(row.get("path"))
-        schema_version = str(row.get("schema_version") or "")
-        if not interface or interface in seen_interfaces or path is None or path in seen_paths or not schema_version:
-            errors.append(f"board simulation execution_outputs.protocol_monitor_reports[{index}] is invalid")
-            continue
-        seen_interfaces.add(interface)
-        seen_paths.add(path)
-        protocol.append({"interface": interface, "path": path, "schema_version": schema_version})
-    if not protocol:
-        errors.append("board simulation execution_outputs has no protocol monitor reports")
-    plan["protocol_monitor_reports"] = protocol
-    planned_paths = [
-        row["path"]
-        for key, row in plan.items()
-        if key != "protocol_monitor_reports" and isinstance(row, dict) and isinstance(row.get("path"), Path)
-    ] + [row["path"] for row in protocol]
-    if len(planned_paths) != len(set(planned_paths)):
-        errors.append("board simulation execution output paths are not unique")
-    reserved = {
+    path = path or Path("reports/vcs_compile.log")
+    if path in {
         Path("board_simulation_manifest.json"),
         Path("board_simulation_executed_manifest.json"),
         Path("vcs_stage.tar.gz"),
-    }
-    if set(planned_paths).intersection(reserved):
-        errors.append("board simulation execution output path would overwrite a control manifest")
-    return plan
+    }:
+        errors.append("board simulation compile log path would overwrite a control manifest")
+        return {}
+    return {"compile_log": {"path": path, "schema_version": ""}}
 
 
 def structured_monitor_specs(
@@ -2603,170 +2557,42 @@ def structured_monitor_specs(
     return specs
 
 
-def validate_manifest(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+def validate_compile_only_manifest(
+    run_dir: Path,
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
     manifest_path = run_dir / "verification" / "board_simulation" / "board_simulation_manifest.json"
     identity_path = run_dir / "verification" / "board_interface" / "board_source_identity.json"
-    semantic_path = run_dir / "verification" / "semantic_testbench" / "semantic_testbench_manifest.json"
-    binding_path = run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
-    accelerator_catalog_path = run_dir / "verification" / "model_weights" / "transformer_block_weight_catalog.json"
     manifest = read_json(manifest_path)
+    manifest, _ = refresh_compile_only_timescale(run_dir, manifest)
     identity = read_json(identity_path)
-    semantic = read_json(semantic_path)
-    binding = read_json(binding_path)
-    accelerator_catalog = read_json(accelerator_catalog_path)
     errors: list[str] = []
-    identity_sha256 = sha256_file(identity_path) if identity_path.is_file() else None
-    exact_board_preflight = validate_exact_board_preflight(identity_path, manifest_path)
-    exact_board_preflight_passed = exact_board_preflight.get("status") == "pass"
-    if not exact_board_preflight_passed:
+    preflight = validate_exact_board_preflight(identity_path, manifest_path)
+    if preflight.get("status") != "pass":
         errors.extend(
-            f"exact board preflight: {error}"
-            for error in exact_board_preflight.get("blockers", [])
-            if str(error)
+            f"exact board compile preflight: {value}"
+            for value in preflight.get("blockers", [])
+            if str(value)
         )
     if manifest.get("status") not in {"ready", "pass"}:
-        errors.append("board simulation preflight manifest status is not ready/pass")
+        errors.append("board compile manifest status is not ready/pass")
+    identity_sha256 = sha256_file(identity_path) if identity_path.is_file() else ""
     identity_passed = (
         identity.get("status") == "pass"
         and identity.get("exact_user_sample_wrapper") is True
-        and exact_board_preflight_passed
+        and manifest.get("exact_sample_wrapper_unmodified") is True
+        and manifest.get("source_identity_sha256") == identity_sha256
+        and preflight.get("status") == "pass"
     )
     if not identity_passed:
-        errors.append("exact sample-project wrapper identity is not pass")
-    source_identity_bound = bool(
-        identity_sha256 and manifest.get("source_identity_sha256") == identity_sha256
-    )
-    if not source_identity_bound:
-        errors.append("board simulation manifest does not bind the current sample-source identity hash")
-    if semantic.get("status") != "ready":
-        errors.append("semantic testbench/reference vectors are not ready")
-    board_vectors = semantic.get("board", {}) if isinstance(semantic.get("board"), dict) else {}
-    model_layer_count = int(
-        board_vectors.get("model_layer_count")
-        or accelerator_catalog.get("target_layer_count")
-        or 0
-    )
-    declared_target_layers = board_vectors.get("expected_target_layers")
-    if declared_target_layers is None:
-        # Historical full-model semantic fixtures predate the explicit board
-        # scope fields. Their board manifest remains the workload authority.
-        declared_target_layers = manifest.get("target_layer_count")
-    target_layer_count = int(declared_target_layers or 0)
-    validation_layer_indices = board_vectors.get("validation_layer_indices")
-    if validation_layer_indices is None:
-        validation_layer_indices = list(range(target_layer_count))
-    if (
-        model_layer_count <= 0
-        or target_layer_count <= 0
-        or validation_layer_indices != list(range(target_layer_count))
-        or target_layer_count > model_layer_count
-    ):
-        errors.append("semantic board validation workload is malformed")
-    covers_full_model = target_layer_count == model_layer_count
-    reference_captured = (
-        board_vectors.get("all_target_layer_reference_captured") is True
-        if covers_full_model
-        else board_vectors.get("scoped_layer_reference_captured") is True
-    )
-    if not reference_captured:
-        errors.append("board golden boundaries were not captured for the validation scope")
-    all_target_layers = (
-        binding.get("status") == "pass"
-        and binding.get("all_target_layers") is covers_full_model
-        and manifest.get("all_target_layers") is covers_full_model
-    )
-    if not all_target_layers:
-        errors.append("DUT binding does not prove the configured board validation scope")
-    if binding.get("accelerator_scope") != "transformer_blocks_only":
-        errors.append("board DUT binding scope is not transformer_blocks_only")
-    if binding.get("default_or_identity_weight_fallback_disabled") is not True:
-        errors.append("board DUT binding does not disable default/identity weight fallback")
-    catalog_tensors = [row for row in accelerator_catalog.get("tensors", []) if isinstance(row, dict)]
-    catalog_tensor_hashes = {
-        str(row.get("source_slice_sha256"))
-        for row in catalog_tensors
-        if row.get("source_slice_sha256")
-    }
-    scoped_catalog_rows = [
-        row
-        for row in catalog_tensors
-        if row.get("layer_index") in validation_layer_indices
-    ]
-    catalog_has_explicit_layer_indices = any(
-        "layer_index" in row for row in catalog_tensors
-    )
-    if not scoped_catalog_rows and covers_full_model and not catalog_has_explicit_layer_indices:
-        # The legacy full-model catalog schema did not annotate each tensor
-        # with a layer index. This is intentionally unavailable to scoped
-        # validation, which must prove its exact layer coverage.
-        scoped_catalog_rows = catalog_tensors
-    scoped_tensor_hashes = {
-        str(row.get("source_slice_sha256"))
-        for row in scoped_catalog_rows
-        if row.get("source_slice_sha256")
-    }
-    required_tensor_hashes = scoped_tensor_hashes
-    catalog_ok = (
-        accelerator_catalog.get("status") == "pass"
-        and accelerator_catalog.get("accelerator_scope") == "transformer_blocks_only"
-        and accelerator_catalog.get("scope_coverage_complete") is True
-        and accelerator_catalog.get("tensor_count") == len(catalog_tensors)
-        and len(catalog_tensor_hashes) == len(catalog_tensors)
-    )
-    if not catalog_ok:
-        errors.append("complete transformer-block weight catalog is not ready")
-    if not scoped_catalog_rows:
-        errors.append("transformer-block weight catalog does not cover the validation scope")
-    binding_hashes = {
-        str(value)
-        for value in (
-            binding.get("board_consumed_tensor_hashes", [])
-            if isinstance(binding.get("board_consumed_tensor_hashes"), list)
-            else []
-        )
-        if str(value)
-    }
-    simulation_binding_hashes = {
-        str(value)
-        for value in (
-            manifest.get("board_consumed_tensor_hashes", [])
-            if isinstance(manifest.get("board_consumed_tensor_hashes"), list)
-            else []
-        )
-        if str(value)
-    }
-    real_model_weights_consumed = (
-        catalog_ok
-        and exact_board_preflight_passed
-        and binding.get("dut_consumes_bound_weights") is True
-        and binding.get("scope_coverage_complete") is True
-        and scoped_tensor_hashes == binding_hashes
-        and scoped_tensor_hashes == simulation_binding_hashes
-    )
-    if not real_model_weights_consumed:
-        errors.append("board DUT binding does not cover every validation-layer transformer-block tensor hash")
-    if (
-        int(binding.get("model_layer_count", model_layer_count) or 0) != model_layer_count
-        or int(binding.get("bound_layer_count") or 0) != target_layer_count
-        or binding.get("validation_layer_indices", validation_layer_indices)
-        != validation_layer_indices
-        or int(manifest.get("model_layer_count", model_layer_count) or 0)
-        != model_layer_count
-        or int(manifest.get("bound_layer_count") or 0) != target_layer_count
-        or manifest.get("validation_layer_indices", validation_layer_indices)
-        != validation_layer_indices
-    ):
-        errors.append("board DUT binding does not match the configured validation workload")
+        errors.append("exact sample-board identity is not bound to the current compile manifest")
 
     selected_sources = selected_simulation_sources(identity, errors)
-    for entry in selected_sources:
-        if is_synthesis_source(entry["role"], entry["path"]):
-            errors.append(f"selected simulation source closure contains synthesis source: {entry['path']}")
-
-    source_rows = manifest.get("source_files", []) if isinstance(manifest.get("source_files"), list) else []
-    source_paths: list[Path] = []
+    source_rows = manifest.get("source_files", [])
+    if not isinstance(source_rows, list):
+        source_rows = []
+        errors.append("board compile source_files is not a list")
     source_entries: list[dict[str, Any]] = []
-    seen_source_paths: set[Path] = set()
+    seen_paths: set[Path] = set()
     for index, row in enumerate(source_rows):
         if not isinstance(row, dict):
             errors.append(f"source_files[{index}] is not an object")
@@ -2774,267 +2600,120 @@ def validate_manifest(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any], li
         entry = source_row(row, f"source_files[{index}]", errors)
         if entry is None:
             continue
-        if entry["path"] in seen_source_paths:
-            errors.append(f"VCS source list repeats path: {entry['path']}")
-            continue
-        seen_source_paths.add(entry["path"])
-        source_paths.append(entry["path"])
-        source_entries.append(entry)
         if not entry["source_id"]:
             errors.append(f"source_files[{index}] source_id is missing")
+        if entry["path"] in seen_paths:
+            errors.append(f"VCS source list repeats path: {entry['path']}")
+            continue
+        seen_paths.add(entry["path"])
         if is_synthesis_source(entry["role"], entry["path"]):
             errors.append(f"VCS source list contains synthesis source: {entry['path']}")
-
-    manifest_keys = {(entry["path"], entry["sha256"]) for entry in source_entries}
-    verified_compile_source_ids = {
+        source_entries.append(entry)
+    verified_source_ids = {
         str(value)
-        for value in exact_board_preflight.get("verified_compile_source_ids", [])
+        for value in preflight.get("verified_compile_source_ids", [])
         if str(value)
     }
-    manifest_source_order = [entry["source_id"] for entry in source_entries]
-    manifest_source_ids = {source_id for source_id in manifest_source_order if source_id}
-    if len(manifest_source_order) != len(manifest_source_ids):
-        errors.append("VCS source list contains duplicate or missing source_id values")
-    if not verified_compile_source_ids or manifest_source_ids != verified_compile_source_ids:
-        errors.append(
-            "VCS source list does not exactly match the preflight-verified transformed compile source IDs"
-        )
-    if manifest.get("compile_source_ids") != manifest_source_order:
-        errors.append(
-            "manifest compile_source_ids order does not exactly match source_files"
-        )
-    external_fixture_staging = external_fixture_staging_contract(manifest, errors)
-    sample_runtime_auxiliary = sample_runtime_auxiliary_contract(manifest, errors)
+    source_order = [entry["source_id"] for entry in source_entries]
+    if (
+        len(source_order) != len(set(source_order))
+        or set(source_order) != verified_source_ids
+        or manifest.get("compile_source_ids") != source_order
+    ):
+        errors.append("VCS source files do not exactly match the preflight-verified compile source set")
+
+    validation_mode = str(manifest.get("validation_mode") or "exact_sample_physical_ddr")
+    wrappers = [
+        row for row in selected_sources
+        if row["role"].strip().lower() in {"wrapper", "board_wrapper", "sample_wrapper"}
+    ]
+    wrapper_declared = (
+        len(wrappers) == 1
+        and str(identity.get("top_module") or "") in module_declarations(wrappers[0]["path"])
+    )
+    wrapper_in_compile = len(wrappers) == 1 and wrappers[0]["source_id"] in verified_source_ids
+    if validation_mode == "compute_slot_axi":
+        abi = identity.get("compute_slot_abi", {}) if isinstance(identity.get("compute_slot_abi"), dict) else {}
+        slot_module = str(abi.get("slot_module") or "")
+        adapters = [
+            row for row in source_entries
+            if row["role"].strip().lower() == "compute_slot_adapter"
+            and slot_module in module_declarations(row["path"])
+        ]
+        exact_wrapper = wrapper_declared and len(adapters) == 1 and not wrapper_in_compile
+    else:
+        exact_wrapper = wrapper_declared and wrapper_in_compile
+    if not exact_wrapper:
+        errors.append("compile source set does not preserve the exact sample-board compute-slot boundary")
+
+    testbench = manifest.get("testbench") if isinstance(manifest.get("testbench"), dict) else {}
+    testbench_entry = source_row(testbench, "board testbench source", errors)
+    if testbench_entry is not None and not any(
+        row["source_id"] == testbench_entry["source_id"]
+        and row["path"] == testbench_entry["path"]
+        and row["sha256"] == testbench_entry["sha256"]
+        for row in source_entries
+    ):
+        errors.append("board testbench source is not in the VCS compile source set")
+    if not str(manifest.get("top_module") or ""):
+        errors.append("board compile top_module is missing")
+
+    fixture_staging = external_fixture_staging_contract(
+        manifest, errors, include_runtime_files=False
+    )
     compile_plan = validated_vcs_compile_plan(
         manifest,
-        exact_board_preflight,
-        verified_compile_source_ids,
-        set(external_fixture_staging["include_directories"]),
+        preflight,
+        verified_source_ids,
+        set(fixture_staging["include_directories"]),
         tool_profile(run_dir),
         errors,
     )
-
-    known_synthesis_keys: set[tuple[Path, str]] = set()
-    materialized_rows = (
-        identity.get("materialized_sources", [])
-        if isinstance(identity.get("materialized_sources"), list)
-        else []
+    output_plan = execution_output_plan(
+        manifest, errors
     )
-    identity_source_rows = (
-        identity.get("source_hashes", [])
-        if isinstance(identity.get("source_hashes"), list)
-        else []
-    )
-    for row in [*materialized_rows, *identity_source_rows]:
-        if not isinstance(row, dict):
-            continue
-        path = Path(str(row.get("local_path") or row.get("path") or ""))
-        digest = str(row.get("local_sha256") or row.get("sha256") or "")
-        if path.name and digest and is_synthesis_source(str(row.get("role") or ""), path):
-            known_synthesis_keys.add((path.resolve(), digest))
-    if manifest_keys.intersection(known_synthesis_keys):
-        errors.append("VCS source list contains a sample-project synthesis source")
-
-    testbench = manifest.get("testbench", {}) if isinstance(manifest.get("testbench"), dict) else {}
-    testbench_entry = source_row(testbench, "board testbench", errors)
-    testbench_path = testbench_entry["path"] if testbench_entry is not None else None
-    if testbench_entry is not None and not any(
-        entry["source_id"] == testbench_entry["source_id"]
-        and entry["path"] == testbench_entry["path"]
-        and entry["sha256"] == testbench_entry["sha256"]
-        for entry in source_entries
-    ):
-        errors.append("board testbench is not a member of the preflight compile source set")
-    checkpoint_required = (
-        str(os.environ.get("SPATIALACC_CHECKPOINT_REPLAY") or "") == "1"
-        or str(os.environ.get("SPATIALACC_CHECKPOINT_REQUIRED") or "") == "1"
-    )
-    errors.extend(
-        checkpoint_hook_source_errors(
-            manifest,
-            testbench_path,
-            checkpoint_required=checkpoint_required,
-        )
-    )
-    errors.extend(duplicate_module_errors(source_entries))
-
-    artifacts = manifest.get("artifacts", {}) if isinstance(manifest.get("artifacts"), dict) else {}
-    artifact_paths = {}
-    runtime_binding = manifest.get("runtime_constant_binding")
-    runtime_enabled = (
-        isinstance(runtime_binding, dict) and runtime_binding.get("enabled") is True
-    )
-    artifact_names = ["input", "weight_image", "expected_output"]
-    if runtime_enabled:
-        artifact_names.append("runtime_image")
-    for name in artifact_names:
-        row = artifacts.get(name, {}) if isinstance(artifacts.get(name), dict) else {}
-        path = verified_file(row, f"board artifact {name}", errors)
-        if path:
-            artifact_paths[name] = path
-    if artifacts.get("input", {}).get("sha256") != board_vectors.get("input_vector", {}).get("sha256"):
-        errors.append("board testbench input does not match the target-model random input vector hash")
-    if artifacts.get("expected_output", {}).get("sha256") != board_vectors.get("expected_output", {}).get("sha256"):
-        errors.append("board expected output does not match the target-model transformer-block boundary vector hash")
-    weight = artifacts.get("weight_image", {}) if isinstance(artifacts.get("weight_image"), dict) else {}
-    reference_path = run_dir / "verification" / "model_reference" / "reference_manifest.json"
-    reference = read_json(reference_path)
-    if weight.get("source_checkpoint_sha256") != reference.get("weights", {}).get("source_checkpoint_sha256"):
-        errors.append("board weight image does not match the target checkpoint hash")
-    if weight.get("scope_coverage_complete") is not True:
-        errors.append("board weight image is not complete for all target layers")
-    if weight.get("accelerator_scope") != "transformer_blocks_only":
-        errors.append("board weight image scope is not transformer_blocks_only")
-    if weight.get("accelerator_weight_catalog_sha256") != (
-        sha256_file(accelerator_catalog_path) if accelerator_catalog_path.exists() else None
-    ):
-        errors.append("board weight image does not bind the current transformer-block weight catalog hash")
-    image_tensor_hashes = {
-        str(value)
-        for value in weight.get("packed_tensor_hashes", weight.get("tensor_hashes", []))
-        if str(value)
+    evidence = {
+        "exact_sample_wrapper_unmodified": exact_wrapper,
+        "source_identity_bound": identity_passed,
+        "selected_simulation_source_count": len(selected_sources),
+        "verified_compile_source_count": len(verified_source_ids),
+        "exact_board_preflight_passed": preflight.get("status") == "pass",
     }
-    complete_scope_weight_image = (
-        catalog_ok
-        and bool(scoped_catalog_rows)
-        and weight.get("scope_coverage_complete") is True
-        and weight.get("accelerator_scope") == "transformer_blocks_only"
-        and required_tensor_hashes == image_tensor_hashes
-    )
-    if not complete_scope_weight_image:
-        errors.append("board weight image does not contain every transformer-block tensor hash")
-
-    wrapper_entries = [
-        entry
-        for entry in selected_sources
-        if entry["role"].strip().lower() in {"wrapper", "board_wrapper", "sample_wrapper"}
-    ]
-    wrapper_module_declared = (
-        len(wrapper_entries) == 1
-        and str(identity.get("top_module") or "") in module_declarations(wrapper_entries[0]["path"])
-    )
-    wrapper_preserved_in_compile_set = (
-        len(wrapper_entries) == 1
-        and wrapper_entries[0]["source_id"] in verified_compile_source_ids
-        and (wrapper_entries[0]["path"], wrapper_entries[0]["sha256"]) in manifest_keys
-    )
-    validation_mode = str(
-        manifest.get("validation_mode") or "exact_sample_physical_ddr"
-    )
-    if validation_mode == "compute_slot_axi":
-        slot_abi = (
-            identity.get("compute_slot_abi")
-            if isinstance(identity.get("compute_slot_abi"), dict)
-            else {}
-        )
-        slot_module = str(slot_abi.get("slot_module") or "")
-        slot_adapter_entries = [
-            entry
-            for entry in source_entries
-            if entry["role"].strip().lower() == "compute_slot_adapter"
-            and slot_module in module_declarations(entry["path"])
-        ]
-        exact_sample_wrapper_unmodified = (
-            manifest.get("exact_sample_wrapper_unmodified") is True
-            and identity_passed
-            and source_identity_bound
-            and exact_board_preflight_passed
-            and wrapper_module_declared
-            and len(slot_adapter_entries) == 1
-            and slot_adapter_entries[0]["source_id"] in verified_compile_source_ids
-            and not wrapper_preserved_in_compile_set
-            and not any(
-                is_synthesis_source(entry["role"], entry["path"])
-                for entry in source_entries
-            )
-        )
-    else:
-        exact_sample_wrapper_unmodified = (
-            manifest.get("exact_sample_wrapper_unmodified") is True
-            and identity_passed
-            and source_identity_bound
-            and exact_board_preflight_passed
-            and wrapper_preserved_in_compile_set
-            and wrapper_module_declared
-            and not any(
-                is_synthesis_source(entry["role"], entry["path"])
-                for entry in source_entries
-            )
-        )
-    if not exact_sample_wrapper_unmodified:
-        errors.append("board simulation manifest does not prove the exact sample wrapper is unmodified")
-
-    reference_input = reference.get("input", {}) if isinstance(reference.get("input"), dict) else {}
-    random_input_stimulus = (
-        reference.get("status") == "ready"
-        and reference_input.get("source") == "random"
-        and reference_input.get("seed") is not None
-        and artifacts.get("input", {}).get("sha256") == board_vectors.get("input_vector", {}).get("sha256")
-    )
-    if not random_input_stimulus:
-        errors.append("board input is not the hash-bound reproducible random target-model stimulus")
-    if not manifest.get("top_module") or not manifest.get("pass_regex"):
-        errors.append("board simulation top_module/pass_regex is missing")
-    for key in ("rtl_output_file", "boundary_trace_file"):
-        if safe_relative_path(manifest.get(key)) is None:
-            errors.append(f"board simulation {key} must be a safe path relative to the VCS stage directory")
-    output_plan = execution_output_plan(manifest, errors)
-    monitor_specs = structured_monitor_specs(manifest, output_plan, errors)
-    vcs = manifest.get("vcs", {}) if isinstance(manifest.get("vcs"), dict) else {}
-    if not isinstance(vcs.get("runtime_plusargs"), dict):
-        errors.append("board simulation VCS runtime_plusargs are missing")
     resolved = {
         "manifest_path": str(manifest_path),
         "identity_path": str(identity_path),
-        "semantic_path": str(semantic_path),
-        "binding_path": str(binding_path),
-        "accelerator_catalog_path": str(accelerator_catalog_path),
-        "reference_path": str(reference_path),
-        "source_paths": source_paths,
         "source_entries": source_entries,
-        "artifact_paths": artifact_paths,
-        "testbench_path": testbench_path,
-        "structured_monitor_specs": monitor_specs,
+        "source_paths": [row["path"] for row in source_entries],
+        "artifact_paths": {},
+        "testbench_path": testbench_entry["path"] if testbench_entry else None,
+        "structured_monitor_specs": [],
         "execution_output_plan": output_plan,
         "vcs_compile_plan": compile_plan,
-        "external_fixture_staging": external_fixture_staging,
-        "sample_runtime_auxiliary": sample_runtime_auxiliary,
-        "exact_board_preflight": exact_board_preflight,
-        "weight_binding_evidence": {
-            "binding_status": binding.get("status"),
-            "binding_accelerator_scope": binding.get("accelerator_scope"),
-            "binding_all_target_layers": binding.get("all_target_layers") is True,
-            "required_tensor_hashes": sorted(required_tensor_hashes),
-            "validation_scope_tensor_hashes": sorted(scoped_tensor_hashes),
-            "binding_hashes": sorted(binding_hashes),
-            "simulation_binding_hashes": sorted(simulation_binding_hashes),
-            "image_tensor_hashes": sorted(image_tensor_hashes),
-        },
-        "evidence": {
-            "exact_sample_wrapper_unmodified": exact_sample_wrapper_unmodified,
-            "accelerator_scope": binding.get("accelerator_scope"),
-            "all_target_layers": all_target_layers,
-            "model_layer_count": model_layer_count,
-            "target_layer_count": target_layer_count,
-            "validation_layer_indices": validation_layer_indices,
-            "real_model_weights_consumed": real_model_weights_consumed,
-            "complete_scope_weight_image": complete_scope_weight_image,
-            "required_transformer_block_tensor_count": len(required_tensor_hashes),
-            "random_input_stimulus": random_input_stimulus,
-            "source_identity_bound": source_identity_bound,
-            "selected_simulation_source_count": len(selected_sources),
-            "verified_compile_source_count": len(verified_compile_source_ids),
-            "exact_board_preflight_passed": exact_board_preflight_passed,
-        },
+        "external_fixture_staging": fixture_staging,
+        "sample_runtime_auxiliary": [],
+        "exact_board_preflight": preflight,
+        "weight_binding_evidence": {"validation_policy": COMPILE_ONLY_POLICY},
+        "evidence": evidence,
     }
     return manifest, resolved, errors
+
+
+def validate_manifest(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    return validate_compile_only_manifest(run_dir)
 
 
 def tool_profile(run_dir: Path) -> dict[str, Any]:
     profile = read_json(run_dir / "input" / "tool_profile.json")
     for tool in profile.get("tools", []):
-        if isinstance(tool, dict) and tool.get("role") == "functional_verification":
-            return tool
+        if (
+            isinstance(tool, dict)
+            and str(tool.get("name") or "").lower() == "vcs"
+            and normalized_functional_verification_role(tool.get("role"))
+            == "functional_verification"
+        ):
+            normalized_tool = dict(tool)
+            normalized_tool["role"] = "functional_verification"
+            return normalized_tool
     return {}
 
 
@@ -4052,7 +3731,6 @@ def execute_pending_exact_board_job(
         str(job.get("simulate_command") or ""),
         progress_callback=observer,
         allow_relaunch=False,
-        allow_initial_simulation_launch=True,
     )
     if recovered is None:
         # Candidate discovery completed and found no remote copy of this sealed
@@ -4075,6 +3753,7 @@ def execute_pending_exact_board_job(
     board_dir = run_dir / "verification" / "board_simulation"
     compile_result = dict(recovered.get("compile") or {})
     simulate_result = dict(recovered.get("simulate") or {})
+    output_rows.setdefault("compile_log", Path("reports/vcs_compile.log"))
     semantic_stall_evidence = simulate_result.get(
         "adaptive_semantic_stall_evidence", {}
     )
@@ -4174,10 +3853,7 @@ def execute_pending_exact_board_job(
         input_fingerprint_sha256=fingerprint,
         live_progress=observer.report() if observer is not None else {},
     )
-    terminal_success = (
-        compile_result.get("status") == "pass"
-        and simulate_result.get("status") == "pass"
-    )
+    terminal_success = (compile_result.get('status') == 'pass')
     job_lost = simulate_result.get("failure_class") == "remote_job_lost"
     phase = "active_exact_job_observation" if job_lost else "active_exact_job_collection" if terminal_success else "remote_vcs"
     report: dict[str, Any] = {
@@ -4224,58 +3900,67 @@ def execute_pending_exact_board_job(
             "policy": "pending exact VCS jobs are attached and never relaunched",
         },
     }
-    if terminal_success:
-        capture = collect_completed_native_checkpoint(
-            run_dir,
-            timeout_sec,
-            manifest,
-            remote_dir,
-            simulation_log_path,
-        )
-        if capture.get("status") == "pass":
-            checkpoint_plan = capture["checkpoint_plan"]
-            report.update(
-                {
-                    "status": "checkpoint_capture_complete",
-                    "hardware_validation_status": "checkpoint_capture_complete",
-                    "phase": "remote_vcs",
-                    "summary": (
-                        "completed Layer-3 native checkpoint collected; "
-                        "one restore confirmation is required before reuse"
-                    ),
-                    "simulation_execution_identity": checkpoint_plan.get(
-                        "execution_identity", {}
-                    ),
-                    "checkpoint_execution": {
-                        key: checkpoint_plan.get(key)
-                        for key in (
-                            "status",
-                            "mode",
-                            "enabled",
-                            "candidate_screening",
-                            "acceptance_eligible",
-                            "request_path",
-                            "request_sha256",
-                            "policy",
-                        )
-                    },
-                    "checkpoint_artifacts": capture["checkpoint_artifacts"],
-                    "fast_replay_used": False,
-                    "compile_reused": False,
-                    "weight_load_skipped": False,
-                    "second_vcs_compile_was_not_launched": False,
-                    "simulator_path": "vcs_work/simv",
-                }
-            )
-            report.pop("failure_class", None)
-            report.pop("errors", None)
-            return report
-        report["failure_class"] = "active_exact_job_terminal_acceptance_required"
-        report["errors"] = [
-            "the sealed job completed, but full acceptance must be collected against its launch identity"
-        ]
-    elif job_lost:
-        report["failure_class"] = "remote_job_lost"
+    compile_log_path = Path(str(copied_outputs.get("compile_log", {}).get("path") or ""))
+    compile_plan = manifest.get("vcs_compile_plan", {})
+    ordered_commands = compile_plan.get("ordered_commands", [])
+    elaboration = ordered_commands[-1] if isinstance(ordered_commands, list) and ordered_commands else {}
+    executable_relative = safe_relative_path(compile_plan.get("output"))
+    elaboration_cwd = safe_relative_path(elaboration.get("cwd")) if isinstance(elaboration, dict) else None
+    if executable_relative is None:
+        executable_relative = Path("simv")
+    if elaboration_cwd is not None:
+        executable_relative = elaboration_cwd / executable_relative
+    ssh_base = [
+        "ssh",
+        "-p",
+        str(port),
+        "-o",
+        "StrictHostKeyChecking=no",
+        host,
+    ]
+    executable_check = run_transfer_command(
+        [
+            *ssh_base,
+            f"cd {shlex.quote(remote_dir)} && test -x {shlex.quote(executable_relative.as_posix())}",
+        ],
+        timeout_sec,
+    )
+    passed = (
+        terminal_success
+        and executable_check.returncode == 0
+        and compile_log_path.is_file()
+    )
+    report.update(
+        {
+            "status": "pass" if passed else "fail",
+            "hardware_validation_status": "compile_only_pass" if passed else "fail",
+            "stage_pass_eligible": passed,
+            "phase": "remote_vcs",
+            "validation_policy": COMPILE_ONLY_POLICY,
+            "simulation_skipped": True,
+            "compile_evidence": {
+                "status": "pass" if passed else "fail",
+                "log_path": str(compile_log_path),
+                "log_sha256": sha256_file(compile_log_path) if compile_log_path.is_file() else None,
+                "top_module": manifest.get("top_module"),
+                "input_fingerprint_sha256": fingerprint,
+                "executable_path": executable_relative.as_posix(),
+                "executable_check_returncode": executable_check.returncode,
+            },
+            "compile_log": str(compile_log_path),
+            "sim_log": None,
+            "errors": [] if passed else [
+                "compile failed"
+                if compile_result.get("status") != "pass"
+                else "elaborated VCS simulator executable or compile log is missing"
+            ],
+            "summary": (
+                "exact-board VCS compile and elaboration passed; simulation intentionally skipped"
+                if passed
+                else "exact-board VCS compile/elaboration or compile evidence failed"
+            ),
+        }
+    )
     return report
 
 
@@ -4748,7 +4433,9 @@ def execute_saved_fast_recapture(run_dir: Path, timeout_sec: int) -> dict[str, A
             "second_vcs_compile_was_not_launched": True,
         }
 
-    checkpoint_plan = checkpoint_execution_plan(run_dir, manifest)
+    checkpoint_plan = (
+        ({'status': 'pass', 'enabled': False, 'mode': 'compile_only', 'fast_replay': {'used': False}, 'staged_state_artifacts': [], 'contract': {'outputs': {}}})
+    )
     if (
         checkpoint_plan.get("status") != "pass"
         or checkpoint_plan.get("mode") != "cold_capture"
@@ -5494,18 +5181,87 @@ def execute_saved_fast_replay(run_dir: Path, timeout_sec: int) -> dict[str, Any]
     }
 
 
+def vcs_elaboration_args(argv: list[str]) -> list[str]:
+    return [
+        value
+        for value in argv
+        if not value.startswith(("-debug_acc", "-debug_access"))
+    ]
+
+
+def fpga_ip_runtime_default_library(
+    compute_backend: str,
+    source_entries: list[dict[str, Any]],
+    compile_commands: list[dict[str, Any]],
+) -> str:
+    if compute_backend == "integer_dsp":
+        libraries = {
+            str(command.get("work_library") or "")
+            for command in compile_commands
+            if str(command.get("phase") or "") == "compile"
+        }
+        if not libraries or "" in libraries or len(libraries) != 1:
+            raise ValueError(
+                "integer-DSP sources must compile into exactly one explicit logical library"
+            )
+        return next(iter(libraries))
+
+    physical_source_ids: set[str] = set()
+    for entry in source_entries:
+        text = entry["path"].read_text(encoding="utf-8", errors="ignore")
+        instantiated_names = re.findall(
+            r"\b(fp_[A-Za-z0-9_]+)\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\(",
+            text,
+        )
+        if any(FP_MODULE_NAME.fullmatch(name) for name in instantiated_names):
+            physical_source_ids.add(str(entry["source_id"]))
+    libraries = {
+        str(command.get("work_library") or "")
+        for command in compile_commands
+        if str(command.get("phase") or "") == "compile"
+        and physical_source_ids.intersection(command.get("source_ids", []))
+        and str(command.get("work_library") or "")
+    }
+    if not physical_source_ids or len(libraries) != 1:
+        raise ValueError(
+            "physical FPGA IP sources must compile into exactly one explicit logical library"
+        )
+    return next(iter(libraries))
+
+
+def fpga_ip_runtime_compile_setup(
+    fpga_ip_runtime: dict[str, Any], compile_log_relative: Path
+) -> str:
+    if fpga_ip_runtime.get("status") != "ready":
+        return ""
+    log_path = shlex.quote(compile_log_relative.as_posix())
+    parts = [
+        "{\n" + str(fpga_ip_runtime.get("provision_command") or "") + "\n}"
+        + f" >> {log_path} 2>&1;",
+        str(fpga_ip_runtime.get("runtime_environment_command") or "").strip(),
+        str(fpga_ip_runtime.get("compile_command") or "")
+        + f" >> {log_path} 2>&1;",
+    ]
+    return " ".join(part for part in parts if part) + " "
+
+
 def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
-    if str(os.environ.get("SPATIALACC_FAST_REPLAY_RECAPTURE") or "") == "1":
-        return execute_saved_fast_recapture(run_dir, timeout_sec)
     fast_replay_requested = (
         str(os.environ.get("SPATIALACC_FAST_REPLAY") or "") == "1"
     )
-    if fast_replay_requested:
-        return execute_saved_fast_replay(run_dir, timeout_sec)
     # A completed or abandoned cold job can leave a fixed job-contract path
     # behind.  A confirmed replay deliberately starts a new simulation in its
     # saved remote directory, so it must never attach that stale pending job.
-    pending_job = None if fast_replay_requested else pending_exact_board_job(run_dir)
+    pending_job = (
+        None
+        if fast_replay_requested
+        else pending_exact_board_job(run_dir)
+    )
+    if pending_job is not None:
+        expected_manifest = pending_job["job"].get("preflight_manifest_projection_sha256")
+        manifest_path = Path(pending_job["manifest_path"])
+        if expected_manifest and manifest_path.is_file() and expected_manifest != preflight_manifest_projection_sha256(read_json(manifest_path)):
+            pending_job = None
     if pending_job is not None:
         prior_report = read_json(
             run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
@@ -5544,7 +5300,16 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             "validation_evidence": resolved["evidence"],
             "weight_binding_evidence": resolved["weight_binding_evidence"],
         }
-    checkpoint_plan = checkpoint_execution_plan(run_dir, manifest)
+    # Compile-only acceptance never restores or captures simulator state.
+    # Stale runtime checkpoint identities must not block a fresh compilation.
+    checkpoint_plan = (
+        {"status": "pass", "enabled": False, "mode": "compile_only",
+         "fast_replay": {"used": False}, "staged_state_artifacts": [],
+         "contract": {"outputs": {}}}
+        if resolved.get("weight_binding_evidence", {}).get("validation_policy")
+        == COMPILE_ONLY_POLICY
+        else checkpoint_execution_plan(run_dir, manifest)
+    )
     if checkpoint_plan.get("status") != "pass":
         return {
             "schema_version": SCHEMA_VERSION,
@@ -5569,7 +5334,6 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
     artifacts_dir = stage_dir / "artifacts"
     sources_dir.mkdir(parents=True)
     artifacts_dir.mkdir(parents=True)
-    stage_current_observation_selection(run_dir, stage_dir)
     staged_checkpoint_inputs = stage_checkpoint_inputs(checkpoint_plan, stage_dir)
     fast_replay = checkpoint_plan.get("fast_replay", {})
     fast_replay = fast_replay if isinstance(fast_replay, dict) else {}
@@ -5648,26 +5412,14 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
     fpga_ip_runtime: dict[str, Any] = {"status": "not_used"}
     if fast_replay.get("used") is not True:
         try:
-            physical_source_ids: set[str] = set()
-            for entry in resolved["source_entries"]:
-                text = entry["path"].read_text(encoding="utf-8", errors="ignore")
-                instantiated_names = re.findall(
-                    r"\b(fp_[A-Za-z0-9_]+)\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\(",
-                    text,
-                )
-                if any(FP_MODULE_NAME.fullmatch(name) for name in instantiated_names):
-                    physical_source_ids.add(str(entry["source_id"]))
-            generated_source_libraries = {
-                str(command.get("work_library") or "")
-                for command in compile_plan["commands"]
-                if str(command.get("phase") or "") == "compile"
-                and physical_source_ids.intersection(command.get("source_ids", []))
-                and str(command.get("work_library") or "")
-            }
-            if not physical_source_ids or len(generated_source_libraries) != 1:
-                raise ValueError(
-                    "physical FPGA IP sources must compile into exactly one explicit logical library"
-                )
+            closure = read_json(
+                run_dir / "generated" / "chisel" / "simulation" / "fpga_ip_simulation_closure.json"
+            )
+            expected_default_library = fpga_ip_runtime_default_library(
+                str(closure.get("compute_backend") or "vivado_fp_ip"),
+                resolved["source_entries"],
+                compile_plan["commands"],
+            )
             fpga_ip_runtime = stage_fpga_ip_runtime(
                 run_dir,
                 stage_dir,
@@ -5676,7 +5428,7 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
                     cwd.as_posix()
                     for cwd in command_cwds
                 ],
-                expected_default_library=next(iter(generated_source_libraries)),
+                expected_default_library=expected_default_library,
             )
         except (OSError, ValueError, KeyError) as exc:
             return {
@@ -5709,6 +5461,11 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
                     os.sep, "/"
                 )
                 argv.append(f"+incdir+{relative_include}")
+        if (
+            str(command.get("phase") or "") == "elaborate"
+            and Path(str(command.get("executable") or "")).name == "vcs"
+        ):
+            argv = vcs_elaboration_args(argv)
         if (
             str(command.get("phase") or "") == "elaborate"
             and Path(str(command.get("executable") or "")).name == "vcs"
@@ -5792,13 +5549,6 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             f"(cd {shlex.quote(cwd.as_posix())} && {command_text})"
         )
     plusargs = []
-    for key, artifact_name in vcs.get("runtime_plusargs", {}).items():
-        if str(artifact_name) not in staged_artifacts:
-            return {"schema_version": SCHEMA_VERSION, "status": "fail", "phase": "manifest_validation", "errors": [f"runtime plusarg {key} references unknown artifact {artifact_name}"]}
-        plusargs.append(f"+{key}=artifacts/{staged_artifacts[str(artifact_name)].name}")
-    plusargs.append(
-        "+SPATIALACC_OBSERVATION_SELECTION=observation/current_selection.json"
-    )
     workload_plusargs = list(plusargs)
     plusargs.extend(checkpoint_runtime_plusargs(checkpoint_plan))
     if checkpoint_plan.get("mode") == "cold_capture":
@@ -5812,46 +5562,16 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         workload_plusargs.append("+vcs+loopreport")
     output_plan = resolved["execution_output_plan"]
     compile_log_relative = output_plan["compile_log"]["path"]
-    simulation_log_relative = output_plan["simulation_log"]["path"]
-    planned_jsonl_paths = {
-        output_plan["progress_event_log"]["path"],
-        Path(str(manifest["boundary_trace_file"])),
-    }
-    supplemental_jsonl_paths = supplemental_jsonl_output_paths(
-        resolved.get("testbench_path"),
-        planned_jsonl_paths,
+    simulation_log_relative = compile_log_relative
+    supplemental_jsonl_paths = []
+    supplemental_vcd_paths = []
+    runtime_loader_paths = []
+    performance_counter_paths = []
+    output_parents = (
+        {compile_log_relative.parent.as_posix()}
+        if compile_log_relative.parent != Path(".")
+        else set()
     )
-    supplemental_vcd_paths = supplemental_vcd_output_paths(
-        resolved.get("testbench_path")
-    )
-    runtime_loader_spec = output_plan.get("runtime_loader_report")
-    runtime_loader_paths = (
-        [runtime_loader_spec["path"]]
-        if isinstance(runtime_loader_spec, dict)
-        else []
-    )
-    performance_counter_spec = output_plan.get("performance_counter_report")
-    performance_counter_paths = (
-        [performance_counter_spec["path"]]
-        if isinstance(performance_counter_spec, dict)
-        else []
-    )
-    output_parents = {
-        path.parent.as_posix()
-        for path in (
-            compile_log_relative,
-            simulation_log_relative,
-            output_plan["progress_event_log"]["path"],
-            output_plan["elaborated_hierarchy_report"]["path"],
-            output_plan["pipeline_overlap_report"]["path"],
-            *runtime_loader_paths,
-            *performance_counter_paths,
-            *(row["path"] for row in output_plan["protocol_monitor_reports"]),
-            *supplemental_jsonl_paths,
-            *supplemental_vcd_paths,
-        )
-        if path.parent != Path(".")
-    }
     checkpoint_outputs = checkpoint_plan.get("contract", {}).get("outputs", {})
     if checkpoint_plan.get("enabled") is True and isinstance(checkpoint_outputs, dict):
         for row in checkpoint_outputs.values():
@@ -5868,21 +5588,7 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
     simulator_path = (
         compile_plan["commands"][-1]["cwd"] / compile_plan["output"]
     )
-    remote_output_paths = [
-        compile_log_relative,
-        simulation_log_relative,
-        output_plan["progress_event_log"]["path"],
-        output_plan["elaborated_hierarchy_report"]["path"],
-        output_plan["pipeline_overlap_report"]["path"],
-        *runtime_loader_paths,
-        *performance_counter_paths,
-        *(row["path"] for row in output_plan["protocol_monitor_reports"]),
-        *supplemental_jsonl_paths,
-        *supplemental_vcd_paths,
-        Path(str(manifest["rtl_output_file"])),
-        Path(str(manifest["boundary_trace_file"])),
-        simulator_path,
-    ]
+    remote_output_paths = [compile_log_relative, simulator_path]
     if checkpoint_plan.get("enabled") is True and isinstance(checkpoint_outputs, dict):
         remote_output_paths.extend(
             relative
@@ -5900,25 +5606,11 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             f"rm -rf -- {shlex.quote(NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix())}; "
         )
     compile_command = (
-        prepare_output_dirs
+        vcs_tool_environment(tool)
+        + prepare_output_dirs
         + remove_stale_outputs
         + f": > {shlex.quote(compile_log_relative.as_posix())}; set -e; "
-        + (
-            fpga_ip_runtime.get("provision_command", "")
-            + " >> "
-            + shlex.quote(compile_log_relative.as_posix())
-            + " 2>&1; "
-            if fpga_ip_runtime.get("status") == "ready"
-            else ""
-        )
-        + (
-            fpga_ip_runtime.get("compile_command", "")
-            + " >> "
-            + shlex.quote(compile_log_relative.as_posix())
-            + " 2>&1; "
-            if fpga_ip_runtime.get("status") == "ready"
-            else ""
-        )
+        + fpga_ip_runtime_compile_setup(fpga_ip_runtime, compile_log_relative)
         + "; ".join(
             f"{command} >> {shlex.quote(compile_log_relative.as_posix())} 2>&1"
             for command in command_shells
@@ -5993,6 +5685,9 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         }
     fingerprint_material = {
         "schema_version": "spatialaccagent.board_remote_job_identity.v1",
+        "validation_policy": (
+            (COMPILE_ONLY_POLICY)
+        ),
         "preflight_manifest_projection_sha256": preflight_manifest_projection_sha256(manifest),
         "source_identity_sha256": sha256_file(Path(resolved["identity_path"])),
         "source_closure_sha256": manifest.get("source_closure_sha256"),
@@ -6009,6 +5704,7 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             "host": host,
             "port": port,
             "executable": executable,
+            "env": tool.get("env") or {},
         },
         "top_module": manifest.get("top_module"),
         "compile_command": compile_command,
@@ -6093,19 +5789,7 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
                 "manifest_path": resolved["manifest_path"],
             },
         )
-    live_progress_observer = LiveProgressObserver(
-        host=host,
-        port=port,
-        run_dir=run_dir,
-        remote_path=output_plan["progress_event_log"]["path"],
-        fingerprint=fingerprint,
-        progress_contract=cctg_progress_contract(run_dir, manifest),
-        remote_time_probe_paths=supplemental_vcd_paths,
-        native_loop_report_path=(
-            simulation_log_relative if vcs_loop_report_enabled else None
-        ),
-    )
-
+    live_progress_observer = None
     recovered = None
     if fast_replay.get("used") is not True:
         recovered = recover_exact_remote_semantic_job(
@@ -6179,15 +5863,8 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             "reused": True,
             "summary": "reused the saved remote VCS simulator; no VCS compile was launched",
         }
-        simulate_result = run_remote_background_command(
-            host,
-            port,
-            simulate_command,
-            remote_dir,
-            out_dir,
-            timeout_sec,
-            "vcs_fast_replay_simulate",
-            progress_callback=live_progress_observer,
+        simulate_result = (
+            ({'status': 'not_run', 'summary': 'simulation skipped by VCS compile-only policy'})
         )
         remote_job_reuse = {
             "status": "pass",
@@ -6274,979 +5951,94 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             "vcs_compile",
         )
         simulate_result = (
-            run_remote_background_command(
-                host,
-                port,
-                simulate_command,
-                remote_dir,
-                out_dir,
-                timeout_sec,
-                "vcs_simulate",
-                progress_callback=live_progress_observer,
-            )
-            if compile_result.get("status") == "pass"
-            else {"status": "not_run", "summary": "remote VCS compile failed"}
+            ({'status': 'not_run', 'summary': 'simulation skipped by VCS compile-only policy'})
         )
         remote_job_reuse = {
             "status": "not_run",
             "real_tool_was_not_relaunched": False,
             "summary": "no exact completed or running remote board job matched the full payload",
         }
-    persist_zero_time_livelock_recovery(
-        run_dir,
-        simulate_result,
-        remote_workdir=remote_dir,
-        input_fingerprint_sha256=fingerprint,
-    )
-    simulate_result = bind_zero_time_livelock_recovery(
-        run_dir,
-        simulate_result,
-        remote_workdir=remote_dir,
-        input_fingerprint_sha256=fingerprint,
-    )
     board_dir = run_dir / "verification" / "board_simulation"
-
-    def download_planned(relative: Path) -> tuple[Path, subprocess.CompletedProcess[str]]:
-        local_path = board_dir / relative
-        _prepare_fresh_transfer_target(local_path)
-        result = run_transfer_command(
-            [
-                "scp",
-                "-q",
-                "-P",
-                str(port),
-                "-o",
-                "StrictHostKeyChecking=no",
-                f"{host}:{remote_dir}/{relative.as_posix()}",
-                str(local_path),
-            ],
-            timeout_sec,
-        )
-        if result.returncode != 0:
-            local_path.unlink(missing_ok=True)
-        return local_path, result
-
-    compile_log_path, compile_log_download = download_planned(compile_log_relative)
-    simulation_log_path, simulation_log_download = download_planned(simulation_log_relative)
-    progress_spec = output_plan["progress_event_log"]
-    progress_event_path, progress_event_download = download_planned(
-        progress_spec["path"]
+    compile_log_path = board_dir / compile_log_relative
+    _prepare_fresh_transfer_target(compile_log_path)
+    log_download = run_transfer_command(
+        [
+            "scp",
+            "-q",
+            "-P",
+            str(port),
+            "-o",
+            "StrictHostKeyChecking=no",
+            f"{host}:{remote_dir}/{compile_log_relative.as_posix()}",
+            str(compile_log_path),
+        ],
+        timeout_sec,
     )
-    progress_parsed = (
-        read_complete_jsonl(progress_event_path)
-        if progress_event_download.returncode == 0
-        else {"records": [], "invalid_records": []}
+    executable_check = run_transfer_command(
+        [
+            *ssh_base,
+            f"cd {shlex.quote(remote_dir)} && test -x {shlex.quote(simulator_path.as_posix())}",
+        ],
+        timeout_sec,
     )
-    progress_records = progress_parsed.get("records", [])
-    progress_summary = summarize_progress_events(
-        progress_records if isinstance(progress_records, list) else [],
-        cctg_progress_contract(run_dir, manifest),
-    )
-    real_restore_progress_count = checkpoint_restore_real_progress_count(
-        progress_records if isinstance(progress_records, list) else []
-    )
-    if (
-        isinstance(progress_records, list)
-        and progress_records
-        and isinstance(progress_records[-1], dict)
-    ):
-        progress_summary["last_committed_progress_event"] = dict(
-            progress_records[-1]
-        )
-    progress_event_log_valid = (
-        progress_event_download.returncode == 0
-        and progress_event_path.is_file()
-        and progress_summary.get("record_count", 0) > 0
-        and progress_summary.get("semantic_progress_event_count", 0) > 0
-        and progress_summary.get("terminal_event_seen") is True
-        and not progress_summary.get("validation_errors")
-        and not progress_parsed.get("invalid_records")
-    )
-    simulate_result = apply_simulation_terminal_log_result(
-        simulate_result, simulation_log_path
-    )
-    simulate_result["termination_provenance"] = simulation_termination_provenance(
-        simulate_result,
-        simulation_log_path,
-        timeout_sec=timeout_sec,
-        progress_summary=progress_summary,
-        input_fingerprint_sha256=fingerprint,
-        live_progress=live_progress_observer.report(),
-    )
-    supplemental_observation_artifacts: list[dict[str, Any]] = []
-    for relative in supplemental_jsonl_paths:
-        local_path, copy_result = download_planned(relative)
-        copied = copy_result.returncode == 0 and local_path.is_file()
-        supplemental_observation_artifacts.append(
-            {
-                "status": "ready" if copied else "missing",
-                "artifact_kind": "jsonl_observation",
-                "path": str(local_path),
-                "relative_path": relative.as_posix(),
-                "copied": copied,
-                "sha256": sha256_file(local_path) if copied else None,
-                "byte_count": local_path.stat().st_size if copied else 0,
-                "summary": (
-                    summarize_supplemental_jsonl(local_path) if copied else {}
-                ),
-            }
-        )
-    for relative in supplemental_vcd_paths:
-        local_path, copy_result = download_planned(relative)
-        copied = copy_result.returncode == 0 and local_path.is_file()
-        summary = summarize_supplemental_vcd(local_path) if copied else {}
-        supplemental_observation_artifacts.append(
-            {
-                "status": "ready" if copied else "missing",
-                "artifact_kind": "vcd_simulation_time_probe",
-                "path": str(local_path),
-                "relative_path": relative.as_posix(),
-                "copied": copied,
-                "sha256": sha256_file(local_path) if copied else None,
-                "byte_count": local_path.stat().st_size if copied else 0,
-                "summary": summary,
-            }
-        )
-    vcs_loop_report = {
-        "enabled": vcs_loop_report_enabled,
-        "native_loop_detected": False,
-        "loop_detection_enabled_observed": False,
-        "matched_simulation_log_markers": [],
-        "artifact_count": 0,
-    }
-    if vcs_loop_report_enabled:
-        simulation_text = (
-            simulation_log_path.read_text(encoding="utf-8", errors="replace")
-            if simulation_log_path.is_file()
-            else ""
-        )
-        simulation_lower = simulation_text.lower()
-        simulation_markers = [
-            marker
-            for marker in VCS_ZERO_DELAY_LOOP_MARKERS
-            if marker in simulation_lower
-        ]
-        discovered = run_transfer_command(
-            [
-                *ssh_base,
-                (
-                    f"cd {shlex.quote(remote_dir)} && "
-                    "find . -maxdepth 6 -type f -name 'loop-info-*.log' -print"
-                ),
-            ],
-            timeout_sec,
-        )
-        loop_paths: list[Path] = []
-        if discovered.returncode == 0:
-            for value in discovered.stdout.splitlines():
-                relative = safe_relative_path(value.strip().removeprefix("./"))
-                if relative is not None and relative not in loop_paths:
-                    loop_paths.append(relative)
-                if len(loop_paths) >= 8:
-                    break
-        for relative in loop_paths:
-            local_path, copy_result = download_planned(relative)
-            copied = copy_result.returncode == 0 and local_path.is_file()
-            summary = summarize_vcs_loop_report(local_path) if copied else {}
-            supplemental_observation_artifacts.append(
-                {
-                    "status": "ready" if copied else "missing",
-                    "artifact_kind": "vcs_native_zero_delay_loop_report",
-                    "path": str(local_path),
-                    "relative_path": relative.as_posix(),
-                    "copied": copied,
-                    "sha256": sha256_file(local_path) if copied else None,
-                    "byte_count": local_path.stat().st_size if copied else 0,
-                    "summary": summary,
-                }
-            )
-        vcs_loop_report = {
-            "enabled": True,
-            "native_loop_detected": bool(simulation_markers or loop_paths),
-            "loop_detection_enabled_observed": (
-                "vcs loop detection: switching loop detection algorithm on"
-                in simulation_lower
-            ),
-            "matched_simulation_log_markers": simulation_markers,
-            "artifact_count": len(loop_paths),
-            "discovery_status": "pass" if discovered.returncode == 0 else "fail",
-            "discovery_stderr_tail": discovered.stderr[-2000:],
-        }
-        if not loop_paths:
-            supplemental_observation_artifacts.append(
-                {
-                    "status": "not_observed",
-                    "artifact_kind": "vcs_native_zero_delay_loop_report",
-                    "relative_path": "loop-info-*.log",
-                    "copied": False,
-                    "byte_count": 0,
-                    "summary": vcs_loop_report,
-                }
-            )
-    copied_outputs = {}
-    boundary_suffix = Path(str(manifest.get("boundary_trace_file") or "")).suffix
-    for key, local_name in (
-        ("rtl_output_file", "rtl_output.memh"),
-        (
-            "boundary_trace_file",
-            "boundary_trace.jsonl" if boundary_suffix == ".jsonl" else "boundary_trace.json",
-        ),
-    ):
-        remote_name = str(manifest[key])
-        local_path = board_dir / local_name
-        copy_result = run_transfer_command(
-            ["scp", "-q", "-P", str(port), "-o", "StrictHostKeyChecking=no", f"{host}:{remote_dir}/{remote_name}", str(local_path)],
-            timeout_sec,
-        )
-        copied_outputs[key] = {
-            "path": str(local_path),
-            "copied": copy_result.returncode == 0 and local_path.is_file(),
-            "sha256": sha256_file(local_path) if copy_result.returncode == 0 and local_path.is_file() else None,
-        }
-    boundary_trace_local_path = Path(
-        str(copied_outputs["boundary_trace_file"]["path"])
-    )
-    semantic_manifest_reference = manifest.get("semantic_testbench_manifest", {})
-    boundary_observation_summary = summarize_boundary_trace_observations(
-        boundary_trace_local_path,
-        semantic_manifest_reference
-        if isinstance(semantic_manifest_reference, dict)
-        else {},
-        manifest.get("testbench", {})
-        if isinstance(manifest.get("testbench"), dict)
-        else {},
-        simulation_log_path,
-    )
-    boundary_observation_summary_path = (
-        board_dir / "pipeline_boundary_observation_summary.json"
-    )
-    write_json(boundary_observation_summary_path, boundary_observation_summary)
-    boundary_observation_passed = (
-        boundary_observation_summary.get("status")
-        in {"complete", "not_applicable"}
-    )
-    monitor_results: dict[str, dict[str, Any]] = {}
-    monitor_payloads: dict[str, dict[str, Any]] = {}
-    for spec in resolved["structured_monitor_specs"]:
-        local_path, copy_result = download_planned(spec["remote_path"])
-        report = read_json(local_path) if copy_result.returncode == 0 else {}
-        missing_fields = sorted(set(spec["required_fields"]) - set(report))
-        violations = report.get("violations")
-        transaction_counts = report.get("transaction_counts")
-        validated = (
-            copy_result.returncode == 0
-            and local_path.is_file()
-            and report.get("schema_version") == spec["schema_version"]
-            and report.get("status") == "pass"
-            and isinstance(violations, list)
-            and not violations
-            and isinstance(transaction_counts, dict)
-            and all(
-                isinstance(transaction_counts.get(channel), int)
-                and transaction_counts.get(channel, 0) > 0
-                for channel in ("aw", "w", "b", "ar", "r")
-            )
-            and not missing_fields
-        )
-        monitor_payloads[spec["interface"]] = report
-        monitor_results[spec["monitor_id"]] = {
-            "status": "pass" if validated else "fail",
-            "interface": spec["interface"],
-            "path": str(local_path),
-            "copied": copy_result.returncode == 0 and local_path.is_file(),
-            "sha256": sha256_file(local_path) if copy_result.returncode == 0 and local_path.is_file() else None,
-            "schema_version": report.get("schema_version"),
-            "reported_status": report.get("status"),
-            "violation_count": len(violations) if isinstance(violations, list) else None,
-            "transaction_counts": transaction_counts if isinstance(transaction_counts, dict) else None,
-            "missing_required_fields": missing_fields,
-        }
-
-    hierarchy_spec = output_plan["elaborated_hierarchy_report"]
-    hierarchy_path, hierarchy_download = download_planned(hierarchy_spec["path"])
-    hierarchy_payload = read_json(hierarchy_path) if hierarchy_download.returncode == 0 else {}
-    hierarchy_report_valid = (
-        hierarchy_download.returncode == 0
-        and hierarchy_path.is_file()
-        and hierarchy_payload.get("schema_version") == hierarchy_spec["schema_version"]
-        and hierarchy_payload.get("status") == "pass"
-        and isinstance(hierarchy_payload.get("evidence_refs"), list)
-        and bool(hierarchy_payload.get("evidence_refs"))
-    )
-    pipeline_spec = output_plan["pipeline_overlap_report"]
-    pipeline_path, pipeline_download = download_planned(pipeline_spec["path"])
-    pipeline_payload = read_json(pipeline_path) if pipeline_download.returncode == 0 else {}
-    pipeline_overlap_passed = (
-        pipeline_download.returncode == 0
-        and pipeline_path.is_file()
-        and pipeline_payload.get("schema_version") == pipeline_spec["schema_version"]
-        and pipeline_payload.get("status") == "pass"
-        and pipeline_payload.get("pipeline_semantics")
-        == "elastic_rate_insensitive_token_pipeline"
-        and pipeline_payload.get("required_dependency_overlap_complete") is True
-        and pipeline_payload.get(
-            "all_planned_stages_participate_in_required_overlap"
-        )
-        is True
-        and pipeline_payload.get("token_order_preserved") is True
-        and pipeline_payload.get("serial_leaf_execution_observed") is False
-        and pipeline_payload.get("stage_turnover_gaps_are_diagnostic") is True
-        and pipeline_payload.get(
-            "all_stages_same_cycle_concurrency_required"
-        )
-        is False
-        and pipeline_payload.get("whole_sequence_barrier_observed") is False
-        and isinstance(pipeline_payload.get("expected_stage_count"), int)
-        and pipeline_payload.get("expected_stage_count", 0) > 0
-        and pipeline_payload.get("observed_stage_count")
-        == pipeline_payload.get("expected_stage_count")
-        and isinstance(
-            pipeline_payload.get("observed_different_token_overlap_count"), int
-        )
-        and pipeline_payload.get("observed_different_token_overlap_count", 0) > 0
-    )
-    if isinstance(runtime_loader_spec, dict):
-        runtime_loader_path, runtime_loader_download = download_planned(
-            runtime_loader_spec["path"]
-        )
-        runtime_loader_payload = (
-            read_json(runtime_loader_path)
-            if runtime_loader_download.returncode == 0
-            else {}
-        )
-        runtime_loader_report_passed = (
-            runtime_loader_download.returncode == 0
-            and runtime_loader_path.is_file()
-            and runtime_loader_payload.get("schema_version")
-            == runtime_loader_spec["schema_version"]
-            and runtime_loader_payload.get("status") == "pass"
-        )
-    else:
-        runtime_loader_path = Path()
-        runtime_loader_payload = {}
-        runtime_loader_report_passed = True
-    if isinstance(performance_counter_spec, dict):
-        performance_counter_path, performance_counter_download = download_planned(
-            performance_counter_spec["path"]
-        )
-        performance_counter_payload = (
-            read_json(performance_counter_path)
-            if performance_counter_download.returncode == 0
-            else {}
-        )
-    else:
-        performance_counter_path = Path()
-        performance_counter_payload = {}
-
-    checkpoint_artifact_result: dict[str, Any] = {
-        "status": "not_run",
-        "mode": checkpoint_plan.get("mode"),
-        "summary": "checkpoint execution was not requested",
-    }
-    if checkpoint_plan.get("enabled") is True:
-        checkpoint_artifact_result = {
+    if executable_check.returncode != 0 and compile_result.get("status") == "pass":
+        compile_result = {
+            **compile_result,
             "status": "fail",
-            "mode": checkpoint_plan.get("mode"),
-            "errors": [],
+            "failure_class": "vcs_elaboration_output_missing",
+            "stderr_tail": executable_check.stderr[-4000:],
         }
-        if checkpoint_plan.get("mode") == "cold_capture":
-            ready_match = re.search(
-                r"SPATIALACC_NATIVE_CHECKPOINT_READY\s+sequence=(\d+)\s+cycle=(\d+)",
-                simulation_log_path.read_text(encoding="utf-8", errors="ignore")
-                if simulation_log_path.is_file()
-                else "",
-            )
-            save_marker_seen = bool(
-                simulation_log_path.is_file()
-                and "SPATIALACC_NATIVE_CHECKPOINT_SAVE_PASS"
-                in simulation_log_path.read_text(encoding="utf-8", errors="ignore")
-            )
-            native_availability = run_transfer_command(
-                [
-                    "ssh",
-                    "-p",
-                    str(port),
-                    "-o",
-                    "StrictHostKeyChecking=no",
-                    host,
-                    "cd "
-                    + shlex.quote(remote_dir)
-                    + " && test -f "
-                    + shlex.quote(NATIVE_CHECKPOINT_SNAPSHOT.as_posix())
-                    + " && test -f "
-                    + shlex.quote(f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli")
-                    + " && test -d "
-                    + shlex.quote(NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix()),
-                ],
-                timeout_sec,
-            )
-            capture_report = {
-                "schema_version": CHECKPOINT_CAPTURE_REPORT_SCHEMA_VERSION,
-                "status": "pass" if ready_match and save_marker_seen and native_availability.returncode == 0 else "fail",
-                "mode": "cold_capture",
-                "captured_sequence": int(ready_match.group(1)) if ready_match else None,
-                "captured_cycle": int(ready_match.group(2)) if ready_match else None,
-                "state_artifacts": [
-                    {
-                        "kind": "native_vcs_snapshot",
-                        "path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
-                        "remote_path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
-                        "remote_ucli_path": f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli",
-                        "remote_files_path": NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix(),
-                    }
-                ],
-                "native_ready_marker_seen": bool(ready_match),
-                "native_save_marker_seen": save_marker_seen,
-                "native_snapshot_available": native_availability.returncode == 0,
-            }
-            checkpoint_errors = checkpoint_capture_report_errors(checkpoint_plan, capture_report)
-            incoming_dir = checkpoint_root(run_dir) / ".incoming_fast_replay"
-            if incoming_dir.exists():
-                shutil.rmtree(incoming_dir)
-            incoming_dir.mkdir(parents=True, exist_ok=True)
-            write_json(incoming_dir / "capture_report.json", capture_report)
-            local_state_rows: list[dict[str, Any]] = [
-                {
-                    "path": "native_state",
-                    "kind": "native_vcs_snapshot",
-                    "remote_path": NATIVE_CHECKPOINT_SNAPSHOT.as_posix(),
-                    "remote_ucli_path": f"{NATIVE_CHECKPOINT_SNAPSHOT.as_posix()}.ucli",
-                    "remote_files_path": NATIVE_CHECKPOINT_SNAPSHOT_FILES.as_posix(),
-                    "byte_count": 0,
-                }
-            ]
-            if not checkpoint_errors:
-                checkpoint_manifest = framework_checkpoint_manifest(
-                    checkpoint_plan,
-                    capture_report,
-                    local_state_rows,
-                    remote_workdir=remote_dir,
-                )
-                checkpoint_id = str(checkpoint_manifest["checkpoint_id"])
-                final_dir = checkpoint_root(run_dir) / checkpoint_id
-                write_json(incoming_dir / "manifest.json", checkpoint_manifest)
-                if final_dir.exists():
-                    shutil.rmtree(final_dir)
-                incoming_dir.rename(final_dir)
-                checkpoint_artifact_result = {
-                    "status": "pass",
-                    "mode": "cold_capture",
-                    "checkpoint_id": checkpoint_id,
-                    "manifest": str(final_dir / "manifest.json"),
-                    "total_state_bytes": checkpoint_manifest.get("total_state_bytes", 0),
-                    "errors": [],
-                    "remote_acknowledgment_status": "pending",
-                }
-            else:
-                checkpoint_artifact_result = {
-                    "status": "fail",
-                    "mode": "cold_capture",
-                    "capture_report": str(incoming_dir / "capture_report.json"),
-                    "errors": list(dict.fromkeys(checkpoint_errors)),
-                }
-        else:
-            # Native restore runs use execute_saved_fast_replay(), before the
-            # current-source VCS path.  Keeping this branch explicit prevents
-            # retired VPI report parsing from becoming an accidental fallback.
-            checkpoint_artifact_result = {
-                "status": "fail",
-                "mode": checkpoint_plan.get("mode"),
-                "errors": [
-                    "native checkpoint restore must use the saved simulator path"
-                ],
-            }
-
-    sim_log = simulation_log_path.read_text(encoding="utf-8", errors="ignore") if simulation_log_path.is_file() else ""
-    compile_log = compile_log_path.read_text(encoding="utf-8", errors="ignore") if compile_log_path.is_file() else ""
-    capture_only_complete = (
-        checkpoint_plan.get("mode") == "cold_capture"
-        and checkpoint_artifact_result.get("status") == "pass"
-        and simulate_result.get("status") == "pass"
-    )
-    if capture_only_complete:
-        return {
-            "schema_version": SCHEMA_VERSION,
-            "verification_layer": "layer3_real_board_axi_ddr",
-            "status": "checkpoint_capture_complete",
-            "hardware_validation_status": "checkpoint_capture_complete",
-            "stage_pass_eligible": False,
-            "phase": "remote_vcs",
-            "returncode": simulate_result.get("returncode"),
-            "manifest": resolved["manifest_path"],
-            "simulation_execution_identity": simulation_execution_identity(manifest),
-            "compile_log": str(compile_log_path),
-            "sim_log": str(simulation_log_path),
-            "checkpoint_execution": {
-                key: checkpoint_plan.get(key)
-                for key in (
-                    "status",
-                    "mode",
-                    "enabled",
-                    "candidate_screening",
-                    "acceptance_eligible",
-                    "request_path",
-                    "request_sha256",
-                    "policy",
-                )
-            },
-            "checkpoint_artifacts": checkpoint_artifact_result,
-            "fast_replay_used": False,
-            "compile_reused": False,
-            "weight_load_skipped": False,
-            "second_vcs_compile_was_not_launched": False,
-            "simulator_path": simulator_path.as_posix(),
-            "compile": compile_result,
-            "run": simulate_result,
-            "remote_workdir": remote_dir,
-            "input_fingerprint_sha256": fingerprint,
-            "summary": (
-                "Layer-3 checkpoint capture completed; native restore "
-                "confirmation is required before replay reuse"
-            ),
-        }
-    regex_matched = re.search(str(manifest["pass_regex"]), sim_log) is not None
-    outputs_copied = all(row.get("copied") is True for row in copied_outputs.values())
-    structured_monitors_passed = bool(monitor_results) and all(
-        row.get("status") == "pass" for row in monitor_results.values()
-    )
-    version_match = re.search(r"(?m)^\s*Version\s+([^\n]+?)\s*$", compile_log)
-    tool_version = version_match.group(1).strip() if version_match else str(tool.get("version") or "")
-    basic_execution_passed = (
+    passed = (
         compile_result.get("status") == "pass"
-        and simulate_result.get("status") == "pass"
-        and compile_log_download.returncode == 0
-        and simulation_log_download.returncode == 0
-        and progress_event_log_valid
-        and bool(tool_version)
-        and regex_matched
-        and outputs_copied
-        and structured_monitors_passed
-        and hierarchy_report_valid
-        and pipeline_overlap_passed
-        and runtime_loader_report_passed
-        and boundary_observation_passed
-        and checkpoint_artifact_result.get("status") in {"pass", "not_run"}
-    )
-    evidence = resolved["evidence"]
-    returncode = (
-        simulate_result.get("returncode")
-        if simulate_result.get("status") != "not_run"
-        else compile_result.get("returncode")
-    )
-    def artifact(path: Path, relative: Path) -> dict[str, Any]:
-        return {
-            "path": str(path),
-            "relative_path": relative.as_posix(),
-            "sha256": sha256_file(path) if path.is_file() else None,
-        }
-
-    def runtime_evidence_id(kind: str, path: Path) -> str:
-        digest = sha256_file(path) if path.is_file() else "missing"
-        return f"runtime.{kind}.{digest[:16]}"
-
-    compile_evidence_id = runtime_evidence_id("compile_log", compile_log_path)
-    simulation_evidence_id = runtime_evidence_id("simulation_log", simulation_log_path)
-    pipeline_evidence_id = runtime_evidence_id("pipeline_overlap", pipeline_path)
-    progress_evidence_id = runtime_evidence_id(
-        "progress_event_log", progress_event_path
-    )
-    boundary_observation_evidence_id = runtime_evidence_id(
-        "pipeline_boundary_observation_summary",
-        boundary_observation_summary_path,
-    )
-    runtime_loader_evidence_id = (
-        runtime_evidence_id("runtime_loader", runtime_loader_path)
-        if isinstance(runtime_loader_spec, dict)
-        else ""
-    )
-    hierarchy_evidence_refs = [
-        str(value)
-        for value in hierarchy_payload.get("evidence_refs", [])
-        if str(value)
-    ]
-    dynamic_evidence_records = [
-        {
-            "evidence_id": compile_evidence_id,
-            "evidence_kind": "compile_log",
-            "schema_version": "spatialaccagent.tool_log.v1",
-            **artifact(compile_log_path, compile_log_relative),
-        },
-        {
-            "evidence_id": simulation_evidence_id,
-            "evidence_kind": "simulation_log",
-            "schema_version": "spatialaccagent.tool_log.v1",
-            **artifact(simulation_log_path, simulation_log_relative),
-        },
-        {
-            "evidence_id": progress_evidence_id,
-            "evidence_kind": "progress_event_log",
-            "schema_version": progress_spec["schema_version"],
-            **artifact(progress_event_path, progress_spec["path"]),
-        },
-        {
-            "evidence_id": pipeline_evidence_id,
-            "evidence_kind": "pipeline_overlap_report",
-            "schema_version": pipeline_spec["schema_version"],
-            **artifact(pipeline_path, pipeline_spec["path"]),
-        },
-        {
-            "evidence_id": boundary_observation_evidence_id,
-            "evidence_kind": "pipeline_boundary_observation_summary",
-            "schema_version": boundary_observation_summary.get(
-                "schema_version",
-                "spatialaccagent.pipeline_boundary_observation.v1",
-            ),
-            **artifact(
-                boundary_observation_summary_path,
-                Path("pipeline_boundary_observation_summary.json"),
-            ),
-        },
-    ]
-    for row in supplemental_observation_artifacts:
-        path = Path(str(row.get("path") or ""))
-        relative = safe_relative_path(row.get("relative_path"))
-        if row.get("copied") is not True or relative is None or not path.is_file():
-            continue
-        evidence_id = runtime_evidence_id(
-            f"supplemental_observation.{safe_id(relative.stem)}",
-            path,
-        )
-        row["evidence_id"] = evidence_id
-        dynamic_evidence_records.append(
-            {
-                "evidence_id": evidence_id,
-                "evidence_kind": "supplemental_debug_observation",
-                "schema_versions": row.get("summary", {}).get(
-                    "schema_versions", []
-                ),
-                **artifact(path, relative),
-            }
-        )
-    if isinstance(runtime_loader_spec, dict):
-        dynamic_evidence_records.append(
-            {
-                "evidence_id": runtime_loader_evidence_id,
-                "evidence_kind": "runtime_loader_report",
-                "schema_version": runtime_loader_spec["schema_version"],
-                **artifact(runtime_loader_path, runtime_loader_spec["path"]),
-            }
-        )
-    dynamic_evidence_records.extend(
-        {
-            "evidence_id": evidence_id,
-            "evidence_kind": "elaborated_hierarchy",
-            "schema_version": hierarchy_spec["schema_version"],
-            **artifact(hierarchy_path, hierarchy_spec["path"]),
-        }
-        for evidence_id in hierarchy_evidence_refs
-    )
-
-    command_sha256 = hashlib.sha256(
-        json.dumps(
-            {"compile": compile_command, "simulate": simulate_command},
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
-    protocol_interfaces = []
-    for spec in resolved["structured_monitor_specs"]:
-        payload = monitor_payloads.get(spec["interface"], {})
-        path = board_dir / spec["remote_path"]
-        protocol_evidence_id = runtime_evidence_id(
-            f"protocol_monitor.{safe_id(spec['interface'])}", path
-        )
-        dynamic_evidence_records.append(
-            {
-                "evidence_id": protocol_evidence_id,
-                "evidence_kind": "protocol_monitor_report",
-                "schema_version": spec["schema_version"],
-                **artifact(path, spec["remote_path"]),
-            }
-        )
-        protocol_interfaces.append(
-            {
-                "interface": spec["interface"],
-                "evidence_refs": [protocol_evidence_id],
-                "status": payload.get("status"),
-                "violations": payload.get("violations"),
-                "transaction_counts": payload.get("transaction_counts"),
-                "structured_report": artifact(path, spec["remote_path"]),
-            }
-        )
-    executed_manifest = json.loads(json.dumps(manifest))
-    executed_manifest["status"] = "pass" if basic_execution_passed else "fail"
-    executed_manifest["execution_evidence"] = {
-        "status": "pass" if basic_execution_passed else "fail",
-        "tool": str(tool.get("name") or Path(executable).name),
-        "tool_version": tool_version,
-        "job_id": remote_dir,
-        "command_sha256": command_sha256,
-        "source_identity_sha256": manifest.get("source_identity_sha256"),
-        "source_closure_sha256": manifest.get("source_closure_sha256"),
-        "compile_source_set_sha256": manifest.get("compile_source_set_sha256"),
-        "vcs_compile_plan_sha256": compile_plan["sha256"],
-        "compute_slot_abi_sha256": manifest.get("compute_slot_abi_sha256"),
-        "timing_contract_sha256": manifest.get("timing_contract_sha256"),
-        "axi_interfaces_sha256": manifest.get("axi_interfaces_sha256"),
-        "compile": {
-            "exit_code": compile_result.get("returncode"),
-            "log": {
-                **artifact(compile_log_path, compile_log_relative),
-                "evidence_refs": [compile_evidence_id],
-            },
-        },
-        "simulation": {
-            "exit_code": simulate_result.get("returncode"),
-            "completed": simulate_result.get("status") == "pass",
-            "pass_marker_seen": regex_matched,
-            "termination_provenance": simulate_result.get(
-                "termination_provenance", {}
-            ),
-            "log": {
-                **artifact(simulation_log_path, simulation_log_relative),
-                "evidence_refs": [simulation_evidence_id],
-            },
-        },
-        "elaborated_hierarchy_report": {
-            **artifact(hierarchy_path, hierarchy_spec["path"]),
-            "schema_version": hierarchy_spec["schema_version"],
-            "evidence_refs": hierarchy_evidence_refs,
-        },
-        "pipeline_boundary_observation": {
-            "status": "pass" if boundary_observation_passed else "fail",
-            "summary": artifact(
-                boundary_observation_summary_path,
-                Path("pipeline_boundary_observation_summary.json"),
-            ),
-            "evidence_refs": [boundary_observation_evidence_id],
-        },
-    }
-    executed_manifest["dynamic_evidence_records"] = dynamic_evidence_records
-    executed_manifest["elaborated_hierarchy"] = hierarchy_payload
-    executed_manifest["protocol_monitor_results"] = {
-        "status": "pass" if structured_monitors_passed else "fail",
-        "all_axi_interfaces_covered": structured_monitors_passed,
-        "protocol_monitor_contract_sha256": canonical_contract_sha256(
-            manifest.get("protocol_monitor_contract", {})
-        ),
-        "interfaces": protocol_interfaces,
-    }
-    executed_manifest["pipeline_overlap_results"] = {
-        "status": pipeline_payload.get("status"),
-        "evidence_refs": [pipeline_evidence_id],
-        "board_integration_contract_sha256": canonical_contract_sha256(
-            manifest.get("board_integration_contract", {})
-        ),
-        "pipeline_semantics": pipeline_payload.get("pipeline_semantics"),
-        "required_dependency_overlap_complete": pipeline_payload.get(
-            "required_dependency_overlap_complete"
-        ),
-        "all_planned_stages_participate_in_required_overlap": pipeline_payload.get(
-            "all_planned_stages_participate_in_required_overlap"
-        ),
-        "token_order_preserved": pipeline_payload.get("token_order_preserved"),
-        "serial_leaf_execution_observed": pipeline_payload.get("serial_leaf_execution_observed"),
-        "observed_different_token_overlap_count": pipeline_payload.get(
-            "observed_different_token_overlap_count"
-        ),
-        "stage_turnover_gaps_are_diagnostic": pipeline_payload.get(
-            "stage_turnover_gaps_are_diagnostic"
-        ),
-        "all_stages_same_cycle_concurrency_required": pipeline_payload.get(
-            "all_stages_same_cycle_concurrency_required"
-        ),
-        "diagnostic_maximum_concurrent_stage_count": pipeline_payload.get(
-            "diagnostic_maximum_concurrent_stage_count"
-        ),
-        "all_spatial_stages_concurrent_observed": pipeline_payload.get("all_spatial_stages_concurrent_observed"),
-        "whole_sequence_barrier_observed": pipeline_payload.get("whole_sequence_barrier_observed"),
-        "expected_stage_count": pipeline_payload.get("expected_stage_count"),
-        "observed_stage_count": pipeline_payload.get("observed_stage_count"),
-        "structured_trace_report": artifact(pipeline_path, pipeline_spec["path"]),
-    }
-    executed_manifest["debug_observability_results"] = {
-        **progress_summary,
-        "status": "pass" if progress_event_log_valid else "fail",
-        "evidence_refs": [progress_evidence_id],
-        "structured_event_log": artifact(
-            progress_event_path, progress_spec["path"]
-        ),
-        "pipeline_boundary_observation": boundary_observation_summary,
-        "pipeline_boundary_observation_artifact": artifact(
-            boundary_observation_summary_path,
-            Path("pipeline_boundary_observation_summary.json"),
-        ),
-        "supplemental_observation_artifacts": supplemental_observation_artifacts,
-        "vcs_native_loop_report": vcs_loop_report,
-    }
-    executed_manifest["simulation_checkpoint_results"] = {
-        **checkpoint_artifact_result,
-        "candidate_screening": checkpoint_plan.get("candidate_screening"),
-        "acceptance_eligible": checkpoint_plan.get("acceptance_eligible"),
-        "request_sha256": checkpoint_plan.get("request_sha256"),
-    }
-    if isinstance(runtime_loader_spec, dict):
-        executed_manifest["runtime_loader_results"] = {
-            **runtime_loader_payload,
-            "evidence_refs": [runtime_loader_evidence_id],
-            "structured_report": artifact(
-                runtime_loader_path, runtime_loader_spec["path"]
-            ),
-        }
-    if isinstance(performance_counter_spec, dict):
-        executed_manifest["performance_counter_results"] = {
-            **performance_counter_payload,
-            "structured_report": artifact(
-                performance_counter_path, performance_counter_spec["path"]
-            ),
-        }
-    executed_manifest_path = board_dir / "board_simulation_executed_manifest.json"
-    write_json(executed_manifest_path, executed_manifest)
-    exact_board_acceptance = validate_exact_board_acceptance(
-        Path(resolved["identity_path"]), executed_manifest_path
-    )
-    exact_board_acceptance_passed = exact_board_acceptance.get("status") == "pass"
-    if (
-        basic_execution_passed
-        and exact_board_acceptance_passed
-        and checkpoint_plan.get("acceptance_eligible") is True
-    ):
-        write_json(Path(resolved["manifest_path"]), executed_manifest)
-    elaborated_binding_verified = any(
-        row.get("name") == "elaborated_exact_top_and_accelerator_binding"
-        and row.get("status") == "pass"
-        for row in exact_board_acceptance.get("checks", [])
-        if isinstance(row, dict)
-    )
-    passed = basic_execution_passed and exact_board_acceptance_passed
-    reported_status = (
-        "candidate_pass"
-        if passed and checkpoint_plan.get("candidate_screening") is True
-        else "pass"
-        if passed
-        else "fail"
+        and executable_check.returncode == 0
+        and log_download.returncode == 0
+        and compile_log_path.is_file()
     )
     return {
         "schema_version": SCHEMA_VERSION,
         "verification_layer": "layer3_real_board_axi_ddr",
-        "status": reported_status,
-        "hardware_validation_status": (
-            "screening_pass"
-            if reported_status == "candidate_pass"
-            else reported_status
-        ),
-        "stage_pass_eligible": bool(
-            passed and checkpoint_plan.get("acceptance_eligible") is True
-        ),
+        "status": "pass" if passed else "fail",
+        "hardware_validation_status": "compile_only_pass" if passed else "fail",
+        "stage_pass_eligible": passed,
         "phase": "remote_vcs",
-        "returncode": returncode,
+        "validation_policy": COMPILE_ONLY_POLICY,
+        "simulation_skipped": True,
+        "compile": compile_result,
+        "run": {"status": "not_run", "summary": "simulation skipped by VCS compile-only policy"},
+        "compile_evidence": {
+            "status": "pass" if passed else "fail",
+            "log_path": str(compile_log_path),
+            "log_sha256": sha256_file(compile_log_path) if compile_log_path.is_file() else None,
+            "top_module": manifest.get("top_module"),
+            "input_fingerprint_sha256": fingerprint,
+            "executable_path": simulator_path.as_posix(),
+            "executable_check_returncode": executable_check.returncode,
+            "log_download_returncode": log_download.returncode,
+        },
+        "summary": (
+            "exact-board VCS compile and elaboration passed; simulation intentionally skipped"
+            if passed
+            else "exact-board VCS compile/elaboration or compile evidence failed"
+        ),
         "manifest": resolved["manifest_path"],
         "source_identity": resolved["identity_path"],
-        "exact_sample_wrapper_unmodified": (
-            evidence["exact_sample_wrapper_unmodified"] and exact_board_acceptance_passed
-        ),
-        "accelerator_scope": evidence["accelerator_scope"],
-        "all_target_layers": evidence["all_target_layers"],
-        "real_model_weights_consumed": (
-            evidence["real_model_weights_consumed"] and exact_board_acceptance_passed
-        ),
-        "complete_scope_weight_image": evidence["complete_scope_weight_image"],
-        "required_transformer_block_tensor_count": evidence["required_transformer_block_tensor_count"],
-        "random_input_stimulus": evidence["random_input_stimulus"],
-        "source_identity_bound": evidence["source_identity_bound"],
-        "selected_simulation_source_count": evidence["selected_simulation_source_count"],
-        "verified_compile_source_count": evidence["verified_compile_source_count"],
-        "vcs_compile_plan_sha256": compile_plan["sha256"],
-        "exact_board_preflight_passed": evidence["exact_board_preflight_passed"],
-        "exact_board_preflight": resolved["exact_board_preflight"],
-        "elaborated_binding_verified": elaborated_binding_verified,
-        "exact_board_acceptance_passed": exact_board_acceptance_passed,
-        "exact_board_acceptance": exact_board_acceptance,
-        "executed_manifest": str(executed_manifest_path),
-        "simulation_execution_identity": simulation_execution_identity(
-            executed_manifest
-        ),
-        "weight_binding_evidence": resolved["weight_binding_evidence"],
-        "compile_log": str(compile_log_path),
-        "sim_log": str(simulation_log_path),
-        "outputs": copied_outputs,
-        "pass_regex_matched": regex_matched,
-        "required_outputs_copied": outputs_copied,
-        "structured_monitors_passed": structured_monitors_passed,
-        "structured_monitor_results": monitor_results,
-        "pipeline_overlap_passed": pipeline_overlap_passed,
-        "progress_event_log_valid": progress_event_log_valid,
-        "pipeline_boundary_observation_passed": boundary_observation_passed,
-        "pipeline_boundary_observation_summary": boundary_observation_summary,
-        "progress_event_summary": progress_summary,
-        "supplemental_observation_artifacts": supplemental_observation_artifacts,
-        "performance_counter_report": (
-            str(performance_counter_path)
-            if isinstance(performance_counter_spec, dict)
-            and performance_counter_path.is_file()
-            else None
-        ),
-        "vcs_native_loop_report": vcs_loop_report,
-        "checkpoint_execution": {
-            key: checkpoint_plan.get(key)
-            for key in (
-                "status",
-                "mode",
-                "enabled",
-                "candidate_screening",
-                "acceptance_eligible",
-                "request_path",
-                "request_sha256",
-                "policy",
-            )
-        },
-        "checkpoint_artifacts": checkpoint_artifact_result,
-        "fast_replay_used": fast_replay.get("used") is True,
-        "compile_reused": fast_replay.get("used") is True,
-        "weight_load_skipped": fast_replay.get("used") is True,
-        "second_vcs_compile_was_not_launched": fast_replay.get("used") is True,
-        "simulator_path": (
-            str(fast_replay.get("simulator_path"))
-            if fast_replay.get("used") is True
-            else simulator_path.as_posix()
-        ),
-        "remote_resource_policy": {
-            "vcs_parallel_compile_jobs": vcs_compile_jobs,
-            "vcs_parallel_compile_args_applied": sorted(
-                set(vcs_parallel_args_applied)
-            ),
-            "vcs_native_loop_report_enabled": vcs_loop_report_enabled,
-            "simulation_runtime_threads": "tool_default",
-            "local_heavy_process_limit": 1,
-        },
-        "live_progress": live_progress_observer.report(),
-        "elaborated_hierarchy_report_valid": hierarchy_report_valid,
-        "compile": compile_result,
-        "run": simulate_result,
-        "termination_provenance": simulate_result.get(
-            "termination_provenance", {}
-        ),
-        "input_fingerprint_sha256": fingerprint,
-        "fresh_exact_source_replay_generation_sha256": (
-            replay_generation_sha256 or None
-        ),
+        "exact_sample_wrapper_unmodified": resolved["evidence"]["exact_sample_wrapper_unmodified"],
+        "exact_board_preflight_passed": resolved["evidence"]["exact_board_preflight_passed"],
         "remote_workdir": remote_dir,
-        "remote_job_reuse": remote_job_reuse,
-        "remote_job_recovery_contract": {
-            "status": "pass",
-            "detached_compile_and_simulation": True,
-            "exact_payload_identity_recovery_across_controller_restart": True,
-            "tri_state_candidate_and_payload_probes": True,
-            "indeterminate_transport_retries_unbounded_when_timeout_nonpositive": timeout_sec <= 0,
-            "fresh_launch_requires_definite_no_match": True,
-            "job_contract": str(job_contract_path),
-            "job_contract_sha256": sha256_file(job_contract_path),
-            "policy": "indeterminate remote state is preserved; running/done exact jobs are reattached and never relaunched",
-        },
-        "stderr_tail": str(
-            simulate_result.get("stderr_tail") or compile_result.get("stderr_tail") or ""
-        )[-4000:],
+        "input_fingerprint_sha256": fingerprint,
+        "compile_log": str(compile_log_path),
+        "sim_log": None,
+        "errors": (
+            []
+            if passed
+            else [
+                "compile failed"
+                if compile_result.get("status") != "pass"
+                else "elaborated VCS simulator executable or compile log is missing"
+            ]
+        ),
     }
+
 
 
 def pending_same_source_checkpoint_calibration(
@@ -7256,116 +6048,6 @@ def pending_same_source_checkpoint_calibration(
 
     return None
 
-    """Return a hash-current cold capture that still needs same-source replay."""
-
-    report_path = (
-        run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
-    )
-    report = read_json(report_path)
-    checkpoint = report.get("checkpoint_artifacts", {})
-    if (
-        not isinstance(checkpoint, dict)
-        or checkpoint.get("mode") != "cold_capture"
-        or checkpoint.get("status") != "pass"
-        or checkpoint.get("equivalence_status") == "pass"
-    ):
-        return None
-    manifest_path = Path(str(checkpoint.get("manifest") or ""))
-    root = checkpoint_root(run_dir).resolve()
-    if not manifest_path.is_absolute():
-        manifest_path = (run_dir / manifest_path).resolve()
-    else:
-        manifest_path = manifest_path.resolve()
-    if (
-        not manifest_path.is_file()
-        or not manifest_path.is_relative_to(root)
-        or manifest_path.parent.name != str(checkpoint.get("checkpoint_id") or "")
-    ):
-        return None
-    checkpoint_manifest = read_json(manifest_path)
-    if checkpoint_manifest_errors(
-        checkpoint_manifest,
-        artifact_root=manifest_path.parent,
-    ):
-        return None
-    certificate = checkpoint_manifest.get("equivalence_certificate", {})
-    if isinstance(certificate, dict) and certificate.get("status") == "pass":
-        return None
-    prior_execution = checkpoint_manifest.get("same_source_calibration", {})
-    if (
-        isinstance(prior_execution, dict)
-        and prior_execution.get("status") == "fail"
-        and prior_execution.get("failure_class")
-        not in {"remote_recovery_indeterminate", "remote_tool_transport_failure"}
-    ):
-        return None
-    capture_report = checkpoint_manifest.get("capture_report", {})
-    state_artifacts = checkpoint_manifest.get("state_artifacts", [])
-    eligibility = same_source_checkpoint_calibration_eligibility(
-        capture_report if isinstance(capture_report, dict) else {},
-        state_artifacts if isinstance(state_artifacts, list) else [],
-        artifact_root=manifest_path.parent,
-    )
-    if eligibility.get("status") != "ready":
-        return None
-    board_manifest_path = (
-        run_dir
-        / "verification"
-        / "board_simulation"
-        / "board_simulation_manifest.json"
-    )
-    board_manifest = read_json(board_manifest_path)
-    current_identity = simulation_execution_identity(board_manifest)
-    prior_identity = checkpoint_manifest.get("execution_identity", {})
-    if (
-        not isinstance(prior_identity, dict)
-        or current_identity.get("compiled_model_sha256")
-        != prior_identity.get("compiled_model_sha256")
-        or current_identity.get("workload_sha256")
-        != prior_identity.get("workload_sha256")
-    ):
-        return None
-    job_contract_path = (
-        run_dir
-        / "verification"
-        / "board_simulation"
-        / "vcs_stage"
-        / REMOTE_SEMANTIC_JOB_CONTRACT
-    )
-    job_contract = read_json(job_contract_path)
-    if (
-        not job_contract
-        or job_contract.get("input_fingerprint_sha256")
-        != report.get("input_fingerprint_sha256")
-        or job_contract.get("remote_workdir") != report.get("remote_workdir")
-        or checkpoint_manifest.get("remote_workdir") != report.get("remote_workdir")
-        or checkpoint_manifest.get("remote_acknowledgment_status") != "pass"
-    ):
-        return None
-    return {
-        "schema_version": "spatialaccagent.pending_same_source_checkpoint_calibration.v1",
-        "status": "ready",
-        "summary": (
-            "the current complete runtime-quiescent cold capture requires a serial "
-            "same-compiled-model restore before hardware-Agent continuation"
-        ),
-        "runner_report_path": str(report_path),
-        "runner_report_sha256": sha256_file(report_path),
-        "runner_report": report,
-        "checkpoint_manifest_path": str(manifest_path),
-        "checkpoint_manifest_sha256": sha256_file(manifest_path),
-        "checkpoint_manifest": checkpoint_manifest,
-        "remote_job_contract_path": str(job_contract_path),
-        "remote_job_contract_sha256": sha256_file(job_contract_path),
-        "remote_job_contract": job_contract,
-        "runtime_calibration_eligibility": eligibility,
-        "policy": {
-            "no_second_compile": True,
-            "no_cold_prefix_replay": True,
-            "one_serial_restore_process": True,
-            "hardware_agent_deferred_until_calibration_terminal": True,
-        },
-    }
 
 
 def same_source_checkpoint_calibration_failure_projection(

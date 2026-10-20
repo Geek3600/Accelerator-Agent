@@ -148,6 +148,21 @@ class HierarchicalLearningContextTest(TestCase):
                 ]
             )
 
+    def test_accepts_current_stage6_certificate_identity(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            state, _ = self.state_with_live_single_layer_certificate(Path(temp_dir))
+            state["artifacts"][0]["id"] = "artifact.stage6.single_layer_promotion_certificate"
+
+            context = hierarchical_learning_context(
+                state, verification_scope="board_axi_ddr_closure"
+            )
+
+        self.assertEqual(context["status"], "pass")
+        self.assertEqual(
+            context["validated_lower_layer_certificates"][0]["artifact_id"],
+            "artifact.stage6.single_layer_promotion_certificate",
+        )
+
     def test_rejects_drifted_timing_report_before_prompt_reuse(self) -> None:
         with TemporaryDirectory() as temp_dir:
             state, report = self.state_with_live_single_layer_certificate(Path(temp_dir))

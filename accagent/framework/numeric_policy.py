@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import math
+import re
 from typing import Any
 
 
@@ -14,6 +15,22 @@ LOOSE_NUMERIC_COMPARISON_DEFAULTS = {
     "rtol": 0.1,
     "max_mismatch_fraction": 0.05,
 }
+
+
+def canonical_dtype(value: Any) -> str:
+    """Normalize equivalent numeric descriptions without changing precision."""
+
+    text = str(value or "").strip().upper().replace("_", "").replace("-", "")
+    match = re.fullmatch(
+        r"(?:(SIGNED|UNSIGNED)\s+)?(U?INT|[IU])\s*(\d+)(?:\s+FIXED\s*POINT)?", text
+    )
+    if match:
+        sign, kind, bits = match.groups()
+        unsigned = kind.startswith("U") or sign == "UNSIGNED"
+        if sign == "SIGNED" and kind.startswith("U"):
+            return text
+        return ("UINT" if unsigned else "INT") + bits
+    return text
 
 
 def _valid_value(name: str, value: Any) -> float | None:

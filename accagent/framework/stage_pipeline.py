@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from accagent.framework.numeric_policy import canonical_dtype
 from accagent.framework.sacg_store import SACGStore
 from accagent.framework.sacg_utils import (
     add_constraint,
@@ -76,7 +77,7 @@ def scalar(value: Any, default: int) -> int:
 
 
 def dtype_bits(dtype: Any, default: int) -> int:
-    text = str(dtype or "").strip().upper().replace("_", "")
+    text = canonical_dtype(dtype or "").strip()
     mapping = {
         "FP32": 32,
         "FLOAT32": 32,
@@ -86,10 +87,18 @@ def dtype_bits(dtype: Any, default: int) -> int:
         "F16": 16,
         "BF16": 16,
         "BFP16": 16,
+        "INT4": 4,
+        "UINT4": 4,
+        "I4": 4,
+        "U4": 4,
         "INT8": 8,
         "UINT8": 8,
         "I8": 8,
         "U8": 8,
+        "INT16": 16,
+        "UINT16": 16,
+        "INT32": 32,
+        "UINT32": 32,
     }
     return mapping.get(text, default)
 
@@ -100,14 +109,28 @@ def numeric_bit_policy(state: dict[str, Any]) -> dict[str, Any]:
     activation_bits = dtype_bits(rules.get("activation_dtype") or numeric.get("activation_dtype"), 16)
     acc_bits = dtype_bits(rules.get("acc_dtype") or numeric.get("acc_dtype"), 32)
     weight_bits = dtype_bits(rules.get("weight_dtype") or numeric.get("weight_dtype"), activation_bits)
+    integer_mode = (
+        weight_bits == 4 and activation_bits == 8 and acc_bits == 32
+        and canonical_dtype(rules.get("weight_dtype") or numeric.get("weight_dtype") or "") in {"INT4", "I4"}
+    )
     return {
         "policy_id": numeric.get("policy_id"),
         "activation_bits": activation_bits,
         "accumulator_bits": acc_bits,
+        # Accumulators remain wide inside operators. Integer outputs and
+        # residual activations are requantized before crossing stream edges.
+        "stream_accumulator_bits": dtype_bits(rules.get("residual_dtype"), activation_bits) if integer_mode else acc_bits,
         "weight_bits": weight_bits,
         "scale_bits": dtype_bits(rules.get("scale_dtype") or numeric.get("scale_dtype"), activation_bits),
+        "integer_mode": integer_mode,
         "rounding": rules.get("rounding"),
         "saturation": rules.get("saturation"),
+        "matrix_mac_contract": (
+            "signed_int4_x_signed_int8_to_signed_int32"
+            if weight_bits == 4 and activation_bits == 8 and acc_bits == 32
+            else "policy_selected"
+        ),
+        "scale_representation": "signed_int32_multiplier_with_explicit_shift",
         "source": "constraint.numeric.policy.default_rules",
     }
 
@@ -171,6 +194,13 @@ IMPLEMENTATION_PARAM_SOURCES = {
     "input_bits",
     "elem_bits",
     "output_bits",
+    # These are independent numeric-policy bindings.  They must be allowed
+    # through the model-owned implementation contract so generated decoder and
+    # operator parameter constructors cannot silently retain FP defaults when
+    # Stage 0 selected signed W4A8/INT32 arithmetic.
+    "weight_bits",
+    "acc_bits",
+    "integer_mode",
 }
 
 
@@ -497,7 +527,7 @@ def board_axi_contract(state: dict[str, Any]) -> dict[str, Any]:
     data_bytes = scalar(memory_system.get("axi_data_bytes"), max(1, data_width_bits // 8))
     return {
         "protocol": memory_system.get("axi_protocol", "AXI"),
-        "core_side_interface_name": memory_system.get("core_side_interface_name"),
+        "core_side_interface_name": memory_system.get("core_side_interface_name") or memory_system.get("ddr_channel_prefix"),
         "data_width_bits": data_width_bits,
         "data_bytes": data_bytes,
         "alignment_bytes": fixed_or_first(ddr_axi.get("alignment_bytes"), data_bytes),
@@ -515,7 +545,7 @@ def numeric_bits_for_role(role: str, policy: dict[str, Any]) -> int:
     if role == "activation":
         return scalar(policy.get("activation_bits"), 16)
     if role == "accumulator":
-        return scalar(policy.get("accumulator_bits"), 32)
+        return scalar(policy.get("stream_accumulator_bits"), scalar(policy.get("accumulator_bits"), 32))
     raise PipelinePlanningError(f"unsupported numeric stream role: {role}")
 
 
@@ -826,6 +856,12 @@ def weight_storage_layout(
         seen.add(term_id)
         elements = storage_term_elements(term, shape)
         element_bits = bit_roles[dtype_role]
+        # W4 applies to learned matrix weights, not accumulator-domain bias.
+        # Bias terms have an explicit semantic weight_*_bias physical role and
+        # are stored at the declared accumulator width.
+        physical_role = str(term.get("physical_role") or "")
+        if dtype_role == "weight" and physical_role.endswith("_bias"):
+            element_bits = bit_roles["accumulator"]
         layout.append(
             {
                 "id": term_id,
@@ -1667,7 +1703,7 @@ def update_sacg(
         {
             "role": "input_boundary",
             "shape": (plan.get("stages") or [{}])[0].get("input_shape", {}) if plan.get("stages") else {},
-            "numeric_bits": (plan.get("numeric_stream_policy") or {}).get("accumulator_bits"),
+            "numeric_bits": (plan.get("stages") or [{}])[0].get("numeric_contract", {}).get("input_bits"),
         },
     )
     add_node(
@@ -1680,7 +1716,7 @@ def update_sacg(
         {
             "role": "output_boundary",
             "shape": (plan.get("stages") or [{}])[-1].get("output_shape", {}) if plan.get("stages") else {},
-            "numeric_bits": (plan.get("numeric_stream_policy") or {}).get("accumulator_bits"),
+            "numeric_bits": (plan.get("stages") or [{}])[-1].get("numeric_contract", {}).get("output_bits"),
         },
     )
     for stage in plan["stages"]:

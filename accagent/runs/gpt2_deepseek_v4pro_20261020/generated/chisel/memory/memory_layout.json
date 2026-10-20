@@ -1,0 +1,259 @@
+{
+  "alignment_bytes": 64,
+  "axi_data_width_bits": 512,
+  "design_id": "gpt2_deepseek_v4pro_20261020",
+  "element_bits": {
+    "block_input_bits": 8,
+    "block_output_bits": 8,
+    "internal_elem_bits": 8
+  },
+  "layout_policy": "aligned_static_regions_with_double_buffered_layer_weights",
+  "num_layers": 12,
+  "regions": [
+    {
+      "alignment_bytes": 64,
+      "base_addr": 0,
+      "meta": {
+        "stage3_size_bytes": 12288,
+        "stage3_size_bytes_formula": "semantic block-input tensor elements * declared block-input bits / 8"
+      },
+      "name": "input_tokens",
+      "role": "activation_input",
+      "size_bytes": 12288
+    },
+    {
+      "alignment_bytes": 64,
+      "base_addr": 12288,
+      "meta": {
+        "stage3_size_bytes": 12288,
+        "stage3_size_bytes_formula": "semantic block-output tensor elements * declared block-output bits / 8"
+      },
+      "name": "output_tokens",
+      "role": "activation_output",
+      "size_bytes": 12288
+    },
+    {
+      "alignment_bytes": 64,
+      "base_addr": 24576,
+      "meta": {
+        "stage3_size_bytes": 49152,
+        "stage3_size_bytes_formula": "max(declared semantic stage input/output tensor bytes)"
+      },
+      "name": "activation_ping",
+      "role": "activation_buffer",
+      "size_bytes": 49152
+    },
+    {
+      "alignment_bytes": 64,
+      "base_addr": 73728,
+      "meta": {
+        "stage3_size_bytes": 49152,
+        "stage3_size_bytes_formula": "same as activation_ping"
+      },
+      "name": "activation_pong",
+      "role": "activation_buffer",
+      "size_bytes": 49152
+    },
+    {
+      "alignment_bytes": 64,
+      "base_addr": 122880,
+      "meta": {
+        "stage3_size_bytes": 3568128,
+        "stage3_size_bytes_formula": "sum(model-semantic weight_storage_terms)"
+      },
+      "name": "weight_buffer_a",
+      "role": "weight_buffer",
+      "size_bytes": 3568128
+    },
+    {
+      "alignment_bytes": 64,
+      "base_addr": 3691008,
+      "meta": {
+        "stage3_size_bytes": 3568128,
+        "stage3_size_bytes_formula": "same as weight_buffer_a"
+      },
+      "name": "weight_buffer_b",
+      "role": "weight_buffer",
+      "size_bytes": 3568128
+    },
+    {
+      "alignment_bytes": 64,
+      "base_addr": 7259136,
+      "meta": {
+        "status_words": 16
+      },
+      "name": "runtime_status",
+      "role": "runtime_status",
+      "size_bytes": 64
+    }
+  ],
+  "schema_version": "spatialaccagent.memory_layout.v0",
+  "tensor_shape": {
+    "head_dim": 64,
+    "hidden_size": 768,
+    "intermediate_size": 3072,
+    "num_kv_heads": 12,
+    "num_q_heads": 12,
+    "seq_len": 16
+  },
+  "total_bytes": 7259200,
+  "transfer_rules": [
+    "all addresses are byte offsets from the accelerator DDR window base",
+    "all transfer byte counts are aligned to axi_data_width_bits",
+    "weight_buffer_a and weight_buffer_b alternate by layer to allow prefetch of layer N+1 while layer N computes"
+  ],
+  "weight_storage_terms": [
+    {
+      "bytes": 384,
+      "dtype_role": "weight",
+      "element_bits": 4,
+      "elements": 768,
+      "factors": [
+        "hidden_size"
+      ],
+      "id": "ln_1_weight",
+      "physical_role": "weight",
+      "stage": "layer_norm_1"
+    },
+    {
+      "bytes": 384,
+      "dtype_role": "weight",
+      "element_bits": 4,
+      "elements": 768,
+      "factors": [
+        "hidden_size"
+      ],
+      "id": "ln_1_bias",
+      "physical_role": "weight",
+      "stage": "layer_norm_1"
+    },
+    {
+      "bytes": 884736,
+      "dtype_role": "weight",
+      "element_bits": 4,
+      "elements": 1769472,
+      "factors": [
+        "hidden_size",
+        3,
+        "num_q_heads",
+        "head_dim"
+      ],
+      "id": "attn_c_attn_weight",
+      "physical_role": "weight_qkv",
+      "stage": "self_attention"
+    },
+    {
+      "bytes": 9216,
+      "dtype_role": "weight",
+      "element_bits": 32,
+      "elements": 2304,
+      "factors": [
+        3,
+        "num_q_heads",
+        "head_dim"
+      ],
+      "id": "attn_c_attn_bias",
+      "physical_role": "weight_qkv_bias",
+      "stage": "self_attention"
+    },
+    {
+      "bytes": 294912,
+      "dtype_role": "weight",
+      "element_bits": 4,
+      "elements": 589824,
+      "factors": [
+        "hidden_size",
+        "hidden_size"
+      ],
+      "id": "attn_c_proj_weight",
+      "physical_role": "weight_attn_out",
+      "stage": "self_attention"
+    },
+    {
+      "bytes": 3072,
+      "dtype_role": "weight",
+      "element_bits": 32,
+      "elements": 768,
+      "factors": [
+        "hidden_size"
+      ],
+      "id": "attn_c_proj_bias",
+      "physical_role": "weight_attn_out_bias",
+      "stage": "self_attention"
+    },
+    {
+      "bytes": 384,
+      "dtype_role": "weight",
+      "element_bits": 4,
+      "elements": 768,
+      "factors": [
+        "hidden_size"
+      ],
+      "id": "ln_2_weight",
+      "physical_role": "weight",
+      "stage": "layer_norm_2"
+    },
+    {
+      "bytes": 384,
+      "dtype_role": "weight",
+      "element_bits": 4,
+      "elements": 768,
+      "factors": [
+        "hidden_size"
+      ],
+      "id": "ln_2_bias",
+      "physical_role": "weight",
+      "stage": "layer_norm_2"
+    },
+    {
+      "bytes": 1179648,
+      "dtype_role": "weight",
+      "element_bits": 4,
+      "elements": 2359296,
+      "factors": [
+        "hidden_size",
+        "intermediate_size"
+      ],
+      "id": "mlp_c_fc_weight",
+      "physical_role": "weight_mlp_up",
+      "stage": "mlp_fc"
+    },
+    {
+      "bytes": 12288,
+      "dtype_role": "weight",
+      "element_bits": 32,
+      "elements": 3072,
+      "factors": [
+        "intermediate_size"
+      ],
+      "id": "mlp_c_fc_bias",
+      "physical_role": "weight_mlp_up_bias",
+      "stage": "mlp_fc"
+    },
+    {
+      "bytes": 1179648,
+      "dtype_role": "weight",
+      "element_bits": 4,
+      "elements": 2359296,
+      "factors": [
+        "intermediate_size",
+        "hidden_size"
+      ],
+      "id": "mlp_c_proj_weight",
+      "physical_role": "weight_mlp_down",
+      "stage": "mlp_proj"
+    },
+    {
+      "bytes": 3072,
+      "dtype_role": "weight",
+      "element_bits": 32,
+      "elements": 768,
+      "factors": [
+        "hidden_size"
+      ],
+      "id": "mlp_c_proj_bias",
+      "physical_role": "weight_mlp_down_bias",
+      "stage": "mlp_proj"
+    }
+  ]
+}

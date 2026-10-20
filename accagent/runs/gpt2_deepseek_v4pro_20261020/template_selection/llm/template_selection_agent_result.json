@@ -1,0 +1,154 @@
+{
+  "agent": "template_selection_agent",
+  "duration_sec": 64.70021481800359,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "325f7772a5414f4294a09f55348fb4ad",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/llm/template_selection_agent_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "template_selection_agent",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_compare"
+        ],
+        "action_type": "stage_gate_decision_handoff",
+        "consumes": [
+          "candidate_stage_artifact.template_selection",
+          "artifact.template_selection.operator_coverage_review",
+          "artifact.template_selection.template_binding_review",
+          "artifact.template_selection.attention_semantic_review",
+          "artifact.template_selection.cross_layer_trace",
+          "artifact.template_selection.checker_results",
+          "artifact.template_selection.stage_gate_policy"
+        ],
+        "id": "template_selection.gate_decision.ready_handoff",
+        "on_failure": "If team_aggregate or sacg_memory_update rejects the ready decision, treat the rejection as an unresolved Stage-2 evidence gap and rerun the specific failing specialist/checker; do not promote past template_selection.",
+        "produces": [
+          "artifact.template_selection.stage_gate_decision",
+          "sacg_memory.stage_outcome.template_selection_ready"
+        ],
+        "rationale": "All deterministic current-source Stage-2 checkers pass and no concrete current-stage contradiction remains; publish the ready gate decision and preserve the candidate_bound design-space domains for Stage 4 DSE.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_memory_update"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check"
+        ],
+        "action_type": "data_handoff",
+        "consumes": [
+          "candidate_stage_artifact.template_selection",
+          "artifact.input.design_space"
+        ],
+        "id": "template_selection.candidate_bound.handoff_stage4_dse",
+        "on_failure": "If memory update fails or records candidate_bound domains as unbound Stage-2 parameters, block the handoff and rerun sacg_static_check; do not supply concrete DSE values outside Stage 4 authority.",
+        "produces": [
+          "sacg_memory.stage_outcome.candidate_bound_design_space"
+        ],
+        "rationale": "Persist the validated candidate_bound values and their legal domains in shared SACG memory so later DSE uses them as Stage-4 concrete selection authority rather than as unbound Stage-2 parameters.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "All supplied deterministic checker_results pass: operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, mandatory_fpga_ip_binding_check, attention_semantic_expansion_check, and cross_layer_trace_check report no errors.",
+      "The selected template closure covers all 8 required operators with no missing_ops and no required_adapters.",
+      "All selected template source/interface checks report exists=true, status=pass, no missing required constructor parameters, and no numeric constructor parameters left unbound by metadata.",
+      "Attention semantics are satisfied for the current GPT-2 model: QKV projection, GQA/MQA mapping with group size 1, softmax, output projection, and causal mask are covered; RoPE is not applicable for learned_absolute position encoding; KV-cache is not required.",
+      "The mandatory FPGA-IP contract passes with no HardFloat/SyncReadMem violations and required Xilinx XPM BRAM/URAM and signed integer DSP MAC/reduction inference bindings present.",
+      "The cross-layer trace contains numeric policy, board memory, board runtime, board deployment, and cross-layer input-consistency constraints.",
+      "lanes, compute_array_rows, and compute_array_cols are candidate_bound with complete legal candidate domains; this is a Stage 4 DSE obligation, not an unbound Stage 2 parameter.",
+      "current source_sha256 and checked_source_hashes are treated as immutable source identity for this review.",
+      "sacg_memory_truth reports zero active contamination barriers, zero open backtrack requests, and zero open retry requests.",
+      "The team decomposition reports status ready with no errors and no current-stage contradiction."
+    ],
+    "proposed_actions": [
+      "Stage 4 DSE must select concrete values for lanes from [8, 16], compute_array_rows from [4, 8, 16], and compute_array_cols from [4, 8, 16, 32] using the already validated candidate_bound domains; do not resolve them at Stage 2.",
+      "Future verification_artifacts planning must execute current-source VCS compilation, elaboration, and linking bottom-up through leaf operator, connected single-transformer-layer kernel, and exact board wrapper using the existing compile-only tool modes; simulation execution, weight loading, and numerical golden comparison are not acceptance prerequisites.",
+      "Code generation must later emit the accelerator from the immutable selected template hashes and bound parameters; this is a downstream obligation, not a Stage 2 audit.",
+      "Vivado synthesis, implementation, timing closure, and bitstream generation are downstream backend obligations.",
+      "Runtime driver, exact board wrapper/AXI/DDR integration, DDR image roundtrip, and board bring-up are downstream board/runtime obligations and must not be added to Stage 2 acceptance.",
+      "Later-stage numeric accuracy comparison and board diagnostics remain downstream; no architecture, pipeline, memory layout, numeric policy, or major template change is currently proposed."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_stage_artifact.template_selection",
+        "artifact.input.model_config",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.template_selection.operator_coverage_review",
+        "artifact.template_selection.template_binding_review",
+        "artifact.template_selection.attention_semantic_review",
+        "artifact.template_selection.cross_layer_trace",
+        "artifact.template_selection.checker_results",
+        "artifact.template_selection.stage_gate_policy"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "gpt2_block -> layer_norm_1 -> self_attention -> residual_add_1 -> layer_norm_2 -> mlp_fc -> activation -> mlp_proj -> residual_add_2",
+        "self_attention -> softmax",
+        "self_attention -> causal_mask",
+        "constraint.arch.design_space -> candidate_bound_design_space -> Stage 4 DSE concrete selection"
+      ],
+      "nodes": [
+        "gpt2_block",
+        "layer_norm_1",
+        "self_attention",
+        "residual_add_1",
+        "layer_norm_2",
+        "mlp_fc",
+        "activation",
+        "mlp_proj",
+        "residual_add_2",
+        "softmax",
+        "causal_mask",
+        "candidate_bound_design_space"
+      ]
+    },
+    "schema_version": "spatialaccagent.template_selection_review.v0",
+    "stage": "template_selection",
+    "status": "ready",
+    "summary": "Stage 2 template selection is ready. All deterministic checker_results pass against the current immutable template source hashes, selected operator coverage is complete, required attention semantics are covered with RoPE not applicable and KV-cache not required, and the required numeric/board/cross-layer constraints are present in the trace. The remaining candidate_bound physical DSE values are validated legal domains deliberately deferred to Stage 4, not unresolved Stage 2 parameters. No active SACG-memory blockers exist."
+  },
+  "prompt_bytes": 122951,
+  "prompt_hash": "e40615dbd6ff85efe9f543618c93e72bedf61723b71e1d87465123ccf499ed86",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.template_selection_review.v0\",\n  \"agent\": \"template_selection_agent\",\n  \"stage\": \"template_selection\",\n  \"status\": \"ready\",\n  \"summary\": \"Stage 2 template selection is ready. All deterministic checker_results pass against the current immutable template source hashes, selected operator coverage is complete, required attention semantics are covered with RoPE not applicable and KV-cache not required, and the required numeric/board/cross-layer constraints are present in the trace. The remaining candidate_bound physical DSE values are validated legal domains deliberately deferred to Stage 4, not unresolved Stage 2 parameters. No active SACG-memory blockers exist.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"gpt2_block\",\n      \"layer_norm_1\",\n      \"self_attention\",\n      \"residual_add_1\",\n      \"layer_norm_2\",\n      \"mlp_fc\",\n      \"activation\",\n      \"mlp_proj\",\n      \"residual_add_2\",\n      \"softmax\",\n      \"causal_mask\",\n      \"candidate_bound_design_space\"\n    ],\n    \"edges\": [\n      \"gpt2_block -> layer_norm_1 -> self_attention -> residual_add_1 -> layer_norm_2 -> mlp_fc -> activation -> mlp_proj -> residual_add_2\",\n      \"self_attention -> softmax\",\n      \"self_attention -> causal_mask\",\n      \"constraint.arch.design_space -> candidate_bound_design_space -> Stage 4 DSE concrete selection\"\n    ],\n    \"constraints\": [\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.deployment.board\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.cross_layer.input_consistency\"\n    ],\n    \"artifacts\": [\n      \"candidate_stage_artifact.template_selection\",\n      \"artifact.input.model_config\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"artifact.input.design_space\",\n      \"artifact.template_selection.operator_coverage_review\",\n      \"artifact.template_selection.template_binding_review\",\n      \"artifact.template_selection.attention_semantic_review\",\n      \"artifact.template_selection.cross_layer_trace\",\n      \"artifact.template_selection.checker_results\",\n      \"artifact.template_selection.stage_gate_policy\"\n    ]\n  },\n  \"observations\": [\n    \"All supplied deterministic checker_results pass: operator_coverage_check, template_parameter_binding_check, template_source_and_interface_check, mandatory_fpga_ip_binding_check, attention_semantic_expansion_check, and cross_layer_trace_check report no errors.\",\n    \"The selected template closure covers all 8 required operators with no missing_ops and no required_adapters.\",\n    \"All selected template source/interface checks report exists=true, status=pass, no missing required constructor parameters, and no numeric constructor parameters left unbound by metadata.\",\n    \"Attention semantics are satisfied for the current GPT-2 model: QKV projection, GQA/MQA mapping with group size 1, softmax, output projection, and causal mask are covered; RoPE is not applicable for learned_absolute position encoding; KV-cache is not required.\",\n    \"The mandatory FPGA-IP contract passes with no HardFloat/SyncReadMem violations and required Xilinx XPM BRAM/URAM and signed integer DSP MAC/reduction inference bindings present.\",\n    \"The cross-layer trace contains numeric policy, board memory, board runtime, board deployment, and cross-layer input-consistency constraints.\",\n    \"lanes, compute_array_rows, and compute_array_cols are candidate_bound with complete legal candidate domains; this is a Stage 4 DSE obligation, not an unbound Stage 2 parameter.\",\n    \"current source_sha256 and checked_source_hashes are treated as immutable source identity for this review.\",\n    \"sacg_memory_truth reports zero active contamination barriers, zero open backtrack requests, and zero open retry requests.\",\n    \"The team decomposition reports status ready with no errors and no current-stage contradiction.\"\n  ],\n  \"risks\": [],\n  \"proposed_actions\": [\n    \"Stage 4 DSE must select concrete values for lanes from [8, 16], compute_array_rows from [4, 8, 16], and compute_array_cols from [4, 8, 16, 32] using the already validated candidate_bound domains; do not resolve them at Stage 2.\",\n    \"Future verification_artifacts planning must execute current-source VCS compilation, elaboration, and linking bottom-up through leaf operator, connected single-transformer-layer kernel, and exact board wrapper using the existing compile-only tool modes; simulation execution, weight loading, and numerical golden comparison are not acceptance prerequisites.\",\n    \"Code generation must later emit the accelerator from the immutable selected template hashes and bound parameters; this is a downstream obligation, not a Stage 2 audit.\",\n    \"Vivado synthesis, implementation, timing closure, and bitstream generation are downstream backend obligations.\",\n    \"Runtime driver, exact board wrapper/AXI/DDR integration, DDR image roundtrip, and board bring-up are downstream board/runtime obligations and must not be added to Stage 2 acceptance.\",\n    \"Later-stage numeric accuracy comparison and board diagnostics remain downstream; no architecture, pipeline, memory layout, numeric policy, or major template change is currently proposed.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"template_selection.gate_decision.ready_handoff\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"stage_gate_decision_handoff\",\n      \"rationale\": \"All deterministic current-source Stage-2 checkers pass and no concrete current-stage contradiction remains; publish the ready gate decision and preserve the candidate_bound design-space domains for Stage 4 DSE.\",\n      \"consumes\": [\n        \"candidate_stage_artifact.template_selection\",\n        \"artifact.template_selection.operator_coverage_review\",\n        \"artifact.template_selection.template_binding_review\",\n        \"artifact.template_selection.attention_semantic_review\",\n        \"artifact.template_selection.cross_layer_trace\",\n        \"artifact.template_selection.checker_results\",\n        \"artifact.template_selection.stage_gate_policy\"\n      ],\n      \"produces\": [\n        \"artifact.template_selection.stage_gate_decision\",\n        \"sacg_memory.stage_outcome.template_selection_ready\"\n      ],\n      \"tool_roles\": [\n        \"team_aggregate\",\n        \"sacg_memory_update\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"template_coverage_check\",\n        \"template_binding_static_check\",\n        \"parameter_binding_static_check\",\n        \"numeric_compare\"\n      ],\n      \"on_failure\": \"If team_aggregate or sacg_memory_update rejects the ready decision, treat the rejection as an unresolved Stage-2 evidence gap and rerun the specific failing specialist/checker; do not promote past template_selection.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"template_selection.candidate_bound.handoff_stage4_dse\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"data_handoff\",\n      \"rationale\": \"Persist the validated candidate_bound values and their legal domains in shared SACG memory so later DSE uses them as Stage-4 concrete selection authority rather than as unbound Stage-2 parameters.\",\n      \"consumes\": [\n        \"candidate_stage_artifact.template_selection\",\n        \"artifact.input.design_space\"\n      ],\n      \"produces\": [\n        \"sacg_memory.stage_outcome.candidate_bound_design_space\"\n      ],\n      \"tool_roles\": [\n        \"team_aggregate\",\n        \"sacg_memory_update\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"If memory update fails or records candidate_bound domains as unbound Stage-2 parameters, block the handoff and rerun sacg_static_check; do not supply concrete DSE values outside Stage 4 authority.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/llm/template_selection_agent_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/template_selection/llm/template_selection_agent_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "template_selection",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

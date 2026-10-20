@@ -1,0 +1,110 @@
+{
+  "agent": "spatialaccagent_model_shape_specialist",
+  "duration_sec": 22.621107610990293,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "c9d4ca74d4514a9f80fa0717621f9410",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_model_shape_specialist_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "spatialaccagent_model_shape_specialist",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "task_card_check",
+          "model_config_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.task_card",
+          "artifact.input.model_config",
+          "artifact.input.case_adapter",
+          "constraint.task.goal",
+          "constraint.model.decoder",
+          "constraint.shape.model"
+        ],
+        "id": "input_preparation.audit_model_shape_sources",
+        "on_failure": "Record each checker as failed or not_run with its evidence; distinguish a field proven absent in the complete source from one omitted from a prompt summary. Preserve contradictions and unresolved values as gaps, do not infer defaults or alter model semantics, and do not hand off a passing extraction until the required source-backed facts are checked.",
+        "produces": [
+          "input_preparation/model_intake_audit.json",
+          "input_preparation/model_shape_assumptions_and_gaps.json"
+        ],
+        "rationale": "The visible summary establishes artifact presence but not the source-backed decoder, shape, attention, head-mapping, sequence, and operator-order facts needed to judge extraction sufficiency. Inspect the complete supplied artifacts and bind findings to their provenance.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "llm_semantic_extraction",
+          "task_card_check",
+          "model_config_check",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The state summary lists task_card, model_config, and case_adapter as input artifacts. Their detailed contents are not included in the supplied artifact summary, so no model values or source citations can be independently audited here.",
+      "The candidate summary shows only a partial case_adapter key listing and indicates additional output and input keys exist. Omitted fields must be treated as not visible in this prompt, not as proven absent.",
+      "No provenance-backed values are visible for decoder/block count or type, hidden and intermediate dimensions, tensor layouts, attention type, query/key/value head counts or mapping, sequence length or sequence semantics, residual paths, or operator order.",
+      "No task_card-to-model_config agreement or case_adapter-to-model_config consistency can be established from the supplied evidence.",
+      "No task_card_check, model_config_check, or sacg_static_check result is supplied; their status is not_run.",
+      "The accelerator boundary remains Transformer blocks only. Embedding/tokenization, final model norm, LM head/logits, sampling, and other model-tail work are outside the DUT scope."
+    ],
+    "proposed_actions": [
+      "Inspect the complete task_card, model_config, and relevant case_adapter facts with provenance, then record each audited field as explicitly supplied, ambiguous, contradictory, or not visible in the complete source.",
+      "Run the registered task-card, model-config, and SACG static checks and use their results to populate the model intake audit and assumptions/gaps handoff.",
+      "Keep unresolved fields explicit and block semantic SACG extraction from relying on guessed defaults; do not change model semantics or accelerator architecture."
+    ],
+    "risks": [
+      "SACG extraction could encode invented or unsupported model semantics if hidden dimensions, attention/head mapping, sequence behavior, or operator order are inferred instead of cited to source artifacts.",
+      "Cross-artifact contradictions involving task intent, decoder configuration, tensor shapes, attention mapping, sequence settings, or residual/operator ordering cannot be assessed until detailed artifact contents and provenance are available.",
+      "Do not interpret this limited prompt view as proof that required fields are absent; request and inspect the complete artifact contents before recording field-level gaps."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.task_card",
+        "artifact.input.model_config",
+        "artifact.input.case_adapter"
+      ],
+      "constraints": [
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model"
+      ],
+      "edges": [
+        "artifact.input.task_card -> constraint.task.goal",
+        "artifact.input.model_config -> constraint.model.decoder",
+        "artifact.input.model_config -> constraint.shape.model",
+        "artifact.input.case_adapter -> model and shape facts, only where explicit and provenance-backed"
+      ],
+      "nodes": [
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "decoder-block specification",
+        "tensor-shape specification",
+        "attention and head-mapping specification",
+        "sequence specification",
+        "residual and operator-order specification"
+      ]
+    },
+    "schema_version": "spatialaccagent.model_shape_audit.v1",
+    "stage": "input_preparation",
+    "status": "not_verified",
+    "summary": "The supplied summary confirms that task_card, model_config, and case_adapter artifacts are present, but it does not expose their substantive model fields or provenance. Sufficiency for decoder, shape, attention, head mapping, sequence, and operator-order SACG extraction cannot be determined from this evidence. No checks are reported as run or passed."
+  },
+  "prompt_bytes": 38754,
+  "prompt_hash": "809db9cbab90ba614a1bee8c1e20b20a3bfc8ed38ce59013c5ff355d7e8c2590",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.model_shape_audit.v1\",\n  \"agent\": \"spatialaccagent_model_shape_specialist\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"not_verified\",\n  \"summary\": \"The supplied summary confirms that task_card, model_config, and case_adapter artifacts are present, but it does not expose their substantive model fields or provenance. Sufficiency for decoder, shape, attention, head mapping, sequence, and operator-order SACG extraction cannot be determined from this evidence. No checks are reported as run or passed.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"constraint.task.goal\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"decoder-block specification\",\n      \"tensor-shape specification\",\n      \"attention and head-mapping specification\",\n      \"sequence specification\",\n      \"residual and operator-order specification\"\n    ],\n    \"edges\": [\n      \"artifact.input.task_card -> constraint.task.goal\",\n      \"artifact.input.model_config -> constraint.model.decoder\",\n      \"artifact.input.model_config -> constraint.shape.model\",\n      \"artifact.input.case_adapter -> model and shape facts, only where explicit and provenance-backed\"\n    ],\n    \"constraints\": [\n      \"constraint.task.goal\",\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.task_card\",\n      \"artifact.input.model_config\",\n      \"artifact.input.case_adapter\"\n    ]\n  },\n  \"observations\": [\n    \"The state summary lists task_card, model_config, and case_adapter as input artifacts. Their detailed contents are not included in the supplied artifact summary, so no model values or source citations can be independently audited here.\",\n    \"The candidate summary shows only a partial case_adapter key listing and indicates additional output and input keys exist. Omitted fields must be treated as not visible in this prompt, not as proven absent.\",\n    \"No provenance-backed values are visible for decoder/block count or type, hidden and intermediate dimensions, tensor layouts, attention type, query/key/value head counts or mapping, sequence length or sequence semantics, residual paths, or operator order.\",\n    \"No task_card-to-model_config agreement or case_adapter-to-model_config consistency can be established from the supplied evidence.\",\n    \"No task_card_check, model_config_check, or sacg_static_check result is supplied; their status is not_run.\",\n    \"The accelerator boundary remains Transformer blocks only. Embedding/tokenization, final model norm, LM head/logits, sampling, and other model-tail work are outside the DUT scope.\"\n  ],\n  \"risks\": [\n    \"SACG extraction could encode invented or unsupported model semantics if hidden dimensions, attention/head mapping, sequence behavior, or operator order are inferred instead of cited to source artifacts.\",\n    \"Cross-artifact contradictions involving task intent, decoder configuration, tensor shapes, attention mapping, sequence settings, or residual/operator ordering cannot be assessed until detailed artifact contents and provenance are available.\",\n    \"Do not interpret this limited prompt view as proof that required fields are absent; request and inspect the complete artifact contents before recording field-level gaps.\"\n  ],\n  \"proposed_actions\": [\n    \"Inspect the complete task_card, model_config, and relevant case_adapter facts with provenance, then record each audited field as explicitly supplied, ambiguous, contradictory, or not visible in the complete source.\",\n    \"Run the registered task-card, model-config, and SACG static checks and use their results to populate the model intake audit and assumptions/gaps handoff.\",\n    \"Keep unresolved fields explicit and block semantic SACG extraction from relying on guessed defaults; do not change model semantics or accelerator architecture.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"input_preparation.audit_model_shape_sources\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"The visible summary establishes artifact presence but not the source-backed decoder, shape, attention, head-mapping, sequence, and operator-order facts needed to judge extraction sufficiency. Inspect the complete supplied artifacts and bind findings to their provenance.\",\n      \"consumes\": [\n        \"artifact.input.task_card\",\n        \"artifact.input.model_config\",\n        \"artifact.input.case_adapter\",\n        \"constraint.task.goal\",\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\"\n      ],\n      \"produces\": [\n        \"input_preparation/model_intake_audit.json\",\n        \"input_preparation/model_shape_assumptions_and_gaps.json\"\n      ],\n      \"tool_roles\": [\n        \"llm_semantic_extraction\",\n        \"task_card_check\",\n        \"model_config_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"task_card_check\",\n        \"model_config_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Record each checker as failed or not_run with its evidence; distinguish a field proven absent in the complete source from one omitted from a prompt summary. Preserve contradictions and unresolved values as gaps, do not infer defaults or alter model semantics, and do not hand off a passing extraction until the required source-backed facts are checked.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": []\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_model_shape_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_model_shape_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.model intake engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

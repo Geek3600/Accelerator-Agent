@@ -1,0 +1,170 @@
+{
+  "agent": "platform_numeric_engineer",
+  "duration_sec": 151.7565635360079,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "61182dd8ff2a4a11a2dcc1b8010f1ab7",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input/team/llm/platform_numeric_engineer_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "platform_numeric_engineer",
+    "approval_required_for": [
+      "Substituting missing numeric_policy or target_board_profile facts with inferred defaults, generic board names, DUT output, or generated expected values.",
+      "Changing numeric precision/quantization policy, compare tolerance, or memory layout away from a case-adapter-supplied value.",
+      "Promoting to stage_sacg_extraction while unresolved numeric, DDR/AXI, runtime, or deployment facts remain open in artifact.stage0.board_open_risks."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "artifact_hash_check",
+          "sacg_static_check"
+        ],
+        "action_type": "artifact_identity_verification",
+        "consumes": [
+          "artifact.input.numeric_policy",
+          "artifact.input.target_board_profile",
+          "artifact.input.case_adapter"
+        ],
+        "id": "verify.numeric_board_artifact_identity",
+        "on_failure": "If either artifact is absent or cannot be hash-bound to the current run_dir/prepared_inputs identity, record a board_open_risks entry and do not run numeric/board content checks against guessed paths; request the case adapter to re-emit the input artifact.",
+        "produces": [
+          "artifact.stage0.numeric_board_input_hashes"
+        ],
+        "rationale": "The compact prepared_inputs slice omits detailed keys for artifact.input.numeric_policy and artifact.input.target_board_profile even though the state summary declares them. Hash-check both current artifacts before any content audit to distinguish a missing input from an omitted detail row.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "artifact_hash_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "numeric_policy_check",
+          "addr_map_check"
+        ],
+        "action_type": "numeric_board_input_review",
+        "consumes": [
+          "artifact.input.numeric_policy",
+          "artifact.input.target_board_profile",
+          "constraint.numeric.policy",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board",
+          "artifact.stage0.numeric_board_input_hashes"
+        ],
+        "id": "check.numeric_policy_and_board_facts",
+        "on_failure": "If numeric_policy_check or addr_map_check reports missing precision/quantization policy, DDR/AXI address map, transfer-width, burst, runtime, or deployment facts, do not derive defaults from DUT output or generic knowledge. Record each exact missing field in artifact.stage0.board_open_risks and hand off as a blocker to input_preparation.toolchain_boundary_engineer and stage_sacg_extraction. If checker execution raises an artifact-location exception, return to verify.numeric_board_artifact_identity.",
+        "produces": [
+          "artifact.stage0.numeric_board_audit",
+          "artifact.stage0.board_open_risks"
+        ],
+        "rationale": "Bind explicit facts from numeric_policy and target_board_profile to the named numeric, memory, runtime, and deployment constraints before downstream SACG extraction. Missing facts must become open risks, not inferred defaults.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "numeric_policy_check",
+          "addr_map_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_memory_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_memory_update",
+        "consumes": [
+          "artifact.stage0.numeric_board_audit",
+          "artifact.stage0.board_open_risks"
+        ],
+        "id": "record.numeric_board_open_risks",
+        "on_failure": "Do not clear the numeric/board gap. Keep stage_sacg_extraction gated for unresolved facts and mark the SACG memory update failed for replanning.",
+        "produces": [
+          "state_summary.sacg_memory.numeric_board_input_review_lesson"
+        ],
+        "rationale": "Persist checker-bound numeric/board gaps and evidence provenance in SACG memory so downstream toolchain-boundary and extraction agents receive the open-risk list without receiving invented board facts.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "artifact.input.numeric_policy and artifact.input.target_board_profile are declared in the artifact presence summary, so their absence cannot be concluded from the compact visible slice alone.",
+      "The visible prepared_inputs.inputs key list shows case_adapter, design_space, field_evidence, field_evidence_candidates, and human_agent_boundary, but it does not show numeric_policy or target_board_profile detail rows; this is a detail-visibility gap, not proof that the inputs were not injected.",
+      "No current SACG-memory blockers are active: active contamination barrier count, open backtrack request count, and open retry request count are all zero.",
+      "The named review constraints are present at the input level, but their detailed numeric, DDR/AXI, runtime, and deployment bodies are not exposed in the supplied compact slice.",
+      "No tool/checker result currently binds numeric_policy precision/quantization facts or target_board_profile DDR/AXI, address-map, runtime, and deployment facts to the named constraints.",
+      "Board facts such as AXI IDs, data widths, address width, burst capability, address regions, clock/reset behavior, and deployment board identity must be sourced from case-adapter/sample-project evidence; they must not be inferred from generic defaults.",
+      "Transformer-only scope is preserved for this audit: no embedding/tokenization, final model norm, LM head/logits, or sampling facts should be added to the DUT or board acceptance boundary."
+    ],
+    "proposed_actions": [
+      "Hash-validate artifact.input.numeric_policy and artifact.input.target_board_profile to prove they are present and bound to the current prepared_inputs run_dir.",
+      "Run numeric_policy_check against artifact.input.numeric_policy under constraint.numeric.policy.",
+      "Run addr_map_check against artifact.input.target_board_profile under constraint.memory.board, constraint.runtime.board, and constraint.deployment.board.",
+      "Record only checker-backed facts in artifact.stage0.numeric_board_audit; route every missing fact to artifact.stage0.board_open_risks.",
+      "If board/numeric facts are missing or ambiguous, request case-adapter/sample-project evidence and keep stage_sacg_extraction gated until resolution."
+    ],
+    "risks": [
+      "Cannot confirm that numeric_policy explicitly contains precision, quantization, rounding/saturation, accumulation width, and compare tolerance facts without a checker-bound result.",
+      "Cannot confirm that target_board_profile contains sufficient DDR and AXI facts for addr_map_check, including address regions, AXI widths/IDs, burst/length rules, and memory-map constraints.",
+      "Cannot confirm runtime/deployment facts such as board part, clock/reset, DDR configuration, and legal board wrapper identity are present and consistent with constraint.runtime.board and constraint.deployment.board.",
+      "Cross-layer consistency between numeric data types and board AXI/DDR transfer widths cannot be assessed from visible summary fields alone.",
+      "If prepared_inputs actually omitted artifact.input.numeric_policy or artifact.input.target_board_profile, downstream numeric/board gap analysis and stage_sacg_extraction would consume incomplete evidence.",
+      "Hallucinating missing board details could contaminate downstream addr_map_check, board wrapper generation, and deployment checks."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.numeric_policy",
+        "artifact.input.target_board_profile",
+        "artifact.stage0.numeric_board_audit",
+        "artifact.stage0.board_open_risks"
+      ],
+      "constraints": [
+        "constraint.numeric.policy",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board"
+      ],
+      "edges": [
+        "constraint.numeric.policy -> artifact.input.numeric_policy",
+        "artifact.input.numeric_policy -> numeric_policy_check -> artifact.stage0.numeric_board_audit",
+        "constraint.memory.board -> artifact.input.target_board_profile",
+        "constraint.runtime.board -> artifact.input.target_board_profile",
+        "constraint.deployment.board -> artifact.input.target_board_profile",
+        "artifact.input.target_board_profile -> addr_map_check -> artifact.stage0.numeric_board_audit",
+        "artifact.stage0.numeric_board_audit -> artifact.stage0.board_open_risks"
+      ],
+      "nodes": [
+        "artifact.input.numeric_policy",
+        "artifact.input.target_board_profile",
+        "constraint.numeric.policy",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "artifact.stage0.numeric_board_audit",
+        "artifact.stage0.board_open_risks"
+      ]
+    },
+    "schema_version": "spatialaccagent.stage_response.v0",
+    "stage": "input_preparation",
+    "status": "incomplete",
+    "summary": "The visible slice declares artifact.input.numeric_policy and artifact.input.target_board_profile as present, but it does not expose their detailed numeric, DDR/AXI, runtime, or deployment contents. Because no checker evidence currently binds those facts to constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, and constraint.deployment.board, numeric/board readiness cannot be passed. Next actions should hash-validate the artifacts, then run numeric_policy_check and addr_map_check to produce artifact.stage0.numeric_board_audit and artifact.stage0.board_open_risks without inventing missing board details."
+  },
+  "prompt_bytes": 38671,
+  "prompt_hash": "494290fd129856af8a3d63e35779fd060d0a55d40ce844a9b20b41132275a9c8",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.stage_response.v0\",\n  \"agent\": \"platform_numeric_engineer\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"incomplete\",\n  \"summary\": \"The visible slice declares artifact.input.numeric_policy and artifact.input.target_board_profile as present, but it does not expose their detailed numeric, DDR/AXI, runtime, or deployment contents. Because no checker evidence currently binds those facts to constraint.numeric.policy, constraint.memory.board, constraint.runtime.board, and constraint.deployment.board, numeric/board readiness cannot be passed. Next actions should hash-validate the artifacts, then run numeric_policy_check and addr_map_check to produce artifact.stage0.numeric_board_audit and artifact.stage0.board_open_risks without inventing missing board details.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.target_board_profile\",\n      \"constraint.numeric.policy\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.deployment.board\",\n      \"artifact.stage0.numeric_board_audit\",\n      \"artifact.stage0.board_open_risks\"\n    ],\n    \"edges\": [\n      \"constraint.numeric.policy -> artifact.input.numeric_policy\",\n      \"artifact.input.numeric_policy -> numeric_policy_check -> artifact.stage0.numeric_board_audit\",\n      \"constraint.memory.board -> artifact.input.target_board_profile\",\n      \"constraint.runtime.board -> artifact.input.target_board_profile\",\n      \"constraint.deployment.board -> artifact.input.target_board_profile\",\n      \"artifact.input.target_board_profile -> addr_map_check -> artifact.stage0.numeric_board_audit\",\n      \"artifact.stage0.numeric_board_audit -> artifact.stage0.board_open_risks\"\n    ],\n    \"constraints\": [\n      \"constraint.numeric.policy\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.deployment.board\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.target_board_profile\",\n      \"artifact.stage0.numeric_board_audit\",\n      \"artifact.stage0.board_open_risks\"\n    ]\n  },\n  \"observations\": [\n    \"artifact.input.numeric_policy and artifact.input.target_board_profile are declared in the artifact presence summary, so their absence cannot be concluded from the compact visible slice alone.\",\n    \"The visible prepared_inputs.inputs key list shows case_adapter, design_space, field_evidence, field_evidence_candidates, and human_agent_boundary, but it does not show numeric_policy or target_board_profile detail rows; this is a detail-visibility gap, not proof that the inputs were not injected.\",\n    \"No current SACG-memory blockers are active: active contamination barrier count, open backtrack request count, and open retry request count are all zero.\",\n    \"The named review constraints are present at the input level, but their detailed numeric, DDR/AXI, runtime, and deployment bodies are not exposed in the supplied compact slice.\",\n    \"No tool/checker result currently binds numeric_policy precision/quantization facts or target_board_profile DDR/AXI, address-map, runtime, and deployment facts to the named constraints.\",\n    \"Board facts such as AXI IDs, data widths, address width, burst capability, address regions, clock/reset behavior, and deployment board identity must be sourced from case-adapter/sample-project evidence; they must not be inferred from generic defaults.\",\n    \"Transformer-only scope is preserved for this audit: no embedding/tokenization, final model norm, LM head/logits, or sampling facts should be added to the DUT or board acceptance boundary.\"\n  ],\n  \"risks\": [\n    \"Cannot confirm that numeric_policy explicitly contains precision, quantization, rounding/saturation, accumulation width, and compare tolerance facts without a checker-bound result.\",\n    \"Cannot confirm that target_board_profile contains sufficient DDR and AXI facts for addr_map_check, including address regions, AXI widths/IDs, burst/length rules, and memory-map constraints.\",\n    \"Cannot confirm runtime/deployment facts such as board part, clock/reset, DDR configuration, and legal board wrapper identity are present and consistent with constraint.runtime.board and constraint.deployment.board.\",\n    \"Cross-layer consistency between numeric data types and board AXI/DDR transfer widths cannot be assessed from visible summary fields alone.\",\n    \"If prepared_inputs actually omitted artifact.input.numeric_policy or artifact.input.target_board_profile, downstream numeric/board gap analysis and stage_sacg_extraction would consume incomplete evidence.\",\n    \"Hallucinating missing board details could contaminate downstream addr_map_check, board wrapper generation, and deployment checks.\"\n  ],\n  \"proposed_actions\": [\n    \"Hash-validate artifact.input.numeric_policy and artifact.input.target_board_profile to prove they are present and bound to the current prepared_inputs run_dir.\",\n    \"Run numeric_policy_check against artifact.input.numeric_policy under constraint.numeric.policy.\",\n    \"Run addr_map_check against artifact.input.target_board_profile under constraint.memory.board, constraint.runtime.board, and constraint.deployment.board.\",\n    \"Record only checker-backed facts in artifact.stage0.numeric_board_audit; route every missing fact to artifact.stage0.board_open_risks.\",\n    \"If board/numeric facts are missing or ambiguous, request case-adapter/sample-project evidence and keep stage_sacg_extraction gated until resolution.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"verify.numeric_board_artifact_identity\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"artifact_identity_verification\",\n      \"rationale\": \"The compact prepared_inputs slice omits detailed keys for artifact.input.numeric_policy and artifact.input.target_board_profile even though the state summary declares them. Hash-check both current artifacts before any content audit to distinguish a missing input from an omitted detail row.\",\n      \"consumes\": [\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.case_adapter\"\n      ],\n      \"produces\": [\n        \"artifact.stage0.numeric_board_input_hashes\"\n      ],\n      \"tool_roles\": [\n        \"artifact_hash_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"artifact_hash_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"If either artifact is absent or cannot be hash-bound to the current run_dir/prepared_inputs identity, record a board_open_risks entry and do not run numeric/board content checks against guessed paths; request the case adapter to re-emit the input artifact.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"check.numeric_policy_and_board_facts\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"numeric_board_input_review\",\n      \"rationale\": \"Bind explicit facts from numeric_policy and target_board_profile to the named numeric, memory, runtime, and deployment constraints before downstream SACG extraction. Missing facts must become open risks, not inferred defaults.\",\n      \"consumes\": [\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.target_board_profile\",\n        \"constraint.numeric.policy\",\n        \"constraint.memory.board\",\n        \"constraint.runtime.board\",\n        \"constraint.deployment.board\",\n        \"artifact.stage0.numeric_board_input_hashes\"\n      ],\n      \"produces\": [\n        \"artifact.stage0.numeric_board_audit\",\n        \"artifact.stage0.board_open_risks\"\n      ],\n      \"tool_roles\": [\n        \"numeric_policy_check\",\n        \"addr_map_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"numeric_policy_check\",\n        \"addr_map_check\"\n      ],\n      \"on_failure\": \"If numeric_policy_check or addr_map_check reports missing precision/quantization policy, DDR/AXI address map, transfer-width, burst, runtime, or deployment facts, do not derive defaults from DUT output or generic knowledge. Record each exact missing field in artifact.stage0.board_open_risks and hand off as a blocker to input_preparation.toolchain_boundary_engineer and stage_sacg_extraction. If checker execution raises an artifact-location exception, return to verify.numeric_board_artifact_identity.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"record.numeric_board_open_risks\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"sacg_memory_update\",\n      \"rationale\": \"Persist checker-bound numeric/board gaps and evidence provenance in SACG memory so downstream toolchain-boundary and extraction agents receive the open-risk list without receiving invented board facts.\",\n      \"consumes\": [\n        \"artifact.stage0.numeric_board_audit\",\n        \"artifact.stage0.board_open_risks\"\n      ],\n      \"produces\": [\n        \"state_summary.sacg_memory.numeric_board_input_review_lesson\"\n      ],\n      \"tool_roles\": [\n        \"sacg_memory_update\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_memory_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Do not clear the numeric/board gap. Keep stage_sacg_extraction gated for unresolved facts and mark the SACG memory update failed for replanning.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Substituting missing numeric_policy or target_board_profile facts with inferred defaults, generic board names, DUT output, or generated expected values.\",\n    \"Changing numeric precision/quantization policy, compare tolerance, or memory layout away from a case-adapter-supplied value.\",\n    \"Promoting to stage_sacg_extraction while unresolved numeric, DDR/AXI, runtime, or deployment facts remain open in artifact.stage0.board_open_risks.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input/team/llm/platform_numeric_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input/team/llm/platform_numeric_engineer_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.platform numeric engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

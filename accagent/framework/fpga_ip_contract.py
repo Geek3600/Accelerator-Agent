@@ -48,7 +48,19 @@ FP_MODULE_INSTANTIATION = re.compile(
 )
 
 
-def simulation_source_contract() -> dict[str, Any]:
+def simulation_source_contract(compute_backend: str = "vivado_fp_ip") -> dict[str, Any]:
+    if compute_backend == "integer_dsp":
+        return {
+            "compute_models": "signed integer DSP arithmetic inferred from current Chisel sources; no floating-point IP",
+            "memory_models": "Xilinx XPM simulation library",
+            "required_libraries": ["unisims_ver", "xpm"],
+            "required_sources": ["glbl.v", "XPM simulation sources"],
+            "same_module_names_as_implementation": True,
+            "same_interface_and_cycle_latency_as_implementation": True,
+            "behavioral_fallback_allowed": False,
+        }
+    if compute_backend != "vivado_fp_ip":
+        raise ValueError(f"unsupported physical compute backend: {compute_backend}")
     return {
         "compute_models": "generated Vivado floating_point IP simulation models",
         "memory_models": "Xilinx XPM simulation library",
@@ -96,8 +108,24 @@ def refresh_fpga_ip_simulation_closure(generated_root: Path, closure_path: Path)
     manifest_path = Path(manifest_value)
     if not manifest_path.is_absolute():
         manifest_path = closure_path.parent / manifest_path
-    modules = write_fp_module_manifest(generated_root, manifest_path)
+    compute_backend = str(payload.get("compute_backend") or "vivado_fp_ip")
+    if compute_backend == "integer_dsp":
+        # An empty FP-IP closure is valid only after inspecting the current
+        # elaborated hierarchy. Do not silently certify an integer design that
+        # still instantiates Vivado floating-point black boxes.
+        modules = discover_fp_modules(generated_root)
+        if modules:
+            raise ValueError(
+                "integer-DSP elaboration contains floating-point IP modules: "
+                + ", ".join(modules)
+            )
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text("", encoding="utf-8")
+    else:
+        modules = write_fp_module_manifest(generated_root, manifest_path)
     payload["status"] = "ready"
+    payload["compute_backend"] = compute_backend
+    payload["policy"] = simulation_source_contract(compute_backend)
     payload["required_ip_modules"] = modules
     closure_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return modules
@@ -122,9 +150,16 @@ def check_fpga_ip_simulation_closure(path: Path) -> dict[str, Any]:
         return {"status": "fail", "errors": ["FPGA IP simulation closure must be a JSON object"]}
     if payload.get("status") != "ready":
         errors.append("FPGA IP simulation closure is not ready")
-    if payload.get("policy") != simulation_source_contract():
-        errors.append("FPGA IP simulation closure policy does not match the required Vivado/XPM timing model")
-    for key in ("ip_generation_tcl", "ip_output_dir", "ip_project_dir", "ip_module_manifest", "fpga_part"):
+    compute_backend = str(payload.get("compute_backend") or "vivado_fp_ip")
+    try:
+        expected_policy = simulation_source_contract(compute_backend)
+    except ValueError as exc:
+        errors.append(str(exc))
+        expected_policy = simulation_source_contract("vivado_fp_ip")
+    if payload.get("policy") != expected_policy:
+        errors.append("FPGA IP simulation closure policy does not match the selected physical backend")
+    required_fields = ("ip_module_manifest", "fpga_part") if compute_backend == "integer_dsp" else ("ip_generation_tcl", "ip_output_dir", "ip_project_dir", "ip_module_manifest", "fpga_part")
+    for key in required_fields:
         if not isinstance(payload.get(key), str) or not payload[key]:
             errors.append(f"FPGA IP simulation closure is missing {key}")
     manifest_path = Path(str(payload.get("ip_module_manifest") or ""))
@@ -145,10 +180,14 @@ def check_fpga_ip_simulation_closure(path: Path) -> dict[str, Any]:
         if len(manifest_modules) != len(set(manifest_modules)):
             errors.append("FPGA IP module manifest contains duplicate names")
     required_modules = payload.get("required_ip_modules")
-    if not isinstance(required_modules, list) or not required_modules:
-        errors.append("FPGA IP simulation closure has no required floating-point modules")
+    if not isinstance(required_modules, list):
+        errors.append("FPGA IP simulation closure required_ip_modules must be a list")
+    elif compute_backend == "vivado_fp_ip" and not required_modules:
+        errors.append("FPGA-policy closure has no required floating-point modules")
+    elif compute_backend == "integer_dsp" and required_modules:
+        errors.append("integer-DSP closure must not contain floating-point IP modules")
     elif sorted(str(name) for name in required_modules) != sorted(manifest_modules):
-        errors.append("FPGA IP simulation closure module list does not match the elaborated RTL manifest")
+        errors.append("FPGA IP closure module list does not match the elaborated RTL manifest")
     vcs = payload.get("vcs_compile_requirements")
     if not isinstance(vcs, dict) or not all(
         isinstance(vcs.get(key), str) and vcs[key]
@@ -192,6 +231,7 @@ def _source_paths(template_dir: Path, sources: Iterable[str] | None) -> list[Pat
 def check_fpga_ip_template_contract(
     template_dir: Path,
     sources: Iterable[str] | None = None,
+    compute_backend: str = "vivado_fp_ip",
 ) -> dict[str, Any]:
     paths = _source_paths(template_dir, sources)
     errors: list[str] = []
@@ -206,9 +246,110 @@ def check_fpga_ip_template_contract(
     else:
         physical_text = physical.read_text(encoding="utf-8", errors="ignore")
 
-    missing_markers = [marker for marker in REQUIRED_PHYSICAL_MARKERS if marker not in physical_text]
-    if missing_markers:
-        errors.append(f"physical FPGA IP abstraction is missing markers: {missing_markers}")
+    if compute_backend == "vivado_fp_ip":
+        required_markers = REQUIRED_PHYSICAL_MARKERS
+        missing_markers = [marker for marker in required_markers if marker not in physical_text]
+        if missing_markers:
+            errors.append(f"physical FPGA backend abstraction is missing markers: {missing_markers}")
+    elif compute_backend == "integer_dsp":
+        # PhysicalResources.scala supplies only the shared physical primitives.
+        # Integer operator implementations intentionally live in their own
+        # connected templates; requiring their class names in this one file
+        # rejected a valid integer hierarchy before checking those sources.
+        required_physical_markers = (
+            "configureFpgaIp",
+            "integer_dsp",
+            "PhysicalLinearMul",
+            "val product = activation * weight",
+            "value := AccMath.resizeSignedToUInt(product, 32)",
+            '"xpm_memory_sdpram"',
+            '"xpm_memory_sprom"',
+            "PhysicalStreamFifo",
+        )
+        missing_physical = [marker for marker in required_physical_markers if marker not in physical_text]
+        if missing_physical:
+            errors.append(
+                "integer-DSP physical resource source is missing markers: "
+                f"{missing_physical}"
+            )
+
+        # Source-bound coverage of the real integer operators. These checks
+        # complement (and do not replace) the elaborated-RTL closure check that
+        # rejects floating-point IP in the selected W4A8 hierarchy.
+        integer_source_markers = {
+            "Common.scala": (
+                "requantizeQ31WithShift",
+                "unsignedDivideFixed",
+                "class PhysicalIntegerSqrt",
+            ),
+            "Attention.scala": (
+                "class IntegerAttention",
+                "val dotProducts",
+                "val reciprocalQ31",
+                "val product = vValues(dimension) * probability",
+            ),
+            "Norm.scala": (
+                "class IntegerVectorNorm",
+                "new PhysicalIntegerSqrt(64)",
+                "class VectorNorm(p: VectorNormParams)",
+            ),
+            "Softmax.scala": (
+                "private class IntegerSoftmax",
+                "val reciprocalQ31",
+                "probabilityFracBits",
+            ),
+            "RoPE.scala": (
+                "private class IntegerRoPE",
+                "cosQ15",
+                "roundShiftRightNearestEven",
+            ),
+            "Activation.scala": (
+                "if (p.integerMode)",
+                "AccMath.requantizeQ31",
+            ),
+            "Elementwise.scala": (
+                "if (p.integerMode)",
+                "AccMath.requantizeQ31",
+            ),
+            "Residual.scala": (
+                "if (p.integerMode)",
+                "requantizeQ31WithShift",
+            ),
+            "QKVProjection.scala": (
+                "class QKVProjection(p: QKVProjectionParams)",
+                "Module(new Linear(p.linear))",
+            ),
+            "FFN.scala": (
+                "class DenseFFN(p: DenseFFNParams)",
+                "class GatedMLP(p: GatedMLPParams)",
+                "Module(new Activation(p.act))",
+                "Module(new ElementwiseMul(p.mul))",
+            ),
+            "DecoderBlock.scala": (
+                "class DecoderBlock(p: DecoderBlockParams)",
+                "Module(new Attention(p.attn))",
+                "Module(new DenseFFN(p.ffn))",
+                "class LlamaStyleBlockParams(",
+                "Module(new RoPE(p.rope))",
+                "Module(new GatedMLP(p.mlp))",
+            ),
+        }
+        for source_name, markers in integer_source_markers.items():
+            source_path = template_dir / source_name
+            if not source_path.is_file():
+                errors.append(f"integer-DSP operator source is missing: {source_name}")
+                continue
+            source_text = source_path.read_text(encoding="utf-8", errors="ignore")
+            missing = [marker for marker in markers if marker not in source_text]
+            if missing:
+                errors.append(
+                    f"integer-DSP operator source {source_name} is missing connected implementation markers: {missing}"
+                )
+    else:
+        errors.append(f"unsupported physical compute backend: {compute_backend}")
+        missing_markers = [marker for marker in REQUIRED_PHYSICAL_MARKERS if marker not in physical_text]
+        if missing_markers:
+            errors.append(f"physical FPGA backend abstraction is missing markers: {missing_markers}")
 
     for path in paths:
         if not path.is_file():
@@ -216,6 +357,18 @@ def check_fpga_ip_template_contract(
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
         for kind, pattern in FORBIDDEN_SOURCE_PATTERNS.items():
+            # The trusted template library intentionally retains historical FP
+            # implementations for legacy FP-policy regressions.  Integer-DSP
+            # acceptance is hierarchy-based: the generated integer elaboration
+            # and emitted RTL must contain no FP blackboxes.  Do not reject the
+            # source merely because an inactive legacy branch contains a
+            # PhysicalMath helper; still reject HardFloat, inferred memories,
+            # generic Queues, and other non-physical backends in every policy.
+            if compute_backend == "integer_dsp" and kind in {
+                "legacy_combinational_fp_helper",
+                "unhandshaked_physical_fp_helper",
+            }:
+                continue
             for match in pattern.finditer(text):
                 line = text.count("\n", 0, match.start()) + 1
                 violations.append(
@@ -233,13 +386,13 @@ def check_fpga_ip_template_contract(
         "checked_sources": [path.name for path in paths],
         "physical_resource_source": str(physical),
         "required_bindings": {
-            "arithmetic": "Vivado floating_point/DSP IP",
+            "arithmetic": "signed integer DSP MAC/reduction inference" if compute_backend == "integer_dsp" else "Vivado floating_point/DSP IP",
             "weights": "XPM URAM",
             "activations": "XPM BRAM",
             "fifo": "XPM BRAM",
             "large_cache": "XPM URAM",
         },
-        "simulation": simulation_source_contract(),
+        "simulation": simulation_source_contract(compute_backend),
         "violations": violations,
         "errors": errors,
     }

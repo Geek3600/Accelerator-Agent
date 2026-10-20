@@ -1,0 +1,361 @@
+{
+  "_llm_provenance": {
+    "mode": "llm",
+    "sub_agent": "design_space_agent",
+    "used_fallback": false
+  },
+  "hard_constraints": [],
+  "notes": [
+    "The seed candidate dimensions are retained with their supplied key names and legal values. The additional valid_lane_compute_array_tuples enumerate the complete lane/row/column combinations after enforcing rows divides lanes.",
+    "Every listed lane choice packs both required stream widths into the 512-bit AXI beat with no remainder; no lane choice is included that fails either required width.",
+    "No physical_weight_layout_candidates were supplied. Stage 4 must derive the all-URAM baseline using the same semantic contract rather than inventing model-family storage role names.",
+    "The numeric policy leaves exact formats or approximations for normalization, activation, Softmax, RoPE, residual scaling, and requantization incomplete, and does not provide the required probability scale. Resolve these contracts before functional promotion; do not silently choose values here.",
+    "The numeric comparison values in the supplied policy are framework defaults: atol=0.1, rtol=0.1, and max_mismatch_fraction=0.05 under spatialaccagent.loose_numeric_compare.v1. They are not additional user QoR targets.",
+    "The board profile notes that the exact deployment part should be confirmed and that shell details, memory capacity, remote execution host/port, and board smoke pass/fail conditions are not established by the supplied evidence.",
+    "Explicit task QoR targets are deterministically bound and cannot be weakened by DSE planning."
+  ],
+  "objectives": [
+    "Explore the finite legal hardware candidate universe without changing model semantics, numeric policy, or board AXI/DDR/runtime behavior.",
+    "Compare candidates only using subsequent real target-board app-shell Vivado results and hardware-counter measurements; this design space contains no QoR estimates."
+  ],
+  "qor_targets": {
+    "power_report_required": false,
+    "source": "task_spec"
+  },
+  "schema_version": "spatialaccagent.design_space.v0",
+  "search_params": {
+    "candidate_universe": {
+      "candidate_dimensions": {
+        "activation_bank_count": {
+          "legal_values": [
+            2,
+            4
+          ]
+        },
+        "compute_array": {
+          "legal_row_col_pairs": [
+            {
+              "cols": 4,
+              "rows": 4
+            },
+            {
+              "cols": 8,
+              "rows": 4
+            },
+            {
+              "cols": 16,
+              "rows": 4
+            },
+            {
+              "cols": 32,
+              "rows": 4
+            },
+            {
+              "cols": 4,
+              "rows": 8
+            },
+            {
+              "cols": 8,
+              "rows": 8
+            },
+            {
+              "cols": 16,
+              "rows": 8
+            },
+            {
+              "cols": 32,
+              "rows": 8
+            },
+            {
+              "cols": 4,
+              "rows": 16
+            },
+            {
+              "cols": 8,
+              "rows": 16
+            },
+            {
+              "cols": 16,
+              "rows": 16
+            },
+            {
+              "cols": 32,
+              "rows": 16
+            }
+          ]
+        },
+        "lanes": {
+          "legal_values": [
+            8,
+            16
+          ]
+        },
+        "physical_fifo_depth": {
+          "legal_values": [
+            32,
+            64,
+            128
+          ]
+        }
+      },
+      "correlation_constraints": [
+        "Only valid_lane_compute_array_tuples are legal lane and compute_array combinations; compute_array.rows must divide lanes.",
+        "compute_array.cols must be a power of two and may divide lanes or be an integer multiple of lanes, as supported by the current wide-column template."
+      ],
+      "lane_stream_packing": [
+        {
+          "axi_data_width_bits": 512,
+          "lane_payload_bits": 64,
+          "lanes": 8,
+          "stream_element_bits": 8,
+          "valid": true
+        },
+        {
+          "axi_data_width_bits": 512,
+          "lane_payload_bits": 256,
+          "lanes": 8,
+          "stream_element_bits": 32,
+          "valid": true
+        },
+        {
+          "axi_data_width_bits": 512,
+          "lane_payload_bits": 128,
+          "lanes": 16,
+          "stream_element_bits": 8,
+          "valid": true
+        },
+        {
+          "axi_data_width_bits": 512,
+          "lane_payload_bits": 512,
+          "lanes": 16,
+          "stream_element_bits": 32,
+          "valid": true
+        }
+      ],
+      "valid_lane_compute_array_tuples": [
+        {
+          "compute_array": {
+            "cols": 4,
+            "rows": 4
+          },
+          "lanes": 8
+        },
+        {
+          "compute_array": {
+            "cols": 8,
+            "rows": 4
+          },
+          "lanes": 8
+        },
+        {
+          "compute_array": {
+            "cols": 16,
+            "rows": 4
+          },
+          "lanes": 8
+        },
+        {
+          "compute_array": {
+            "cols": 32,
+            "rows": 4
+          },
+          "lanes": 8
+        },
+        {
+          "compute_array": {
+            "cols": 4,
+            "rows": 8
+          },
+          "lanes": 8
+        },
+        {
+          "compute_array": {
+            "cols": 8,
+            "rows": 8
+          },
+          "lanes": 8
+        },
+        {
+          "compute_array": {
+            "cols": 16,
+            "rows": 8
+          },
+          "lanes": 8
+        },
+        {
+          "compute_array": {
+            "cols": 32,
+            "rows": 8
+          },
+          "lanes": 8
+        },
+        {
+          "compute_array": {
+            "cols": 4,
+            "rows": 4
+          },
+          "lanes": 16
+        },
+        {
+          "compute_array": {
+            "cols": 8,
+            "rows": 4
+          },
+          "lanes": 16
+        },
+        {
+          "compute_array": {
+            "cols": 16,
+            "rows": 4
+          },
+          "lanes": 16
+        },
+        {
+          "compute_array": {
+            "cols": 32,
+            "rows": 4
+          },
+          "lanes": 16
+        },
+        {
+          "compute_array": {
+            "cols": 4,
+            "rows": 8
+          },
+          "lanes": 16
+        },
+        {
+          "compute_array": {
+            "cols": 8,
+            "rows": 8
+          },
+          "lanes": 16
+        },
+        {
+          "compute_array": {
+            "cols": 16,
+            "rows": 8
+          },
+          "lanes": 16
+        },
+        {
+          "compute_array": {
+            "cols": 32,
+            "rows": 8
+          },
+          "lanes": 16
+        },
+        {
+          "compute_array": {
+            "cols": 4,
+            "rows": 16
+          },
+          "lanes": 16
+        },
+        {
+          "compute_array": {
+            "cols": 8,
+            "rows": 16
+          },
+          "lanes": 16
+        },
+        {
+          "compute_array": {
+            "cols": 16,
+            "rows": 16
+          },
+          "lanes": 16
+        },
+        {
+          "compute_array": {
+            "cols": 32,
+            "rows": 16
+          },
+          "lanes": 16
+        }
+      ]
+    },
+    "explicit_task_qor_targets": {
+      "power_report_required": false,
+      "source": "task_spec"
+    },
+    "fixed_hardware_bindings": {
+      "accumulator_bits": 32,
+      "activation_bits": 8,
+      "board_axi_addr_width_bits": 37,
+      "board_axi_clock": "c0_ddr4_s_axi_clk",
+      "board_axi_data_width_bits": 512,
+      "board_axi_id_width_bits": 4,
+      "board_axi_interface": "c0_ddr4_s_axi_*",
+      "board_axi_reset": "c0_ddr4_s_axi_rst_n",
+      "board_axi_wstrb_width_bits": 64,
+      "control_base": "0x3000000000",
+      "ddr_base": "0x2800000000",
+      "ddr_channel_name": "c0",
+      "ddr_channels": 1,
+      "floating_point_ip": false,
+      "integer_mode": true,
+      "memory_type": "DDR4",
+      "numeric_mode": "integer_fixed_point",
+      "output_address": "0x28092f1000",
+      "physical_arithmetic": "integer/fixed-point DSP MACs",
+      "physical_memories": "XPM BRAM/URAM only; reject software arithmetic and ideal-memory backends",
+      "weight_bits": 4
+    },
+    "physical_weight_layout_policy": {
+      "explicit_physical_weight_layout_candidates_supplied": false,
+      "stage_4_action": "Derive the complete all-URAM baseline from the model-semantic weight-storage terms in the current semantic contract."
+    }
+  },
+  "sources": {
+    "explicit_task_qor_targets": {
+      "source": "supplied explicit_task_qor_targets"
+    },
+    "framework_physical_domain_seed": {
+      "read_only_topology_evidence": true,
+      "source": "supplied framework_physical_domain_seed"
+    },
+    "model_config": {
+      "model_dir": "/home/remote/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots/dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+      "model_type": "gemma3_text",
+      "source": "supplied model_config agent output, extracted from model_config.json"
+    },
+    "numeric_policy": {
+      "policy_id": "current_run_numeric_policy",
+      "source": "supplied numeric_policy"
+    },
+    "semantic_stream_contract": {
+      "source": "supplied semantic_stream_contract"
+    },
+    "stream_packing_contract": {
+      "axi_data_width_bits": 512,
+      "binding": "deterministic_semantic_stream_contract",
+      "required_numeric_roles": [
+        "accumulator",
+        "activation"
+      ],
+      "required_stream_bits": [
+        8,
+        32
+      ]
+    },
+    "target_board_profile": {
+      "board_name": "MIMIC Computer v6.0",
+      "fpga_part": "xcvu9p_CIV-flgb2104-2-i",
+      "source": "supplied target_board_profile"
+    },
+    "task_qor_targets": {
+      "binding": "deterministic_user_constraint",
+      "source": "task_spec",
+      "values": {
+        "power_report_required": false,
+        "source": "task_spec"
+      }
+    },
+    "template_library": {
+      "library_id": "spatialaccagent_chisel_templates_v0",
+      "source": "supplied template_metadata_summary"
+    }
+  },
+  "status": "ready_for_candidate_generation_with_numeric_contract_gaps"
+}

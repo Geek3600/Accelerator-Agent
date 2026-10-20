@@ -52,8 +52,10 @@ def _field(row: dict[str, Any], *names: str) -> Any:
 def _normal_tuple(row: dict[str, Any], index: int) -> dict[str, int]:
     array = row.get("compute_array") if isinstance(row.get("compute_array"), dict) else {}
     lanes = _positive(row.get("lanes"))
-    rows = _positive(_field(array, "rows"))
-    cols = _positive(_field(array, "cols"))
+    rows_raw = array["rows"] if "rows" in array else row.get("compute_array_rows")
+    cols_raw = array["cols"] if "cols" in array else row.get("compute_array_cols")
+    rows = _positive(rows_raw)
+    cols = _positive(cols_raw)
     fifo_depth = _positive(_field(row, "fifo_depth", "physical_fifo_depth_entries", "physical_fifo_depth"))
     activation_banks = _positive(_field(row, "activation_banks", "activation_bank_count"))
     missing = [
@@ -69,7 +71,7 @@ def _normal_tuple(row: dict[str, Any], index: int) -> dict[str, int]:
     ]
     if missing:
         raise ValueError(f"physical DSE tuple {index} is missing {missing}")
-    if rows > lanes or cols > lanes or lanes % rows or lanes % cols or cols & (cols - 1):
+    if rows > lanes or lanes % rows or (lanes % cols if cols <= lanes else cols % lanes) or cols & (cols - 1):
         raise ValueError(
             f"physical DSE tuple {index} has illegal PE array {rows}x{cols} for lanes={lanes}"
         )
@@ -86,6 +88,15 @@ def _candidate_universe_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
     universe = search.get("candidate_universe")
     if not isinstance(universe, dict):
         return []
+    if isinstance(universe.get("physical_axes"), dict) and isinstance(universe.get("legal_tuples"), list):
+        # Preserve explicitly correlated PE tuples while taking only the
+        # independently declared FIFO/bank axes from the same universe.
+        axes = universe["physical_axes"]
+        return _candidate_universe_tuples({"candidate_universe": {
+            "compute_array": {"legal_compute_array_tuples": universe["legal_tuples"]},
+            "physical_fifo_depth": axes.get("physical_fifo_depth"),
+            "activation_bank_count": axes.get("activation_bank_count"),
+        }})
 
     array = universe.get("compute_array") if isinstance(universe.get("compute_array"), dict) else {}
     declared = array.get("legal_compute_array_tuples")
@@ -111,8 +122,8 @@ def _candidate_universe_tuples(search: dict[str, Any]) -> list[dict[str, int]]:
             if not isinstance(raw, dict):
                 raise ValueError(f"candidate_universe legal_compute_array_tuples[{index}] must be an object")
             lanes = _positive(raw.get("lanes"))
-            rows = _positive(raw.get("rows"))
-            cols = _positive(raw.get("cols"))
+            rows = _positive(_field(raw, "rows", "compute_array_rows"))
+            cols = _positive(_field(raw, "cols", "compute_array_cols"))
             if lanes is None or rows is None or cols is None:
                 raise ValueError(f"candidate_universe legal_compute_array_tuples[{index}] is incomplete")
             for fifo_depth, activation_banks in product(fifo_values, activation_values):
@@ -278,6 +289,9 @@ def _dimension_tuples(dimensions: dict[str, Any], name: str) -> list[dict[str, i
     if not isinstance(shapes, list) and isinstance(raw_arrays, dict):
         shape_name = "legal_row_col_pairs"
         shapes = raw_arrays.get(shape_name)
+    if not isinstance(shapes, list) and isinstance(raw_arrays, dict):
+        shape_name = "legal_lane_row_col_tuples"
+        shapes = raw_arrays.get(shape_name)
     if not isinstance(shapes, list):
         shapes = []
     if not all((lanes_values, fifo_values, activation_values, shapes)):
@@ -294,8 +308,14 @@ def _dimension_tuples(dimensions: dict[str, Any], name: str) -> list[dict[str, i
             raise ValueError(f"{name} compute_array.{shape_name}[{index}] is malformed")
         if rows is None or cols is None:
             raise ValueError(f"{name} compute_array.{shape_name}[{index}] is incomplete")
+        shape_lanes = lanes_values
+        if shape_name == "legal_lane_row_col_tuples":
+            declared_lane = _positive(raw.get("lanes")) if isinstance(raw, dict) else None
+            if declared_lane not in lanes_values:
+                raise ValueError(f"{name} compute_array.{shape_name}[{index}] has an undeclared lane")
+            shape_lanes = [declared_lane]
         for lanes, fifo_depth, activation_banks in product(
-            lanes_values, fifo_values, activation_values
+            shape_lanes, fifo_values, activation_values
         ):
             try:
                 tuples.append(

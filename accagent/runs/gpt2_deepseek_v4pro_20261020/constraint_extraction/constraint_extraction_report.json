@@ -1,0 +1,633 @@
+{
+  "design_team": {
+    "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/team_aggregate.json",
+    "approval_required_for": [
+      "Any board DDR/AXI/memory/runtime constraint or deployment-evidence binding modification found ambiguous by static checks",
+      "Any bounded graph addition or modification to architecture/design-space constraints found missing by static checks",
+      "Any numeric-policy or parameter-binding constraint modification found missing by static checks",
+      "minimal model/shape graph node and edge additions"
+    ],
+    "completed_subtasks": 4,
+    "decomposer_error": null,
+    "decomposer_used_fallback": false,
+    "decomposition_source": "llm",
+    "errors": [],
+    "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/event_log.jsonl",
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.candidate.candidate_design_graph_summary",
+          "artifact.candidate.prepared_inputs_manifest",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.field_evidence",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary",
+          "constraint.source.materials",
+          "constraint.source.evidence",
+          "constraint.tool.profile",
+          "constraint.tool.protocols",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "constraint_extraction.input_evidence_review.run_sacg_static_check",
+        "on_failure": "Block stage handoff and emit a bounded repair/backtrack request listing the specific omitted or dangling material/evidence/tool input references; do not claim input coverage from the compact summary.",
+        "produces": [
+          "constraint_extraction.input_evidence_review_evidence.json"
+        ],
+        "rationale": "The compact candidate graph summary is not sufficient to prove that board materials, quantization materials, sample projects, extracted field evidence, tool profiles, tool availability, and real tool probe results are represented without dangling references. A static SACG check binds the graph to the prepared inputs before peer handoff.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_reference_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_reference_check",
+        "consumes": [
+          "artifact.candidate.candidate_design_graph_summary",
+          "artifact.candidate.prepared_inputs_manifest",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.field_evidence",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "constraint.source.materials",
+          "constraint.source.evidence",
+          "constraint.tool.profile",
+          "constraint.tool.protocols",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "constraint_extraction.input_evidence_review.verify_input_reference_bindings",
+        "on_failure": "Record unresolved references as current-stage handoff blockers and request targeted graph node/edge additions from the model graph engineer, template platform engineer, or constraint graph auditor; do not silently infer missing bindings.",
+        "produces": [
+          "constraint_extraction.input_evidence_review_reference_report.json"
+        ],
+        "rationale": "The role requires verifying that source-material, source-evidence, and tool-profile/protocol constraints are traceable to explicit graph nodes and that real tool availability/probe facts are not dangling. A reference check produces citable evidence for the downstream graph engineers and auditor.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_reference_check",
+          "sacg_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check",
+          "model_config_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "artifact.input.model_config"
+        ],
+        "id": "constraint_extraction.model_graph_engineer.static_model_shape_audit",
+        "on_failure": "Do not pass this review or hand off as complete; record missing or ambiguous model and shape facts as bounded findings and route them to peer reviewers with proposed bounded actions.",
+        "produces": [
+          "constraint_extraction.model_shape_review_evidence.json",
+          "constraint_extraction.model_shape_graph_findings.json"
+        ],
+        "rationale": "The candidate summary only provides aggregate sizes, so the full graph must be statically checked to determine whether model/shape facts are explicit nodes and edges before handoff.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_static_check",
+          "template_binding_static_check",
+          "model_config_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "constraint_extraction.model_shape_review_evidence.json",
+          "constraint_extraction.model_shape_graph_findings.json",
+          "candidate_design_graph_summary"
+        ],
+        "id": "constraint_extraction.model_graph_engineer.propose_minimal_model_shape_edges",
+        "on_failure": "If proposed node or edge names remain ambiguous, block handoff until model_config or case-adapter evidence supports exact terms; do not infer Qwen/OPT-specific core names.",
+        "produces": [
+          "constraint_extraction.model_shape_graph_findings.json"
+        ],
+        "rationale": "If the audit finds that required model/shape facts are absent or only isolated nodes, propose minimal graph node and edge additions while preserving the Transformer-block-only DUT scope.",
+        "requires_approval": true,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_validate",
+          "template_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_policy_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "implementation_package_static"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "prepared_inputs_manifest",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.numeric_policy",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.numeric.policy",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.tool.protocols",
+          "constraint.deployment.board"
+        ],
+        "id": "constraint_extraction.template_platform_static_review",
+        "on_failure": "Do not hand off to constraint_graph_auditor as passed. Record the exact missing or invalid node, edge, or unsupported backend/resource claim, then open a bounded graph-expansion/repair request. Approval is required for any addition or change to architecture/design-space, numeric-policy, or board memory/runtime constraints.",
+        "produces": [
+          "constraint_extraction.template_platform_review_evidence.json"
+        ],
+        "rationale": "The compact candidate graph summary alone is not sufficient evidence that template_library, design_space, numeric_policy, board DDR/AXI/memory/runtime, and tool_protocols are represented as graph constraints without unsupported resource-risk or backend claims. Run the existing static checkers against the full graph and produce the stage handoff evidence.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_policy_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "implementation_package_static"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "prepared_inputs_manifest",
+          "validation_errors",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.design_space",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary"
+        ],
+        "id": "constraint_extraction.run_graph_reference_integrity_checks",
+        "on_failure": "Do not promote candidate_design_graph_summary. Emit the failed invariant list and bounded repair actions scoped to broken graph references, missing cross-layer edges, or human-boundary violations, and route them to constraint_extraction.team_aggregate.",
+        "produces": [
+          "constraint_extraction.design_graph_audit_report.json"
+        ],
+        "rationale": "The compact candidate_design_graph_summary exposes only aggregate counts and an empty validation_errors list. Promotion as shared design state requires checker-bound evidence that every node and edge resolves to a supplied artifact or constraint and that no human-boundary violation is present.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "repair_boundary_check",
+          "human_boundary_check"
+        ],
+        "action_type": "team_aggregate",
+        "consumes": [
+          "constraint_extraction.design_graph_audit_report.json"
+        ],
+        "id": "constraint_extraction.promote_initial_design_graph_after_checks",
+        "on_failure": "Keep next_stage handoff blocked and require a bounded remediation cycle before retrying aggregation.",
+        "produces": [
+          "constraint_extraction.team_aggregate.design_graph_promotion_decision"
+        ],
+        "rationale": "After the reference-integrity and human-boundary checks pass, the audit report can be aggregated into the team handoff state without making architecture, template, memory-layout, or numeric-policy changes.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "execution_groups": [
+      0,
+      1
+    ],
+    "llm_io_metrics": {
+      "executable_action_count": 7,
+      "max_duration_sec": 105.60872719902545,
+      "max_prompt_bytes": 39401,
+      "result_count": 4,
+      "subtasks_without_executable_actions": [],
+      "total_duration_sec": 320.10441386303864,
+      "total_prompt_bytes": 156919
+    },
+    "split_required": true,
+    "status": "ready",
+    "subtask_count": 4,
+    "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/subtask_plan.json",
+    "used_fallback_count": 0
+  },
+  "errors": [],
+  "llm_agent": {
+    "agent": "initial_design_graph_agent",
+    "approval_required_for": [
+      "Any minimal model/shape graph node or edge addition",
+      "Any architecture/design-space constraint addition or modification",
+      "Any numeric-policy, compare-tolerance, or parameter-binding constraint modification",
+      "Any board DDR/AXI/memory/runtime/deployment constraint or evidence binding modification",
+      "Any major template_library/template_metadata binding override outside the already selected template set",
+      "Substituting missing numeric_policy or target_board_profile facts with inferred defaults, generic board names, DUT output, or generated expected values",
+      "Promotion to next stage while unresolved numeric, board, DDR/AXI, runtime, deployment, tool, or sample-project source facts remain open in initial design graph review artifacts"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "sacg_reference_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.candidate.candidate_design_graph_summary",
+          "artifact.candidate.prepared_inputs_manifest",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.field_evidence",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary",
+          "constraint.source.materials",
+          "constraint.source.evidence",
+          "constraint.tool.profile",
+          "constraint.tool.protocols",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "id": "initial_design_graph.review_static_graph_integrity",
+        "on_failure": "Block promotion of candidate_design_graph_summary and emit a bounded repair/backtrack request for each dangling or unresolved node, edge, and artifact reference; do not treat compact validation_errors as checker evidence.",
+        "produces": [
+          "constraint_extraction.initial_design_graph_review_evidence.json",
+          "constraint_extraction.initial_design_graph_open_findings.json"
+        ],
+        "rationale": "The compact candidate graph gives aggregate counts and empty validation_errors but does not enumerate edges or prove that every node/constraint resolves to a supplied artifact. Static and reference checks are required before any peer handoff or promotion.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_validate",
+          "sacg_static_check",
+          "sacg_reference_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "model_config_check",
+          "task_card_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.candidate.candidate_design_graph_summary",
+          "artifact.input.model_config",
+          "artifact.input.task_card",
+          "constraint.model.decoder",
+          "constraint.shape.model"
+        ],
+        "id": "initial_design_graph.review_model_shape_scope",
+        "on_failure": "Do not promote or approve model graph expansion. Record missing or ambiguous model/shape facts as bounded findings and request minimal node/edge additions only with explicit model_config or case-adapter evidence and approval.",
+        "produces": [
+          "constraint_extraction.initial_design_graph_model_shape_review_evidence.json",
+          "constraint_extraction.initial_design_graph_model_shape_findings.json"
+        ],
+        "rationale": "The graph names the decoder-block operators but does not show shape, head, sequence, attention-scale, residual, or operator-order facts. A model/shape audit must confirm those facts and preserve the Transformer-block-only DUT scope.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_static_check",
+          "model_config_check",
+          "task_card_check",
+          "template_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "numeric_policy_check",
+          "addr_map_check",
+          "memory_runtime_plan_check",
+          "parameter_binding_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.candidate.candidate_design_graph_summary",
+          "artifact.candidate.prepared_inputs_manifest",
+          "artifact.input.numeric_policy",
+          "artifact.input.target_board_profile",
+          "artifact.input.field_evidence",
+          "constraint.numeric.policy",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board"
+        ],
+        "id": "initial_design_graph.review_numeric_board_facts",
+        "on_failure": "Do not infer missing precision, quantization, DDR/AXI address map, burst, runtime, or deployment facts. Record each exact missing field as a board_open_risks blocker and route to the toolchain-boundary and SACG-extraction peers; any modification to numeric policy or memory layout requires approval.",
+        "produces": [
+          "constraint_extraction.initial_design_graph_numeric_board_review_evidence.json",
+          "constraint_extraction.initial_design_graph_board_open_risks.json"
+        ],
+        "rationale": "Evidence fields contain detailed numeric-policy and DDR/AXI/runtime/deployment values, but the graph must bind them through registered checkers rather than field-name inference. Missing facts must become open risks, not defaults.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_static_check",
+          "numeric_policy_check",
+          "addr_map_check",
+          "memory_runtime_plan_check",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "repair_boundary_check",
+          "required_real_tool_evidence_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.candidate.candidate_design_graph_summary",
+          "artifact.candidate.prepared_inputs_manifest",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.tool.profile",
+          "constraint.tool.protocols",
+          "constraint.case.adapter",
+          "constraint.human.boundary"
+        ],
+        "id": "initial_design_graph.review_template_tool_human_boundary",
+        "on_failure": "Block stage handoff and record exact unsupported template bindings, tool protocol mismatches, missing real-tool evidence, or human/repair boundary contradictions. Major template or design-space changes require approval.",
+        "produces": [
+          "constraint_extraction.initial_design_graph_template_tool_boundary_review_evidence.json"
+        ],
+        "rationale": "Template library, tool profiles/protocols, case adapter, and human boundary are named constraints, but readiness requires checker-bound evidence that templates cover the selected design, tools are protocol-compatible, and approval/repair boundaries contain forbidden paths.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "tool_protocol_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "artifact_hash_check",
+          "required_real_tool_evidence_check",
+          "sacg_reference_check"
+        ],
+        "action_type": "artifact_identity_verification",
+        "consumes": [
+          "artifact.candidate.prepared_inputs_manifest",
+          "artifact.input.material_index",
+          "artifact.input.sample_project_index",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.case_adapter",
+          "artifact.candidate.candidate_design_graph_summary"
+        ],
+        "id": "initial_design_graph.verify_source_material_and_tool_identity",
+        "on_failure": "Keep source-material and tool identity as not_run/gap. Specifically re-probe the failed sample_project_index row or rows, the zero-count board/quant/tool file bindings, and current VCS/Vivado stage0 evidence; do not pass silently on the warning.",
+        "produces": [
+          "constraint_extraction.initial_design_graph_source_material_trace.json",
+          "constraint_extraction.initial_design_graph_tool_probe_identity.json"
+        ],
+        "rationale": "prepared_inputs warnings show one or more sample_project_index references failed to read, and source_material_counts shows zero board/quant/tool files despite active board, numeric-policy, and tool nodes. Hash-bound identity and current real-tool stage0 evidence must be re-probed before those facts are trusted.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "artifact_hash_check",
+          "required_real_tool_evidence_check",
+          "real_tool_evidence_check",
+          "sacg_reference_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "human_boundary_check",
+          "repair_boundary_check"
+        ],
+        "action_type": "team_aggregate",
+        "consumes": [
+          "constraint_extraction.initial_design_graph_review_evidence.json",
+          "constraint_extraction.initial_design_graph_open_findings.json",
+          "constraint_extraction.initial_design_graph_model_shape_review_evidence.json",
+          "constraint_extraction.initial_design_graph_model_shape_findings.json",
+          "constraint_extraction.initial_design_graph_numeric_board_review_evidence.json",
+          "constraint_extraction.initial_design_graph_board_open_risks.json",
+          "constraint_extraction.initial_design_graph_template_tool_boundary_review_evidence.json",
+          "constraint_extraction.initial_design_graph_source_material_trace.json",
+          "constraint_extraction.initial_design_graph_tool_probe_identity.json",
+          "artifact.candidate.candidate_design_graph_summary",
+          "artifact.candidate.prepared_inputs_manifest"
+        ],
+        "id": "initial_design_graph.aggregate_review_gate",
+        "on_failure": "Keep next-stage handoff blocked, route each failed invariant back to the responsible specialist with the consumed artifact and checker status, and require a bounded remediation cycle before retrying aggregation.",
+        "produces": [
+          "constraint_extraction.initial_design_graph_review_decision.json",
+          "sacg_memory.initial_design_graph_review_lesson"
+        ],
+        "rationale": "After peer static, reference, model/shape, numeric/board, template/tool, and source-identity checks pass, aggregate the checker-bound review evidence into one promotion decision and record open lessons in shared SACG memory.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "team_aggregate",
+          "sacg_memory_update"
+        ]
+      }
+    ],
+    "observations": [
+      "The candidate graph enumerates 20 nodes, including 8 Transformer-decoder-block operators, and 16 named constraints, but reports only 7 edges; the summary does not list edge endpoints, so connectivity and causal operator order are not yet checker-bound.",
+      "validation_errors is empty, but this compact summary is not equivalent to passing sacg_static_check, sacg_reference_check, model_config_check, numeric_policy_check, or boundary checks.",
+      "source_material_counts shows board_files=0, quantization_files=0, and tool_files=0 even though target_board, numeric_policy, and tool_profile/protocols are represented as nodes; this may indicate dangling source-material references rather than absence of the artifact classes.",
+      "sample_project_refs=7 and sample_project_samples=7 are present, but prepared_inputs warnings state that one or more declared sample projects failed to read; this must be resolved with artifact_hash_check and current real project evidence before backend/board discovery consumes the sample project index.",
+      "evidence_fields contain extensive numeric_policy, board DDR/AXI/runtime, and tool fields, including exact VCS/Vivado host and probe fields; these facts still need to be bound through numeric_policy_check, addr_map_check, memory_runtime_plan_check, and tool_protocol_check rather than inferred from field names.",
+      "model node list is Transformer-block scoped with operators layer_norm_1, self_attention, residual_add_1, layer_norm_2, mlp_fc, activation, mlp_proj, residual_add_2; model_config_check and task_card_check are required to verify shape, head, sequence, attention, residual, and operator-order facts and to confirm no embedding, final norm, LM head, or sampling work entered DUT scope.",
+      "tool entities include vcs, verilator, and vivado; VCS/Vivado have stage0_probe_required fields, so required_real_tool_evidence_check must confirm current tool identity/version/compile-link evidence before treating those tools as available.",
+      "node.human_boundary exists and constraint.human.boundary is named; human_boundary_check and repair_boundary_check should verify that approval and forbidden paths prevent silent inference of board or numeric facts.",
+      "sacg_memory_truth is empty, so there are no active contamination barriers, open retry requests, or backtrack requests currently blocking this review; blockers must come only from current checker/evidence gaps.",
+      "The design_team already has 7 constraint_extraction executable actions; this review should sequence those checks and add source-material/tool identity verification rather than duplicate or bypass them."
+    ],
+    "proposed_actions": [
+      "Run sacg_static_check and sacg_reference_check on the full initial graph to enumerate all nodes, edges, dangling references, and constraint-source bindings.",
+      "Run model_config_check and task_card_check to bind Transformer-block-only model/shape facts and identify any missing minimal model graph edges; approval is required before adding those edges.",
+      "Run numeric_policy_check, addr_map_check, memory_runtime_plan_check, and parameter_binding_static_check to bind numeric, DDR/AXI, memory, runtime, and deployment facts; record missing fields as board_open_risks instead of inferring defaults.",
+      "Run template_coverage_check, template_binding_static_check, tool_protocol_check, human_boundary_check, and repair_boundary_check to validate template/tool/human-boundary readiness.",
+      "Perform artifact_hash_check and required_real_tool_evidence_check on material_index, sample_project_index, target_board_profile, VCS, and Vivado stage0 evidence; re-probe the failed sample-project rows.",
+      "Aggregate only checker-verified review outputs into a promotion decision and update sacg_memory with open risks and lessons; keep promotion blocked until all current-stage checks pass."
+    ],
+    "risks": [
+      "Dangling source-material references: board_files=0, quantization_files=0, and tool_files=0 may leave target_board, numeric_policy, and tool constraints disconnected from concrete material_index/sample_project_index artifacts.",
+      "Model/shape underconstraint: only 7 edges for 20 nodes risks missing model shape parameters, operator-order edges, attention scale, head/projection binding, or residual/consumer paths while still appearing as named operation nodes.",
+      "Numeric policy mismatch: the candidate graph includes w4a8/integer and fallback fields, but without numeric_policy_check and parameter_binding_static_check, code generation may later bind inconsistent dtype/scale/rounding/saturation facts.",
+      "Board DDR/AXI/runtime ambiguity: target_board is a single node while memory, runtime, and deployment constraints are separate; addr_map_check and memory_runtime_plan_check must confirm DDR base, AXI widths, protocol, runtime image, and real sample-project references are explicitly bound.",
+      "Unresolved sample_project_index warning: downstream backend/app-shell target discovery may guess board or sample-project names if the failed sample-project reference is not re-probed.",
+      "Tool evidence gap: VCS and Vivado stage0 probes are required, but the compact summary does not prove real host/version/compile-link evidence exists; later compile-only acceptance could be blocked by an unavailable tool.",
+      "Human/repair boundary violation risk: if human_boundary_check or repair_boundary_check does not run, peer agents might infer missing numeric, board, or template facts and silently cross approval boundaries.",
+      "Over-promotion risk: empty validation_errors could be mistaken for correctness; promoting this graph before checker evidence would contaminate downstream architecture and implementation stages."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.candidate.candidate_design_graph_summary",
+        "artifact.candidate.prepared_inputs_manifest",
+        "artifact.input.model_config",
+        "artifact.input.task_card",
+        "artifact.input.numeric_policy",
+        "artifact.input.target_board_profile",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary",
+        "artifact.input.material_index",
+        "artifact.input.sample_project_index",
+        "artifact.input.field_evidence",
+        "constraint_extraction.initial_design_graph_review_evidence.json",
+        "constraint_extraction.initial_design_graph_open_findings.json",
+        "constraint_extraction.initial_design_graph_model_shape_findings.json",
+        "constraint_extraction.initial_design_graph_board_open_risks.json"
+      ],
+      "constraints": [
+        "constraint.source.materials",
+        "constraint.source.evidence",
+        "constraint.task.goal",
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.case.adapter",
+        "constraint.human.boundary",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "edge.inventory: candidate graph reports num_edges=7 but does not enumerate them",
+        "edge.model->node.model_op.00_layer_norm_1",
+        "edge.node.model_op.07_residual_add_2->next decoder block (Transformer-block scope only)",
+        "edge.node.input_materials->constraint.source.materials",
+        "edge.node.target_board->constraint.memory.board/runtime.board/deployment.board",
+        "edge.node.numeric_policy->constraint.numeric.policy",
+        "edge.node.template_library->node.model_op bindings",
+        "edge.node.tool_profile/tool_protocols->constraint.tool.profile/protocols"
+      ],
+      "nodes": [
+        "node.input_materials",
+        "node.input_evidence",
+        "node.task",
+        "node.model",
+        "node.numeric_policy",
+        "node.template_library",
+        "node.design_space",
+        "node.target_board",
+        "node.tool_profile",
+        "node.tool_protocols",
+        "node.case_adapter",
+        "node.human_boundary",
+        "node.model_op.00_layer_norm_1",
+        "node.model_op.01_self_attention",
+        "node.model_op.02_residual_add_1",
+        "node.model_op.03_layer_norm_2",
+        "node.model_op.04_mlp_fc",
+        "node.model_op.05_activation",
+        "node.model_op.06_mlp_proj",
+        "node.model_op.07_residual_add_2"
+      ]
+    },
+    "schema_version": "spatialaccagent.initial_design_graph_review.v0",
+    "stage": "constraint_extraction",
+    "status": "needs_review",
+    "summary": "The candidate initial design graph declares 20 nodes, 16 constraints, and only 7 edges. The compact summary is not sufficient to prove reference integrity, model/shape binding, numeric/board DDR-AXI binding, template/tool protocol alignment, or human-boundary safety. Run targeted static, reference, numeric/board, tool/template, and source-identity checks before promotion; do not infer missing facts from aggregate counts or empty validation_errors."
+  },
+  "num_constraints": 16,
+  "num_edges": 7,
+  "num_nodes": 20,
+  "outputs": {
+    "initial_design_graph": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/initial_design_graph.json",
+    "llm_agent": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/llm/initial_design_graph_agent_result.json",
+    "team_aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/team_aggregate.json",
+    "team_subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/subtask_plan.json"
+  },
+  "prepared_inputs": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/input/prepared_inputs.json",
+  "schema_version": "spatialaccagent.constraint_extraction_report.v0",
+  "stage": "constraint_extraction",
+  "status": "ready"
+}

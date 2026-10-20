@@ -5,6 +5,7 @@ import chisel3.experimental.{ExtModule, IntParam, StringParam}
 import chisel3.util._
 
 object PhysicalImplementation {
+  private var computeBackend = "vivado_fp_ip"
   private var activationMemoryBackend = "xpm_bram"
   private var fifoMemoryBackend = "xpm_bram"
   private var largeCacheMemoryBackend = "xpm_uram"
@@ -12,6 +13,65 @@ object PhysicalImplementation {
   private var weightBankCount = 1
   private var activationBankCount = 1
   private var weightBanksByRole = Map.empty[String, Int]
+  private var cacheTileWordsOverride = 0
+  private var cacheTileCountOverride = 0
+  private var refillDataWidthOverride = 0
+  private var crossTokenReuseOverride = 0
+  private var numericPolicyConfigured = false
+  private var numericWeightBits = 0
+  private var numericActivationBits = 0
+  private var numericAccumulatorBits = 0
+  private var numericScaleBits = 0
+  private var numericScaleShift = 0
+  private var numericRounding = ""
+  private var numericSaturation = false
+
+  def isIntegerDspBackend: Boolean = computeBackend == "integer_dsp"
+
+  /** Bind independent operand, accumulator, and fixed-point scale policy.
+    * Integer operators in this source set consume signed W4A8/INT32 and
+    * unsigned Q31 scale multipliers with nearest-even rounding/saturation.
+    */
+  def configureNumericPolicy(
+    weightBits: Int,
+    activationBits: Int,
+    accumulatorBits: Int,
+    scaleBits: Int,
+    scaleShift: Int,
+    rounding: String,
+    saturation: Boolean
+  ): Unit = {
+    require(weightBits > 0 && activationBits > 0 && accumulatorBits > 0 && scaleBits > 0,
+      "numeric operand and scale widths must be positive")
+    require(scaleShift >= 0 && scaleShift < scaleBits, "fixed-point scale shift must fit the scale width")
+    numericWeightBits = weightBits
+    numericActivationBits = activationBits
+    numericAccumulatorBits = accumulatorBits
+    numericScaleBits = scaleBits
+    numericScaleShift = scaleShift
+    numericRounding = rounding
+    numericSaturation = saturation
+    numericPolicyConfigured = true
+  }
+
+  def isSupportedRefillDataWidth(widthBits: Int): Boolean =
+    widthBits >= 64 && widthBits % 32 == 0 && (widthBits & (widthBits - 1)) == 0
+
+  def configureRefillDataWidth(widthBits: Int): Unit = {
+    require(isSupportedRefillDataWidth(widthBits), s"production refill width must be a physically supported full-beat payload, got: $widthBits")
+    refillDataWidthOverride = widthBits
+  }
+
+  def configureCrossTokenReuse(tokens: Int): Unit = {
+    require(tokens > 0, s"cross-token reuse count must be positive, got: $tokens")
+    crossTokenReuseOverride = tokens
+  }
+
+  def resolveRefillDataWidthBits(default: Int): Int =
+    if (refillDataWidthOverride > 0) refillDataWidthOverride else default
+
+  def resolveCrossTokenReuseTokens(default: Int): Int =
+    if (crossTokenReuseOverride > 0) crossTokenReuseOverride else default
 
   def configureFpgaIp(
     computeBackend: String,
@@ -22,9 +82,16 @@ object PhysicalImplementation {
     fifoDepth: Int,
     weightBanks: Int,
     activationBanks: Int,
-    roleWeightBanks: Map[String, Int]
+    roleWeightBanks: Map[String, Int],
+    cacheTileWords: Int = 256,
+    cacheTileCount: Int = 2,
+    refillDataWidthBits: Int = 0,
+    crossTokenReuseTokens: Int = 0
   ): Unit = {
-    require(computeBackend == "vivado_fp_ip", s"unsupported compute backend: $computeBackend")
+    require(
+      computeBackend == "vivado_fp_ip" || computeBackend == "integer_dsp",
+      s"unsupported compute backend: $computeBackend"
+    )
     require(weightMemory == "xpm_uram", s"weights must use XPM URAM, got: $weightMemory")
     require(activationMemory == "xpm_bram", s"activations must use XPM BRAM, got: $activationMemory")
     require(fifoMemory == "xpm_bram", s"FIFOs must use XPM BRAM, got: $fifoMemory")
@@ -32,7 +99,31 @@ object PhysicalImplementation {
     require(fifoDepth > 0, s"FIFO depth must be positive, got: $fifoDepth")
     require(weightBanks > 0, s"weight bank count must be positive, got: $weightBanks")
     require(activationBanks > 0, s"activation bank count must be positive, got: $activationBanks")
+    require(cacheTileWords > 0, s"cache tile word capacity must be positive, got: $cacheTileWords")
+    require(cacheTileCount > 0, s"cache tile count must be positive, got: $cacheTileCount")
+    if (refillDataWidthBits > 0) {
+      require(isSupportedRefillDataWidth(refillDataWidthBits), s"wide refill width must be a physically supported full-beat payload, got: $refillDataWidthBits")
+      configureRefillDataWidth(refillDataWidthBits)
+    }
+    if (crossTokenReuseTokens > 0) configureCrossTokenReuse(crossTokenReuseTokens)
     require(roleWeightBanks.values.forall(_ > 0), s"role weight-bank counts must be positive: $roleWeightBanks")
+    if (computeBackend == "integer_dsp") {
+      require(
+        numericPolicyConfigured,
+        "integer_dsp requires independent weight/activation/accumulator/scale numeric policy binding"
+      )
+    }
+    this.computeBackend = computeBackend
+    if (computeBackend == "integer_dsp") {
+      require(
+        (numericWeightBits, numericActivationBits, numericAccumulatorBits) == (4, 8, 32),
+        "integer_dsp requires signed INT4 matrix weights, signed INT8 activations, and signed INT32 accumulators"
+      )
+      require(numericScaleBits == 32 && numericScaleShift == 31,
+        "integer_dsp currently requires the declared unsigned INT32 Q31 scale contract")
+      require(numericRounding == "nearest_even" && numericSaturation,
+        "integer_dsp requires nearest-even rounding and saturating requantization")
+    }
     activationMemoryBackend = activationMemory
     fifoMemoryBackend = fifoMemory
     largeCacheMemoryBackend = largeCacheMemory
@@ -40,13 +131,16 @@ object PhysicalImplementation {
     weightBankCount = weightBanks
     activationBankCount = activationBanks
     weightBanksByRole = roleWeightBanks
+    cacheTileWordsOverride = cacheTileWords
+    cacheTileCountOverride = cacheTileCount
   }
 
   // Compatibility entrypoints for already-materialized harnesses. Both
   // paths resolve to the same physical Vivado/XPM configuration; there is no
   // behavioral or HardFloat backend behind these adapters.
   def setSimulation(): Unit = configureFpgaIp(
-    "vivado_fp_ip", "xpm_uram", "xpm_bram", "xpm_bram", "xpm_uram", 1, 1, 1, Map.empty
+    "vivado_fp_ip", "xpm_uram", "xpm_bram", "xpm_bram", "xpm_uram", 1, 1, 1, Map.empty,
+    refillDataWidthBits = 512, crossTokenReuseTokens = 16
   )
 
   def setVivado(
@@ -70,6 +164,12 @@ object PhysicalImplementation {
     require(requested > 0, s"requested FIFO depth must be positive, got: $requested")
     if (fifoDepthOverride > 0) requested max fifoDepthOverride else requested
   }
+
+  def resolveCacheTileWords(default: Int): Int =
+    if (cacheTileWordsOverride > 0) cacheTileWordsOverride else default
+
+  def resolveCacheTileCount(default: Int): Int =
+    if (cacheTileCountOverride > 0) cacheTileCountOverride else default
 
   def memoryBanks(role: String): Int = role match {
     case value if value == "weight" || value.startsWith("weight_") =>
@@ -109,6 +209,7 @@ private class VivadoFpBinary(moduleName: String, resultWidth: Int = 32) extends 
   val s_axis_b_tready = IO(Output(Bool()))
   val s_axis_b_tdata = IO(Input(UInt(32.W)))
   val m_axis_result_tvalid = IO(Output(Bool()))
+  val m_axis_result_tready = IO(Input(Bool()))
   val m_axis_result_tdata = IO(Output(UInt(resultWidth.W)))
 }
 
@@ -119,6 +220,7 @@ private class VivadoFpUnary(moduleName: String, inputWidth: Int, resultWidth: In
   val s_axis_a_tready = IO(Output(Bool()))
   val s_axis_a_tdata = IO(Input(UInt(inputWidth.W)))
   val m_axis_result_tvalid = IO(Output(Bool()))
+  val m_axis_result_tready = IO(Input(Bool()))
   val m_axis_result_tdata = IO(Output(UInt(resultWidth.W)))
 }
 
@@ -129,6 +231,7 @@ private class VivadoFpIntToFloat(moduleName: String, inputWidth: Int) extends Ex
   val s_axis_a_tready = IO(Output(Bool()))
   val s_axis_a_tdata = IO(Input(UInt(inputWidth.W)))
   val m_axis_result_tvalid = IO(Output(Bool()))
+  val m_axis_result_tready = IO(Input(Bool()))
   val m_axis_result_tdata = IO(Output(UInt(32.W)))
 }
 
@@ -139,6 +242,7 @@ private class VivadoFpFloatToInt(moduleName: String, outputWidth: Int) extends E
   val s_axis_a_tready = IO(Output(Bool()))
   val s_axis_a_tdata = IO(Input(UInt(32.W)))
   val m_axis_result_tvalid = IO(Output(Bool()))
+  val m_axis_result_tready = IO(Input(Bool()))
   val m_axis_result_tdata = IO(Output(UInt(outputWidth.W)))
 }
 
@@ -154,12 +258,12 @@ class PhysicalFp32Binary(moduleName: String, resultWidth: Int = 32) extends Modu
 
   private val ip = Module(new VivadoFpBinary(moduleName, resultWidth))
   private val ready = ip.s_axis_a_tready && ip.s_axis_b_tready
-  private val fire = io.inValid && ready
   ip.aclk := clock
-  ip.s_axis_a_tvalid := fire
+  ip.s_axis_a_tvalid := io.inValid
   ip.s_axis_a_tdata := io.a
-  ip.s_axis_b_tvalid := fire
+  ip.s_axis_b_tvalid := io.inValid
   ip.s_axis_b_tdata := io.b
+  ip.m_axis_result_tready := true.B
   io.inReady := ready
   io.outValid := ip.m_axis_result_tvalid
   io.out := ip.m_axis_result_tdata
@@ -170,6 +274,156 @@ class PhysicalFp32Sub extends PhysicalFp32Binary("fp_sub_sp_12")
 class PhysicalFp32Mul extends PhysicalFp32Binary("fp_mul_sp_9")
 class PhysicalFp32Div extends PhysicalFp32Binary("fp_div_sp_29")
 class PhysicalFp32CompareLt extends PhysicalFp32Binary("fp_cmp_lt_sp_3", 8)
+
+class TaggedFp32Result(tagBits: Int) extends Bundle {
+  val value = UInt(32.W)
+  val tag = UInt(tagBits.W)
+}
+
+class PhysicalTaggedFp32Binary(moduleName: String, tagBits: Int, latency: Int) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(new Bundle {
+      val a = UInt(32.W)
+      val b = UInt(32.W)
+      val tag = UInt(tagBits.W)
+    }))
+    val out = Decoupled(new TaggedFp32Result(tagBits))
+  })
+
+  private val capacity = latency + 4
+  private val pointerBits = log2Ceil(capacity)
+  private val tags = Reg(Vec(capacity, UInt(tagBits.W)))
+  private val writePtr = RegInit(0.U(pointerBits.W))
+  private val readPtr = RegInit(0.U(pointerBits.W))
+  private val count = RegInit(0.U(log2Ceil(capacity + 1).W))
+  private val aSent = RegInit(false.B)
+  private val bSent = RegInit(false.B)
+  private val ip = Module(new VivadoFpBinary(moduleName))
+  private val space = count =/= capacity.U
+
+  ip.aclk := clock
+  ip.s_axis_a_tvalid := io.in.valid && space && !aSent
+  ip.s_axis_b_tvalid := io.in.valid && space && !bSent
+  ip.s_axis_a_tdata := io.in.bits.a
+  ip.s_axis_b_tdata := io.in.bits.b
+  io.in.ready := space && (aSent || ip.s_axis_a_tready) && (bSent || ip.s_axis_b_tready)
+  io.out.valid := ip.m_axis_result_tvalid && count =/= 0.U
+  io.out.bits.value := ip.m_axis_result_tdata
+  io.out.bits.tag := tags(readPtr)
+  ip.m_axis_result_tready := io.out.ready && count =/= 0.U
+
+  when(io.in.fire) {
+    tags(writePtr) := io.in.bits.tag
+    writePtr := Mux(writePtr === (capacity - 1).U, 0.U, writePtr + 1.U)
+    aSent := false.B
+    bSent := false.B
+  }.otherwise {
+    when(ip.s_axis_a_tvalid && ip.s_axis_a_tready) { aSent := true.B }
+    when(ip.s_axis_b_tvalid && ip.s_axis_b_tready) { bSent := true.B }
+  }
+  when(io.out.fire) {
+    readPtr := Mux(readPtr === (capacity - 1).U, 0.U, readPtr + 1.U)
+  }
+  when(io.in.fire =/= io.out.fire) {
+    count := Mux(io.in.fire, count + 1.U, count - 1.U)
+  }
+}
+
+class PhysicalFp32MulPipeline(tagBits: Int)
+    extends PhysicalTaggedFp32Binary("fp_mul_sp_9", tagBits, PhysicalFpLatency.Mul)
+
+class PhysicalFp32AddPipeline(tagBits: Int)
+    extends PhysicalTaggedFp32Binary("fp_add_sp_12", tagBits, PhysicalFpLatency.Add)
+
+/** Linear arithmetic selector. The integer elaboration creates no FP IP: it
+  * performs signed two's-complement multiplication and a one-stage elastic
+  * register; the legacy floating-point policy retains its Vivado IP pipeline.
+  */
+class PhysicalLinearMul(
+  integerMode: Boolean,
+  tagBits: Int,
+  activationBits: Int = 32,
+  weightBits: Int = 32
+) extends Module {
+  require(activationBits > 0 && activationBits <= 32, "integer MAC activation width must be in 1..32")
+  require(weightBits > 0 && weightBits <= 32, "integer MAC weight width must be in 1..32")
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(new Bundle {
+      val a = UInt(32.W)
+      val b = UInt(32.W)
+      val tag = UInt(tagBits.W)
+    }))
+    val out = Decoupled(new TaggedFp32Result(tagBits))
+  })
+
+  if (integerMode) {
+    val valid = RegInit(false.B)
+    val value = Reg(UInt(32.W))
+    val tag = Reg(UInt(tagBits.W))
+    io.in.ready := !valid || io.out.ready
+    io.out.valid := valid
+    io.out.bits.value := value
+    io.out.bits.tag := tag
+    when(io.in.ready) { valid := io.in.valid }
+    when(io.in.fire) {
+      // Slice before multiplication so signed W4A8 elaborates as a real
+      // 4x8-bit product rather than a 32x32-bit multiply with sign-extended
+      // operands. The signed product is then extended into the INT32 MAC path.
+      val activation = io.in.bits.a(activationBits - 1, 0).asSInt
+      val weight = io.in.bits.b(weightBits - 1, 0).asSInt
+      val product = activation * weight
+      value := AccMath.resizeSignedToUInt(product, 32)
+      tag := io.in.bits.tag
+    }
+  } else {
+    val fp = Module(new PhysicalFp32MulPipeline(tagBits))
+    fp.io.in.valid := io.in.valid
+    fp.io.in.bits.a := io.in.bits.a
+    fp.io.in.bits.b := io.in.bits.b
+    fp.io.in.bits.tag := io.in.bits.tag
+    io.in.ready := fp.io.in.ready
+    io.out.valid := fp.io.out.valid
+    io.out.bits := fp.io.out.bits
+    fp.io.out.ready := io.out.ready
+  }
+}
+
+/** Matching policy selector for Linear's dot-product tree and accumulator. */
+class PhysicalLinearAdd(integerMode: Boolean, tagBits: Int) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(new Bundle {
+      val a = UInt(32.W)
+      val b = UInt(32.W)
+      val tag = UInt(tagBits.W)
+    }))
+    val out = Decoupled(new TaggedFp32Result(tagBits))
+  })
+
+  if (integerMode) {
+    val valid = RegInit(false.B)
+    val value = Reg(UInt(32.W))
+    val tag = Reg(UInt(tagBits.W))
+    io.in.ready := !valid || io.out.ready
+    io.out.valid := valid
+    io.out.bits.value := value
+    io.out.bits.tag := tag
+    when(io.in.ready) { valid := io.in.valid }
+    when(io.in.fire) {
+      value := io.in.bits.a +& io.in.bits.b
+      tag := io.in.bits.tag
+    }
+  } else {
+    val fp = Module(new PhysicalFp32AddPipeline(tagBits))
+    fp.io.in.valid := io.in.valid
+    fp.io.in.bits.a := io.in.bits.a
+    fp.io.in.bits.b := io.in.bits.b
+    fp.io.in.bits.tag := io.in.bits.tag
+    io.in.ready := fp.io.in.ready
+    io.out.valid := fp.io.out.valid
+    io.out.bits := fp.io.out.bits
+    fp.io.out.ready := io.out.ready
+  }
+}
 
 class PhysicalFp32Sqrt extends Module {
   val io = IO(new Bundle {
@@ -182,8 +436,9 @@ class PhysicalFp32Sqrt extends Module {
 
   private val ip = Module(new VivadoFpUnary("fp_sqrt_sp_29", 32, 32))
   ip.aclk := clock
-  ip.s_axis_a_tvalid := io.inValid && ip.s_axis_a_tready
+  ip.s_axis_a_tvalid := io.inValid
   ip.s_axis_a_tdata := io.in
+  ip.m_axis_result_tready := true.B
   io.inReady := ip.s_axis_a_tready
   io.outValid := ip.m_axis_result_tvalid
   io.out := ip.m_axis_result_tdata
@@ -284,8 +539,9 @@ class PhysicalFp32ToSigned(width: Int) extends Module {
   })
   private val ip = Module(new VivadoFpFloatToInt(s"fp_f2i_s${width}_sp_7", width))
   ip.aclk := clock
-  ip.s_axis_a_tvalid := io.inValid && ip.s_axis_a_tready
+  ip.s_axis_a_tvalid := io.inValid
   ip.s_axis_a_tdata := io.in
+  ip.m_axis_result_tready := true.B
   io.inReady := ip.s_axis_a_tready
   io.outValid := ip.m_axis_result_tvalid
   io.out := ip.m_axis_result_tdata.asSInt
@@ -302,8 +558,9 @@ class PhysicalUIntToFp32(width: Int) extends Module {
   })
   private val ip = Module(new VivadoFpIntToFloat(s"fp_i2f_u${width}_sp_7", width))
   ip.aclk := clock
-  ip.s_axis_a_tvalid := io.inValid && ip.s_axis_a_tready
+  ip.s_axis_a_tvalid := io.inValid
   ip.s_axis_a_tdata := io.in
+  ip.m_axis_result_tready := true.B
   io.inReady := ip.s_axis_a_tready
   io.outValid := ip.m_axis_result_tvalid
   io.out := ip.m_axis_result_tdata
@@ -320,8 +577,9 @@ class PhysicalSignedToFp32(width: Int) extends Module {
   })
   private val ip = Module(new VivadoFpIntToFloat(s"fp_i2f_s${width}_sp_7", width))
   ip.aclk := clock
-  ip.s_axis_a_tvalid := io.inValid && ip.s_axis_a_tready
+  ip.s_axis_a_tvalid := io.inValid
   ip.s_axis_a_tdata := io.in.asUInt
+  ip.m_axis_result_tready := true.B
   io.inReady := ip.s_axis_a_tready
   io.outValid := ip.m_axis_result_tvalid
   io.out := ip.m_axis_result_tdata

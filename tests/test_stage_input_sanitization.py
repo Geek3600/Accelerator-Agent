@@ -8,9 +8,11 @@ from accagent.framework import stage_input
 from accagent.framework.stage_input import (
     bind_task_qor_targets,
     bind_discovered_board_resource_budget,
+    canonical_tool_role,
     design_space_physical_candidate_errors,
     design_space_stream_packing_errors,
     framework_physical_candidate_domain_seed,
+    merge_board_profile_field_evidence,
     merge_tool_profile_bindings,
     parse_vivado_resource_budget,
     redact_sensitive_text,
@@ -22,12 +24,92 @@ from accagent.framework.stage_input import (
 
 
 class StageInputSanitizationTest(unittest.TestCase):
+    def test_tool_profile_gets_original_documents_when_evidence_omits_endpoints(self) -> None:
+        original = "Tool hosted on eda@example.org; executable /opt/custom/bin/vcs"
+        with patch.object(stage_input, "llm_json", return_value={"tools": []}) as llm:
+            stage_input.prepare_tool_profile(
+                {}, {}, {"selected_fields": []}, Path("."),
+                tool_materials_text=original,
+            )
+        prompt = llm.call_args.args[1]
+        self.assertIn(original, prompt)
+        self.assertIn("<tool_materials_text>", prompt)
+        self.assertIn("missing field in the extracted evidence summary", prompt)
+
+    def test_evidence_domain_can_cite_complete_material_outside_candidate_summary(self) -> None:
+        original = "### chunk:tools:000001 source:custom.md\nExplicit tool host eda@example.org"
+        with patch.object(stage_input, "llm_json", return_value={"evidence": []}) as llm:
+            stage_input.prepare_field_evidence_domain(
+                domain="tool", domain_materials_text=original,
+                source_prefixes=("tool.",), regex_candidates={"evidence": []},
+                out_dir=Path("."),
+            )
+        prompt = llm.call_args.args[1]
+        self.assertIn(original, prompt)
+        self.assertIn("not a limit on the evidence you can extract", prompt)
+        self.assertNotIn("return only evidence supported by those excerpts", prompt)
+
+    def test_board_profile_derives_xdma_device_templates_from_explicit_runtime_facts(self) -> None:
+        profile = {
+            "runtime_interface": {
+                "control_protocol": "xdma_raw_register_and_ddr",
+                "xdma_id_default": 1,
+            }
+        }
+
+        result = merge_board_profile_field_evidence(profile, {"selected_fields": []})
+
+        self.assertEqual(result["runtime_interface"]["h2c_device_template"], "/dev/xdma1_h2c_0")
+        self.assertEqual(result["runtime_interface"]["c2h_device_template"], "/dev/xdma1_c2h_0")
+
+    def test_board_profile_preserves_explicit_xdma_device_templates(self) -> None:
+        profile = {
+            "runtime_interface": {
+                "control_protocol": "xdma_raw_register_and_ddr",
+                "xdma_id_default": 1,
+                "h2c_device_template": "/dev/xdma7_h2c_0",
+                "c2h_device_template": "/dev/xdma7_c2h_0",
+            }
+        }
+
+        result = merge_board_profile_field_evidence(profile, {"selected_fields": []})
+
+        self.assertEqual(result["runtime_interface"]["h2c_device_template"], "/dev/xdma7_h2c_0")
+        self.assertEqual(result["runtime_interface"]["c2h_device_template"], "/dev/xdma7_c2h_0")
+
+    def test_tool_role_normalization_accepts_natural_language_separator(self) -> None:
+        self.assertEqual(canonical_tool_role("functional verification"), "functional_verification")
+
+        profile = {
+            "schema_version": "test.tool_profile.v1",
+            "tools": [{"name": "vcs", "role": "functional verification"}],
+        }
+        normalized = merge_tool_profile_bindings(profile, {}, {"selected_fields": []})
+        self.assertEqual(normalized["tools"][0]["role"], "functional_verification")
+
     def test_framework_physical_domain_seed_is_complete_and_normalizable(self) -> None:
         errors = design_space_physical_candidate_errors(
             {"search_params": framework_physical_candidate_domain_seed()}
         )
 
         self.assertEqual(errors, [])
+
+    def test_missing_lane_domain_is_sent_to_llm_repair(self) -> None:
+        invalid = {"search_params": {}, "sources": {}, "notes": []}
+        repaired = {**invalid, "search_params": framework_physical_candidate_domain_seed()}
+        with patch.object(stage_input, "llm_json", side_effect=[invalid, repaired]) as llm, \
+                patch.object(stage_input, "semantic_stream_contract", return_value={
+                    "status": "ready", "required_stream_bits": [8, 32], "axi_data_width_bits": 512,
+                }):
+            result = stage_input.prepare_design_space(
+                {"model_type": "generic"}, {"templates": []},
+                {"memory_system": {"axi_data_width_bits": 512}},
+                {"default_rules": {"weight_dtype": "int4", "activation_dtype": "int8", "acc_dtype": "int32"}},
+                {}, Path("unused"),
+            )
+        self.assertEqual(llm.call_count, 2)
+        self.assertIn("does not declare any physical lanes", llm.call_args_list[1].args[1])
+        self.assertEqual(result["search_params"], repaired["search_params"])
 
     def test_design_space_rejects_candidate_count_without_physical_domain(self) -> None:
         errors = design_space_physical_candidate_errors(
@@ -174,22 +256,16 @@ class StageInputSanitizationTest(unittest.TestCase):
                 (root / "accagent" / "campaigns" / campaign / "task_spec.md").read_text(encoding="utf-8")
             )
 
-            self.assertEqual(targets["clock_frequency_mhz"], 250.0)
-            self.assertEqual(targets["clock_frequency_comparison"], ">=")
-            self.assertEqual(targets["performance_tokens_per_second"], 170.0)
-            self.assertEqual(targets["performance_comparison"], ">")
+            self.assertNotIn("clock_frequency_mhz", targets)
+            self.assertEqual(targets["performance_tokens_per_second"], 200.0)
+            self.assertEqual(targets["performance_comparison"], "target")
             self.assertEqual(targets["resource_budget"], "discovered_target_board")
             self.assertTrue(targets["power_report_required"])
             self.assertFalse(targets["power_limit_applies"])
-            self.assertEqual(
-                task_qor_hard_constraints(targets),
-                [
-                    "clock_frequency_mhz >= 250",
-                    "performance_tokens_per_second > 170",
-                    "lut_ff_bram_uram_dsp <= discovered_target_board_resource_budget",
-                    "power_w measured",
-                ],
-            )
+            self.assertEqual(task_qor_hard_constraints(targets), [
+                "lut_ff_bram_uram_dsp <= discovered_target_board_resource_budget",
+                "power_w measured",
+            ])
 
     def test_task_qor_constraints_override_an_incomplete_llm_design_space(self) -> None:
         targets = task_qor_targets(

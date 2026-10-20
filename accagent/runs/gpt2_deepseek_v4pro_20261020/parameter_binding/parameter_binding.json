@@ -1,0 +1,1443 @@
+{
+  "axi_transfer_layout": {
+    "board_axi": {
+      "addr_width_bits": 37,
+      "alignment_bytes": 64,
+      "core_side_interface_name": "c0_ddr4_s_axi_*",
+      "data_bytes": 64,
+      "data_width_bits": 512,
+      "ddr_channels": 1,
+      "protocol": "AXI",
+      "source": "constraint.memory.board.memory_system"
+    },
+    "layout_kind": "exact_tensor_shape_transfer_layout",
+    "notes": [
+      "Stage 5 assigns concrete base addresses and checks non-overlap/alignment.",
+      "Stage 6+ must provide real simulation, implementation, timing, and board evidence."
+    ],
+    "per_stage": [
+      {
+        "aligned_bytes": 25344,
+        "axi_beats": 396,
+        "input_activation_bytes": 12288,
+        "input_bits": 8,
+        "op": "layer_norm_1",
+        "output_activation_bytes": 12288,
+        "output_bits": 8,
+        "stage_id": "stage_00_layer_norm_1",
+        "total_bytes": 25344,
+        "weight_bytes": 768,
+        "weight_term_ids": [
+          "ln_1_weight",
+          "ln_1_bias"
+        ]
+      },
+      {
+        "aligned_bytes": 1216512,
+        "axi_beats": 19008,
+        "input_activation_bytes": 12288,
+        "input_bits": 8,
+        "op": "self_attention",
+        "output_activation_bytes": 12288,
+        "output_bits": 8,
+        "stage_id": "stage_01_self_attention",
+        "total_bytes": 1216512,
+        "weight_bytes": 1191936,
+        "weight_term_ids": [
+          "attn_c_attn_weight",
+          "attn_c_attn_bias",
+          "attn_c_proj_weight",
+          "attn_c_proj_bias"
+        ]
+      },
+      {
+        "aligned_bytes": 24576,
+        "axi_beats": 384,
+        "input_activation_bytes": 12288,
+        "input_bits": 8,
+        "op": "residual_add_1",
+        "output_activation_bytes": 12288,
+        "output_bits": 8,
+        "stage_id": "stage_02_residual_add_1",
+        "total_bytes": 24576,
+        "weight_bytes": 0,
+        "weight_term_ids": []
+      },
+      {
+        "aligned_bytes": 25344,
+        "axi_beats": 396,
+        "input_activation_bytes": 12288,
+        "input_bits": 8,
+        "op": "layer_norm_2",
+        "output_activation_bytes": 12288,
+        "output_bits": 8,
+        "stage_id": "stage_03_layer_norm_2",
+        "total_bytes": 25344,
+        "weight_bytes": 768,
+        "weight_term_ids": [
+          "ln_2_weight",
+          "ln_2_bias"
+        ]
+      },
+      {
+        "aligned_bytes": 1253376,
+        "axi_beats": 19584,
+        "input_activation_bytes": 12288,
+        "input_bits": 8,
+        "op": "mlp_fc",
+        "output_activation_bytes": 49152,
+        "output_bits": 8,
+        "stage_id": "stage_04_mlp_fc",
+        "total_bytes": 1253376,
+        "weight_bytes": 1191936,
+        "weight_term_ids": [
+          "mlp_c_fc_weight",
+          "mlp_c_fc_bias"
+        ]
+      },
+      {
+        "aligned_bytes": 98304,
+        "axi_beats": 1536,
+        "input_activation_bytes": 49152,
+        "input_bits": 8,
+        "op": "activation",
+        "output_activation_bytes": 49152,
+        "output_bits": 8,
+        "stage_id": "stage_05_activation",
+        "total_bytes": 98304,
+        "weight_bytes": 0,
+        "weight_term_ids": []
+      },
+      {
+        "aligned_bytes": 1244160,
+        "axi_beats": 19440,
+        "input_activation_bytes": 49152,
+        "input_bits": 8,
+        "op": "mlp_proj",
+        "output_activation_bytes": 12288,
+        "output_bits": 8,
+        "stage_id": "stage_06_mlp_proj",
+        "total_bytes": 1244160,
+        "weight_bytes": 1182720,
+        "weight_term_ids": [
+          "mlp_c_proj_weight",
+          "mlp_c_proj_bias"
+        ]
+      },
+      {
+        "aligned_bytes": 24576,
+        "axi_beats": 384,
+        "input_activation_bytes": 12288,
+        "input_bits": 8,
+        "op": "residual_add_2",
+        "output_activation_bytes": 12288,
+        "output_bits": 8,
+        "stage_id": "stage_07_residual_add_2",
+        "total_bytes": 24576,
+        "weight_bytes": 0,
+        "weight_term_ids": []
+      }
+    ],
+    "schema_version": "spatialaccagent.parameter_axi_transfer_layout.v1",
+    "total_aligned_bytes_per_layer": 3912192,
+    "used_for": "static AXI alignment and packing checks only; not bandwidth, timing, power, or throughput evidence"
+  },
+  "binding_policy": "stage2_strict_binding_plus_checked_global_defaults",
+  "bindings": [
+    {
+      "input_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "legality_errors": [],
+      "op": "layer_norm_1",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "params": {
+        "acc_bits": 32,
+        "activation_banks": 4,
+        "activation_memory": "xpm_bram",
+        "burst_beats": 1,
+        "cache_refill_data_width_bits": 512,
+        "clock_target_mhz": null,
+        "compute_array_cols": 32,
+        "compute_array_rows": 16,
+        "compute_backend": "integer_dsp",
+        "cross_token_reuse_tokens": 8,
+        "elem_bits": 8,
+        "eps": 1e-05,
+        "fifo_depth": 128,
+        "fifo_memory": "xpm_bram",
+        "hidden_size": 768,
+        "input_bits": 8,
+        "integer_mode": true,
+        "lanes": 16,
+        "large_cache_memory": "xpm_uram",
+        "numeric_policy_id": "current_run_numeric_policy",
+        "output_bits": 8,
+        "pipeline_depth": 1,
+        "rounding": "nearest_even",
+        "saturation": true,
+        "scale_bits": 32,
+        "scale_shift": 31,
+        "weight_banks": 1,
+        "weight_bits": 4,
+        "weight_memory": "xpm_uram"
+      },
+      "stage_id": "stage_00_layer_norm_1",
+      "status": "ready",
+      "structural_dimensions": {
+        "datapath_bits": 128,
+        "description_kind": "exact_model_shape_and_stream_width",
+        "elem_bits": 8,
+        "input_elements": 12288,
+        "lanes": 16,
+        "output_elements": 12288,
+        "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+        "weight_bytes": 768,
+        "weight_elements": 1536,
+        "weight_term_ids": [
+          "ln_1_weight",
+          "ln_1_bias"
+        ]
+      },
+      "template_id": "norm"
+    },
+    {
+      "input_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "legality_errors": [],
+      "op": "self_attention",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "params": {
+        "acc_bits": 32,
+        "activation_banks": 4,
+        "activation_memory": "xpm_bram",
+        "burst_beats": 1,
+        "cache_refill_data_width_bits": 512,
+        "clock_target_mhz": null,
+        "compute_array_cols": 32,
+        "compute_array_rows": 16,
+        "compute_backend": "integer_dsp",
+        "cross_token_reuse_tokens": 8,
+        "elem_bits": 8,
+        "fifo_depth": 128,
+        "fifo_memory": "xpm_bram",
+        "head_dim": 64,
+        "hidden_size": 768,
+        "input_bits": 8,
+        "integer_mode": true,
+        "lanes": 16,
+        "large_cache_memory": "xpm_uram",
+        "num_kv_heads": 12,
+        "num_q_heads": 12,
+        "numeric_policy_id": "current_run_numeric_policy",
+        "output_bits": 8,
+        "pipeline_depth": 1,
+        "rounding": "nearest_even",
+        "saturation": true,
+        "scale_bits": 32,
+        "scale_shift": 31,
+        "seq_len": 16,
+        "weight_banks": 1,
+        "weight_bits": 4,
+        "weight_memory": "xpm_uram"
+      },
+      "stage_id": "stage_01_self_attention",
+      "status": "ready",
+      "structural_dimensions": {
+        "datapath_bits": 128,
+        "description_kind": "exact_model_shape_and_stream_width",
+        "elem_bits": 8,
+        "input_elements": 12288,
+        "lanes": 16,
+        "output_elements": 12288,
+        "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+        "weight_bytes": 1191936,
+        "weight_elements": 2362368,
+        "weight_term_ids": [
+          "attn_c_attn_weight",
+          "attn_c_attn_bias",
+          "attn_c_proj_weight",
+          "attn_c_proj_bias"
+        ]
+      },
+      "template_id": "attention"
+    },
+    {
+      "input_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "legality_errors": [],
+      "op": "residual_add_1",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "params": {
+        "acc_bits": 32,
+        "activation_banks": 4,
+        "activation_memory": "xpm_bram",
+        "burst_beats": 1,
+        "cache_refill_data_width_bits": 512,
+        "clock_target_mhz": null,
+        "compute_array_cols": 32,
+        "compute_array_rows": 16,
+        "compute_backend": "integer_dsp",
+        "cross_token_reuse_tokens": 8,
+        "elem_bits": 8,
+        "fifo_depth": 128,
+        "fifo_memory": "xpm_bram",
+        "hidden_size": 768,
+        "input_bits": 8,
+        "integer_mode": true,
+        "lanes": 16,
+        "large_cache_memory": "xpm_uram",
+        "numeric_policy_id": "current_run_numeric_policy",
+        "output_bits": 8,
+        "pipeline_depth": 1,
+        "rounding": "nearest_even",
+        "saturation": true,
+        "scale_bits": 32,
+        "scale_shift": 31,
+        "weight_banks": 1,
+        "weight_bits": 4,
+        "weight_memory": "xpm_uram"
+      },
+      "stage_id": "stage_02_residual_add_1",
+      "status": "ready",
+      "structural_dimensions": {
+        "datapath_bits": 128,
+        "description_kind": "exact_model_shape_and_stream_width",
+        "elem_bits": 8,
+        "input_elements": 12288,
+        "lanes": 16,
+        "output_elements": 12288,
+        "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+        "weight_bytes": 0,
+        "weight_elements": 0,
+        "weight_term_ids": []
+      },
+      "template_id": "residual"
+    },
+    {
+      "input_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "legality_errors": [],
+      "op": "layer_norm_2",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "params": {
+        "acc_bits": 32,
+        "activation_banks": 4,
+        "activation_memory": "xpm_bram",
+        "burst_beats": 1,
+        "cache_refill_data_width_bits": 512,
+        "clock_target_mhz": null,
+        "compute_array_cols": 32,
+        "compute_array_rows": 16,
+        "compute_backend": "integer_dsp",
+        "cross_token_reuse_tokens": 8,
+        "elem_bits": 8,
+        "eps": 1e-05,
+        "fifo_depth": 128,
+        "fifo_memory": "xpm_bram",
+        "hidden_size": 768,
+        "input_bits": 8,
+        "integer_mode": true,
+        "lanes": 16,
+        "large_cache_memory": "xpm_uram",
+        "numeric_policy_id": "current_run_numeric_policy",
+        "output_bits": 8,
+        "pipeline_depth": 1,
+        "rounding": "nearest_even",
+        "saturation": true,
+        "scale_bits": 32,
+        "scale_shift": 31,
+        "weight_banks": 1,
+        "weight_bits": 4,
+        "weight_memory": "xpm_uram"
+      },
+      "stage_id": "stage_03_layer_norm_2",
+      "status": "ready",
+      "structural_dimensions": {
+        "datapath_bits": 128,
+        "description_kind": "exact_model_shape_and_stream_width",
+        "elem_bits": 8,
+        "input_elements": 12288,
+        "lanes": 16,
+        "output_elements": 12288,
+        "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+        "weight_bytes": 768,
+        "weight_elements": 1536,
+        "weight_term_ids": [
+          "ln_2_weight",
+          "ln_2_bias"
+        ]
+      },
+      "template_id": "norm"
+    },
+    {
+      "input_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "legality_errors": [],
+      "op": "mlp_fc",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 3072
+      },
+      "params": {
+        "acc_bits": 32,
+        "activation_banks": 4,
+        "activation_memory": "xpm_bram",
+        "burst_beats": 1,
+        "cache_refill_data_width_bits": 512,
+        "clock_target_mhz": null,
+        "compute_array_cols": 32,
+        "compute_array_rows": 16,
+        "compute_backend": "integer_dsp",
+        "cross_token_reuse_tokens": 8,
+        "elem_bits": 8,
+        "fifo_depth": 128,
+        "fifo_memory": "xpm_bram",
+        "hidden_size": 768,
+        "input_bits": 8,
+        "integer_mode": true,
+        "intermediate_size": 3072,
+        "lanes": 16,
+        "large_cache_memory": "xpm_uram",
+        "numeric_policy_id": "current_run_numeric_policy",
+        "output_bits": 8,
+        "pipeline_depth": 1,
+        "rounding": "nearest_even",
+        "saturation": true,
+        "scale_bits": 32,
+        "scale_shift": 31,
+        "weight_banks": 1,
+        "weight_bits": 4,
+        "weight_memory": "xpm_uram"
+      },
+      "stage_id": "stage_04_mlp_fc",
+      "status": "ready",
+      "structural_dimensions": {
+        "datapath_bits": 128,
+        "description_kind": "exact_model_shape_and_stream_width",
+        "elem_bits": 8,
+        "input_elements": 12288,
+        "lanes": 16,
+        "output_elements": 49152,
+        "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+        "weight_bytes": 1191936,
+        "weight_elements": 2362368,
+        "weight_term_ids": [
+          "mlp_c_fc_weight",
+          "mlp_c_fc_bias"
+        ]
+      },
+      "template_id": "ffn"
+    },
+    {
+      "input_shape": {
+        "seq_len": 16,
+        "width": 3072
+      },
+      "legality_errors": [],
+      "op": "activation",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 3072
+      },
+      "params": {
+        "acc_bits": 32,
+        "activation_banks": 4,
+        "activation_memory": "xpm_bram",
+        "burst_beats": 1,
+        "cache_refill_data_width_bits": 512,
+        "clock_target_mhz": null,
+        "compute_array_cols": 32,
+        "compute_array_rows": 16,
+        "compute_backend": "integer_dsp",
+        "cross_token_reuse_tokens": 8,
+        "elem_bits": 8,
+        "fifo_depth": 128,
+        "fifo_memory": "xpm_bram",
+        "hidden_size": 3072,
+        "input_bits": 8,
+        "integer_mode": true,
+        "lanes": 16,
+        "large_cache_memory": "xpm_uram",
+        "numeric_policy_id": "current_run_numeric_policy",
+        "output_bits": 8,
+        "pipeline_depth": 1,
+        "rounding": "nearest_even",
+        "saturation": true,
+        "scale_bits": 32,
+        "scale_shift": 31,
+        "weight_banks": 1,
+        "weight_bits": 4,
+        "weight_memory": "xpm_uram"
+      },
+      "stage_id": "stage_05_activation",
+      "status": "ready",
+      "structural_dimensions": {
+        "datapath_bits": 128,
+        "description_kind": "exact_model_shape_and_stream_width",
+        "elem_bits": 8,
+        "input_elements": 49152,
+        "lanes": 16,
+        "output_elements": 49152,
+        "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+        "weight_bytes": 0,
+        "weight_elements": 0,
+        "weight_term_ids": []
+      },
+      "template_id": "activation"
+    },
+    {
+      "input_shape": {
+        "seq_len": 16,
+        "width": 3072
+      },
+      "legality_errors": [],
+      "op": "mlp_proj",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "params": {
+        "acc_bits": 32,
+        "activation_banks": 4,
+        "activation_memory": "xpm_bram",
+        "burst_beats": 1,
+        "cache_refill_data_width_bits": 512,
+        "clock_target_mhz": null,
+        "compute_array_cols": 32,
+        "compute_array_rows": 16,
+        "compute_backend": "integer_dsp",
+        "cross_token_reuse_tokens": 8,
+        "elem_bits": 8,
+        "fifo_depth": 128,
+        "fifo_memory": "xpm_bram",
+        "hidden_size": 768,
+        "input_bits": 8,
+        "integer_mode": true,
+        "intermediate_size": 3072,
+        "lanes": 16,
+        "large_cache_memory": "xpm_uram",
+        "numeric_policy_id": "current_run_numeric_policy",
+        "output_bits": 8,
+        "pipeline_depth": 1,
+        "rounding": "nearest_even",
+        "saturation": true,
+        "scale_bits": 32,
+        "scale_shift": 31,
+        "weight_banks": 1,
+        "weight_bits": 4,
+        "weight_memory": "xpm_uram"
+      },
+      "stage_id": "stage_06_mlp_proj",
+      "status": "ready",
+      "structural_dimensions": {
+        "datapath_bits": 128,
+        "description_kind": "exact_model_shape_and_stream_width",
+        "elem_bits": 8,
+        "input_elements": 49152,
+        "lanes": 16,
+        "output_elements": 12288,
+        "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+        "weight_bytes": 1182720,
+        "weight_elements": 2360064,
+        "weight_term_ids": [
+          "mlp_c_proj_weight",
+          "mlp_c_proj_bias"
+        ]
+      },
+      "template_id": "ffn"
+    },
+    {
+      "input_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "legality_errors": [],
+      "op": "residual_add_2",
+      "output_shape": {
+        "seq_len": 16,
+        "width": 768
+      },
+      "params": {
+        "acc_bits": 32,
+        "activation_banks": 4,
+        "activation_memory": "xpm_bram",
+        "burst_beats": 1,
+        "cache_refill_data_width_bits": 512,
+        "clock_target_mhz": null,
+        "compute_array_cols": 32,
+        "compute_array_rows": 16,
+        "compute_backend": "integer_dsp",
+        "cross_token_reuse_tokens": 8,
+        "elem_bits": 8,
+        "fifo_depth": 128,
+        "fifo_memory": "xpm_bram",
+        "hidden_size": 768,
+        "input_bits": 8,
+        "integer_mode": true,
+        "lanes": 16,
+        "large_cache_memory": "xpm_uram",
+        "numeric_policy_id": "current_run_numeric_policy",
+        "output_bits": 8,
+        "pipeline_depth": 1,
+        "rounding": "nearest_even",
+        "saturation": true,
+        "scale_bits": 32,
+        "scale_shift": 31,
+        "weight_banks": 1,
+        "weight_bits": 4,
+        "weight_memory": "xpm_uram"
+      },
+      "stage_id": "stage_07_residual_add_2",
+      "status": "ready",
+      "structural_dimensions": {
+        "datapath_bits": 128,
+        "description_kind": "exact_model_shape_and_stream_width",
+        "elem_bits": 8,
+        "input_elements": 12288,
+        "lanes": 16,
+        "output_elements": 12288,
+        "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+        "weight_bytes": 0,
+        "weight_elements": 0,
+        "weight_term_ids": []
+      },
+      "template_id": "residual"
+    }
+  ],
+  "checker_results": [
+    {
+      "checker": "parameter_stage_numeric_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "bindings=8",
+      "warnings": []
+    },
+    {
+      "checker": "edge_dtype_stream_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "edges=11",
+      "warnings": []
+    },
+    {
+      "checker": "stream_packing_axi_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "axi_bits=512",
+      "warnings": []
+    },
+    {
+      "checker": "axi_transfer_layout_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "total_aligned_bytes_per_layer=3912192",
+      "warnings": []
+    },
+    {
+      "checker": "fifo_contract_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "edge_buffers=11; stage fifo_depth is local default, Stage3 edge buffer depths remain authoritative",
+      "warnings": []
+    },
+    {
+      "checker": "physical_implementation_binding_check",
+      "errors": [],
+      "status": "pass",
+      "summary": "compute=integer_dsp, weights=xpm_uram, activations/fifos=xpm_bram, wide refill payload is materialized",
+      "warnings": []
+    }
+  ],
+  "checker_summary": {
+    "errors": [],
+    "failed": 0,
+    "passed": 6,
+    "warnings": []
+  },
+  "constraints_touched": [
+    "constraint.parameter.binding",
+    "constraint.dse.selection",
+    "constraint.parameter.structure",
+    "constraint.axi.layout"
+  ],
+  "global_param_scope": {
+    "activation_banks": "physical XPM activation-bank parameter retained across DSE backtracks",
+    "burst_beats": "generator compatibility default; excluded from DSE until it changes generated board behavior",
+    "cache_tile_count": "actual bounded weight-cache tile slots per active/shadow bank; materialized into WeightTileCache",
+    "cache_tile_words": "actual bounded weight-cache logical words per cache set; materialized into WeightTileCache XPM depth",
+    "clock_target_mhz": "board shell clock is unknown unless non-null; this is not timing evidence",
+    "compute_array_cols": "physical MAC-array column count; a wide array may combine multiple input stream lane groups",
+    "compute_array_rows": "physical MAC-array row count; each PE row maps to an output lane group",
+    "fifo_depth": "local template default only; Stage 3 buffer_plan owns edge FIFO depths",
+    "pipeline_depth": "generator compatibility default; excluded from DSE until it changes generated hardware",
+    "weight_banks": "physical XPM weight-bank parameter retained across DSE backtracks"
+  },
+  "global_params": {
+    "acc_bits": 32,
+    "activation_banks": 4,
+    "activation_memory": "xpm_bram",
+    "burst_beats": 1,
+    "cache_refill_data_width_bits": 512,
+    "cache_tile_count": 2,
+    "cache_tile_words": 256,
+    "clock_target_mhz": null,
+    "compute_array_cols": 32,
+    "compute_array_rows": 16,
+    "compute_backend": "integer_dsp",
+    "cross_token_reuse_tokens": 8,
+    "elem_bits": 8,
+    "fifo_depth": 128,
+    "fifo_memory": "xpm_bram",
+    "input_bits": 8,
+    "integer_mode": true,
+    "lanes": 16,
+    "large_cache_memory": "xpm_uram",
+    "output_bits": 8,
+    "pipeline_depth": 1,
+    "rounding": "nearest_even",
+    "saturation": true,
+    "scale_bits": 32,
+    "scale_shift": 31,
+    "weight_banks": 1,
+    "weight_banks_by_role": {
+      "weight": 1,
+      "weight_attn_out": 1,
+      "weight_attn_out_bias": 1,
+      "weight_mlp_down": 1,
+      "weight_mlp_down_bias": 1,
+      "weight_mlp_up": 1,
+      "weight_mlp_up_bias": 1,
+      "weight_qkv": 1,
+      "weight_qkv_bias": 1
+    },
+    "weight_bits": 4,
+    "weight_memory": "xpm_uram"
+  },
+  "legality_errors": [],
+  "numeric_binding_plan": {
+    "acc_dtype": "int32",
+    "accumulator_bits": 32,
+    "activation_bits": 8,
+    "activation_dtype": "int8",
+    "cast_points": [
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "layer_norm_1",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_00_layer_norm_1"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "self_attention",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_01_self_attention"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "residual_add_1",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": 8,
+        "stage_id": "stage_02_residual_add_1"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "layer_norm_2",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_03_layer_norm_2"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "mlp_fc",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_04_mlp_fc"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "activation",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_05_activation"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "mlp_proj",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_06_mlp_proj"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "residual_add_2",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": 8,
+        "stage_id": "stage_07_residual_add_2"
+      }
+    ],
+    "eps_source": "constraint.model.decoder.norm_type/default eps from template binding",
+    "fixed_point_contract": {
+      "binary_exponent_is_consumed_by_requantizer": true,
+      "binary_exponent_width_bits": 8,
+      "fractional_bits": 31,
+      "multiplier_bits": 32,
+      "multiplier_dtype": "int32",
+      "representation": "unsigned_q31_multiplier_times_signed_per_tensor_or_per_channel_binary_exponent",
+      "rounding": "nearest_even",
+      "saturation": true,
+      "shift_is_explicit": true
+    },
+    "policy_id": "current_run_numeric_policy",
+    "rounding": "nearest_even",
+    "saturation": true,
+    "scale_bits": 32,
+    "scale_dtype": "int32",
+    "source": "constraint.numeric.policy.default_rules",
+    "weight_bits": 4,
+    "weight_dtype": "int4"
+  },
+  "physical_weight_layout": {
+    "measurement_policy": "Vivado app-shell implementation is the only resource/power authority for this layout.",
+    "roles": [
+      {
+        "banks": 1,
+        "capacity_bits": 12288,
+        "element_bits": [
+          4
+        ],
+        "elements": 3072,
+        "primitive_policy": "xpm_uram",
+        "role": "weight",
+        "stages": [
+          "layer_norm_1",
+          "layer_norm_2"
+        ],
+        "term_ids": [
+          "ln_1_weight",
+          "ln_1_bias",
+          "ln_2_weight",
+          "ln_2_bias"
+        ],
+        "uram_banks": 1
+      },
+      {
+        "banks": 1,
+        "capacity_bits": 7077888,
+        "element_bits": [
+          4
+        ],
+        "elements": 1769472,
+        "primitive_policy": "xpm_uram",
+        "role": "weight_qkv",
+        "stages": [
+          "self_attention"
+        ],
+        "term_ids": [
+          "attn_c_attn_weight"
+        ],
+        "uram_banks": 1
+      },
+      {
+        "banks": 1,
+        "capacity_bits": 73728,
+        "element_bits": [
+          32
+        ],
+        "elements": 2304,
+        "primitive_policy": "xpm_uram",
+        "role": "weight_qkv_bias",
+        "stages": [
+          "self_attention"
+        ],
+        "term_ids": [
+          "attn_c_attn_bias"
+        ],
+        "uram_banks": 1
+      },
+      {
+        "banks": 1,
+        "capacity_bits": 2359296,
+        "element_bits": [
+          4
+        ],
+        "elements": 589824,
+        "primitive_policy": "xpm_uram",
+        "role": "weight_attn_out",
+        "stages": [
+          "self_attention"
+        ],
+        "term_ids": [
+          "attn_c_proj_weight"
+        ],
+        "uram_banks": 1
+      },
+      {
+        "banks": 1,
+        "capacity_bits": 24576,
+        "element_bits": [
+          32
+        ],
+        "elements": 768,
+        "primitive_policy": "xpm_uram",
+        "role": "weight_attn_out_bias",
+        "stages": [
+          "self_attention"
+        ],
+        "term_ids": [
+          "attn_c_proj_bias"
+        ],
+        "uram_banks": 1
+      },
+      {
+        "banks": 1,
+        "capacity_bits": 9437184,
+        "element_bits": [
+          4
+        ],
+        "elements": 2359296,
+        "primitive_policy": "xpm_uram",
+        "role": "weight_mlp_up",
+        "stages": [
+          "mlp_fc"
+        ],
+        "term_ids": [
+          "mlp_c_fc_weight"
+        ],
+        "uram_banks": 1
+      },
+      {
+        "banks": 1,
+        "capacity_bits": 98304,
+        "element_bits": [
+          32
+        ],
+        "elements": 3072,
+        "primitive_policy": "xpm_uram",
+        "role": "weight_mlp_up_bias",
+        "stages": [
+          "mlp_fc"
+        ],
+        "term_ids": [
+          "mlp_c_fc_bias"
+        ],
+        "uram_banks": 1
+      },
+      {
+        "banks": 1,
+        "capacity_bits": 9437184,
+        "element_bits": [
+          4
+        ],
+        "elements": 2359296,
+        "primitive_policy": "xpm_uram",
+        "role": "weight_mlp_down",
+        "stages": [
+          "mlp_proj"
+        ],
+        "term_ids": [
+          "mlp_c_proj_weight"
+        ],
+        "uram_banks": 1
+      },
+      {
+        "banks": 1,
+        "capacity_bits": 24576,
+        "element_bits": [
+          32
+        ],
+        "elements": 768,
+        "primitive_policy": "xpm_uram",
+        "role": "weight_mlp_down_bias",
+        "stages": [
+          "mlp_proj"
+        ],
+        "term_ids": [
+          "mlp_c_proj_bias"
+        ],
+        "uram_banks": 1
+      }
+    ],
+    "schema_version": "spatialaccagent.weight_memory_layout.v2",
+    "weight_banks_by_role": {
+      "weight": 1,
+      "weight_attn_out": 1,
+      "weight_attn_out_bias": 1,
+      "weight_mlp_down": 1,
+      "weight_mlp_down_bias": 1,
+      "weight_mlp_up": 1,
+      "weight_mlp_up_bias": 1,
+      "weight_qkv": 1,
+      "weight_qkv_bias": 1
+    }
+  },
+  "schema_version": "spatialaccagent.parameter_binding.v0",
+  "selected_architecture": {
+    "candidate_id": "arch_08fc81fe6157",
+    "measurement": null,
+    "parameters": {
+      "activation_banks": 4,
+      "activation_memory": "xpm_bram",
+      "cache_refill_data_width_bits": 512,
+      "cache_tile_count": 2,
+      "cache_tile_words": 256,
+      "compute_array_cols": 32,
+      "compute_array_rows": 16,
+      "compute_backend": "integer_dsp",
+      "cross_token_reuse_tokens": 8,
+      "fifo_depth": 128,
+      "fifo_memory": "xpm_bram",
+      "lanes": 16,
+      "large_cache_memory": "xpm_uram",
+      "weight_banks": 1,
+      "weight_banks_by_role": {
+        "weight": 1,
+        "weight_attn_out": 1,
+        "weight_attn_out_bias": 1,
+        "weight_mlp_down": 1,
+        "weight_mlp_down_bias": 1,
+        "weight_mlp_up": 1,
+        "weight_mlp_up_bias": 1,
+        "weight_qkv": 1,
+        "weight_qkv_bias": 1
+      },
+      "weight_memory": "xpm_uram"
+    },
+    "selection_rationale": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/parameter_binding/dse_selection_rationale.json"
+  },
+  "selected_architecture_parameters": {
+    "activation_banks": 4,
+    "activation_memory": "xpm_bram",
+    "cache_refill_data_width_bits": 512,
+    "cache_tile_count": 2,
+    "cache_tile_words": 256,
+    "compute_array_cols": 32,
+    "compute_array_rows": 16,
+    "compute_backend": "integer_dsp",
+    "cross_token_reuse_tokens": 8,
+    "fifo_depth": 128,
+    "fifo_memory": "xpm_bram",
+    "lanes": 16,
+    "large_cache_memory": "xpm_uram",
+    "weight_banks": 1,
+    "weight_banks_by_role": {
+      "weight": 1,
+      "weight_attn_out": 1,
+      "weight_attn_out_bias": 1,
+      "weight_mlp_down": 1,
+      "weight_mlp_down_bias": 1,
+      "weight_mlp_up": 1,
+      "weight_mlp_up_bias": 1,
+      "weight_qkv": 1,
+      "weight_qkv_bias": 1
+    },
+    "weight_memory": "xpm_uram"
+  },
+  "stage": "parameter_binding",
+  "stage_gate_policy": {
+    "current_stage_acceptance": [
+      "per-stage params must match Stage 3 numeric_contract and edge stream_contract bit widths",
+      "per-stage tile overrides are authoritative and must divide the corresponding tensor dimensions",
+      "lanes and all bound bit widths must pack cleanly into the board AXI data width",
+      "compute_array_rows tile output lanes; compute_array_cols may combine multiple complete input-lane groups when it divides the input dimension; every PE maps to one physical Vivado multiplier IP",
+      "the concrete AXI transfer layout must align every transfer to the board data width; it is not bandwidth or QoR evidence",
+      "Stage 3 edge FIFO contracts remain authoritative; Stage 4 local fifo_depth is a template parameter default"
+    ],
+    "later_stage_obligations": [
+      "Stage 5 assigns concrete memory base addresses and elaborates generated Chisel",
+      "Stage 6+ supplies real simulation, synthesis, timing, and board evidence",
+      "Numeric rounding remains recorded as unspecified unless a later approved numeric policy binds it"
+    ],
+    "risk_classification_rule": "If checker_results pass, do not report resolved current-stage consistency items as risks; later-stage tool obligations belong in proposed_actions."
+  },
+  "stage_structural_dimensions": [
+    {
+      "datapath_bits": 128,
+      "description_kind": "exact_model_shape_and_stream_width",
+      "elem_bits": 8,
+      "input_elements": 12288,
+      "lanes": 16,
+      "op": "layer_norm_1",
+      "output_elements": 12288,
+      "stage_id": "stage_00_layer_norm_1",
+      "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+      "weight_bytes": 768,
+      "weight_elements": 1536,
+      "weight_term_ids": [
+        "ln_1_weight",
+        "ln_1_bias"
+      ]
+    },
+    {
+      "datapath_bits": 128,
+      "description_kind": "exact_model_shape_and_stream_width",
+      "elem_bits": 8,
+      "input_elements": 12288,
+      "lanes": 16,
+      "op": "self_attention",
+      "output_elements": 12288,
+      "stage_id": "stage_01_self_attention",
+      "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+      "weight_bytes": 1191936,
+      "weight_elements": 2362368,
+      "weight_term_ids": [
+        "attn_c_attn_weight",
+        "attn_c_attn_bias",
+        "attn_c_proj_weight",
+        "attn_c_proj_bias"
+      ]
+    },
+    {
+      "datapath_bits": 128,
+      "description_kind": "exact_model_shape_and_stream_width",
+      "elem_bits": 8,
+      "input_elements": 12288,
+      "lanes": 16,
+      "op": "residual_add_1",
+      "output_elements": 12288,
+      "stage_id": "stage_02_residual_add_1",
+      "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+      "weight_bytes": 0,
+      "weight_elements": 0,
+      "weight_term_ids": []
+    },
+    {
+      "datapath_bits": 128,
+      "description_kind": "exact_model_shape_and_stream_width",
+      "elem_bits": 8,
+      "input_elements": 12288,
+      "lanes": 16,
+      "op": "layer_norm_2",
+      "output_elements": 12288,
+      "stage_id": "stage_03_layer_norm_2",
+      "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+      "weight_bytes": 768,
+      "weight_elements": 1536,
+      "weight_term_ids": [
+        "ln_2_weight",
+        "ln_2_bias"
+      ]
+    },
+    {
+      "datapath_bits": 128,
+      "description_kind": "exact_model_shape_and_stream_width",
+      "elem_bits": 8,
+      "input_elements": 12288,
+      "lanes": 16,
+      "op": "mlp_fc",
+      "output_elements": 49152,
+      "stage_id": "stage_04_mlp_fc",
+      "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+      "weight_bytes": 1191936,
+      "weight_elements": 2362368,
+      "weight_term_ids": [
+        "mlp_c_fc_weight",
+        "mlp_c_fc_bias"
+      ]
+    },
+    {
+      "datapath_bits": 128,
+      "description_kind": "exact_model_shape_and_stream_width",
+      "elem_bits": 8,
+      "input_elements": 49152,
+      "lanes": 16,
+      "op": "activation",
+      "output_elements": 49152,
+      "stage_id": "stage_05_activation",
+      "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+      "weight_bytes": 0,
+      "weight_elements": 0,
+      "weight_term_ids": []
+    },
+    {
+      "datapath_bits": 128,
+      "description_kind": "exact_model_shape_and_stream_width",
+      "elem_bits": 8,
+      "input_elements": 49152,
+      "lanes": 16,
+      "op": "mlp_proj",
+      "output_elements": 12288,
+      "stage_id": "stage_06_mlp_proj",
+      "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+      "weight_bytes": 1182720,
+      "weight_elements": 2360064,
+      "weight_term_ids": [
+        "mlp_c_proj_weight",
+        "mlp_c_proj_bias"
+      ]
+    },
+    {
+      "datapath_bits": 128,
+      "description_kind": "exact_model_shape_and_stream_width",
+      "elem_bits": 8,
+      "input_elements": 12288,
+      "lanes": 16,
+      "op": "residual_add_2",
+      "output_elements": 12288,
+      "stage_id": "stage_07_residual_add_2",
+      "used_for": "AXI layout and parameter-legality checks only; never QoR ranking or hardware pass evidence",
+      "weight_bytes": 0,
+      "weight_elements": 0,
+      "weight_term_ids": []
+    }
+  ],
+  "status": "ready",
+  "stream_contract_trace": [
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_00_layer_norm_1",
+      "edge_id": "edge.data.block_input.to.stage_00_layer_norm_1.input",
+      "element_bits": 8,
+      "kind": "input",
+      "src_output_bits": 8,
+      "src_stage": "block_input",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 768
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+      "element_bits": 8,
+      "kind": "residual_skip",
+      "src_output_bits": 8,
+      "src_stage": "block_input",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 768
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_01_self_attention",
+      "edge_id": "edge.data.stage_00_layer_norm_1.to.stage_01_self_attention.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_00_layer_norm_1",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 768
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_01_self_attention",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 768
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_03_layer_norm_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_03_layer_norm_2.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_02_residual_add_1",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 768
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_07_residual_add_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_07_residual_add_2.residual_skip",
+      "element_bits": 8,
+      "kind": "residual_skip",
+      "src_output_bits": 8,
+      "src_stage": "stage_02_residual_add_1",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 768
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_04_mlp_fc",
+      "edge_id": "edge.data.stage_03_layer_norm_2.to.stage_04_mlp_fc.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_03_layer_norm_2",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 768
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_05_activation",
+      "edge_id": "edge.data.stage_04_mlp_fc.to.stage_05_activation.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_04_mlp_fc",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 3072
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_06_mlp_proj",
+      "edge_id": "edge.data.stage_05_activation.to.stage_06_mlp_proj.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_05_activation",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 3072
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_07_residual_add_2",
+      "edge_id": "edge.data.stage_06_mlp_proj.to.stage_07_residual_add_2.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_06_mlp_proj",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 768
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "block_output",
+      "edge_id": "edge.data.stage_07_residual_add_2.to.block_output.output",
+      "element_bits": 8,
+      "kind": "output",
+      "src_output_bits": 8,
+      "src_stage": "stage_07_residual_add_2",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 16,
+        "width": 768
+      }
+    }
+  ]
+}

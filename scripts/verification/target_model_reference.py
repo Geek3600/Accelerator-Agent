@@ -85,6 +85,87 @@ def nested_value(data: Any, key: str) -> Any:
     return None
 
 
+def module_path_from_weight_suffixes(suffixes: Any) -> str:
+    """Infer a module path shared by the stage's bound parameter suffixes."""
+
+    paths: list[list[str]] = []
+    for suffix in suffixes if isinstance(suffixes, list) else []:
+        parts = [part for part in str(suffix).split(".") if part]
+        if parts and parts[-1] in {"weight", "bias"}:
+            parts.pop()
+        if parts:
+            paths.append(parts)
+    if not paths:
+        return ""
+    common = paths[0]
+    for path in paths[1:]:
+        shared_length = 0
+        for current, candidate in zip(common, path):
+            if current != candidate:
+                break
+            shared_length += 1
+        common = common[:shared_length]
+        if not common:
+            return ""
+    return ".".join(common)
+
+
+def semantic_capture_plan(semantic_adapter: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Return adapter-bound model captures required by semantic stages."""
+
+    semantic_stages = semantic_adapter.get("semantic_stages", {})
+    if not isinstance(semantic_stages, dict) or not semantic_stages:
+        raise ValueError("model semantic adapter has no semantic stage mapping")
+    aliases = semantic_adapter.get("reference_capture_modules", {})
+    if not isinstance(aliases, dict):
+        raise ValueError("reference_capture_modules must be an object when provided")
+    requirements: dict[str, set[str]] = {}
+    inferred_paths: dict[str, set[str]] = {}
+    for stage_name, stage in semantic_stages.items():
+        if not isinstance(stage, dict):
+            raise ValueError(f"semantic stage {stage_name} must be an object")
+        references = list(stage.get("inputs", []))
+        expected = stage.get("expected")
+        if isinstance(expected, dict):
+            references.append(expected)
+        for reference in references:
+            if not isinstance(reference, dict) or not reference.get("record"):
+                continue
+            record = str(reference["record"])
+            value = str(reference.get("value") or "")
+            if value not in {"input", "output"}:
+                raise ValueError(
+                    f"semantic stage {stage_name} has invalid capture selector "
+                    f"{record}.{value}"
+                )
+            requirements.setdefault(record, set()).add(value)
+        if isinstance(expected, dict) and expected.get("record"):
+            record = str(expected["record"])
+            if record not in aliases:
+                inferred = module_path_from_weight_suffixes(
+                    stage.get("required_weight_suffixes", [])
+                )
+                if inferred:
+                    inferred_paths.setdefault(record, set()).add(inferred)
+
+    plan: dict[str, dict[str, Any]] = {}
+    for record, values in sorted(requirements.items()):
+        module_path = aliases.get(record)
+        if module_path is None:
+            candidates = inferred_paths.get(record, set())
+            if len(candidates) > 1:
+                raise ValueError(
+                    f"semantic record {record} has conflicting inferred capture module paths"
+                )
+            module_path = next(iter(candidates), record)
+        if not isinstance(module_path, str) or not module_path:
+            raise ValueError(
+                f"reference capture module path is invalid for semantic record {record}"
+            )
+        plan[record] = {"module_path": module_path, "values": values}
+    return plan
+
+
 def decoder_layers(model: Any) -> Any:
     candidates = [
         getattr(getattr(model, "model", None), "layers", None),
@@ -149,8 +230,7 @@ def capture_real_model(
         or accelerator_weight_catalog.get("scope_coverage_complete") is not True
     ):
         raise ValueError("complete transformer-block weight catalog is not ready")
-    if not semantic_stages:
-        raise ValueError("model semantic adapter has no semantic stage mapping")
+    capture_plan = semantic_capture_plan(semantic_adapter)
     pipeline_ops = {
         str(stage.get("op") or "")
         for stage in pipeline_plan.get("stages", [])
@@ -194,7 +274,13 @@ def capture_real_model(
     semantic_runtime_values: dict[str, Any] = {}
     hooks = []
 
+    registered_captures: set[str] = set()
+
     def register_capture(name: str, module: Any) -> None:
+        if name in registered_captures:
+            return
+        registered_captures.add(name)
+
         def pre_hook(_module: Any, args: Any, kwargs: Any) -> None:
             value = first_tensor((args, kwargs))
             if value is not None:
@@ -226,6 +312,17 @@ def capture_real_model(
 
     for layer_index, layer in enumerate(layers):
         register_capture(f"decoder_layer_{layer_index}", layer)
+    for record, requirement in sorted(capture_plan.items()):
+        if re.fullmatch(r"decoder_layer_\d+", record):
+            continue
+        module_path = str(requirement["module_path"])
+        try:
+            module = first_layer.get_submodule(module_path)
+        except AttributeError as exc:
+            raise ValueError(
+                f"semantic record {record} maps to missing first-layer module {module_path}"
+            ) from exc
+        register_capture(record, module)
     for name, module in first_layer.named_modules():
         if not name:
             continue
@@ -249,6 +346,18 @@ def capture_real_model(
             result = model(**kwargs)
     for hook in hooks:
         hook.remove()
+
+    missing_captures = [
+        f"{record}.{value}"
+        for record, requirement in sorted(capture_plan.items())
+        for value in sorted(requirement["values"])
+        if captures.get(record, {}).get(value) is None
+    ]
+    if missing_captures:
+        raise ValueError(
+            "target-model reference is missing required semantic captures: "
+            + ", ".join(missing_captures)
+        )
 
     hidden_states = getattr(result, "hidden_states", None)
     if not hidden_states:
@@ -439,6 +548,14 @@ def capture_real_model(
                 "reason": "the current accelerator contract implements decoder layers and does not declare the model-tail operators",
             },
             "operator_records": records,
+            "semantic_capture_plan": [
+                {
+                    "record": record,
+                    "module_path": requirement["module_path"],
+                    "values": sorted(requirement["values"]),
+                }
+                for record, requirement in sorted(capture_plan.items())
+            ],
             "layer_output_records": layer_records,
             "layer_output_record_order": "numeric_decoder_layer_index_ascending",
             "all_target_layers_captured": captured_layer_indices == expected_layer_indices,

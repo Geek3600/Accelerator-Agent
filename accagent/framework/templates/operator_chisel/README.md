@@ -9,7 +9,7 @@ keeps the common operator structure:
 
 - packed valid/ready/st/last/addr streams;
 - vector normalization shell;
-- sequential tiled linear MAC;
+- continuously issued tiled linear MAC with interleaved FP32 partial sums;
 - QKV projection and stream reorder;
 - RoPE/QK norm shells for Q/K stream transformation;
 - MHA attention shell preserving QKV/V stream structure;
@@ -24,8 +24,9 @@ Current simplifications are intentional:
 
 - board/runtime/debug ports are removed;
 - current OPT constants are parameters;
-- the linear template uses a sequential tiled MAC instead of the optimized
-  double-buffered psum-bank implementation;
+- the linear template uses tagged, backpressured Vivado FP pipelines, independent
+  partial-sum contexts, and input/output ping-pong buffers; it folds partial sums
+  with the same pipelined adders before applying bias and emitting each vector;
 - the attention template preserves stream structure and V aggregation first;
 - `Softmax.scala` currently uses a masked max-onehot approximation. It keeps the
   stream, mask, causal, and sliding-window boundary explicit; exact exp/sum

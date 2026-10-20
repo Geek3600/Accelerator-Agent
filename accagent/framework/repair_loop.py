@@ -172,8 +172,8 @@ def layer_reports(gate_summary: dict[str, Any], verification_result: dict[str, A
         )
         if lower_layer_failed:
             status = "blocked"
-        elif not missing_or_failed:
-            status = "pass"
+        elif all(row["status"] in {"pass", "pending_later_stage"} for row in gate_rows):
+            status = "pass" if any(row["status"] == "pass" for row in gate_rows) else "pending_later_stage"
         elif pending_later_stage:
             # The selector deliberately did not run this higher layer.  This is
             # not a failed gate and must not trigger a repair/LLM investigation.
@@ -345,6 +345,13 @@ def failure_kind(debug_localization: dict[str, Any], verification_result: dict[s
         return "verification_capability_gap"
     if "model_not_found" in summary or "llm" in summary and "unavailable" in summary:
         return "agent_runtime_llm_configuration"
+    if any(
+        isinstance(row, dict)
+        and row.get("evidence_type") == "semantic_liveness"
+        and row.get("failure_class") == "semantic_ingress_stall"
+        for row in debug_localization.get("failed_boundaries", [])
+    ):
+        return "hardware_liveness_or_handshake"
     if "timeout" in summary or "did not produce" in summary or "deadlock" in summary:
         return "hardware_liveness_or_handshake"
     if "mismatch" in summary:

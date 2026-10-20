@@ -17,18 +17,39 @@ final case class AttentionParams(
   outWeightRole: String = "weight_attn_out",
   outBiasRole: String = "weight_attn_out_bias",
   computeArrayRows: Int = 0,
-  computeArrayCols: Int = 0
+  computeArrayCols: Int = 0,
+  cacheTileWords: Int = PhysicalImplementation.resolveCacheTileWords(256),
+  cacheTileCount: Int = PhysicalImplementation.resolveCacheTileCount(2),
+  refillDataWidthBits: Int = PhysicalImplementation.resolveRefillDataWidthBits(512),
+  crossTokenReuseTokens: Int = PhysicalImplementation.resolveCrossTokenReuseTokens(16),
+  weightBits: Int = 0,
+  integerMode: Boolean = false,
+  accBits: Int = 32
 ) {
   require(hiddenSize == qHeads * headDim, "attention hidden size must equal qHeads * headDim")
   require(qHeads > 0 && kvHeads > 0 && qHeads % kvHeads == 0, "invalid GQA head grouping")
   require(headDim > 0 && seqLen > 0, "attention dimensions must be positive")
-  require(elemBits == 16, "the immutable attention internal element type is IEEE FP16")
+  if (integerMode) {
+    require(elemBits == 8, "integer attention activations must be signed INT8")
+    require((if (weightBits == 0) 4 else weightBits) == 4, "integer attention matrix weights must be signed INT4")
+    require(accBits == 32, "integer attention accumulation must be signed INT32")
+  } else {
+    require(elemBits == 16, "the legacy attention internal element type is IEEE FP16")
+    require(accBits == 32, "floating-point attention accumulation must use FP32")
+  }
   require(hiddenSize % lanes == 0, "hiddenSize must be divisible by output lanes")
   require(headDim % qkvElemsPerBeat == 0, "headDim must align to QKV stream beats")
 
   val qkv: QKVProjectionParams = QKVProjectionParams(
     hiddenSize, qHeads, kvHeads, headDim, lanes, elemBits, qkvElemsPerBeat, batchSize, seqLen,
-    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols
+    computeArrayRows = computeArrayRows, computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords,
+    cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits,
+    crossTokenReuseTokens = crossTokenReuseTokens,
+    weightBits = weightBits,
+    integerMode = integerMode,
+    accBits = accBits
   )
   val qDim: Int = qHeads * headDim
   val kDim: Int = kvHeads * headDim
@@ -37,28 +58,42 @@ final case class AttentionParams(
   val rowBits: Int = log2Ceil(seqLen max 2)
   val headVectorBits: Int = headDim * elemBits
   val headAddrBits: Int = log2Ceil(qHeads max 2)
+  val scoreLanes: Int = Integer.highestOneBit(headDim min 32)
   val softmax: SoftmaxParams = SoftmaxParams(seqLen, lanes = 1, elemBits = 32, batchSize = seqLen * qHeads, causal = true, slidingWindow = 0)
+  // Preserve independent activation, matrix-weight, and accumulator widths
+  // through the output projection constructor. The integer attention datapath
+  // still requires its own implementation before this policy can be accepted
+  // as a complete W4A8 hierarchy.
   val outLinear: LinearParams = LinearParams(
-    qDim,
-    hiddenSize,
-    headDim,
-    lanes,
-    elemBits,
-    32,
-    32,
-    seqLen,
-    seqLen,
+    inDim = qDim,
+    outDim = hiddenSize,
+    inLanes = headDim,
+    outLanes = lanes,
+    elemBits = elemBits,
+    weightBits = if (integerMode) (if (weightBits == 0) 4 else weightBits) else elemBits,
+    integerMode = integerMode,
+    accBits = accBits,
+    outputBits = if (integerMode) 8 else 32,
+    batchSize = seqLen,
+    maxSeqLen = seqLen,
     hasBias = outHasBias,
     weightRole = outWeightRole,
     biasRole = outBiasRole,
     computeArrayRows = computeArrayRows,
-    computeArrayCols = computeArrayCols
+    computeArrayCols = computeArrayCols,
+    cacheTileWords = cacheTileWords,
+    cacheTileCount = cacheTileCount,
+    refillDataWidthBits = refillDataWidthBits,
+    crossTokenReuseTokens = crossTokenReuseTokens
   )
   val addrBits: Int = outLinear.outputAddrBits
 }
 
-class Attention(p: AttentionParams) extends Module {
+private class FloatingAttention(p: AttentionParams) extends Module {
   val io = IO(new Bundle {
+    val outChannelScaleShift = Input(Vec(p.outLinear.outDim, SInt(8.W)))
+    val outActivationScaleShift = Input(SInt(8.W))
+    val outOutputScaleShift = Input(SInt(8.W))
     val cfg = Input(new StageConfig(p.seqBits))
     val cfgValid = Input(Bool())
     val in = Flipped(Decoupled(new QKVStreamBeat(p.qkv)))
@@ -67,8 +102,12 @@ class Attention(p: AttentionParams) extends Module {
     val ctxInvScale = Input(UInt(32.W))
     val ctxZeroPoint = Input(UInt(8.W))
     val outInvScale = Input(UInt(32.W))
+    val outChannelScale = Input(Vec(p.outLinear.outDim, UInt(32.W)))
+    val outActivationScale = Input(UInt(32.W))
+    val outOutputScale = Input(UInt(32.W))
     val outWeight = Flipped(Decoupled(new WeightWrite(p.outLinear.weightTileBits, p.outLinear.weightAddrBits)))
     val outBias = Flipped(Decoupled(new WeightWrite(p.outLinear.biasBeatBits, log2Ceil(p.outLinear.outBeats max 2))))
+    val tile = new WeightTileServiceIO(p.refillDataWidthBits)
     val out = Decoupled(new StreamBeat(StreamSpec(p.outLinear.outputBeatBits, p.outLinear.outputAddrBits)))
   })
 
@@ -143,7 +182,7 @@ class Attention(p: AttentionParams) extends Module {
   val workRow = RegInit(0.U(p.rowBits.W))
   val workHead = RegInit(0.U(p.qkv.headBits.W))
   val keyToken = RegInit(0.U(p.rowBits.W))
-  val scoreDimension = RegInit(0.U(log2Ceil(p.headDim max 2).W))
+  val scoreDimension = RegInit(0.U(log2Ceil(p.headDim + 1 max 2).W))
   val scoreReadIndex = RegInit(0.U(p.rowBits.W))
   val softmaxOutIndex = RegInit(0.U(p.rowBits.W))
   val valueToken = RegInit(0.U(p.rowBits.W))
@@ -229,14 +268,36 @@ class Attention(p: AttentionParams) extends Module {
 
   val qHeadValues = qHeadReg.asTypeOf(Vec(p.headDim, UInt(p.elemBits.W)))
   val kHeadValues = kHeadReg.asTypeOf(Vec(p.headDim, UInt(p.elemBits.W)))
-  val selectedDimension = AccMath.boundedIndex(scoreDimension, p.headDim)
-  val scoreMultiplier = Module(new PhysicalFp32Mul)
-  scoreMultiplier.io.a := PhysicalMath.toFp32(qHeadValues(selectedDimension), p.elemBits)
-  scoreMultiplier.io.b := PhysicalMath.toFp32(kHeadValues(selectedDimension), p.elemBits)
-  scoreMultiplier.io.inValid := state === sScoreMulIssue && scoreMultiplier.io.inReady
-  when(state === sScoreMulIssue && scoreMultiplier.io.inReady) { state := sScoreMulWait }
-  when(state === sScoreMulWait && scoreMultiplier.io.outValid) {
-    scoreProductReg := scoreMultiplier.io.out
+  val scoreMultipliers = Seq.tabulate(p.scoreLanes) { lane =>
+    val mul = Module(new PhysicalFp32MulPipeline(1))
+    val dimension = scoreDimension + lane.U
+    val index = AccMath.boundedIndex(dimension, p.headDim)
+    val active = dimension < p.headDim.U
+    mul.io.in.bits.a := Mux(active, PhysicalMath.toFp32(qHeadValues(index), p.elemBits), PhysicalMath.fp32Zero)
+    mul.io.in.bits.b := Mux(active, PhysicalMath.toFp32(kHeadValues(index), p.elemBits), PhysicalMath.fp32Zero)
+    mul.io.in.bits.tag := 0.U
+    mul
+  }
+  val scoreMulReady = scoreMultipliers.map(_.io.in.ready).reduce(_ && _)
+  scoreMultipliers.foreach(_.io.in.valid := state === sScoreMulIssue && scoreMulReady)
+  def reduceScore(values: Seq[DecoupledIO[TaggedFp32Result]]): DecoupledIO[TaggedFp32Result] = {
+    if (values.size == 1) values.head
+    else reduceScore(values.grouped(2).map { pair =>
+      val add = Module(new PhysicalFp32AddPipeline(1))
+      add.io.in.valid := pair(0).valid && pair(1).valid
+      add.io.in.bits.a := pair(0).bits.value
+      add.io.in.bits.b := pair(1).bits.value
+      add.io.in.bits.tag := 0.U
+      pair(0).ready := add.io.in.ready && pair(1).valid
+      pair(1).ready := add.io.in.ready && pair(0).valid
+      add.io.out
+    }.toSeq)
+  }
+  val scoreTree = reduceScore(scoreMultipliers.map(_.io.out))
+  scoreTree.ready := state === sScoreMulWait
+  when(state === sScoreMulIssue && scoreMulReady) { state := sScoreMulWait }
+  when(scoreTree.fire) {
+    scoreProductReg := scoreTree.bits.value
     state := sScoreAccIssue
   }
 
@@ -247,9 +308,9 @@ class Attention(p: AttentionParams) extends Module {
   when(state === sScoreAccIssue && scoreAdder.io.inReady) { state := sScoreAccWait }
   when(state === sScoreAccWait && scoreAdder.io.outValid) {
     scoreAccReg := scoreAdder.io.out
-    when(scoreDimension === (p.headDim - 1).U) { state := sScoreScaleIssue }
+    when(scoreDimension + p.scoreLanes.U >= p.headDim.U) { state := sScoreScaleIssue }
       .otherwise {
-        scoreDimension := scoreDimension + 1.U
+        scoreDimension := scoreDimension + p.scoreLanes.U
         state := sScoreMulIssue
       }
   }
@@ -431,8 +492,15 @@ class Attention(p: AttentionParams) extends Module {
   outputProjection.io.cfgValid := io.cfgValid
   outputProjection.io.weight <> io.outWeight
   outputProjection.io.bias <> io.outBias
-  outputProjection.io.scale.outScale := PhysicalMath.fp32One
-  outputProjection.io.scale.biasScale := PhysicalMath.fp32One
+  outputProjection.io.tile <> io.tile
+  outputProjection.io.scale.outScale := Mux(p.integerMode.B, io.outOutputScale, PhysicalMath.fp32One)
+  outputProjection.io.scale.biasScale := Mux(p.integerMode.B, "h80000000".U(32.W), PhysicalMath.fp32One)
+  outputProjection.io.scale.channelScale := io.outChannelScale
+  outputProjection.io.scale.channelShift := io.outChannelScaleShift
+  outputProjection.io.scale.activationScale := io.outActivationScale
+  outputProjection.io.scale.activationShift := io.outActivationScaleShift
+  outputProjection.io.scale.outputShift := io.outOutputScaleShift
+  outputProjection.io.scale.biasShift := 0.S
   outputProjection.io.in.valid := state === sProjectFeed
   outputProjection.io.in.bits.data := projectionWord
   outputProjection.io.in.bits.st := projectBeat === 0.U
@@ -471,6 +539,361 @@ class Attention(p: AttentionParams) extends Module {
   dontTouch(io.ctxInvScale)
   dontTouch(io.ctxZeroPoint)
   dontTouch(io.outInvScale)
+}
+
+class IntegerAttention(p: AttentionParams) extends Module {
+  private val rowBits = log2Ceil(p.seqLen max 2)
+  private val kvDepth = p.seqLen * p.kvHeads
+  private val qDepth = p.seqLen * p.qHeads
+  private val vectorBits = p.headDim * 8
+  private val invSqrtQ16 = math.max(1, math.round(65536.0 / math.sqrt(p.headDim.toDouble)).toInt)
+  private val expBits = 17
+  // Summing N unsigned exp codes needs expBits + ceil(log2(N)) bits; do not
+  // size the restoring divider from sequence storage volume (N * expBits).
+  private val sumBits = expBits + log2Ceil(p.seqLen max 2)
+  // Probabilities are requantized to signed INT8 Q7 before PV. Both PV
+  // operands are therefore real signed INT8 values and the context uses the
+  // declared INT32 accumulation domain.
+  private val accBits = 32
+  private val expTable = VecInit(Seq.tabulate(256) { index =>
+    BigInt(math.max(0, math.min(65536, math.round(math.exp(-index.toDouble / 16.0) * 65536.0).toInt))).U(expBits.W)
+  })
+
+  val io = IO(new Bundle {
+    val cfg = Input(new StageConfig(p.seqBits))
+    val cfgValid = Input(Bool())
+    val in = Flipped(Decoupled(new QKVStreamBeat(p.qkv)))
+    val mask = Input(UInt(p.seqLen.W))
+    val scoreScale = Input(UInt(32.W))
+    val ctxInvScale = Input(UInt(32.W))
+    val ctxZeroPoint = Input(UInt(8.W))
+    val outInvScale = Input(UInt(32.W))
+    val outChannelScale = Input(Vec(p.outLinear.outDim, UInt(32.W)))
+    val outChannelScaleShift = Input(Vec(p.outLinear.outDim, SInt(8.W)))
+    val outActivationScale = Input(UInt(32.W))
+    val outActivationScaleShift = Input(SInt(8.W))
+    val outOutputScale = Input(UInt(32.W))
+    val outOutputScaleShift = Input(SInt(8.W))
+    val outWeight = Flipped(Decoupled(new WeightWrite(p.outLinear.weightTileBits, p.outLinear.weightAddrBits)))
+    val outBias = Flipped(Decoupled(new WeightWrite(p.outLinear.biasBeatBits, log2Ceil(p.outLinear.outBeats max 2))))
+    val tile = new WeightTileServiceIO(p.refillDataWidthBits)
+    val out = Decoupled(new StreamBeat(StreamSpec(p.outLinear.outputBeatBits, p.outLinear.outputAddrBits)))
+  })
+
+  private val qMemory = Module(new PhysicalSimpleDualPortMemory(qDepth, vectorBits, "cache"))
+  private val kMemory = Module(new PhysicalSimpleDualPortMemory(kvDepth, vectorBits, "cache"))
+  private val vMemory = Module(new PhysicalSimpleDualPortMemory(kvDepth, vectorBits, "cache"))
+  private val contextMemory = Module(new PhysicalSimpleDualPortMemory(qDepth, vectorBits, "activation"))
+  private val qCollectReg = RegInit(0.U(vectorBits.W))
+  private val kCollectReg = RegInit(0.U(vectorBits.W))
+  private val vCollectReg = RegInit(0.U(vectorBits.W))
+  private val qCollect = qCollectReg.asTypeOf(Vec(p.headDim, UInt(8.W)))
+  private val kCollect = kCollectReg.asTypeOf(Vec(p.headDim, UInt(8.W)))
+  private val vCollect = vCollectReg.asTypeOf(Vec(p.headDim, UInt(8.W)))
+  private val nextQ = Wire(Vec(p.headDim, UInt(8.W)))
+  private val nextK = Wire(Vec(p.headDim, UInt(8.W)))
+  private val nextV = Wire(Vec(p.headDim, UInt(8.W)))
+  nextQ := qCollect
+  nextK := kCollect
+  nextV := vCollect
+
+  private val sWait :: sQRead :: sQCapture :: sScore :: sSoftmax :: sVRead :: sVCapture :: sPV :: sPVFinish :: sProjectRead :: sProjectCapture :: sProjectFeed :: sProjectDrain :: Nil = Enum(13)
+  private val state = RegInit(sWait)
+  private val collectToken = RegInit(0.U(rowBits.W))
+  private val row = RegInit(0.U(rowBits.W))
+  private val head = RegInit(0.U(p.qkv.headBits.W))
+  private val key = RegInit(0.U(rowBits.W))
+  private val projectHead = RegInit(0.U(p.qkv.headBits.W))
+  private val tokenReady = RegInit(0.U(p.seqLen.W))
+  private val collectionClosed = RegInit(false.B)
+  private val qHeadReg = Reg(UInt(vectorBits.W))
+  private val kHeadReg = Reg(UInt(vectorBits.W))
+  private val vHeadReg = Reg(UInt(vectorBits.W))
+  private val scores = Reg(Vec(p.seqLen, SInt(32.W)))
+  private val probabilities = Reg(Vec(p.seqLen, UInt(8.W)))
+  private val contextAcc = Reg(Vec(p.headDim, SInt(accBits.W)))
+  private val valueToken = RegInit(0.U(rowBits.W))
+  private val projectWord = Reg(UInt(vectorBits.W))
+  private val seqLimit = RegInit(p.seqLen.U(p.seqBits.W))
+  private val activeSeq = Mux(io.cfgValid && io.cfg.seqlen =/= 0.U && io.cfg.seqlen <= p.seqLen.U, io.cfg.seqlen, seqLimit)
+  when(io.cfgValid) { seqLimit := activeSeq }
+
+  val fields = io.in.bits.data.asTypeOf(Vec(3 * p.qkvElemsPerBeat, UInt(8.W)))
+  val finalHeadBeat = io.in.bits.addr === (p.qkv.headBeats - 1).U
+  val kvHead = io.in.bits.head / p.kvGroupSize.U
+  for (lane <- 0 until p.qkvElemsPerBeat) {
+    val dimension = io.in.bits.addr * p.qkvElemsPerBeat.U + lane.U
+    val index = AccMath.boundedIndex(dimension, p.headDim)
+    nextQ(index) := fields(lane)
+    nextK(index) := fields(p.qkvElemsPerBeat + lane)
+    nextV(index) := fields(2 * p.qkvElemsPerBeat + lane)
+  }
+  io.in.ready := !collectionClosed
+  qMemory.io.writeEn := io.in.fire && finalHeadBeat
+  qMemory.io.writeAddr := AccMath.boundedIndex(collectToken * p.qHeads.U + io.in.bits.head, qDepth)
+  qMemory.io.writeData := nextQ.asUInt
+  kMemory.io.writeEn := io.in.fire && finalHeadBeat
+  kMemory.io.writeAddr := AccMath.boundedIndex(collectToken * p.kvHeads.U + kvHead, kvDepth)
+  kMemory.io.writeData := nextK.asUInt
+  vMemory.io.writeEn := io.in.fire && finalHeadBeat
+  vMemory.io.writeAddr := AccMath.boundedIndex(collectToken * p.kvHeads.U + kvHead, kvDepth)
+  vMemory.io.writeData := nextV.asUInt
+  val tokenDone = io.in.fire && io.in.bits.last
+  when(io.in.fire) {
+    qCollectReg := nextQ.asUInt
+    kCollectReg := nextK.asUInt
+    vCollectReg := nextV.asUInt
+    when(tokenDone) {
+      tokenReady := tokenReady | (1.U(p.seqLen.W) << collectToken)
+      when(collectToken === activeSeq - 1.U) { collectionClosed := true.B }
+        .otherwise { collectToken := collectToken + 1.U }
+    }
+  }
+  when(state === sWait && tokenReady(row)) {
+    head := 0.U
+    key := 0.U
+    state := sQRead
+  }
+
+  private val computeKvHead = head / p.kvGroupSize.U
+  qMemory.io.readEn := state === sQRead
+  qMemory.io.readAddr := AccMath.boundedIndex(row * p.qHeads.U + head, qDepth)
+  kMemory.io.readEn := state === sQRead
+  kMemory.io.readAddr := AccMath.boundedIndex(key * p.kvHeads.U + computeKvHead, kvDepth)
+  when(state === sQRead) { state := sQCapture }
+  when(state === sQCapture) {
+    qHeadReg := qMemory.io.readData
+    kHeadReg := kMemory.io.readData
+    state := sScore
+  }
+
+  val qValues = qHeadReg.asTypeOf(Vec(p.headDim, SInt(8.W)))
+  val kValues = kHeadReg.asTypeOf(Vec(p.headDim, SInt(8.W)))
+  val dotProducts = (0 until p.headDim).map { dimension =>
+    (qValues(dimension) * kValues(dimension)).pad(32)
+  }
+  val dot = dotProducts.reduce(_ + _)
+  val scaledDot = (dot * invSqrtQ16.S(32.W)) >> 16
+  when(state === sScore) {
+    scores(AccMath.boundedIndex(key, p.seqLen)) := scaledDot.asUInt(31, 0).asSInt
+    when(key === row) { state := sSoftmax }
+      .otherwise { key := key + 1.U; state := sQRead }
+  }
+
+  val minimumScore = (-2147483648L).S(32.W)
+  // A zero mask is the existing "no explicit mask" convention used by the
+  // decoder wrapper. Otherwise enforce both the causal bound and the supplied
+  // per-key mask when finding the row maximum and generating exponentials.
+  private val explicitMaskEnabled = io.mask.orR
+  private val keyAllowed = (0 until p.seqLen).map { index =>
+    (index.U <= row) && (!explicitMaskEnabled || io.mask(index))
+  }
+  val maskedScores = (0 until p.seqLen).map { index =>
+    Mux(keyAllowed(index), scores(index), minimumScore)
+  }
+  val maximumScore = maskedScores.reduce((left, right) => Mux(left > right, left, right))
+  val expValues = (0 until p.seqLen).map { index =>
+    val difference = Mux(keyAllowed(index), (maximumScore - scores(index)).asUInt, 0.U(32.W))
+    val tableIndexWide = difference >> 4
+    val tableIndex = Mux(tableIndexWide > 255.U, 255.U(8.W), tableIndexWide(7, 0))
+    Mux(keyAllowed(index), expTable(tableIndex), 0.U(expBits.W))
+  }
+  val expSum = expValues.map(_.pad(sumBits)).reduce(_ + _)
+  val safeExpSum = Mux(expSum === 0.U, 1.U(sumBits.W), expSum)
+  val reciprocalQ31 = AccMath.unsignedDivideFixed(
+    (BigInt(1) << 31).U(32.W), safeExpSum, numeratorBits = 32, denominatorBits = sumBits
+  )
+  when(state === sSoftmax) {
+    for (index <- 0 until p.seqLen) {
+      // The common exponential-table fraction cancels in exp/S. Thus
+      // exp * floor(2^31/S) is already the Q31 probability code; shifting it
+      // right by the table's Q16 fraction would destroy the normalization and
+      // can make every INT8 probability zero. Round Q31 to Q7, then saturate
+      // the unit-probability code (128) to signed INT8 maximum before PV.
+      // expValues is an unsigned integer code and reciprocalQ31 is floor(2^31 / sum(exp)).
+      // Their product is already the probability in Q31 code units; preserve
+      // the full 49-bit product before converting Q31 to signed-INT8 Q7.
+      val product = expValues(index) * reciprocalQ31
+      val probabilityBase = product(48, 24)
+      val probabilityRemainder = product(23, 0)
+      val probabilityHalf = (BigInt(1) << 23).U(24.W)
+      val probabilityRoundUp = probabilityRemainder > probabilityHalf ||
+        (probabilityRemainder === probabilityHalf && probabilityBase(0))
+      val probabilityRounded = probabilityBase.pad(26) + probabilityRoundUp.asUInt
+      probabilities(index) := Mux(
+        index.U <= row,
+        Mux(probabilityRounded > 127.U, 127.U(8.W), probabilityRounded(7, 0)),
+        0.U(8.W)
+      )
+    }
+    for (dimension <- 0 until p.headDim) { contextAcc(dimension) := 0.S(accBits.W) }
+    valueToken := 0.U
+    state := sVRead
+  }
+
+  vMemory.io.readEn := state === sVRead
+  vMemory.io.readAddr := AccMath.boundedIndex(valueToken * p.kvHeads.U + computeKvHead, kvDepth)
+  when(state === sVRead) { state := sVCapture }
+  when(state === sVCapture) {
+    vHeadReg := vMemory.io.readData
+    state := sPV
+  }
+  val vValues = vHeadReg.asTypeOf(Vec(p.headDim, SInt(8.W)))
+  when(state === sPV) {
+    val probability = probabilities(AccMath.boundedIndex(valueToken, p.seqLen)).asSInt
+    for (dimension <- 0 until p.headDim) {
+      // Signed INT8 value times signed INT8 Q7 probability; sign-extend the
+      // genuine 16-bit product into the INT32 context accumulator.
+      val product = vValues(dimension) * probability
+      contextAcc(dimension) := contextAcc(dimension) + product.pad(accBits)
+    }
+    when(valueToken === row) { state := sPVFinish }
+      .otherwise { valueToken := valueToken + 1.U; state := sVRead }
+  }
+
+  val contextResult = Wire(Vec(p.headDim, UInt(8.W)))
+  for (dimension <- 0 until p.headDim) {
+    // PV accumulated in Q7. Round the arithmetic right shift to nearest-even
+    // before signed INT8 saturation and storage in the activation domain.
+    val value = contextAcc(dimension)
+    val quotient = (value >> 7).asSInt
+    val remainder = value.asUInt(6, 0)
+    val halfway = 64.U(7.W)
+    val roundUp = remainder > halfway || (remainder === halfway && quotient.asUInt(0))
+    val rounded = quotient + roundUp.asUInt.zext
+    val clipped = Mux(rounded > 127.S, 127.S(32.W), Mux(rounded < (-128).S, (-128).S(32.W), rounded))
+    contextResult(dimension) := AccMath.resizeSignedToUInt(clipped, 8)
+  }
+  contextMemory.io.writeEn := state === sPVFinish
+  contextMemory.io.writeAddr := AccMath.boundedIndex(row * p.qHeads.U + head, qDepth)
+  contextMemory.io.writeData := contextResult.asUInt
+  when(state === sPVFinish) {
+    when(head === (p.qHeads - 1).U) {
+      projectHead := 0.U
+      state := sProjectRead
+    }.otherwise {
+      head := head + 1.U
+      key := 0.U
+      state := sQRead
+    }
+  }
+
+  contextMemory.io.readEn := state === sProjectRead
+  contextMemory.io.readAddr := AccMath.boundedIndex(row * p.qHeads.U + projectHead, qDepth)
+  when(state === sProjectRead) { state := sProjectCapture }
+  when(state === sProjectCapture) {
+    projectWord := contextMemory.io.readData
+    state := sProjectFeed
+  }
+  private val outputProjection = Module(new Linear(p.outLinear))
+  outputProjection.io.start := false.B
+  outputProjection.io.cfg := io.cfg
+  outputProjection.io.cfgValid := io.cfgValid
+  outputProjection.io.weight <> io.outWeight
+  outputProjection.io.bias <> io.outBias
+  outputProjection.io.tile <> io.tile
+  outputProjection.io.scale.outScale := io.outOutputScale
+  outputProjection.io.scale.biasScale := "h80000000".U
+  outputProjection.io.scale.channelScale := io.outChannelScale
+  outputProjection.io.scale.channelShift := io.outChannelScaleShift
+  outputProjection.io.scale.activationScale := io.outActivationScale
+  outputProjection.io.scale.activationShift := io.outActivationScaleShift
+  outputProjection.io.scale.outputShift := io.outOutputScaleShift
+  outputProjection.io.scale.biasShift := 0.S
+  outputProjection.io.in.valid := state === sProjectFeed
+  outputProjection.io.in.bits.data := projectWord
+  outputProjection.io.in.bits.st := projectHead === 0.U
+  outputProjection.io.in.bits.addr := row * p.qHeads.U + projectHead
+  outputProjection.io.in.bits.last := projectHead === (p.qHeads - 1).U
+  when(outputProjection.io.in.fire) {
+    when(projectHead === (p.qHeads - 1).U) { state := sProjectDrain }
+      .otherwise { projectHead := projectHead + 1.U; state := sProjectRead }
+  }
+  io.out.valid := outputProjection.io.out.valid
+  io.out.bits := outputProjection.io.out.bits
+  outputProjection.io.out.ready := io.out.ready
+  when(io.out.fire && io.out.bits.last && state === sProjectDrain) {
+    tokenReady := tokenReady & ~(1.U(p.seqLen.W) << row)
+    when(row === activeSeq - 1.U) {
+      row := 0.U
+      collectToken := 0.U
+      collectionClosed := false.B
+      state := sWait
+    }.otherwise {
+      row := row + 1.U
+      state := sWait
+    }
+  }
+  dontTouch(io.mask)
+  dontTouch(io.scoreScale)
+  dontTouch(io.ctxInvScale)
+  dontTouch(io.ctxZeroPoint)
+  dontTouch(io.outInvScale)
+}
+
+class Attention(p: AttentionParams) extends Module {
+  val io = IO(new Bundle {
+    val outChannelScaleShift = Input(Vec(p.outLinear.outDim, SInt(8.W)))
+    val outActivationScaleShift = Input(SInt(8.W))
+    val outOutputScaleShift = Input(SInt(8.W))
+    val cfg = Input(new StageConfig(p.seqBits))
+    val cfgValid = Input(Bool())
+    val in = Flipped(Decoupled(new QKVStreamBeat(p.qkv)))
+    val mask = Input(UInt(p.seqLen.W))
+    val scoreScale = Input(UInt(32.W))
+    val ctxInvScale = Input(UInt(32.W))
+    val ctxZeroPoint = Input(UInt(8.W))
+    val outInvScale = Input(UInt(32.W))
+    val outChannelScale = Input(Vec(p.outLinear.outDim, UInt(32.W)))
+    val outActivationScale = Input(UInt(32.W))
+    val outOutputScale = Input(UInt(32.W))
+    val outWeight = Flipped(Decoupled(new WeightWrite(p.outLinear.weightTileBits, p.outLinear.weightAddrBits)))
+    val outBias = Flipped(Decoupled(new WeightWrite(p.outLinear.biasBeatBits, log2Ceil(p.outLinear.outBeats max 2))))
+    val tile = new WeightTileServiceIO(p.refillDataWidthBits)
+    val out = Decoupled(new StreamBeat(StreamSpec(p.outLinear.outputBeatBits, p.outLinear.outputAddrBits)))
+  })
+
+  if (p.integerMode) {
+    val core = Module(new IntegerAttention(p))
+    core.io.outChannelScaleShift := io.outChannelScaleShift
+    core.io.outActivationScaleShift := io.outActivationScaleShift
+    core.io.outOutputScaleShift := io.outOutputScaleShift
+    core.io.cfg := io.cfg
+    core.io.cfgValid := io.cfgValid
+    core.io.in <> io.in
+    core.io.mask := io.mask
+    core.io.scoreScale := io.scoreScale
+    core.io.ctxInvScale := io.ctxInvScale
+    core.io.ctxZeroPoint := io.ctxZeroPoint
+    core.io.outInvScale := io.outInvScale
+    core.io.outChannelScale := io.outChannelScale
+    core.io.outActivationScale := io.outActivationScale
+    core.io.outOutputScale := io.outOutputScale
+    core.io.outWeight <> io.outWeight
+    core.io.outBias <> io.outBias
+    core.io.tile <> io.tile
+    io.out <> core.io.out
+  } else {
+    val core = Module(new FloatingAttention(p))
+    core.io.outChannelScaleShift := io.outChannelScaleShift
+    core.io.outActivationScaleShift := io.outActivationScaleShift
+    core.io.outOutputScaleShift := io.outOutputScaleShift
+    core.io.cfg := io.cfg
+    core.io.cfgValid := io.cfgValid
+    core.io.in <> io.in
+    core.io.mask := io.mask
+    core.io.scoreScale := io.scoreScale
+    core.io.ctxInvScale := io.ctxInvScale
+    core.io.ctxZeroPoint := io.ctxZeroPoint
+    core.io.outInvScale := io.outInvScale
+    core.io.outChannelScale := io.outChannelScale
+    core.io.outActivationScale := io.outActivationScale
+    core.io.outOutputScale := io.outOutputScale
+    core.io.outWeight <> io.outWeight
+    core.io.outBias <> io.outBias
+    core.io.tile <> io.tile
+    io.out <> core.io.out
+  }
 }
 
 class AttentionMHA(p: AttentionParams) extends Attention(p)

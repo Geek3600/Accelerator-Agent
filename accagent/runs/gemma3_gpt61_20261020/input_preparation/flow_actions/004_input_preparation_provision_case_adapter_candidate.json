@@ -1,0 +1,60 @@
+{
+  "action": {
+    "acceptance_checkers": [
+      "sacg_static_check",
+      "tool_protocol_check",
+      "required_real_tool_evidence_check",
+      "artifact_hash_check",
+      "stage_artifact_trust_barrier_check",
+      "case_real_weight_artifacts",
+      "case_target_model_reference",
+      "case_semantic_testbench"
+    ],
+    "action_type": "system_capability_gap",
+    "consumes": [
+      "input_preparation/prepared_input_error_triage.json",
+      "artifact.input.task_card",
+      "artifact.input.model_config",
+      "artifact.input.numeric_policy",
+      "artifact.input.target_board_profile",
+      "artifact.input.material_index",
+      "artifact.input.sample_project_index",
+      "artifact.input.tool_profile",
+      "artifact.input.tool_availability",
+      "artifact.input.tool_protocols",
+      "source_specs.model_dir",
+      "source_specs.board_materials_dir",
+      "source_specs.tool_materials_dir"
+    ],
+    "id": "input_preparation.provision_case_adapter_candidate",
+    "on_failure": "Keep the candidate unpromoted and retain the missing-adapter error as the active current-stage blocker. Do not use candidate fields as validated downstream inputs, substitute a legacy adapter, or add random/identity model behavior, runtime-weight loading, simulation, or golden-output prerequisites.",
+    "produces": [
+      "input/case_adapter.candidate.json",
+      "input/case_adapter.candidate.provenance.json",
+      "input/case_adapter.json (promoted only after candidate checks pass)"
+    ],
+    "rationale": "No registered tool can create the missing model-family case adapter. Implement or invoke planned_tool.case_adapter_provision to assemble a candidate from the supplied model, board, tool, and sample-project materials, including real weight references, TB/RTL references, compile-only VCS/simulator protocol declarations, and diagnosis-tool bindings. The candidate must be hash/provenance bound and must exclude model-tail operations from DUT weight coverage. This is a capability implementation gap, not a hardware correctness result.",
+    "requires_approval": true,
+    "stage": "input_preparation",
+    "tool_roles": [
+      "planned_tool.case_adapter_provision"
+    ]
+  },
+  "attempt_count": 4,
+  "decision": "retry",
+  "flow_event_index": 4,
+  "materialization_policy": {
+    "does_not_mark_stage_passed": true,
+    "does_not_promote_failed_stage_artifacts": true,
+    "records_flow_controller_action": true
+  },
+  "sacg_state": null,
+  "schema_version": "spatialaccagent.flow_action_record.v0",
+  "source_flow_event": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input_preparation/flow_events/004_retry.json",
+  "source_identities": {
+    "flow_controller_result_sha256": "a9ddb0042f2c0a4db433f3ca61e0d1b8b52b817718dfd545bc83c254a73eba33",
+    "source_sacg_state_sha256": ""
+  },
+  "source_sacg_state": null,
+  "stage": "input_preparation"
+}

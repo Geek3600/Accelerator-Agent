@@ -79,7 +79,9 @@ def parse_file_info(path: Path) -> list[dict[str, str]]:
             ):
                 raise ValueError(f"{path}:{line_number} contains an invalid Vivado file_info row")
             source_path = Path(source)
-            if not source_path.is_absolute() or source_path.name != filename or not source_path.is_file():
+            if not source_path.is_absolute():
+                source_path = path.parent / source_path
+            if source_path.name != filename or not source_path.is_file():
                 raise ValueError(f"{path}:{line_number} references an unavailable simulation source: {source}")
             rows.append(
                 {

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 
 from accagent.framework.board_acceptance_contract import (
     FROZEN_COMPUTE_SLOT_IDENTITY_ATTESTATION_SCHEMA_VERSION,
@@ -36,6 +37,7 @@ from accagent.framework.case_adapter import (
 )
 from accagent.framework.stage_repair_execute import (
     _materialize_external_fixture_preflight_selection,
+    exact_board_memory_runtime_paths,
     materialize_exact_board_preflight_manifest,
 )
 from scripts.verification.qwen_hierarchical_check import check_axi_ddr_interface
@@ -2298,6 +2300,30 @@ class ExactBoardAcceptanceContractTest(TestCase):
                 report["external_fixture_source_ids"], ["external-fixture-source"]
             )
 
+    def test_detailed_vcs_functional_role_binds_exact_board_contract(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            identity_path, simulation_path, _, simulation = _case(root)
+            role = "functional_verification_compile_and_run_systemverilog_testbenches"
+            profile_path = root / "input" / "tool_profile.json"
+            profile = json.loads(profile_path.read_text(encoding="utf-8"))
+            profile["tools"][0]["role"] = role
+            profile_path.write_text(json.dumps(profile), encoding="utf-8")
+
+            plan = simulation["vcs_compile_plan"]
+            plan["tool_binding"]["role"] = role
+            plan["tool_profile_sha256"] = sha256_file(profile_path)
+            for command in plan["ordered_commands"]:
+                command["tool_role"] = role
+            simulation["vcs_compile_plan_sha256"] = canonical_contract_sha256(plan)
+            simulation_path.write_text(json.dumps(simulation), encoding="utf-8")
+
+            preflight = validate_exact_board_preflight(identity_path, simulation_path)
+            acceptance = validate_exact_board_acceptance(identity_path, simulation_path)
+
+        self.assertEqual(preflight["status"], "pass", preflight["blockers"])
+        self.assertEqual(acceptance["status"], "pass", acceptance["blockers"])
+
     def test_compute_slot_axi_mode_accepts_generated_only_boundary_validation(self) -> None:
         with TemporaryDirectory() as temp_dir:
             identity_path, simulation_path, identity, simulation = _case(
@@ -2722,6 +2748,46 @@ class ExactBoardAcceptanceContractTest(TestCase):
 
             self.assertEqual(report["status"], "pass", report["blockers"])
 
+    def test_vcs_compile_plan_accepts_drivers_from_configured_vcs_installation(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            identity_path, simulation_path, _, simulation = _case(Path(temp_dir))
+            commands = simulation["vcs_compile_plan"]["ordered_commands"]
+            commands[0]["executable"] = "vlogan"
+            commands[-1]["executable"] = "vcs"
+            simulation["vcs_compile_plan_sha256"] = canonical_contract_sha256(
+                simulation["vcs_compile_plan"]
+            )
+            simulation_path.write_text(json.dumps(simulation), encoding="utf-8")
+
+            report = validate_exact_board_preflight(identity_path, simulation_path)
+
+            self.assertEqual(report["status"], "pass", report["blockers"])
+
+    def test_vcs_compile_plan_accepts_only_profile_authorized_environment_paths(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            identity_path, simulation_path, _, simulation = _case(root)
+            profile_path = root / "input/tool_profile.json"
+            profile = json.loads(profile_path.read_text(encoding="utf-8"))
+            environment = {"HOME": "/toolchains/compatible_vcs/home"}
+            profile["tools"][0]["env"] = environment
+            profile_path.write_text(json.dumps(profile), encoding="utf-8")
+            plan = simulation["vcs_compile_plan"]
+            plan["tool_profile_sha256"] = sha256_file(profile_path)
+            plan["tool_binding"]["env"] = environment
+            for command in plan["ordered_commands"]:
+                command["env"] = dict(environment)
+            simulation["vcs_compile_plan_sha256"] = canonical_contract_sha256(plan)
+            simulation_path.write_text(json.dumps(simulation), encoding="utf-8")
+            report = validate_exact_board_preflight(identity_path, simulation_path)
+            self.assertEqual(report["status"], "pass", report["blockers"])
+            plan["ordered_commands"][0]["env"]["HOME"] = "/unauthorized/toolchain/home"
+            simulation["vcs_compile_plan_sha256"] = canonical_contract_sha256(plan)
+            simulation_path.write_text(json.dumps(simulation), encoding="utf-8")
+            report = validate_exact_board_preflight(identity_path, simulation_path)
+            self.assertEqual(report["status"], "fail")
+            self.assertTrue(any("env contains an arbitrary absolute path" in blocker for blocker in report["blockers"]))
+
     def test_vcs_compile_plan_rejects_duplicate_and_replaced_source_tokens(self) -> None:
         with TemporaryDirectory() as temp_dir:
             for name in ("duplicate", "replaced"):
@@ -2861,6 +2927,48 @@ class ExactBoardAcceptanceContractTest(TestCase):
                 canonical_contract_sha256(materialized["vcs_compile_plan"]),
             )
             self.assertNotIn("sample_slot", materialized["compile_source_ids"])
+
+    def test_compile_only_preflight_skips_runtime_and_simulation_artifacts(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir, manifest, harness, _ = _materializer_case(Path(temp_dir))
+            plan = manifest["board_simulation_preflight_plan"]
+            plan["generated_evidence_records"] = []
+            plan["execution_outputs"] = {}
+            plan.pop("pass_regex", None)
+            plan.pop("rtl_output_file", None)
+            plan.pop("boundary_trace_file", None)
+            compile_plan = plan["vcs_compile_plan"]
+            compile_plan["ordered_commands"] = [
+                row
+                for row in compile_plan["ordered_commands"]
+                if "axi_monitor" not in row.get("source_ids", [])
+            ]
+            for index, row in enumerate(compile_plan["ordered_commands"]):
+                row["order"] = index
+            plan["vcs"] = {}
+            semantic_path = (
+                run_dir
+                / "verification"
+                / "semantic_testbench"
+                / "semantic_testbench_manifest.json"
+            )
+            runtime_paths = exact_board_memory_runtime_paths(
+                run_dir, run_dir / "repair_execution"
+            )
+            for path in [semantic_path, *runtime_paths.values()]:
+                if path.is_file():
+                    path.unlink()
+
+            with patch.dict(
+                "os.environ",
+                {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"},
+            ):
+                report = materialize_exact_board_preflight_manifest(
+                    manifest, harness, run_dir
+                )
+
+        self.assertEqual(report["status"], "pass", report["blockers"])
+        self.assertEqual(report["exact_board_preflight"]["status"], "pass")
 
     def test_framework_preserves_nested_testbench_top_module(self) -> None:
         with TemporaryDirectory() as temp_dir:

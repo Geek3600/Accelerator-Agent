@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from accagent.framework.verification_evidence_contract import (
+    COMPILE_ONLY_POLICY,
     canonical_sha256,
     evidence_contract_for_level,
 )
@@ -211,157 +212,132 @@ def board_comparison(
 
 
 def assemble(run_dir: Path, level: str) -> dict[str, Any]:
-    reference_path = run_dir / "verification" / "model_reference" / "reference_manifest.json"
-    testbench_path = run_dir / "verification" / "semantic_testbench" / "semantic_testbench_manifest.json"
-    binding_path = run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
-    numeric_path = run_dir / "input" / "numeric_policy.json"
-    reference = read_json(reference_path)
-    testbench = read_json(testbench_path)
-    binding = read_json(binding_path)
+    return assemble_compile_only(run_dir, level)
+
+
+def assemble_compile_only(run_dir: Path, level: str) -> dict[str, Any]:
+    logs: list[dict[str, Any]] = []
     errors: list[str] = []
-    if reference.get("status") != "ready":
-        errors.append("target-model reference manifest is not ready")
-    if testbench.get("status") != "ready":
-        errors.append("semantic testbench manifest is not ready")
-    errors.extend(binding_errors(binding, reference))
+    source_reports: list[str] = []
 
-    board_identity: dict[str, Any] = {}
+    def add_compile_evidence(report_path: Path) -> None:
+        report = read_json(report_path)
+        evidence = report.get("compile_evidence", {}) if isinstance(report.get("compile_evidence"), dict) else {}
+        compile_result = evidence.get("compile", {}) if isinstance(evidence.get("compile"), dict) else {}
+        log_path = Path(str(evidence.get("log_path") or ""))
+        source_reports.append(str(report_path))
+        if report.get("status") != "pass" or report.get("validation_policy") != COMPILE_ONLY_POLICY:
+            errors.append(f"compile report is not a passing {COMPILE_ONLY_POLICY} result: {report_path}")
+        if evidence.get("status") != "pass" or compile_result.get("status") != "pass" or compile_result.get("returncode") != 0:
+            errors.append(f"VCS compile/elaboration did not pass: {report_path}")
+        if not log_path.is_file():
+            errors.append(f"VCS compile log is missing: {log_path}")
+            return
+        digest = sha256_file(log_path)
+        if evidence.get("log_sha256") != digest:
+            errors.append(f"VCS compile log hash mismatch: {log_path}")
+        logs.append(
+            {
+                "path": str(log_path),
+                "sha256": digest,
+                "top_module": evidence.get("top_module"),
+                "input_fingerprint_sha256": evidence.get("input_fingerprint_sha256"),
+                "compile": compile_result,
+            }
+        )
+
     if level == "operator_leaf_functional":
-        comparisons, compare_errors = operator_comparisons(run_dir, testbench)
+        manifest = read_json(run_dir / "verification" / "semantic_testbench" / "semantic_testbench_manifest.json")
+        contracts = manifest.get("stage_contracts", [])
+        if not isinstance(contracts, list) or not contracts:
+            errors.append("operator semantic testbench has no compile targets")
+        for contract in contracts:
+            if not isinstance(contract, dict) or not contract.get("stage_id"):
+                continue
+            report_path = (
+                run_dir
+                / "verification"
+                / "operator_leaf_functional"
+                / f"{str(contract['stage_id']).lower()}.json"
+            )
+            if not report_path.is_file():
+                errors.append(f"operator VCS compile report is missing: {report_path}")
+                continue
+            add_compile_evidence(report_path)
     elif level == "single_layer_functional":
-        comparisons, compare_errors = single_layer_comparison(run_dir, testbench, reference)
+        add_compile_evidence(
+            run_dir
+            / "verification"
+            / "single_layer"
+            / "single_layer_functional_report.json"
+        )
     else:
-        comparisons, compare_errors, board_identity = board_comparison(run_dir, testbench, binding)
-    errors.extend(compare_errors)
+        runner_path = run_dir / "verification" / "vcs" / "case_board_vcs_functional.json"
+        runner = read_json(runner_path)
+        source_reports.append(str(runner_path))
+        evidence = runner.get("compile_evidence", {}) if isinstance(runner.get("compile_evidence"), dict) else {}
+        compile_result = runner.get("compile", {}) if isinstance(runner.get("compile"), dict) else {}
+        log_path = Path(str(evidence.get("log_path") or runner.get("compile_log") or ""))
+        if runner.get("status") != "pass" or runner.get("validation_policy") != COMPILE_ONLY_POLICY:
+            errors.append("exact-board VCS report is not a passing compile-only result")
+        if evidence.get("status") != "pass" or compile_result.get("status") != "pass" or compile_result.get("returncode") != 0:
+            errors.append("exact-board VCS compile/elaboration did not pass")
+        if not log_path.is_file():
+            errors.append(f"exact-board VCS compile log is missing: {log_path}")
+        else:
+            digest = sha256_file(log_path)
+            if evidence.get("log_sha256") != digest:
+                errors.append("exact-board VCS compile log hash mismatch")
+            logs.append(
+                {
+                    "path": str(log_path),
+                    "sha256": digest,
+                    "top_module": runner.get("top_module"),
+                    "input_fingerprint_sha256": runner.get("input_fingerprint_sha256"),
+                    "compile": compile_result,
+                }
+            )
+        identity_path = run_dir / "verification" / "board_interface" / "board_source_identity.json"
+        identity = read_json(identity_path)
+        if identity.get("status") != "pass" or identity.get("exact_user_sample_wrapper") is not True:
+            errors.append("exact sample-project board wrapper identity is not proven")
+        if identity.get("simulation_hashes_match_source") is not True:
+            errors.append("board compile sources do not match the sample-project source identity")
 
-    comparison_hashes = [
-        str(row.get("comparison", {}).get("rtl_output_sha256") or "")
-        for row in comparisons
-        if isinstance(row.get("comparison"), dict)
-    ]
-    expected_hashes = [
-        str(row.get("comparison", {}).get("expected_output_sha256") or "")
-        for row in comparisons
-        if isinstance(row.get("comparison"), dict)
-    ]
-    consumed_hashes = sorted(
-        {
-            str(item)
-            for row in comparisons
-            for item in row.get("comparison", {}).get("consumed_tensor_hashes", [])
-            if isinstance(row.get("comparison"), dict) and nonempty_hash(item)
-        }
+    covered_levels = (
+        ["multilayer_pipeline_functional", "axi_ddr_functional"]
+        if level in {"multilayer_pipeline_functional", "axi_ddr_functional"}
+        else [level]
     )
-    input_info = reference.get("input", {}) if isinstance(reference.get("input"), dict) else {}
-    target = reference.get("target_model", {}) if isinstance(reference.get("target_model"), dict) else {}
-    reference_info = reference.get("reference", {}) if isinstance(reference.get("reference"), dict) else {}
-    testbench_hashes = [
-        str(row.get("comparison", {}).get("testbench_sha256") or "")
-        for row in comparisons
-        if isinstance(row.get("comparison"), dict)
-    ]
-    report = {
+    return {
         "schema_version": SCHEMA_VERSION,
-        "status": "pass" if not errors else "fail",
+        "status": "pass" if not errors and logs else "fail",
         "level_id": level,
+        "covered_levels": covered_levels,
+        "validation_policy": COMPILE_ONLY_POLICY,
         "evidence_contract": evidence_contract_for_level(level),
-        "semantic_provenance": {
-            "target_model": {
-                "model_id": target.get("model_id"),
-                "revision": target.get("revision"),
-                "architecture": target.get("architecture"),
-                "accelerator_scope": target.get("accelerator_scope"),
-                "excluded_model_regions": target.get("excluded_model_regions", []),
-            },
-            "weights": {
-                "real_target_weights": reference.get("weights", {}).get("real_target_weights") is True,
-                "scope_coverage_complete": binding.get("scope_coverage_complete") is True,
-                "consumed_by_dut": binding.get("dut_consumes_bound_weights") is True,
-                "manifest": str(binding_path),
-                "manifest_sha256": sha256_file(binding_path) if binding_path.exists() else None,
-                "source_checkpoint_sha256": reference.get("weights", {}).get("source_checkpoint_sha256"),
-                "consumed_tensor_hashes": consumed_hashes,
-            },
-            "input": {
-                "source": input_info.get("source"),
-                "seed": input_info.get("seed"),
-                "dtype": input_info.get("dtype"),
-                "shape": input_info.get("shape"),
-                "sha256": input_info.get("tensor_sha256"),
-            },
-            "reference": {
-                "engine": reference_info.get("engine"),
-                "independent_of_rtl": reference_info.get("independent_of_rtl") is True,
-                "uses_same_input_and_weights": reference_info.get("uses_same_input_and_weights") is True,
-                "expected_output_source": reference_info.get("expected_output_source"),
-                "oracle_kind": reference_info.get("oracle_kind"),
-                "execution_dtype": reference_info.get("execution_dtype"),
-                "expected_output_sha256": canonical_sha256(expected_hashes),
-            },
-            "numeric_policy": {
-                "path": str(numeric_path),
-                "policy_sha256": sha256_file(numeric_path) if numeric_path.exists() else None,
-                "reference_bound": reference_info.get("numeric_policy_sha256") == (sha256_file(numeric_path) if numeric_path.exists() else None),
-                "encoding_bound": testbench.get("numeric_policy_sha256") == (sha256_file(numeric_path) if numeric_path.exists() else None),
-                "comparison_policy": testbench.get("numeric_comparison_policy", {}),
-            },
-            "testbench": {
-                "manifest": str(testbench_path),
-                "manifest_sha256": sha256_file(testbench_path) if testbench_path.exists() else None,
-                "testbench_sha256": canonical_sha256(testbench_hashes),
-                "loads_real_weights": testbench.get("dut_weight_binding_verified") is True,
-            },
-            "comparison": {
-                "passed": not compare_errors,
-                "rtl_output_sha256": canonical_sha256(comparison_hashes),
-                "expected_output_sha256": canonical_sha256(expected_hashes),
-                "records": comparisons,
-            },
-            "operator_coverage_complete": level != "operator_leaf_functional" or (
-                bool(comparisons) and all(row.get("status") == "pass" for row in comparisons)
-            ),
-            "connected_single_layer": level != "single_layer_functional" or (
-                bool(comparisons) and all(row.get("status") == "pass" for row in comparisons)
-            ),
-            "validation_scope": {
-                "model_layer_count": binding.get("model_layer_count"),
-                "validation_layer_indices": binding.get("validation_layer_indices"),
-                "bound_layer_count": binding.get("bound_layer_count"),
-                "all_target_layers": binding.get("all_target_layers"),
-            },
-            "all_validation_layers": level not in {"multilayer_pipeline_functional", "axi_ddr_functional"} or (
-                binding.get("status") == "pass"
-                and binding.get("scope_coverage_complete") is True
-                and isinstance(binding.get("validation_layer_indices"), list)
-                and binding.get("validation_layer_indices")
-                == list(range(len(binding.get("validation_layer_indices"))))
-                and int(binding.get("bound_layer_count") or 0)
-                == len(binding.get("validation_layer_indices"))
-                and bool(comparisons)
-                and all(row.get("status") == "pass" for row in comparisons)
-            ),
-            "all_target_layers": level not in {"multilayer_pipeline_functional", "axi_ddr_functional"} or (
-                binding.get("all_target_layers") is True
-                and bool(comparisons)
-                and all(row.get("status") == "pass" for row in comparisons)
-            ),
-            "board_wrapper": {
-                "exact_user_sample_wrapper": board_identity.get("exact_user_sample_wrapper") is True,
-                "simulation_hashes_match_source": board_identity.get("simulation_hashes_match_source") is True,
-                "sample_project": board_identity.get("sample_project"),
-                "top_module": board_identity.get("top_module"),
-                "source_hashes": board_identity.get("source_hashes", []),
-            },
+        "evidence_contracts": {
+            covered_level: evidence_contract_for_level(covered_level)
+            for covered_level in covered_levels
         },
+        "compile_evidence": {
+            "status": "pass" if not errors and logs else "fail",
+            "compile": {
+                "status": "pass" if not errors and logs else "fail",
+                "returncode": 0 if not errors and logs else None,
+            },
+            "logs": logs,
+            "source_reports": source_reports,
+        },
+        "functional_semantics_claimed": False,
         "errors": errors,
         "policy": {
-            "old_status_only_reports_are_rejected": True,
-            "rtl_output_cannot_define_expected_output": True,
-            "random_expected_output_is_forbidden": True,
-            "default_or_sampled_weight_pass_is_forbidden": True,
+            "simulation_executed": False,
+            "output_and_weight_load_required": False,
+            "vcs_compile_and_elaboration_required": True,
+            "compile_failures_block_promotion": True,
         },
     }
-    return report
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

@@ -15,19 +15,29 @@ from pathlib import Path
 from typing import Any
 
 from accagent.framework.flow_action_handoff import (
-    mark_stage6_flow_handoff_consumed,
+    consumption_path,
     pending_stage6_flow_handoff,
 )
 from accagent.framework.sacg_utils import artifact_path, run_dir_from_state, write_json
 from accagent.framework.stage_repair import plan_repair
 from accagent.framework.stage_repair_execute import (
+    finalize_dut_weight_binding_manifest,
     prepare_stage3_checkpoint_probe_environment,
     run_repair_loop,
+    stage2_compile_only_authority,
 )
-from accagent.framework.stage_verification import run_verification
+from accagent.framework.stage_verification import (
+    case_adapter_for_state,
+    compile_only_required_gates_by_level,
+    run_verification,
+)
+from accagent.framework.verification_evidence_contract import (
+    COMPILE_ONLY_POLICY,
+)
 from accagent.framework.verification_evidence_contract import (
     certificate_contract_errors,
-    evidence_contract_for_level,
+    selector_contract_matches_certificate,
+    sha256_file,
 )
 
 
@@ -84,6 +94,71 @@ SCOPE_LEVEL_IDS = {
     "board_axi_ddr_closure": "axi_ddr_functional",
 }
 
+SCOPE_DEBUG_LAYERS = {
+    "operator_leaf_closure": {"operator_leaf_modules"},
+    "single_layer_closure": {
+        "single_transformer_layer_kernel",
+        "single_transformer_layer_functional",
+        "single_transformer_layer_connected_kernel",
+    },
+    "board_axi_ddr_closure": {"board_axi_ddr_wrapped_system"},
+}
+
+DEBUG_LAYER_SCOPES = {
+    layer: scope
+    for scope, layers in SCOPE_DEBUG_LAYERS.items()
+    for layer in layers
+}
+
+
+def _repair_scope_markers(value: Any) -> tuple[set[str], set[str]]:
+    """Collect explicit scope/layer fields from persisted repair records."""
+
+    scopes: set[str] = set()
+    layers: set[str] = set()
+
+    def visit(item: Any) -> None:
+        if isinstance(item, dict):
+            for key, nested in item.items():
+                if key in {"verification_scope", "stage6_scope", "active_scope"}:
+                    scope = str(nested or "").strip().lower()
+                    if scope in SCOPE_DEBUG_LAYERS:
+                        scopes.add(scope)
+                elif key in {"debug_layer", "current_layer"}:
+                    if isinstance(nested, dict):
+                        layer = str(nested.get("id") or "").strip()
+                    else:
+                        layer = str(nested or "").strip()
+                    if layer in DEBUG_LAYER_SCOPES:
+                        layers.add(layer)
+                visit(nested)
+        elif isinstance(item, list):
+            for nested in item:
+                visit(nested)
+
+    visit(value)
+    return scopes, layers
+
+
+def repair_plan_matches_scope(
+    plan: dict[str, Any],
+    execution: dict[str, Any],
+    active_scope: str | None,
+) -> bool:
+    """Reject a persisted lower-layer plan when the loop has advanced."""
+
+    expected_scope = str(active_scope or "").strip().lower()
+    expected_layers = SCOPE_DEBUG_LAYERS.get(expected_scope)
+    if not expected_layers:
+        return True
+    plan_scopes, plan_layers = _repair_scope_markers(plan)
+    execution_scopes, execution_layers = _repair_scope_markers(execution)
+    observed_scopes = plan_scopes | execution_scopes
+    observed_layers = plan_layers | execution_layers
+    if expected_layers & observed_layers or expected_scope in observed_scopes:
+        return True
+    return not observed_layers and not observed_scopes
+
 
 def artifact_by_id(state: dict[str, Any], artifact_id: str) -> dict[str, Any] | None:
     for artifact in state.get("artifacts", []):
@@ -121,6 +196,12 @@ def validated_scope_certificate(state: dict[str, Any], scope: str) -> dict[str, 
         return None
     if payload.get("status") != "pass":
         return None
+    if (scope == "single_layer_closure" and payload.get("validation_policy") == COMPILE_ONLY_POLICY
+            and stage2_compile_only_authority(path.resolve().parents[2]).get("status") != "ready"):
+        # Certificates may bind staged copies while the board compile consumes
+        # current generated originals. Recompile a changed kernel before board
+        # repair rather than asking its adapter agent to restore old RTL.
+        return None
     selector_artifact = artifact_by_id(state, "artifact.stage5.stage6_gate_selector_contract")
     selector_path = Path(str(selector_artifact.get("path") or "")) if selector_artifact else Path()
     selector = read_json(selector_path) if selector_artifact and selector_path.exists() else {}
@@ -128,7 +209,16 @@ def validated_scope_certificate(state: dict[str, Any], scope: str) -> dict[str, 
     selector_spec = selector.get(selector_key, {}) if isinstance(selector.get(selector_key), dict) else {}
     level_id = SCOPE_LEVEL_IDS.get(scope, str(payload.get("level_id") or ""))
     required_gates = [str(gate) for gate in selector_spec.get("required_gates", []) if str(gate)]
-    if selector_spec.get("evidence_contract") != evidence_contract_for_level(level_id):
+    certificate_run_dir = path.resolve().parents[2]
+    case_adapter = case_adapter_for_state(state, certificate_run_dir)
+    compile_only_gates = compile_only_required_gates_by_level(case_adapter).get(
+        level_id, required_gates
+    )
+    if not certificate_contract_errors(payload, level_id, compile_only_gates):
+        required_gates = compile_only_gates
+    if not selector_contract_matches_certificate(
+        selector_spec.get("evidence_contract"), payload, level_id
+    ):
         return None
     if certificate_contract_errors(payload, level_id, required_gates):
         return None
@@ -207,20 +297,9 @@ def reusable_scope_checkpoint_prefix(
         for expected_scope, declared_scope in zip(scopes, declared_scopes):
             if declared_scope != expected_scope:
                 break
-            artifact_id = SCOPE_PROMOTION_CERTIFICATES.get(expected_scope)
-            artifact = artifact_by_id(state, str(artifact_id or ""))
-            certificate_path = Path(str((artifact or {}).get("path") or ""))
-            if (
-                not artifact
-                or artifact.get("trust_status") != "validated"
-                or not certificate_path.is_file()
-            ):
-                break
-            try:
-                certificate = read_json(certificate_path)
-            except Exception:
-                break
-            if certificate.get("status") != "pass":
+            # A checkpoint records where execution stopped, not proof that
+            # its bound RTL is still current after regeneration.
+            if not validated_scope_certificate(state, expected_scope):
                 break
             recovered.append(expected_scope)
         if recovered:
@@ -320,12 +399,26 @@ def run_stage6_verification(
         "remote_tool_must_not_start": False,
     }
     if active_scope == "board_axi_ddr_closure":
-        checkpoint_preparation = prepare_stage3_checkpoint_probe_environment(
-            run_dir,
-            label=f"stage6_iteration_{iteration_index:04d}",
-        )
-        if checkpoint_preparation.get("status") != "pass":
-            return None, None, checkpoint_preparation
+        # A timing repair can legitimately change generated RTL while this
+        # worker is refreshing the single-layer certificate. Rebuild the
+        # derived board compile list from that new passing evidence before
+        # checking the board, instead of asking an HDL agent to fix old hashes.
+        binding = run_dir / "generated/memory/dut_weight_binding_manifest.json"
+        authority = stage2_compile_only_authority(run_dir) if binding.is_file() else {}
+        materialization = (finalize_dut_weight_binding_manifest(
+            run_dir, run_dir / "repair_execution", require_board=True)
+            if authority.get("status") == "ready" else {"status": "not_required"})
+        checkpoint_preparation = {
+            "status": "pass",
+            "summary": "native simulation checkpoint skipped by VCS compile-only policy",
+            "env": {
+                "SPATIALACC_CHECKPOINT_REQUIRED": "0",
+                "SPATIALACC_CHECKPOINT_REQUEST": "",
+                "SPATIALACC_FAST_REPLAY": "0",
+            },
+            "remote_tool_must_not_start": False,
+            "binding_materialization": materialization,
+        }
 
     with stage6_scope_env(
         active_scope,
@@ -339,7 +432,11 @@ def run_stage6_verification(
 
 
 def pending_repair_execution_resume(
-    state: dict[str, Any], run_dir: Path | None = None
+    state: dict[str, Any],
+    run_dir: Path | None = None,
+    *,
+    prefer_ready_flow_handoff: bool = False,
+    active_scope: str | None = None,
 ) -> dict[str, Any] | None:
     """Return one executor retry when planning already completed unchanged."""
 
@@ -352,6 +449,8 @@ def pending_repair_execution_resume(
         return None
     plan = read_json(plan_path)
     execution = read_json(execution_path)
+    if not repair_plan_matches_scope(plan, execution, active_scope):
+        return None
     workflow = plan.get("repair_workflow", {})
     steps = workflow.get("steps", []) if isinstance(workflow, dict) else []
     if (
@@ -364,6 +463,39 @@ def pending_repair_execution_resume(
         or not execution.get("errors")
     ):
         return None
+    if run_dir is not None:
+        loop_status_path = run_dir / "repair_execution" / "loop" / "status.json"
+        loop_status = read_json(loop_status_path) if loop_status_path.is_file() else {}
+        latest_record_path = Path(
+            str(loop_status.get("latest_iteration_record") or "")
+        )
+        if (
+            loop_status.get("status") == "blocked"
+            and latest_record_path.is_file()
+        ):
+            latest_record = read_json(latest_record_path)
+            disposition = latest_record.get("disposition", {})
+            archived_report_path = Path(
+                str(latest_record.get("repair_execution_report_path") or "")
+            )
+            if (
+                disposition.get("status") == "blocked"
+                and (
+                    disposition.get("observation_replan_required") is True
+                    or (
+                        isinstance(disposition.get("no_progress_failures"), list)
+                        and disposition["no_progress_failures"]
+                    )
+                )
+            ):
+                if (
+                    prefer_ready_flow_handoff
+                    or archived_report_path.resolve() == execution_path.resolve()
+                ):
+                    # A validated new handoff must replace an unchanged,
+                    # terminal frontier even if a process restart rebased its
+                    # report path.
+                    return None
     if run_dir is not None and any(
         isinstance(step, dict)
         and isinstance(step.get("action"), dict)
@@ -528,10 +660,41 @@ def terminal_repair_loop_disposition(report: dict[str, Any]) -> dict[str, Any] |
     disposition = report.get("repair_loop_disposition", {})
     if not isinstance(disposition, dict) or disposition.get("status") != "blocked":
         return None
+    if repair_execution_requires_fresh_agent_planning(report):
+        return None
     return disposition
 
 
-def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
+def backend_requested_board_recompile(state: dict[str, Any], run_dir: Path) -> bool:
+    manifest_path = run_dir / "verification" / "board_simulation" / "board_simulation_manifest.json"
+    manifest = read_json(manifest_path) if manifest_path.is_file() else {}
+    profile_path = run_dir / "input" / "tool_profile.json"
+    bound_profile_hash = manifest.get("vcs_compile_plan", {}).get("tool_profile_sha256")
+    if bound_profile_hash and profile_path.is_file() and sha256_file(profile_path) != bound_profile_hash:
+        return True
+    for source in manifest.get("source_files", []):
+        if not isinstance(source, dict) or not source.get("path") or not source.get("sha256"):
+            continue
+        path = Path(source["path"])
+        if not path.is_file() or sha256_file(path) != source["sha256"]:
+            return True
+    requests = [
+        request for request in state.get("memory", {}).get("backtrack_requests", [])
+        if isinstance(request, dict) and request.get("status") == "open"
+        and request.get("stage") == "stage7.backend_board"
+        and request.get("target_stage") == "stage6.verification"
+    ]
+    if any(request.get("verification_scope") == "board_axi_ddr_closure" for request in requests):
+        return True
+    report_path = run_dir / "backend_board" / "backend_board_report.json"
+    report = read_json(report_path) if requests and report_path.is_file() else {}
+    return any(
+        isinstance(result, dict) and result.get("source_change_requires_stage6_refresh") is True
+        for result in report.get("real_tool_results", [])
+    )
+
+
+def _debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     current_state = args.sacg_state.resolve()
     run_dir = run_dir_from_state(current_state)
     out_dir = run_dir / "debug_loop"
@@ -541,6 +704,16 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     summary = ""
     scopes = scope_sequence(args.target_scope)
     initial_state_data = read_json(current_state)
+    board_recompile_requested = backend_requested_board_recompile(initial_state_data, run_dir)
+    latest_verification_state = run_dir / "verification" / "sacg_state.json"
+    if not board_recompile_requested and not targeted_lower_layer_backtrack_completed(run_dir) and latest_verification_state.is_file():
+        try:
+            latest_state_data = read_json(latest_verification_state)
+            if reusable_scope_prefix(latest_state_data, scopes):
+                current_state = latest_verification_state
+                initial_state_data = latest_state_data
+        except (OSError, json.JSONDecodeError):
+            pass
     pending_flow_handoff = pending_stage6_flow_handoff(run_dir, current_state)
     live_reusable_scopes = reusable_scope_prefix(initial_state_data, scopes)
     checkpoint_reusable_scopes = reusable_scope_checkpoint_prefix(
@@ -553,16 +726,38 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         (live_reusable_scopes, checkpoint_reusable_scopes),
         key=len,
     )
+    if board_recompile_requested and "board_axi_ddr_closure" in scopes:
+        reused_scopes = reused_scopes[:scopes.index("board_axi_ddr_closure")]
+        if ((run_dir / 'generated' / 'memory' / 'dut_weight_binding_manifest.json').is_file()):
+            finalize_dut_weight_binding_manifest(
+                run_dir, run_dir / "repair_execution", require_board=True,
+            )
     scope_index = len(reused_scopes)
+    active_scope = scopes[scope_index] if scope_index < len(scopes) else None
     active_scope_path = out_dir / "active_scope.json"
     write_json(
         active_scope_path,
         {
             "target_scope": args.target_scope,
             "reused_scopes": reused_scopes,
+            "active_scope": active_scope,
         },
     )
-    executor_resume = pending_repair_execution_resume(initial_state_data, run_dir)
+    executor_resume = None if board_recompile_requested else pending_repair_execution_resume(
+        initial_state_data,
+        run_dir,
+        prefer_ready_flow_handoff=pending_flow_handoff.get("status") == "ready",
+        active_scope=active_scope,
+    )
+    if executor_resume is not None and pending_flow_handoff.get("status") == "ready":
+        pending_flow_handoff = {
+            "status": "deferred",
+            "handoff_identity": pending_flow_handoff.get("handoff_identity"),
+            "summary": (
+                "an existing Stage-6 repair execution must resume before a new "
+                "flow-controller handoff can be consumed"
+            ),
+        }
     deterministic_followup_keys: set[str] = set()
     if scope_index >= len(scopes):
         status = "pass"
@@ -596,11 +791,20 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             )
         )
         if handoff is not None:
-            consumed_path = mark_stage6_flow_handoff_consumed(
-                run_dir,
-                handoff,
-                Path(str(repair_report.get("outputs", {}).get("repair_plan") or "")),
+            reported_path = Path(
+                str(
+                    repair_report.get("outputs", {}).get(
+                        "flow_controller_handoff_consumption"
+                    )
+                    or ""
+                )
             )
+            consumed_path = consumption_path(run_dir)
+            if reported_path.resolve() != consumed_path.resolve() or not consumed_path.is_file():
+                raise ValueError("Stage-6 flow-controller handoff was not consumed by repair planning")
+            consumed = read_json(consumed_path).get("consumed", {})
+            if not isinstance(consumed, dict) or handoff.get("handoff_identity") not in consumed:
+                raise ValueError("Stage-6 repair planning did not record the current handoff identity")
             iteration["flow_controller_handoff"] = {
                 "status": "consumed",
                 "handoff_identity": handoff.get("handoff_identity"),
@@ -745,6 +949,16 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 if scope_index >= len(scopes) - 1:
                     status = "pass"
                     summary = f"hierarchical debug loop passed through target_scope={args.target_scope}"
+                    if active_scope and active_scope not in reused_scopes:
+                        reused_scopes.append(active_scope)
+                    write_json(
+                        active_scope_path,
+                        {
+                            "target_scope": args.target_scope,
+                            "reused_scopes": reused_scopes,
+                            "active_scope": None,
+                        },
+                    )
                     break
                 scope_index += 1
                 promoted_scope = scopes[scope_index - 1]
@@ -912,6 +1126,10 @@ def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     return report_path, report
 
 
+def debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
+    return _debug_loop(args)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run hierarchical verification/repair loop")
     parser.add_argument("--sacg-state", type=Path, required=True)
@@ -947,6 +1165,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    os.environ.setdefault(
+        "SPATIALACC_LLM_LIMITER_DIR",
+        str(run_dir_from_state(args.sacg_state) / "repair_execution" / "llm_limiter"),
+    )
     report_path, report = debug_loop(args)
     print(report_path)
     print(json.dumps({"status": report["status"], "summary": report["summary"]}, indent=2))

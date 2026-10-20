@@ -1,0 +1,127 @@
+{
+  "agent": "spatialaccagent_data_memory_runtime_specialist",
+  "duration_sec": 29.304879547969904,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "d9ee0b3e51814a4a8fd1bf2799d4f1d5",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_data_memory_runtime_specialist_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "spatialaccagent_data_memory_runtime_specialist",
+    "approval_required_for": [
+      "Any proposed change to the board-facing memory layout, address map, stream ordering, transfer/beat protocol, or major runtime/interface assumption."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "addr_map_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.target_board_profile",
+          "artifact.input.field_evidence",
+          "artifact.input.field_evidence_candidates",
+          "artifact.input.case_adapter",
+          "artifact.input.model_config",
+          "artifact.input.numeric_policy"
+        ],
+        "id": "input_preparation.audit_board_data_memory_runtime_contract",
+        "on_failure": "Record each unresolved or contradictory fact with its source and affected constraint; do not claim a checker pass, infer board-specific values, or promote the audit as board/runtime readiness. Route major layout or protocol changes for approval before adopting them.",
+        "produces": [
+          "input_preparation.board_memory_runtime_audit.json",
+          "input_preparation.data_order_and_transfer_assumptions.json",
+          "input_preparation.board_memory_runtime_checker_results.json"
+        ],
+        "rationale": "Extract a traceable board-facing contract from the supplied detailed profile and evidence, preserving unknowns rather than guessing. Run the designated static checkers against the resulting data-order, transfer, memory, and runtime records before they are consumed in SACG planning.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "memory_runtime_plan_check",
+          "stream_plan_check",
+          "addr_map_check",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "state_summary lists target_board_profile, field_evidence, field_evidence_candidates, and case_adapter as input artifacts. The candidate-stage summary exposes only selected keys and abbreviated structures, not their substantive board facts; this is a detail-visibility limitation, not evidence that the artifact classes are absent.",
+      "No board-specific data order, tensor dimension order, byte order, lane packing, element width, transfer count, AXI data width, beat interpretation, burst behavior, or ready/valid/liveness contract can be verified from the visible contents.",
+      "No DDR capacity or usable region, base addresses, address map, alignment, buffer ownership/lifetime, initialization mechanism, runtime ABI, or weight/image-loading facts are exposed in the supplied summary. These remain unconfirmed rather than established absences.",
+      "No checker results are supplied for memory_runtime_plan_check, stream_plan_check, addr_map_check, or sacg_static_check; this audit does not claim those checks passed.",
+      "The visible SACG memory truth reports zero active contamination barriers and zero open retry or backtrack requests. No current SACG-memory blocker is indicated.",
+      "Later contracts should cover only the Transformer-block accelerator boundary; do not extend DUT memory or weight-consumption requirements to embedding/tokenization, final model norm, LM head/logits, or sampling."
+    ],
+    "proposed_actions": [
+      "Have the next preparation pass inspect the detailed target_board_profile, field_evidence, and case_adapter payloads and record each board-facing fact with its source, or mark it unresolved when the detailed evidence does not document it.",
+      "Produce explicit data-order/transfer and memory/runtime audit artifacts, then run the four role-appropriate static checkers. Keep checker outcomes and evidence bindings explicit; do not mark undocumented facts as satisfied.",
+      "Escalate for approval before any later proposal that changes the board memory layout, address map, stream/beat protocol, or other major architecture/interface assumption."
+    ],
+    "risks": [
+      "Without detailed board facts, deriving beat counts, tensor-to-byte mappings, address ranges, or runtime buffer requirements would require guessing and could create inconsistent stream, memory, and deployment constraints.",
+      "Once full inputs are available, cross-check model shapes and numeric element widths against tensor ordering, packing, transfer counts, AXI beat width, alignment, and memory-map capacity; the supplied view cannot establish consistency.",
+      "A missing or ambiguous board protocol or memory-layout fact must remain unresolved for SACG extraction; do not silently substitute a generic DDR/AXI wrapper or inferred board convention."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.input.target_board_profile",
+        "artifact.input.field_evidence",
+        "artifact.input.field_evidence_candidates",
+        "artifact.input.case_adapter",
+        "input_preparation.board_memory_runtime_audit.json",
+        "input_preparation.data_order_and_transfer_assumptions.json"
+      ],
+      "constraints": [
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.stream.order",
+        "constraint.beat.pipeline"
+      ],
+      "edges": [
+        "target_board_profile and field_evidence -> documented board data-order and transfer contract",
+        "target_board_profile and field_evidence -> board memory, address-map, DDR/AXI, and runtime constraints",
+        "model/shape/numeric policy -> tensor layout, packing, and transfer-count assumptions (values require detailed artifacts)",
+        "documented contracts -> stream_plan_check, memory_runtime_plan_check, addr_map_check, and sacg_static_check"
+      ],
+      "nodes": [
+        "artifact.input.target_board_profile",
+        "artifact.input.field_evidence",
+        "artifact.input.case_adapter",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.deployment.board",
+        "constraint.stream.order",
+        "constraint.beat.pipeline"
+      ]
+    },
+    "schema_version": "spatialaccagent.team_stage_agent_output.v0",
+    "stage": "input_preparation",
+    "status": "audit_pending_detail",
+    "summary": "The supplied state confirms that target_board_profile, field_evidence, and case_adapter artifacts exist, but their detailed contents are not exposed in the compact artifact summary. Board-specific ordering, beat, memory-map, DDR/AXI, and runtime facts therefore cannot be confirmed or called missing. Handoff these details for checker-backed extraction before SACG planning; no board or runtime readiness is claimed."
+  },
+  "prompt_bytes": 39090,
+  "prompt_hash": "39f76dcc553d1613338b2d7926fcf83314bd57315038a4c4706a7ae1e5575a40",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.team_stage_agent_output.v0\",\n  \"agent\": \"spatialaccagent_data_memory_runtime_specialist\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"audit_pending_detail\",\n  \"summary\": \"The supplied state confirms that target_board_profile, field_evidence, and case_adapter artifacts exist, but their detailed contents are not exposed in the compact artifact summary. Board-specific ordering, beat, memory-map, DDR/AXI, and runtime facts therefore cannot be confirmed or called missing. Handoff these details for checker-backed extraction before SACG planning; no board or runtime readiness is claimed.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"artifact.input.target_board_profile\",\n      \"artifact.input.field_evidence\",\n      \"artifact.input.case_adapter\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.deployment.board\",\n      \"constraint.stream.order\",\n      \"constraint.beat.pipeline\"\n    ],\n    \"edges\": [\n      \"target_board_profile and field_evidence -> documented board data-order and transfer contract\",\n      \"target_board_profile and field_evidence -> board memory, address-map, DDR/AXI, and runtime constraints\",\n      \"model/shape/numeric policy -> tensor layout, packing, and transfer-count assumptions (values require detailed artifacts)\",\n      \"documented contracts -> stream_plan_check, memory_runtime_plan_check, addr_map_check, and sacg_static_check\"\n    ],\n    \"constraints\": [\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.deployment.board\",\n      \"constraint.stream.order\",\n      \"constraint.beat.pipeline\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.target_board_profile\",\n      \"artifact.input.field_evidence\",\n      \"artifact.input.field_evidence_candidates\",\n      \"artifact.input.case_adapter\",\n      \"input_preparation.board_memory_runtime_audit.json\",\n      \"input_preparation.data_order_and_transfer_assumptions.json\"\n    ]\n  },\n  \"observations\": [\n    \"state_summary lists target_board_profile, field_evidence, field_evidence_candidates, and case_adapter as input artifacts. The candidate-stage summary exposes only selected keys and abbreviated structures, not their substantive board facts; this is a detail-visibility limitation, not evidence that the artifact classes are absent.\",\n    \"No board-specific data order, tensor dimension order, byte order, lane packing, element width, transfer count, AXI data width, beat interpretation, burst behavior, or ready/valid/liveness contract can be verified from the visible contents.\",\n    \"No DDR capacity or usable region, base addresses, address map, alignment, buffer ownership/lifetime, initialization mechanism, runtime ABI, or weight/image-loading facts are exposed in the supplied summary. These remain unconfirmed rather than established absences.\",\n    \"No checker results are supplied for memory_runtime_plan_check, stream_plan_check, addr_map_check, or sacg_static_check; this audit does not claim those checks passed.\",\n    \"The visible SACG memory truth reports zero active contamination barriers and zero open retry or backtrack requests. No current SACG-memory blocker is indicated.\",\n    \"Later contracts should cover only the Transformer-block accelerator boundary; do not extend DUT memory or weight-consumption requirements to embedding/tokenization, final model norm, LM head/logits, or sampling.\"\n  ],\n  \"risks\": [\n    \"Without detailed board facts, deriving beat counts, tensor-to-byte mappings, address ranges, or runtime buffer requirements would require guessing and could create inconsistent stream, memory, and deployment constraints.\",\n    \"Once full inputs are available, cross-check model shapes and numeric element widths against tensor ordering, packing, transfer counts, AXI beat width, alignment, and memory-map capacity; the supplied view cannot establish consistency.\",\n    \"A missing or ambiguous board protocol or memory-layout fact must remain unresolved for SACG extraction; do not silently substitute a generic DDR/AXI wrapper or inferred board convention.\"\n  ],\n  \"proposed_actions\": [\n    \"Have the next preparation pass inspect the detailed target_board_profile, field_evidence, and case_adapter payloads and record each board-facing fact with its source, or mark it unresolved when the detailed evidence does not document it.\",\n    \"Produce explicit data-order/transfer and memory/runtime audit artifacts, then run the four role-appropriate static checkers. Keep checker outcomes and evidence bindings explicit; do not mark undocumented facts as satisfied.\",\n    \"Escalate for approval before any later proposal that changes the board memory layout, address map, stream/beat protocol, or other major architecture/interface assumption.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"input_preparation.audit_board_data_memory_runtime_contract\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"Extract a traceable board-facing contract from the supplied detailed profile and evidence, preserving unknowns rather than guessing. Run the designated static checkers against the resulting data-order, transfer, memory, and runtime records before they are consumed in SACG planning.\",\n      \"consumes\": [\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.field_evidence_candidates\",\n        \"artifact.input.case_adapter\",\n        \"artifact.input.model_config\",\n        \"artifact.input.numeric_policy\"\n      ],\n      \"produces\": [\n        \"input_preparation.board_memory_runtime_audit.json\",\n        \"input_preparation.data_order_and_transfer_assumptions.json\",\n        \"input_preparation.board_memory_runtime_checker_results.json\"\n      ],\n      \"tool_roles\": [\n        \"memory_runtime_plan_check\",\n        \"stream_plan_check\",\n        \"addr_map_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"memory_runtime_plan_check\",\n        \"stream_plan_check\",\n        \"addr_map_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Record each unresolved or contradictory fact with its source and affected constraint; do not claim a checker pass, infer board-specific values, or promote the audit as board/runtime readiness. Route major layout or protocol changes for approval before adopting them.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any proposed change to the board-facing memory layout, address map, stream ordering, transfer/beat protocol, or major runtime/interface assumption.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_data_memory_runtime_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/spatialaccagent_data_memory_runtime_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.data, memory, and runtime engineer",
+  "stream": false,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/history/spatialaccagent_data_memory_runtime_specialist_result.d128765f20e73357.b53c2f3595eb6d59.39f76dcc553d1613.snapshot.json",
+    "replaced_prompt_hash": "39f76dcc553d1613338b2d7926fcf83314bd57315038a4c4706a7ae1e5575a40",
+    "replaced_result_sha256": "d128765f20e73357263c1235563616b7dec8b2a09ceeee255ce7ce02430651e6",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "d128765f20e73357.b53c2f3595eb6d59.39f76dcc553d1613"
+  },
+  "transport": "responses_json",
+  "used_fallback": false
+}

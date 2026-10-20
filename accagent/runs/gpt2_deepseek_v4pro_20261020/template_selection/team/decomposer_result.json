@@ -1,0 +1,406 @@
+{
+  "duration_sec": 104.85840643697884,
+  "error": null,
+  "http_transport": "urllib",
+  "mode": "llm",
+  "output": {
+    "reason": "Template selection has independent specialist review dimensions: operator-template coverage, strict parameter/source binding, attention semantics, and cross-layer board/numeric trace gating. There are no active SACG blockers, so the stage can be decomposed into three parallel group-0 specialists with a single group-1 evidence gate. This keeps the work SACG-guided, template-constrained, and checker-verified without drifting into free-form RTL.",
+    "schema_version": "spatialaccagent.task_decomposition.v0",
+    "split_required": true,
+    "stage": "template_selection",
+    "subtasks": [
+      {
+        "acceptance_checkers": [
+          "template_coverage_check",
+          "template_binding_static_check",
+          "sacg_static_check"
+        ],
+        "action_type": "evidence_and_repair_review",
+        "agent": "operator_coverage_engineer",
+        "artifact_focus": [
+          "selected_templates",
+          "operator_sequence",
+          "missing_ops",
+          "coverage",
+          "checker_results"
+        ],
+        "constraints": [
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.template.library",
+          "constraint.source.evidence"
+        ],
+        "expected_artifacts": [
+          "artifact.template_selection.operator_coverage_review"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "block": "Block the stage if any required operator has no trusted template and no explicit required adapter, or if any coverage gap would be closed by free-form RTL.",
+          "condition": "All required decoder operators are matched to trusted templates, missing_ops is empty or has explicit required_adapters, and acceptance checkers pass.",
+          "evidence": "Handoff must cite current source paths, SHA-256 hashes, and deterministic checker results."
+        },
+        "handoff_to": [
+          "template_selection.template_binding_engineer",
+          "template_selection.cross_layer_gate_engineer"
+        ],
+        "id": "template_selection.operator_coverage_engineer",
+        "objective": "Check every decoder operator maps to a trusted template, missing coverage is explicit, and the coverage matrix is backed by deterministic checker results rather than only a completed matrix.",
+        "parallel_group": 0,
+        "role": "operator coverage engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "template_coverage_check",
+              "template_binding_static_check",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "artifact.input.model_config",
+              "artifact.input.template_library",
+              "artifact.input.template_metadata",
+              "candidate selected_templates",
+              "candidate operator_sequence",
+              "candidate coverage",
+              "candidate missing_ops",
+              "candidate checker_results"
+            ],
+            "downstream": [
+              "template_selection.template_binding_engineer",
+              "template_selection.attention_semantic_engineer",
+              "template_selection.cross_layer_gate_engineer"
+            ],
+            "produces": [
+              "artifact.template_selection.operator_coverage_review"
+            ]
+          },
+          "decision_authority": [
+            "May block template_selection on unmatched decoder operator coverage or hidden coverage gaps.",
+            "May require explicit required_adapters, but may not approve free-form RTL.",
+            "Cannot alter template internals, data order, numeric policy, or board/runtime assumptions."
+          ],
+          "mission": "Confirm every decoder operator maps to a trusted selected template and that missing coverage is explicit rather than hidden or closed with free-form RTL.",
+          "out_of_scope": [
+            "parameter numeric binding details",
+            "attention component semantics",
+            "board/runtime integration or synthesis closure"
+          ],
+          "primary_responsibilities": [
+            "Audit operator_sequence against selected_templates and coverage.covered_ops/required_ops.",
+            "Verify missing_ops is empty and every required operator has a trusted template or explicit required adapter.",
+            "Reject any coverage closure that relies on free-form RTL, implicit Chisel defaults, or unsupported backends.",
+            "Confirm the gpt2_block block wrapper is present and residual/operator order is preserved.",
+            "Produce a coverage review handoff backed by current-source checker evidence, not narrative assertion."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "extract model semantics",
+            "audit shape and head mapping",
+            "track residual/operator order"
+          ],
+          "constraint_focus": [
+            "constraint.model.decoder",
+            "constraint.shape.model",
+            "constraint.template.library"
+          ],
+          "family": "model_shape"
+        },
+        "title": "Review operator-template coverage"
+      },
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check",
+          "numeric_compare",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "agent": "template_binding_engineer",
+        "artifact_focus": [
+          "parameter_bindings",
+          "template_source_checks",
+          "unsupported_bindings",
+          "required_adapters",
+          "checker_results"
+        ],
+        "constraints": [
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.template.library",
+          "constraint.arch.design_space"
+        ],
+        "expected_artifacts": [
+          "artifact.template_selection.template_binding_review"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "block": "Block the stage on any required parameter that is unbound, illegal, or solely supplied by an implicit Chisel default when model/numeric/board input provides a value.",
+          "condition": "All selected-template required parameters are bound or validly candidate_bound, source hashes and constructor interfaces match, unsupported bindings are absent or explicitly constrained, and acceptance checkers pass.",
+          "evidence": "Handoff must cite exact parameter source keys, source paths, SHA-256 hashes, and checker results."
+        },
+        "handoff_to": [
+          "template_selection.attention_semantic_engineer",
+          "template_selection.cross_layer_gate_engineer"
+        ],
+        "id": "template_selection.template_binding_engineer",
+        "objective": "Check concrete parameter bindings, source file hashes, constructor/interface matches, unsupported bindings, required adapters, and forbidden-edit boundaries before the stage can pass.",
+        "parallel_group": 0,
+        "role": "template binding engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "parameter_binding_static_check",
+              "template_binding_static_check",
+              "numeric_compare",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "artifact.input.numeric_policy",
+              "artifact.input.template_library",
+              "artifact.input.template_metadata",
+              "artifact.input.design_space",
+              "candidate parameter_bindings",
+              "candidate template_source_checks",
+              "candidate unsupported_bindings",
+              "candidate checker_results"
+            ],
+            "downstream": [
+              "template_selection.attention_semantic_engineer",
+              "template_selection.cross_layer_gate_engineer"
+            ],
+            "produces": [
+              "artifact.template_selection.template_binding_review"
+            ]
+          },
+          "decision_authority": [
+            "May block template_selection on unbound, illegal, or unsupported parameter bindings.",
+            "May require explicit source binding when an implicit Chisel default is detected.",
+            "Cannot resolve candidate_bound physical DSE values in Stage 2."
+          ],
+          "mission": "Verify strict, traceable parameter and source binding for every selected template without allowing implicit defaults or unsupported bindings to become hidden assumptions.",
+          "out_of_scope": [
+            "operator coverage enumeration",
+            "attention component activation semantics",
+            "future simulation or synthesis execution"
+          ],
+          "primary_responsibilities": [
+            "Audit parameter_bindings for every selected template and every required parameter.",
+            "Verify each bound value has an explicit source from model, numeric policy, template metadata, or validated design-space candidate domain.",
+            "Check template_source_checks for present source files, constructor/interface matches, and hashed current evidence.",
+            "Ensure unsupported_bindings is empty or explicitly constrained and required_adapters are declared.",
+            "Treat lanes, compute_array_rows, and compute_array_cols as Stage-2 candidate_bound values; do not require Stage-4 DSE closure here."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "bind trusted templates",
+            "audit numeric policy",
+            "check resource-risk assumptions"
+          ],
+          "constraint_focus": [
+            "constraint.numeric.policy",
+            "constraint.template.library",
+            "constraint.parameter.binding"
+          ],
+          "family": "numeric_template"
+        },
+        "title": "Review strict template bindings"
+      },
+      {
+        "acceptance_checkers": [
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_compare",
+          "sacg_static_check"
+        ],
+        "action_type": "evidence_and_repair_review",
+        "agent": "attention_semantic_engineer",
+        "artifact_focus": [
+          "attention_semantics",
+          "parameter_bindings",
+          "checker_results"
+        ],
+        "constraints": [
+          "constraint.model.decoder",
+          "constraint.shape.model",
+          "constraint.numeric.policy",
+          "constraint.cross_layer.input_consistency"
+        ],
+        "expected_artifacts": [
+          "artifact.template_selection.attention_semantic_review"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "block": "Block the stage on missing required attention components or unsupported activation of RoPE/KV-cache behavior.",
+          "condition": "All required attention components are covered with current-source evidence, RoPE is not_applicable under learned_absolute positional encoding, GQA/head mapping is consistent, and acceptance checkers pass.",
+          "evidence": "Handoff must reference the attention_semantics component statuses and underlying source hashes."
+        },
+        "handoff_to": [
+          "template_selection.cross_layer_gate_engineer"
+        ],
+        "id": "template_selection.attention_semantic_engineer",
+        "objective": "Check Q/K/V projection, RoPE applicability, GQA head mapping, softmax, output projection, KV-cache scope, and causal mask binding before the stage can pass.",
+        "parallel_group": 0,
+        "role": "attention semantic engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "template_binding_static_check",
+              "parameter_binding_static_check",
+              "numeric_compare",
+              "sacg_static_check"
+            ],
+            "consumes": [
+              "artifact.input.model_config",
+              "constraint.model.decoder",
+              "constraint.shape.model",
+              "candidate attention_semantics",
+              "candidate parameter_bindings",
+              "candidate checker_results"
+            ],
+            "downstream": [
+              "template_selection.cross_layer_gate_engineer"
+            ],
+            "produces": [
+              "artifact.template_selection.attention_semantic_review"
+            ]
+          },
+          "decision_authority": [
+            "May block template_selection on required attention component coverage gaps.",
+            "May reject incorrect RoPE/KV-cache activation or unsupported head mapping.",
+            "Cannot change model positional encoding, head counts, or numeric policy."
+          ],
+          "mission": "Verify attention semantic expansion does not under- or over-bind components such as RoPE, GQA, KV-cache, softmax, or causal mask relative to the current model and shape constraints.",
+          "out_of_scope": [
+            "operator coverage matrix for non-attention operators",
+            "board memory/runtime layout",
+            "future synthesis or timing closure"
+          ],
+          "primary_responsibilities": [
+            "Audit attention_semantics components: qkv_projection, RoPE, gqa_head_mapping, softmax, output_projection, kv_cache, and causal_mask.",
+            "Confirm learned_absolute positional encoding means RoPE is not_applicable and not activated by template support alone.",
+            "Check GQA/MQA head mapping evidence against num_q_heads and num_kv_heads.",
+            "Reject missing required attention components or unsupported activation of optional components.",
+            "Produce an attention-semantic review handoff ready for cross-layer gating."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "extract model semantics",
+            "audit shape and head mapping",
+            "track residual/operator order"
+          ],
+          "constraint_focus": [
+            "constraint.model.decoder",
+            "constraint.shape.model",
+            "constraint.numeric.policy"
+          ],
+          "family": "model_shape"
+        },
+        "title": "Review attention semantic expansion"
+      },
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_binding_static_check",
+          "numeric_compare"
+        ],
+        "action_type": "evidence_and_repair_review",
+        "agent": "cross_layer_gate_engineer",
+        "artifact_focus": [
+          "cross_layer_trace",
+          "checker_results",
+          "template_source_checks",
+          "stage_gate_policy"
+        ],
+        "constraints": [
+          "constraint.numeric.policy",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.deployment.board",
+          "constraint.cross_layer.input_consistency",
+          "constraint.human.boundary"
+        ],
+        "expected_artifacts": [
+          "artifact.template_selection.stage_gate_decision"
+        ],
+        "handoff_required": true,
+        "handoff_rule": {
+          "block": "Block only on unresolved Stage-2 contradictions; do not block for later DSE, simulation, synthesis, runtime, or board-integration evidence.",
+          "condition": "All parallel group-0 specialist reviews pass, cross_layer_trace facts are present, current_stage_blocks are empty, and acceptance checkers pass.",
+          "evidence": "Gate decision must distinguish current_stage_blocks from not_current_stage_blocks and cite deterministic checker results."
+        },
+        "handoff_to": [
+          "team_aggregate"
+        ],
+        "id": "template_selection.cross_layer_gate_engineer",
+        "objective": "Check numeric, board memory, runtime, deployment, and input-consistency constraints are present in the template-binding trace, and that only unresolved current-stage blockers can prevent stage readiness.",
+        "parallel_group": 1,
+        "role": "cross layer gate engineer",
+        "role_assignment": {
+          "collaboration_interfaces": {
+            "acceptance_checkers": [
+              "sacg_static_check",
+              "template_binding_static_check",
+              "numeric_compare"
+            ],
+            "consumes": [
+              "artifact.template_selection.operator_coverage_review",
+              "artifact.template_selection.template_binding_review",
+              "artifact.template_selection.attention_semantic_review",
+              "candidate cross_layer_trace",
+              "candidate checker_results",
+              "candidate stage_gate_policy"
+            ],
+            "downstream": [
+              "team_aggregate"
+            ],
+            "produces": [
+              "artifact.template_selection.stage_gate_decision"
+            ]
+          },
+          "decision_authority": [
+            "May return ready only when all current_stage_blocks are resolved and no concrete contradiction remains.",
+            "May block on current-stage template-binding or cross-layer-trace contradictions.",
+            "Must not require future simulation, synthesis, timing, or bitstream evidence for Stage-2 acceptance."
+          ],
+          "mission": "Enforce the Stage-2 gate boundary: accept only current template-selection evidence and block only unresolved current-stage contradictions, while preserving later-stage obligations for DSE, simulation, synthesis, runtime, and board integration.",
+          "out_of_scope": [
+            "selecting physical DSE values",
+            "running VCS/Verilator simulation",
+            "running Vivado synthesis, implementation, timing, or bitstream generation"
+          ],
+          "primary_responsibilities": [
+            "Verify cross_layer_trace includes numeric policy, board memory, board runtime, board deployment, and cross-layer input-consistency facts.",
+            "Confirm all group-0 specialist handoffs passed and their acceptance checkers are evidenced.",
+            "Reclassify future work such as lanes/compute-array DSE, VCS simulation, Vivado synthesis, and runtime driver as not_current_stage_blocks.",
+            "Block only unresolved current_stage_blocks such as unbound template parameters, missing sources, unsupported bindings, or attention coverage gaps.",
+            "Produce a Stage-2 gate decision ready for team aggregation."
+          ]
+        },
+        "role_profile": {
+          "capabilities": [
+            "classify evidence",
+            "map failures to violated constraints",
+            "enforce repair boundaries"
+          ],
+          "constraint_focus": [
+            "constraint.verification.plan",
+            "constraint.human.boundary",
+            "constraint.cross_layer.input_consistency"
+          ],
+          "family": "verification_repair"
+        },
+        "title": "Review cross-layer template gate"
+      }
+    ]
+  },
+  "prompt_hash": "679b27f3967fc153f049b5d4309280debd204411afe18564b227448f57a0469a",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.task_decomposition.v0\",\n  \"stage\": \"template_selection\",\n  \"split_required\": true,\n  \"reason\": \"Template selection has independent specialist review dimensions: operator-template coverage, strict parameter/source binding, attention semantics, and cross-layer board/numeric trace gating. There are no active SACG blockers, so the stage can be decomposed into three parallel group-0 specialists with a single group-1 evidence gate. This keeps the work SACG-guided, template-constrained, and checker-verified without drifting into free-form RTL.\",\n  \"subtasks\": [\n    {\n      \"id\": \"template_selection.operator_coverage_engineer\",\n      \"agent\": \"operator_coverage_engineer\",\n      \"role\": \"operator coverage engineer\",\n      \"role_profile\": {\n        \"family\": \"model_shape\",\n        \"capabilities\": [\n          \"extract model semantics\",\n          \"audit shape and head mapping\",\n          \"track residual/operator order\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.model.decoder\",\n          \"constraint.shape.model\",\n          \"constraint.template.library\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Confirm every decoder operator maps to a trusted selected template and that missing coverage is explicit rather than hidden or closed with free-form RTL.\",\n        \"primary_responsibilities\": [\n          \"Audit operator_sequence against selected_templates and coverage.covered_ops/required_ops.\",\n          \"Verify missing_ops is empty and every required operator has a trusted template or explicit required adapter.\",\n          \"Reject any coverage closure that relies on free-form RTL, implicit Chisel defaults, or unsupported backends.\",\n          \"Confirm the gpt2_block block wrapper is present and residual/operator order is preserved.\",\n          \"Produce a coverage review handoff backed by current-source checker evidence, not narrative assertion.\"\n        ],\n        \"decision_authority\": [\n          \"May block template_selection on unmatched decoder operator coverage or hidden coverage gaps.\",\n          \"May require explicit required_adapters, but may not approve free-form RTL.\",\n          \"Cannot alter template internals, data order, numeric policy, or board/runtime assumptions.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.input.model_config\",\n            \"artifact.input.template_library\",\n            \"artifact.input.template_metadata\",\n            \"candidate selected_templates\",\n            \"candidate operator_sequence\",\n            \"candidate coverage\",\n            \"candidate missing_ops\",\n            \"candidate checker_results\"\n          ],\n          \"produces\": [\n            \"artifact.template_selection.operator_coverage_review\"\n          ],\n          \"downstream\": [\n            \"template_selection.template_binding_engineer\",\n            \"template_selection.attention_semantic_engineer\",\n            \"template_selection.cross_layer_gate_engineer\"\n          ],\n          \"acceptance_checkers\": [\n            \"template_coverage_check\",\n            \"template_binding_static_check\",\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"parameter numeric binding details\",\n          \"attention component semantics\",\n          \"board/runtime integration or synthesis closure\"\n        ]\n      },\n      \"title\": \"Review operator-template coverage\",\n      \"objective\": \"Check every decoder operator maps to a trusted template, missing coverage is explicit, and the coverage matrix is backed by deterministic checker results rather than only a completed matrix.\",\n      \"constraints\": [\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\",\n        \"constraint.template.library\",\n        \"constraint.source.evidence\"\n      ],\n      \"artifact_focus\": [\n        \"selected_templates\",\n        \"operator_sequence\",\n        \"missing_ops\",\n        \"coverage\",\n        \"checker_results\"\n      ],\n      \"parallel_group\": 0,\n      \"handoff_required\": true,\n      \"action_type\": \"evidence_and_repair_review\",\n      \"expected_artifacts\": [\n        \"artifact.template_selection.operator_coverage_review\"\n      ],\n      \"acceptance_checkers\": [\n        \"template_coverage_check\",\n        \"template_binding_static_check\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_to\": [\n        \"template_selection.template_binding_engineer\",\n        \"template_selection.cross_layer_gate_engineer\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"All required decoder operators are matched to trusted templates, missing_ops is empty or has explicit required_adapters, and acceptance checkers pass.\",\n        \"block\": \"Block the stage if any required operator has no trusted template and no explicit required adapter, or if any coverage gap would be closed by free-form RTL.\",\n        \"evidence\": \"Handoff must cite current source paths, SHA-256 hashes, and deterministic checker results.\"\n      }\n    },\n    {\n      \"id\": \"template_selection.template_binding_engineer\",\n      \"agent\": \"template_binding_engineer\",\n      \"role\": \"template binding engineer\",\n      \"role_profile\": {\n        \"family\": \"numeric_template\",\n        \"capabilities\": [\n          \"bind trusted templates\",\n          \"audit numeric policy\",\n          \"check resource-risk assumptions\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.numeric.policy\",\n          \"constraint.template.library\",\n          \"constraint.parameter.binding\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Verify strict, traceable parameter and source binding for every selected template without allowing implicit defaults or unsupported bindings to become hidden assumptions.\",\n        \"primary_responsibilities\": [\n          \"Audit parameter_bindings for every selected template and every required parameter.\",\n          \"Verify each bound value has an explicit source from model, numeric policy, template metadata, or validated design-space candidate domain.\",\n          \"Check template_source_checks for present source files, constructor/interface matches, and hashed current evidence.\",\n          \"Ensure unsupported_bindings is empty or explicitly constrained and required_adapters are declared.\",\n          \"Treat lanes, compute_array_rows, and compute_array_cols as Stage-2 candidate_bound values; do not require Stage-4 DSE closure here.\"\n        ],\n        \"decision_authority\": [\n          \"May block template_selection on unbound, illegal, or unsupported parameter bindings.\",\n          \"May require explicit source binding when an implicit Chisel default is detected.\",\n          \"Cannot resolve candidate_bound physical DSE values in Stage 2.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.input.numeric_policy\",\n            \"artifact.input.template_library\",\n            \"artifact.input.template_metadata\",\n            \"artifact.input.design_space\",\n            \"candidate parameter_bindings\",\n            \"candidate template_source_checks\",\n            \"candidate unsupported_bindings\",\n            \"candidate checker_results\"\n          ],\n          \"produces\": [\n            \"artifact.template_selection.template_binding_review\"\n          ],\n          \"downstream\": [\n            \"template_selection.attention_semantic_engineer\",\n            \"template_selection.cross_layer_gate_engineer\"\n          ],\n          \"acceptance_checkers\": [\n            \"parameter_binding_static_check\",\n            \"template_binding_static_check\",\n            \"numeric_compare\",\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"operator coverage enumeration\",\n          \"attention component activation semantics\",\n          \"future simulation or synthesis execution\"\n        ]\n      },\n      \"title\": \"Review strict template bindings\",\n      \"objective\": \"Check concrete parameter bindings, source file hashes, constructor/interface matches, unsupported bindings, required adapters, and forbidden-edit boundaries before the stage can pass.\",\n      \"constraints\": [\n        \"constraint.shape.model\",\n        \"constraint.numeric.policy\",\n        \"constraint.template.library\",\n        \"constraint.arch.design_space\"\n      ],\n      \"artifact_focus\": [\n        \"parameter_bindings\",\n        \"template_source_checks\",\n        \"unsupported_bindings\",\n        \"required_adapters\",\n        \"checker_results\"\n      ],\n      \"parallel_group\": 0,\n      \"handoff_required\": true,\n      \"action_type\": \"sacg_constraint_review\",\n      \"expected_artifacts\": [\n        \"artifact.template_selection.template_binding_review\"\n      ],\n      \"acceptance_checkers\": [\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"numeric_compare\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_to\": [\n        \"template_selection.attention_semantic_engineer\",\n        \"template_selection.cross_layer_gate_engineer\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"All selected-template required parameters are bound or validly candidate_bound, source hashes and constructor interfaces match, unsupported bindings are absent or explicitly constrained, and acceptance checkers pass.\",\n        \"block\": \"Block the stage on any required parameter that is unbound, illegal, or solely supplied by an implicit Chisel default when model/numeric/board input provides a value.\",\n        \"evidence\": \"Handoff must cite exact parameter source keys, source paths, SHA-256 hashes, and checker results.\"\n      }\n    },\n    {\n      \"id\": \"template_selection.attention_semantic_engineer\",\n      \"agent\": \"attention_semantic_engineer\",\n      \"role\": \"attention semantic engineer\",\n      \"role_profile\": {\n        \"family\": \"model_shape\",\n        \"capabilities\": [\n          \"extract model semantics\",\n          \"audit shape and head mapping\",\n          \"track residual/operator order\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.model.decoder\",\n          \"constraint.shape.model\",\n          \"constraint.numeric.policy\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Verify attention semantic expansion does not under- or over-bind components such as RoPE, GQA, KV-cache, softmax, or causal mask relative to the current model and shape constraints.\",\n        \"primary_responsibilities\": [\n          \"Audit attention_semantics components: qkv_projection, RoPE, gqa_head_mapping, softmax, output_projection, kv_cache, and causal_mask.\",\n          \"Confirm learned_absolute positional encoding means RoPE is not_applicable and not activated by template support alone.\",\n          \"Check GQA/MQA head mapping evidence against num_q_heads and num_kv_heads.\",\n          \"Reject missing required attention components or unsupported activation of optional components.\",\n          \"Produce an attention-semantic review handoff ready for cross-layer gating.\"\n        ],\n        \"decision_authority\": [\n          \"May block template_selection on required attention component coverage gaps.\",\n          \"May reject incorrect RoPE/KV-cache activation or unsupported head mapping.\",\n          \"Cannot change model positional encoding, head counts, or numeric policy.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.input.model_config\",\n            \"constraint.model.decoder\",\n            \"constraint.shape.model\",\n            \"candidate attention_semantics\",\n            \"candidate parameter_bindings\",\n            \"candidate checker_results\"\n          ],\n          \"produces\": [\n            \"artifact.template_selection.attention_semantic_review\"\n          ],\n          \"downstream\": [\n            \"template_selection.cross_layer_gate_engineer\"\n          ],\n          \"acceptance_checkers\": [\n            \"template_binding_static_check\",\n            \"parameter_binding_static_check\",\n            \"numeric_compare\",\n            \"sacg_static_check\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"operator coverage matrix for non-attention operators\",\n          \"board memory/runtime layout\",\n          \"future synthesis or timing closure\"\n        ]\n      },\n      \"title\": \"Review attention semantic expansion\",\n      \"objective\": \"Check Q/K/V projection, RoPE applicability, GQA head mapping, softmax, output projection, KV-cache scope, and causal mask binding before the stage can pass.\",\n      \"constraints\": [\n        \"constraint.model.decoder\",\n        \"constraint.shape.model\",\n        \"constraint.numeric.policy\",\n        \"constraint.cross_layer.input_consistency\"\n      ],\n      \"artifact_focus\": [\n        \"attention_semantics\",\n        \"parameter_bindings\",\n        \"checker_results\"\n      ],\n      \"parallel_group\": 0,\n      \"handoff_required\": true,\n      \"action_type\": \"evidence_and_repair_review\",\n      \"expected_artifacts\": [\n        \"artifact.template_selection.attention_semantic_review\"\n      ],\n      \"acceptance_checkers\": [\n        \"template_binding_static_check\",\n        \"parameter_binding_static_check\",\n        \"numeric_compare\",\n        \"sacg_static_check\"\n      ],\n      \"handoff_to\": [\n        \"template_selection.cross_layer_gate_engineer\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"All required attention components are covered with current-source evidence, RoPE is not_applicable under learned_absolute positional encoding, GQA/head mapping is consistent, and acceptance checkers pass.\",\n        \"block\": \"Block the stage on missing required attention components or unsupported activation of RoPE/KV-cache behavior.\",\n        \"evidence\": \"Handoff must reference the attention_semantics component statuses and underlying source hashes.\"\n      }\n    },\n    {\n      \"id\": \"template_selection.cross_layer_gate_engineer\",\n      \"agent\": \"cross_layer_gate_engineer\",\n      \"role\": \"cross layer gate engineer\",\n      \"role_profile\": {\n        \"family\": \"verification_repair\",\n        \"capabilities\": [\n          \"classify evidence\",\n          \"map failures to violated constraints\",\n          \"enforce repair boundaries\"\n        ],\n        \"constraint_focus\": [\n          \"constraint.verification.plan\",\n          \"constraint.human.boundary\",\n          \"constraint.cross_layer.input_consistency\"\n        ]\n      },\n      \"role_assignment\": {\n        \"mission\": \"Enforce the Stage-2 gate boundary: accept only current template-selection evidence and block only unresolved current-stage contradictions, while preserving later-stage obligations for DSE, simulation, synthesis, runtime, and board integration.\",\n        \"primary_responsibilities\": [\n          \"Verify cross_layer_trace includes numeric policy, board memory, board runtime, board deployment, and cross-layer input-consistency facts.\",\n          \"Confirm all group-0 specialist handoffs passed and their acceptance checkers are evidenced.\",\n          \"Reclassify future work such as lanes/compute-array DSE, VCS simulation, Vivado synthesis, and runtime driver as not_current_stage_blocks.\",\n          \"Block only unresolved current_stage_blocks such as unbound template parameters, missing sources, unsupported bindings, or attention coverage gaps.\",\n          \"Produce a Stage-2 gate decision ready for team aggregation.\"\n        ],\n        \"decision_authority\": [\n          \"May return ready only when all current_stage_blocks are resolved and no concrete contradiction remains.\",\n          \"May block on current-stage template-binding or cross-layer-trace contradictions.\",\n          \"Must not require future simulation, synthesis, timing, or bitstream evidence for Stage-2 acceptance.\"\n        ],\n        \"collaboration_interfaces\": {\n          \"consumes\": [\n            \"artifact.template_selection.operator_coverage_review\",\n            \"artifact.template_selection.template_binding_review\",\n            \"artifact.template_selection.attention_semantic_review\",\n            \"candidate cross_layer_trace\",\n            \"candidate checker_results\",\n            \"candidate stage_gate_policy\"\n          ],\n          \"produces\": [\n            \"artifact.template_selection.stage_gate_decision\"\n          ],\n          \"downstream\": [\n            \"team_aggregate\"\n          ],\n          \"acceptance_checkers\": [\n            \"sacg_static_check\",\n            \"template_binding_static_check\",\n            \"numeric_compare\"\n          ]\n        },\n        \"out_of_scope\": [\n          \"selecting physical DSE values\",\n          \"running VCS/Verilator simulation\",\n          \"running Vivado synthesis, implementation, timing, or bitstream generation\"\n        ]\n      },\n      \"title\": \"Review cross-layer template gate\",\n      \"objective\": \"Check numeric, board memory, runtime, deployment, and input-consistency constraints are present in the template-binding trace, and that only unresolved current-stage blockers can prevent stage readiness.\",\n      \"constraints\": [\n        \"constraint.numeric.policy\",\n        \"constraint.memory.board\",\n        \"constraint.runtime.board\",\n        \"constraint.deployment.board\",\n        \"constraint.cross_layer.input_consistency\",\n        \"constraint.human.boundary\"\n      ],\n      \"artifact_focus\": [\n        \"cross_layer_trace\",\n        \"checker_results\",\n        \"template_source_checks\",\n        \"stage_gate_policy\"\n      ],\n      \"parallel_group\": 1,\n      \"handoff_required\": true,\n      \"action_type\": \"evidence_and_repair_review\",\n      \"expected_artifacts\": [\n        \"artifact.template_selection.stage_gate_decision\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"template_binding_static_check\",\n        \"numeric_compare\"\n      ],\n      \"handoff_to\": [\n        \"team_aggregate\"\n      ],\n      \"handoff_rule\": {\n        \"condition\": \"All parallel group-0 specialist reviews pass, cross_layer_trace facts are present, current_stage_blocks are empty, and acceptance checkers pass.\",\n        \"block\": \"Block only on unresolved Stage-2 contradictions; do not block for later DSE, simulation, synthesis, runtime, or board-integration evidence.\",\n        \"evidence\": \"Gate decision must distinguish current_stage_blocks from not_current_stage_blocks and cite deterministic checker results.\"\n      }\n    }\n  ]\n}",
+  "reasoning_effort": "medium",
+  "schema_version": "spatialaccagent.team_decomposer_record.v0",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

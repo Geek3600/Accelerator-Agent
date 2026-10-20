@@ -1,0 +1,126 @@
+{
+  "agent": "verification_repair_specialist",
+  "duration_sec": 31.600261504005175,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "85a09f817b2d46cf9ce9927a450bb937",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/verification_repair_specialist_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "gpt-6.1-sol",
+  "output": {
+    "agent": "verification_repair_specialist",
+    "approval_required_for": [
+      "Any action not explicitly allowed by the full artifact.input.human_agent_boundary.auto_allowed policy.",
+      "Any action the full human boundary marks approval_required; forbidden actions remain blocked and are not authorized by this review.",
+      "Architecture, pipeline, memory-layout, numeric-policy, or major-template changes.",
+      "Changes to the exact user-supplied sample-project board wrapper or its immutable source identity."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "human_boundary_check",
+          "boundary_contract_check",
+          "sacg_static_check"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.field_evidence",
+          "artifact.input.field_evidence_candidates",
+          "artifact.input.case_adapter",
+          "artifact.input.human_agent_boundary",
+          "constraint.tool.protocols",
+          "constraint.human.boundary"
+        ],
+        "id": "input_preparation.audit_tool_evidence_and_human_boundary",
+        "on_failure": "Record each failing or unresolved contract as a bounded capability, evidence, or approval gap in the produced artifacts; mark unsupported evidence not_run/unverified. Do not claim pass, execute real tools, assume availability, change approval boundaries, or promote downstream work on unresolved required checks. Do not create a new compile-only tool solely because an existing verification role includes functional_sim in its name.",
+        "produces": [
+          "artifact.stage0.tool_evidence_boundary_review",
+          "artifact.stage0.capability_and_approval_gap_matrix"
+        ],
+        "rationale": "The required artifact classes are present in the state, but their detailed contracts are not visible in the supplied summary. Checker-grounded inspection is needed to establish usable tool/evidence contracts and explicit autonomous-change limits without executing tools or claiming their results.",
+        "requires_approval": false,
+        "stage": "input_preparation",
+        "tool_roles": [
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "human_boundary_check",
+          "boundary_contract_check",
+          "sacg_static_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The state lists all seven requested input artifact classes. Compact candidate-stage output exposes only selected keys for some artifacts, so omitted detail is a handoff/review need, not proof that a field or capability is absent.",
+      "No substantive tool profile, availability declaration, protocol, evidence record, evidence-candidate provenance, case-adapter gate, or human-boundary value is shown. Availability and contract consistency cannot be confirmed from the supplied summary.",
+      "Field evidence and field-evidence candidates must be kept distinct: candidates are not confirmed evidence unless their provenance, source, binding, and checker disposition are established. No checker result or bound evidence is supplied here; status is unverified/not_run.",
+      "The action registry documents existing compile-only leaf, connected-kernel, and exact-board VCS modes. Verification acceptance is successful current-source VCS compilation, elaboration, and linking; simulator execution and numerical comparison are not prerequisites. A functional_sim role name alone is not a capability gap.",
+      "The case adapter summary indicates acceptance, diagnosis, errors, and evidence-gate fields exist, but does not expose their contents. Its actual requirements must be checked against tool protocols and the current verification policy, including Transformer-block-only scope and exact user-sample-project wrapper identity at board level.",
+      "The current SACG memory truth reports zero active contamination barriers and zero open retry or backtrack requests; no memory blocker is identified."
+    ],
+    "proposed_actions": [
+      "Inspect the full listed input artifacts and run the registered protocol, real-tool-evidence, boundary, and SACG checkers; produce the tool/evidence/boundary review and capability/approval gap matrix.",
+      "For each claimed capability, record its declared availability, invocation and evidence contract, applicable checker, evidence provenance and current disposition. Record unavailable, ambiguous, or absent required capabilities as gaps; do not infer them from candidate evidence or artifact presence.",
+      "Reconcile the case adapter's evidence gates with the registered compile-only VCS policy and human boundary. Keep any action outside auto_allowed blocked unless the stated approval is obtained; do not alter forbidden-action boundaries."
+    ],
+    "risks": [
+      "A declared tool may be unavailable, have an ambiguous invocation or input/output contract, or lack the evidence binding claimed by its protocol; this is unresolved until the full artifacts and checker results are inspected.",
+      "Evidence candidates may be mistaken for confirmed field evidence if source identity, freshness, or constraint binding is not checked.",
+      "Case-adapter gates could conflict with current policy by demanding retired simulation/golden evidence, expanding accelerator scope beyond Transformer blocks, or failing to bind the exact board wrapper and sources.",
+      "The human boundary's allowed, forbidden, and approval-required actions are not visible in the summary. Autonomous repair or approval cannot be inferred; acting before checking the full boundary risks unauthorized changes.",
+      "No current-source VCS execution result is present. This input audit cannot be reported as hardware compilation, elaboration, linking, or verification pass."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "artifact.stage0.tool_evidence_boundary_review",
+        "artifact.stage0.capability_and_approval_gap_matrix"
+      ],
+      "constraints": [
+        "constraint.tool.protocols",
+        "constraint.human.boundary",
+        "constraint.deployment.board",
+        "constraint.runtime.board",
+        "constraint.model.decoder"
+      ],
+      "edges": [
+        "artifact.input.tool_profile -> constraint.tool.protocols",
+        "artifact.input.tool_availability -> constraint.tool.protocols",
+        "artifact.input.tool_protocols -> constraint.tool.protocols",
+        "artifact.input.field_evidence -> constraint.tool.protocols",
+        "artifact.input.field_evidence_candidates -> artifact.input.field_evidence",
+        "artifact.input.case_adapter -> constraint.tool.protocols",
+        "artifact.input.human_agent_boundary -> constraint.human.boundary"
+      ],
+      "nodes": [
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.field_evidence",
+        "artifact.input.field_evidence_candidates",
+        "artifact.input.case_adapter",
+        "artifact.input.human_agent_boundary"
+      ]
+    },
+    "schema_version": "spatialaccagent.verification_repair_specialist.v0",
+    "stage": "input_preparation",
+    "status": "review_required",
+    "summary": "The supplied state confirms the relevant input artifact classes exist, but their substantive tool, evidence, case-adapter, and human-boundary contents are not visible in this summary. Their contracts therefore remain unverified; no tool availability or evidence pass is claimed."
+  },
+  "prompt_bytes": 39372,
+  "prompt_hash": "aeeaedce66530e3c9948015dca5e0d58cf420e5952ae68c6f078196f24f7330a",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.verification_repair_specialist.v0\",\n  \"agent\": \"verification_repair_specialist\",\n  \"stage\": \"input_preparation\",\n  \"status\": \"review_required\",\n  \"summary\": \"The supplied state confirms the relevant input artifact classes exist, but their substantive tool, evidence, case-adapter, and human-boundary contents are not visible in this summary. Their contracts therefore remain unverified; no tool availability or evidence pass is claimed.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"artifact.input.tool_profile\",\n      \"artifact.input.tool_availability\",\n      \"artifact.input.tool_protocols\",\n      \"artifact.input.field_evidence\",\n      \"artifact.input.field_evidence_candidates\",\n      \"artifact.input.case_adapter\",\n      \"artifact.input.human_agent_boundary\"\n    ],\n    \"edges\": [\n      \"artifact.input.tool_profile -> constraint.tool.protocols\",\n      \"artifact.input.tool_availability -> constraint.tool.protocols\",\n      \"artifact.input.tool_protocols -> constraint.tool.protocols\",\n      \"artifact.input.field_evidence -> constraint.tool.protocols\",\n      \"artifact.input.field_evidence_candidates -> artifact.input.field_evidence\",\n      \"artifact.input.case_adapter -> constraint.tool.protocols\",\n      \"artifact.input.human_agent_boundary -> constraint.human.boundary\"\n    ],\n    \"constraints\": [\n      \"constraint.tool.protocols\",\n      \"constraint.human.boundary\",\n      \"constraint.deployment.board\",\n      \"constraint.runtime.board\",\n      \"constraint.model.decoder\"\n    ],\n    \"artifacts\": [\n      \"artifact.stage0.tool_evidence_boundary_review\",\n      \"artifact.stage0.capability_and_approval_gap_matrix\"\n    ]\n  },\n  \"observations\": [\n    \"The state lists all seven requested input artifact classes. Compact candidate-stage output exposes only selected keys for some artifacts, so omitted detail is a handoff/review need, not proof that a field or capability is absent.\",\n    \"No substantive tool profile, availability declaration, protocol, evidence record, evidence-candidate provenance, case-adapter gate, or human-boundary value is shown. Availability and contract consistency cannot be confirmed from the supplied summary.\",\n    \"Field evidence and field-evidence candidates must be kept distinct: candidates are not confirmed evidence unless their provenance, source, binding, and checker disposition are established. No checker result or bound evidence is supplied here; status is unverified/not_run.\",\n    \"The action registry documents existing compile-only leaf, connected-kernel, and exact-board VCS modes. Verification acceptance is successful current-source VCS compilation, elaboration, and linking; simulator execution and numerical comparison are not prerequisites. A functional_sim role name alone is not a capability gap.\",\n    \"The case adapter summary indicates acceptance, diagnosis, errors, and evidence-gate fields exist, but does not expose their contents. Its actual requirements must be checked against tool protocols and the current verification policy, including Transformer-block-only scope and exact user-sample-project wrapper identity at board level.\",\n    \"The current SACG memory truth reports zero active contamination barriers and zero open retry or backtrack requests; no memory blocker is identified.\"\n  ],\n  \"risks\": [\n    \"A declared tool may be unavailable, have an ambiguous invocation or input/output contract, or lack the evidence binding claimed by its protocol; this is unresolved until the full artifacts and checker results are inspected.\",\n    \"Evidence candidates may be mistaken for confirmed field evidence if source identity, freshness, or constraint binding is not checked.\",\n    \"Case-adapter gates could conflict with current policy by demanding retired simulation/golden evidence, expanding accelerator scope beyond Transformer blocks, or failing to bind the exact board wrapper and sources.\",\n    \"The human boundary's allowed, forbidden, and approval-required actions are not visible in the summary. Autonomous repair or approval cannot be inferred; acting before checking the full boundary risks unauthorized changes.\",\n    \"No current-source VCS execution result is present. This input audit cannot be reported as hardware compilation, elaboration, linking, or verification pass.\"\n  ],\n  \"proposed_actions\": [\n    \"Inspect the full listed input artifacts and run the registered protocol, real-tool-evidence, boundary, and SACG checkers; produce the tool/evidence/boundary review and capability/approval gap matrix.\",\n    \"For each claimed capability, record its declared availability, invocation and evidence contract, applicable checker, evidence provenance and current disposition. Record unavailable, ambiguous, or absent required capabilities as gaps; do not infer them from candidate evidence or artifact presence.\",\n    \"Reconcile the case adapter's evidence gates with the registered compile-only VCS policy and human boundary. Keep any action outside auto_allowed blocked unless the stated approval is obtained; do not alter forbidden-action boundaries.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"input_preparation.audit_tool_evidence_and_human_boundary\",\n      \"stage\": \"input_preparation\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"The required artifact classes are present in the state, but their detailed contracts are not visible in the supplied summary. Checker-grounded inspection is needed to establish usable tool/evidence contracts and explicit autonomous-change limits without executing tools or claiming their results.\",\n      \"consumes\": [\n        \"artifact.input.tool_profile\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.tool_protocols\",\n        \"artifact.input.field_evidence\",\n        \"artifact.input.field_evidence_candidates\",\n        \"artifact.input.case_adapter\",\n        \"artifact.input.human_agent_boundary\",\n        \"constraint.tool.protocols\",\n        \"constraint.human.boundary\"\n      ],\n      \"produces\": [\n        \"artifact.stage0.tool_evidence_boundary_review\",\n        \"artifact.stage0.capability_and_approval_gap_matrix\"\n      ],\n      \"tool_roles\": [\n        \"tool_protocol_check\",\n        \"required_real_tool_evidence_check\",\n        \"human_boundary_check\",\n        \"boundary_contract_check\",\n        \"sacg_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"tool_protocol_check\",\n        \"required_real_tool_evidence_check\",\n        \"human_boundary_check\",\n        \"boundary_contract_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Record each failing or unresolved contract as a bounded capability, evidence, or approval gap in the produced artifacts; mark unsupported evidence not_run/unverified. Do not claim pass, execute real tools, assume availability, change approval boundaries, or promote downstream work on unresolved required checks. Do not create a new compile-only tool solely because an existing verification role includes functional_sim in its name.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any action not explicitly allowed by the full artifact.input.human_agent_boundary.auto_allowed policy.\",\n    \"Any action the full human boundary marks approval_required; forbidden actions remain blocked and are not authorized by this review.\",\n    \"Architecture, pipeline, memory-layout, numeric-policy, or major-template changes.\",\n    \"Changes to the exact user-supplied sample-project board wrapper or its immutable source identity.\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/verification_repair_specialist_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/input/team/llm/verification_repair_specialist_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "input_preparation.tool, evidence, and human-boundary engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

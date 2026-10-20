@@ -48,6 +48,127 @@ def is_formal_dse_backtrack(request: dict[str, Any], target_stage: str | None = 
     return str(request.get("verification_scope") or "") == "formal_dse_campaign"
 
 
+def is_framework_flow_failure(request: dict[str, Any]) -> bool:
+    """Identify orchestration and evidence-identity failures that must not rewind design work."""
+
+    if not isinstance(request, dict):
+        return False
+    framework_classes = {
+        "agent_framework",
+        "framework",
+        "framework_bug",
+        "orchestration",
+        "orchestration_bug",
+        "artifact_binding",
+        "evidence_binding",
+        "hash_drift",
+        "manifest_hash_drift",
+        "provenance_binding",
+        "stage_routing",
+    }
+    for key in ("failure_category", "failure_class", "root_cause_class", "issue_type", "error_category"):
+        value = str(request.get(key) or "").strip().lower().replace("-", "_").replace(" ", "_")
+        if value in framework_classes or any(
+            marker in value
+            for marker in (
+                "framework", "orchestration", "hash", "manifest", "provenance",
+                "evidence_binding", "artifact_binding", "stage_routing",
+            )
+        ):
+            return True
+
+    diagnostic_parts: list[str] = []
+    for key in (
+        "reason",
+        "summary",
+        "error",
+        "failure_reason",
+        "root_cause",
+        "missing_or_invalid_contracts",
+        "failed_gates",
+        "blocked_artifacts",
+    ):
+        value = request.get(key)
+        if isinstance(value, list):
+            diagnostic_parts.extend(str(item) for item in value)
+        elif value is not None:
+            diagnostic_parts.append(str(value))
+    diagnostic = " ".join(diagnostic_parts).lower().replace("-", " ").replace("_", " ")
+    markers = (
+        "framework",
+        "orchestration",
+        "agent code",
+        "agent implementation",
+        "agent internal",
+        "agent.py",
+        "flow controller",
+        "stage routing",
+        "stage mapping",
+        "provenance mismatch",
+        "provenance binding",
+        "evidence binding",
+        "certificate binding",
+        "artifact binding",
+        "artifact identity mismatch",
+        "source fingerprint mismatch",
+        "projection mismatch",
+        "stale evidence",
+        "promotion certificate",
+        "hash mismatch",
+        "hash drift",
+        "hash changed",
+        "hash binding failed",
+        "hash binding failure",
+        "hash check failed",
+        "hash verification failed",
+        "sha256 mismatch",
+        "checksum mismatch",
+        "manifest drift",
+        "manifest mismatch",
+        "manifest sha mismatch",
+        "manifest sha changed",
+    )
+    return any(marker in diagnostic for marker in markers)
+
+
+def is_evidence_supported_design_backtrack(request: dict[str, Any]) -> bool:
+    """Require an explicit design failure and linked evidence before rewinding stages."""
+
+    if not isinstance(request, dict) or is_framework_flow_failure(request):
+        return False
+    category = str(
+        request.get("failure_category")
+        or request.get("failure_class")
+        or request.get("root_cause_class")
+        or ""
+    ).strip().lower().replace("-", "_").replace(" ", "_")
+    design_categories = {
+        "design_defect",
+        "hardware_design_failure",
+        "design_target_miss",
+        "timing_target_miss",
+        "resource_limit_exceeded",
+        "functional_design_failure",
+        "rtl_design_failure",
+        "performance_target_miss",
+    }
+    verification_scope = str(request.get("verification_scope") or "")
+    design_optimization = verification_scope in {
+        "formal_dse_campaign",
+        "local_qor_optimization",
+        "board_axi_ddr_closure",
+        "single_layer_closure",
+        "operator_leaf_closure",
+    }
+    if not design_optimization and category not in design_categories:
+        return False
+    evidence_keys = (
+        "evidence", "evidence_paths", "failed_gates", "critical_path", "measured_metrics",
+        "observed_metrics", "tool_results", "real_tool_results",
+    )
+    return any(request.get(key) for key in evidence_keys)
+
+
 class TopAgent:
     """Coordinate stage tools and record a reproducible design-run report."""
 
@@ -79,6 +200,7 @@ class TopAgent:
                 "SPATIALACC_LLM_TRANSIENT_RETRY_UNBOUNDED", "1"
             ),
             "SPATIALACC_LLM_RETRY_404_MODEL_ROUTE": os.environ.get("SPATIALACC_LLM_RETRY_404_MODEL_ROUTE", "1"),
+            "SPATIALACC_LLM_LIMITER_DIR": str(self.out / "agent" / "llm_limiter"),
             "SPATIALACC_TEAM_LLM_WORKERS": "1",
         }
         self.results: list[StageResult] = []
@@ -232,9 +354,21 @@ class TopAgent:
                 break
         event["flow_event_index"] = event_index
         source_sacg_path = Path(str(event.get("sacg_state") or ""))
+        original_source_sacg_state = str(source_sacg_path)
         source_sacg_sha256 = ""
         if source_sacg_path.is_file():
-            source_sacg_sha256 = hashlib.sha256(source_sacg_path.read_bytes()).hexdigest()
+            source_sacg_bytes = source_sacg_path.read_bytes()
+            source_sacg_sha256 = hashlib.sha256(source_sacg_bytes).hexdigest()
+            snapshot_path = (
+                stage_dir
+                / "flow_handoff_sources"
+                / f"{event_index:03d}_{source_sacg_sha256}.json"
+            )
+            snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+            if not snapshot_path.exists():
+                snapshot_path.write_bytes(source_sacg_bytes)
+            event["source_sacg_state"] = original_source_sacg_state
+            event["sacg_state"] = str(snapshot_path.resolve())
         flow_controller_result = Path(
             str(llm_review.get("agent_record") or "")
         )
@@ -251,6 +385,7 @@ class TopAgent:
             "reason": event.get("reason"),
             "attempt_count": event.get("attempt_count"),
             "sacg_state": event.get("sacg_state"),
+            "source_sacg_state": event.get("source_sacg_state"),
             "llm_flow_controller": llm_review,
             "executable_actions": [action for action in actions if isinstance(action, dict)],
             "source_identities": {
@@ -283,6 +418,7 @@ class TopAgent:
                     "decision": event.get("decision"),
                     "attempt_count": event.get("attempt_count"),
                     "sacg_state": event.get("sacg_state"),
+                    "source_sacg_state": event.get("source_sacg_state"),
                     "action": action,
                     "source_flow_event": str(event_path),
                     "source_identities": payload["source_identities"],
@@ -406,15 +542,42 @@ class TopAgent:
             return self.file_tree_hash(self.prepared_input_artifact_paths())
         if stage == "template_selection":
             return self.file_tree_hash([self.out / "constraint_extraction" / "initial_design_graph.json"])
+        if stage == "parameter_binding":
+            from accagent.framework.dse_calibration import SAMPLE_DIR
+            from accagent.framework.dse_ledger import ledger_path
+
+            return self.file_tree_hash([
+                self.cfg.task_spec,
+                self.out / "pipeline_planning" / "sacg_state.json",
+                DEFAULT_TEMPLATE_DIR,
+                Path(__file__).with_name("dse_estimator.py"),
+                Path(__file__).with_name("dse_calibration.py"),
+                ledger_path(self.out),
+                SAMPLE_DIR,
+            ])
         stage_inputs = {
             "pipeline_planning": self.out / "template_selection" / "sacg_state.json",
-            "parameter_binding": self.out / "pipeline_planning" / "sacg_state.json",
-            "code_generation": self.out / "parameter_binding" / "sacg_state.json",
-            "verification_artifacts": self.out / "code_generation" / "sacg_state.json",
+            "code_generation": [
+                self.out / "parameter_binding" / "sacg_state.json",
+                DEFAULT_TEMPLATE_DIR,
+            ],
+            "verification_artifacts": [
+                self.out / "code_generation" / "sacg_state.json",
+                self.out / "code_generation" / "code_generation_manifest.json",
+                self.out / "code_generation" / "code_generation_report.json",
+            ],
             "debug_loop": self.out / "verification_artifacts" / "sacg_state.json",
-            "backend_board": self.out / "debug_loop" / "sacg_state.json",
+            "backend_board": [
+                self.out / "debug_loop" / "sacg_state.json",
+                self.out / "verification" / "sacg_state.json",
+                self.out / "generated" / "chisel" / "vivado",
+                self.out / "generated" / "chisel" / "scripts" / "gen_xilinx_fp_ips_23.tcl",
+            ],
         }
-        return self.file_tree_hash([stage_inputs.get(stage, self.out)])
+        stage_input = stage_inputs.get(stage, self.out)
+        if isinstance(stage_input, list):
+            return self.file_tree_hash(stage_input)
+        return self.file_tree_hash([stage_input])
 
     def checkpoint_path(self, stage: str) -> Path:
         return self.checkpoint_dir / f"{safe_id(stage)}.json"
@@ -517,6 +680,28 @@ class TopAgent:
             return None
         if report.get("status") not in {"ready", "pass"}:
             return None
+        if stage == "backend_board" and (
+            report.get("final_design_pass") is False
+            or report.get("qor_optimization", {}).get("decision") in {"local_optimization", "dse_backtrack"}
+        ):
+            # A completed tool scope can still require a current-design repair.
+            return None
+        if stage == "backend_board":
+            request_path = self.out / "backend_board/optimization_request.json"
+            request = read_json(request_path) if request_path.is_file() else {}
+            target = request.get("clock_frequency_mhz")
+            clock = report.get("qor", {}).get("clock_frequency_mhz")
+            if (request.get("scope") == "existing_design_timing"
+                    and isinstance(target, (int, float)) and target > 0
+                    and (not isinstance(clock, (int, float)) or clock < target)):
+                return None
+        if stage == "parameter_binding":
+            from accagent.framework.dse_estimator import MODEL
+
+            # A legal old binding is not a current optimization decision.
+            rationale = report.get("dse_selection_rationale") or {}
+            if (rationale.get("qor_estimator") or {}).get("model") != MODEL:
+                return None
         if sacg_state is not None and not sacg_state.exists():
             return None
         reuse_kind = "exact_code_hash"
@@ -600,6 +785,29 @@ class TopAgent:
                 return name
         return None
 
+    def stage_key_for_action(self, action: dict[str, Any], stage_names: list[str]) -> str | None:
+        value = str(action.get("target_stage") or action.get("stage") or "").strip()
+        target = self.stage_key_for_target(value, stage_names)
+        if target != "code_generation" or value not in {
+            "stage5",
+            "stage5.hardware_implementation_and_verification_preparation",
+        }:
+            return target
+
+        artifact_refs = {
+            str(item)
+            for key in ("consumes", "produces")
+            for item in (action.get(key) if isinstance(action.get(key), list) else [])
+        }
+        verification_artifacts = {
+            "artifact.stage5.verification_artifact_contract",
+            "artifact.stage5.verification_plan",
+            "artifact.stage5.llm_action_audit",
+        }
+        if artifact_refs.intersection(verification_artifacts):
+            return "verification_artifacts"
+        return target
+
     def stage_state_path(self, report_dir: str) -> Path:
         return self.out / report_dir / "sacg_state.json"
 
@@ -647,11 +855,34 @@ class TopAgent:
             "command_log": result.command_result.log_path,
             "sacg_memory": sacg_memory_summary(state, limit=10) if state else {},
             "source_sacg_state": str(sacg_state) if sacg_state else "",
+            "stage_local_capabilities": {
+                "backend_board": {
+                    "run_local_timing_repair": "stage_backend invokes repair_timing_sources on current-run RTL after local_optimization is selected",
+                    "compiled_pending_vcs": "the source-local patch and Chisel elaboration are complete; verify current sources compile-only, then return to Stage 7 synthesis",
+                    "timing_repair_scope": "preserve Stage-4 parameters and shared templates; never restart code_generation for timing-only repair",
+                }
+            },
             "flow_policy": {
                 "llm_is_required": True,
                 "do_not_use_failed_artifacts_as_validated_downstream_inputs": True,
                 "prefer_retry_same_stage_for_retry_requests": True,
                 "honor_backtrack_requests_before_downstream_progress": True,
+                "framework_hash_evidence_or_orchestration_failures_never_backtrack": True,
+                "framework_failure_on_failed_stage_action": "retry_current_stage_without_rewinding_design",
+                "design_backtrack_requires_explicit_failure_category_and_linked_evidence": True,
+                "local_qor_optimization_is_an_evidence_supported_design_backtrack": True,
+                "backend_timing_repair_does_not_need_a_planned_tool": True,
+                "compiled_pending_vcs_must_not_restart_code_generation": True,
+                "allowed_design_backtrack_categories": [
+                    "design_defect",
+                    "hardware_design_failure",
+                    "design_target_miss",
+                    "timing_target_miss",
+                    "resource_limit_exceeded",
+                    "functional_design_failure",
+                    "rtl_design_failure",
+                    "performance_target_miss",
+                ],
                 "stage_attempt_counters_are_observability_only": True,
                 "backtrack_counters_are_observability_only": True,
                 "framework_never_terminates_a_valid_llm_repair_or_replan_loop": True,
@@ -664,7 +895,14 @@ class TopAgent:
                 task=(
                     "Review SACG memory and the latest stage result, then decide whether the autonomous "
                     "design team should proceed, retry the current stage, backtrack to an earlier stage, "
-                    "run bounded repair, or stop to avoid artifact contamination."
+                    "run bounded repair, or stop to avoid artifact contamination. Framework, hash, "
+                    "manifest, provenance, evidence-binding, or stage-routing failures must never "
+                    "rewind hardware design stages; retry the failed current stage. Backtracking is "
+                    "allowed only when the action names a hardware-design failure category and cites "
+                    "failed gates, measurements, a critical path, or tool evidence. For backend timing, "
+                    "use the run-local timing repair executed by Stage 7; when its status is "
+                    "compiled_pending_vcs, request current-source compile-only verification and return "
+                    "to Stage 7, never code_generation or parameter_binding."
                 ),
                 inputs=inputs,
                 out_dir=out_dir,
@@ -730,24 +968,61 @@ class TopAgent:
         def llm_status_contains(text: str) -> bool:
             return text in str(llm_review.get("agent_status") or "").strip().lower()
 
-        if open_items("backtrack_requests"):
-            latest = open_items("backtrack_requests")[-1]
-            target = self.stage_key_for_target(str(latest.get("target_stage") or ""), stage_names)
-            if target is None:
-                event.update(
+        invalid_backtracks: list[dict[str, Any]] = []
+        deferred_backtracks: list[dict[str, Any]] = []
+        ignored_framework_backtracks: list[dict[str, Any]] = []
+        ignored_unsupported_backtracks: list[dict[str, Any]] = []
+        for latest in reversed(open_items("backtrack_requests")):
+            if is_framework_flow_failure(latest):
+                ignored_framework_backtracks.append(
                     {
-                        "decision": "retry_replan",
-                        "reason": (
-                            "open backtrack request has no known target stage; "
-                            "retry the current stage so the LLM can emit a valid route"
-                        ),
-                        "invalid_target_stage": latest.get("target_stage"),
-                        "target_stage": current_stage,
-                        "target_index": current_index,
+                        "id": latest.get("id"),
+                        "target_stage": latest.get("target_stage"),
+                        "reason": latest.get("reason"),
                     }
                 )
-                return current_index, sacg_state, event
+                if not result.passed:
+                    event.update(
+                        {
+                            "decision": "retry_framework_failure_current_stage",
+                            "reason": "framework/hash/evidence failure cannot rewind hardware design stages",
+                            "target_stage": current_stage,
+                            "target_index": current_index,
+                            "ignored_framework_backtrack_request_id": latest.get("id"),
+                        }
+                    )
+                    event["ignored_framework_backtrack_requests"] = ignored_framework_backtracks[:8]
+                    return current_index, sacg_state, event
+                continue
+            if not is_evidence_supported_design_backtrack(latest):
+                ignored_unsupported_backtracks.append(
+                    {"id": latest.get("id"), "target_stage": latest.get("target_stage")}
+                )
+                continue
+            target = self.stage_key_for_target(str(latest.get("target_stage") or ""), stage_names)
+            if target is None:
+                invalid_backtracks.append(
+                    {
+                        "id": latest.get("id"),
+                        "target_stage": latest.get("target_stage"),
+                    }
+                )
+                continue
             target_index = stage_names.index(target)
+            if not result.passed and target_index > current_index:
+                event.update({
+                    "decision": "retry_replan",
+                    "reason": "the current failed stage must pass before a later-stage request can run",
+                    "deferred_request_id": latest.get("id"),
+                    "target_stage": current_stage,
+                    "target_index": current_index,
+                })
+                return current_index, sacg_state, event
+            if target_index > current_index:
+                deferred_backtracks.append(
+                    {"id": latest.get("id"), "target_stage": target}
+                )
+                continue
             formal_dse_campaign = is_formal_dse_backtrack(latest, target)
             event.update(
                 {
@@ -760,6 +1035,72 @@ class TopAgent:
                 }
             )
             return target_index, sacg_state, event
+        if invalid_backtracks:
+            event["ignored_invalid_backtrack_requests"] = invalid_backtracks[:8]
+        if deferred_backtracks:
+            event["deferred_backtrack_requests"] = deferred_backtracks[:8]
+        if ignored_framework_backtracks:
+            event["ignored_framework_backtrack_requests"] = ignored_framework_backtracks[:8]
+        if ignored_unsupported_backtracks:
+            event["ignored_unsupported_design_backtrack_requests"] = ignored_unsupported_backtracks[:8]
+
+        if llm_status_contains("backtrack"):
+            llm_backtrack_actions: list[tuple[dict[str, Any], str, int]] = []
+            ignored_framework_actions: list[dict[str, Any]] = []
+            ignored_unsupported_actions: list[dict[str, Any]] = []
+            actions = llm_review.get("agent_executable_actions", [])
+            if isinstance(actions, list):
+                for action in actions:
+                    if not isinstance(action, dict) or action.get("requires_approval") is True:
+                        continue
+                    if is_framework_flow_failure(action):
+                        ignored_framework_actions.append(
+                            {"id": action.get("id"), "target_stage": action.get("target_stage") or action.get("stage")}
+                        )
+                        continue
+                    if not is_evidence_supported_design_backtrack(action):
+                        ignored_unsupported_actions.append(
+                            {"id": action.get("id"), "target_stage": action.get("target_stage") or action.get("stage")}
+                        )
+                        continue
+                    target = self.stage_key_for_action(action, stage_names)
+                    if target is None:
+                        continue
+                    target_index = stage_names.index(target)
+                    if target_index >= current_index:
+                        continue
+                    llm_backtrack_actions.append((action, target, target_index))
+            target_names = {target for _, target, _ in llm_backtrack_actions}
+            if len(target_names) == 1:
+                action, target, target_index = llm_backtrack_actions[-1]
+                event.update(
+                    {
+                        "decision": "backtrack",
+                        "reason": action.get("rationale")
+                        or llm_review.get("agent_summary")
+                        or "LLM flow controller requested a bounded earlier-stage repair",
+                        "target_stage": target,
+                        "target_index": target_index,
+                        "request_id": action.get("id"),
+                        "formal_dse_campaign": is_formal_dse_backtrack(action, target),
+                        "source": "llm_flow_controller",
+                    }
+                )
+                return target_index, sacg_state, event
+            if ignored_framework_actions:
+                event["ignored_framework_backtrack_actions"] = ignored_framework_actions[:8]
+                if not result.passed:
+                    event.update(
+                        {
+                            "decision": "retry_framework_failure_current_stage",
+                            "reason": "LLM framework/hash/evidence repair action cannot rewind hardware design stages",
+                            "target_stage": current_stage,
+                            "target_index": current_index,
+                        }
+                    )
+                    return current_index, sacg_state, event
+            if ignored_unsupported_actions:
+                event["ignored_unsupported_design_backtrack_actions"] = ignored_unsupported_actions[:8]
 
         if result.passed:
             next_index = current_index + 1
@@ -850,12 +1191,9 @@ class TopAgent:
         )
         return current_index, sacg_state, event
 
-    def run(self) -> bool:
+    def run(self, *, start_stage: str | None = None, source_state: Path | None = None) -> bool:
         if self.cfg.model_source is None or self.cfg.model_dir is None:
             raise ValueError("a complete design run requires explicit model_source and model_dir inputs")
-        self.initialize_run_counters()
-        self.write_report(status="running")
-
         stage_specs = [
             (
                 "input_preparation",
@@ -913,9 +1251,17 @@ class TopAgent:
             ),
         ]
 
-        sacg_state: Path | None = None
-        stage_index = 0
         stage_names = [spec[0] for spec in stage_specs]
+        if start_stage is not None and start_stage not in stage_names:
+            raise ValueError(f"unknown resume stage: {start_stage}")
+        stage_index = stage_names.index(start_stage) if start_stage is not None else 0
+        sacg_state = source_state.resolve() if source_state is not None else None
+        if stage_index > 0 and (
+            sacg_state is None or not sacg_state.is_file() or not sacg_state.is_relative_to(self.out)
+        ):
+            raise ValueError("resuming a later stage requires a current-run SACG state file")
+        self.initialize_run_counters()
+        self.write_report(status="running")
         self.hydrate_stage_attempts_from_logs(stage_names)
         while stage_index < len(stage_specs):
             name, module, report_dir, report_file = stage_specs[stage_index]
@@ -967,6 +1313,46 @@ class TopAgent:
             )
             if stage_result.passed:
                 self.reset_stage_attempt(name, module)
+
+            stage_summary = stage_result.summary or {}
+            if name == "backend_board" and stage_result.passed and stage_summary.get("final_design_pass") is True:
+                request_path = self.out / "backend_board/optimization_request.json"
+                request = read_json(request_path) if request_path.is_file() else {}
+                if request.get("scope") == "existing_design_timing":
+                    self.record_flow_event({
+                        "stage": name, "stage_passed": True,
+                        "sacg_state": str(next_sacg_state) if next_sacg_state else None,
+                        "decision": "complete_existing_design_timing",
+                        "reason": "Current source-bound QoR meets the requested timing scope and resource limits",
+                    })
+                    self.write_report(status="ready")
+                    return True
+            timing_source_repair = stage_summary.get("timing_source_repair")
+            timing_patch_needs_vcs = (
+                isinstance(timing_source_repair, dict)
+                and timing_source_repair.get("status") == "compiled_pending_vcs"
+            )
+            stage6_refresh_required = name == "backend_board" and (
+                stage_summary.get("stage6_refresh_required") is True
+                or timing_patch_needs_vcs
+                or any(
+                    isinstance(item, dict) and item.get("source_change_requires_stage6_refresh") is True
+                    for item in stage_summary.get("real_tool_results", [])
+                )
+            )
+            if (name == "debug_loop" and stage_result.passed) or stage6_refresh_required:
+                next_index = stage_names.index("debug_loop") if stage6_refresh_required else stage_index + 1
+                self.record_flow_event({
+                    "stage": name, "stage_passed": stage_result.passed,
+                    "sacg_state": str(next_sacg_state) if next_sacg_state else None,
+                    "decision": "refresh_stage6_compile_evidence" if stage6_refresh_required else "proceed_verified_stage6",
+                    "target_stage": stage_names[next_index], "target_index": next_index,
+                    "reason": "required current Stage-6 compile evidence" if stage6_refresh_required else "all Stage-6 verification scopes passed",
+                })
+                self.write_report(status="running")
+                sacg_state = next_sacg_state
+                stage_index = next_index
+                continue
 
             # The first three stages have no architecture/workflow choice to
             # make after a clean pass.  Avoid spending an extra LLM call on a
@@ -1068,6 +1454,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tool-materials-dir", type=Path, default=CFG.tool_materials_dir)
     parser.add_argument("--tool-timeout-sec", type=int, default=CFG.real_tool_timeout_sec)
     parser.add_argument("--no-resume", action="store_true")
+    parser.add_argument("--start-stage", help="resume the flow controller at a current stage without replaying earlier stages")
+    parser.add_argument("--sacg-state", type=Path, help="current-run state required with a later --start-stage")
     parsed = parser.parse_args(args)
     cfg = replace(
         CFG,
@@ -1083,7 +1471,7 @@ def main(argv: list[str] | None = None) -> int:
         resume_existing=not parsed.no_resume,
     )
     agent = TopAgent(cfg)
-    passed = agent.run()
+    passed = agent.run(start_stage=parsed.start_stage, source_state=parsed.sacg_state)
     print(agent.report_path)
     return 0 if passed else 1
 

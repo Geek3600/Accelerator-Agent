@@ -1,0 +1,162 @@
+{
+  "agent": "template_platform_engineer",
+  "duration_sec": 81.42330335598672,
+  "error": null,
+  "http_transport": "urllib",
+  "live_transaction_id": "260e3024bb0a4a33818e07b6141f087a",
+  "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/llm/template_platform_engineer_live_transaction.json",
+  "max_output_tokens": null,
+  "mode": "llm",
+  "model": "deepseek-v4-pro",
+  "output": {
+    "agent": "template_platform_engineer",
+    "approval_required_for": [
+      "Any bounded graph addition or modification to architecture/design-space constraints found missing by static checks",
+      "Any numeric-policy or parameter-binding constraint modification found missing by static checks",
+      "Any board DDR/AXI/memory/runtime constraint or deployment-evidence binding modification found ambiguous by static checks"
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_policy_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "implementation_package_static"
+        ],
+        "action_type": "sacg_constraint_review",
+        "consumes": [
+          "candidate_design_graph_summary",
+          "prepared_inputs_manifest",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.input.numeric_policy",
+          "artifact.input.target_board_profile",
+          "artifact.input.tool_profile",
+          "artifact.input.tool_availability",
+          "artifact.input.tool_protocols",
+          "artifact.input.case_adapter",
+          "constraint.template.library",
+          "constraint.arch.design_space",
+          "constraint.numeric.policy",
+          "constraint.memory.board",
+          "constraint.runtime.board",
+          "constraint.tool.protocols",
+          "constraint.deployment.board"
+        ],
+        "id": "constraint_extraction.template_platform_static_review",
+        "on_failure": "Do not hand off to constraint_graph_auditor as passed. Record the exact missing or invalid node, edge, or unsupported backend/resource claim, then open a bounded graph-expansion/repair request. Approval is required for any addition or change to architecture/design-space, numeric-policy, or board memory/runtime constraints.",
+        "produces": [
+          "constraint_extraction.template_platform_review_evidence.json"
+        ],
+        "rationale": "The compact candidate graph summary alone is not sufficient evidence that template_library, design_space, numeric_policy, board DDR/AXI/memory/runtime, and tool_protocols are represented as graph constraints without unsupported resource-risk or backend claims. Run the existing static checkers against the full graph and produce the stage handoff evidence.",
+        "requires_approval": false,
+        "stage": "constraint_extraction",
+        "tool_roles": [
+          "sacg_static_check",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "numeric_policy_check",
+          "memory_runtime_plan_check",
+          "addr_map_check",
+          "tool_protocol_check",
+          "required_real_tool_evidence_check",
+          "implementation_package_static"
+        ]
+      }
+    ],
+    "observations": [
+      "Candidate design graph summary exists and reports 20 nodes, 16 constraints, 7 edges, 109 evidence_fields, and validation_errors=[].",
+      "The supplied candidate_stage_artifact is compact: detailed node_ids, constraint_ids, and evidence_fields are not expanded, so the exact presence and edge-binding of the six named review constraints cannot be confirmed from the summary alone.",
+      "Input artifacts exist for template_library, template_metadata, design_space, numeric_policy, target_board_profile, tool_profile, tool_availability, tool_protocols, and case_adapter, so the source material needed to ground these graph constraints is available.",
+      "No active contamination barriers, open retry requests, or open backtrack requests are present in sacg_memory_truth; this review is not currently blocked by SACG-memory contamination or retry state.",
+      "No validated lower-layer hierarchical learning certificates are present, so no lower-layer timing or wrapper invariant should be reused or reopened in this constraint-extraction review.",
+      "The review is static constraint-graph consistency only; no VCS compilation, simulation execution, synthesis, or board wrapper claim is being made at this stage.",
+      "No explicit unsupported resource-risk or backend claim is visible in the compact summary, but absence of detailed evidence means an unsupported backend/resource implication could still be hidden in the full graph."
+    ],
+    "proposed_actions": [
+      "Run grounded static SACG validation against the full candidate design graph, not only the compact summary.",
+      "Check that template_library, design_space, numeric_policy, board memory/runtime, and tool_protocols each have explicit graph nodes and edge bindings.",
+      "Check for unsupported resource-risk or backend claims and mark any positive real-tool evidence requirements as downstream obligations rather than current satisfied claims.",
+      "If named platform constraints are missing or unlinked, request a bounded graph expansion action with cited input artifacts and approval for architecture/memory/numeric changes.",
+      "Produce constraint_extraction.template_platform_review_evidence.json as handoff evidence to constraint_graph_auditor only after the static checks pass or are explicitly recorded as not_run with a blocked status."
+    ],
+    "risks": [
+      "Template library and design-space constraints may be represented only as input artifacts and not as explicit graph nodes with binding edges.",
+      "Numeric policy may be present as an input but not linked to parameter binding or implementation constraints.",
+      "Board DDR/AXI/memory/runtime facts may be referenced without a deployment-board evidence edge, allowing an unsupported memory-address or resource-risk assumption.",
+      "Tool availability and tool protocols may not be separated, and a future synthesis/backend capability may be represented as already supported without real-tool evidence.",
+      "Compact summary counts cannot distinguish complete representation from merely enumerated but unlinked constraints.",
+      "If static checks fail, adding nodes or edges may require architecture, memory-layout, numeric-policy, or template-binding approval, which would block handoff until approved."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_design_graph_summary",
+        "prepared_inputs_manifest",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.numeric_policy",
+        "artifact.input.target_board_profile",
+        "artifact.input.tool_profile",
+        "artifact.input.tool_availability",
+        "artifact.input.tool_protocols",
+        "artifact.input.case_adapter"
+      ],
+      "constraints": [
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.numeric.policy",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.tool.profile",
+        "constraint.tool.protocols",
+        "constraint.deployment.board",
+        "constraint.case.adapter"
+      ],
+      "edges": [
+        "constraint.template.library -> constraint.parameter.binding",
+        "constraint.arch.design_space -> constraint.parameter.binding",
+        "constraint.numeric.policy -> constraint.parameter.binding",
+        "constraint.deployment.board -> constraint.memory.board",
+        "constraint.deployment.board -> constraint.runtime.board",
+        "constraint.tool.profile -> constraint.tool.protocols",
+        "constraint.memory.board -> constraint.runtime.board"
+      ],
+      "nodes": [
+        "node.template.library",
+        "node.arch.design_space",
+        "node.numeric.policy",
+        "node.parameter.binding",
+        "node.deployment.board",
+        "node.memory.board",
+        "node.runtime.board",
+        "node.tool.profile",
+        "node.tool.protocols"
+      ]
+    },
+    "schema_version": "spatialaccagent.agent_response.v0",
+    "stage": "constraint_extraction",
+    "status": "needs_evidence",
+    "summary": "Candidate design graph summary is present with 20 nodes, 16 constraints, 7 edges, and no validation_errors, but the supplied summary is compact and does not expand node_ids, constraint_ids, or evidence_fields. The named template, design-space, numeric, board DDR/AXI/memory/runtime, and tool-protocol constraints therefore cannot yet be certified as fully represented and correctly linked without running the grounded static checks against the full graph."
+  },
+  "prompt_bytes": 39401,
+  "prompt_hash": "d02eb57123097cf4f9f03553b1f43d85ed433ec92cec53167563d2c1e2c7f237",
+  "prompt_protocol": "spatialaccagent.llm_io.v0",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.agent_response.v0\",\n  \"agent\": \"template_platform_engineer\",\n  \"stage\": \"constraint_extraction\",\n  \"status\": \"needs_evidence\",\n  \"summary\": \"Candidate design graph summary is present with 20 nodes, 16 constraints, 7 edges, and no validation_errors, but the supplied summary is compact and does not expand node_ids, constraint_ids, or evidence_fields. The named template, design-space, numeric, board DDR/AXI/memory/runtime, and tool-protocol constraints therefore cannot yet be certified as fully represented and correctly linked without running the grounded static checks against the full graph.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"node.template.library\",\n      \"node.arch.design_space\",\n      \"node.numeric.policy\",\n      \"node.parameter.binding\",\n      \"node.deployment.board\",\n      \"node.memory.board\",\n      \"node.runtime.board\",\n      \"node.tool.profile\",\n      \"node.tool.protocols\"\n    ],\n    \"edges\": [\n      \"constraint.template.library -> constraint.parameter.binding\",\n      \"constraint.arch.design_space -> constraint.parameter.binding\",\n      \"constraint.numeric.policy -> constraint.parameter.binding\",\n      \"constraint.deployment.board -> constraint.memory.board\",\n      \"constraint.deployment.board -> constraint.runtime.board\",\n      \"constraint.tool.profile -> constraint.tool.protocols\",\n      \"constraint.memory.board -> constraint.runtime.board\"\n    ],\n    \"constraints\": [\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.numeric.policy\",\n      \"constraint.memory.board\",\n      \"constraint.runtime.board\",\n      \"constraint.tool.profile\",\n      \"constraint.tool.protocols\",\n      \"constraint.deployment.board\",\n      \"constraint.case.adapter\"\n    ],\n    \"artifacts\": [\n      \"candidate_design_graph_summary\",\n      \"prepared_inputs_manifest\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"artifact.input.design_space\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.target_board_profile\",\n      \"artifact.input.tool_profile\",\n      \"artifact.input.tool_availability\",\n      \"artifact.input.tool_protocols\",\n      \"artifact.input.case_adapter\"\n    ]\n  },\n  \"observations\": [\n    \"Candidate design graph summary exists and reports 20 nodes, 16 constraints, 7 edges, 109 evidence_fields, and validation_errors=[].\",\n    \"The supplied candidate_stage_artifact is compact: detailed node_ids, constraint_ids, and evidence_fields are not expanded, so the exact presence and edge-binding of the six named review constraints cannot be confirmed from the summary alone.\",\n    \"Input artifacts exist for template_library, template_metadata, design_space, numeric_policy, target_board_profile, tool_profile, tool_availability, tool_protocols, and case_adapter, so the source material needed to ground these graph constraints is available.\",\n    \"No active contamination barriers, open retry requests, or open backtrack requests are present in sacg_memory_truth; this review is not currently blocked by SACG-memory contamination or retry state.\",\n    \"No validated lower-layer hierarchical learning certificates are present, so no lower-layer timing or wrapper invariant should be reused or reopened in this constraint-extraction review.\",\n    \"The review is static constraint-graph consistency only; no VCS compilation, simulation execution, synthesis, or board wrapper claim is being made at this stage.\",\n    \"No explicit unsupported resource-risk or backend claim is visible in the compact summary, but absence of detailed evidence means an unsupported backend/resource implication could still be hidden in the full graph.\"\n  ],\n  \"risks\": [\n    \"Template library and design-space constraints may be represented only as input artifacts and not as explicit graph nodes with binding edges.\",\n    \"Numeric policy may be present as an input but not linked to parameter binding or implementation constraints.\",\n    \"Board DDR/AXI/memory/runtime facts may be referenced without a deployment-board evidence edge, allowing an unsupported memory-address or resource-risk assumption.\",\n    \"Tool availability and tool protocols may not be separated, and a future synthesis/backend capability may be represented as already supported without real-tool evidence.\",\n    \"Compact summary counts cannot distinguish complete representation from merely enumerated but unlinked constraints.\",\n    \"If static checks fail, adding nodes or edges may require architecture, memory-layout, numeric-policy, or template-binding approval, which would block handoff until approved.\"\n  ],\n  \"proposed_actions\": [\n    \"Run grounded static SACG validation against the full candidate design graph, not only the compact summary.\",\n    \"Check that template_library, design_space, numeric_policy, board memory/runtime, and tool_protocols each have explicit graph nodes and edge bindings.\",\n    \"Check for unsupported resource-risk or backend claims and mark any positive real-tool evidence requirements as downstream obligations rather than current satisfied claims.\",\n    \"If named platform constraints are missing or unlinked, request a bounded graph expansion action with cited input artifacts and approval for architecture/memory/numeric changes.\",\n    \"Produce constraint_extraction.template_platform_review_evidence.json as handoff evidence to constraint_graph_auditor only after the static checks pass or are explicitly recorded as not_run with a blocked status.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"constraint_extraction.template_platform_static_review\",\n      \"stage\": \"constraint_extraction\",\n      \"action_type\": \"sacg_constraint_review\",\n      \"rationale\": \"The compact candidate graph summary alone is not sufficient evidence that template_library, design_space, numeric_policy, board DDR/AXI/memory/runtime, and tool_protocols are represented as graph constraints without unsupported resource-risk or backend claims. Run the existing static checkers against the full graph and produce the stage handoff evidence.\",\n      \"consumes\": [\n        \"candidate_design_graph_summary\",\n        \"prepared_inputs_manifest\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.design_space\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.target_board_profile\",\n        \"artifact.input.tool_profile\",\n        \"artifact.input.tool_availability\",\n        \"artifact.input.tool_protocols\",\n        \"artifact.input.case_adapter\",\n        \"constraint.template.library\",\n        \"constraint.arch.design_space\",\n        \"constraint.numeric.policy\",\n        \"constraint.memory.board\",\n        \"constraint.runtime.board\",\n        \"constraint.tool.protocols\",\n        \"constraint.deployment.board\"\n      ],\n      \"produces\": [\n        \"constraint_extraction.template_platform_review_evidence.json\"\n      ],\n      \"tool_roles\": [\n        \"sacg_static_check\",\n        \"template_coverage_check\",\n        \"template_binding_static_check\",\n        \"parameter_binding_static_check\",\n        \"numeric_policy_check\",\n        \"memory_runtime_plan_check\",\n        \"addr_map_check\",\n        \"tool_protocol_check\",\n        \"required_real_tool_evidence_check\",\n        \"implementation_package_static\"\n      ],\n      \"acceptance_checkers\": [\n        \"sacg_static_check\",\n        \"template_coverage_check\",\n        \"template_binding_static_check\",\n        \"parameter_binding_static_check\",\n        \"numeric_policy_check\",\n        \"memory_runtime_plan_check\",\n        \"addr_map_check\",\n        \"tool_protocol_check\",\n        \"required_real_tool_evidence_check\",\n        \"implementation_package_static\"\n      ],\n      \"on_failure\": \"Do not hand off to constraint_graph_auditor as passed. Record the exact missing or invalid node, edge, or unsupported backend/resource claim, then open a bounded graph-expansion/repair request. Approval is required for any addition or change to architecture/design-space, numeric-policy, or board memory/runtime constraints.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any bounded graph addition or modification to architecture/design-space constraints found missing by static checks\",\n    \"Any numeric-policy or parameter-binding constraint modification found missing by static checks\",\n    \"Any board DDR/AXI/memory/runtime constraint or deployment-evidence binding modification found ambiguous by static checks\"\n  ]\n}",
+  "reasoning_effort": "medium",
+  "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/llm/template_platform_engineer_prompt.md",
+  "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/constraint_extraction/team/llm/template_platform_engineer_result.json",
+  "schema_version": "spatialaccagent.stage_worker_record.v0",
+  "stage": "constraint_extraction.template platform engineer",
+  "stream": false,
+  "transport": "responses_json",
+  "used_fallback": false
+}

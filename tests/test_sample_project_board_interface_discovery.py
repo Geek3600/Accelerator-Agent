@@ -235,6 +235,21 @@ class ReplacementBoundaryTests(unittest.TestCase):
         errors = impl._validate_replacement_boundary(self.boundary("cell:selected", rows), cell, rows)
         self.assertTrue(any("not exclusive" in value for value in errors))
 
+    def test_retained_closure_is_derived_without_llm_catalog_echo(self) -> None:
+        cell = {"object_id": "cell:selected"}
+        rows = [
+            {"source_id": "source:slot", "sha256": "1" * 64, "owner_cell_ids": ["cell:selected"]},
+            *[{"source_id": f"source:retained:{i}", "sha256": "2" * 64} for i in range(407)],
+        ]
+        abi = self.boundary("cell:selected", rows)
+        abi["replacement_boundary"].pop("retained_source_ids")
+        self.assertEqual(impl._validate_replacement_boundary(abi, cell, rows), [])
+        self.assertEqual(set(abi["replacement_boundary"]["retained_source_ids"]),
+                         {row["source_id"] for row in rows[1:]})
+        abi["replacement_boundary"]["retained_source_ids"] = ["source:unknown"]
+        self.assertTrue(any("not exactly sample closure" in e for e in
+                            impl._validate_replacement_boundary(abi, cell, rows)))
+
 
 class ControlAbiTests(unittest.TestCase):
     def facts(self) -> tuple[dict[str, object], dict[str, object]]:
@@ -435,6 +450,37 @@ class ControlAbiTests(unittest.TestCase):
             unknown_enforcement, cell, facts, timing, rows
         )
         self.assertTrue(any("control_sequence_enforcement" in value for value in errors))
+
+
+class TimingLevelTests(unittest.TestCase):
+    def test_level_spelling_preserves_vivado_polarity_checks(self) -> None:
+        cell = {"object_id": "cell:slot", "path": "/slot", "bd_path": "sample.bd"}
+        for spelling, polarity, expected, matches in [
+            ("low", "ACTIVE_LOW", 0, True),
+            (" HIGH ", "ACTIVE_HIGH", 1, True),
+            ("0", "ACTIVE_LOW", 0, True),
+            ("1", "ACTIVE_HIGH", 1, True),
+            ("ACTIVE_LOW", "ACTIVE_LOW", 0, True),
+            ("ACTIVE_HIGH", "ACTIVE_HIGH", 1, True),
+            ("ACTIVE_HIGH", "ACTIVE_LOW", 1, False),
+            ("low", "ACTIVE_HIGH", 0, False),
+            ("unknown", "ACTIVE_LOW", "unknown", False),
+        ]:
+            with self.subTest(spelling=spelling, polarity=polarity):
+                pin = {
+                    "object_id": "pin:reset", "kind": "pin", "path": "/slot/reset",
+                    "owner_path": "/slot", "bd_path": "sample.bd",
+                    "properties": {"TYPE": "rst", "CONFIG.POLARITY": polarity},
+                }
+                timing = {
+                    "resets": [{"fact_port_id": "pin:reset", "name": "reset", "active_level": spelling}],
+                    "calibration": [{"name": "calibration", "active_level": spelling}],
+                }
+                errors = impl._validate_timing(timing, cell, {"objects": [cell, pin]}, [])
+                self.assertEqual(timing["resets"][0]["active_level"], expected)
+                self.assertEqual(timing["calibration"][0]["active_level"], expected)
+                self.assertEqual(any("polarity does not match" in e for e in errors), not matches)
+                self.assertTrue(any("minimum assert cycles are missing" in e for e in errors))
 
 
 class DomainRepairFlowTests(unittest.TestCase):
@@ -656,17 +702,16 @@ class DomainRepairFlowTests(unittest.TestCase):
                 contract["timing_contract"]["calibration"]["value_rules"]["source"]["allowed_values"],
                 ["exact_sample_memory_model", "exact_sample_ip"],
             )
-            self.assertIn(
-                "evidence_refs",
-                contract["control_abi"]["timing_required_fields"],
+            self.assertEqual(
+                contract["top_level"]["passing_values"]["validation_policy"],
+                "vcs_compile_only",
             )
+            self.assertIn("port_classifications", contract["control_abi"]["required_fields"])
             self.assertIn(
                 "name",
                 contract["axi_interfaces"]["item_required_fields"],
             )
-            self.assertIn(
-                "derived_done", contract["control_abi"]["signals"]
-            )
+            self.assertNotIn("signals", contract["control_abi"])
             self.assertIn(
                 "fact_interface_id",
                 contract["axi_interfaces"]["item_required_fields"],
@@ -690,6 +735,84 @@ class DomainRepairFlowTests(unittest.TestCase):
 
 
 class ProgressiveSelectorTests(unittest.TestCase):
+    def test_selected_source_review_can_precede_exclusive_replacement_proof(self) -> None:
+        facts = {"objects": [{"object_id": "cell:slot", "kind": "cell"}]}
+        sources = [{"source_id": "source:wrapper"}]
+        record = {"output": {
+            "status": "selected", "selected_cell_id": "cell:slot",
+            "wrapper_source_id": "source:wrapper",
+            "relevant_sample_source_ids": ["source:wrapper"],
+            "proposed_replaced_source_ids": [], "blockers": [],
+        }}
+        _, errors = impl._validate_selector_record(record, facts, sources)
+        self.assertEqual(errors, [])
+        # Deferral at the metadata selector does not certify a replacement.
+        errors = impl._validate_replacement_boundary({}, facts["objects"][0], sources)
+        self.assertIn("compute_slot_abi.replaced_source_ids is empty", errors)
+        record["output"]["proposed_replaced_source_ids"] = ["source:unknown"]
+        _, errors = impl._validate_selector_record(record, facts, sources)
+        self.assertTrue(any("outside its sample evidence set" in e for e in errors))
+
+    def test_equivalent_candidates_can_be_selected_without_human_approval(self) -> None:
+        reviews = [
+            {
+                "candidate_cells": [
+                    {"cell_id": "cell:one"},
+                    {"cell_id": "cell:two"},
+                ],
+                "candidate_wrapper_sources": [{"source_id": "source:wrapper"}],
+                "candidate_relevant_sources": [{"source_id": "source:wrapper"}],
+                "candidate_replacement_sources": [{"source_id": "source:slot"}],
+            }
+        ]
+        selector = {
+            "output": {
+                "status": "selected",
+                "selected_cell_id": "cell:one",
+                "wrapper_source_id": "source:wrapper",
+                "relevant_sample_source_ids": ["source:wrapper"],
+                "proposed_replaced_source_ids": ["source:slot"],
+                "selection_basis": {
+                    "mode": "evidence_equivalent_candidates",
+                    "equivalent_candidate_cell_ids": ["cell:one", "cell:two"],
+                    "rationale": "Both candidates have the same cited interface and ownership evidence.",
+                },
+            }
+        }
+
+        self.assertEqual(
+            impl._validate_progressive_final_selection(selector, reviews), []
+        )
+
+        reviews[0]["findings"] = [{"evidence_source_ids": ["source:shared_control"]}]
+        selector["output"]["relevant_sample_source_ids"].append("source:shared_control")
+        self.assertEqual(impl._validate_progressive_final_selection(selector, reviews), [])
+        selector["output"]["proposed_replaced_source_ids"].append("source:shared_control")
+        self.assertTrue(any("replacement sources absent" in e for e in
+                            impl._validate_progressive_final_selection(selector, reviews)))
+        selector["output"]["proposed_replaced_source_ids"].pop()
+        selector["output"]["relevant_sample_source_ids"].append("source:catalog_dependency")
+        self.assertEqual(impl._validate_progressive_final_selection(
+            selector, reviews, readable_source_ids={"source:catalog_dependency"}
+        ), [])
+        self.assertTrue(any("relevant sources absent" in e for e in
+                            impl._validate_progressive_final_selection(selector, reviews)))
+        selector["output"]["proposed_replaced_source_ids"].append("source:catalog_dependency")
+        self.assertTrue(any("replacement sources absent" in e for e in
+                            impl._validate_progressive_final_selection(
+                                selector, reviews, readable_source_ids={"source:catalog_dependency"}
+                            )))
+        selector["output"]["proposed_replaced_source_ids"].pop()
+        selector["output"]["relevant_sample_source_ids"].pop()
+
+        selector["output"].pop("selection_basis")
+        self.assertTrue(
+            any(
+                "evidence-equivalence selection basis" in error
+                for error in impl._validate_progressive_final_selection(selector, reviews)
+            )
+        )
+
     def fixture(self) -> tuple[dict[str, object], list[dict[str, object]]]:
         bd = "/sample/design.bd"
         objects = [
@@ -1094,6 +1217,7 @@ class ProgressiveSelectorTests(unittest.TestCase):
                     "global_vivado_context",
                     "target_board_profile",
                     "progressive_evidence_reviews",
+                    "sample_source_catalog",
                     "complete_coverage",
                 },
             )
@@ -1125,6 +1249,19 @@ class ProgressiveSelectorTests(unittest.TestCase):
                 )
             persisted = json.loads(Path(record["result_path"]).read_text(encoding="utf-8"))
             self.assertEqual(persisted["progressive_selection"]["coverage_ledger"], ledger_ref)
+
+            calls.clear()
+            selected_again = impl.run_progressive_board_selector(
+                runner, out_dir, facts, {"board": "current-user-sample"}, rows,
+                map_budget_bytes=largest_unit + 256,
+                reduce_budget_bytes=3500,
+            )
+            self.assertTrue(selected_again["semantic_checkpoint_reuse"])
+            self.assertFalse(any(
+                call["agent"] == "exact_board_interface_selector_agent" for call in calls
+            ))
+            # A source-domain failure must not cause a valid slot choice to
+            # be repeated, but a changed approval below still requires a call.
 
             approval = {
                 "artifact": {"path": "/approval.json", "sha256": "a" * 64},
@@ -1557,6 +1694,64 @@ class PolicyTests(unittest.TestCase):
             )
             result = validate_exact_board_identity(identity_path)
             self.assertEqual(result["status"], "pass", result["blockers"])
+
+
+class HistoricalBoardIdentityReuseTests(unittest.TestCase):
+    def test_fact_rebinding_ignores_only_temporary_vivado_exports(self) -> None:
+        facts = {
+            "project": {"path": "/sample/project.xpr", "top_module": "sample_top"},
+            "simulation": {
+                "source_files": [{"source_id": "source:one", "sha256": "a"}],
+                "simulator_export_contexts": [
+                    {"remote_path": "/tmp/old/script.sh", "sha256": "old", "text": "old"}
+                ],
+                "simulator_export_files": [
+                    {"remote_path": "/tmp/old/script.sh", "sha256": "old"}
+                ],
+            },
+            "objects": [{"object_id": "cell:one", "kind": "cell", "path": "/slot"}],
+        }
+        rebound = json.loads(json.dumps(facts))
+        rebound["simulation"]["simulator_export_contexts"][0].update(
+            {"remote_path": "/tmp/new/script.sh", "sha256": "new", "text": "new"}
+        )
+        rebound["simulation"]["simulator_export_files"][0].update(
+            {"remote_path": "/tmp/new/script.sh", "sha256": "new"}
+        )
+        self.assertEqual(
+            impl._board_fact_structure_fingerprint(facts),
+            impl._board_fact_structure_fingerprint(rebound),
+        )
+        rebound["objects"][0]["path"] = "/different_slot"
+        self.assertNotEqual(
+            impl._board_fact_structure_fingerprint(facts),
+            impl._board_fact_structure_fingerprint(rebound),
+        )
+
+    def test_source_identity_rebinding_ignores_staging_paths(self) -> None:
+        rows = [
+            {
+                "source_id": "source:one",
+                "sha256": "a" * 64,
+                "path": "/old/staging/one.v",
+                "local_path": "/old/staging/one.v",
+                "compile_order": 0,
+                "library": "work",
+                "file_type": "Verilog",
+            }
+        ]
+        rebound = json.loads(json.dumps(rows))
+        rebound[0]["path"] = "/new/staging/one.v"
+        rebound[0]["local_path"] = "/new/staging/one.v"
+        self.assertEqual(
+            impl._source_identity_rows(rows),
+            impl._source_identity_rows(rebound),
+        )
+        rebound[0]["sha256"] = "b" * 64
+        self.assertNotEqual(
+            impl._source_identity_rows(rows),
+            impl._source_identity_rows(rebound),
+        )
 
 
 if __name__ == "__main__":
