@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -7,6 +8,7 @@ from pathlib import Path
 
 from accagent.framework.sacg_cctg_causal_slice import (
     PROGRESS_SCHEMA_VERSION,
+    build_static_failure_context,
     build_sacg_cctg_causal_slice,
 )
 from accagent.framework.stage_llm import _compact_board_vcs_feedback
@@ -171,6 +173,277 @@ class SacgCctgCausalSliceTest(unittest.TestCase):
             executed_manifest=executed,
             failure_class="vcs_runtime_semantic_stall",
             executed_manifest_path=executed_path,
+        )
+
+    def make_static_failure_case(
+        self, root: Path, *, source_is_mapped: bool = True
+    ) -> tuple[Path, Path]:
+        run_dir = root / "static-run"
+        package = run_dir / "generated" / "chisel"
+        source = package / "src" / "main" / "scala" / "Fault.scala"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("// controlled compile diagnostic target\n", encoding="utf-8")
+        graph = {
+            "nodes": [
+                {"id": "node.design", "type": "design", "artifacts": []},
+                {
+                    "id": "node.kernel",
+                    "type": "pipeline_stage",
+                    "artifacts": ["artifact.codegen"],
+                    "facts": {"source": "Fault.scala"},
+                },
+                {"id": "node.output", "type": "pipeline_boundary", "artifacts": []},
+            ],
+            "edges": [
+                {"id": "edge.design.kernel", "src": "node.design", "dst": "node.kernel", "type": "data"},
+                {"id": "edge.kernel.output", "src": "node.kernel", "dst": "node.output", "type": "stream"},
+            ],
+            "constraints": [
+                {
+                    "id": "constraint.codegen",
+                    "type": "generated_package",
+                    "nodes": ["node.kernel"],
+                    "edges": ["edge.design.kernel"],
+                    "artifacts": ["artifact.codegen"],
+                }
+            ],
+            "artifacts": [
+                {
+                    "id": "artifact.codegen",
+                    "type": "stage.generated_code_package",
+                    "path": str(package),
+                    "nodes": ["node.kernel"],
+                    "constraints": ["constraint.codegen"],
+                }
+            ],
+        }
+        sacg_path = run_dir / "repair" / "sacg_state.json"
+        write_json(sacg_path, graph)
+        report_path = run_dir / "verification" / "static_failure.json"
+        write_json(
+            report_path,
+            {
+                "status": "needs_repair",
+                "failure_domain": "compile_time",
+                "summary": "controlled compiler error in generated source",
+                "source_file": str(source if source_is_mapped else run_dir / "outside" / "Fault.scala"),
+                "sacg_state_sha256": hashlib.sha256(sacg_path.read_bytes()).hexdigest(),
+            },
+        )
+        return sacg_path, report_path
+
+    def test_static_failure_maps_exact_source_and_returns_upstream_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sacg_path, report_path = self.make_static_failure_case(Path(tmp))
+            result = build_static_failure_context(
+                sacg_state_path=sacg_path,
+                failure_report_path=report_path,
+            )
+
+        self.assertEqual(result["status"], "static_context_ready")
+        self.assertFalse(result["runtime_causal_claim"])
+        self.assertEqual(result["mapped_failure_sources"][0]["artifact_id"], "artifact.codegen")
+        self.assertEqual(
+            [node["id"] for node in result["root_cause_candidates"]],
+            ["node.kernel"],
+        )
+        self.assertEqual(
+            {node["id"] for node in result["upstream_dependency_context"]},
+            {"node.design", "node.kernel"},
+        )
+        self.assertEqual(result["authorized_repair_scope"], [])
+
+    def test_static_failure_maps_generated_rtl_module_to_pipeline_template(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sacg_path, report_path = self.make_static_failure_case(Path(tmp))
+            graph = json.loads(sacg_path.read_text(encoding="utf-8"))
+            graph["nodes"][1]["facts"] = {"template_id": "linear"}
+            write_json(sacg_path, graph)
+            rtl_path = sacg_path.parent.parent / "generated" / "chisel" / "Linear.sv"
+            rtl_path.parent.mkdir(parents=True, exist_ok=True)
+            rtl_path.write_text("// generated module\n", encoding="utf-8")
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report["source_file"] = str(rtl_path)
+            report["sacg_state_sha256"] = hashlib.sha256(sacg_path.read_bytes()).hexdigest()
+            write_json(report_path, report)
+            result = build_static_failure_context(
+                sacg_state_path=sacg_path,
+                failure_report_path=report_path,
+            )
+
+        self.assertEqual(result["status"], "static_context_ready")
+        self.assertEqual(
+            [node["id"] for node in result["root_cause_candidates"]],
+            ["node.kernel"],
+        )
+
+    def test_static_failure_rejects_stale_graph_binding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sacg_path, report_path = self.make_static_failure_case(Path(tmp))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report["sacg_state_sha256"] = "0" * 64
+            write_json(report_path, report)
+            result = build_static_failure_context(
+                sacg_state_path=sacg_path,
+                failure_report_path=report_path,
+            )
+
+        self.assertEqual(result["status"], "insufficient_evidence")
+        self.assertFalse(result["evidence_binding"]["sacg_binding_matches"])
+        self.assertIn("does not bind the exact SACG snapshot", result["blockers"][0])
+
+    def test_static_failure_retains_all_stages_for_shared_generated_module(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sacg_path, report_path = self.make_static_failure_case(Path(tmp))
+            graph = json.loads(sacg_path.read_text(encoding="utf-8"))
+            graph["nodes"][1]["id"] = "node.pipeline.first"
+            graph["nodes"][1]["facts"] = {"template_id": "ffn"}
+            graph["nodes"].append({"id": "node.pipeline.second", "facts": {"template_id": "ffn"}})
+            write_json(sacg_path, graph)
+            rtl = sacg_path.parent.parent / "generated/chisel/Linear.sv"
+            rtl.write_text("module Linear; endmodule\n", encoding="utf-8")
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report.update(source_file=str(rtl), sacg_state_sha256=hashlib.sha256(sacg_path.read_bytes()).hexdigest())
+            write_json(report_path, report)
+            result = build_static_failure_context(sacg_state_path=sacg_path, failure_report_path=report_path)
+        self.assertEqual({row["id"] for row in result["root_cause_candidates"]}, {"node.pipeline.first", "node.pipeline.second"})
+
+    def test_consumer_context_refines_only_when_bound_to_tool_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sacg_path, report_path = self.make_static_failure_case(Path(tmp))
+            root = sacg_path.parent.parent
+            package = root / "generated" / "chisel"
+            producer = package / "Linear.sv"
+            consumer = package / "QKVProjection.sv"
+            producer.write_text("module Linear(input a); endmodule\n", encoding="utf-8")
+            consumer.write_text(
+                "module QKVProjection; Linear projection(.a(x)); endmodule\n",
+                encoding="utf-8",
+            )
+            graph = json.loads(sacg_path.read_text(encoding="utf-8"))
+            graph["nodes"][1].update(id="node.pipeline.attention", facts={"template_id": "attention"})
+            graph["nodes"].append({"id": "node.pipeline.ffn", "facts": {"template_id": "ffn"}})
+            graph["artifacts"][0]["path"] = str(package)
+            write_json(sacg_path, graph)
+            log = root / "fault.log"
+            log.write_text(
+                'QKVProjection.sv, 12\nPort "io_weight" is not defined in module \'Linear\'\n'
+                'Module instance: Linear projection( .a(x));\n',
+                encoding="utf-8",
+            )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report.update(
+                source_file=str(producer),
+                origin_artifact_path=str(producer),
+                sacg_state_sha256=hashlib.sha256(sacg_path.read_bytes()).hexdigest(),
+                tool_log=str(log),
+                tool_log_sha256=hashlib.sha256(log.read_bytes()).hexdigest(),
+                consumer_context={
+                    "module": "QKVProjection", "producer_module": "Linear",
+                    "instance_name": "projection", "source_file": str(consumer),
+                    "origin_artifact_path": str(consumer),
+                    "source_sha256": hashlib.sha256(consumer.read_bytes()).hexdigest(),
+                },
+            )
+            write_json(report_path, report)
+            refined = build_static_failure_context(sacg_state_path=sacg_path, failure_report_path=report_path)
+            self.assertEqual(refined["consumer_instance_projection"]["status"], "verified")
+            self.assertEqual([n["id"] for n in refined["root_cause_candidates"]], ["node.pipeline.attention"])
+
+            report["consumer_context"]["instance_name"] = "invented_instance"
+            write_json(report_path, report)
+            rejected = build_static_failure_context(sacg_state_path=sacg_path, failure_report_path=report_path)
+            self.assertEqual(rejected["consumer_instance_projection"]["status"], "invalid_evidence")
+            self.assertEqual({n["id"] for n in rejected["root_cause_candidates"]},
+                             {"node.pipeline.ffn"})
+
+    def test_static_failure_requires_fault_copy_hash_and_uses_reported_edge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sacg_path, report_path = self.make_static_failure_case(Path(tmp))
+            fault_copy = Path(tmp) / "fault.scala"
+            fault_copy.write_text("fault", encoding="utf-8")
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            origin = report["source_file"]
+            report.update(source_file=str(fault_copy), origin_artifact_path=origin, fault_copy_path=str(fault_copy), fault_copy_sha256="bad", summary="edge.design.kernel: element_bits=8 does not match src_output_bits=16")
+            write_json(report_path, report)
+            rejected = build_static_failure_context(sacg_state_path=sacg_path, failure_report_path=report_path)
+            self.assertEqual(rejected["status"], "insufficient_evidence")
+            report["fault_copy_sha256"] = hashlib.sha256(fault_copy.read_bytes()).hexdigest()
+            report["source_file"] = origin
+            write_json(report_path, report)
+            mismatch = build_static_failure_context(sacg_state_path=sacg_path, failure_report_path=report_path)
+            self.assertEqual(mismatch["status"], "insufficient_evidence")
+            report["source_file"] = str(fault_copy)
+            report["origin_artifact_path"] = str(Path(tmp) / "unmapped.scala")
+            write_json(report_path, report)
+            unmapped = build_static_failure_context(sacg_state_path=sacg_path, failure_report_path=report_path)
+            self.assertEqual(unmapped["status"], "insufficient_evidence")
+            self.assertIn("origin is not bound", unmapped["blockers"][0])
+            report["origin_artifact_path"] = origin
+            write_json(report_path, report)
+            result = build_static_failure_context(sacg_state_path=sacg_path, failure_report_path=report_path)
+        self.assertEqual(result["upstream_root_candidate"]["id"], "node.design")
+        self.assertEqual(result["violated_dependency_edges"][0]["id"], "edge.design.kernel")
+        self.assertTrue(result["evidence_binding"]["fault_copy_binding_matches"])
+
+    def test_static_failure_refuses_fuzzy_source_mapping(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sacg_path, report_path = self.make_static_failure_case(
+                Path(tmp), source_is_mapped=False
+            )
+            result = build_static_failure_context(
+                sacg_state_path=sacg_path,
+                failure_report_path=report_path,
+            )
+
+        self.assertEqual(result["status"], "insufficient_evidence")
+        self.assertEqual(result["mapped_failure_sources"], [])
+        self.assertEqual(result["root_cause_candidates"], [])
+        self.assertIn("no exact SACG", result["blockers"][0])
+
+    def test_static_failure_does_not_accept_successful_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sacg_path, report_path = self.make_static_failure_case(Path(tmp))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report["status"] = "pass"
+            write_json(report_path, report)
+            result = build_static_failure_context(
+                sacg_state_path=sacg_path,
+                failure_report_path=report_path,
+            )
+
+        self.assertEqual(result["status"], "insufficient_evidence")
+        self.assertIn("successful report", result["blockers"][0])
+
+    def test_static_failure_infers_compile_domain_from_known_failure_class(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sacg_path, report_path = self.make_static_failure_case(Path(tmp))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report.pop("failure_domain")
+            report["failure_class"] = "vcs_compile_failure"
+            write_json(report_path, report)
+            result = build_static_failure_context(
+                sacg_state_path=sacg_path,
+                failure_report_path=report_path,
+            )
+
+        self.assertEqual(result["status"], "static_context_ready")
+        self.assertEqual(result["diagnostic_domain"], "compile_time")
+
+    def test_static_failure_only_reports_explicit_root_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sacg_path, report_path = self.make_static_failure_case(Path(tmp))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report["sacg_references"] = {"root_cause_candidate_node_ids": ["node.kernel"]}
+            write_json(report_path, report)
+            result = build_static_failure_context(
+                sacg_state_path=sacg_path,
+                failure_report_path=report_path,
+            )
+
+        self.assertEqual(
+            [node["id"] for node in result["root_cause_candidates"]],
+            ["node.kernel"],
         )
 
     def test_rearm_without_next_output_selects_board_lifecycle_frontier(self) -> None:

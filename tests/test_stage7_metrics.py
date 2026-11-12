@@ -113,6 +113,8 @@ qwen_core_clk  {0.000 10.000}     20.000          50.000
                     {
                         "status": "pass",
                         "counter_source": "synthesizable_dut_counter",
+                        "measurement_complete": True,
+                        "count_is_latency": True,
                         "latency_cycles": 1000,
                         "processed_tokens": 25,
                         "source_fingerprint": "current-synthesis",
@@ -151,6 +153,7 @@ qwen_core_clk  {0.000 10.000}     20.000          50.000
                 "clock_frequency_mhz",
                 "performance_tokens_per_second",
                 "performance_model",
+                "performance_estimation",
             },
         )
         self.assertEqual(report["resources"]["lut"], 58_843)
@@ -159,6 +162,7 @@ qwen_core_clk  {0.000 10.000}     20.000          50.000
         self.assertEqual(report["power_w"], 2.986)
         self.assertAlmostEqual(report["clock_frequency_mhz"], 40.500587, places=6)
         self.assertAlmostEqual(report["performance_tokens_per_second"], 1_012_514.681, places=3)
+        self.assertTrue(report["performance_estimation"]["rtl_cycles_measured"])
 
     def test_synthesis_scope_calculates_throughput_from_rtl_cycles_without_board_measurement(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -188,6 +192,8 @@ qwen_core_clk  {0.000 10.000}     20.000          50.000
                     {
                         "status": "pass",
                         "counter_source": "synthesizable_dut_counter",
+                        "measurement_complete": True,
+                        "count_is_latency": True,
                         "latency_cycles": 200_000_000,
                         "processed_tokens": 912,
                         "source_fingerprint": "current-synthesis",
@@ -280,6 +286,8 @@ qwen_core_clk  {0.000 10.000}     20.000          50.000
                     {
                         "status": "pass",
                         "counter_source": "synthesizable_dut_counter",
+                        "measurement_complete": True,
+                        "count_is_latency": True,
                         "latency_cycles": 100,
                         "processed_tokens": 10,
                         "source_fingerprint": "current-synthesis",
@@ -362,6 +370,8 @@ qwen_core_clk  {0.000 10.000}     20.000          50.000
                     {
                         "status": "pass",
                         "counter_source": "synthesizable_dut_counter",
+                        "measurement_complete": True,
+                        "count_is_latency": True,
                         "latency_cycles": 100,
                         "processed_tokens": 10,
                         "source_fingerprint": "current-synthesis",

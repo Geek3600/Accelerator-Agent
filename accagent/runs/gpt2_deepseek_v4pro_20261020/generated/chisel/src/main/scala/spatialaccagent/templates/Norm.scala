@@ -539,17 +539,19 @@ private class IntegerVectorNorm(p: VectorNormParams) extends Module {
   private val inverseDenominatorQ24 = RegInit(0.U(25.W))
   private val sqrtInputReg = Reg(UInt(64.W))
   private val sqrtUnit = Module(new PhysicalIntegerSqrt(64))
+  private val reciprocalDivider = Module(new PhysicalFixedDivider(numeratorBits = 25, denominatorBits = 64))
   private val inverseHiddenQ31 = (((BigInt(1) << 31) + (p.hiddenSize / 2)) / p.hiddenSize).U(32.W)
-  private val inverseDenominatorCandidate = AccMath.unsignedDivideFixed(
-    (BigInt(1) << 24).U(25.W), denominatorReg, numeratorBits = 25, denominatorBits = 64
-  )
   private val inputReg = Reg(UInt(p.inputBeatBits.W))
   private val gammaReg = Reg(UInt(p.inputBeatBits.W))
   private val betaReg = Reg(UInt(p.inputBeatBits.W))
   private val metaReg = Reg(UInt(metaBits.W))
   private val outputReg = Reg(Vec(p.lanes, UInt(8.W)))
 
-  private val sCollect :: sStatsRead :: sStatsCapture :: sFinalize :: sSqrtIssue :: sSqrtWait :: sReciprocal :: sEmitRead :: sEmitCapture :: sEmit :: Nil = Enum(10)
+  private val statsValuesReg = RegInit(VecInit(Seq.fill(p.lanes)(0.S(8.W))))
+  private val beatSumReg = RegInit(0.S(64.W))
+  private val beatSquaresReg = RegInit(0.U(64.W))
+
+  private val sCollect :: sStatsRead :: sStatsCapture :: sStatsReduce :: sStatsAccum :: sFinalize :: sSqrtIssue :: sSqrtWait :: sReciprocal :: sRecipWait :: sEmitRead :: sEmitCapture :: sEmit :: Nil = Enum(13)
   private val state = RegInit(sCollect)
 
   io.weight.ready := !weightsLoaded
@@ -603,12 +605,46 @@ private class IntegerVectorNorm(p: VectorNormParams) extends Module {
   }
 
   when(state === sStatsRead) { state := sStatsCapture }
-  val statisticValues = inputMem.io.readData.asTypeOf(Vec(p.lanes, SInt(8.W)))
-  val beatSum = statisticValues.map(_.pad(64)).reduce(_ +& _)
-  val beatSquares = statisticValues.map(value => (value * value).asUInt.pad(64)).reduce(_ +& _)
   when(state === sStatsCapture) {
-    sumReg := sumReg + beatSum
-    squareSumReg := squareSumReg + beatSquares
+    statsValuesReg := inputMem.io.readData.asTypeOf(Vec(p.lanes, SInt(8.W)))
+    state := sStatsReduce
+  }
+
+  private def signedTreeSum(values: Seq[SInt]): SInt = {
+    if (values.size == 1) values.head.pad(64)
+    else {
+      val pairs = values.grouped(2).map { pair =>
+        if (pair.size == 1) pair.head.pad(64)
+        else (pair(0).pad(64) +& pair(1).pad(64))(63, 0).asSInt
+      }.toSeq
+      signedTreeSum(pairs)
+    }
+  }
+
+  private def unsignedTreeSum(values: Seq[UInt]): UInt = {
+    if (values.size == 1) values.head.pad(64)
+    else {
+      val pairs = values.grouped(2).map { pair =>
+        if (pair.size == 1) pair.head.pad(64)
+        else (pair(0).pad(64) +& pair(1).pad(64))(63, 0)
+      }.toSeq
+      unsignedTreeSum(pairs)
+    }
+  }
+
+  val statisticValues = statsValuesReg
+  val beatSum = signedTreeSum(statisticValues.map(_.pad(64)))
+  val beatSquares = unsignedTreeSum(statisticValues.map { value =>
+    (value * value).asUInt.pad(32)
+  })
+  when(state === sStatsReduce) {
+    beatSumReg := beatSum
+    beatSquaresReg := beatSquares
+    state := sStatsAccum
+  }
+  when(state === sStatsAccum) {
+    sumReg := (sumReg +& beatSumReg)(63, 0).asSInt
+    squareSumReg := (squareSumReg +& beatSquaresReg)(63, 0)
     when(workBeat === (p.beats - 1).U) {
       state := sFinalize
     }.otherwise {
@@ -617,30 +653,50 @@ private class IntegerVectorNorm(p: VectorNormParams) extends Module {
     }
   }
 
+  private val finalizeStage = RegInit(0.U(3.W))
+  private val meanProductReg = RegInit(0.S(128.W))
+  private val meanInputSquareProductReg = RegInit(0.U(128.W))
+  private val meanInputSquareReg = RegInit(0.U(64.W))
+  private val meanSquareReg = RegInit(0.U(64.W))
+  private val epsilonReg = RegInit(0.U(64.W))
+
   // INT8 input codes are treated as a shared fixed-point activation domain.
   // LayerNorm uses population variance; RMSNorm uses the mean square. Gamma is
   // signed Q7 and beta is an INT8 activation-domain offset. All rounding is
   // explicit integer truncation here, followed by signed INT8 saturation.
+  // The reported mean/statistics cone is broken into five registered stages:
+  // mean product, mean-square product/mean capture, mean-square capture,
+  // epsilon/square, and variance/epsilon combine.
   when(state === sFinalize) {
-    val meanProduct = sumReg * Cat(0.U(1.W), inverseHiddenQ31).asSInt
-    val meanWide = (meanProduct >> 31).asSInt
-    val mean = meanWide(31, 0).asSInt
-    val meanSquare = (mean * mean).asUInt.pad(64)
-    val meanInputSquareProduct = squareSumReg * inverseHiddenQ31
-    val meanInputSquare = (meanInputSquareProduct >> 31)(63, 0)
-    val variance = if (p.hasMeanSub) {
-      Mux(meanInputSquare > meanSquare, meanInputSquare - meanSquare, 0.U(64.W))
-    } else {
-      meanInputSquare
+    when(finalizeStage === 0.U) {
+      meanProductReg := (sumReg * Cat(0.U(1.W), inverseHiddenQ31).asSInt).pad(128)
+      finalizeStage := 1.U
+    }.elsewhen(finalizeStage === 1.U) {
+      meanInputSquareProductReg := (squareSumReg * inverseHiddenQ31).pad(128)
+      val meanWide = (meanProductReg >> 31).asSInt
+      val mean = meanWide(31, 0).asSInt
+      meanReg := Mux(p.hasMeanSub.B, mean, 0.S)
+      finalizeStage := 2.U
+    }.elsewhen(finalizeStage === 2.U) {
+      val meanInputSquare = (meanInputSquareProductReg >> 31)(63, 0)
+      meanInputSquareReg := meanInputSquare
+      finalizeStage := 3.U
+    }.elsewhen(finalizeStage === 3.U) {
+      val meanSquare = (meanReg * meanReg).asUInt.pad(64)
+      meanSquareReg := meanSquare
+      epsilonReg := math.max(1L, math.round(p.eps * 127.0 * 127.0)).U(64.W)
+      finalizeStage := 4.U
+    }.otherwise {
+      val variance = if (p.hasMeanSub) {
+        Mux(meanInputSquareReg > meanSquareReg, meanInputSquareReg - meanSquareReg, 0.U(64.W))
+      } else {
+        meanInputSquareReg
+      }
+      val varianceWithEpsilon = (variance +& epsilonReg)(63, 0)
+      sqrtInputReg := varianceWithEpsilon
+      finalizeStage := 0.U
+      state := sSqrtIssue
     }
-    // INT8 normalization statistics use activation-code units. Convert the
-    // model's epsilon into that squared-code domain and retain at least one
-    // code-squared unit so epsilon remains meaningful after integer rounding.
-    val epsilonCodeSquared = math.max(1L, math.round(p.eps * 127.0 * 127.0)).U(64.W)
-    val varianceWithEpsilon = variance + epsilonCodeSquared
-    meanReg := Mux(p.hasMeanSub.B, mean, 0.S)
-    sqrtInputReg := varianceWithEpsilon
-    state := sSqrtIssue
   }
 
   sqrtUnit.io.in.valid := state === sSqrtIssue
@@ -654,43 +710,91 @@ private class IntegerVectorNorm(p: VectorNormParams) extends Module {
     state := sReciprocal
   }
 
-  when(state === sReciprocal) {
-    inverseDenominatorQ24 := inverseDenominatorCandidate
+  reciprocalDivider.io.in.bits.numerator := (BigInt(1) << 24).U(25.W)
+  reciprocalDivider.io.in.bits.denominator := denominatorReg
+  reciprocalDivider.io.in.valid := state === sReciprocal
+  reciprocalDivider.io.out.ready := state === sRecipWait
+  when(state === sReciprocal && reciprocalDivider.io.in.ready) {
+    state := sRecipWait
+  }
+  when(state === sRecipWait && reciprocalDivider.io.out.valid) {
+    inverseDenominatorQ24 := reciprocalDivider.io.out.bits
     outputBeat := 0.U
     state := sEmitRead
   }
 
+  val emitNormalized = Reg(Vec(p.lanes, SInt(65.W)))
+  val emitGamma = Reg(Vec(p.lanes, SInt(8.W)))
+  val emitCentered = Reg(Vec(p.lanes, SInt(32.W)))
+  val emitScaledNumerator = Reg(Vec(p.lanes, SInt(40.W)))
+  val emitNormalizedProduct = Reg(Vec(p.lanes, SInt(65.W)))
+  val emitAffineProduct = Reg(Vec(p.lanes, SInt(130.W)))
+  val emitAffineReciprocal = Reg(Vec(p.lanes, SInt(149.W)))
+  val emitStage = RegInit(0.U(4.W))
   when(state === sEmitRead) { state := sEmitCapture }
   when(state === sEmitCapture) {
-    inputReg := inputMem.io.readData
-    gammaReg := gammaMem.io.readData
-    betaReg := betaMem.map(_.io.readData).getOrElse(0.U(p.inputBeatBits.W))
-    metaReg := metaMem.io.readData
-    val inputValues = inputMem.io.readData.asTypeOf(Vec(p.lanes, SInt(8.W)))
-    val gammaValues = gammaMem.io.readData.asTypeOf(Vec(p.lanes, SInt(8.W)))
-    val betaValues = betaMem.map(_.io.readData.asTypeOf(Vec(p.lanes, SInt(8.W))))
-    for (lane <- 0 until p.lanes) {
-      val centered = if (p.hasMeanSub) inputValues(lane).pad(32) - meanReg.pad(32) else inputValues(lane).pad(32)
-      val scaledNumerator = centered * 127.S(8.W)
-      val normalizedProduct = scaledNumerator * inverseDenominatorQ24.asSInt
-      val normalized = AccMath.roundShiftRightNearestEven(normalizedProduct, 24)
-      val affineProduct = normalized * gammaValues(lane).pad(normalized.getWidth)
-      // Gamma is represented in the declared signed Q7 normalization-vector
-      // domain. Use a fixed reciprocal multiplier instead of a per-lane
-      // variable divider; 132104 is round(2^24 / 127), requiring 19 signed
-      // bits. Keep the signed product and apply the policy's nearest-even rule.
-      val affineReciprocalProduct = affineProduct * 132104.S(19.W)
-      val affine = AccMath.roundShiftRightNearestEven(affineReciprocalProduct, 24)
-      val shifted = betaValues match {
-        case Some(values) => affine + values(lane).pad(affine.getWidth)
-        case None => affine
+    when(emitStage === 0.U) {
+      inputReg := inputMem.io.readData
+      gammaReg := gammaMem.io.readData
+      betaReg := betaMem.map(_.io.readData).getOrElse(0.U(p.inputBeatBits.W))
+      metaReg := metaMem.io.readData
+      emitStage := 1.U
+    }.elsewhen(emitStage === 1.U) {
+      val inputValues = inputReg.asTypeOf(Vec(p.lanes, SInt(8.W)))
+      val gammaValues = gammaReg.asTypeOf(Vec(p.lanes, SInt(8.W)))
+      for (lane <- 0 until p.lanes) {
+        val centered = if (p.hasMeanSub) inputValues(lane).pad(32) - meanReg.pad(32) else inputValues(lane).pad(32)
+        emitCentered(lane) := centered
+        emitGamma(lane) := gammaValues(lane)
       }
-      val maximum = 127.S(shifted.getWidth.W)
-      val minimum = (-128).S(shifted.getWidth.W)
-      val saturated = Mux(shifted > maximum, maximum, Mux(shifted < minimum, minimum, shifted))
-      outputReg(lane) := AccMath.resizeSignedToUInt(saturated, 8)
+      emitStage := 2.U
+    }.elsewhen(emitStage === 2.U) {
+      for (lane <- 0 until p.lanes) {
+        emitScaledNumerator(lane) := emitCentered(lane) * 127.S(8.W)
+      }
+      emitStage := 3.U
+    }.elsewhen(emitStage === 3.U) {
+      for (lane <- 0 until p.lanes) {
+        emitNormalizedProduct(lane) := emitScaledNumerator(lane) * inverseDenominatorQ24.asSInt
+      }
+      emitStage := 4.U
+    }.elsewhen(emitStage === 4.U) {
+      for (lane <- 0 until p.lanes) {
+        emitNormalized(lane) := AccMath.roundShiftRightNearestEven(emitNormalizedProduct(lane), 24)
+      }
+      emitStage := 5.U
+    }.elsewhen(emitStage === 5.U) {
+      for (lane <- 0 until p.lanes) {
+        val normalized = emitNormalized(lane)
+        val gammaValue = emitGamma(lane)
+        emitAffineProduct(lane) := normalized * gammaValue.pad(normalized.getWidth)
+      }
+      emitStage := 6.U
+    }.elsewhen(emitStage === 6.U) {
+      for (lane <- 0 until p.lanes) {
+        // Gamma is represented in the declared signed Q7 normalization-vector
+        // domain. Use a fixed reciprocal multiplier instead of a per-lane
+        // variable divider; 132104 is round(2^24 / 127), requiring 19 signed
+        // bits. Keep the signed product and apply the policy's nearest-even rule.
+        emitAffineReciprocal(lane) := emitAffineProduct(lane) * 132104.S(19.W)
+      }
+      emitStage := 7.U
+    }.elsewhen(emitStage === 7.U) {
+      val betaValues = if (p.hasBeta) Some(betaReg.asTypeOf(Vec(p.lanes, SInt(8.W)))) else None
+      for (lane <- 0 until p.lanes) {
+        val affine = AccMath.roundShiftRightNearestEven(emitAffineReciprocal(lane), 24)
+        val shifted = betaValues match {
+          case Some(values) => affine + values(lane).pad(affine.getWidth)
+          case None => affine
+        }
+        val maximum = 127.S(shifted.getWidth.W)
+        val minimum = (-128).S(shifted.getWidth.W)
+        val saturated = Mux(shifted > maximum, maximum, Mux(shifted < minimum, minimum, shifted))
+        outputReg(lane) := AccMath.resizeSignedToUInt(saturated, 8)
+      }
+      state := sEmit
+      emitStage := 0.U
     }
-    state := sEmit
   }
 
   io.out.valid := state === sEmit

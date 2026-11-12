@@ -33,7 +33,7 @@ from accagent.framework.llm_io import (
     read_response_text,
     reroute_request,
     repair_prompt,
-    response_payload,
+    structured_output_payload,
     responses_request_headers,
     validate_schema,
 )
@@ -2180,7 +2180,8 @@ def call_decomposer(prompt: str, out_dir: Path) -> dict[str, Any]:
     try:
         decomposer_effort = team_decomposer_reasoning_effort(llm)
         record["reasoning_effort"] = decomposer_effort or llm.reasoning_effort
-        payload = response_payload(
+        payload = structured_output_payload(
+            llm.wire_api,
             model,
             TEAM_DECOMPOSER_SYSTEM,
             prompt,
@@ -2210,7 +2211,8 @@ def call_decomposer(prompt: str, out_dir: Path) -> dict[str, Any]:
         except Exception as parse_exc:
             record["parse_error"] = str(parse_exc)
             fix_prompt = repair_prompt("team_decomposer", prompt, raw_text, str(parse_exc), TEAM_DECOMPOSITION_SCHEMA)
-            repair_payload = response_payload(
+            repair_payload = structured_output_payload(
+                llm.wire_api,
                 model,
                 TEAM_DECOMPOSER_SYSTEM,
                 fix_prompt,

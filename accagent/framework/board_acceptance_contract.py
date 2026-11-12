@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shlex
 from pathlib import Path
@@ -1221,11 +1222,29 @@ def _validate_progressive_selector_coverage(
         if worker and row.get("agent") != worker.get("agent"):
             errors.append(f"{label}.agent differs from the hash-bound worker record")
         output = worker.get("output") if isinstance(worker.get("output"), dict) else {}
+        if phase == "map":
+            coverage_record = output
+            object_ids_field = "reviewed_object_ids"
+            source_ids_field = "reviewed_source_ids"
+            coverage_prefix = f"{label}.output"
+        else:
+            coverage_record = (
+                worker.get("framework_coverage_overlay")
+                if isinstance(worker.get("framework_coverage_overlay"), dict)
+                else {}
+            )
+            object_ids_field = "object_ids"
+            source_ids_field = "source_ids"
+            coverage_prefix = f"{label}.framework_coverage_overlay"
         worker_object_ids = _coverage_id_list(
-            output.get("reviewed_object_ids"), f"{label}.output.reviewed_object_ids", errors
+            coverage_record.get(object_ids_field),
+            f"{coverage_prefix}.{object_ids_field}",
+            errors,
         )
         worker_source_ids = _coverage_id_list(
-            output.get("reviewed_source_ids"), f"{label}.output.reviewed_source_ids", errors
+            coverage_record.get(source_ids_field),
+            f"{coverage_prefix}.{source_ids_field}",
+            errors,
         )
         for kind, reviewed, expected in (
             ("object", worker_object_ids, expected_object_ids),
@@ -2234,18 +2253,18 @@ def _validate_external_simulation_fixture(
 def _candidate_tool_profiles(
     identity_path: Path, simulation_path: Path, facts_path: Path | None
 ) -> list[Path]:
-    candidates: list[Path] = []
-    seen: set[Path] = set()
+    # The simulation run owns its execution environment. A reused Vivado facts
+    # bundle may point into another run with an identical tool_profile hash;
+    # treating both copies as candidates makes the current binding ambiguous.
     anchors = [simulation_path.parent, identity_path.parent]
     if facts_path is not None:
         anchors.append(facts_path.parent)
     for anchor in anchors:
         for parent in (anchor, *anchor.parents):
             candidate = (parent / "input" / "tool_profile.json").resolve()
-            if candidate not in seen and candidate.is_file():
-                seen.add(candidate)
-                candidates.append(candidate)
-    return candidates
+            if candidate.is_file():
+                return [candidate]
+    return []
 
 
 def _validate_vcs_compile_plan(
@@ -5333,6 +5352,16 @@ def _validate_exact_board_contract(
     compute_slot_axi = (
         not simulation_load_errors and _is_compute_slot_axi_validation(simulation)
     )
+    compile_only_preflight = bool(
+        not require_execution
+        and (
+            os.environ.get("SPATIALACC_VERIFICATION_POLICY") == COMPILE_ONLY_POLICY
+            or (
+                not identity_load_errors
+                and compile_only_board_contract(identity)
+            )
+        )
+    )
     sections: list[tuple[str, list[str], dict[str, Any]]] = []
 
     if not identity_load_errors and not simulation_load_errors:
@@ -5518,32 +5547,199 @@ def _validate_exact_board_contract(
         ], {}
     sections.append(("canonical_vcs_compile_plan", errors, details))
 
-    generated_evidence_ids, errors = set(), []
-    sections.append(("generated_rtl_evidence", errors, {"evidence_count": len(generated_evidence_ids)}))
+    if compile_only_preflight:
+        generated_evidence_ids, errors = set(), []
+        details = {"scope": "compile_only_preflight"}
+    elif not simulation_load_errors:
+        generated_evidence_ids, errors = _validate_generated_evidence(
+            simulation,
+            simulation_rows,
+            set(compile_details.get("generated_source_ids", [])),
+        )
+        details = {"evidence_count": len(generated_evidence_ids)}
+    else:
+        generated_evidence_ids, errors = set(), ["generated RTL evidence cannot be checked without a valid simulation manifest"]
+        details = {"evidence_count": 0}
+    sections.append(("generated_rtl_evidence", errors, details))
 
-    errors = []
-    sections.append(("exact_sample_testbench_contract", errors, {}))
+    if compile_only_preflight:
+        errors = []
+        details = {"scope": "compile_only_preflight"}
+    elif not simulation_load_errors:
+        errors = _validate_testbench_contract(
+            simulation,
+            identity,
+            closure_rows,
+            simulation_rows,
+            abi,
+            abi_hash,
+            timing_hash,
+            axi_hash,
+            set(compile_details.get("preserved_sample_source_ids", [])),
+            generated_evidence_ids,
+            require_debug_observability=require_execution,
+        )
+    else:
+        errors = ["testbench contract cannot be checked without a valid simulation manifest"]
+        details = {}
+    sections.append(("exact_sample_testbench_contract", errors, details))
 
-    multilayer_harness, errors = {}, []
-    sections.append(("multilayer_board_integration", errors, {}))
+    if compile_only_preflight:
+        multilayer_harness, errors = {}, []
+        details = {"scope": "compile_only_preflight"}
+    elif not simulation_load_errors:
+        multilayer_harness, errors = _validate_multilayer_board_integration(
+            simulation,
+            simulation_path,
+            simulation_rows,
+            closure_hash,
+            abi_hash,
+            timing_hash,
+            axi_interfaces,
+            generated_evidence_ids,
+        )
+    else:
+        multilayer_harness, errors = {}, ["multilayer board integration cannot be checked without a valid simulation manifest"]
+        details = {}
+    sections.append(("multilayer_board_integration", errors, details))
 
-    runtime_authority, errors = {}, []
+    if compile_only_preflight:
+        runtime_authority, errors = {}, []
+        details = {"enabled": False, "scope": "compile_only_preflight"}
+    elif not simulation_load_errors:
+        runtime_authority, errors = _validate_runtime_constant_binding(
+            simulation,
+            simulation_path,
+            simulation.get("target_layer_count"),
+            generated_evidence_ids,
+        )
+    else:
+        runtime_authority, errors = {}, [
+            "runtime constant binding cannot be checked without a valid simulation manifest"
+        ]
+        details = {"enabled": False}
     sections.append(
         (
             "runtime_constant_image_and_loader_binding",
             errors,
-            {
+            details if compile_only_preflight else {
                 "enabled": runtime_authority.get("enabled") is True,
                 "runtime_image_sha256": runtime_authority.get("image_sha256"),
             },
         )
     )
 
-    errors = []
-    sections.append(("structured_axi_protocol_monitors", errors, {}))
+    if compile_only_preflight:
+        errors = []
+        details = {"scope": "compile_only_preflight"}
+    elif not simulation_load_errors:
+        errors = _validate_protocol_monitors(simulation, axi_interfaces, axi_hash)
+    else:
+        errors = ["protocol monitor contract cannot be checked without a valid simulation manifest"]
+        details = {}
+    sections.append(("structured_axi_protocol_monitors", errors, details))
 
-    execution_outputs, errors = {}, []
-    sections.append(("real_tool_execution_output_plan", errors, {}))
+    if compile_only_preflight:
+        execution_outputs, errors = {}, []
+        details = {"scope": "compile_only_preflight"}
+    elif not simulation_load_errors:
+        execution_outputs, errors = _validate_execution_output_plan(simulation, axi_interfaces)
+        details = {}
+    else:
+        execution_outputs, errors = {}, ["execution output plan cannot be checked without a valid simulation manifest"]
+        details = {}
+    sections.append(("real_tool_execution_output_plan", errors, details))
+
+    if require_execution:
+        if not simulation_load_errors:
+            dynamic_evidence, errors = _validate_dynamic_evidence(simulation, simulation_path)
+        else:
+            dynamic_evidence, errors = {}, ["dynamic evidence cannot be checked without a valid simulation manifest"]
+        sections.append(("dynamic_real_tool_evidence", errors, {"evidence_count": len(dynamic_evidence)}))
+
+        testbench_scan = (
+            simulation.get("testbench", {}).get("forbidden_construct_scan", {})
+            if isinstance(simulation.get("testbench"), dict)
+            else {}
+        )
+        if not simulation_load_errors and testbench_scan.get("required") is True:
+            errors = _validate_testbench_scan_result(
+                simulation, simulation_path, execution_outputs, dynamic_evidence
+            )
+            sections.append(("executed_testbench_hdl_ast_scan", errors, {}))
+        elif simulation_load_errors:
+            errors = ["testbench HDL-AST scan result cannot be checked without a valid simulation manifest"]
+            sections.append(("executed_testbench_hdl_ast_scan", errors, {}))
+
+        if not simulation_load_errors:
+            errors = _validate_execution_evidence(
+                simulation,
+                simulation_path,
+                identity_path,
+                closure_hash,
+                compile_hash,
+                abi_hash,
+                timing_hash,
+                axi_hash,
+                execution_outputs,
+                dynamic_evidence,
+            )
+        else:
+            errors = ["execution evidence cannot be checked without a valid simulation manifest"]
+        sections.append(("real_tool_execution_identity_and_logs", errors, {}))
+
+        if not simulation_load_errors and not identity_load_errors:
+            errors = _validate_elaborated_hierarchy(
+                simulation,
+                simulation_path,
+                identity,
+                closure_rows,
+                simulation_rows,
+                closure_hash,
+                compile_hash,
+                abi,
+                abi_hash,
+                multilayer_harness,
+                external_fixture,
+                dynamic_evidence,
+            )
+        else:
+            errors = ["elaborated hierarchy cannot be checked without valid identity and simulation manifests"]
+        sections.append(("elaborated_exact_top_and_accelerator_binding", errors, {}))
+
+        if not simulation_load_errors:
+            errors = _validate_protocol_monitor_results(
+                simulation,
+                simulation_path,
+                axi_interfaces,
+                execution_outputs,
+                dynamic_evidence,
+            )
+        else:
+            errors = ["protocol monitor results cannot be checked without a valid simulation manifest"]
+        sections.append(("dynamic_axi_protocol_monitor_results", errors, {}))
+
+        if not simulation_load_errors:
+            errors = _validate_pipeline_overlap_results(
+                simulation, simulation_path, execution_outputs, dynamic_evidence
+            )
+        else:
+            errors = ["pipeline overlap results cannot be checked without a valid simulation manifest"]
+        sections.append(("dynamic_intra_layer_spatial_pipeline_overlap", errors, {}))
+
+        if not simulation_load_errors:
+            errors = _validate_runtime_loader_results(
+                simulation,
+                simulation_path,
+                execution_outputs,
+                dynamic_evidence,
+                runtime_authority,
+            )
+        else:
+            errors = [
+                "runtime loader results cannot be checked without a valid simulation manifest"
+            ]
+        sections.append(("dynamic_runtime_loader_consumption", errors, {}))
 
 
     checks = [

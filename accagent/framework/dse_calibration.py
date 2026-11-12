@@ -35,14 +35,36 @@ def publish_sample(run_dir: Path, report: dict[str, Any]) -> Path | None:
     if (
         report.get("status") != "pass"
         or report.get("measurement_scope") != SYNTHESIS_KERNEL_SCOPE
-        or report.get("performance_model") not in {PERFORMANCE_MODEL, DSE_ESTIMATED_CYCLE_MODEL}
+        or report.get("performance_model") not in {
+            PERFORMANCE_MODEL, DSE_ESTIMATED_CYCLE_MODEL, "synthesizable_dut_counter",
+        }
         or not complete_metrics(report, SYNTHESIS_KERNEL_SCOPE)
     ):
         return None
-    performance = report.get("performance_estimation") or {}
+    raw_performance = report.get("performance_estimation")
+    if not isinstance(raw_performance, dict):
+        return None
+    performance = dict(raw_performance)
+    performance_model = report["performance_model"]
+    cycle_evidence_kind = {
+        PERFORMANCE_MODEL: "analytical_source_schedule",
+        DSE_ESTIMATED_CYCLE_MODEL: "analytical_dse_proxy",
+        "synthesizable_dut_counter": "rtl_counter",
+    }[performance_model]
+    if performance_model == "synthesizable_dut_counter":
+        if (
+            performance.get("counter_source") != "synthesizable_dut_counter"
+            or performance.get("rtl_cycles_measured") is not True
+            or performance.get("measurement_complete") is not True
+            or performance.get("count_is_latency") is not True
+        ):
+            return None
+    else:
+        performance["rtl_cycles_measured"] = False
     try:
         cycles = (
             performance["latency_cycles"] if report["performance_model"] == DSE_ESTIMATED_CYCLE_MODEL
+            else performance["latency_cycles"] if performance_model == "synthesizable_dut_counter"
             else pipeline_cycle_total(performance.get("pipeline_schedule"), performance["processed_tokens"], performance["model_layers"])
         )
         if cycles != performance.get("latency_cycles"):
@@ -59,8 +81,10 @@ def publish_sample(run_dir: Path, report: dict[str, Any]) -> Path | None:
         fingerprint = source_fingerprint(run_dir)
         if fingerprint != performance.get("source_fingerprint"):
             return None
-        if context["synthesis_source_archive_sha256"] != performance.get("synthesis_source_archive_sha256"):
+        archive_sha256 = context["synthesis_source_archive_sha256"]
+        if performance.get("synthesis_source_archive_sha256") not in (None, archive_sha256):
             return None
+        performance["synthesis_source_archive_sha256"] = archive_sha256
         runtime = json.loads(context["sources"]["generated/chisel/runtime/runtime_config.json"])
     except (KeyError, TypeError, ValueError, ZeroDivisionError):
         return None
@@ -85,7 +109,12 @@ def publish_sample(run_dir: Path, report: dict[str, Any]) -> Path | None:
         "source_fingerprint": fingerprint,
         "synthesis_source_archive_sha256": context["synthesis_source_archive_sha256"],
         "measurement_scope": SYNTHESIS_KERNEL_SCOPE,
-        "performance_model": report["performance_model"],
+        "performance_model": performance_model,
+        "cycle_evidence": {
+            "kind": cycle_evidence_kind,
+            "status": "pass",
+            "is_rtl_counter_measurement": performance_model == "synthesizable_dut_counter",
+        },
         "metric_quality": report.get("metric_quality"),
         "workload": context["workload"],
         "parameters": parameters,
@@ -119,7 +148,9 @@ def load_samples() -> list[dict[str, Any]]:
         if (
             isinstance(sample, dict)
             and sample.get("schema_version") == "spatialaccagent.dse_qor_sample.v1"
-            and sample.get("performance_model") in {PERFORMANCE_MODEL, DSE_ESTIMATED_CYCLE_MODEL}
+            and sample.get("performance_model") in {
+                PERFORMANCE_MODEL, DSE_ESTIMATED_CYCLE_MODEL, "synthesizable_dut_counter",
+            }
             and sample.get("source_fingerprint") == path.stem
             and sample.get("measurement_scope") == SYNTHESIS_KERNEL_SCOPE
             and sample.get("cycle_analysis_status") != "noncompleting_hardware_schedule"

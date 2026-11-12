@@ -47,16 +47,32 @@ def _port_names(verilog: str) -> set[str]:
     return names
 
 
-def _module_port_names(verilog: str) -> set[str]:
+def _module_source(verilog: str, module_name: str) -> str:
+    """Select the contracted module without discarding sibling helper modules."""
+    pattern = (
+        rf"\bmodule\s+(?:automatic\s+|static\s+)?{re.escape(module_name)}"
+        rf"\s*(?:#\s*)?\(.*?\bendmodule\b"
+    )
+    matches = list(re.finditer(pattern, verilog, re.S))
+    if len(matches) != 1:
+        raise ValueError(f"expected exactly one module {module_name!r}, found {len(matches)}")
+    return matches[0].group(0)
+
+
+def _module_port_names(verilog: str, module_name: str | None = None) -> set[str]:
     """Read only the first module header, excluding function/task inputs."""
 
+    if module_name:
+        verilog = _module_source(verilog, module_name)
     header = verilog.split(");", 1)[0]
     return _port_names(header)
 
 
-def _module_port_widths(verilog: str) -> dict[str, int]:
+def _module_port_widths(verilog: str, module_name: str | None = None) -> dict[str, int]:
     """Read widths from the generated top header when they are declared."""
 
+    if module_name:
+        verilog = _module_source(verilog, module_name)
     header = verilog.split(");", 1)[0]
     widths: dict[str, int] = {}
     header = re.sub(r"([,(])\s*(?=(?:input|output|inout)\b)", r"\1\n", header)
@@ -77,7 +93,9 @@ def _module_port_widths(verilog: str) -> dict[str, int]:
     return widths
 
 
-def _module_port_directions(verilog: str) -> dict[str, str]:
+def _module_port_directions(verilog: str, module_name: str | None = None) -> dict[str, str]:
+    if module_name:
+        verilog = _module_source(verilog, module_name)
     header = verilog.split(");", 1)[0]
     header = re.sub(r"([,(])\s*(?=(?:input|output|inout)\b)", r"\1\n", header)
     directions: dict[str, str] = {}
@@ -2454,6 +2472,12 @@ def generate(contract_path: Path, legacy_adapter: Path, generated_top: Path, out
         raise ValueError("app-shell contract has no replacement module identity")
     source = legacy_adapter.read_text(encoding="utf-8")
     top_text = generated_top.read_text(encoding="utf-8")
+    # A direct adapter may declare stores/bridges before the replacement top.
+    # Validate the contracted boundary, not whichever helper appears first.
+    abi_source = (
+        _module_source(source, target_module)
+        if "SingleLayerSemanticHarness" not in source else source
+    )
     compute_slot_abi = contract.get("compute_slot_abi", {})
     required_ports = {
         str(row.get("name"))
@@ -2461,12 +2485,12 @@ def generate(contract_path: Path, legacy_adapter: Path, generated_top: Path, out
         if isinstance(row, dict) and row.get("name")
     }
     if required_ports:
-        actual_ports = _module_port_names(source)
+        actual_ports = _module_port_names(abi_source)
         missing_ports = sorted(required_ports - actual_ports)
         if missing_ports:
             raise ValueError(f"legacy compute-slot adapter misses required ABI ports: {missing_ports}")
-        directions = _module_port_directions(source)
-        widths = _module_port_widths(source)
+        directions = _module_port_directions(abi_source)
+        widths = _module_port_widths(abi_source)
         for row in compute_slot_abi.get("required_ports", []):
             if not isinstance(row, dict):
                 continue
@@ -2492,12 +2516,19 @@ def generate(contract_path: Path, legacy_adapter: Path, generated_top: Path, out
     if "SingleLayerSemanticHarness" not in source:
         if not generated_top_instantiated:
             raise ValueError("direct compute-slot adapter does not instantiate the current generated top")
+        generated_top_instance = re.search(
+            rf"\b{re.escape(generated_top_module)}\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\([\s\S]*?\);",
+            source,
+        )
+        if generated_top_instance is None:
+            raise ValueError("cannot resolve the current generated-top instance body")
+        instance_source = generated_top_instance.group(0)
         for port in ("io_ddrTileRequest_ready", "io_ddrTileResponse_valid"):
             if port not in _module_port_names(top_text):
                 continue
-            connection = re.search(rf"\.{port}\s*\(\s*([^()]*)\)", source)
+            connection = re.search(rf"\.{port}\s*\(\s*([^()]*)\)", instance_source)
             value = connection.group(1).strip() if connection else ""
-            if connection is None and re.search(r"\.\*", source):
+            if connection is None and re.search(r"\.\*", instance_source):
                 driver = re.search(rf"\bassign\s+{port}\s*=\s*([^;]+);", source)
                 value = driver.group(1).strip() if driver else ""
             if not value or re.fullmatch(r"(?:0|\d*'[bBdDhHoO]0+|'0)", value):
@@ -3993,7 +4024,9 @@ def validate_generic_ddr_tile_service_source() -> dict[str, Any]:
     }
 
 
-def _validate_current_board_scheduler_abi(source: str) -> dict[str, Any]:
+def _validate_current_board_scheduler_abi(
+    source: str, module_name: str | None = None
+) -> dict[str, Any]:
     """Validate the selected board scheduler's real AXI ready/valid ABI.
 
     Port names identify the current scheduler interface, while every width is
@@ -4002,6 +4035,8 @@ def _validate_current_board_scheduler_abi(source: str) -> dict[str, Any]:
     direction, or disagrees on read/write payload and byte-strobe geometry.
     """
 
+    if module_name:
+        source = _module_source(source, module_name)
     port_names = _module_port_names(source)
     widths = _module_port_widths(source)
     directions = _module_port_directions(source)
@@ -4212,10 +4247,23 @@ def generate(
     source = legacy_adapter.read_text(encoding="utf-8")
     top_text = generated_top.read_text(encoding="utf-8")
     board_abi_source = _current_board_scheduler_source(contract_path, contract)
-    board_abi = _validate_current_board_scheduler_abi(
-        board_abi_source.read_text(encoding="utf-8")
+    scheduler_source = board_abi_source.read_text(encoding="utf-8")
+    scheduler_module = _module_name(scheduler_source)
+    target = contract.get("integration_target", {})
+    target_module = str(
+        target.get("replacement_module_identity") or target.get("ip_name")
+        or contract.get("compute_slot_abi", {}).get("replacement_module_identity") or ""
     )
-    legacy_abi = _validate_current_board_scheduler_abi(source)
+    if not target_module:
+        raise ValueError("app-shell contract has no replacement module identity")
+    board_abi = _validate_current_board_scheduler_abi(
+        scheduler_source, module_name=scheduler_module
+    )
+    legacy_abi = _validate_current_board_scheduler_abi(
+        source, module_name=(
+            target_module if "SingleLayerSemanticHarness" not in source else _module_name(source)
+        )
+    )
     for key in ("axi_data_bits", "axi_address_bits", "axi_id_bits", "axi_wstrb_bits"):
         if legacy_abi.get(key) != board_abi.get(key):
             raise ValueError(

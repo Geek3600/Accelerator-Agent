@@ -786,14 +786,19 @@ def built_in_transformer_case_adapter(
             scope="remote",
             argv=["python3", scripts["vcs_functional"], "--run-dir", str(run_dir)],
             required=True,
-            env={
+                env={
                 "REMOTE_SIM_TIMEOUT_SEC": remote_sim_timeout_sec,
                 "SPATIALACC_MAX_HEAVY_JOBS": "1",
-                # Urgent architecture gate: require real VCS compilation,
-                # elaboration, and linking without launching the simulator.
-                # The runner retains its default full-simulation behavior when
-                # this environment variable is not supplied.
-                "SPATIALACC_COMPILE_ONLY": "1",
+                    "SPATIALACC_VERIFICATION_POLICY": os.environ.get(
+                        "SPATIALACC_VERIFICATION_POLICY", "vcs_compile_only"
+                    ),
+                    **(
+                        {"SPATIALACC_COMPILE_ONLY": "1"}
+                        if os.environ.get(
+                            "SPATIALACC_VERIFICATION_POLICY", "vcs_compile_only"
+                        ) == "vcs_compile_only"
+                        else {}
+                    ),
             },
             required_group="functional_sim",
             consumes=[

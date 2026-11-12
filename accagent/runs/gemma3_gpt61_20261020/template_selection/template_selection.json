@@ -85,14 +85,11 @@
     },
     {
       "checker": "template_parameter_binding_check",
-      "errors": [
-        "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024",
-        "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
-      ],
+      "errors": [],
       "evidence": {
         "binding_count": 14
       },
-      "status": "fail",
+      "status": "pass",
       "warnings": []
     },
     {
@@ -419,10 +416,7 @@
     ],
     "status": "pass"
   },
-  "errors": [
-    "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024",
-    "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
-  ],
+  "errors": [],
   "forbidden_edits": [
     "Do not close missing template coverage with free-form RTL.",
     "Do not rely on Chisel default constructor values when a model, numeric, or board value is available.",
@@ -674,9 +668,7 @@
           "value": 4
         }
       },
-      "legality_errors": [
-        "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
-      ],
+      "legality_errors": [],
       "matched_op": "gemma3_text_block",
       "missing_params": [],
       "op": "gemma3_text_block",
@@ -700,7 +692,7 @@
       ],
       "role": "block_wrapper",
       "source": "DecoderBlock.scala",
-      "status": "incomplete",
+      "status": "ready",
       "template_id": "decoder_block"
     },
     {
@@ -829,9 +821,7 @@
           "value": 4
         }
       },
-      "legality_errors": [
-        "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
-      ],
+      "legality_errors": [],
       "matched_op": "self_attention",
       "missing_params": [],
       "op": "self_attention",
@@ -849,7 +839,7 @@
       ],
       "role": "operator",
       "source": "Attention.scala",
-      "status": "incomplete",
+      "status": "ready",
       "template_id": "attention"
     },
     {
@@ -1852,8 +1842,132 @@
     ],
     "schema_version": "spatialaccagent.stage2_gate_policy.v0"
   },
-  "status": "incomplete",
+  "status": "ready",
   "supported_bindings": [
+    {
+      "bound_params": {
+        "acc_bits": {
+          "dtype": "int32",
+          "source": "constraint.numeric.policy.default_rules.acc_dtype",
+          "status": "bound",
+          "value": 32
+        },
+        "compute_array_cols": {
+          "candidate_values": [
+            4,
+            8,
+            16,
+            32
+          ],
+          "legal_values": [
+            4,
+            8,
+            16,
+            32
+          ],
+          "planning_value": 4,
+          "source": "constraint.arch.design_space.search_params physical candidate universe",
+          "status": "candidate_bound",
+          "value": null
+        },
+        "compute_array_rows": {
+          "candidate_values": [
+            4,
+            8,
+            16
+          ],
+          "legal_values": [
+            4,
+            8,
+            16
+          ],
+          "planning_value": 4,
+          "source": "constraint.arch.design_space.search_params physical candidate universe",
+          "status": "candidate_bound",
+          "value": null
+        },
+        "elem_bits": {
+          "dtype": "int8",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 8
+        },
+        "head_dim": {
+          "source": "constraint.shape.model.head_dim",
+          "status": "bound",
+          "value": 256
+        },
+        "hidden_size": {
+          "source": "constraint.shape.model.hidden_size",
+          "status": "bound",
+          "value": 1152
+        },
+        "input_bits": {
+          "dtype": "int8",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 8
+        },
+        "integer_mode": {
+          "source": "constraint.numeric.policy.default_rules independent weight/activation/accumulator dtypes",
+          "status": "bound",
+          "value": true
+        },
+        "intermediate_size": {
+          "source": "constraint.shape.model.intermediate_size",
+          "status": "bound",
+          "value": 6912
+        },
+        "lanes": {
+          "candidate_values": [
+            8,
+            16
+          ],
+          "legal_values": [
+            8,
+            16
+          ],
+          "planning_value": 8,
+          "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
+          "status": "candidate_bound",
+          "value": null
+        },
+        "max_seq_len": {
+          "source": "constraint.shape.model.target_max_seq_len",
+          "status": "bound",
+          "value": 16
+        },
+        "num_kv_heads": {
+          "source": "constraint.shape.model.num_kv_heads",
+          "status": "bound",
+          "value": 1
+        },
+        "num_q_heads": {
+          "source": "constraint.shape.model.num_q_heads",
+          "status": "bound",
+          "value": 4
+        },
+        "output_bits": {
+          "dtype": "int8",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 8
+        },
+        "token_count": {
+          "source": "constraint.shape.model.target_max_seq_len (one streamed token per sequence position)",
+          "status": "bound",
+          "value": 16
+        },
+        "weight_bits": {
+          "dtype": "int4",
+          "source": "constraint.numeric.policy.default_rules.weight_dtype",
+          "status": "bound",
+          "value": 4
+        }
+      },
+      "op": "gemma3_text_block",
+      "template_id": "decoder_block"
+    },
     {
       "bound_params": {
         "eps": {
@@ -1900,6 +2014,74 @@
       },
       "op": "rms_norm_input",
       "template_id": "norm"
+    },
+    {
+      "bound_params": {
+        "acc_bits": {
+          "dtype": "int32",
+          "source": "constraint.numeric.policy.default_rules.acc_dtype",
+          "status": "bound",
+          "value": 32
+        },
+        "elem_bits": {
+          "dtype": "int8",
+          "source": "constraint.numeric.policy.default_rules.activation_dtype",
+          "status": "bound",
+          "value": 8
+        },
+        "head_dim": {
+          "source": "constraint.shape.model.head_dim",
+          "status": "bound",
+          "value": 256
+        },
+        "hidden_size": {
+          "source": "constraint.shape.model.hidden_size",
+          "status": "bound",
+          "value": 1152
+        },
+        "integer_mode": {
+          "source": "constraint.numeric.policy.default_rules independent weight/activation/accumulator dtypes",
+          "status": "bound",
+          "value": true
+        },
+        "lanes": {
+          "candidate_values": [
+            8,
+            16
+          ],
+          "legal_values": [
+            8,
+            16
+          ],
+          "planning_value": 8,
+          "source": "constraint.arch.design_space.search_params + constraint.memory.board + constraint.numeric.policy",
+          "status": "candidate_bound",
+          "value": null
+        },
+        "num_kv_heads": {
+          "source": "constraint.shape.model.num_kv_heads",
+          "status": "bound",
+          "value": 1
+        },
+        "num_q_heads": {
+          "source": "constraint.shape.model.num_q_heads",
+          "status": "bound",
+          "value": 4
+        },
+        "seq_len": {
+          "source": "constraint.shape.model.target_max_seq_len",
+          "status": "bound",
+          "value": 16
+        },
+        "weight_bits": {
+          "dtype": "int4",
+          "source": "constraint.numeric.policy.default_rules.weight_dtype",
+          "status": "bound",
+          "value": 4
+        }
+      },
+      "op": "self_attention",
+      "template_id": "attention"
     },
     {
       "bound_params": {
@@ -3497,25 +3679,6 @@
       "warnings": []
     }
   ],
-  "unsupported_bindings": [
-    {
-      "kind": "parameter_binding",
-      "legality_errors": [
-        "gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
-      ],
-      "missing_params": [],
-      "op": "gemma3_text_block",
-      "template_id": "decoder_block"
-    },
-    {
-      "kind": "parameter_binding",
-      "legality_errors": [
-        "self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024"
-      ],
-      "missing_params": [],
-      "op": "self_attention",
-      "template_id": "attention"
-    }
-  ],
+  "unsupported_bindings": [],
   "warnings": []
 }

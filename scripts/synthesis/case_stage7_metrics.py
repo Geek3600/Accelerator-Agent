@@ -183,10 +183,6 @@ def parse_performance_tokens_per_second(
     if report.get("status") != "pass":
         return None
     source = report.get("counter_source")
-    # RTL/synthesizable DUT counters are retained as diagnostic evidence only;
-    # throughput is intentionally based on the DSE/source-cycle model.
-    if source == "synthesizable_dut_counter":
-        return None
     if source == "dse_structural_cycle_estimate":
         from accagent.framework.source_cycle_analysis import source_fingerprint
 
@@ -246,6 +242,8 @@ def parse_performance_tokens_per_second(
     elif source == "synthesizable_dut_counter":
         if run_dir is None or report.get("source_fingerprint") is None:
             return None
+        if report.get("measurement_complete") is not True or report.get("count_is_latency") is not True:
+            return None
         from accagent.framework.source_cycle_analysis import source_fingerprint
 
         try:
@@ -268,8 +266,26 @@ def parse_performance_tokens_per_second(
 def performance_report_path(run_dir: Path, override: Path | None = None) -> Path:
     if override is not None and override.name != "performance_counter_report.json":
         return override
-    # Keep RTL counters available as debug evidence, but use the DSE/source
-    # cycle analysis as the performance source of truth.
+    rtl_counter = (
+        run_dir
+        / "verification"
+        / "board_simulation"
+        / "reports"
+        / "performance_counter_report.json"
+    )
+    report = _json(rtl_counter)
+    if (
+        report.get("status") == "pass"
+        and report.get("counter_source") == "synthesizable_dut_counter"
+        and report.get("source_fingerprint")
+    ):
+        from accagent.framework.source_cycle_analysis import source_fingerprint
+
+        try:
+            if report["source_fingerprint"] == source_fingerprint(run_dir):
+                return rtl_counter
+        except (OSError, TypeError, ValueError):
+            pass
     return run_dir / "backend_board" / "qor" / "dse_cycle_estimate.json"
 
 
@@ -330,6 +346,15 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         result["metric_quality"] = f"post_{phase}_clock_and_analytical_source_cycles"
         result["performance_estimation"] = _json(performance)
         result["performance_model"] = _json(performance).get("performance_model")
+    elif _json(performance).get("counter_source") == "synthesizable_dut_counter":
+        estimation = dict(_json(performance))
+        estimation["rtl_cycles_measured"] = (
+            estimation.get("measurement_complete") is True
+            and estimation.get("count_is_latency") is True
+            and estimation.get("status") == "pass"
+        )
+        result["performance_estimation"] = estimation
+        result["performance_model"] = estimation.get("performance_model") or "synthesizable_dut_counter"
     elif _json(performance).get("counter_source") == "dse_structural_cycle_estimate":
         phase = "synthesis" if synthesis_only else "implementation"
         result["metric_quality"] = f"post_{phase}_clock_and_dse_estimated_cycles"

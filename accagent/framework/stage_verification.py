@@ -42,10 +42,12 @@ from accagent.framework.stage_team import run_design_team, team_failure_errors, 
 from accagent.framework.tool_runner import run_tools
 from accagent.framework.verification_evidence_contract import (
     COMPILE_ONLY_POLICY,
+    FULL_SEMANTIC_POLICY,
     PROMOTION_CERTIFICATE_SCHEMA_VERSION,
     PROMOTION_EVIDENCE_BINDING_SCHEMA_VERSION,
     certificate_contract_errors,
     certificate_contract_fingerprint,
+    active_verification_policy,
     evidence_contract_for_level,
     promotion_evidence_binding_fingerprint,
     semantic_evidence_report_errors,
@@ -362,6 +364,13 @@ def check_verification_artifact_contract(state: dict[str, Any]) -> tuple[str, st
     if contract.get("status") != "pass":
         return "fail", f"verification artifact contract is not pass: {contract.get('summary')}"
     policy = contract.get("policy", {})
+    current_policy = active_verification_policy()
+    declared_policy = str(policy.get("validation_policy") or "")
+    if declared_policy and declared_policy != current_policy:
+        return "fail", (
+            "verification artifact contract policy does not match the active run "
+            f"({declared_policy} != {current_policy})"
+        )
     required_policy_flags = [
         "smoke_is_not_acceptance",
         "real_weight_artifacts_required",
@@ -369,10 +378,6 @@ def check_verification_artifact_contract(state: dict[str, Any]) -> tuple[str, st
         "transformer_blocks_are_the_only_accelerator_scope",
         "real_target_model_reference_required",
         "random_or_rtl_derived_expected_output_forbidden",
-        "explicit_numeric_comparison_policy_required",
-        "real_axi_ddr_runtime_required",
-        "real_functional_sim_required",
-        "board_runtime_required_for_final_pass",
         "contract_guided_debug_closure_required",
         "downstream_failure_requires_failure_slice",
         "later_stage_missing_gate_or_tool_requires_stage5_backtrack",
@@ -381,6 +386,15 @@ def check_verification_artifact_contract(state: dict[str, Any]) -> tuple[str, st
         "higher_layer_trace_can_trigger_targeted_lower_layer_backtrack",
         "do_not_reopen_passed_lower_layer_without_contradicting_boundary_trace",
     ]
+    if current_policy == FULL_SEMANTIC_POLICY:
+        required_policy_flags.extend(
+            [
+                "explicit_numeric_comparison_policy_required",
+                "real_axi_ddr_runtime_required",
+                "real_functional_sim_required",
+                "board_runtime_required_for_final_pass",
+            ]
+        )
     missing = [name for name in required_policy_flags if policy.get(name) is not True]
     if missing:
         return "fail", f"verification artifact contract missing policy flags: {missing}"
@@ -404,7 +418,10 @@ def check_verification_artifact_contract(state: dict[str, Any]) -> tuple[str, st
     retry_contract = contract.get("retry_reconciliation_contract", {})
     if not isinstance(retry_contract, dict) or retry_contract.get("stage") != "stage5.verification_artifacts":
         return "fail", "verification artifact contract missing Stage6 retry reconciliation contract"
-    return "pass", contract.get("summary", "verification artifact contract passed")
+    summary = str(contract.get("summary") or "verification artifact contract passed")
+    if current_policy == COMPILE_ONLY_POLICY:
+        summary += "; full runtime and numeric-comparison gates are deferred by vcs_compile_only"
+    return "pass", summary
 
 
 def check_hierarchical_verification_plan(state: dict[str, Any]) -> tuple[str, str]:
@@ -531,7 +548,11 @@ def debug_loop_reused_scopes() -> set[str]:
 
 def selector_certificate_reused_at_scope_entry(selector_key: str) -> bool:
     scope = SELECTOR_CERTIFICATE_SCOPES.get(selector_key)
-    return bool(scope and scope in debug_loop_reused_scopes())
+    return bool(
+        active_verification_policy() == COMPILE_ONLY_POLICY
+        and scope
+        and scope in debug_loop_reused_scopes()
+    )
 
 
 def stage6_artifact_ready(state: dict[str, Any], artifact_id: str) -> bool:
@@ -607,7 +628,9 @@ def stage6_selector_blockers(state: dict[str, Any], selected_gates: list[str], s
     blockers: list[str] = []
     scope = stage6_gate_scope()
     compile_only_gates = (
-        (compile_only_required_gates_by_level(case_adapter_for_state(state, run_dir)) if run_dir is not None else {})
+        compile_only_required_gates_by_level(case_adapter_for_state(state, run_dir))
+        if run_dir is not None and active_verification_policy() == COMPILE_ONLY_POLICY
+        else {}
     )
     for key in [
         "operator_leaf_promotion_certificate",
@@ -732,7 +755,9 @@ def reusable_stage6_certificate_evidence(
     certificates: list[dict[str, Any]] = []
     rejected_certificates: list[dict[str, Any]] = []
     compile_only_gates = (
-        (compile_only_required_gates_by_level(case_adapter) if isinstance(case_adapter, dict) else {})
+        compile_only_required_gates_by_level(case_adapter)
+        if isinstance(case_adapter, dict) and active_verification_policy() == COMPILE_ONLY_POLICY
+        else {}
     )
     for key, value in selector.items():
         if not isinstance(value, dict):
@@ -1495,6 +1520,17 @@ def compile_only_stage_gates(
     return [gate for gate in compile_gates if gate in selected]
 
 
+def policy_selected_stage6_gates(
+    case_adapter: dict[str, Any],
+    selected_gates: list[str],
+    policy: str | None = None,
+) -> list[str]:
+    selected_policy = policy or active_verification_policy()
+    if selected_policy == COMPILE_ONLY_POLICY:
+        return compile_only_stage_gates(case_adapter, selected_gates)
+    return list(selected_gates)
+
+
 def compile_only_required_gates_by_level(case_adapter: dict[str, Any]) -> dict[str, list[str]]:
     return {
         "operator_leaf_functional": [gate_name(case_adapter, "leaf_functional")],
@@ -1653,8 +1689,10 @@ def build_stage6_gate_execution_plan(state: dict[str, Any], run_dir: Path) -> di
     selector_nodes = selector.get("gates", []) if isinstance(selector.get("gates"), list) else []
     dag_nodes = dag.get("nodes", []) if isinstance(dag.get("nodes"), list) else []
     nodes = selector_nodes or dag_nodes
-    raw_selected_gates = stage6_selected_gate_names(contract, selector)
-    raw_selected_gates = compile_only_stage_gates(case_adapter, raw_selected_gates)
+    raw_selected_gates = policy_selected_stage6_gates(
+        case_adapter,
+        stage6_selected_gate_names(contract, selector),
+    )
     reusable_evidence = reusable_stage6_certificate_evidence(
         state, selector, raw_selected_gates, nodes, case_adapter=case_adapter
     )
@@ -1769,6 +1807,7 @@ def build_stage6_gate_execution_plan(state: dict[str, Any], run_dir: Path) -> di
     selector_path = stage6_selector_contract_path(state)
     return {
         "schema_version": "spatialaccagent.stage6_gate_execution_plan.v0",
+        "validation_policy": active_verification_policy(),
         "status": "pass" if not blockers else "fail",
         "scope": stage6_gate_scope(),
         "source_contract": str(
@@ -1789,10 +1828,22 @@ def build_stage6_gate_execution_plan(state: dict[str, Any], run_dir: Path) -> di
         ) else None,
         "selected_gates": selected_gates,
         "compile_only_required_gates_by_level": (
-            (compile_only_required_gates_by_level(case_adapter))
+            compile_only_required_gates_by_level(case_adapter)
+            if active_verification_policy() == COMPILE_ONLY_POLICY
+            else {}
         ),
         "compile_only_required_tool_roles_by_level": (
-            ({level_id: list(dict.fromkeys((role for gate in gates for role in gate_tool_roles(case_adapter, gate) if role != 'vcs_evidence_analyzer'))) for level_id, gates in compile_only_required_gates_by_level(case_adapter).items()})
+            {
+                level_id: list(dict.fromkeys(
+                    role
+                    for gate in gates
+                    for role in gate_tool_roles(case_adapter, gate)
+                    if role != "vcs_evidence_analyzer"
+                ))
+                for level_id, gates in compile_only_required_gates_by_level(case_adapter).items()
+            }
+            if active_verification_policy() == COMPILE_ONLY_POLICY
+            else {}
         ),
         "reused_promotion_certificates": reusable_evidence.get("certificates", []),
         "rejected_promotion_certificates": reusable_evidence.get("rejected_certificates", []),
@@ -1808,7 +1859,9 @@ def build_stage6_gate_execution_plan(state: dict[str, Any], run_dir: Path) -> di
             "runtime_bitstream_and_board_runtime_are_stage7_gates_unless_explicit_scope_all": True,
             "tool_execution_is_driven_by_stage6_gate_dag_and_case_adapter_roles": True,
             "selected_higher_layer_gate_still_requires_all_declared_dag_dependencies_to_pass": (False),
-            "compile_only_uses_one_real_vcs_compile_gate_per_hierarchy_level": (True),
+            "compile_only_uses_one_real_vcs_compile_gate_per_hierarchy_level": (
+                active_verification_policy() == COMPILE_ONLY_POLICY
+            ),
             "failed_layer_enters_repair_loop_before_any_higher_layer_execution": True,
             "promotion_certificate_required_before_higher_layer_execution": True,
             "validated_lower_layer_certificates_satisfy_gate_dependencies": True,
@@ -2290,7 +2343,7 @@ def check_required_real_tool_evidence(tool_results: list[dict[str, Any]]) -> tup
         return "fail", "required real-tool evidence missing or failed: " + ", ".join(blockers) + suffix
     suffix = f"; dependency_blocked={dependency_blocked}" if dependency_blocked else ""
     summary = "all executed required real-tool evidence passed"
-    summary += " under vcs_compile_only"
+    summary += f" under {active_verification_policy()}"
     return "pass", summary + suffix
 
 
@@ -3072,7 +3125,10 @@ def build_hierarchical_maturity_report(
     blockers = []
     required_level_ids = selected_maturity_level_ids(gate_execution_plan)
     compile_only_gates = (
-        (gate_execution_plan.get('compile_only_required_gates_by_level', {}) if isinstance(gate_execution_plan.get('compile_only_required_gates_by_level'), dict) else {})
+        gate_execution_plan.get("compile_only_required_gates_by_level", {})
+        if active_verification_policy() == COMPILE_ONLY_POLICY
+        and isinstance(gate_execution_plan.get("compile_only_required_gates_by_level"), dict)
+        else {}
     )
     compile_only_roles = (
         gate_execution_plan.get("compile_only_required_tool_roles_by_level", {})
@@ -3786,7 +3842,10 @@ def write_stage6_promotion_certificates(
         if isinstance(level, dict) and level.get("id")
     }
     compile_only_gates = (
-        (gate_execution_plan.get('compile_only_required_gates_by_level', {}) if isinstance(gate_execution_plan.get('compile_only_required_gates_by_level'), dict) else {})
+        gate_execution_plan.get("compile_only_required_gates_by_level", {})
+        if active_verification_policy() == COMPILE_ONLY_POLICY
+        and isinstance(gate_execution_plan.get("compile_only_required_gates_by_level"), dict)
+        else {}
     )
     for selector_key, artifact_id, level_id, path in specs:
         cert = selector.get(selector_key, {}) if isinstance(selector.get(selector_key), dict) else {}
@@ -3813,6 +3872,7 @@ def write_stage6_promotion_certificates(
         if evidence_errors:
             binding_errors.extend(f"{level_id}: {error}" for error in evidence_errors)
             continue
+        policy = active_verification_policy()
         payload = {
             "schema_version": PROMOTION_CERTIFICATE_SCHEMA_VERSION,
             "status": "pass",
@@ -3822,10 +3882,8 @@ def write_stage6_promotion_certificates(
             "required_gates": gate_rows,
             "evidence_contract": evidence_contract_for_level(level_id),
             "evidence_contract_fingerprint": certificate_contract_fingerprint(level_id, required_gates),
-            "validation_policy": (
-                (COMPILE_ONLY_POLICY)
-            ),
-            "functional_semantics_claimed": (False),
+            "validation_policy": policy,
+            "functional_semantics_claimed": policy == FULL_SEMANTIC_POLICY,
             "tool_environment_contract": tool_environment_contract(environment_groups),
             "source_result": str(run_dir / "verification" / "verification_result.json"),
             "source_gate_selector": gate_execution_plan.get("selector_contract"),
@@ -3987,7 +4045,11 @@ def build_results(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     status, summary = check_required_real_tool_evidence(tool_results)
     results.append({"checker": "required_real_tool_evidence_check", "status": status, "summary": summary})
     semantic_status = "not_run"
-    semantic_summary = "functional simulation and semantic comparison are not part of the compile-only policy"
+    semantic_summary = (
+        "functional simulation and semantic comparison are not part of the compile-only policy"
+        if active_verification_policy() == COMPILE_ONLY_POLICY
+        else "runtime evidence is enforced by the selected exact-board VCS and Layer-3 gates"
+    )
     hard_results = [item for item in results if item["status"] != "not_run"]
     gate_summary = build_hierarchical_gate_summary(state, tool_results, gate_execution_plan)
     maturity = build_hierarchical_maturity_report(state, gate_summary, gate_execution_plan)
@@ -4016,9 +4078,17 @@ def build_results(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
         "checks": [],
         "blockers": [],
         "policy": {
-            "validation_policy": COMPILE_ONLY_POLICY,
+            "validation_policy": active_verification_policy(),
             "physical_board_runtime_claimed": False,
-            "eligible_for_backend_compile_only": True,
+            "eligible_for_backend_compile_only": active_verification_policy() == COMPILE_ONLY_POLICY,
+            "exact_board_runtime_simulation_passed": (
+                active_verification_policy() == FULL_SEMANTIC_POLICY
+                and any(
+                    item.get("checker") == "real_tool.case_vcs_functional_sim"
+                    and item.get("status") == "pass"
+                    for item in tool_results
+                )
+            ),
         },
     }
     board_bringup_certificate = write_board_bringup_certificate(
@@ -4028,8 +4098,12 @@ def build_results(state: dict[str, Any], run_dir: Path) -> dict[str, Any]:
         "schema_version": "spatialaccagent.verification_result.v0",
         "stage": "verification",
         "status": "pass" if all(item["status"] == "pass" for item in hard_results) else "fail",
-        "scope": ('real_vcs_compile_evidence_only'),
-        "validation_policy": (COMPILE_ONLY_POLICY),
+        "scope": (
+            "real_vcs_compile_evidence_only"
+            if active_verification_policy() == COMPILE_ONLY_POLICY
+            else "exact_board_vcs_runtime_evidence"
+        ),
+        "validation_policy": active_verification_policy(),
         "execution_scope": verification_execution_scope(),
         "gate_execution_scope": stage6_gate_scope(),
         "gate_execution_plan": gate_execution_plan,

@@ -24,6 +24,9 @@ module IntegerVectorNorm(
 );
 
   wire         io_in_ready_0;
+  wire         _reciprocalDivider_io_in_ready;
+  wire         _reciprocalDivider_io_out_valid;
+  wire [24:0]  _reciprocalDivider_io_out_bits;
   wire         _sqrtUnit_io_in_ready;
   wire         _sqrtUnit_io_out_valid;
   wire [31:0]  _sqrtUnit_io_out_bits;
@@ -42,6 +45,9 @@ module IntegerVectorNorm(
   reg  [63:0]  denominatorReg;
   reg  [24:0]  inverseDenominatorQ24;
   reg  [63:0]  sqrtInputReg;
+  reg  [127:0] inputReg;
+  reg  [127:0] gammaReg;
+  reg  [127:0] betaReg;
   reg  [11:0]  metaReg;
   reg  [7:0]   outputReg_0;
   reg  [7:0]   outputReg_1;
@@ -59,22 +65,189 @@ module IntegerVectorNorm(
   reg  [7:0]   outputReg_13;
   reg  [7:0]   outputReg_14;
   reg  [7:0]   outputReg_15;
+  reg  [7:0]   statsValuesReg_0;
+  reg  [7:0]   statsValuesReg_1;
+  reg  [7:0]   statsValuesReg_2;
+  reg  [7:0]   statsValuesReg_3;
+  reg  [7:0]   statsValuesReg_4;
+  reg  [7:0]   statsValuesReg_5;
+  reg  [7:0]   statsValuesReg_6;
+  reg  [7:0]   statsValuesReg_7;
+  reg  [7:0]   statsValuesReg_8;
+  reg  [7:0]   statsValuesReg_9;
+  reg  [7:0]   statsValuesReg_10;
+  reg  [7:0]   statsValuesReg_11;
+  reg  [7:0]   statsValuesReg_12;
+  reg  [7:0]   statsValuesReg_13;
+  reg  [7:0]   statsValuesReg_14;
+  reg  [7:0]   statsValuesReg_15;
+  reg  [63:0]  beatSumReg;
+  reg  [63:0]  beatSquaresReg;
   reg  [3:0]   state;
   wire         _betaMem_io_writeEn_T = ~weightsLoaded & io_weight_valid;
   wire         metaMem_io_writeEn = io_in_ready_0 & io_in_valid;
   assign io_in_ready_0 = state == 4'h0 & weightsLoaded;
   wire         readingStats = state == 4'h1;
-  wire         readingEmit = state == 4'h7;
-  wire         sqrtUnit_io_in_valid = state == 4'h4;
-  wire         sqrtUnit_io_out_ready = state == 4'h5;
-  wire         io_out_valid_0 = state == 4'h9;
+  wire         readingEmit = state == 4'hA;
+  reg  [2:0]   finalizeStage;
+  reg  [127:0] meanProductReg;
+  reg  [127:0] meanInputSquareProductReg;
+  reg  [63:0]  meanInputSquareReg;
+  reg  [63:0]  meanSquareReg;
+  reg  [63:0]  epsilonReg;
+  wire         sqrtUnit_io_in_valid = state == 4'h6;
+  wire         sqrtUnit_io_out_ready = state == 4'h7;
+  wire         reciprocalDivider_io_in_valid = state == 4'h8;
+  wire         reciprocalDivider_io_out_ready = state == 4'h9;
+  reg  [64:0]  emitNormalized_0;
+  reg  [64:0]  emitNormalized_1;
+  reg  [64:0]  emitNormalized_2;
+  reg  [64:0]  emitNormalized_3;
+  reg  [64:0]  emitNormalized_4;
+  reg  [64:0]  emitNormalized_5;
+  reg  [64:0]  emitNormalized_6;
+  reg  [64:0]  emitNormalized_7;
+  reg  [64:0]  emitNormalized_8;
+  reg  [64:0]  emitNormalized_9;
+  reg  [64:0]  emitNormalized_10;
+  reg  [64:0]  emitNormalized_11;
+  reg  [64:0]  emitNormalized_12;
+  reg  [64:0]  emitNormalized_13;
+  reg  [64:0]  emitNormalized_14;
+  reg  [64:0]  emitNormalized_15;
+  reg  [7:0]   emitGamma_0;
+  reg  [7:0]   emitGamma_1;
+  reg  [7:0]   emitGamma_2;
+  reg  [7:0]   emitGamma_3;
+  reg  [7:0]   emitGamma_4;
+  reg  [7:0]   emitGamma_5;
+  reg  [7:0]   emitGamma_6;
+  reg  [7:0]   emitGamma_7;
+  reg  [7:0]   emitGamma_8;
+  reg  [7:0]   emitGamma_9;
+  reg  [7:0]   emitGamma_10;
+  reg  [7:0]   emitGamma_11;
+  reg  [7:0]   emitGamma_12;
+  reg  [7:0]   emitGamma_13;
+  reg  [7:0]   emitGamma_14;
+  reg  [7:0]   emitGamma_15;
+  reg  [31:0]  emitCentered_0;
+  reg  [31:0]  emitCentered_1;
+  reg  [31:0]  emitCentered_2;
+  reg  [31:0]  emitCentered_3;
+  reg  [31:0]  emitCentered_4;
+  reg  [31:0]  emitCentered_5;
+  reg  [31:0]  emitCentered_6;
+  reg  [31:0]  emitCentered_7;
+  reg  [31:0]  emitCentered_8;
+  reg  [31:0]  emitCentered_9;
+  reg  [31:0]  emitCentered_10;
+  reg  [31:0]  emitCentered_11;
+  reg  [31:0]  emitCentered_12;
+  reg  [31:0]  emitCentered_13;
+  reg  [31:0]  emitCentered_14;
+  reg  [31:0]  emitCentered_15;
+  reg  [39:0]  emitScaledNumerator_0;
+  reg  [39:0]  emitScaledNumerator_1;
+  reg  [39:0]  emitScaledNumerator_2;
+  reg  [39:0]  emitScaledNumerator_3;
+  reg  [39:0]  emitScaledNumerator_4;
+  reg  [39:0]  emitScaledNumerator_5;
+  reg  [39:0]  emitScaledNumerator_6;
+  reg  [39:0]  emitScaledNumerator_7;
+  reg  [39:0]  emitScaledNumerator_8;
+  reg  [39:0]  emitScaledNumerator_9;
+  reg  [39:0]  emitScaledNumerator_10;
+  reg  [39:0]  emitScaledNumerator_11;
+  reg  [39:0]  emitScaledNumerator_12;
+  reg  [39:0]  emitScaledNumerator_13;
+  reg  [39:0]  emitScaledNumerator_14;
+  reg  [39:0]  emitScaledNumerator_15;
+  reg  [64:0]  emitNormalizedProduct_0;
+  reg  [64:0]  emitNormalizedProduct_1;
+  reg  [64:0]  emitNormalizedProduct_2;
+  reg  [64:0]  emitNormalizedProduct_3;
+  reg  [64:0]  emitNormalizedProduct_4;
+  reg  [64:0]  emitNormalizedProduct_5;
+  reg  [64:0]  emitNormalizedProduct_6;
+  reg  [64:0]  emitNormalizedProduct_7;
+  reg  [64:0]  emitNormalizedProduct_8;
+  reg  [64:0]  emitNormalizedProduct_9;
+  reg  [64:0]  emitNormalizedProduct_10;
+  reg  [64:0]  emitNormalizedProduct_11;
+  reg  [64:0]  emitNormalizedProduct_12;
+  reg  [64:0]  emitNormalizedProduct_13;
+  reg  [64:0]  emitNormalizedProduct_14;
+  reg  [64:0]  emitNormalizedProduct_15;
+  reg  [129:0] emitAffineProduct_0;
+  reg  [129:0] emitAffineProduct_1;
+  reg  [129:0] emitAffineProduct_2;
+  reg  [129:0] emitAffineProduct_3;
+  reg  [129:0] emitAffineProduct_4;
+  reg  [129:0] emitAffineProduct_5;
+  reg  [129:0] emitAffineProduct_6;
+  reg  [129:0] emitAffineProduct_7;
+  reg  [129:0] emitAffineProduct_8;
+  reg  [129:0] emitAffineProduct_9;
+  reg  [129:0] emitAffineProduct_10;
+  reg  [129:0] emitAffineProduct_11;
+  reg  [129:0] emitAffineProduct_12;
+  reg  [129:0] emitAffineProduct_13;
+  reg  [129:0] emitAffineProduct_14;
+  reg  [129:0] emitAffineProduct_15;
+  reg  [148:0] emitAffineReciprocal_0;
+  reg  [148:0] emitAffineReciprocal_1;
+  reg  [148:0] emitAffineReciprocal_2;
+  reg  [148:0] emitAffineReciprocal_3;
+  reg  [148:0] emitAffineReciprocal_4;
+  reg  [148:0] emitAffineReciprocal_5;
+  reg  [148:0] emitAffineReciprocal_6;
+  reg  [148:0] emitAffineReciprocal_7;
+  reg  [148:0] emitAffineReciprocal_8;
+  reg  [148:0] emitAffineReciprocal_9;
+  reg  [148:0] emitAffineReciprocal_10;
+  reg  [148:0] emitAffineReciprocal_11;
+  reg  [148:0] emitAffineReciprocal_12;
+  reg  [148:0] emitAffineReciprocal_13;
+  reg  [148:0] emitAffineReciprocal_14;
+  reg  [148:0] emitAffineReciprocal_15;
+  reg  [3:0]   emitStage;
+  wire         io_out_valid_0 = state == 4'hC;
   always @(posedge clock) begin
-    automatic logic        _GEN;
-    automatic logic [62:0] meanProduct;
-    automatic logic        _GEN_0;
-    _GEN = state == 4'h3;
-    meanProduct = sumReg[62:0] * 63'h2AAAAB;
-    _GEN_0 = state == 4'h8;
+    automatic logic _GEN;
+    automatic logic _GEN_0;
+    automatic logic _GEN_1;
+    automatic logic _GEN_2;
+    automatic logic _GEN_3;
+    automatic logic _GEN_4;
+    automatic logic _GEN_5;
+    automatic logic _GEN_6;
+    automatic logic _GEN_7;
+    automatic logic _GEN_8;
+    automatic logic _GEN_9;
+    automatic logic _GEN_10;
+    automatic logic _GEN_11;
+    automatic logic _GEN_12;
+    automatic logic _GEN_13;
+    automatic logic _GEN_14;
+    _GEN = state == 4'h5;
+    _GEN_0 = finalizeStage == 3'h0;
+    _GEN_1 = finalizeStage == 3'h1;
+    _GEN_2 = finalizeStage == 3'h2;
+    _GEN_3 = finalizeStage == 3'h3;
+    _GEN_4 = ~_GEN | _GEN_0 | _GEN_1 | _GEN_2 | _GEN_3;
+    _GEN_5 = state == 4'hB;
+    _GEN_6 = emitStage == 4'h0;
+    _GEN_7 = emitStage == 4'h1;
+    _GEN_8 = emitStage == 4'h2;
+    _GEN_9 = emitStage == 4'h3;
+    _GEN_10 = emitStage == 4'h4;
+    _GEN_11 = emitStage == 4'h5;
+    _GEN_12 = emitStage == 4'h6;
+    _GEN_13 = emitStage == 4'h7;
+    _GEN_14 =
+      ~_GEN_5 | _GEN_6 | _GEN_7 | _GEN_8 | _GEN_9 | _GEN_10 | _GEN_11 | _GEN_12
+      | ~_GEN_13;
     if (reset) begin
       weightCount <= 7'h0;
       weightsLoaded <= 1'h0;
@@ -86,1069 +259,488 @@ module IntegerVectorNorm(
       meanReg <= 32'h0;
       denominatorReg <= 64'h1;
       inverseDenominatorQ24 <= 25'h0;
+      statsValuesReg_0 <= 8'h0;
+      statsValuesReg_1 <= 8'h0;
+      statsValuesReg_2 <= 8'h0;
+      statsValuesReg_3 <= 8'h0;
+      statsValuesReg_4 <= 8'h0;
+      statsValuesReg_5 <= 8'h0;
+      statsValuesReg_6 <= 8'h0;
+      statsValuesReg_7 <= 8'h0;
+      statsValuesReg_8 <= 8'h0;
+      statsValuesReg_9 <= 8'h0;
+      statsValuesReg_10 <= 8'h0;
+      statsValuesReg_11 <= 8'h0;
+      statsValuesReg_12 <= 8'h0;
+      statsValuesReg_13 <= 8'h0;
+      statsValuesReg_14 <= 8'h0;
+      statsValuesReg_15 <= 8'h0;
+      beatSumReg <= 64'h0;
+      beatSquaresReg <= 64'h0;
       state <= 4'h0;
+      finalizeStage <= 3'h0;
+      meanProductReg <= 128'h0;
+      meanInputSquareProductReg <= 128'h0;
+      meanInputSquareReg <= 64'h0;
+      meanSquareReg <= 64'h0;
+      epsilonReg <= 64'h0;
+      emitStage <= 4'h0;
     end
     else begin
-      automatic logic _GEN_1;
-      automatic logic _GEN_2;
-      automatic logic _GEN_3;
-      automatic logic _GEN_4;
-      automatic logic _GEN_5;
-      automatic logic _GEN_6;
-      automatic logic _GEN_7;
-      _GEN_1 = weightCount == 7'h5F;
-      _GEN_2 = inputCount == 6'h2F;
-      _GEN_3 = metaMem_io_writeEn & _GEN_2;
-      _GEN_4 = state == 4'h2;
-      _GEN_5 = workBeat == 6'h2F;
-      _GEN_6 = sqrtUnit_io_out_ready & _sqrtUnit_io_out_valid;
-      _GEN_7 = state == 4'h6;
+      automatic logic _GEN_15;
+      automatic logic _GEN_16;
+      automatic logic _GEN_17;
+      automatic logic _GEN_18;
+      automatic logic _GEN_19;
+      automatic logic _GEN_20;
+      automatic logic _GEN_21;
+      automatic logic _GEN_22;
+      automatic logic _GEN_23;
+      automatic logic _GEN_24;
+      _GEN_15 = weightCount == 7'h5F;
+      _GEN_16 = inputCount == 6'h2F;
+      _GEN_17 = metaMem_io_writeEn & _GEN_16;
+      _GEN_18 = state == 4'h2;
+      _GEN_19 = state == 4'h3;
+      _GEN_20 = state == 4'h4;
+      _GEN_21 = workBeat == 6'h2F;
+      _GEN_22 = ~_GEN | _GEN_0 | ~_GEN_1;
+      _GEN_23 = sqrtUnit_io_out_ready & _sqrtUnit_io_out_valid;
+      _GEN_24 = reciprocalDivider_io_out_ready & _reciprocalDivider_io_out_valid;
       if (_betaMem_io_writeEn_T)
-        weightCount <= _GEN_1 ? 7'h0 : weightCount + 7'h1;
-      weightsLoaded <= _betaMem_io_writeEn_T & _GEN_1 | weightsLoaded;
+        weightCount <= _GEN_15 ? 7'h0 : weightCount + 7'h1;
+      weightsLoaded <= _betaMem_io_writeEn_T & _GEN_15 | weightsLoaded;
       if (metaMem_io_writeEn)
-        inputCount <= _GEN_2 ? 6'h0 : inputCount + 6'h1;
-      if (~_GEN_4 | _GEN_5) begin
-        if (_GEN_3)
+        inputCount <= _GEN_16 ? 6'h0 : inputCount + 6'h1;
+      if (~_GEN_20 | _GEN_21) begin
+        if (_GEN_17)
           workBeat <= 6'h0;
       end
       else
         workBeat <= workBeat + 6'h1;
       if (io_out_ready & io_out_valid_0) begin
-        automatic logic _GEN_8 = outputBeat == 6'h2F;
-        outputBeat <= _GEN_8 ? 6'h0 : outputBeat + 6'h1;
-        state <= _GEN_8 ? 4'h0 : 4'h7;
+        automatic logic _GEN_25 = outputBeat == 6'h2F;
+        outputBeat <= _GEN_25 ? 6'h0 : outputBeat + 6'h1;
+        state <= _GEN_25 ? 4'h0 : 4'hA;
       end
       else begin
-        if (_GEN_7)
+        if (_GEN_24)
           outputBeat <= 6'h0;
-        if (_GEN_0)
-          state <= 4'h9;
-        else if (readingEmit)
-          state <= 4'h8;
-        else if (_GEN_7)
-          state <= 4'h7;
-        else if (_GEN_6)
-          state <= 4'h6;
-        else if (sqrtUnit_io_in_valid & _sqrtUnit_io_in_ready)
-          state <= 4'h5;
-        else if (_GEN)
-          state <= 4'h4;
-        else if (_GEN_4)
-          state <= {2'h0, _GEN_5, 1'h1};
-        else if (readingStats)
-          state <= 4'h2;
-        else if (_GEN_3)
-          state <= 4'h1;
+        if (_GEN_14) begin
+          if (readingEmit)
+            state <= 4'hB;
+          else if (_GEN_24)
+            state <= 4'hA;
+          else if (reciprocalDivider_io_in_valid & _reciprocalDivider_io_in_ready)
+            state <= 4'h9;
+          else if (_GEN_23)
+            state <= 4'h8;
+          else if (sqrtUnit_io_in_valid & _sqrtUnit_io_in_ready)
+            state <= 4'h7;
+          else if (_GEN_4) begin
+            if (_GEN_20)
+              state <= {1'h0, _GEN_21, 2'h1};
+            else if (_GEN_19)
+              state <= 4'h4;
+            else if (_GEN_18)
+              state <= 4'h3;
+            else if (readingStats)
+              state <= 4'h2;
+            else if (_GEN_17)
+              state <= 4'h1;
+          end
+          else
+            state <= 4'h6;
+        end
+        else
+          state <= 4'hC;
       end
-      if (_GEN_4) begin
-        automatic logic [8:0]  _GEN_9 =
-          {_inputMem_io_readData[15], _inputMem_io_readData[15:8]}
-          + {_inputMem_io_readData[7], _inputMem_io_readData[7:0]};
-        automatic logic [9:0]  _GEN_10 =
-          {{2{_inputMem_io_readData[23]}}, _inputMem_io_readData[23:16]}
-          + {_GEN_9[8], _GEN_9};
-        automatic logic [10:0] _GEN_11 =
-          {{3{_inputMem_io_readData[31]}}, _inputMem_io_readData[31:24]}
-          + {_GEN_10[9], _GEN_10};
-        automatic logic [11:0] _GEN_12 =
-          {{4{_inputMem_io_readData[39]}}, _inputMem_io_readData[39:32]}
-          + {_GEN_11[10], _GEN_11};
-        automatic logic [12:0] _GEN_13 =
-          {{5{_inputMem_io_readData[47]}}, _inputMem_io_readData[47:40]}
-          + {_GEN_12[11], _GEN_12};
-        automatic logic [13:0] _GEN_14 =
-          {{6{_inputMem_io_readData[55]}}, _inputMem_io_readData[55:48]}
-          + {_GEN_13[12], _GEN_13};
-        automatic logic [14:0] _GEN_15 =
-          {{7{_inputMem_io_readData[63]}}, _inputMem_io_readData[63:56]}
-          + {_GEN_14[13], _GEN_14};
-        automatic logic [15:0] _GEN_16 =
-          {{8{_inputMem_io_readData[71]}}, _inputMem_io_readData[71:64]};
-        automatic logic [15:0] _GEN_17 = _GEN_16 + {_GEN_15[14], _GEN_15};
-        automatic logic [16:0] _GEN_18 =
-          {{9{_inputMem_io_readData[79]}}, _inputMem_io_readData[79:72]}
-          + {_GEN_17[15], _GEN_17};
-        automatic logic [17:0] _GEN_19 =
-          {{10{_inputMem_io_readData[87]}}, _inputMem_io_readData[87:80]}
-          + {_GEN_18[16], _GEN_18};
-        automatic logic [18:0] _GEN_20 =
-          {{11{_inputMem_io_readData[95]}}, _inputMem_io_readData[95:88]}
-          + {_GEN_19[17], _GEN_19};
-        automatic logic [19:0] _GEN_21 =
-          {{12{_inputMem_io_readData[103]}}, _inputMem_io_readData[103:96]}
-          + {_GEN_20[18], _GEN_20};
-        automatic logic [20:0] _GEN_22 =
-          {{13{_inputMem_io_readData[111]}}, _inputMem_io_readData[111:104]}
-          + {_GEN_21[19], _GEN_21};
-        automatic logic [21:0] _GEN_23 =
-          {{14{_inputMem_io_readData[119]}}, _inputMem_io_readData[119:112]}
-          + {_GEN_22[20], _GEN_22};
-        automatic logic [22:0] _GEN_24 =
-          {{15{_inputMem_io_readData[127]}}, _inputMem_io_readData[127:120]}
-          + {_GEN_23[21], _GEN_23};
-        automatic logic [15:0] _GEN_25 =
-          {{8{_inputMem_io_readData[7]}}, _inputMem_io_readData[7:0]};
-        automatic logic [15:0] _GEN_26 =
-          {{8{_inputMem_io_readData[15]}}, _inputMem_io_readData[15:8]};
-        automatic logic [15:0] _GEN_27 =
-          {{8{_inputMem_io_readData[23]}}, _inputMem_io_readData[23:16]};
-        automatic logic [15:0] _GEN_28 =
-          {{8{_inputMem_io_readData[31]}}, _inputMem_io_readData[31:24]};
-        automatic logic [15:0] _GEN_29 =
-          {{8{_inputMem_io_readData[39]}}, _inputMem_io_readData[39:32]};
-        automatic logic [15:0] _GEN_30 =
-          {{8{_inputMem_io_readData[47]}}, _inputMem_io_readData[47:40]};
-        automatic logic [15:0] _GEN_31 =
-          {{8{_inputMem_io_readData[55]}}, _inputMem_io_readData[55:48]};
-        automatic logic [15:0] _GEN_32 =
-          {{8{_inputMem_io_readData[63]}}, _inputMem_io_readData[63:56]};
-        automatic logic [15:0] _GEN_33 =
-          {{8{_inputMem_io_readData[79]}}, _inputMem_io_readData[79:72]};
-        automatic logic [15:0] _GEN_34 =
-          {{8{_inputMem_io_readData[87]}}, _inputMem_io_readData[87:80]};
-        automatic logic [15:0] _GEN_35 =
-          {{8{_inputMem_io_readData[95]}}, _inputMem_io_readData[95:88]};
-        automatic logic [15:0] _GEN_36 =
-          {{8{_inputMem_io_readData[103]}}, _inputMem_io_readData[103:96]};
-        automatic logic [15:0] _GEN_37 =
-          {{8{_inputMem_io_readData[111]}}, _inputMem_io_readData[111:104]};
-        automatic logic [15:0] _GEN_38 =
-          {{8{_inputMem_io_readData[119]}}, _inputMem_io_readData[119:112]};
-        automatic logic [15:0] _GEN_39 =
-          {{8{_inputMem_io_readData[127]}}, _inputMem_io_readData[127:120]};
-        sumReg <= {{41{_GEN_24[22]}}, _GEN_24} + sumReg;
-        squareSumReg <=
-          {33'h0,
-           {15'h0, _GEN_39 * _GEN_39}
-             + {1'h0,
-                {14'h0, _GEN_38 * _GEN_38}
-                  + {1'h0,
-                     {13'h0, _GEN_37 * _GEN_37}
-                       + {1'h0,
-                          {12'h0, _GEN_36 * _GEN_36}
-                            + {1'h0,
-                               {11'h0, _GEN_35 * _GEN_35}
-                                 + {1'h0,
-                                    {10'h0, _GEN_34 * _GEN_34}
-                                      + {1'h0,
-                                         {9'h0, _GEN_33 * _GEN_33}
-                                           + {1'h0,
-                                              {8'h0, _GEN_16 * _GEN_16}
-                                                + {1'h0,
-                                                   {7'h0, _GEN_32 * _GEN_32}
-                                                     + {1'h0,
-                                                        {6'h0, _GEN_31 * _GEN_31}
-                                                          + {1'h0,
-                                                             {5'h0, _GEN_30 * _GEN_30}
-                                                               + {1'h0,
-                                                                  {4'h0,
-                                                                   _GEN_29 * _GEN_29}
-                                                                    + {1'h0,
-                                                                       {3'h0,
-                                                                        _GEN_28 * _GEN_28}
-                                                                         + {1'h0,
-                                                                            {2'h0,
-                                                                             _GEN_27
-                                                                               * _GEN_27}
-                                                                              + {1'h0,
-                                                                                 {1'h0,
-                                                                                  _GEN_26
-                                                                                    * _GEN_26}
-                                                                                   + {1'h0,
-                                                                                      _GEN_25
-                                                                                        * _GEN_25}}}}}}}}}}}}}}}}
-          + squareSumReg;
+      if (_GEN_20) begin
+        sumReg <= sumReg + beatSumReg;
+        squareSumReg <= squareSumReg + beatSquaresReg;
       end
-      else if (_GEN_3) begin
+      else if (_GEN_17) begin
         sumReg <= 64'h0;
         squareSumReg <= 64'h0;
       end
-      if (_GEN)
-        meanReg <= meanProduct[62:31];
-      if (_GEN_6)
+      if (_GEN_22) begin
+      end
+      else
+        meanReg <= meanProductReg[62:31];
+      if (_GEN_23)
         denominatorReg <=
           _sqrtUnit_io_out_bits == 32'h0 ? 64'h1 : {32'h0, _sqrtUnit_io_out_bits};
-      if (_GEN_7) begin
-        automatic logic [64:0] inverseDenominatorCandidate_denominatorWide =
-          {1'h0, denominatorReg};
-        automatic logic        inverseDenominatorCandidate_takeQuotientBit =
-          inverseDenominatorCandidate_denominatorWide < 65'h2;
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder =
-          inverseDenominatorCandidate_takeQuotientBit ? 64'h1 - denominatorReg : 64'h1;
-        automatic logic        inverseDenominatorCandidate_quotientBits_23 =
-          {inverseDenominatorCandidate_nextRemainder,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_40 =
-          {inverseDenominatorCandidate_nextRemainder[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_1 =
-          inverseDenominatorCandidate_quotientBits_23
-            ? _GEN_40 - denominatorReg
-            : _GEN_40;
-        automatic logic        inverseDenominatorCandidate_quotientBits_22 =
-          {inverseDenominatorCandidate_nextRemainder_1,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_41 =
-          {inverseDenominatorCandidate_nextRemainder_1[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_2 =
-          inverseDenominatorCandidate_quotientBits_22
-            ? _GEN_41 - denominatorReg
-            : _GEN_41;
-        automatic logic        inverseDenominatorCandidate_quotientBits_21 =
-          {inverseDenominatorCandidate_nextRemainder_2,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_42 =
-          {inverseDenominatorCandidate_nextRemainder_2[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_3 =
-          inverseDenominatorCandidate_quotientBits_21
-            ? _GEN_42 - denominatorReg
-            : _GEN_42;
-        automatic logic        inverseDenominatorCandidate_quotientBits_20 =
-          {inverseDenominatorCandidate_nextRemainder_3,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_43 =
-          {inverseDenominatorCandidate_nextRemainder_3[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_4 =
-          inverseDenominatorCandidate_quotientBits_20
-            ? _GEN_43 - denominatorReg
-            : _GEN_43;
-        automatic logic        inverseDenominatorCandidate_quotientBits_19 =
-          {inverseDenominatorCandidate_nextRemainder_4,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_44 =
-          {inverseDenominatorCandidate_nextRemainder_4[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_5 =
-          inverseDenominatorCandidate_quotientBits_19
-            ? _GEN_44 - denominatorReg
-            : _GEN_44;
-        automatic logic        inverseDenominatorCandidate_quotientBits_18 =
-          {inverseDenominatorCandidate_nextRemainder_5,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_45 =
-          {inverseDenominatorCandidate_nextRemainder_5[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_6 =
-          inverseDenominatorCandidate_quotientBits_18
-            ? _GEN_45 - denominatorReg
-            : _GEN_45;
-        automatic logic        inverseDenominatorCandidate_quotientBits_17 =
-          {inverseDenominatorCandidate_nextRemainder_6,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_46 =
-          {inverseDenominatorCandidate_nextRemainder_6[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_7 =
-          inverseDenominatorCandidate_quotientBits_17
-            ? _GEN_46 - denominatorReg
-            : _GEN_46;
-        automatic logic        inverseDenominatorCandidate_quotientBits_16 =
-          {inverseDenominatorCandidate_nextRemainder_7,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_47 =
-          {inverseDenominatorCandidate_nextRemainder_7[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_8 =
-          inverseDenominatorCandidate_quotientBits_16
-            ? _GEN_47 - denominatorReg
-            : _GEN_47;
-        automatic logic        inverseDenominatorCandidate_quotientBits_15 =
-          {inverseDenominatorCandidate_nextRemainder_8,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_48 =
-          {inverseDenominatorCandidate_nextRemainder_8[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_9 =
-          inverseDenominatorCandidate_quotientBits_15
-            ? _GEN_48 - denominatorReg
-            : _GEN_48;
-        automatic logic        inverseDenominatorCandidate_quotientBits_14 =
-          {inverseDenominatorCandidate_nextRemainder_9,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_49 =
-          {inverseDenominatorCandidate_nextRemainder_9[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_10 =
-          inverseDenominatorCandidate_quotientBits_14
-            ? _GEN_49 - denominatorReg
-            : _GEN_49;
-        automatic logic        inverseDenominatorCandidate_quotientBits_13 =
-          {inverseDenominatorCandidate_nextRemainder_10,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_50 =
-          {inverseDenominatorCandidate_nextRemainder_10[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_11 =
-          inverseDenominatorCandidate_quotientBits_13
-            ? _GEN_50 - denominatorReg
-            : _GEN_50;
-        automatic logic        inverseDenominatorCandidate_quotientBits_12 =
-          {inverseDenominatorCandidate_nextRemainder_11,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_51 =
-          {inverseDenominatorCandidate_nextRemainder_11[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_12 =
-          inverseDenominatorCandidate_quotientBits_12
-            ? _GEN_51 - denominatorReg
-            : _GEN_51;
-        automatic logic        inverseDenominatorCandidate_quotientBits_11 =
-          {inverseDenominatorCandidate_nextRemainder_12,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_52 =
-          {inverseDenominatorCandidate_nextRemainder_12[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_13 =
-          inverseDenominatorCandidate_quotientBits_11
-            ? _GEN_52 - denominatorReg
-            : _GEN_52;
-        automatic logic        inverseDenominatorCandidate_quotientBits_10 =
-          {inverseDenominatorCandidate_nextRemainder_13,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_53 =
-          {inverseDenominatorCandidate_nextRemainder_13[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_14 =
-          inverseDenominatorCandidate_quotientBits_10
-            ? _GEN_53 - denominatorReg
-            : _GEN_53;
-        automatic logic        inverseDenominatorCandidate_quotientBits_9 =
-          {inverseDenominatorCandidate_nextRemainder_14,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_54 =
-          {inverseDenominatorCandidate_nextRemainder_14[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_15 =
-          inverseDenominatorCandidate_quotientBits_9 ? _GEN_54 - denominatorReg : _GEN_54;
-        automatic logic        inverseDenominatorCandidate_quotientBits_8 =
-          {inverseDenominatorCandidate_nextRemainder_15,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_55 =
-          {inverseDenominatorCandidate_nextRemainder_15[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_16 =
-          inverseDenominatorCandidate_quotientBits_8 ? _GEN_55 - denominatorReg : _GEN_55;
-        automatic logic        inverseDenominatorCandidate_quotientBits_7 =
-          {inverseDenominatorCandidate_nextRemainder_16,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_56 =
-          {inverseDenominatorCandidate_nextRemainder_16[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_17 =
-          inverseDenominatorCandidate_quotientBits_7 ? _GEN_56 - denominatorReg : _GEN_56;
-        automatic logic        inverseDenominatorCandidate_quotientBits_6 =
-          {inverseDenominatorCandidate_nextRemainder_17,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_57 =
-          {inverseDenominatorCandidate_nextRemainder_17[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_18 =
-          inverseDenominatorCandidate_quotientBits_6 ? _GEN_57 - denominatorReg : _GEN_57;
-        automatic logic        inverseDenominatorCandidate_quotientBits_5 =
-          {inverseDenominatorCandidate_nextRemainder_18,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_58 =
-          {inverseDenominatorCandidate_nextRemainder_18[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_19 =
-          inverseDenominatorCandidate_quotientBits_5 ? _GEN_58 - denominatorReg : _GEN_58;
-        automatic logic        inverseDenominatorCandidate_quotientBits_4 =
-          {inverseDenominatorCandidate_nextRemainder_19,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_59 =
-          {inverseDenominatorCandidate_nextRemainder_19[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_20 =
-          inverseDenominatorCandidate_quotientBits_4 ? _GEN_59 - denominatorReg : _GEN_59;
-        automatic logic        inverseDenominatorCandidate_quotientBits_3 =
-          {inverseDenominatorCandidate_nextRemainder_20,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_60 =
-          {inverseDenominatorCandidate_nextRemainder_20[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_21 =
-          inverseDenominatorCandidate_quotientBits_3 ? _GEN_60 - denominatorReg : _GEN_60;
-        automatic logic        inverseDenominatorCandidate_quotientBits_2 =
-          {inverseDenominatorCandidate_nextRemainder_21,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_61 =
-          {inverseDenominatorCandidate_nextRemainder_21[62:0], 1'h0};
-        automatic logic [63:0] inverseDenominatorCandidate_nextRemainder_22 =
-          inverseDenominatorCandidate_quotientBits_2 ? _GEN_61 - denominatorReg : _GEN_61;
-        automatic logic        inverseDenominatorCandidate_quotientBits_1 =
-          {inverseDenominatorCandidate_nextRemainder_22,
-           1'h0} >= inverseDenominatorCandidate_denominatorWide;
-        automatic logic [63:0] _GEN_62 =
-          {inverseDenominatorCandidate_nextRemainder_22[62:0], 1'h0};
-        inverseDenominatorQ24 <=
-          denominatorReg == 64'h0
-            ? 25'h1FFFFFF
-            : {inverseDenominatorCandidate_takeQuotientBit,
-               inverseDenominatorCandidate_quotientBits_23,
-               inverseDenominatorCandidate_quotientBits_22,
-               inverseDenominatorCandidate_quotientBits_21,
-               inverseDenominatorCandidate_quotientBits_20,
-               inverseDenominatorCandidate_quotientBits_19,
-               inverseDenominatorCandidate_quotientBits_18,
-               inverseDenominatorCandidate_quotientBits_17,
-               inverseDenominatorCandidate_quotientBits_16,
-               inverseDenominatorCandidate_quotientBits_15,
-               inverseDenominatorCandidate_quotientBits_14,
-               inverseDenominatorCandidate_quotientBits_13,
-               inverseDenominatorCandidate_quotientBits_12,
-               inverseDenominatorCandidate_quotientBits_11,
-               inverseDenominatorCandidate_quotientBits_10,
-               inverseDenominatorCandidate_quotientBits_9,
-               inverseDenominatorCandidate_quotientBits_8,
-               inverseDenominatorCandidate_quotientBits_7,
-               inverseDenominatorCandidate_quotientBits_6,
-               inverseDenominatorCandidate_quotientBits_5,
-               inverseDenominatorCandidate_quotientBits_4,
-               inverseDenominatorCandidate_quotientBits_3,
-               inverseDenominatorCandidate_quotientBits_2,
-               inverseDenominatorCandidate_quotientBits_1,
-               {inverseDenominatorCandidate_quotientBits_1
-                  ? _GEN_62 - denominatorReg
-                  : _GEN_62,
-                1'h0} >= inverseDenominatorCandidate_denominatorWide};
+      if (_GEN_24)
+        inverseDenominatorQ24 <= _reciprocalDivider_io_out_bits;
+      if (_GEN_18) begin
+        statsValuesReg_0 <= _inputMem_io_readData[7:0];
+        statsValuesReg_1 <= _inputMem_io_readData[15:8];
+        statsValuesReg_2 <= _inputMem_io_readData[23:16];
+        statsValuesReg_3 <= _inputMem_io_readData[31:24];
+        statsValuesReg_4 <= _inputMem_io_readData[39:32];
+        statsValuesReg_5 <= _inputMem_io_readData[47:40];
+        statsValuesReg_6 <= _inputMem_io_readData[55:48];
+        statsValuesReg_7 <= _inputMem_io_readData[63:56];
+        statsValuesReg_8 <= _inputMem_io_readData[71:64];
+        statsValuesReg_9 <= _inputMem_io_readData[79:72];
+        statsValuesReg_10 <= _inputMem_io_readData[87:80];
+        statsValuesReg_11 <= _inputMem_io_readData[95:88];
+        statsValuesReg_12 <= _inputMem_io_readData[103:96];
+        statsValuesReg_13 <= _inputMem_io_readData[111:104];
+        statsValuesReg_14 <= _inputMem_io_readData[119:112];
+        statsValuesReg_15 <= _inputMem_io_readData[127:120];
+      end
+      if (_GEN_19) begin
+        automatic logic [8:0]  _GEN_26 =
+          {statsValuesReg_1[7], statsValuesReg_1}
+          + {statsValuesReg_0[7], statsValuesReg_0};
+        automatic logic [8:0]  _GEN_27 =
+          {statsValuesReg_3[7], statsValuesReg_3}
+          + {statsValuesReg_2[7], statsValuesReg_2};
+        automatic logic [8:0]  _GEN_28 =
+          {statsValuesReg_5[7], statsValuesReg_5}
+          + {statsValuesReg_4[7], statsValuesReg_4};
+        automatic logic [8:0]  _GEN_29 =
+          {statsValuesReg_7[7], statsValuesReg_7}
+          + {statsValuesReg_6[7], statsValuesReg_6};
+        automatic logic [8:0]  _GEN_30 =
+          {statsValuesReg_9[7], statsValuesReg_9}
+          + {statsValuesReg_8[7], statsValuesReg_8};
+        automatic logic [8:0]  _GEN_31 =
+          {statsValuesReg_11[7], statsValuesReg_11}
+          + {statsValuesReg_10[7], statsValuesReg_10};
+        automatic logic [8:0]  _GEN_32 =
+          {statsValuesReg_13[7], statsValuesReg_13}
+          + {statsValuesReg_12[7], statsValuesReg_12};
+        automatic logic [8:0]  _GEN_33 =
+          {statsValuesReg_15[7], statsValuesReg_15}
+          + {statsValuesReg_14[7], statsValuesReg_14};
+        automatic logic [15:0] _GEN_34 = {{8{statsValuesReg_0[7]}}, statsValuesReg_0};
+        automatic logic [15:0] _GEN_35 = {{8{statsValuesReg_1[7]}}, statsValuesReg_1};
+        automatic logic [15:0] _GEN_36 = {{8{statsValuesReg_2[7]}}, statsValuesReg_2};
+        automatic logic [15:0] _GEN_37 = {{8{statsValuesReg_3[7]}}, statsValuesReg_3};
+        automatic logic [15:0] _GEN_38 = {{8{statsValuesReg_4[7]}}, statsValuesReg_4};
+        automatic logic [15:0] _GEN_39 = {{8{statsValuesReg_5[7]}}, statsValuesReg_5};
+        automatic logic [15:0] _GEN_40 = {{8{statsValuesReg_6[7]}}, statsValuesReg_6};
+        automatic logic [15:0] _GEN_41 = {{8{statsValuesReg_7[7]}}, statsValuesReg_7};
+        automatic logic [15:0] _GEN_42 = {{8{statsValuesReg_8[7]}}, statsValuesReg_8};
+        automatic logic [15:0] _GEN_43 = {{8{statsValuesReg_9[7]}}, statsValuesReg_9};
+        automatic logic [15:0] _GEN_44 = {{8{statsValuesReg_10[7]}}, statsValuesReg_10};
+        automatic logic [15:0] _GEN_45 = {{8{statsValuesReg_11[7]}}, statsValuesReg_11};
+        automatic logic [15:0] _GEN_46 = {{8{statsValuesReg_12[7]}}, statsValuesReg_12};
+        automatic logic [15:0] _GEN_47 = {{8{statsValuesReg_13[7]}}, statsValuesReg_13};
+        automatic logic [15:0] _GEN_48 = {{8{statsValuesReg_14[7]}}, statsValuesReg_14};
+        automatic logic [15:0] _GEN_49 = {{8{statsValuesReg_15[7]}}, statsValuesReg_15};
+        beatSumReg <=
+          {{55{_GEN_26[8]}}, _GEN_26} + {{55{_GEN_27[8]}}, _GEN_27}
+          + {{55{_GEN_28[8]}}, _GEN_28} + {{55{_GEN_29[8]}}, _GEN_29}
+          + {{55{_GEN_30[8]}}, _GEN_30} + {{55{_GEN_31[8]}}, _GEN_31}
+          + {{55{_GEN_32[8]}}, _GEN_32} + {{55{_GEN_33[8]}}, _GEN_33};
+        beatSquaresReg <=
+          {47'h0, {1'h0, _GEN_35 * _GEN_35} + {1'h0, _GEN_34 * _GEN_34}}
+          + {47'h0, {1'h0, _GEN_37 * _GEN_37} + {1'h0, _GEN_36 * _GEN_36}}
+          + {47'h0, {1'h0, _GEN_39 * _GEN_39} + {1'h0, _GEN_38 * _GEN_38}}
+          + {47'h0, {1'h0, _GEN_41 * _GEN_41} + {1'h0, _GEN_40 * _GEN_40}}
+          + {47'h0, {1'h0, _GEN_43 * _GEN_43} + {1'h0, _GEN_42 * _GEN_42}}
+          + {47'h0, {1'h0, _GEN_45 * _GEN_45} + {1'h0, _GEN_44 * _GEN_44}}
+          + {47'h0, {1'h0, _GEN_47 * _GEN_47} + {1'h0, _GEN_46 * _GEN_46}}
+          + {47'h0, {1'h0, _GEN_49 * _GEN_49} + {1'h0, _GEN_48 * _GEN_48}};
+      end
+      if (_GEN)
+        finalizeStage <= _GEN_0 ? 3'h1 : _GEN_1 ? 3'h2 : _GEN_2 ? 3'h3 : {_GEN_3, 2'h0};
+      if (_GEN & _GEN_0) begin
+        automatic logic [96:0] _meanProductReg_T_2 =
+          {{33{sumReg[63]}}, sumReg} * 97'h2AAAAB;
+        meanProductReg <= {{31{_meanProductReg_T_2[96]}}, _meanProductReg_T_2};
+      end
+      if (_GEN_22) begin
+      end
+      else
+        meanInputSquareProductReg <= {32'h0, {32'h0, squareSumReg} * 96'h2AAAAB};
+      if (~_GEN | _GEN_0 | _GEN_1 | ~_GEN_2) begin
+      end
+      else
+        meanInputSquareReg <= meanInputSquareProductReg[94:31];
+      if (~_GEN | _GEN_0 | _GEN_1 | _GEN_2 | ~_GEN_3) begin
+      end
+      else begin
+        automatic logic [63:0] _GEN_50 = {{32{meanReg[31]}}, meanReg};
+        meanSquareReg <= _GEN_50 * _GEN_50;
+        epsilonReg <= 64'h1;
+      end
+      if (_GEN_5) begin
+        if (_GEN_6)
+          emitStage <= 4'h1;
+        else if (_GEN_7)
+          emitStage <= 4'h2;
+        else if (_GEN_8)
+          emitStage <= 4'h3;
+        else if (_GEN_9)
+          emitStage <= 4'h4;
+        else if (_GEN_10)
+          emitStage <= 4'h5;
+        else if (_GEN_11)
+          emitStage <= 4'h6;
+        else if (_GEN_12)
+          emitStage <= 4'h7;
+        else if (_GEN_13)
+          emitStage <= 4'h0;
       end
     end
-    if (_GEN) begin
-      automatic logic [63:0] _GEN_63;
-      automatic logic [63:0] _meanSquare_T;
-      automatic logic [94:0] meanInputSquareProduct = {31'h0, squareSumReg} * 95'h2AAAAB;
-      _GEN_63 = {{32{meanProduct[62]}}, meanProduct[62:31]};
-      _meanSquare_T = _GEN_63 * _GEN_63;
-      sqrtInputReg <=
-        (meanInputSquareProduct[94:31] > _meanSquare_T
-           ? meanInputSquareProduct[94:31] - _meanSquare_T
-           : 64'h0) + 64'h1;
+    if (_GEN_4) begin
     end
-    if (_GEN_0) begin
-      automatic logic [31:0]  _centered_T_1 =
-        {{24{_inputMem_io_readData[7]}}, _inputMem_io_readData[7:0]} - meanReg;
-      automatic logic [39:0]  scaledNumerator =
-        {{8{_centered_T_1[31]}}, _centered_T_1} * 40'h7F;
-      automatic logic [64:0]  _GEN_64 =
-        {{40{inverseDenominatorQ24[24]}}, inverseDenominatorQ24};
-      automatic logic [64:0]  normalizedProduct =
-        {{25{scaledNumerator[39]}}, scaledNumerator} * _GEN_64;
-      automatic logic         normalized_negative = $signed(normalizedProduct) < 65'sh0;
-      automatic logic [65:0]  _GEN_65 = {normalizedProduct[64], normalizedProduct};
-      automatic logic [65:0]  normalized_magnitude =
-        normalized_negative ? 66'h0 - _GEN_65 : _GEN_65;
-      automatic logic [64:0]  _GEN_66 =
-        {22'h0,
-         {1'h0, normalized_magnitude[65:24]}
-           + {42'h0,
-              normalized_magnitude[23:0] > 24'h800000
-                | normalized_magnitude[23:0] == 24'h800000 & normalized_magnitude[24]}};
-      automatic logic [64:0]  normalized_roundedSigned =
-        normalized_negative ? 65'h0 - _GEN_66 : _GEN_66;
-      automatic logic [129:0] affineProduct =
-        {{65{normalized_roundedSigned[64]}}, normalized_roundedSigned}
-        * {{122{_gammaMem_io_readData[7]}}, _gammaMem_io_readData[7:0]};
-      automatic logic [148:0] affineReciprocalProduct =
-        {{19{affineProduct[129]}}, affineProduct} * 149'h20408;
-      automatic logic         affine_negative =
-        $signed(affineReciprocalProduct) < 149'sh0;
-      automatic logic [149:0] _GEN_67 =
-        {affineReciprocalProduct[148], affineReciprocalProduct};
+    else
+      sqrtInputReg <=
+        (meanInputSquareReg > meanSquareReg ? meanInputSquareReg - meanSquareReg : 64'h0)
+        + epsilonReg;
+    if (_GEN_5 & _GEN_6) begin
+      inputReg <= _inputMem_io_readData;
+      gammaReg <= _gammaMem_io_readData;
+      betaReg <= _betaMem_io_readData;
+      metaReg <= _metaMem_io_readData;
+    end
+    if (_GEN_14) begin
+    end
+    else begin
+      automatic logic         affine_negative = $signed(emitAffineReciprocal_0) < 149'sh0;
+      automatic logic [149:0] _GEN_51 =
+        {emitAffineReciprocal_0[148], emitAffineReciprocal_0};
       automatic logic [149:0] affine_magnitude =
-        affine_negative ? 150'h0 - _GEN_67 : _GEN_67;
-      automatic logic [148:0] _GEN_68 =
+        affine_negative ? 150'h0 - _GEN_51 : _GEN_51;
+      automatic logic [148:0] _GEN_52 =
         {22'h0,
          {1'h0, affine_magnitude[149:24]}
            + {126'h0,
               affine_magnitude[23:0] > 24'h800000 | affine_magnitude[23:0] == 24'h800000
                 & affine_magnitude[24]}};
       automatic logic [148:0] _shifted_T_1 =
-        {{141{_betaMem_io_readData[7]}}, _betaMem_io_readData[7:0]}
-        + (affine_negative ? 149'h0 - _GEN_68 : _GEN_68);
-      automatic logic [31:0]  _centered_T_4 =
-        {{24{_inputMem_io_readData[15]}}, _inputMem_io_readData[15:8]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_1 =
-        {{8{_centered_T_4[31]}}, _centered_T_4} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_1 =
-        {{25{scaledNumerator_1[39]}}, scaledNumerator_1} * _GEN_64;
-      automatic logic         normalized_negative_1 =
-        $signed(normalizedProduct_1) < 65'sh0;
-      automatic logic [65:0]  _GEN_69 = {normalizedProduct_1[64], normalizedProduct_1};
-      automatic logic [65:0]  normalized_magnitude_1 =
-        normalized_negative_1 ? 66'h0 - _GEN_69 : _GEN_69;
-      automatic logic [64:0]  _GEN_70 =
-        {22'h0,
-         {1'h0, normalized_magnitude_1[65:24]}
-           + {42'h0,
-              normalized_magnitude_1[23:0] > 24'h800000
-                | normalized_magnitude_1[23:0] == 24'h800000
-                & normalized_magnitude_1[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_1 =
-        normalized_negative_1 ? 65'h0 - _GEN_70 : _GEN_70;
-      automatic logic [129:0] affineProduct_1 =
-        {{65{normalized_roundedSigned_1[64]}}, normalized_roundedSigned_1}
-        * {{122{_gammaMem_io_readData[15]}}, _gammaMem_io_readData[15:8]};
-      automatic logic [148:0] affineReciprocalProduct_1 =
-        {{19{affineProduct_1[129]}}, affineProduct_1} * 149'h20408;
+        {{141{betaReg[7]}}, betaReg[7:0]}
+        + (affine_negative ? 149'h0 - _GEN_52 : _GEN_52);
       automatic logic         affine_negative_1 =
-        $signed(affineReciprocalProduct_1) < 149'sh0;
-      automatic logic [149:0] _GEN_71 =
-        {affineReciprocalProduct_1[148], affineReciprocalProduct_1};
+        $signed(emitAffineReciprocal_1) < 149'sh0;
+      automatic logic [149:0] _GEN_53 =
+        {emitAffineReciprocal_1[148], emitAffineReciprocal_1};
       automatic logic [149:0] affine_magnitude_1 =
-        affine_negative_1 ? 150'h0 - _GEN_71 : _GEN_71;
-      automatic logic [148:0] _GEN_72 =
+        affine_negative_1 ? 150'h0 - _GEN_53 : _GEN_53;
+      automatic logic [148:0] _GEN_54 =
         {22'h0,
          {1'h0, affine_magnitude_1[149:24]}
            + {126'h0,
               affine_magnitude_1[23:0] > 24'h800000
                 | affine_magnitude_1[23:0] == 24'h800000 & affine_magnitude_1[24]}};
       automatic logic [148:0] _shifted_T_4 =
-        {{141{_betaMem_io_readData[15]}}, _betaMem_io_readData[15:8]}
-        + (affine_negative_1 ? 149'h0 - _GEN_72 : _GEN_72);
-      automatic logic [31:0]  _centered_T_7 =
-        {{24{_inputMem_io_readData[23]}}, _inputMem_io_readData[23:16]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_2 =
-        {{8{_centered_T_7[31]}}, _centered_T_7} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_2 =
-        {{25{scaledNumerator_2[39]}}, scaledNumerator_2} * _GEN_64;
-      automatic logic         normalized_negative_2 =
-        $signed(normalizedProduct_2) < 65'sh0;
-      automatic logic [65:0]  _GEN_73 = {normalizedProduct_2[64], normalizedProduct_2};
-      automatic logic [65:0]  normalized_magnitude_2 =
-        normalized_negative_2 ? 66'h0 - _GEN_73 : _GEN_73;
-      automatic logic [64:0]  _GEN_74 =
-        {22'h0,
-         {1'h0, normalized_magnitude_2[65:24]}
-           + {42'h0,
-              normalized_magnitude_2[23:0] > 24'h800000
-                | normalized_magnitude_2[23:0] == 24'h800000
-                & normalized_magnitude_2[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_2 =
-        normalized_negative_2 ? 65'h0 - _GEN_74 : _GEN_74;
-      automatic logic [129:0] affineProduct_2 =
-        {{65{normalized_roundedSigned_2[64]}}, normalized_roundedSigned_2}
-        * {{122{_gammaMem_io_readData[23]}}, _gammaMem_io_readData[23:16]};
-      automatic logic [148:0] affineReciprocalProduct_2 =
-        {{19{affineProduct_2[129]}}, affineProduct_2} * 149'h20408;
+        {{141{betaReg[15]}}, betaReg[15:8]}
+        + (affine_negative_1 ? 149'h0 - _GEN_54 : _GEN_54);
       automatic logic         affine_negative_2 =
-        $signed(affineReciprocalProduct_2) < 149'sh0;
-      automatic logic [149:0] _GEN_75 =
-        {affineReciprocalProduct_2[148], affineReciprocalProduct_2};
+        $signed(emitAffineReciprocal_2) < 149'sh0;
+      automatic logic [149:0] _GEN_55 =
+        {emitAffineReciprocal_2[148], emitAffineReciprocal_2};
       automatic logic [149:0] affine_magnitude_2 =
-        affine_negative_2 ? 150'h0 - _GEN_75 : _GEN_75;
-      automatic logic [148:0] _GEN_76 =
+        affine_negative_2 ? 150'h0 - _GEN_55 : _GEN_55;
+      automatic logic [148:0] _GEN_56 =
         {22'h0,
          {1'h0, affine_magnitude_2[149:24]}
            + {126'h0,
               affine_magnitude_2[23:0] > 24'h800000
                 | affine_magnitude_2[23:0] == 24'h800000 & affine_magnitude_2[24]}};
       automatic logic [148:0] _shifted_T_7 =
-        {{141{_betaMem_io_readData[23]}}, _betaMem_io_readData[23:16]}
-        + (affine_negative_2 ? 149'h0 - _GEN_76 : _GEN_76);
-      automatic logic [31:0]  _centered_T_10 =
-        {{24{_inputMem_io_readData[31]}}, _inputMem_io_readData[31:24]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_3 =
-        {{8{_centered_T_10[31]}}, _centered_T_10} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_3 =
-        {{25{scaledNumerator_3[39]}}, scaledNumerator_3} * _GEN_64;
-      automatic logic         normalized_negative_3 =
-        $signed(normalizedProduct_3) < 65'sh0;
-      automatic logic [65:0]  _GEN_77 = {normalizedProduct_3[64], normalizedProduct_3};
-      automatic logic [65:0]  normalized_magnitude_3 =
-        normalized_negative_3 ? 66'h0 - _GEN_77 : _GEN_77;
-      automatic logic [64:0]  _GEN_78 =
-        {22'h0,
-         {1'h0, normalized_magnitude_3[65:24]}
-           + {42'h0,
-              normalized_magnitude_3[23:0] > 24'h800000
-                | normalized_magnitude_3[23:0] == 24'h800000
-                & normalized_magnitude_3[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_3 =
-        normalized_negative_3 ? 65'h0 - _GEN_78 : _GEN_78;
-      automatic logic [129:0] affineProduct_3 =
-        {{65{normalized_roundedSigned_3[64]}}, normalized_roundedSigned_3}
-        * {{122{_gammaMem_io_readData[31]}}, _gammaMem_io_readData[31:24]};
-      automatic logic [148:0] affineReciprocalProduct_3 =
-        {{19{affineProduct_3[129]}}, affineProduct_3} * 149'h20408;
+        {{141{betaReg[23]}}, betaReg[23:16]}
+        + (affine_negative_2 ? 149'h0 - _GEN_56 : _GEN_56);
       automatic logic         affine_negative_3 =
-        $signed(affineReciprocalProduct_3) < 149'sh0;
-      automatic logic [149:0] _GEN_79 =
-        {affineReciprocalProduct_3[148], affineReciprocalProduct_3};
+        $signed(emitAffineReciprocal_3) < 149'sh0;
+      automatic logic [149:0] _GEN_57 =
+        {emitAffineReciprocal_3[148], emitAffineReciprocal_3};
       automatic logic [149:0] affine_magnitude_3 =
-        affine_negative_3 ? 150'h0 - _GEN_79 : _GEN_79;
-      automatic logic [148:0] _GEN_80 =
+        affine_negative_3 ? 150'h0 - _GEN_57 : _GEN_57;
+      automatic logic [148:0] _GEN_58 =
         {22'h0,
          {1'h0, affine_magnitude_3[149:24]}
            + {126'h0,
               affine_magnitude_3[23:0] > 24'h800000
                 | affine_magnitude_3[23:0] == 24'h800000 & affine_magnitude_3[24]}};
       automatic logic [148:0] _shifted_T_10 =
-        {{141{_betaMem_io_readData[31]}}, _betaMem_io_readData[31:24]}
-        + (affine_negative_3 ? 149'h0 - _GEN_80 : _GEN_80);
-      automatic logic [31:0]  _centered_T_13 =
-        {{24{_inputMem_io_readData[39]}}, _inputMem_io_readData[39:32]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_4 =
-        {{8{_centered_T_13[31]}}, _centered_T_13} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_4 =
-        {{25{scaledNumerator_4[39]}}, scaledNumerator_4} * _GEN_64;
-      automatic logic         normalized_negative_4 =
-        $signed(normalizedProduct_4) < 65'sh0;
-      automatic logic [65:0]  _GEN_81 = {normalizedProduct_4[64], normalizedProduct_4};
-      automatic logic [65:0]  normalized_magnitude_4 =
-        normalized_negative_4 ? 66'h0 - _GEN_81 : _GEN_81;
-      automatic logic [64:0]  _GEN_82 =
-        {22'h0,
-         {1'h0, normalized_magnitude_4[65:24]}
-           + {42'h0,
-              normalized_magnitude_4[23:0] > 24'h800000
-                | normalized_magnitude_4[23:0] == 24'h800000
-                & normalized_magnitude_4[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_4 =
-        normalized_negative_4 ? 65'h0 - _GEN_82 : _GEN_82;
-      automatic logic [129:0] affineProduct_4 =
-        {{65{normalized_roundedSigned_4[64]}}, normalized_roundedSigned_4}
-        * {{122{_gammaMem_io_readData[39]}}, _gammaMem_io_readData[39:32]};
-      automatic logic [148:0] affineReciprocalProduct_4 =
-        {{19{affineProduct_4[129]}}, affineProduct_4} * 149'h20408;
+        {{141{betaReg[31]}}, betaReg[31:24]}
+        + (affine_negative_3 ? 149'h0 - _GEN_58 : _GEN_58);
       automatic logic         affine_negative_4 =
-        $signed(affineReciprocalProduct_4) < 149'sh0;
-      automatic logic [149:0] _GEN_83 =
-        {affineReciprocalProduct_4[148], affineReciprocalProduct_4};
+        $signed(emitAffineReciprocal_4) < 149'sh0;
+      automatic logic [149:0] _GEN_59 =
+        {emitAffineReciprocal_4[148], emitAffineReciprocal_4};
       automatic logic [149:0] affine_magnitude_4 =
-        affine_negative_4 ? 150'h0 - _GEN_83 : _GEN_83;
-      automatic logic [148:0] _GEN_84 =
+        affine_negative_4 ? 150'h0 - _GEN_59 : _GEN_59;
+      automatic logic [148:0] _GEN_60 =
         {22'h0,
          {1'h0, affine_magnitude_4[149:24]}
            + {126'h0,
               affine_magnitude_4[23:0] > 24'h800000
                 | affine_magnitude_4[23:0] == 24'h800000 & affine_magnitude_4[24]}};
       automatic logic [148:0] _shifted_T_13 =
-        {{141{_betaMem_io_readData[39]}}, _betaMem_io_readData[39:32]}
-        + (affine_negative_4 ? 149'h0 - _GEN_84 : _GEN_84);
-      automatic logic [31:0]  _centered_T_16 =
-        {{24{_inputMem_io_readData[47]}}, _inputMem_io_readData[47:40]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_5 =
-        {{8{_centered_T_16[31]}}, _centered_T_16} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_5 =
-        {{25{scaledNumerator_5[39]}}, scaledNumerator_5} * _GEN_64;
-      automatic logic         normalized_negative_5 =
-        $signed(normalizedProduct_5) < 65'sh0;
-      automatic logic [65:0]  _GEN_85 = {normalizedProduct_5[64], normalizedProduct_5};
-      automatic logic [65:0]  normalized_magnitude_5 =
-        normalized_negative_5 ? 66'h0 - _GEN_85 : _GEN_85;
-      automatic logic [64:0]  _GEN_86 =
-        {22'h0,
-         {1'h0, normalized_magnitude_5[65:24]}
-           + {42'h0,
-              normalized_magnitude_5[23:0] > 24'h800000
-                | normalized_magnitude_5[23:0] == 24'h800000
-                & normalized_magnitude_5[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_5 =
-        normalized_negative_5 ? 65'h0 - _GEN_86 : _GEN_86;
-      automatic logic [129:0] affineProduct_5 =
-        {{65{normalized_roundedSigned_5[64]}}, normalized_roundedSigned_5}
-        * {{122{_gammaMem_io_readData[47]}}, _gammaMem_io_readData[47:40]};
-      automatic logic [148:0] affineReciprocalProduct_5 =
-        {{19{affineProduct_5[129]}}, affineProduct_5} * 149'h20408;
+        {{141{betaReg[39]}}, betaReg[39:32]}
+        + (affine_negative_4 ? 149'h0 - _GEN_60 : _GEN_60);
       automatic logic         affine_negative_5 =
-        $signed(affineReciprocalProduct_5) < 149'sh0;
-      automatic logic [149:0] _GEN_87 =
-        {affineReciprocalProduct_5[148], affineReciprocalProduct_5};
+        $signed(emitAffineReciprocal_5) < 149'sh0;
+      automatic logic [149:0] _GEN_61 =
+        {emitAffineReciprocal_5[148], emitAffineReciprocal_5};
       automatic logic [149:0] affine_magnitude_5 =
-        affine_negative_5 ? 150'h0 - _GEN_87 : _GEN_87;
-      automatic logic [148:0] _GEN_88 =
+        affine_negative_5 ? 150'h0 - _GEN_61 : _GEN_61;
+      automatic logic [148:0] _GEN_62 =
         {22'h0,
          {1'h0, affine_magnitude_5[149:24]}
            + {126'h0,
               affine_magnitude_5[23:0] > 24'h800000
                 | affine_magnitude_5[23:0] == 24'h800000 & affine_magnitude_5[24]}};
       automatic logic [148:0] _shifted_T_16 =
-        {{141{_betaMem_io_readData[47]}}, _betaMem_io_readData[47:40]}
-        + (affine_negative_5 ? 149'h0 - _GEN_88 : _GEN_88);
-      automatic logic [31:0]  _centered_T_19 =
-        {{24{_inputMem_io_readData[55]}}, _inputMem_io_readData[55:48]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_6 =
-        {{8{_centered_T_19[31]}}, _centered_T_19} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_6 =
-        {{25{scaledNumerator_6[39]}}, scaledNumerator_6} * _GEN_64;
-      automatic logic         normalized_negative_6 =
-        $signed(normalizedProduct_6) < 65'sh0;
-      automatic logic [65:0]  _GEN_89 = {normalizedProduct_6[64], normalizedProduct_6};
-      automatic logic [65:0]  normalized_magnitude_6 =
-        normalized_negative_6 ? 66'h0 - _GEN_89 : _GEN_89;
-      automatic logic [64:0]  _GEN_90 =
-        {22'h0,
-         {1'h0, normalized_magnitude_6[65:24]}
-           + {42'h0,
-              normalized_magnitude_6[23:0] > 24'h800000
-                | normalized_magnitude_6[23:0] == 24'h800000
-                & normalized_magnitude_6[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_6 =
-        normalized_negative_6 ? 65'h0 - _GEN_90 : _GEN_90;
-      automatic logic [129:0] affineProduct_6 =
-        {{65{normalized_roundedSigned_6[64]}}, normalized_roundedSigned_6}
-        * {{122{_gammaMem_io_readData[55]}}, _gammaMem_io_readData[55:48]};
-      automatic logic [148:0] affineReciprocalProduct_6 =
-        {{19{affineProduct_6[129]}}, affineProduct_6} * 149'h20408;
+        {{141{betaReg[47]}}, betaReg[47:40]}
+        + (affine_negative_5 ? 149'h0 - _GEN_62 : _GEN_62);
       automatic logic         affine_negative_6 =
-        $signed(affineReciprocalProduct_6) < 149'sh0;
-      automatic logic [149:0] _GEN_91 =
-        {affineReciprocalProduct_6[148], affineReciprocalProduct_6};
+        $signed(emitAffineReciprocal_6) < 149'sh0;
+      automatic logic [149:0] _GEN_63 =
+        {emitAffineReciprocal_6[148], emitAffineReciprocal_6};
       automatic logic [149:0] affine_magnitude_6 =
-        affine_negative_6 ? 150'h0 - _GEN_91 : _GEN_91;
-      automatic logic [148:0] _GEN_92 =
+        affine_negative_6 ? 150'h0 - _GEN_63 : _GEN_63;
+      automatic logic [148:0] _GEN_64 =
         {22'h0,
          {1'h0, affine_magnitude_6[149:24]}
            + {126'h0,
               affine_magnitude_6[23:0] > 24'h800000
                 | affine_magnitude_6[23:0] == 24'h800000 & affine_magnitude_6[24]}};
       automatic logic [148:0] _shifted_T_19 =
-        {{141{_betaMem_io_readData[55]}}, _betaMem_io_readData[55:48]}
-        + (affine_negative_6 ? 149'h0 - _GEN_92 : _GEN_92);
-      automatic logic [31:0]  _centered_T_22 =
-        {{24{_inputMem_io_readData[63]}}, _inputMem_io_readData[63:56]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_7 =
-        {{8{_centered_T_22[31]}}, _centered_T_22} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_7 =
-        {{25{scaledNumerator_7[39]}}, scaledNumerator_7} * _GEN_64;
-      automatic logic         normalized_negative_7 =
-        $signed(normalizedProduct_7) < 65'sh0;
-      automatic logic [65:0]  _GEN_93 = {normalizedProduct_7[64], normalizedProduct_7};
-      automatic logic [65:0]  normalized_magnitude_7 =
-        normalized_negative_7 ? 66'h0 - _GEN_93 : _GEN_93;
-      automatic logic [64:0]  _GEN_94 =
-        {22'h0,
-         {1'h0, normalized_magnitude_7[65:24]}
-           + {42'h0,
-              normalized_magnitude_7[23:0] > 24'h800000
-                | normalized_magnitude_7[23:0] == 24'h800000
-                & normalized_magnitude_7[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_7 =
-        normalized_negative_7 ? 65'h0 - _GEN_94 : _GEN_94;
-      automatic logic [129:0] affineProduct_7 =
-        {{65{normalized_roundedSigned_7[64]}}, normalized_roundedSigned_7}
-        * {{122{_gammaMem_io_readData[63]}}, _gammaMem_io_readData[63:56]};
-      automatic logic [148:0] affineReciprocalProduct_7 =
-        {{19{affineProduct_7[129]}}, affineProduct_7} * 149'h20408;
+        {{141{betaReg[55]}}, betaReg[55:48]}
+        + (affine_negative_6 ? 149'h0 - _GEN_64 : _GEN_64);
       automatic logic         affine_negative_7 =
-        $signed(affineReciprocalProduct_7) < 149'sh0;
-      automatic logic [149:0] _GEN_95 =
-        {affineReciprocalProduct_7[148], affineReciprocalProduct_7};
+        $signed(emitAffineReciprocal_7) < 149'sh0;
+      automatic logic [149:0] _GEN_65 =
+        {emitAffineReciprocal_7[148], emitAffineReciprocal_7};
       automatic logic [149:0] affine_magnitude_7 =
-        affine_negative_7 ? 150'h0 - _GEN_95 : _GEN_95;
-      automatic logic [148:0] _GEN_96 =
+        affine_negative_7 ? 150'h0 - _GEN_65 : _GEN_65;
+      automatic logic [148:0] _GEN_66 =
         {22'h0,
          {1'h0, affine_magnitude_7[149:24]}
            + {126'h0,
               affine_magnitude_7[23:0] > 24'h800000
                 | affine_magnitude_7[23:0] == 24'h800000 & affine_magnitude_7[24]}};
       automatic logic [148:0] _shifted_T_22 =
-        {{141{_betaMem_io_readData[63]}}, _betaMem_io_readData[63:56]}
-        + (affine_negative_7 ? 149'h0 - _GEN_96 : _GEN_96);
-      automatic logic [31:0]  _centered_T_25 =
-        {{24{_inputMem_io_readData[71]}}, _inputMem_io_readData[71:64]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_8 =
-        {{8{_centered_T_25[31]}}, _centered_T_25} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_8 =
-        {{25{scaledNumerator_8[39]}}, scaledNumerator_8} * _GEN_64;
-      automatic logic         normalized_negative_8 =
-        $signed(normalizedProduct_8) < 65'sh0;
-      automatic logic [65:0]  _GEN_97 = {normalizedProduct_8[64], normalizedProduct_8};
-      automatic logic [65:0]  normalized_magnitude_8 =
-        normalized_negative_8 ? 66'h0 - _GEN_97 : _GEN_97;
-      automatic logic [64:0]  _GEN_98 =
-        {22'h0,
-         {1'h0, normalized_magnitude_8[65:24]}
-           + {42'h0,
-              normalized_magnitude_8[23:0] > 24'h800000
-                | normalized_magnitude_8[23:0] == 24'h800000
-                & normalized_magnitude_8[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_8 =
-        normalized_negative_8 ? 65'h0 - _GEN_98 : _GEN_98;
-      automatic logic [129:0] affineProduct_8 =
-        {{65{normalized_roundedSigned_8[64]}}, normalized_roundedSigned_8}
-        * {{122{_gammaMem_io_readData[71]}}, _gammaMem_io_readData[71:64]};
-      automatic logic [148:0] affineReciprocalProduct_8 =
-        {{19{affineProduct_8[129]}}, affineProduct_8} * 149'h20408;
+        {{141{betaReg[63]}}, betaReg[63:56]}
+        + (affine_negative_7 ? 149'h0 - _GEN_66 : _GEN_66);
       automatic logic         affine_negative_8 =
-        $signed(affineReciprocalProduct_8) < 149'sh0;
-      automatic logic [149:0] _GEN_99 =
-        {affineReciprocalProduct_8[148], affineReciprocalProduct_8};
+        $signed(emitAffineReciprocal_8) < 149'sh0;
+      automatic logic [149:0] _GEN_67 =
+        {emitAffineReciprocal_8[148], emitAffineReciprocal_8};
       automatic logic [149:0] affine_magnitude_8 =
-        affine_negative_8 ? 150'h0 - _GEN_99 : _GEN_99;
-      automatic logic [148:0] _GEN_100 =
+        affine_negative_8 ? 150'h0 - _GEN_67 : _GEN_67;
+      automatic logic [148:0] _GEN_68 =
         {22'h0,
          {1'h0, affine_magnitude_8[149:24]}
            + {126'h0,
               affine_magnitude_8[23:0] > 24'h800000
                 | affine_magnitude_8[23:0] == 24'h800000 & affine_magnitude_8[24]}};
       automatic logic [148:0] _shifted_T_25 =
-        {{141{_betaMem_io_readData[71]}}, _betaMem_io_readData[71:64]}
-        + (affine_negative_8 ? 149'h0 - _GEN_100 : _GEN_100);
-      automatic logic [31:0]  _centered_T_28 =
-        {{24{_inputMem_io_readData[79]}}, _inputMem_io_readData[79:72]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_9 =
-        {{8{_centered_T_28[31]}}, _centered_T_28} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_9 =
-        {{25{scaledNumerator_9[39]}}, scaledNumerator_9} * _GEN_64;
-      automatic logic         normalized_negative_9 =
-        $signed(normalizedProduct_9) < 65'sh0;
-      automatic logic [65:0]  _GEN_101 = {normalizedProduct_9[64], normalizedProduct_9};
-      automatic logic [65:0]  normalized_magnitude_9 =
-        normalized_negative_9 ? 66'h0 - _GEN_101 : _GEN_101;
-      automatic logic [64:0]  _GEN_102 =
-        {22'h0,
-         {1'h0, normalized_magnitude_9[65:24]}
-           + {42'h0,
-              normalized_magnitude_9[23:0] > 24'h800000
-                | normalized_magnitude_9[23:0] == 24'h800000
-                & normalized_magnitude_9[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_9 =
-        normalized_negative_9 ? 65'h0 - _GEN_102 : _GEN_102;
-      automatic logic [129:0] affineProduct_9 =
-        {{65{normalized_roundedSigned_9[64]}}, normalized_roundedSigned_9}
-        * {{122{_gammaMem_io_readData[79]}}, _gammaMem_io_readData[79:72]};
-      automatic logic [148:0] affineReciprocalProduct_9 =
-        {{19{affineProduct_9[129]}}, affineProduct_9} * 149'h20408;
+        {{141{betaReg[71]}}, betaReg[71:64]}
+        + (affine_negative_8 ? 149'h0 - _GEN_68 : _GEN_68);
       automatic logic         affine_negative_9 =
-        $signed(affineReciprocalProduct_9) < 149'sh0;
-      automatic logic [149:0] _GEN_103 =
-        {affineReciprocalProduct_9[148], affineReciprocalProduct_9};
+        $signed(emitAffineReciprocal_9) < 149'sh0;
+      automatic logic [149:0] _GEN_69 =
+        {emitAffineReciprocal_9[148], emitAffineReciprocal_9};
       automatic logic [149:0] affine_magnitude_9 =
-        affine_negative_9 ? 150'h0 - _GEN_103 : _GEN_103;
-      automatic logic [148:0] _GEN_104 =
+        affine_negative_9 ? 150'h0 - _GEN_69 : _GEN_69;
+      automatic logic [148:0] _GEN_70 =
         {22'h0,
          {1'h0, affine_magnitude_9[149:24]}
            + {126'h0,
               affine_magnitude_9[23:0] > 24'h800000
                 | affine_magnitude_9[23:0] == 24'h800000 & affine_magnitude_9[24]}};
       automatic logic [148:0] _shifted_T_28 =
-        {{141{_betaMem_io_readData[79]}}, _betaMem_io_readData[79:72]}
-        + (affine_negative_9 ? 149'h0 - _GEN_104 : _GEN_104);
-      automatic logic [31:0]  _centered_T_31 =
-        {{24{_inputMem_io_readData[87]}}, _inputMem_io_readData[87:80]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_10 =
-        {{8{_centered_T_31[31]}}, _centered_T_31} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_10 =
-        {{25{scaledNumerator_10[39]}}, scaledNumerator_10} * _GEN_64;
-      automatic logic         normalized_negative_10 =
-        $signed(normalizedProduct_10) < 65'sh0;
-      automatic logic [65:0]  _GEN_105 = {normalizedProduct_10[64], normalizedProduct_10};
-      automatic logic [65:0]  normalized_magnitude_10 =
-        normalized_negative_10 ? 66'h0 - _GEN_105 : _GEN_105;
-      automatic logic [64:0]  _GEN_106 =
-        {22'h0,
-         {1'h0, normalized_magnitude_10[65:24]}
-           + {42'h0,
-              normalized_magnitude_10[23:0] > 24'h800000
-                | normalized_magnitude_10[23:0] == 24'h800000
-                & normalized_magnitude_10[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_10 =
-        normalized_negative_10 ? 65'h0 - _GEN_106 : _GEN_106;
-      automatic logic [129:0] affineProduct_10 =
-        {{65{normalized_roundedSigned_10[64]}}, normalized_roundedSigned_10}
-        * {{122{_gammaMem_io_readData[87]}}, _gammaMem_io_readData[87:80]};
-      automatic logic [148:0] affineReciprocalProduct_10 =
-        {{19{affineProduct_10[129]}}, affineProduct_10} * 149'h20408;
+        {{141{betaReg[79]}}, betaReg[79:72]}
+        + (affine_negative_9 ? 149'h0 - _GEN_70 : _GEN_70);
       automatic logic         affine_negative_10 =
-        $signed(affineReciprocalProduct_10) < 149'sh0;
-      automatic logic [149:0] _GEN_107 =
-        {affineReciprocalProduct_10[148], affineReciprocalProduct_10};
+        $signed(emitAffineReciprocal_10) < 149'sh0;
+      automatic logic [149:0] _GEN_71 =
+        {emitAffineReciprocal_10[148], emitAffineReciprocal_10};
       automatic logic [149:0] affine_magnitude_10 =
-        affine_negative_10 ? 150'h0 - _GEN_107 : _GEN_107;
-      automatic logic [148:0] _GEN_108 =
+        affine_negative_10 ? 150'h0 - _GEN_71 : _GEN_71;
+      automatic logic [148:0] _GEN_72 =
         {22'h0,
          {1'h0, affine_magnitude_10[149:24]}
            + {126'h0,
               affine_magnitude_10[23:0] > 24'h800000
                 | affine_magnitude_10[23:0] == 24'h800000 & affine_magnitude_10[24]}};
       automatic logic [148:0] _shifted_T_31 =
-        {{141{_betaMem_io_readData[87]}}, _betaMem_io_readData[87:80]}
-        + (affine_negative_10 ? 149'h0 - _GEN_108 : _GEN_108);
-      automatic logic [31:0]  _centered_T_34 =
-        {{24{_inputMem_io_readData[95]}}, _inputMem_io_readData[95:88]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_11 =
-        {{8{_centered_T_34[31]}}, _centered_T_34} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_11 =
-        {{25{scaledNumerator_11[39]}}, scaledNumerator_11} * _GEN_64;
-      automatic logic         normalized_negative_11 =
-        $signed(normalizedProduct_11) < 65'sh0;
-      automatic logic [65:0]  _GEN_109 = {normalizedProduct_11[64], normalizedProduct_11};
-      automatic logic [65:0]  normalized_magnitude_11 =
-        normalized_negative_11 ? 66'h0 - _GEN_109 : _GEN_109;
-      automatic logic [64:0]  _GEN_110 =
-        {22'h0,
-         {1'h0, normalized_magnitude_11[65:24]}
-           + {42'h0,
-              normalized_magnitude_11[23:0] > 24'h800000
-                | normalized_magnitude_11[23:0] == 24'h800000
-                & normalized_magnitude_11[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_11 =
-        normalized_negative_11 ? 65'h0 - _GEN_110 : _GEN_110;
-      automatic logic [129:0] affineProduct_11 =
-        {{65{normalized_roundedSigned_11[64]}}, normalized_roundedSigned_11}
-        * {{122{_gammaMem_io_readData[95]}}, _gammaMem_io_readData[95:88]};
-      automatic logic [148:0] affineReciprocalProduct_11 =
-        {{19{affineProduct_11[129]}}, affineProduct_11} * 149'h20408;
+        {{141{betaReg[87]}}, betaReg[87:80]}
+        + (affine_negative_10 ? 149'h0 - _GEN_72 : _GEN_72);
       automatic logic         affine_negative_11 =
-        $signed(affineReciprocalProduct_11) < 149'sh0;
-      automatic logic [149:0] _GEN_111 =
-        {affineReciprocalProduct_11[148], affineReciprocalProduct_11};
+        $signed(emitAffineReciprocal_11) < 149'sh0;
+      automatic logic [149:0] _GEN_73 =
+        {emitAffineReciprocal_11[148], emitAffineReciprocal_11};
       automatic logic [149:0] affine_magnitude_11 =
-        affine_negative_11 ? 150'h0 - _GEN_111 : _GEN_111;
-      automatic logic [148:0] _GEN_112 =
+        affine_negative_11 ? 150'h0 - _GEN_73 : _GEN_73;
+      automatic logic [148:0] _GEN_74 =
         {22'h0,
          {1'h0, affine_magnitude_11[149:24]}
            + {126'h0,
               affine_magnitude_11[23:0] > 24'h800000
                 | affine_magnitude_11[23:0] == 24'h800000 & affine_magnitude_11[24]}};
       automatic logic [148:0] _shifted_T_34 =
-        {{141{_betaMem_io_readData[95]}}, _betaMem_io_readData[95:88]}
-        + (affine_negative_11 ? 149'h0 - _GEN_112 : _GEN_112);
-      automatic logic [31:0]  _centered_T_37 =
-        {{24{_inputMem_io_readData[103]}}, _inputMem_io_readData[103:96]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_12 =
-        {{8{_centered_T_37[31]}}, _centered_T_37} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_12 =
-        {{25{scaledNumerator_12[39]}}, scaledNumerator_12} * _GEN_64;
-      automatic logic         normalized_negative_12 =
-        $signed(normalizedProduct_12) < 65'sh0;
-      automatic logic [65:0]  _GEN_113 = {normalizedProduct_12[64], normalizedProduct_12};
-      automatic logic [65:0]  normalized_magnitude_12 =
-        normalized_negative_12 ? 66'h0 - _GEN_113 : _GEN_113;
-      automatic logic [64:0]  _GEN_114 =
-        {22'h0,
-         {1'h0, normalized_magnitude_12[65:24]}
-           + {42'h0,
-              normalized_magnitude_12[23:0] > 24'h800000
-                | normalized_magnitude_12[23:0] == 24'h800000
-                & normalized_magnitude_12[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_12 =
-        normalized_negative_12 ? 65'h0 - _GEN_114 : _GEN_114;
-      automatic logic [129:0] affineProduct_12 =
-        {{65{normalized_roundedSigned_12[64]}}, normalized_roundedSigned_12}
-        * {{122{_gammaMem_io_readData[103]}}, _gammaMem_io_readData[103:96]};
-      automatic logic [148:0] affineReciprocalProduct_12 =
-        {{19{affineProduct_12[129]}}, affineProduct_12} * 149'h20408;
+        {{141{betaReg[95]}}, betaReg[95:88]}
+        + (affine_negative_11 ? 149'h0 - _GEN_74 : _GEN_74);
       automatic logic         affine_negative_12 =
-        $signed(affineReciprocalProduct_12) < 149'sh0;
-      automatic logic [149:0] _GEN_115 =
-        {affineReciprocalProduct_12[148], affineReciprocalProduct_12};
+        $signed(emitAffineReciprocal_12) < 149'sh0;
+      automatic logic [149:0] _GEN_75 =
+        {emitAffineReciprocal_12[148], emitAffineReciprocal_12};
       automatic logic [149:0] affine_magnitude_12 =
-        affine_negative_12 ? 150'h0 - _GEN_115 : _GEN_115;
-      automatic logic [148:0] _GEN_116 =
+        affine_negative_12 ? 150'h0 - _GEN_75 : _GEN_75;
+      automatic logic [148:0] _GEN_76 =
         {22'h0,
          {1'h0, affine_magnitude_12[149:24]}
            + {126'h0,
               affine_magnitude_12[23:0] > 24'h800000
                 | affine_magnitude_12[23:0] == 24'h800000 & affine_magnitude_12[24]}};
       automatic logic [148:0] _shifted_T_37 =
-        {{141{_betaMem_io_readData[103]}}, _betaMem_io_readData[103:96]}
-        + (affine_negative_12 ? 149'h0 - _GEN_116 : _GEN_116);
-      automatic logic [31:0]  _centered_T_40 =
-        {{24{_inputMem_io_readData[111]}}, _inputMem_io_readData[111:104]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_13 =
-        {{8{_centered_T_40[31]}}, _centered_T_40} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_13 =
-        {{25{scaledNumerator_13[39]}}, scaledNumerator_13} * _GEN_64;
-      automatic logic         normalized_negative_13 =
-        $signed(normalizedProduct_13) < 65'sh0;
-      automatic logic [65:0]  _GEN_117 = {normalizedProduct_13[64], normalizedProduct_13};
-      automatic logic [65:0]  normalized_magnitude_13 =
-        normalized_negative_13 ? 66'h0 - _GEN_117 : _GEN_117;
-      automatic logic [64:0]  _GEN_118 =
-        {22'h0,
-         {1'h0, normalized_magnitude_13[65:24]}
-           + {42'h0,
-              normalized_magnitude_13[23:0] > 24'h800000
-                | normalized_magnitude_13[23:0] == 24'h800000
-                & normalized_magnitude_13[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_13 =
-        normalized_negative_13 ? 65'h0 - _GEN_118 : _GEN_118;
-      automatic logic [129:0] affineProduct_13 =
-        {{65{normalized_roundedSigned_13[64]}}, normalized_roundedSigned_13}
-        * {{122{_gammaMem_io_readData[111]}}, _gammaMem_io_readData[111:104]};
-      automatic logic [148:0] affineReciprocalProduct_13 =
-        {{19{affineProduct_13[129]}}, affineProduct_13} * 149'h20408;
+        {{141{betaReg[103]}}, betaReg[103:96]}
+        + (affine_negative_12 ? 149'h0 - _GEN_76 : _GEN_76);
       automatic logic         affine_negative_13 =
-        $signed(affineReciprocalProduct_13) < 149'sh0;
-      automatic logic [149:0] _GEN_119 =
-        {affineReciprocalProduct_13[148], affineReciprocalProduct_13};
+        $signed(emitAffineReciprocal_13) < 149'sh0;
+      automatic logic [149:0] _GEN_77 =
+        {emitAffineReciprocal_13[148], emitAffineReciprocal_13};
       automatic logic [149:0] affine_magnitude_13 =
-        affine_negative_13 ? 150'h0 - _GEN_119 : _GEN_119;
-      automatic logic [148:0] _GEN_120 =
+        affine_negative_13 ? 150'h0 - _GEN_77 : _GEN_77;
+      automatic logic [148:0] _GEN_78 =
         {22'h0,
          {1'h0, affine_magnitude_13[149:24]}
            + {126'h0,
               affine_magnitude_13[23:0] > 24'h800000
                 | affine_magnitude_13[23:0] == 24'h800000 & affine_magnitude_13[24]}};
       automatic logic [148:0] _shifted_T_40 =
-        {{141{_betaMem_io_readData[111]}}, _betaMem_io_readData[111:104]}
-        + (affine_negative_13 ? 149'h0 - _GEN_120 : _GEN_120);
-      automatic logic [31:0]  _centered_T_43 =
-        {{24{_inputMem_io_readData[119]}}, _inputMem_io_readData[119:112]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_14 =
-        {{8{_centered_T_43[31]}}, _centered_T_43} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_14 =
-        {{25{scaledNumerator_14[39]}}, scaledNumerator_14} * _GEN_64;
-      automatic logic         normalized_negative_14 =
-        $signed(normalizedProduct_14) < 65'sh0;
-      automatic logic [65:0]  _GEN_121 = {normalizedProduct_14[64], normalizedProduct_14};
-      automatic logic [65:0]  normalized_magnitude_14 =
-        normalized_negative_14 ? 66'h0 - _GEN_121 : _GEN_121;
-      automatic logic [64:0]  _GEN_122 =
-        {22'h0,
-         {1'h0, normalized_magnitude_14[65:24]}
-           + {42'h0,
-              normalized_magnitude_14[23:0] > 24'h800000
-                | normalized_magnitude_14[23:0] == 24'h800000
-                & normalized_magnitude_14[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_14 =
-        normalized_negative_14 ? 65'h0 - _GEN_122 : _GEN_122;
-      automatic logic [129:0] affineProduct_14 =
-        {{65{normalized_roundedSigned_14[64]}}, normalized_roundedSigned_14}
-        * {{122{_gammaMem_io_readData[119]}}, _gammaMem_io_readData[119:112]};
-      automatic logic [148:0] affineReciprocalProduct_14 =
-        {{19{affineProduct_14[129]}}, affineProduct_14} * 149'h20408;
+        {{141{betaReg[111]}}, betaReg[111:104]}
+        + (affine_negative_13 ? 149'h0 - _GEN_78 : _GEN_78);
       automatic logic         affine_negative_14 =
-        $signed(affineReciprocalProduct_14) < 149'sh0;
-      automatic logic [149:0] _GEN_123 =
-        {affineReciprocalProduct_14[148], affineReciprocalProduct_14};
+        $signed(emitAffineReciprocal_14) < 149'sh0;
+      automatic logic [149:0] _GEN_79 =
+        {emitAffineReciprocal_14[148], emitAffineReciprocal_14};
       automatic logic [149:0] affine_magnitude_14 =
-        affine_negative_14 ? 150'h0 - _GEN_123 : _GEN_123;
-      automatic logic [148:0] _GEN_124 =
+        affine_negative_14 ? 150'h0 - _GEN_79 : _GEN_79;
+      automatic logic [148:0] _GEN_80 =
         {22'h0,
          {1'h0, affine_magnitude_14[149:24]}
            + {126'h0,
               affine_magnitude_14[23:0] > 24'h800000
                 | affine_magnitude_14[23:0] == 24'h800000 & affine_magnitude_14[24]}};
       automatic logic [148:0] _shifted_T_43 =
-        {{141{_betaMem_io_readData[119]}}, _betaMem_io_readData[119:112]}
-        + (affine_negative_14 ? 149'h0 - _GEN_124 : _GEN_124);
-      automatic logic [31:0]  _centered_T_46 =
-        {{24{_inputMem_io_readData[127]}}, _inputMem_io_readData[127:120]} - meanReg;
-      automatic logic [39:0]  scaledNumerator_15 =
-        {{8{_centered_T_46[31]}}, _centered_T_46} * 40'h7F;
-      automatic logic [64:0]  normalizedProduct_15 =
-        {{25{scaledNumerator_15[39]}}, scaledNumerator_15} * _GEN_64;
-      automatic logic         normalized_negative_15 =
-        $signed(normalizedProduct_15) < 65'sh0;
-      automatic logic [65:0]  _GEN_125 = {normalizedProduct_15[64], normalizedProduct_15};
-      automatic logic [65:0]  normalized_magnitude_15 =
-        normalized_negative_15 ? 66'h0 - _GEN_125 : _GEN_125;
-      automatic logic [64:0]  _GEN_126 =
-        {22'h0,
-         {1'h0, normalized_magnitude_15[65:24]}
-           + {42'h0,
-              normalized_magnitude_15[23:0] > 24'h800000
-                | normalized_magnitude_15[23:0] == 24'h800000
-                & normalized_magnitude_15[24]}};
-      automatic logic [64:0]  normalized_roundedSigned_15 =
-        normalized_negative_15 ? 65'h0 - _GEN_126 : _GEN_126;
-      automatic logic [129:0] affineProduct_15 =
-        {{65{normalized_roundedSigned_15[64]}}, normalized_roundedSigned_15}
-        * {{122{_gammaMem_io_readData[127]}}, _gammaMem_io_readData[127:120]};
-      automatic logic [148:0] affineReciprocalProduct_15 =
-        {{19{affineProduct_15[129]}}, affineProduct_15} * 149'h20408;
+        {{141{betaReg[119]}}, betaReg[119:112]}
+        + (affine_negative_14 ? 149'h0 - _GEN_80 : _GEN_80);
       automatic logic         affine_negative_15 =
-        $signed(affineReciprocalProduct_15) < 149'sh0;
-      automatic logic [149:0] _GEN_127 =
-        {affineReciprocalProduct_15[148], affineReciprocalProduct_15};
+        $signed(emitAffineReciprocal_15) < 149'sh0;
+      automatic logic [149:0] _GEN_81 =
+        {emitAffineReciprocal_15[148], emitAffineReciprocal_15};
       automatic logic [149:0] affine_magnitude_15 =
-        affine_negative_15 ? 150'h0 - _GEN_127 : _GEN_127;
-      automatic logic [148:0] _GEN_128 =
+        affine_negative_15 ? 150'h0 - _GEN_81 : _GEN_81;
+      automatic logic [148:0] _GEN_82 =
         {22'h0,
          {1'h0, affine_magnitude_15[149:24]}
            + {126'h0,
               affine_magnitude_15[23:0] > 24'h800000
                 | affine_magnitude_15[23:0] == 24'h800000 & affine_magnitude_15[24]}};
       automatic logic [148:0] _shifted_T_46 =
-        {{141{_betaMem_io_readData[127]}}, _betaMem_io_readData[127:120]}
-        + (affine_negative_15 ? 149'h0 - _GEN_128 : _GEN_128);
-      metaReg <= _metaMem_io_readData;
+        {{141{betaReg[127]}}, betaReg[127:120]}
+        + (affine_negative_15 ? 149'h0 - _GEN_82 : _GEN_82);
       outputReg_0 <=
         $signed(_shifted_T_1) > 149'sh7F
           ? 8'h7F
@@ -1214,6 +806,416 @@ module IntegerVectorNorm(
           ? 8'h7F
           : $signed(_shifted_T_46) < -149'sh80 ? 8'h80 : _shifted_T_46[7:0];
     end
+    if (~_GEN_5 | _GEN_6 | _GEN_7 | _GEN_8 | _GEN_9 | ~_GEN_10) begin
+    end
+    else begin
+      automatic logic        emitNormalized_0_negative =
+        $signed(emitNormalizedProduct_0) < 65'sh0;
+      automatic logic [65:0] _GEN_83 =
+        {emitNormalizedProduct_0[64], emitNormalizedProduct_0};
+      automatic logic [65:0] emitNormalized_0_magnitude =
+        emitNormalized_0_negative ? 66'h0 - _GEN_83 : _GEN_83;
+      automatic logic [64:0] _GEN_84 =
+        {22'h0,
+         {1'h0, emitNormalized_0_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_0_magnitude[23:0] > 24'h800000
+                | emitNormalized_0_magnitude[23:0] == 24'h800000
+                & emitNormalized_0_magnitude[24]}};
+      automatic logic        emitNormalized_1_negative =
+        $signed(emitNormalizedProduct_1) < 65'sh0;
+      automatic logic [65:0] _GEN_85 =
+        {emitNormalizedProduct_1[64], emitNormalizedProduct_1};
+      automatic logic [65:0] emitNormalized_1_magnitude =
+        emitNormalized_1_negative ? 66'h0 - _GEN_85 : _GEN_85;
+      automatic logic [64:0] _GEN_86 =
+        {22'h0,
+         {1'h0, emitNormalized_1_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_1_magnitude[23:0] > 24'h800000
+                | emitNormalized_1_magnitude[23:0] == 24'h800000
+                & emitNormalized_1_magnitude[24]}};
+      automatic logic        emitNormalized_2_negative =
+        $signed(emitNormalizedProduct_2) < 65'sh0;
+      automatic logic [65:0] _GEN_87 =
+        {emitNormalizedProduct_2[64], emitNormalizedProduct_2};
+      automatic logic [65:0] emitNormalized_2_magnitude =
+        emitNormalized_2_negative ? 66'h0 - _GEN_87 : _GEN_87;
+      automatic logic [64:0] _GEN_88 =
+        {22'h0,
+         {1'h0, emitNormalized_2_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_2_magnitude[23:0] > 24'h800000
+                | emitNormalized_2_magnitude[23:0] == 24'h800000
+                & emitNormalized_2_magnitude[24]}};
+      automatic logic        emitNormalized_3_negative =
+        $signed(emitNormalizedProduct_3) < 65'sh0;
+      automatic logic [65:0] _GEN_89 =
+        {emitNormalizedProduct_3[64], emitNormalizedProduct_3};
+      automatic logic [65:0] emitNormalized_3_magnitude =
+        emitNormalized_3_negative ? 66'h0 - _GEN_89 : _GEN_89;
+      automatic logic [64:0] _GEN_90 =
+        {22'h0,
+         {1'h0, emitNormalized_3_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_3_magnitude[23:0] > 24'h800000
+                | emitNormalized_3_magnitude[23:0] == 24'h800000
+                & emitNormalized_3_magnitude[24]}};
+      automatic logic        emitNormalized_4_negative =
+        $signed(emitNormalizedProduct_4) < 65'sh0;
+      automatic logic [65:0] _GEN_91 =
+        {emitNormalizedProduct_4[64], emitNormalizedProduct_4};
+      automatic logic [65:0] emitNormalized_4_magnitude =
+        emitNormalized_4_negative ? 66'h0 - _GEN_91 : _GEN_91;
+      automatic logic [64:0] _GEN_92 =
+        {22'h0,
+         {1'h0, emitNormalized_4_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_4_magnitude[23:0] > 24'h800000
+                | emitNormalized_4_magnitude[23:0] == 24'h800000
+                & emitNormalized_4_magnitude[24]}};
+      automatic logic        emitNormalized_5_negative =
+        $signed(emitNormalizedProduct_5) < 65'sh0;
+      automatic logic [65:0] _GEN_93 =
+        {emitNormalizedProduct_5[64], emitNormalizedProduct_5};
+      automatic logic [65:0] emitNormalized_5_magnitude =
+        emitNormalized_5_negative ? 66'h0 - _GEN_93 : _GEN_93;
+      automatic logic [64:0] _GEN_94 =
+        {22'h0,
+         {1'h0, emitNormalized_5_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_5_magnitude[23:0] > 24'h800000
+                | emitNormalized_5_magnitude[23:0] == 24'h800000
+                & emitNormalized_5_magnitude[24]}};
+      automatic logic        emitNormalized_6_negative =
+        $signed(emitNormalizedProduct_6) < 65'sh0;
+      automatic logic [65:0] _GEN_95 =
+        {emitNormalizedProduct_6[64], emitNormalizedProduct_6};
+      automatic logic [65:0] emitNormalized_6_magnitude =
+        emitNormalized_6_negative ? 66'h0 - _GEN_95 : _GEN_95;
+      automatic logic [64:0] _GEN_96 =
+        {22'h0,
+         {1'h0, emitNormalized_6_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_6_magnitude[23:0] > 24'h800000
+                | emitNormalized_6_magnitude[23:0] == 24'h800000
+                & emitNormalized_6_magnitude[24]}};
+      automatic logic        emitNormalized_7_negative =
+        $signed(emitNormalizedProduct_7) < 65'sh0;
+      automatic logic [65:0] _GEN_97 =
+        {emitNormalizedProduct_7[64], emitNormalizedProduct_7};
+      automatic logic [65:0] emitNormalized_7_magnitude =
+        emitNormalized_7_negative ? 66'h0 - _GEN_97 : _GEN_97;
+      automatic logic [64:0] _GEN_98 =
+        {22'h0,
+         {1'h0, emitNormalized_7_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_7_magnitude[23:0] > 24'h800000
+                | emitNormalized_7_magnitude[23:0] == 24'h800000
+                & emitNormalized_7_magnitude[24]}};
+      automatic logic        emitNormalized_8_negative =
+        $signed(emitNormalizedProduct_8) < 65'sh0;
+      automatic logic [65:0] _GEN_99 =
+        {emitNormalizedProduct_8[64], emitNormalizedProduct_8};
+      automatic logic [65:0] emitNormalized_8_magnitude =
+        emitNormalized_8_negative ? 66'h0 - _GEN_99 : _GEN_99;
+      automatic logic [64:0] _GEN_100 =
+        {22'h0,
+         {1'h0, emitNormalized_8_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_8_magnitude[23:0] > 24'h800000
+                | emitNormalized_8_magnitude[23:0] == 24'h800000
+                & emitNormalized_8_magnitude[24]}};
+      automatic logic        emitNormalized_9_negative =
+        $signed(emitNormalizedProduct_9) < 65'sh0;
+      automatic logic [65:0] _GEN_101 =
+        {emitNormalizedProduct_9[64], emitNormalizedProduct_9};
+      automatic logic [65:0] emitNormalized_9_magnitude =
+        emitNormalized_9_negative ? 66'h0 - _GEN_101 : _GEN_101;
+      automatic logic [64:0] _GEN_102 =
+        {22'h0,
+         {1'h0, emitNormalized_9_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_9_magnitude[23:0] > 24'h800000
+                | emitNormalized_9_magnitude[23:0] == 24'h800000
+                & emitNormalized_9_magnitude[24]}};
+      automatic logic        emitNormalized_10_negative =
+        $signed(emitNormalizedProduct_10) < 65'sh0;
+      automatic logic [65:0] _GEN_103 =
+        {emitNormalizedProduct_10[64], emitNormalizedProduct_10};
+      automatic logic [65:0] emitNormalized_10_magnitude =
+        emitNormalized_10_negative ? 66'h0 - _GEN_103 : _GEN_103;
+      automatic logic [64:0] _GEN_104 =
+        {22'h0,
+         {1'h0, emitNormalized_10_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_10_magnitude[23:0] > 24'h800000
+                | emitNormalized_10_magnitude[23:0] == 24'h800000
+                & emitNormalized_10_magnitude[24]}};
+      automatic logic        emitNormalized_11_negative =
+        $signed(emitNormalizedProduct_11) < 65'sh0;
+      automatic logic [65:0] _GEN_105 =
+        {emitNormalizedProduct_11[64], emitNormalizedProduct_11};
+      automatic logic [65:0] emitNormalized_11_magnitude =
+        emitNormalized_11_negative ? 66'h0 - _GEN_105 : _GEN_105;
+      automatic logic [64:0] _GEN_106 =
+        {22'h0,
+         {1'h0, emitNormalized_11_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_11_magnitude[23:0] > 24'h800000
+                | emitNormalized_11_magnitude[23:0] == 24'h800000
+                & emitNormalized_11_magnitude[24]}};
+      automatic logic        emitNormalized_12_negative =
+        $signed(emitNormalizedProduct_12) < 65'sh0;
+      automatic logic [65:0] _GEN_107 =
+        {emitNormalizedProduct_12[64], emitNormalizedProduct_12};
+      automatic logic [65:0] emitNormalized_12_magnitude =
+        emitNormalized_12_negative ? 66'h0 - _GEN_107 : _GEN_107;
+      automatic logic [64:0] _GEN_108 =
+        {22'h0,
+         {1'h0, emitNormalized_12_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_12_magnitude[23:0] > 24'h800000
+                | emitNormalized_12_magnitude[23:0] == 24'h800000
+                & emitNormalized_12_magnitude[24]}};
+      automatic logic        emitNormalized_13_negative =
+        $signed(emitNormalizedProduct_13) < 65'sh0;
+      automatic logic [65:0] _GEN_109 =
+        {emitNormalizedProduct_13[64], emitNormalizedProduct_13};
+      automatic logic [65:0] emitNormalized_13_magnitude =
+        emitNormalized_13_negative ? 66'h0 - _GEN_109 : _GEN_109;
+      automatic logic [64:0] _GEN_110 =
+        {22'h0,
+         {1'h0, emitNormalized_13_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_13_magnitude[23:0] > 24'h800000
+                | emitNormalized_13_magnitude[23:0] == 24'h800000
+                & emitNormalized_13_magnitude[24]}};
+      automatic logic        emitNormalized_14_negative =
+        $signed(emitNormalizedProduct_14) < 65'sh0;
+      automatic logic [65:0] _GEN_111 =
+        {emitNormalizedProduct_14[64], emitNormalizedProduct_14};
+      automatic logic [65:0] emitNormalized_14_magnitude =
+        emitNormalized_14_negative ? 66'h0 - _GEN_111 : _GEN_111;
+      automatic logic [64:0] _GEN_112 =
+        {22'h0,
+         {1'h0, emitNormalized_14_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_14_magnitude[23:0] > 24'h800000
+                | emitNormalized_14_magnitude[23:0] == 24'h800000
+                & emitNormalized_14_magnitude[24]}};
+      automatic logic        emitNormalized_15_negative =
+        $signed(emitNormalizedProduct_15) < 65'sh0;
+      automatic logic [65:0] _GEN_113 =
+        {emitNormalizedProduct_15[64], emitNormalizedProduct_15};
+      automatic logic [65:0] emitNormalized_15_magnitude =
+        emitNormalized_15_negative ? 66'h0 - _GEN_113 : _GEN_113;
+      automatic logic [64:0] _GEN_114 =
+        {22'h0,
+         {1'h0, emitNormalized_15_magnitude[65:24]}
+           + {42'h0,
+              emitNormalized_15_magnitude[23:0] > 24'h800000
+                | emitNormalized_15_magnitude[23:0] == 24'h800000
+                & emitNormalized_15_magnitude[24]}};
+      emitNormalized_0 <= emitNormalized_0_negative ? 65'h0 - _GEN_84 : _GEN_84;
+      emitNormalized_1 <= emitNormalized_1_negative ? 65'h0 - _GEN_86 : _GEN_86;
+      emitNormalized_2 <= emitNormalized_2_negative ? 65'h0 - _GEN_88 : _GEN_88;
+      emitNormalized_3 <= emitNormalized_3_negative ? 65'h0 - _GEN_90 : _GEN_90;
+      emitNormalized_4 <= emitNormalized_4_negative ? 65'h0 - _GEN_92 : _GEN_92;
+      emitNormalized_5 <= emitNormalized_5_negative ? 65'h0 - _GEN_94 : _GEN_94;
+      emitNormalized_6 <= emitNormalized_6_negative ? 65'h0 - _GEN_96 : _GEN_96;
+      emitNormalized_7 <= emitNormalized_7_negative ? 65'h0 - _GEN_98 : _GEN_98;
+      emitNormalized_8 <= emitNormalized_8_negative ? 65'h0 - _GEN_100 : _GEN_100;
+      emitNormalized_9 <= emitNormalized_9_negative ? 65'h0 - _GEN_102 : _GEN_102;
+      emitNormalized_10 <= emitNormalized_10_negative ? 65'h0 - _GEN_104 : _GEN_104;
+      emitNormalized_11 <= emitNormalized_11_negative ? 65'h0 - _GEN_106 : _GEN_106;
+      emitNormalized_12 <= emitNormalized_12_negative ? 65'h0 - _GEN_108 : _GEN_108;
+      emitNormalized_13 <= emitNormalized_13_negative ? 65'h0 - _GEN_110 : _GEN_110;
+      emitNormalized_14 <= emitNormalized_14_negative ? 65'h0 - _GEN_112 : _GEN_112;
+      emitNormalized_15 <= emitNormalized_15_negative ? 65'h0 - _GEN_114 : _GEN_114;
+    end
+    if (~_GEN_5 | _GEN_6 | ~_GEN_7) begin
+    end
+    else begin
+      emitGamma_0 <= gammaReg[7:0];
+      emitGamma_1 <= gammaReg[15:8];
+      emitGamma_2 <= gammaReg[23:16];
+      emitGamma_3 <= gammaReg[31:24];
+      emitGamma_4 <= gammaReg[39:32];
+      emitGamma_5 <= gammaReg[47:40];
+      emitGamma_6 <= gammaReg[55:48];
+      emitGamma_7 <= gammaReg[63:56];
+      emitGamma_8 <= gammaReg[71:64];
+      emitGamma_9 <= gammaReg[79:72];
+      emitGamma_10 <= gammaReg[87:80];
+      emitGamma_11 <= gammaReg[95:88];
+      emitGamma_12 <= gammaReg[103:96];
+      emitGamma_13 <= gammaReg[111:104];
+      emitGamma_14 <= gammaReg[119:112];
+      emitGamma_15 <= gammaReg[127:120];
+      emitCentered_0 <= {{24{inputReg[7]}}, inputReg[7:0]} - meanReg;
+      emitCentered_1 <= {{24{inputReg[15]}}, inputReg[15:8]} - meanReg;
+      emitCentered_2 <= {{24{inputReg[23]}}, inputReg[23:16]} - meanReg;
+      emitCentered_3 <= {{24{inputReg[31]}}, inputReg[31:24]} - meanReg;
+      emitCentered_4 <= {{24{inputReg[39]}}, inputReg[39:32]} - meanReg;
+      emitCentered_5 <= {{24{inputReg[47]}}, inputReg[47:40]} - meanReg;
+      emitCentered_6 <= {{24{inputReg[55]}}, inputReg[55:48]} - meanReg;
+      emitCentered_7 <= {{24{inputReg[63]}}, inputReg[63:56]} - meanReg;
+      emitCentered_8 <= {{24{inputReg[71]}}, inputReg[71:64]} - meanReg;
+      emitCentered_9 <= {{24{inputReg[79]}}, inputReg[79:72]} - meanReg;
+      emitCentered_10 <= {{24{inputReg[87]}}, inputReg[87:80]} - meanReg;
+      emitCentered_11 <= {{24{inputReg[95]}}, inputReg[95:88]} - meanReg;
+      emitCentered_12 <= {{24{inputReg[103]}}, inputReg[103:96]} - meanReg;
+      emitCentered_13 <= {{24{inputReg[111]}}, inputReg[111:104]} - meanReg;
+      emitCentered_14 <= {{24{inputReg[119]}}, inputReg[119:112]} - meanReg;
+      emitCentered_15 <= {{24{inputReg[127]}}, inputReg[127:120]} - meanReg;
+    end
+    if (~_GEN_5 | _GEN_6 | _GEN_7 | ~_GEN_8) begin
+    end
+    else begin
+      emitScaledNumerator_0 <= {{8{emitCentered_0[31]}}, emitCentered_0} * 40'h7F;
+      emitScaledNumerator_1 <= {{8{emitCentered_1[31]}}, emitCentered_1} * 40'h7F;
+      emitScaledNumerator_2 <= {{8{emitCentered_2[31]}}, emitCentered_2} * 40'h7F;
+      emitScaledNumerator_3 <= {{8{emitCentered_3[31]}}, emitCentered_3} * 40'h7F;
+      emitScaledNumerator_4 <= {{8{emitCentered_4[31]}}, emitCentered_4} * 40'h7F;
+      emitScaledNumerator_5 <= {{8{emitCentered_5[31]}}, emitCentered_5} * 40'h7F;
+      emitScaledNumerator_6 <= {{8{emitCentered_6[31]}}, emitCentered_6} * 40'h7F;
+      emitScaledNumerator_7 <= {{8{emitCentered_7[31]}}, emitCentered_7} * 40'h7F;
+      emitScaledNumerator_8 <= {{8{emitCentered_8[31]}}, emitCentered_8} * 40'h7F;
+      emitScaledNumerator_9 <= {{8{emitCentered_9[31]}}, emitCentered_9} * 40'h7F;
+      emitScaledNumerator_10 <= {{8{emitCentered_10[31]}}, emitCentered_10} * 40'h7F;
+      emitScaledNumerator_11 <= {{8{emitCentered_11[31]}}, emitCentered_11} * 40'h7F;
+      emitScaledNumerator_12 <= {{8{emitCentered_12[31]}}, emitCentered_12} * 40'h7F;
+      emitScaledNumerator_13 <= {{8{emitCentered_13[31]}}, emitCentered_13} * 40'h7F;
+      emitScaledNumerator_14 <= {{8{emitCentered_14[31]}}, emitCentered_14} * 40'h7F;
+      emitScaledNumerator_15 <= {{8{emitCentered_15[31]}}, emitCentered_15} * 40'h7F;
+    end
+    if (~_GEN_5 | _GEN_6 | _GEN_7 | _GEN_8 | ~_GEN_9) begin
+    end
+    else begin
+      automatic logic [64:0] _GEN_115 =
+        {{40{inverseDenominatorQ24[24]}}, inverseDenominatorQ24};
+      emitNormalizedProduct_0 <=
+        {{25{emitScaledNumerator_0[39]}}, emitScaledNumerator_0} * _GEN_115;
+      emitNormalizedProduct_1 <=
+        {{25{emitScaledNumerator_1[39]}}, emitScaledNumerator_1} * _GEN_115;
+      emitNormalizedProduct_2 <=
+        {{25{emitScaledNumerator_2[39]}}, emitScaledNumerator_2} * _GEN_115;
+      emitNormalizedProduct_3 <=
+        {{25{emitScaledNumerator_3[39]}}, emitScaledNumerator_3} * _GEN_115;
+      emitNormalizedProduct_4 <=
+        {{25{emitScaledNumerator_4[39]}}, emitScaledNumerator_4} * _GEN_115;
+      emitNormalizedProduct_5 <=
+        {{25{emitScaledNumerator_5[39]}}, emitScaledNumerator_5} * _GEN_115;
+      emitNormalizedProduct_6 <=
+        {{25{emitScaledNumerator_6[39]}}, emitScaledNumerator_6} * _GEN_115;
+      emitNormalizedProduct_7 <=
+        {{25{emitScaledNumerator_7[39]}}, emitScaledNumerator_7} * _GEN_115;
+      emitNormalizedProduct_8 <=
+        {{25{emitScaledNumerator_8[39]}}, emitScaledNumerator_8} * _GEN_115;
+      emitNormalizedProduct_9 <=
+        {{25{emitScaledNumerator_9[39]}}, emitScaledNumerator_9} * _GEN_115;
+      emitNormalizedProduct_10 <=
+        {{25{emitScaledNumerator_10[39]}}, emitScaledNumerator_10} * _GEN_115;
+      emitNormalizedProduct_11 <=
+        {{25{emitScaledNumerator_11[39]}}, emitScaledNumerator_11} * _GEN_115;
+      emitNormalizedProduct_12 <=
+        {{25{emitScaledNumerator_12[39]}}, emitScaledNumerator_12} * _GEN_115;
+      emitNormalizedProduct_13 <=
+        {{25{emitScaledNumerator_13[39]}}, emitScaledNumerator_13} * _GEN_115;
+      emitNormalizedProduct_14 <=
+        {{25{emitScaledNumerator_14[39]}}, emitScaledNumerator_14} * _GEN_115;
+      emitNormalizedProduct_15 <=
+        {{25{emitScaledNumerator_15[39]}}, emitScaledNumerator_15} * _GEN_115;
+    end
+    if (~_GEN_5 | _GEN_6 | _GEN_7 | _GEN_8 | _GEN_9 | _GEN_10 | ~_GEN_11) begin
+    end
+    else begin
+      emitAffineProduct_0 <=
+        {{65{emitNormalized_0[64]}}, emitNormalized_0}
+        * {{122{emitGamma_0[7]}}, emitGamma_0};
+      emitAffineProduct_1 <=
+        {{65{emitNormalized_1[64]}}, emitNormalized_1}
+        * {{122{emitGamma_1[7]}}, emitGamma_1};
+      emitAffineProduct_2 <=
+        {{65{emitNormalized_2[64]}}, emitNormalized_2}
+        * {{122{emitGamma_2[7]}}, emitGamma_2};
+      emitAffineProduct_3 <=
+        {{65{emitNormalized_3[64]}}, emitNormalized_3}
+        * {{122{emitGamma_3[7]}}, emitGamma_3};
+      emitAffineProduct_4 <=
+        {{65{emitNormalized_4[64]}}, emitNormalized_4}
+        * {{122{emitGamma_4[7]}}, emitGamma_4};
+      emitAffineProduct_5 <=
+        {{65{emitNormalized_5[64]}}, emitNormalized_5}
+        * {{122{emitGamma_5[7]}}, emitGamma_5};
+      emitAffineProduct_6 <=
+        {{65{emitNormalized_6[64]}}, emitNormalized_6}
+        * {{122{emitGamma_6[7]}}, emitGamma_6};
+      emitAffineProduct_7 <=
+        {{65{emitNormalized_7[64]}}, emitNormalized_7}
+        * {{122{emitGamma_7[7]}}, emitGamma_7};
+      emitAffineProduct_8 <=
+        {{65{emitNormalized_8[64]}}, emitNormalized_8}
+        * {{122{emitGamma_8[7]}}, emitGamma_8};
+      emitAffineProduct_9 <=
+        {{65{emitNormalized_9[64]}}, emitNormalized_9}
+        * {{122{emitGamma_9[7]}}, emitGamma_9};
+      emitAffineProduct_10 <=
+        {{65{emitNormalized_10[64]}}, emitNormalized_10}
+        * {{122{emitGamma_10[7]}}, emitGamma_10};
+      emitAffineProduct_11 <=
+        {{65{emitNormalized_11[64]}}, emitNormalized_11}
+        * {{122{emitGamma_11[7]}}, emitGamma_11};
+      emitAffineProduct_12 <=
+        {{65{emitNormalized_12[64]}}, emitNormalized_12}
+        * {{122{emitGamma_12[7]}}, emitGamma_12};
+      emitAffineProduct_13 <=
+        {{65{emitNormalized_13[64]}}, emitNormalized_13}
+        * {{122{emitGamma_13[7]}}, emitGamma_13};
+      emitAffineProduct_14 <=
+        {{65{emitNormalized_14[64]}}, emitNormalized_14}
+        * {{122{emitGamma_14[7]}}, emitGamma_14};
+      emitAffineProduct_15 <=
+        {{65{emitNormalized_15[64]}}, emitNormalized_15}
+        * {{122{emitGamma_15[7]}}, emitGamma_15};
+    end
+    if (~_GEN_5 | _GEN_6 | _GEN_7 | _GEN_8 | _GEN_9 | _GEN_10 | _GEN_11 | ~_GEN_12) begin
+    end
+    else begin
+      emitAffineReciprocal_0 <=
+        {{19{emitAffineProduct_0[129]}}, emitAffineProduct_0} * 149'h20408;
+      emitAffineReciprocal_1 <=
+        {{19{emitAffineProduct_1[129]}}, emitAffineProduct_1} * 149'h20408;
+      emitAffineReciprocal_2 <=
+        {{19{emitAffineProduct_2[129]}}, emitAffineProduct_2} * 149'h20408;
+      emitAffineReciprocal_3 <=
+        {{19{emitAffineProduct_3[129]}}, emitAffineProduct_3} * 149'h20408;
+      emitAffineReciprocal_4 <=
+        {{19{emitAffineProduct_4[129]}}, emitAffineProduct_4} * 149'h20408;
+      emitAffineReciprocal_5 <=
+        {{19{emitAffineProduct_5[129]}}, emitAffineProduct_5} * 149'h20408;
+      emitAffineReciprocal_6 <=
+        {{19{emitAffineProduct_6[129]}}, emitAffineProduct_6} * 149'h20408;
+      emitAffineReciprocal_7 <=
+        {{19{emitAffineProduct_7[129]}}, emitAffineProduct_7} * 149'h20408;
+      emitAffineReciprocal_8 <=
+        {{19{emitAffineProduct_8[129]}}, emitAffineProduct_8} * 149'h20408;
+      emitAffineReciprocal_9 <=
+        {{19{emitAffineProduct_9[129]}}, emitAffineProduct_9} * 149'h20408;
+      emitAffineReciprocal_10 <=
+        {{19{emitAffineProduct_10[129]}}, emitAffineProduct_10} * 149'h20408;
+      emitAffineReciprocal_11 <=
+        {{19{emitAffineProduct_11[129]}}, emitAffineProduct_11} * 149'h20408;
+      emitAffineReciprocal_12 <=
+        {{19{emitAffineProduct_12[129]}}, emitAffineProduct_12} * 149'h20408;
+      emitAffineReciprocal_13 <=
+        {{19{emitAffineProduct_13[129]}}, emitAffineProduct_13} * 149'h20408;
+      emitAffineReciprocal_14 <=
+        {{19{emitAffineProduct_14[129]}}, emitAffineProduct_14} * 149'h20408;
+      emitAffineReciprocal_15 <=
+        {{19{emitAffineProduct_15[129]}}, emitAffineProduct_15} * 149'h20408;
+    end
   end // always @(posedge)
   PhysicalSimpleDualPortMemory gammaMem (
     .clock        (clock),
@@ -1264,6 +1266,16 @@ module IntegerVectorNorm(
     .io_out_ready (sqrtUnit_io_out_ready),
     .io_out_valid (_sqrtUnit_io_out_valid),
     .io_out_bits  (_sqrtUnit_io_out_bits)
+  );
+  PhysicalFixedDivider reciprocalDivider (
+    .clock                  (clock),
+    .reset                  (reset),
+    .io_in_ready            (_reciprocalDivider_io_in_ready),
+    .io_in_valid            (reciprocalDivider_io_in_valid),
+    .io_in_bits_denominator (denominatorReg),
+    .io_out_ready           (reciprocalDivider_io_out_ready),
+    .io_out_valid           (_reciprocalDivider_io_out_valid),
+    .io_out_bits            (_reciprocalDivider_io_out_bits)
   );
   assign io_weight_ready = ~weightsLoaded;
   assign io_in_ready = io_in_ready_0;

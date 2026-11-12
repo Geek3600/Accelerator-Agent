@@ -6,6 +6,7 @@ from unittest.mock import patch
 from accagent.framework.agent_common import CommandResult, write_json
 from accagent.framework.agent import TopAgent
 from accagent.framework.config import RunCfg
+from accagent.framework.llm_config import LlmCfg
 from accagent.framework.stage_agent import GenericStageAgent, StageResult
 
 
@@ -24,6 +25,25 @@ class _FailingRunner:
 
 
 class GenericStageAgentTests(unittest.TestCase):
+    def test_stage_worker_inherits_selected_llm_wire_api(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cfg = RunCfg(
+                out=root / "run",
+                model_source=root / "model.json",
+                model_dir=root / "model",
+                llm=LlmCfg(
+                    model="claude-opus-5",
+                    endpoint="https://api.example/v1/chat/completions",
+                    api_key="probe-key",
+                    wire_api="chat/completions",
+                ),
+            )
+
+            agent = TopAgent(cfg)
+
+        self.assertEqual(agent.tool_env["SPATIALACC_LLM_WIRE_API"], "chat/completions")
+
     def test_completed_timing_scope_stops_without_deployment_or_extra_flow_llm(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -246,6 +266,39 @@ class StageCheckpointReuseTests(unittest.TestCase):
                 stage="parameter_binding", module=module, report_path=report,
             ))
 
+    def test_open_design_backtrack_prevents_target_stage_checkpoint_reuse(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            agent = self._agent(Path(temp))
+            module = "accagent.framework.stage_pipeline"
+            report = agent.out / "pipeline_planning/pipeline_planning_report.json"
+            write_json(report, {"status": "ready"})
+            checkpoint = {
+                "status": "pass",
+                "stage_code_hash": agent.stage_code_hash(module),
+                "stage_input_hash": agent.stage_input_hash("pipeline_planning"),
+            }
+            write_json(agent.checkpoint_path("pipeline_planning"), checkpoint)
+            source_state = agent.out / "parameter_binding/sacg_state.json"
+            write_json(source_state, {"memory": {"backtrack_requests": [{
+                "id": "empty_dse_request",
+                "status": "open",
+                "stage": "stage4.parameter_binding",
+                "target_stage": "stage3.pipeline_planning",
+                "verification_scope": "formal_dse_campaign",
+                "failed_gates": ["stage4_dse_candidate_eligibility"],
+                "evidence": ["dse_constraint_report.json"],
+            }]}})
+
+            self.assertIsNotNone(agent.reusable_stage_result(
+                stage="pipeline_planning", module=module, report_path=report,
+            ))
+            self.assertIsNone(agent.reusable_stage_result(
+                stage="pipeline_planning",
+                module=module,
+                report_path=report,
+                source_state=source_state,
+            ))
+
     def test_backend_checkpoint_changes_with_actual_synthesis_rtl(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             agent = self._agent(Path(temp))
@@ -256,6 +309,17 @@ class StageCheckpointReuseTests(unittest.TestCase):
             self.assertEqual(first, agent.stage_input_hash("backend_board"))
             rtl.write_text("module Kernel; wire changed; endmodule")
             self.assertNotEqual(first, agent.stage_input_hash("backend_board"))
+
+    def test_debug_loop_checkpoint_changes_with_board_validation_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            agent = self._agent(Path(temp))
+            compile_only = {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}
+            runtime = {"SPATIALACC_VERIFICATION_POLICY": "full_semantic_simulation"}
+            with patch.dict("os.environ", compile_only):
+                compile_hash = agent.stage_input_hash("debug_loop")
+            with patch.dict("os.environ", runtime):
+                runtime_hash = agent.stage_input_hash("debug_loop")
+            self.assertNotEqual(compile_hash, runtime_hash)
 
     def test_backend_tool_pass_with_pending_qor_repair_is_not_final_checkpoint(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -723,6 +787,82 @@ class TopAgentFlowControllerBacktrackTests(unittest.TestCase):
             event["deferred_backtrack_requests"],
             [{"id": "old_backend_request", "target_stage": "backend_board"}],
         )
+
+    def test_passed_backtrack_target_proceeds_to_downstream_recheck(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            agent = self._agent(root)
+            state_path = root / "sacg_state.json"
+            write_json(state_path, {"memory": {"backtrack_requests": [{
+                "id": "empty_dse_request",
+                "status": "open",
+                "stage": "stage4.parameter_binding",
+                "target_stage": "stage3.pipeline_planning",
+                "verification_scope": "formal_dse_campaign",
+                "failed_gates": ["stage4_dse_candidate_eligibility"],
+                "evidence": ["dse_constraint_report.json"],
+            }]}})
+            passed = StageResult(
+                name="pipeline_planning",
+                passed=True,
+                command_result=CommandResult(
+                    name="pipeline_planning",
+                    command=["fake", "pipeline_planning"],
+                    cwd=str(root),
+                    returncode=0,
+                    stdout="",
+                    stderr="",
+                    duration_sec=0.0,
+                    log_path=str(root / "pipeline_planning.log"),
+                ),
+                output_path=str(root / "pipeline_planning.json"),
+                summary={"status": "ready"},
+            )
+            with patch.object(agent, "flow_controller_review", return_value={}):
+                next_index, _, event = agent.choose_next_stage(
+                    current_index=3,
+                    result=passed,
+                    sacg_state=state_path,
+                    stage_specs=self._stage_specs(),
+                    attempt_counts={"pipeline_planning": 2},
+                    backtrack_count=0,
+                )
+            self.assertEqual(next_index, 4)
+            self.assertEqual(event["decision"], "proceed")
+            self.assertEqual(
+                event["deferred_backtrack_requests"],
+                [{"id": "empty_dse_request", "target_stage": "pipeline_planning"}],
+            )
+
+            failed_dse = StageResult(
+                name="parameter_binding",
+                passed=False,
+                command_result=CommandResult(
+                    name="parameter_binding",
+                    command=["fake", "parameter_binding"],
+                    cwd=str(root),
+                    returncode=1,
+                    stdout="",
+                    stderr="no eligible candidate",
+                    duration_sec=0.0,
+                    log_path=str(root / "parameter_binding.log"),
+                ),
+                output_path=str(root / "parameter_binding.json"),
+                summary={"status": "incomplete"},
+            )
+            with patch.object(agent, "flow_controller_review", return_value={}):
+                next_index, _, event = agent.choose_next_stage(
+                    current_index=4,
+                    result=failed_dse,
+                    sacg_state=state_path,
+                    stage_specs=self._stage_specs(),
+                    attempt_counts={"parameter_binding": 2},
+                    backtrack_count=0,
+                )
+
+        self.assertEqual(next_index, 3)
+        self.assertEqual(event["decision"], "backtrack")
+        self.assertEqual(event["request_id"], "empty_dse_request")
 
     def test_invalid_backtrack_target_does_not_mask_current_retry(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

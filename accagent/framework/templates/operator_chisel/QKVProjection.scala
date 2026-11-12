@@ -30,7 +30,6 @@ final case class QKVProjectionParams(
   require(qHeads > 0 && kvHeads > 0, "attention head counts must be positive")
   require(qHeads % kvHeads == 0, "qHeads must be divisible by kvHeads")
   require(headDim > 0, "headDim must be positive")
-  require(hiddenSize == qHeads * headDim, "Qwen2 attention input size must equal qHeads * headDim")
   if (integerMode) {
     require(elemBits == 8, "integer QKV projection activations must be signed INT8")
     require((if (weightBits == 0) 4 else weightBits) == 4, "integer QKV projection matrix weights must be signed INT4")

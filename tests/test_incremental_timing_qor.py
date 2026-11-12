@@ -32,8 +32,15 @@ class IncrementalTimingQorTest(unittest.TestCase):
             }))
             args = Namespace(sacg_state=run / "verification/sacg_state.json")
             tools = [{"checker": "real_tool.app_shell_runtime_bitstream", "status": "pass"}]
+
+            def read_report(path):
+                if Path(path) == out / "optimization_request.json":
+                    return json.loads(Path(path).read_text())
+                return {}
+
             with patch.object(backend, "run_dir_from_state", return_value=run), \
                  patch.object(backend, "read_json", return_value={}), \
+                 patch.object(backend, "read_json_if_exists", side_effect=read_report), \
                  patch.object(backend, "check_upstream_hierarchical_verification_closure", return_value={"status":"pass"}), \
                  patch("accagent.framework.stage_backend.resolve_board_profile", return_value={"path":str(run/"board.json")}), \
                  patch.object(backend, "write_board_shell_contract"), \
@@ -42,14 +49,13 @@ class IncrementalTimingQorTest(unittest.TestCase):
                  patch.object(backend, "run_backend_real_tools", return_value=(tools, [])), \
                  patch.object(backend, "record_exact_dse_measurement", side_effect=AssertionError("timing optimization is not a DSE candidate")), \
                  patch.object(backend, "exact_dse_campaign", return_value={"status":"pending"}), \
-                 patch.object(backend, "build_plan", return_value={"qor_optimization": {"decision":"pass"}, "qor": {}}) as build, \
+                 patch.object(backend, "build_plan", return_value={"qor_optimization": {"decision":"pass"}, "qor": {}, "qor_outputs": []}) as build, \
                  patch.object(backend, "generate_backend_package", return_value={"root":str(run),"files":[]}), \
-                 patch("accagent.framework.stage_backend.validated_stage6_selection", return_value={"status":"pass"}), \
+                 patch("scripts.synthesis.app_shell_target_hint_synthesis.validated_stage6_selection", return_value={"status":"pass"}), \
                  patch.object(backend, "backend_llm_decision_packet", return_value={}), \
                  patch.object(backend, "write_json"), \
                  patch.object(backend, "scope_passed", return_value=True), \
-                 patch.object(backend, "update_sacg", return_value="transition"), \
-                 patch.object(backend, "backend_bounded_recovery", return_value={"status":"pass"}):
+                 patch.object(backend, "update_sacg", return_value="transition"):
                 backend.plan_backend_board(args)
             self.assertEqual(build.call_args.args[5]["status"], "not_recorded")
 
@@ -63,7 +69,77 @@ class IncrementalTimingQorTest(unittest.TestCase):
         plan["qor"]["source_schedule_diagnosis"] = {"status": "llm_error", "derivation": "HTTP 503"}
         plan["qor_optimization"] = {"decision": "continue_backend"}
         backend.apply_requested_qor_scope(plan, {"scope": "existing_design_timing", "clock_frequency_mhz": 150})
-        self.assertEqual(plan["qor_optimization"]["decision"], "continue_backend")
+        self.assertEqual(plan["qor_optimization"]["decision"], "local_optimization")
+        self.assertEqual(plan["qor_optimization"]["misses"][0]["metric"], "clock_frequency_mhz")
+
+    def test_explicit_timing_target_precedes_throughput_dse_backtrack(self):
+        plan = {
+            "qor": {"clock_frequency_mhz": 13.64},
+            "qor_optimization": {
+                "decision": "dse_backtrack",
+                "status": "needs_optimization",
+                "targets": {"performance_tokens_per_second": 200},
+                "misses": [{"metric": "performance_tokens_per_second", "ratio": 18.0}],
+                "next_stage": "stage4.parameter_binding",
+            },
+        }
+        backend.apply_requested_qor_scope(
+            plan, {"scope": "existing_design_timing", "clock_frequency_mhz": 150}
+        )
+        optimization = plan["qor_optimization"]
+        self.assertEqual(optimization["decision"], "local_optimization")
+        self.assertEqual(optimization["next_stage"], "stage6.verification")
+        self.assertTrue(optimization["preserve_existing_hardware"])
+        self.assertIn("performance_tokens_per_second", [x["metric"] for x in optimization["misses"]])
+        self.assertIn("clock_frequency_mhz", [x["metric"] for x in optimization["misses"]])
+
+    def test_explicit_timing_target_allows_dse_after_fmax_is_met(self):
+        plan = {
+            "qor": {"clock_frequency_mhz": 151.0},
+            "qor_optimization": {
+                "decision": "dse_backtrack",
+                "status": "needs_optimization",
+                "misses": [{"metric": "performance_tokens_per_second", "ratio": 2.0}],
+                "next_stage": "stage4.parameter_binding",
+            },
+        }
+        backend.apply_requested_qor_scope(
+            plan, {"scope": "existing_design_timing", "clock_frequency_mhz": 150}
+        )
+        optimization = plan["qor_optimization"]
+        self.assertEqual(optimization["decision"], "dse_backtrack")
+        self.assertEqual(optimization["targets"]["clock_frequency_mhz"], 150)
+        self.assertNotIn("clock_frequency_mhz", [x["metric"] for x in optimization["misses"]])
+
+    def test_explicit_clock_stop_defers_throughput_but_preserves_resource_limits(self):
+        request = {"scope": "existing_design_timing", "clock_frequency_mhz": 150,
+                   "stop_at_clock_target": True}
+        plan = {
+            "qor": {"clock_frequency_mhz": 155.81},
+            "qor_optimization": {
+                "decision": "local_optimization", "status": "needs_optimization",
+                "misses": [{"metric": "performance_tokens_per_second", "ratio": 1.59}],
+                "next_stage": "stage6.verification",
+            },
+        }
+        backend.apply_requested_qor_scope(plan, request)
+        optimization = plan["qor_optimization"]
+        self.assertEqual(optimization["decision"], "pass")
+        self.assertIsNone(optimization["next_stage"])
+        self.assertEqual(optimization["misses"], [])
+        self.assertEqual(optimization["deferred_qor_misses"][0]["metric"], "performance_tokens_per_second")
+        optimization.update(decision="llm_required", misses=[
+            {"metric": "performance_tokens_per_second", "ratio": 1.59},
+            {"metric": "resources.lut", "ratio": 1.1},
+        ])
+        backend.apply_requested_qor_scope(plan, request)
+        self.assertEqual(optimization["decision"], "local_optimization")
+        self.assertEqual(optimization["misses"][0]["metric"], "resources.lut")
+        plan["qor"]["clock_frequency_mhz"] = 149
+        optimization.update(decision="llm_required", misses=[])
+        backend.apply_requested_qor_scope(plan, request)
+        self.assertEqual(optimization["decision"], "local_optimization")
+        self.assertEqual(optimization["misses"][0]["metric"], "clock_frequency_mhz")
 
     def test_blocked_patch_retry_keeps_last_compiler_diagnostics(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -396,7 +472,7 @@ class IncrementalTimingQorTest(unittest.TestCase):
             self.fixture(root)
             report_path = root / "backend_board/case_diagnostics/app_shell_runtime_vivado.json"
             report = json.loads(report_path.read_text())
-            report.update(fpga_part="part", clock_target_mhz=100.0, collect_only=False)
+            report.update(fpga_part="part", clock_target_mhz=100.0, collect_only=True)
             report_path.write_text(json.dumps(report))
             folder = root / "app_shell_runtime_bitstream"
             folder.mkdir()

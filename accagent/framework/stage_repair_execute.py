@@ -120,6 +120,7 @@ from accagent.framework.runtime_observation import (
 from accagent.framework.stage_llm import (
     FRAMEWORK_VCS_COMMAND_CWD,
     FRAMEWORK_VCS_OUTPUT,
+    _compact_verilog_module_interface,
     compact_verification_capability_repair_package,
     expanded_vcs_command_rewrite_authority,
     run_stage_agent,
@@ -167,7 +168,12 @@ BOARD_INTEGRATION_SOURCE_SUFFIXES = {
     ".vp",
     ".svp",
 }
-EXACT_BOARD_FUNCTIONAL_VALIDATION_MODE = "compute_slot_axi"
+EXACT_BOARD_FUNCTIONAL_VALIDATION_MODE = (
+    "compute_slot_axi"
+    if os.environ.get("SPATIALACC_VERIFICATION_POLICY", COMPILE_ONLY_POLICY)
+    != "full_semantic_simulation"
+    else "exact_sample_physical_ddr"
+)
 SINGLE_LAYER_COMPILE_RTL_REPAIR_AGENT = "single_layer_compile_rtl_repair_agent"
 ADAPTIVE_OBSERVATION_DECISION_SCHEMA_VERSION = (
     "spatialaccagent.adaptive_observation_decision.v1"
@@ -464,10 +470,10 @@ IMPLEMENTATION_REPAIR_SCHEMA = {
                         "properties": {
                             "evidence_pointer": {
                                 "type": "string",
-                                "pattern": (
-                                    "^/(verification_capability_repair_package/)?"
-                                    "current_board_vcs_feedback/.+"
-                                ),
+                                # Pointer scope is checked against the current
+                                # package by the semantic validator. Keep this
+                                # schema open to source/interface evidence too.
+                                "pattern": "^/.+",
                             },
                             "observed_value": {},
                             "semantic_role": {
@@ -779,7 +785,10 @@ IMPLEMENTATION_REPAIR_SCHEMA = {
                     },
                     "rationale": {"type": "string"},
                 },
-                "required": ["path", "operation", "content", "rationale"],
+                # replace_text treats omitted content as the same empty string
+                # already consumed by apply_agent_file_edits; operation-specific
+                # payload checks remain in that executor.
+                "required": ["path", "operation", "rationale"],
             },
         },
         "requested_validation": {
@@ -820,16 +829,20 @@ BOARD_INTEGRATION_REPAIR_SCHEMA = {
     "type": "object",
     "additionalProperties": True,
     "properties": {
-        key: IMPLEMENTATION_REPAIR_SCHEMA["properties"][key]
-        for key in (
-            "agent",
-            "stage",
-            "status",
-            "adaptive_observation_decision",
-            "required_capabilities",
-            "file_edits",
-            "blocked_reasons",
-        )
+        **{
+            key: IMPLEMENTATION_REPAIR_SCHEMA["properties"][key]
+            for key in (
+                "agent",
+                "stage",
+                "adaptive_observation_decision",
+                "required_capabilities",
+                "file_edits",
+                "blocked_reasons",
+            )
+        },
+        # An unfinished response is a retry of the Agent transaction, not a
+        # hardware failure that requires a new simulator observation plan.
+        "status": {"type": "string", "enum": ["ready_to_apply", "blocked"]},
     },
     "required": [
         "agent",
@@ -1092,6 +1105,14 @@ def capability_scope_prompt_rules(verification_scope: str) -> list[str]:
             "Only the connected single-layer scope may be claimed. Do not create, execute, or claim the board AXI/DDR layer-3 harness in this repair.",
         ]
     if verification_scope == "board_axi_ddr_closure":
+        if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation":
+            return [
+                "This is the layer-3 exact-board full-runtime gate. Preserve the discovered board identity, compute-slot ABI, AXI/DDR interfaces, clock/reset/calibration contracts, sample-wrapper hashes, and complete VCS source closure.",
+                "The active policy is full_semantic_simulation. Generate or repair only Agent-owned integration RTL, real workload/testbench artifacts, binding metadata, and the runtime manifest needed to execute the exact board wrapper with its AXI/DDR simulation sources; compile-only is not an acceptable result.",
+                "Bind the real target-model Transformer-block weights and actual input workload. The executed DUT must consume the hash-bound weights and produce nonzero DDR input, weight, and output activity while preserving active/shadow prefetch, activation ping-pong, and ready/valid token overlap.",
+                "Require evidence emitted by this VCS execution for simulation completion, runtime progress, elaborated hierarchy, pipeline overlap, runtime-loader counters, and required protocol monitors. Do not fabricate evidence or treat a declaration as proof of runtime consumption.",
+                "Do not modify certified lower-layer sources, the user-supplied sample wrapper, immutable board identity, framework code, or acceptance checkers. Repair the current boundary using its live evidence and keep the same scope until its declared runtime gates pass.",
+            ]
         return [
             "This is the layer-3 exact-board compile/elaboration gate. Preserve the discovered board identity, compute-slot ABI, AXI interfaces, clock/reset/calibration contracts, sample-wrapper hashes, and complete VCS source closure.",
             "Generate or repair only Agent-owned board integration RTL, compile testbench, binding metadata, and the compile manifest needed to elaborate the real board-connected multi-layer design with the current VCS export plan.",
@@ -3483,6 +3504,22 @@ def board_harness_bootstrap_required(
     )
 
 
+def board_preflight_repair_actionable(
+    *,
+    board_integration_repair: bool,
+    generated_sources: list[str],
+    current_preflight_feedback: dict[str, Any],
+) -> bool:
+    blockers = current_preflight_feedback.get("blockers")
+    return (
+        board_integration_repair
+        and bool(generated_sources)
+        and current_preflight_feedback.get("status") == "ready"
+        and isinstance(blockers, list)
+        and bool(blockers)
+    )
+
+
 def current_exact_board_bootstrap_generation_applied(
     run_dir: Path,
     out_dir: Path,
@@ -5788,6 +5825,769 @@ def simulation_checkpoint_runtime_capability_failure(
     }
 
 
+def exact_board_address_mapping_evidence(
+    run_dir: Path,
+    identity: dict[str, Any],
+    board_profile: dict[str, Any],
+) -> dict[str, Any]:
+    """Project current-run slot-to-DDR address facts for board integration."""
+
+    identity_path = run_dir / "verification" / "board_interface" / "board_source_identity.json"
+    facts_path = run_dir / "verification" / "board_interface" / "vivado_board_facts.json"
+    profile_path = run_dir / "input" / "target_board_profile.json"
+    sacg_path = run_dir / "repair" / "sacg_state.json"
+    result: dict[str, Any] = {
+        "schema_version": "spatialaccagent.exact_board_address_mapping_evidence.v1",
+        "status": "unavailable",
+        "blockers": [],
+        "sources": {
+            "board_source_identity": {
+                "path": str(identity_path),
+                "sha256": sha256_file(identity_path) if identity_path.is_file() else None,
+            },
+            "vivado_board_facts": {
+                "path": str(facts_path),
+                "sha256": sha256_file(facts_path) if facts_path.is_file() else None,
+            },
+            "target_board_profile": {
+                "path": str(profile_path),
+                "sha256": sha256_file(profile_path) if profile_path.is_file() else None,
+            },
+            "sacg_state": {
+                "path": str(sacg_path),
+                "sha256": sha256_file(sacg_path) if sacg_path.is_file() else None,
+            },
+        },
+    }
+    if not facts_path.is_file():
+        result["blockers"].append("current-run Vivado board facts are unavailable")
+        return result
+
+    expected_facts_sha = identity.get("vivado_facts_sha256")
+    facts_sha = result["sources"]["vivado_board_facts"]["sha256"]
+    if expected_facts_sha and expected_facts_sha != facts_sha:
+        result["blockers"].append("current-run board identity does not bind the Vivado facts hash")
+        return result
+
+    facts = read_json_if_exists(facts_path)
+    objects = facts.get("objects", []) if isinstance(facts, dict) else []
+    object_by_path = {
+        str(row.get("path")): row
+        for row in objects
+        if isinstance(row, dict) and row.get("path")
+    }
+    selected_cell_id = (
+        identity.get("compute_slot_abi", {}).get("selected_cell_id")
+        if isinstance(identity.get("compute_slot_abi"), dict)
+        else None
+    )
+    selected_cell = next(
+        (
+            row
+            for row in objects
+            if isinstance(row, dict)
+            and row.get("kind") == "cell"
+            and row.get("object_id") == selected_cell_id
+        ),
+        None,
+    )
+    if not selected_cell:
+        result["blockers"].append(
+            "selected compute-slot cell is absent from the bound current-run Vivado facts"
+        )
+        return result
+
+    cell_path = str(selected_cell.get("path") or "")
+    cell_properties = selected_cell.get("properties", {})
+    cell_properties = cell_properties if isinstance(cell_properties, dict) else {}
+    high = cell_properties.get("CONFIG.ADDR_OFFSET_H")
+    low = cell_properties.get("CONFIG.ADDR_OFFSET_L")
+    local_base = None
+    try:
+        if high is not None and low is not None:
+            local_base = (int(str(high), 0) << 32) | int(str(low), 0)
+    except ValueError:
+        result["blockers"].append("selected compute-slot address offset is not numeric")
+        return result
+
+    slot_interfaces = [
+        row
+        for row in objects
+        if isinstance(row, dict)
+        and row.get("kind") == "interface_pin"
+        and str(row.get("path", "")).startswith(cell_path.rstrip("/") + "/")
+        and isinstance(row.get("properties"), dict)
+        and row["properties"].get("CONFIG.PROTOCOL") == "AXI4"
+    ]
+    routes: list[dict[str, Any]] = []
+    for interface in slot_interfaces:
+        for net_ref in interface.get("connected_nets", []):
+            net = object_by_path.get(str(net_ref.get("path")))
+            if not isinstance(net, dict) or net.get("kind") != "interface_net":
+                continue
+            for member in net.get("members", []):
+                member_path = str(member.get("path") or "")
+                endpoint = object_by_path.get(member_path)
+                if (
+                    not isinstance(endpoint, dict)
+                    or endpoint.get("kind") != "interface_pin"
+                    or endpoint.get("object_id") == interface.get("object_id")
+                ):
+                    continue
+                endpoint_root = member_path.rsplit("/", 1)[0]
+                xbar_path = endpoint_root + "/xbar"
+                xbar = object_by_path.get(xbar_path)
+                if not isinstance(xbar, dict) or xbar.get("kind") != "cell":
+                    continue
+                xbar_props = xbar.get("properties", {})
+                xbar_props = xbar_props if isinstance(xbar_props, dict) else {}
+                address_props = {
+                    key: xbar_props[key]
+                    for key in ("CONFIG.ADDR_WIDTH", "CONFIG.DATA_WIDTH")
+                    if key in xbar_props
+                }
+                for key, value in xbar_props.items():
+                    if not re.fullmatch(r"CONFIG\.M\d+_A\d+_BASE_ADDR", key):
+                        continue
+                    width_key = key.replace("BASE_ADDR", "ADDR_WIDTH")
+                    try:
+                        active = int(str(xbar_props.get(width_key, "0")), 0) > 0
+                    except ValueError:
+                        active = False
+                    if active and str(value).lower() not in {
+                        "0xffffffffffffffff",
+                        "0xfffffffffffffffff",
+                    }:
+                        address_props[key] = value
+                        address_props[width_key] = xbar_props[width_key]
+                output_routes = []
+                for output in objects:
+                    if (
+                        not isinstance(output, dict)
+                        or output.get("kind") != "interface_pin"
+                        or not str(output.get("path", "")).startswith(xbar_path + "/M")
+                    ):
+                        continue
+                    downstream: set[str] = set()
+                    downstream_interfaces: dict[str, dict[str, Any]] = {}
+                    pending_interfaces = [output]
+                    visited_interfaces: set[str] = set()
+                    hierarchical_path = (
+                        endpoint_root + "/" + str(output.get("path", "")).rsplit("/", 1)[-1]
+                    )
+                    hierarchical_interface = object_by_path.get(hierarchical_path)
+                    if (
+                        isinstance(hierarchical_interface, dict)
+                        and hierarchical_interface.get("kind") == "interface_pin"
+                    ):
+                        hierarchical_properties = hierarchical_interface.get("properties", {})
+                        downstream.add(hierarchical_path)
+                        downstream_interfaces[hierarchical_path] = {
+                            "path": hierarchical_path,
+                            "properties": {
+                                key: value
+                                for key, value in hierarchical_properties.items()
+                                if key in {"CONFIG.ADDR_WIDTH", "CONFIG.DATA_WIDTH"}
+                            },
+                        }
+                        pending_interfaces.append(hierarchical_interface)
+                    while pending_interfaces:
+                        current_interface = pending_interfaces.pop()
+                        current_path = str(current_interface.get("path") or "")
+                        if not current_path or current_path in visited_interfaces:
+                            continue
+                        visited_interfaces.add(current_path)
+                        for output_net_ref in current_interface.get("connected_nets", []):
+                            output_net = object_by_path.get(str(output_net_ref.get("path")))
+                            if not isinstance(output_net, dict):
+                                continue
+                            for row in output_net.get("members", []):
+                                member_path = str(row.get("path") or "")
+                                if not member_path or member_path == current_path:
+                                    continue
+                                downstream.add(member_path)
+                                member_object = object_by_path.get(member_path)
+                                if (
+                                    not isinstance(member_object, dict)
+                                    or member_object.get("kind") != "interface_pin"
+                                ):
+                                    continue
+                                member_properties = member_object.get("properties", {})
+                                downstream_interfaces[member_path] = {
+                                    "path": member_path,
+                                    "properties": {
+                                        key: value
+                                        for key, value in member_properties.items()
+                                        if key in {"CONFIG.ADDR_WIDTH", "CONFIG.DATA_WIDTH"}
+                                    },
+                                }
+                                if member_path not in visited_interfaces:
+                                    pending_interfaces.append(member_object)
+                    output_routes.append(
+                        {
+                            "path": output.get("path"),
+                            "hierarchical_boundary_interface": (
+                                hierarchical_path
+                                if hierarchical_path in downstream_interfaces
+                                else None
+                            ),
+                            "properties": {
+                                key: value
+                                for key, value in output.get("properties", {}).items()
+                                if key in {"CONFIG.ADDR_WIDTH", "CONFIG.DATA_WIDTH"}
+                            },
+                            "downstream_members": sorted(downstream),
+                            "downstream_interfaces": [
+                                downstream_interfaces[path]
+                                for path in sorted(downstream_interfaces)
+                            ],
+                        }
+                    )
+                route = {
+                    "slot_interface": interface.get("path"),
+                    "slot_interface_properties": {
+                        key: value
+                        for key, value in interface.get("properties", {}).items()
+                        if key in {"CONFIG.ADDR_WIDTH", "CONFIG.DATA_WIDTH"}
+                    },
+                    "slot_to_interconnect_net": net.get("path"),
+                    "interconnect_input": endpoint.get("path"),
+                    "interconnect_cell_id": xbar.get("object_id"),
+                    "interconnect_cell_path": xbar_path,
+                    "interconnect_address_properties": address_props,
+                    "interconnect_outputs": output_routes,
+                }
+                if route not in routes:
+                    routes.append(route)
+
+    profile_memory = board_profile.get("memory_system", {})
+    profile_memory = profile_memory if isinstance(profile_memory, dict) else {}
+    address_map = profile_memory.get("address_map", {})
+    address_map = address_map if isinstance(address_map, dict) else {}
+    global_base_text = address_map.get("ddr_base")
+    try:
+        global_base = int(str(global_base_text), 0) if global_base_text is not None else None
+    except ValueError:
+        global_base = None
+
+    def translation_references(value: Any) -> list[dict[str, Any]]:
+        matches: list[dict[str, Any]] = []
+        if isinstance(value, dict):
+            evidence_value = value.get("value")
+            if isinstance(evidence_value, dict):
+                normalized = {str(key).lower(): item for key, item in evidence_value.items()}
+                local = next(
+                    (item for key, item in normalized.items() if "local" in key and "base" in key),
+                    None,
+                )
+                absolute = next(
+                    (item for key, item in normalized.items() if "pcie" in key and ("start" in key or "absolute" in key)),
+                    None,
+                )
+                host = next(
+                    (item for key, item in normalized.items() if "pcie" in key and "base" in key and item != local),
+                    None,
+                )
+                try:
+                    local_value = int(str(local), 0) if local is not None else None
+                    absolute_value = int(str(absolute), 0) if absolute is not None else None
+                    host_value = int(str(host), 0) if host is not None else None
+                except ValueError:
+                    local_value = absolute_value = host_value = None
+                if (
+                    local_value == local_base
+                    and absolute_value == global_base
+                    and host_value is not None
+                ):
+                    source_path = Path(str(value.get("source") or ""))
+                    matches.append(
+                        {
+                            "id": value.get("id"),
+                            "field": value.get("field"),
+                            "excerpt": value.get("excerpt"),
+                            "value": evidence_value,
+                            "source_path": str(source_path),
+                            "source_sha256": (
+                                sha256_file(source_path) if source_path.is_file() else None
+                            ),
+                            "sacg_state_sha256": (
+                                result["sources"]["sacg_state"]["sha256"]
+                            ),
+                            "evidence_class": "input_reference_example",
+                        }
+                    )
+            for child in value.values():
+                matches.extend(translation_references(child))
+        elif isinstance(value, list):
+            for child in value:
+                matches.extend(translation_references(child))
+        unique: dict[tuple[str, str], dict[str, Any]] = {}
+        for match in matches:
+            unique[(str(match.get("id") or ""), str(match.get("source_path") or ""))] = match
+        return list(unique.values())
+
+    sacg = read_json_if_exists(sacg_path) if sacg_path.is_file() else {}
+    refs = translation_references(sacg)
+    result.update(
+        {
+            "status": "ready" if local_base is not None and routes else "partial",
+            "selected_compute_slot": {
+                "cell_id": selected_cell_id,
+                "cell_path": cell_path,
+                "vivado_design_path": selected_cell.get("bd_path"),
+                "address_offset_high": high,
+                "address_offset_low": low,
+                "slot_local_base": (
+                    f"0x{local_base:x}" if local_base is not None else None
+                ),
+            },
+            "profile_ddr_address_space": {
+                "address_map": address_map,
+                "axi_addr_width_bits": profile_memory.get("axi_addr_width_bits"),
+                "axi_data_width_bits": profile_memory.get("axi_data_width_bits"),
+                "global_ddr_base": global_base_text,
+            },
+            "vivado_connected_axi_routes": routes,
+            "translation_reference_examples": refs,
+            "candidate_translation": (
+                {
+                    "expression": "global_ddr_address = host_window_base + slot_local_address",
+                    "global_ddr_base": global_base_text,
+                    "slot_local_base": f"0x{local_base:x}",
+                    "derived_host_window_base": f"0x{global_base - local_base:x}",
+                    "reference_matches_derived_host_window_base": any(
+                        int(str(row["value"][next(key for key in row["value"] if "pcie" in key.lower() and "base" in key.lower() and "local" not in key.lower())]), 0)
+                        == global_base - local_base
+                        for row in refs
+                    ),
+                }
+                if global_base is not None and local_base is not None
+                else None
+            ),
+            "translation_is_design_input_not_hardcoded_adapter_behavior": True,
+        }
+    )
+    matching_segments: list[dict[str, Any]] = []
+    for route in routes:
+        for key, base_text in route.get("interconnect_address_properties", {}).items():
+            match = re.fullmatch(r"CONFIG\.M(\d+)_A(\d+)_BASE_ADDR", key)
+            if not match:
+                continue
+            width_key = key.replace("BASE_ADDR", "ADDR_WIDTH")
+            try:
+                segment_base = int(str(base_text), 0)
+                segment_width = int(
+                    str(route["interconnect_address_properties"].get(width_key, "0")), 0
+                )
+            except ValueError:
+                continue
+            if local_base is None or segment_base != local_base or segment_width <= 0:
+                continue
+            output_path = f"{route['interconnect_cell_path']}/M{match.group(1)}_AXI"
+            output = next(
+                (
+                    row
+                    for row in route.get("interconnect_outputs", [])
+                    if row.get("path") == output_path
+                ),
+                {},
+            )
+            downstream = [
+                row
+                for row in output.get("downstream_interfaces", [])
+                if "ddr" in str(row.get("path", "")).lower()
+            ]
+            matching_segments.append(
+                {
+                    "interconnect_cell_id": route.get("interconnect_cell_id"),
+                    "interconnect_cell_path": route.get("interconnect_cell_path"),
+                    "input_interface": route.get("interconnect_input"),
+                    "output_interface": output_path,
+                    "base_address": str(base_text),
+                    "range_width_bits": segment_width,
+                    "downstream_ddr_interfaces": downstream,
+                }
+            )
+    reference_matches = bool(
+        isinstance(result.get("candidate_translation"), dict)
+        and result["candidate_translation"].get(
+            "reference_matches_derived_host_window_base"
+        )
+    )
+    slot_axi_widths = [
+        int(str(route["slot_interface_properties"]["CONFIG.ADDR_WIDTH"]), 0)
+        for route in routes
+        if route.get("slot_interface_properties", {}).get("CONFIG.ADDR_WIDTH") is not None
+        and str(route["slot_interface_properties"]["CONFIG.ADDR_WIDTH"]).isdigit()
+    ]
+    slot_axi_width = slot_axi_widths[0] if slot_axi_widths else profile_memory.get(
+        "axi_addr_width_bits"
+    )
+    result["slot_axi_address_contract"] = {
+        "status": "bound" if matching_segments else "unresolved",
+        "adapter_address_domain": "compute_slot_axi",
+        "slot_local_base": f"0x{local_base:x}" if local_base is not None else None,
+        "slot_axi_addr_width_bits": slot_axi_width,
+        "matching_interconnect_segments": matching_segments,
+        "address_generation_rule": (
+            "slot AXI address = slot_local_base + allocated byte offset"
+            if matching_segments
+            else None
+        ),
+        "profile_global_ddr_base": global_base_text,
+        "profile_global_base_fits_slot_axi_width": (
+            global_base is not None
+            and isinstance(slot_axi_width, int)
+            and global_base < (1 << slot_axi_width)
+        ),
+        "host_visible_mapping": {
+            "status": "reference_matched" if reference_matches else "unresolved",
+            "expression": "host_visible_address = derived_host_window_base + slot_axi_address",
+            "derived_host_window_base": (
+                result["candidate_translation"].get("derived_host_window_base")
+                if isinstance(result.get("candidate_translation"), dict)
+                else None
+            ),
+            "evidence_ids": [row.get("id") for row in refs if row.get("id")],
+        },
+        "interpretation": (
+            "The adapter drives addresses in the selected compute-slot AXI domain. "
+            "The profile global DDR base is host-visible metadata and must not be "
+            "placed directly on the narrower slot AXI address port. The projection "
+            "does not infer an internal crossbar truncation or subtraction rule."
+        ),
+    }
+    if not routes:
+        result["blockers"].append(
+            "no current Vivado AXI route connects the selected compute-slot address interface to an interconnect"
+        )
+    if local_base is None:
+        result["blockers"].append(
+            "selected compute-slot address offset is unavailable in current Vivado facts"
+        )
+    return result
+
+
+def physical_compute_slot_port_declaration_evidence(
+    identity: dict[str, Any], closure_rows: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """Project control-port declarations from the exact selected board source."""
+
+    abi = identity.get("compute_slot_abi", {})
+    abi = abi if isinstance(abi, dict) else {}
+    control_abi = abi.get("control_abi", {})
+    controls = control_abi.get("port_classifications", []) if isinstance(control_abi, dict) else []
+    controls = controls if isinstance(controls, list) else []
+    expected_by_name = {
+        str(row.get("name")): row
+        for row in controls
+        if isinstance(row, dict) and row.get("name")
+    }
+    module_name = str(abi.get("replacement_module_identity") or abi.get("slot_module") or "")
+    result: dict[str, Any] = {"status": "blocked", "module": module_name, "ports": [], "blockers": []}
+    if not expected_by_name or not module_name:
+        result["blockers"].append("compute-slot ABI lacks module or control-port declarations")
+        return result
+
+    rows = closure_rows if closure_rows is not None else _exact_board_closure_rows(identity)
+    candidates = [
+        row for row in rows
+        if row.get("closure_role") == "compute_slot_implementation"
+        and module_name in (row.get("declared_modules") or [])
+        and row.get("hashes_match") is True
+    ]
+    if len(candidates) != 1:
+        result["blockers"].append(
+            f"expected one hash-matched compute-slot source for {module_name}, found {len(candidates)}"
+        )
+        return result
+
+    source_row = candidates[0]
+    source_path = Path(str(source_row.get("local_path") or source_row.get("path") or ""))
+    if not source_path.is_file():
+        result["blockers"].append("selected compute-slot source is unavailable locally")
+        return result
+    actual_sha = sha256_file(source_path)
+    expected_sha = str(source_row.get("local_sha256") or source_row.get("sha256") or "")
+    if not expected_sha or actual_sha != expected_sha:
+        result["blockers"].append("selected compute-slot source hash does not match closure evidence")
+        return result
+
+    source = read_text(source_path)
+    clean = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), source, flags=re.S)
+    clean = re.sub(r"//[^\n]*", "", clean)
+    module_match = re.search(
+        rf"\bmodule\s+(?:automatic\s+|static\s+)?{re.escape(module_name)}\b", clean
+    )
+    if not module_match:
+        result["blockers"].append("selected source does not declare the ABI module")
+        return result
+
+    endmodule = re.search(r"\bendmodule\b", clean[module_match.end():])
+    module_end = module_match.end() + endmodule.start() if endmodule else len(clean)
+    declarations = re.compile(r"(?m)^\s*(?P<direction>input|output|inout)\b(?P<decl>[^;\n]*);")
+    observed: dict[str, list[dict[str, Any]]] = {}
+    for match in declarations.finditer(clean, module_match.end(), module_end):
+        decl = match.group("decl")
+        packed = re.search(r"\[\s*([^:\]]+)\s*:\s*([^\]]+)\s*\]", decl)
+        width_expr = f"[{packed.group(1).strip()}:{packed.group(2).strip()}]" if packed else "[0:0]"
+        width = None
+        if packed and all(re.fullmatch(r"\d+", value.strip()) for value in packed.groups()):
+            width = abs(int(packed.group(1)) - int(packed.group(2))) + 1
+        elif not packed:
+            width = 1
+        names = set(re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", decl))
+        names -= {"wire", "reg", "logic", "signed", "unsigned"}
+        for name in names & expected_by_name.keys():
+            observed.setdefault(name, []).append({
+                "direction": match.group("direction"),
+                "width": width,
+                "width_expression": width_expr,
+                "line": clean.count("\n", 0, match.start()) + 1,
+                "declaration": match.group(0).strip(),
+            })
+
+    # ANSI-style wrappers place direction declarations in the module header.
+    header_end = clean.find(");", module_match.end())
+    if header_end >= 0:
+        for name in expected_by_name:
+            if observed.get(name):
+                continue
+            port_match = re.search(
+                rf"(?m)^\s*(input|output|inout)\b[^\n]*\b{re.escape(name)}\b[^\n]*",
+                clean[module_match.start():header_end],
+            )
+            if port_match:
+                declaration = port_match.group(0).strip().rstrip(",")
+                packed = re.search(r"\[\s*(\d+)\s*:\s*(\d+)\s*\]", declaration)
+                observed[name] = [{
+                    "direction": port_match.group(1),
+                    "width": abs(int(packed.group(1)) - int(packed.group(2))) + 1 if packed else 1,
+                    "width_expression": f"[{packed.group(1)}:{packed.group(2)}]" if packed else "[0:0]",
+                    "line": clean.count("\n", 0, module_match.start()) + clean[module_match.start():header_end].count("\n", 0, port_match.start()) + 1,
+                    "declaration": declaration,
+                }]
+
+    for name, expected in expected_by_name.items():
+        matches = observed.get(name, [])
+        agrees = (
+            len(matches) == 1
+            and matches[0]["direction"] == expected.get("direction")
+            and (matches[0]["width"] is None or matches[0]["width"] == expected.get("width_bits"))
+        )
+        result["ports"].append({
+            "name": name,
+            "expected_direction": expected.get("direction"),
+            "expected_width_bits": expected.get("width_bits"),
+            "source_declarations": matches,
+            "matches_identity": agrees,
+        })
+        if not matches:
+            result["blockers"].append(f"no source declaration found for {name}")
+        elif len(matches) != 1:
+            result["blockers"].append(f"multiple source declarations found for {name}")
+        elif not agrees:
+            result["blockers"].append(f"source declaration disagrees with compute-slot ABI for {name}")
+
+    result.update({
+        "status": "pass" if not result["blockers"] else "mismatch",
+        "source_id": source_row.get("source_id"),
+        "source_path": str(source_path),
+        "source_sha256": actual_sha,
+        "source_content": source,
+    })
+    return result
+
+
+def current_board_control_source_context(
+    run_dir: Path,
+    identity: dict[str, Any],
+    closure_rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Bind selected control-port Vivado facts to their sample-project HDL sources."""
+
+    identity_path = run_dir / "verification" / "board_interface" / "board_source_identity.json"
+    facts_path = run_dir / "verification" / "board_interface" / "vivado_board_facts.json"
+    result: dict[str, Any] = {
+        "schema_version": "spatialaccagent.current_board_control_source_context.v1",
+        "status": "unavailable",
+        "identity_path": str(identity_path),
+        "facts_path": str(facts_path),
+        "control_ports": [],
+        "sources": [],
+        "omitted_sources": [],
+        "blockers": [],
+    }
+    if identity.get("status") != "pass" or identity.get("simulation_hashes_match_source") is not True:
+        result["blockers"].append("current exact-board source identity is not hash-validated")
+        return result
+    if not facts_path.is_file():
+        result["blockers"].append("current-run Vivado board facts are unavailable")
+        return result
+    identity_facts_path = Path(str(identity.get("vivado_facts_path") or ""))
+    if not identity_facts_path.is_file() or identity_facts_path.resolve() != facts_path.resolve():
+        result["blockers"].append("board identity does not point to this run's Vivado facts")
+        return result
+    facts_sha256 = sha256_file(facts_path)
+    if identity.get("vivado_facts_sha256") != facts_sha256:
+        result["blockers"].append("current-run Vivado facts do not match the board identity hash")
+        return result
+    facts = read_json_if_exists(facts_path)
+    objects = facts.get("objects", []) if isinstance(facts, dict) else []
+    if not isinstance(objects, list):
+        result["blockers"].append("current-run Vivado facts have no object table")
+        return result
+
+    object_by_id = {
+        str(row.get("object_id")): row
+        for row in objects
+        if isinstance(row, dict) and row.get("object_id")
+    }
+    object_by_path = {
+        str(row.get("path")): row
+        for row in objects
+        if isinstance(row, dict) and row.get("path")
+    }
+    abi = identity.get("compute_slot_abi", {})
+    abi = abi if isinstance(abi, dict) else {}
+    control_abi = abi.get("control_abi", {})
+    control_abi = control_abi if isinstance(control_abi, dict) else {}
+    classifications = control_abi.get("port_classifications", [])
+    classifications = classifications if isinstance(classifications, list) else []
+    relevant_ports = [
+        row for row in classifications
+        if isinstance(row, dict)
+        and row.get("classification") in {"configuration_bus", "control"}
+    ]
+    if not relevant_ports:
+        result["blockers"].append("selected compute-slot ABI has no configuration/control ports")
+        return result
+
+    cell_ports: dict[str, set[str]] = {}
+    control_port_facts: list[dict[str, Any]] = []
+    for port in relevant_ports:
+        evidence_ids = port.get("evidence_object_ids")
+        if not isinstance(evidence_ids, list):
+            evidence_ids = port.get("evidence_refs", [])
+        connected_objects = []
+        for evidence_id in evidence_ids if isinstance(evidence_ids, list) else []:
+            fact_object = object_by_id.get(str(evidence_id))
+            if not isinstance(fact_object, dict) or fact_object.get("kind") != "net":
+                continue
+            connected_objects.append({
+                "object_id": fact_object.get("object_id"),
+                "kind": fact_object.get("kind"),
+                "path": fact_object.get("path"),
+                "members": copy.deepcopy(fact_object.get("members", [])),
+            })
+            for member in fact_object.get("members", []):
+                if not isinstance(member, dict):
+                    continue
+                pin = object_by_path.get(str(member.get("path") or ""))
+                if not isinstance(pin, dict) or pin.get("kind") != "pin":
+                    continue
+                pin_properties = pin.get("properties", {})
+                direction = str(pin_properties.get("DIR") or "").upper() if isinstance(pin_properties, dict) else ""
+                if direction not in {"O", "OUT", "OUTPUT"}:
+                    continue
+                owner = object_by_path.get(str(pin.get("owner_path") or ""))
+                if not isinstance(owner, dict) or owner.get("kind") != "cell":
+                    continue
+                cell_id = str(owner.get("object_id") or "")
+                if cell_id:
+                    cell_ports.setdefault(cell_id, set()).add(str(port.get("name") or ""))
+        control_port_facts.append({
+            "name": port.get("name"),
+            "classification": port.get("classification"),
+            "direction": port.get("direction"),
+            "width_bits": port.get("width_bits"),
+            "semantic_role": port.get("semantic_role"),
+            "evidence_refs": copy.deepcopy(port.get("evidence_refs", [])),
+            "connected_nets": connected_objects,
+        })
+
+    result["control_ports"] = control_port_facts
+    closure = closure_rows if closure_rows is not None else _exact_board_closure_rows(identity)
+    source_root = (run_dir / "verification" / "board_interface" / "sample_project_sources").resolve()
+    selected_cells = set(cell_ports)
+    candidates = [
+        row for row in closure
+        if isinstance(row, dict)
+        and _exact_board_simulator_compile_input(row)
+        and row.get("hashes_match") is True
+        and selected_cells.intersection(str(value) for value in row.get("owner_cell_ids", []))
+    ]
+    included_bytes = 0
+    for row in candidates:
+        source_id = str(row.get("source_id") or "")
+        raw_path = row.get("local_path") or row.get("path")
+        source_path = Path(str(raw_path)).resolve() if raw_path else None
+        expected_sha256 = str(row.get("local_sha256") or row.get("sha256") or "")
+        if (
+            not source_id
+            or source_path is None
+            or not source_path.is_file()
+            or not source_path.is_relative_to(source_root)
+            or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256)
+        ):
+            result["omitted_sources"].append({
+                "source_id": source_id or None,
+                "reason": "source is absent or outside the verified sample-project closure",
+            })
+            continue
+        source_bytes = source_path.read_bytes()
+        actual_sha256 = hashlib.sha256(source_bytes).hexdigest()
+        if actual_sha256 != expected_sha256:
+            result["omitted_sources"].append({
+                "source_id": source_id,
+                "reason": "materialized source hash does not match the current identity",
+            })
+            continue
+        if len(result["sources"]) >= 12 or included_bytes + len(source_bytes) > 192 * 1024:
+            result["omitted_sources"].append({
+                "source_id": source_id,
+                "reason": "bounded prompt source-context limit",
+            })
+            continue
+        owner_cell_ids = [
+            str(cell_id) for cell_id in row.get("owner_cell_ids", [])
+            if str(cell_id) in selected_cells
+        ]
+        owner_cells = [
+            {
+                "object_id": cell_id,
+                "path": object_by_id[cell_id].get("path"),
+                "control_ports": sorted(cell_ports[cell_id]),
+            }
+            for cell_id in owner_cell_ids
+            if cell_id in object_by_id
+        ]
+        result["sources"].append({
+            "source_id": source_id,
+            "path": str(source_path),
+            "sha256": actual_sha256,
+            "owner_cells": owner_cells,
+            "declared_modules": copy.deepcopy(row.get("declared_modules", [])),
+            "content": source_bytes.decode("utf-8", errors="replace"),
+        })
+        included_bytes += len(source_bytes)
+
+    result["identity_sha256"] = sha256_file(identity_path) if identity_path.is_file() else None
+    result["facts_sha256"] = facts_sha256
+    result["policy"] = {
+        "facts_follow_selected_compute_slot_abi_evidence_refs": True,
+        "source_rows_must_belong_to_selected_simulation_closure": True,
+        "source_rows_must_be_owned_by_fact_connected_control_cells": True,
+        "source_content_is_sha256_verified_before_prompt_inclusion": True,
+        "control_transaction_semantics_are_not_inferred_by_this_projection": True,
+    }
+    if result["sources"]:
+        result["status"] = "pass"
+    else:
+        result["blockers"].append("no hash-bound sample source is connected to selected control-port evidence")
+    return result
+
+
 def board_integration_repair_context(
     state: dict[str, Any],
     run_dir: Path,
@@ -5849,6 +6649,7 @@ def board_integration_repair_context(
     catalog = read_json_if_exists(catalog_path)
     memory_layout = read_json_if_exists(memory_path)
     tool_profile = read_json_if_exists(tool_profile_path)
+    board_profile = read_json_if_exists(board_profile_path)
     runtime_contract = read_json_if_exists(runtime_contract_path)
     image_manifest = read_json_if_exists(image_manifest_path)
     runtime_capture = read_json_if_exists(runtime_capture_path)
@@ -6152,6 +6953,12 @@ def board_integration_repair_context(
         }
 
     sample_closure_rows = _exact_board_closure_rows(identity)
+    sample_compute_slot_port_declarations = physical_compute_slot_port_declaration_evidence(
+        identity, sample_closure_rows
+    )
+    current_sample_board_control_sources = current_board_control_source_context(
+        run_dir, identity, sample_closure_rows
+    )
     sample_vcs_input_projection = {
         "schema_version": "spatialaccagent.sample_project_vcs_input_projection.v1",
         "source_identity_sha256": (
@@ -6183,10 +6990,12 @@ def board_integration_repair_context(
             for row in sample_closure_rows
             if row.get("source_id") and not _exact_board_simulator_compile_input(row)
         ],
+        "physical_compute_slot_port_declarations": sample_compute_slot_port_declarations,
         "policy": {
             "classification_uses_structured_file_type_language": True,
             "non_hdl_entries_are_staged_runtime_auxiliaries": True,
             "non_hdl_entries_are_never_compiler_source_tokens": True,
+            "port_directions_are_parsed_from_the_exact_hash_bound_compute_slot_source": True,
         },
     }
     kernel_binding_design_inputs: dict[str, Any] = {}
@@ -6238,7 +7047,9 @@ def board_integration_repair_context(
             "current_generator_sources": [row for row in generator_sources if row],
             "board_control_reference_sources": reference_sources,
             "policy": (
-                "Read the certified top RTL and current generator sources to identify each tile client, "
+                "Read the complete certified top interface and full generated top/parameter sources, "
+                "plus hash-bound symbol/dependency/I-O projections of reusable Chisel templates, "
+                "to identify each tile client, "
                 "its operator/tensor ownership and lane/data packing. Use model_derived_memory_layout "
                 "weight_storage_terms and activation regions plus target_model dimensions to DESIGN the "
                 "adapter's route IDs, aligned DDR addresses/offsets/layer strides, stream counts and layer "
@@ -6247,12 +7058,16 @@ def board_integration_repair_context(
                 "store in the real board DDR address window, record the plan in the binding manifest, and "
                 "keep only bounded active/shadow tiles on chip. Empty prior kernel_interface or absent "
                 "prior route table is generation_pending, not a missing-evidence blocker. Use the supplied "
+                "current_sample_board_control_sources to derive the board configuration transaction behavior "
+                "from the exact selected sample project's hash-bound source code; do not infer it from port "
+                "names or reuse another run's board behavior. "
                 "hash-bound OPT-aligned board control/AXI reference sources only to recover generic handshake "
                 "and field-packing structure; derive current kernel port names, tensor semantics, addresses and "
                 "layer bindings from this run's certified sources, model layout and board identity."
                 " Quantization configuration transport is also an adapter design output: derive every "
                 "scale/shift port's width, signedness and consumer from the certified interface and "
-                "current generator sources, then implement a complete writable configuration store "
+                "current generated top/parameter sources and projected template I/O declarations, "
+                "then implement a complete writable configuration store "
                 "and loading path using the existing board ABI. Assign and document any required "
                 "DDR/configuration offsets within the real address window without overlapping existing "
                 "regions; preserve active/shadow behavior and do not change the external ABI. "
@@ -6262,6 +7077,9 @@ def board_integration_repair_context(
                 "Do not request a pre-existing board-side scale binding: producing it is your task."
             ),
         }
+    kernel_binding_design_inputs["current_sample_board_control_sources"] = (
+        current_sample_board_control_sources
+    )
     adaptive_design_inputs = {
         "kernel_binding_design_inputs": kernel_binding_design_inputs,
         "task_card": bound_artifact(task_card_path, task_card),
@@ -6270,7 +7088,10 @@ def board_integration_repair_context(
         "model_derived_memory_layout": bound_artifact(memory_path, memory_layout),
         "current_tool_profile": bound_artifact(tool_profile_path, tool_profile),
         "target_board_profile": bound_artifact(
-            board_profile_path, read_json_if_exists(board_profile_path),
+            board_profile_path, board_profile,
+        ),
+        "exact_board_address_mapping_evidence": exact_board_address_mapping_evidence(
+            run_dir, identity, board_profile
         ),
         "board_memory_runtime_contract": bound_artifact(
             runtime_contract_path,
@@ -6382,7 +7203,7 @@ def board_integration_repair_context(
             "activation_ping_pong_between_layers": True,
             "final_layer_output_writeback": True,
             "exact_sample_compute_slot_binding": True,
-            "functional_vcs_boundary": "compute_slot_axi",
+            "functional_vcs_boundary": EXACT_BOARD_FUNCTIONAL_VALIDATION_MODE,
             "physical_wrapper_and_mig_remain_backend_identity_evidence": True,
         },
         "adaptive_fields_policy": (
@@ -6409,6 +7230,34 @@ def board_integration_repair_context(
 
 
 def board_integration_prompt_rules(generation_mode: str = "create") -> list[str]:
+    if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation":
+        if generation_mode == "preflight_repair":
+            phase_rule = (
+                "Repair the current exact-board runtime preflight blockers in one bounded "
+                "response, then let the framework rerun the real VCS simulation."
+            )
+        elif generation_mode in {"repair", "observation_only"}:
+            phase_rule = (
+                "Repair the current real exact-board runtime failure using its observed "
+                "DDR and pipeline evidence, then rerun the same physical-wrapper simulation."
+            )
+        else:
+            phase_rule = (
+                "Create the exact sample-board DDR runtime harness and manifest needed for "
+                "the first current-run real VCS simulation."
+            )
+        return [
+            phase_rule,
+            "The active verification policy is full_semantic_simulation. The VCS gate must compile, elaborate, link, and execute the generated testbench against the exact sample-project physical wrapper and its AXI/DDR simulation sources; compile-only is not an acceptable result.",
+            "Set board_simulation_preflight_plan.validation_mode to exact_sample_physical_ddr. Preserve the original sample wrapper, MIG/DDR model, AXI timing and interfaces byte-for-byte; add only agent-owned integration sources and testbench files allowed by the repair contract.",
+            "Bind the real target-model Transformer-block weight catalog into the DDR workload image and bind the actual input workload. Demonstrate in run evidence that the DUT consumes the bound weight tensors and that DDR input, weight and output transfers are nonzero. Never replace the payloads with synthetic values or claim consumption from a manifest declaration alone.",
+            "The testbench must execute the configured model layer scope with the existing active/shadow weight caches, next-layer prefetch, activation ping-pong and ready/valid token overlap. Do not add a sequence-wide barrier or serialize operator stages. Capture the actual final output and runtime progress events.",
+            "Populate board_simulation_manifest artifacts and vcs.runtime_plusargs from framework-materialized, hash-bound runtime artifacts. execution_outputs must name the compile log, simulation log, progress_event_log, elaborated_hierarchy_report, pipeline_overlap_report and runtime_loader_report; include protocol monitor reports when required by the board contract.",
+            "A VCS return code of zero alone is insufficient. The framework must receive parseable nonempty progress events, hierarchy and pipeline-overlap evidence, runtime-loader counters, and protocol-monitor outputs from this same execution. Do not fabricate reports, hashes, counters or success status.",
+            "When the current evidence shows a failure, return the smallest complete repair within repair_source_bundle.editable_contract. Use current exact-board identity, current compiler/runtime reports and the current dependency frontier; do not edit checker code, framework files, source identity, original board sources, weights or golden inputs.",
+            "When bounded source edits are complete, return status=ready_to_apply, file_edits and blocked_reasons=[]. Return blocked only for a specific missing design fact that cannot be established from current run artifacts.",
+            "Return one JSON object only. Do not state that functional correctness is proven beyond the exact checks actually run.",
+        ]
     if generation_mode == "preflight_repair":
         phase_rule = (
             "Repair the current exact-board compile preflight blockers in one bounded "
@@ -6418,7 +7267,13 @@ def board_integration_prompt_rules(generation_mode: str = "create") -> list[str]
         phase_rule = (
             "Repair the complete causally affected interface family in the current real VCS "
             "compile/elaboration failure. Smallest means the smallest COMPLETE connected repair, "
-            "not one missing numbered port per round; do not create a simulation-observation plan."
+            "not one missing numbered port per round; do not create a simulation-observation plan. "
+            "For an existing connected adapter, use operation=replace_text with content='' and "
+            "exact unique source anchors for the current failure. Do not resend unchanged RTL, "
+            "numbered port families, the testbench or the binding manifest. Replace a complete "
+            "adapter only when the current evidence proves it is structurally incomplete. "
+            "A compiler report that a signal has not been declared yet requires checking the "
+            "supplied declarations and references, not assuming its transport is missing."
         )
     else:
         phase_rule = (
@@ -6429,22 +7284,28 @@ def board_integration_prompt_rules(generation_mode: str = "create") -> list[str]
         phase_rule,
         "The active Stage-6 acceptance policy is vcs_compile_only: a successful real VCS parse, elaboration, and link passes this gate. Do not run the generated simulation executable.",
         "When the bounded source edits are complete, return status=ready_to_apply, file_edits, and blocked_reasons=[]. Framework-owned source hashing and compile-plan materialization are the normal next step, not blockers. Return status=blocked only when required design facts are genuinely missing and no safe complete edit can be made.",
-        "Use only current-run board identity, the discovered compute-slot ABI, the selected VCS compile authority, the configured board validation scope, and the certified connected-kernel sources. Bind the exact sample-board wrapper and every required compile source; never guess ports or replace the wrapper/kernel with a stub.",
+        "Use only current-run board identity, the discovered compute-slot ABI, the selected VCS compile authority, the configured board validation scope, and the certified connected-kernel sources. Under compute_slot_axi compile-only, the generated VCS testbench must instantiate the generated adapter at the selected compute-slot AXI boundary; the physical sample wrapper/MIG remain immutable board identity and backend evidence and are not instantiated by this compile-only harness. Under exact_sample_physical_ddr, preserve and compile the physical sample wrapper and its required sources. Never guess ports or replace the wrapper/kernel with a stub.",
+        "For physical slot port directions and widths, compare the current hash-bound sample-project module declaration with the exact current compute_slot_abi required_ports/port_bindings entries. A pre-existing or generated agent-owned slot source is replaceable implementation input, not physical ABI evidence; update it to match the current ABI instead of treating it as a board-source conflict. If the two physical authorities disagree, block and cite the sample-source line plus the exact compute_slot_abi JSON path and both values. If the current parent-instance connection is available, use it only as corroboration; its absence alone is not a blocker. Sources under diagnostics/reference are historical and cannot override current evidence.",
+        "Before reporting a port-direction conflict, match the same exact port name across the hash-bound module declaration, compute_slot_abi.port_bindings, compute_slot_abi.required_ports, and control_abi.port_classifications; quote the precise source line and JSON rows. Do not infer a direction from a neighboring row or from a compressed summary. When the module declaration and Vivado-backed slot pin agree, proceed with that interface and let framework-owned derived projections be refreshed; block only when those primary physical sources conflict.",
         "For an undefined named-port compiler failure, use current_compiler_module_interfaces when supplied: compare every connection on the failing instance against the complete hash-bound module header and fix all evidenced mismatches in one bounded edit. Preserve configuration and DDR handshakes by connecting exact compatible declared ports; do not merely delete one reported connection per compile or leave required inputs disconnected.",
         "Under vcs_compile_only, stage2_vcs_compile_authority is the hash-verified kernel source closure and top-module declaration recovered from the passing Stage-2 VCS certificate. Derive any needed port bindings from those exact source files; the connected board binding is generated now, so its absence before this call is not a blocker.",
         "Generate or repair only agent-owned board-integration sources and the bounded binding manifest. Preserve the existing accelerator RTL, certified lower-layer sources, and sample-project files. Keep the configured layer scope and existing ready/valid pipeline architecture; do not hard-code model or board constants.",
         "The deliverable is a connected synthesizable accelerator integration: replace only the authorized existing compute slot with a generated adapter that instantiates the certified kernel and connects its AXI/DDR tile requests/responses, active/shadow bank controls, layer scheduler, activation ping-pong and final writeback. Merely listing the kernel in a source manifest, instantiating the original board wrapper with empty ports, or leaving the original legacy compute slot in place does not implement this task.",
         "Write sources only under required_generated_root and write the binding object at required_binding_manifest, respecting repair_source_bundle.editable_contract. Put multilayer_harness (source_files and target_layer_count) and board_simulation_preflight_plan in that binding manifest using the supplied preflight authority/contract. Do not invent separate verification/case_hierarchy manifests, write checker reports, or claim compile coverage through booleans. The framework derives the final compile manifest and source hashes.",
         "The binding manifest is the actual producer/consumer contract. multilayer_harness contains top_module, target_layer_count and source_files; each board-owned source row has source_id, path, language, role (compute_slot_adapter or generated_accelerator), declared_modules and dependencies. board_simulation_preflight_plan contains validation_mode, top_module, source_replacements and testbench. Each source_replacements row has replaced_source_id, generated_source_id, replaced_module, generated_module and compute_slot_abi_sha256, taken from the exact identity and your generated adapter row. testbench contains top_module and source with the same source-row shape. Emit actual fields and sources, not claimed-coverage booleans; the executor computes hashes and VCS commands.",
+        "During deterministic preflight repair, keep multilayer_harness.source_files limited to agent-owned board-integration files under required_generated_root with current source hashes. Certified kernels already supplied by the current compile authority must not be re-added under another source ID, role, or path, and generated modules must not redeclare a certified module. Generated source dependencies must stay inside the current generated compile closure; do not attach sample-source IDs that the selected compile plan does not include. Preserve sample-project sources as immutable sample authority.",
+        "A large generated board-integration RTL source may be represented by a hash-bound interface for manifest-only work. For a current real VCS compile or elaboration failure, if current_compiler_module_interfaces supplies a same-hash compile_failure_source_excerpt for a run-owned file under allowed_create_or_replace_roots, that exact generated source is in scope for a minimal anchored repair; this includes a generated testbench when the current diagnostic points into it. Use the supplied code context and leave every other source unchanged. Do not resend unchanged RTL, testbench, or binding-manifest contents; this does not prohibit a bounded edit to a generated source directly implicated by the current diagnostic. An interface-only projection without that current compile-failure excerpt does not authorize editing a source body. Any source_line_projections entry summarizes an oversized physical source row; its line hash and byte length bind the omitted text, while prefix/suffix remain exact substrings, so only use an unambiguous exact substring anchor and never reconstruct omitted text.",
         "For this compile-only board boundary, set board_simulation_preflight_plan.validation_mode exactly to compute_slot_axi. This selects the current run's hash-bound Vivado simulator export and compute-slot AXI authority; vcs_compile_only is the acceptance policy, not the validation_mode enum. Do not invent another validation_mode string or copy an external-fixture mode when the current immutable architecture boundary is compute_slot_axi.",
         "Follow immutable_architecture_mechanisms.functional_vcs_boundary. When it is compute_slot_axi, the generated VCS top instantiates the real selected-slot adapter and certified kernel at that AXI boundary; the exact physical wrapper/MIG remain unchanged backend identity evidence. Do not require editing the physical wrapper or replacing its retained instances to generate the authorized slot-module replacement. This does not permit disconnected AXI or kernel ports in the synthesizable integration.",
-        "kernel_binding_design_inputs contains the complete ordered certified top-port interface and current generator sources for tile-client/operator ownership and stream packing; the original generated top remains hash-bound on disk and will be compiled from its exact source. Expand every lossless numeric port range before designing connections. Derive the new route map and layer/activation transfer bindings from those interfaces and sources, model dimensions and weight_storage_terms. Assign route IDs and legal DDR offsets/strides as your adapter design, recording them in the binding manifest. Empty prior kernel_interface or absence of a previously certified route map is not a blocker: creating these bindings is your task. Never tie off a required weight/activation stream or invent a physical interface fact.",
+        "kernel_binding_design_inputs contains the complete ordered certified top-port interface, full current generated top/parameter sources, and hash-bound Chisel template evidence. The certified kernel owner and its reachable constructor and inheritance dependencies retain their implementation bodies, including the actual weight-stream consumers. Other templates are projected to source hashes, declared symbols, constructor dependencies, and I/O declarations; do not infer their hidden implementation details. Ground route IDs and layer/activation transfer bindings in the current generated sources, certified interfaces, model dimensions and weight_storage_terms. Expand every lossless numeric port range before designing connections. Assign legal DDR offsets and strides as adapter design outputs and record them in the binding manifest. Empty prior kernel_interface or absence of a previously certified route map is not a blocker. Never tie off a required weight/activation stream or invent a physical interface fact.",
         "Keep the board testbench and compile manifest syntactically complete for the selected VCS top. The framework computes source hashes, materializes the compile plan, and verifies the source set after edits.",
         "A board identity explicitly marked vcs_compile_only with functional_semantics_claimed=false certifies physical bindings only. Use its exact ports and retained infrastructure; deferred legacy control/runtime proofs do not block compile-harness generation. Preserve DDR model weights, active/shadow bounded caches, prefetch and ready/valid pipeline connections; do not claim runtime correctness.",
         "Runtime weight loading, golden-output comparison, protocol-monitor results, waveform probes, checkpoints, analyzer output, and simulated data outputs are not compile-only prerequisites. Do not fabricate those artifacts or block because they are absent.",
         "For thousands of flattened numbered ports, use file_edits[].repeat_expansions instead of emitting every repeated line or repairing one port per round. Each entry has marker, first_index, last_index (inclusive), and template; the executor substitutes literal {index} and {index_plus_N} (index plus nonnegative integer N) in template for each integer, concatenates the results, and replaces exactly one marker in content or a replace_text new_text. Example: marker=@@PORTS@@, first_index=0, last_index=31, template='wire [31:0] io_scale_{index} = scale_bank[{index}];\\n'. Use the certified range and your own complete connected storage/load design. SV braces remain literal. This mechanical expansion makes a complete interface repair possible in one response; it does not infer or design any connections for you.",
         "The adapter's scale/shift loading path and configuration address map are design outputs, just like its weight-route map. Use the certified port widths and current generator consumer semantics to implement complete loadable configuration storage through the existing board ABI and record its address/packing map in the binding manifest. Runtime scale values may remain unmaterialized for compile-only validation; their absence is not a reason to request an already-implemented board-side binding. Never substitute guessed numeric constants, identity scales, dangling wires or a one-port patch for the complete configurable transport.",
+        "Under vcs_compile_only, a model-derived storage-element width and a certified kernel transport-beat width are not by themselves a semantic conflict. Preserve both contracts with an explicit synthesizable width/packing bridge (or staged transport register) derived from the declared widths and port order; do not invent numeric conversion, reinterpret the model, or require runtime payload facts. The bridge establishes compile-time connectivity and complete load/handshake paths; payload encoding and numerical equivalence remain deferred runtime evidence. Do not return blocked solely because the storage term is packed (for example W4) while the consumer accepts a wider beat (for example 64 bits).",
         "Use target_board_profile and the exact source identity for address units, translation and known DDR facts. If physical DDR capacity or an exclusive upper bound is not established, do not invent it: keep the board ABI address translation configurable, calculate and record the complete required allocation and unresolved deployment capacity constraint. Under vcs_compile_only, an unknown physical capacity does not block designing a nonoverlapping address map within the certified address width; it does not establish that deployment will fit.",
+        "Use exact_board_address_mapping_evidence and slot_axi_address_contract as current-run, hash-bound board facts. When slot_axi_address_contract.status is bound, generate the adapter in adapter_address_domain using slot_local_base plus allocated byte offsets; cite the selected slot AXI port, matching active crossbar segment and downstream DDR endpoint in the binding manifest. The profile global DDR base is host-visible metadata and must not be driven on a narrower slot AXI port. Keep host_visible_mapping separate: use its derived formula only when the matching board-input reference and current profile/slot bases agree. Do not infer crossbar truncation or subtraction behavior, and do not block compile-only adapter generation to request a translation fact already separated by this contract. If no current active interconnect segment matches the selected slot base, identify the exact missing or conflicting fields and stop before generating an address map.",
         "Each new Layer-3 run is a fresh signal epoch: discard signal values, snapshots, counters, payload digests, and stage records from prior runs before building the prompt; keep prior structure as experience only and never use old signal values as current evidence. Runtime observation is optional for the active VCS compile-only policy; when supplied, use only current compiled signals relevant to the reported boundary.",
         "Do not add performance instrumentation or unrelated validation steps. Do not claim functional simulation or board-runtime success. Return the smallest actionable edits as one JSON object.",
     ]
@@ -6466,6 +7327,24 @@ def board_semantic_rtl_repair_prompt_rules() -> list[str]:
 
 
 def exact_board_agent_task(generation_mode: str) -> str:
+    if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation":
+        if generation_mode == "preflight_repair":
+            return (
+                "Repair the current exact-board runtime preflight blockers while preserving "
+                "the exact sample-board wrapper and DDR model. The framework will run the "
+                "real VCS compile, elaboration, link and simulation gate afterward."
+            )
+        if generation_mode in {"repair", "observation_only"}:
+            return (
+                "Repair the complete cause of the current exact-board runtime failure using "
+                "the current DDR/pipeline evidence. Preserve real workload consumption, "
+                "AXI/DDR behavior and token overlap, then let the framework rerun VCS."
+            )
+        return (
+            "Generate a complete exact sample-board AXI/DDR runtime integration and "
+            "testbench for the configured model and layer scope. Bind real weights and "
+            "input data, preserve the board wrapper and run the actual VCS simulation."
+        )
     if generation_mode == "preflight_repair":
         return (
             "Repair only the current exact-board VCS compile preflight blockers. Use current board identity, "
@@ -6479,7 +7358,14 @@ def exact_board_agent_task(generation_mode: str) -> str:
             "certified family to real loadable storage in this response using repeat_expansions, not one "
             "undriven wire for the first compiler error. Design the missing scale/configuration transport "
             "from supplied consumer semantics; this is your integration output. Preserve the exact "
-            "sample-board wrapper, certified kernel, and configured layer scope; do not run simulation "
+            "sample-board wrapper, certified kernel, and configured layer scope. When the current adapter "
+            "is structurally incomplete (for example, it has no certified-kernel instance or module end) "
+            "and the supplied current interface and binding contracts specify the missing connections, "
+            "replace the complete run-local adapter from those contracts instead of returning blocked or "
+            "patching only the first syntax symptom. Keep every live ready/valid, AXI/DDR, configuration, "
+            "weight, activation, and writeback connection attached to its evidenced endpoint; do not use "
+            "tie-offs, empty stubs, or disconnected compile scaffolds. Return blocked only when a specific "
+            "required interface or binding fact is absent from the supplied package. Do not run simulation "
             "or request waveform observations."
         )
     return (
@@ -6875,6 +7761,20 @@ def repair_source_bundle(
     generated_template_paths = sorted(
         (generated_dir / "src" / "main" / "scala" / "spatialaccagent" / "templates").glob("*.scala")
     )
+    requested_template_paths = {
+        str(Path(value.strip()).expanduser().resolve())
+        for value in os.environ.get(
+            "SPATIALACC_BOUNDED_TEMPLATE_REPAIR_EXACT_FILES", ""
+        ).split(os.pathsep)
+        if value.strip()
+    }
+    approved_template_paths = list(dict.fromkeys([*template_paths, *generated_template_paths]))
+    if requested_template_paths:
+        approved_template_paths = [
+            path
+            for path in approved_template_paths
+            if str(path.resolve()) in requested_template_paths
+        ]
     return {
         "schema_version": "spatialaccagent.repair_source_bundle.v1",
         "documents": documents,
@@ -6923,7 +7823,7 @@ def repair_source_bundle(
                 else None
             ),
             "approved_bounded_template_repair_exact_files": (
-                [display_path(path) for path in [*template_paths, *generated_template_paths]]
+                [display_path(path) for path in approved_template_paths]
                 if template_repair_approved
                 else []
             ),
@@ -7391,17 +8291,16 @@ def normalized_implementation_agent_status(output: dict[str, Any]) -> str:
         or raw_status == "repair_ready"
         or raw_status == "pass"
     )
-    return (
-        "ready_to_apply"
-        if actionable_status
-        and isinstance(edits, list)
-        and bool(edits)
-        and isinstance(approvals, list)
-        and not approvals
-        and isinstance(declared_blockers, list)
-        and not declared_blockers
-        else raw_status
-    )
+    if not actionable_status:
+        return raw_status
+    if (
+        not isinstance(approvals, list)
+        or approvals
+        or not isinstance(declared_blockers, list)
+        or any(str(value).strip() for value in declared_blockers)
+    ):
+        return "blocked"
+    return "ready_to_apply" if isinstance(edits, list) and edits else raw_status
 
 
 def board_only_incomplete_lower_layer_bindings_attested(
@@ -11602,20 +12501,20 @@ def runtime_only_observation_output(
     if str(decision.get("mode") or "") != "deepen_simulation_observation":
         return output
 
-    functional_edits: list[dict[str, Any]] = []
-    for edit in output.get("file_edits", []):
-        if not isinstance(edit, dict):
-            continue
+    edits = [edit for edit in output.get("file_edits", []) if isinstance(edit, dict)]
+    for edit in edits:
+        # New harnesses and mixed RTL/manifest/testbench transactions require
+        # source materialization. Only pure observation updates to an existing
+        # compiled model can be replaced by runtime signal selection.
         name = Path(str(edit.get("path") or "")).name.lower()
-        if "tb" in name or "testbench" in name or "monitor" in name:
-            continue
-        functional_edits.append(copy.deepcopy(edit))
-    if len(functional_edits) == len(
-        [edit for edit in output.get("file_edits", []) if isinstance(edit, dict)]
-    ):
+        if edit.get("operation") == "create" or not any(
+            marker in name for marker in ("tb", "testbench", "monitor")
+        ):
+            return output
+    if not edits:
         return output
     normalized = copy.deepcopy(output)
-    normalized["file_edits"] = functional_edits
+    normalized["file_edits"] = []
     normalized.setdefault("execution_advisories", []).append(
         "observation-only source edits were replaced by runtime compiled-signal selection"
     )
@@ -12471,7 +13370,48 @@ def _json_patch_leaf_paths(value: Any, prefix: str = "") -> list[str]:
 
 
 def rejected_file_edits_for_agent_retry(edits: list[Any]) -> list[dict[str, Any]]:
-    """Preserve the failed edit itself without copying complete replacement bodies."""
+    """Preserve rejected edits and show exact source anchors for safe retry."""
+
+    def anchor_diagnostics(target: Path, replacements: list[Any]) -> list[dict[str, Any]]:
+        if not target.is_file():
+            return []
+        try:
+            source = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            return []
+        lines = source.splitlines()
+        diagnostics: list[dict[str, Any]] = []
+        for index, replacement in enumerate(replacements):
+            if not isinstance(replacement, dict):
+                continue
+            old_text = replacement.get("old_text")
+            if not isinstance(old_text, str) or not old_text or source.count(old_text) == 1:
+                continue
+            old_lines = old_text.splitlines()
+            normalized_old = [" ".join(line.split()) for line in old_lines]
+            candidates: list[dict[str, Any]] = []
+            if normalized_old and all(normalized_old):
+                for start in range(max(0, len(lines) - len(old_lines) + 1)):
+                    window = [" ".join(line.split()) for line in lines[start : start + len(old_lines)]]
+                    if window == normalized_old:
+                        candidates.append(
+                            {
+                                "start_line": start + 1,
+                                "source_text": "\n".join(lines[start : start + len(old_lines)])[:1200],
+                            }
+                        )
+                        if len(candidates) == 3:
+                            break
+            if candidates:
+                diagnostics.append(
+                    {
+                        "replacement_index": index,
+                        "source_match_count": source.count(old_text),
+                        "whitespace_normalized_candidates": candidates,
+                        "instruction": "Copy source_text exactly as old_text; do not normalize or guess whitespace.",
+                    }
+                )
+        return diagnostics
 
     result: list[dict[str, Any]] = []
     for edit in edits:
@@ -12490,6 +13430,11 @@ def rejected_file_edits_for_agent_retry(edits: list[Any]) -> list[dict[str, Any]
             and isinstance(edit.get("text_replacements"), list)
         ):
             row["text_replacements"] = copy.deepcopy(edit["text_replacements"])
+            target = Path(str(edit.get("path") or ""))
+            target = (target if target.is_absolute() else Path.cwd() / target).resolve()
+            diagnostics = anchor_diagnostics(target, edit["text_replacements"])
+            if diagnostics:
+                row["anchor_diagnostics"] = diagnostics
         result.append(row)
     return result
 
@@ -12618,6 +13563,7 @@ def expand_agent_text_repeats(edit: dict[str, Any]) -> dict[str, Any]:
     result = copy.deepcopy(edit)
     fields = [(result, "content")]
     fields.extend((row, "new_text") for row in result.get("text_replacements", []) if isinstance(row, dict))
+    marker_errors: list[str] = []
     for row in expansions:
         if not isinstance(row, dict):
             raise ValueError("repeat expansion is not an object")
@@ -12628,8 +13574,27 @@ def expand_agent_text_repeats(edit: dict[str, Any]) -> dict[str, Any]:
                 or type(first) is not int or type(last) is not int
                 or not 0 <= first <= last < 100_000):
             raise ValueError("repeat expansion requires a marker, {index} template and bounded inclusive indices")
-        if sum(str(obj.get(key) or "").count(marker) for obj, key in fields) != 1:
-            raise ValueError("repeat expansion marker must occur exactly once in content or new_text")
+        counts = [
+            (
+                f"text_replacements[{index - 1}].new_text" if key == "new_text" else key,
+                str(obj.get(key) or "").count(marker),
+            )
+            for index, (obj, key) in enumerate(fields)
+        ]
+        total = sum(count for _, count in counts)
+        if total != 1:
+            locations = ", ".join(f"{field}={count}" for field, count in counts)
+            marker_errors.append(
+                f"{marker!r} occurs {total} times ({locations})"
+            )
+    if marker_errors:
+        raise ValueError(
+            "each repeat expansion marker must occur exactly once: "
+            + "; ".join(marker_errors)
+        )
+    for row in expansions:
+        marker, template = row.get("marker"), row.get("template")
+        first, last = row.get("first_index"), row.get("last_index")
         if len(template.encode("utf-8")) * (last - first + 1) > 16_000_000:
             raise ValueError("repeat expansion exceeds source size limit")
         expanded = "".join(
@@ -12646,6 +13611,80 @@ def expand_agent_text_repeats(edit: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("expanded source exceeds size limit")
     result.pop("repeat_expansions", None)
     return result
+
+
+def coalesce_same_path_text_replacement_edits(
+    edits: list[Any],
+) -> tuple[list[Any], list[dict[str, Any]]]:
+    indexes_by_target: dict[Path, list[int]] = {}
+    for index, edit in enumerate(edits):
+        if not isinstance(edit, dict) or not str(edit.get("path") or ""):
+            continue
+        target = Path(str(edit["path"]))
+        target = target if target.is_absolute() else Path.cwd() / target
+        indexes_by_target.setdefault(target.resolve(), []).append(index)
+
+    merged_by_index: dict[int, dict[str, Any]] = {}
+    skipped_indexes: set[int] = set()
+    normalizations: list[dict[str, Any]] = []
+    for target, indexes in indexes_by_target.items():
+        if len(indexes) < 2:
+            continue
+        group = [edits[index] for index in indexes]
+        expected_hashes = {
+            str(edit.get("expected_sha256") or "") for edit in group
+        }
+        if (
+            len(expected_hashes) != 1
+            or not next(iter(expected_hashes))
+            or not all(
+                edit.get("operation") in {"replace", "replace_text"}
+                and isinstance(edit.get("text_replacements"), list)
+                and bool(edit["text_replacements"])
+                and not edit.get("content")
+                and "json_content" not in edit
+                for edit in group
+            )
+        ):
+            continue
+
+        merged = copy.deepcopy(group[0])
+        merged["operation"] = "replace_text"
+        merged["text_replacements"] = [
+            copy.deepcopy(replacement)
+            for edit in group
+            for replacement in edit["text_replacements"]
+        ]
+        rationales = [
+            str(edit.get("rationale") or "").strip()
+            for edit in group
+            if str(edit.get("rationale") or "").strip()
+        ]
+        if rationales:
+            merged["rationale"] = "\n".join(dict.fromkeys(rationales))
+        merged_by_index[indexes[0]] = merged
+        skipped_indexes.update(indexes[1:])
+        normalizations.append(
+            {
+                "field": "file_edits",
+                "operation": "coalesce_same_path_text_replacements",
+                "target": str(target),
+                "edit_indexes": indexes,
+                "replacement_count": len(merged["text_replacements"]),
+                "guard": (
+                    "all edits target one file, use anchored text replacements, "
+                    "carry the same source SHA, and are validated atomically "
+                    "against one pre-edit snapshot"
+                ),
+            }
+        )
+
+    normalized = [
+        merged_by_index.get(index, edit)
+        for index, edit in enumerate(edits)
+        if index not in skipped_indexes
+    ]
+    return normalized, normalizations
 
 
 def apply_agent_file_edits(
@@ -12680,6 +13719,11 @@ def apply_agent_file_edits(
     blockers: list[str] = [
         str(value) for value in (agent_contract_blockers or []) if str(value)
     ]
+    blockers.extend(
+        f"implementation agent declared blocker: {value}"
+        for value in declared_blockers
+        if str(value).strip()
+    )
     staged: list[tuple[Path, str, str, str]] = []
     protocol_normalizations: list[dict[str, Any]] = []
     total_bytes = 0
@@ -12729,6 +13773,20 @@ def apply_agent_file_edits(
     if not edits:
         blockers.append("implementation agent returned no file edits")
 
+    expanded_edits: list[Any] = []
+    for index, edit in enumerate(edits):
+        if not isinstance(edit, dict):
+            expanded_edits.append(edit)
+            continue
+        try:
+            expanded_edits.append(expand_agent_text_repeats(edit))
+        except ValueError as exc:
+            blockers.append(f"file_edits[{index}] repeat expansion: {exc}")
+    edits, coalesced_edits = coalesce_same_path_text_replacement_edits(
+        expanded_edits
+    )
+    protocol_normalizations.extend(coalesced_edits)
+
     for index, edit in enumerate(edits):
         if not isinstance(edit, dict):
             blockers.append(f"file_edits[{index}] is not an object")
@@ -12747,8 +13805,18 @@ def apply_agent_file_edits(
         content = str(edit.get("content") or "")
         json_content_supplied = "json_content" in edit
         json_content = edit.get("json_content")
-        text_replacements_supplied = "text_replacements" in edit
         text_replacements = edit.get("text_replacements")
+        text_replacements_supplied = (
+            "text_replacements" in edit and text_replacements != []
+        )
+        if "text_replacements" in edit and text_replacements == []:
+            protocol_normalizations.append(
+                {
+                    "field": f"file_edits[{index}].text_replacements",
+                    "operation": "ignore_empty_optional_text_replacements",
+                    "guard": "an empty list carries no text edit; the declared operation and content remain authoritative",
+                }
+            )
         if target in seen_edit_targets:
             prior = next((row for row in staged if row[0] == target), None)
             prior_content = prior[1] if prior is not None else None
@@ -12844,6 +13912,7 @@ def apply_agent_file_edits(
         # manifest/authority checks below still validate the complete result.
         missing_board_manifest_replace = (
             allow_board_integration
+            and not target.exists()
             and target == (
                 run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
             ).resolve()
@@ -13023,7 +14092,22 @@ def apply_agent_file_edits(
                 }
             )
         elif operation == "replace_text":
-            if target.suffix.lower() == ".json":
+            board_manifest_text_repair = (
+                allow_board_integration
+                and target
+                == (
+                    run_dir
+                    / "generated"
+                    / "memory"
+                    / "dut_weight_binding_manifest.json"
+                ).resolve()
+                and text_replacements_supplied
+                and isinstance(text_replacements, list)
+                and bool(text_replacements)
+                and not json_content_supplied
+                and not content
+            )
+            if target.suffix.lower() == ".json" and not board_manifest_text_repair:
                 if (
                     not content
                     and not json_content_supplied
@@ -13137,6 +14221,19 @@ def apply_agent_file_edits(
                 )
                 continue
             content = patched_text
+            if board_manifest_text_repair:
+                operation = "replace"
+                protocol_normalizations.append(
+                    {
+                        "field": f"file_edits[{index}].operation",
+                        "from": "replace_text",
+                        "to": "replace",
+                        "guard": (
+                            "the authorized generated board binding manifest was "
+                            "updated through unique text anchors and reparsed as JSON"
+                        ),
+                    }
+                )
             protocol_normalizations.append(
                 {
                     "field": f"file_edits[{index}].text_replacements",
@@ -15935,6 +17032,32 @@ def canonicalize_exact_board_manifest_declarations(
         except OSError:
             return None
 
+    def run_local_board_source_path(row: Any) -> Path | None:
+        """Rebind a stale run path only when current bytes prove identity."""
+
+        path = resolve_path(row)
+        if path is None or path.is_relative_to(board_root) or not isinstance(row, dict):
+            return path
+        declared_hash = str(row.get("sha256") or row.get("local_sha256") or "").lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", declared_hash):
+            return path
+        parts = path.parts
+        markers = [
+            index
+            for index in range(len(parts) - 1)
+            if parts[index : index + 2] == ("generated", "board_integration")
+        ]
+        if len(markers) != 1:
+            return path
+        relative = Path(*parts[markers[0] + 2 :])
+        candidate = (board_root / relative).resolve()
+        if not candidate.is_relative_to(board_root) or not candidate.is_file():
+            return path
+        try:
+            return candidate if sha256_file(candidate) == declared_hash else path
+        except OSError:
+            return path
+
     def source_text(path: Path | None) -> str | None:
         if path is None:
             return None
@@ -16007,7 +17130,7 @@ def canonicalize_exact_board_manifest_declarations(
         if not isinstance(row, dict):
             return None
         result = copy.deepcopy(row)
-        path = resolve_path(result)
+        path = run_local_board_source_path(result)
         text = source_text(path)
         if path is not None:
             result["path"] = str(path)
@@ -16254,8 +17377,11 @@ def canonicalize_exact_board_manifest_declarations(
         if not isinstance(row, dict):
             continue
         role = str(row.get("role") or "").strip().lower()
-        path = resolve_path(row)
+        path = run_local_board_source_path(row)
         refreshed_semantic_row = copy.deepcopy(row)
+        if path is not None and path.is_relative_to(board_root):
+            refreshed_semantic_row["path"] = str(path)
+            refreshed_semantic_row.pop("local_path", None)
         if path in semantic_patch_paths and path.is_file():
             # A board semantic RTL patch changes the shared kernel source used
             # by both the connected-layer and board harness.  Keep the source
@@ -19788,7 +20914,11 @@ def finalize_dut_weight_binding_manifest(
     require_board: bool = False,
     single_layer_certificate_path: Path | None = None,
 ) -> dict[str, Any]:
-    compile_only_board = (require_board)
+    compile_only_board = (
+        require_board
+        and os.environ.get("SPATIALACC_VERIFICATION_POLICY", COMPILE_ONLY_POLICY)
+        == COMPILE_ONLY_POLICY
+    )
     manifest_path = run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
     requirements_path = run_dir / "verification" / "semantic_testbench" / "dut_weight_binding_requirements.json"
     source_provenance: dict[str, Any] = {}
@@ -20115,8 +21245,14 @@ def finalize_dut_weight_binding_manifest(
                 "requirements": str(requirements_path),
                 "requirements_sha256": sha256_file(requirements_path) if requirements_path.is_file() else None,
                 "executed_weight_consumption_pending_real_simulation": True,
-                "validation_policy": COMPILE_ONLY_POLICY,
-                "functional_semantics_claimed": False,
+                "validation_policy": (
+                    COMPILE_ONLY_POLICY
+                    if compile_only_board
+                    else os.environ.get(
+                        "SPATIALACC_VERIFICATION_POLICY", "full_semantic_simulation"
+                    )
+                ),
+                "functional_semantics_claimed": not compile_only_board,
                 "verification_scope": (
                     "board_axi_ddr_closure"
                     if require_board
@@ -23706,13 +24842,51 @@ def capability_repair_source_bundle(
     )
 
     editable = dict(source_bundle.get("editable_contract", {}))
+    framework_template_root = (
+        Path.cwd() / "accagent" / "framework" / "templates" / "operator_chisel"
+    ).resolve()
+    generated_template_root = (
+        run_dir
+        / "generated"
+        / "chisel"
+        / "src"
+        / "main"
+        / "scala"
+        / "spatialaccagent"
+        / "templates"
+    ).resolve()
+    approved_template_paths: list[str] = []
+    for value in editable.get("approved_bounded_template_repair_exact_files", []):
+        try:
+            path = repo_path(str(value)).resolve()
+        except (OSError, ValueError):
+            continue
+        if path.suffix == ".scala" and (
+            path.is_relative_to(framework_template_root)
+            or path.is_relative_to(generated_template_root)
+        ):
+            approved_template_paths.append(display_path(path))
+    bounded_template_approved = bool(
+        editable.get("bounded_template_repair_approved") is True
+        and bounded_template_repair_approved()
+        and approved_template_paths
+    )
+    semantic_template_approved = bool(
+        editable.get("semantic_template_repair_approved") is True
+        and semantic_template_repair_approved()
+        and approved_template_paths
+    )
     editable.update(
         {
-            "bounded_template_repair_approved": False,
-            "semantic_template_repair_approved": False,
-            "approved_bounded_template_repair_exact_files": [],
-            "templates_read_only_after_compiled_semantic_baseline": True,
-            "template_repair_deferred_until_real_localized_failure": True,
+            "bounded_template_repair_approved": bounded_template_approved,
+            "semantic_template_repair_approved": semantic_template_approved,
+            "approved_bounded_template_repair_exact_files": (
+                sorted(set(approved_template_paths))
+                if bounded_template_approved
+                else []
+            ),
+            "templates_read_only_after_compiled_semantic_baseline": not bounded_template_approved,
+            "template_repair_deferred_until_real_localized_failure": not bounded_template_approved,
         }
     )
     if verification_scope == "board_axi_ddr_closure":
@@ -23750,12 +24924,15 @@ def capability_repair_source_bundle(
                 "user_sample_project_sources_read_only": True,
             }
         )
-    read_only_templates = [
+    read_only_templates = set(editable.get("read_only_template_sources", []))
+    read_only_templates.update(
         str(document.get("path"))
         for document in documents
         if "/generated/chisel/src/main/scala/spatialaccagent/templates/" in ("/" + str(document.get("path") or "").lstrip("/"))
-    ]
-    editable["read_only_template_sources"] = sorted(read_only_templates)
+    )
+    editable["read_only_template_sources"] = sorted(
+        read_only_templates - set(editable["approved_bounded_template_repair_exact_files"])
+    )
     document_chars = sum(len(str(document.get("content") or "")) for document in documents)
     return {
         "schema_version": "spatialaccagent.repair_source_bundle.v1",
@@ -27014,32 +28191,450 @@ def recover_post_patch_zero_time_livelock_feedback(
 
 
 def current_compiler_module_interfaces(run_dir: Path, feedback: dict[str, Any]) -> list[dict[str, Any]]:
-    """Expose complete, hash-bound headers named by real compiler errors."""
+    """Expose hash-bound module headers and localized current compile failures."""
     diagnosis = (feedback.get("diagnosis") or {}).get("value", {})
     evidence = diagnosis.get("failure_evidence", {})
     context = str(evidence.get("first_real_error_context") or "")
-    modules = set(re.findall(r"\bmodule\s+'([A-Za-z_$][A-Za-z0-9_$]*)'", context))
-    if not modules:
-        return []
+    modules = set(re.findall(
+        r"\b(?:module|of)\s+'(?:[A-Za-z_$][A-Za-z0-9_$]*\.)?([A-Za-z_$][A-Za-z0-9_$]*)'",
+        context,
+    ))
     manifest = read_json_if_exists(
         run_dir / "verification" / "board_simulation" / "board_simulation_manifest.json"
     )
     headers = []
-    for row in manifest.get("source_files", []):
-        names = modules.intersection(row.get("declared_modules", []))
-        if not names:
+
+    def append_module_interfaces(requested_modules: set[str]) -> None:
+        known_modules = {str(row.get("module") or "") for row in headers}
+        for row in manifest.get("source_files", []):
+            names = requested_modules.intersection(row.get("declared_modules", []))
+            if not names:
+                continue
+            path = resolve_run_path(run_dir, row.get("path"))
+            if not path.is_file() or sha256_file(path) != row.get("sha256"):
+                continue
+            text = path.read_text(encoding="utf-8")
+            for name in sorted(names - known_modules):
+                start = re.search(rf"\bmodule\s+{re.escape(name)}\b", text)
+                end = text.find(");", start.start()) if start else -1
+                if not start or end < 0:
+                    continue
+                module_header = text[start.start():end + 2]
+                record = {
+                    "module": name,
+                    "path": str(path),
+                    "sha256": row["sha256"],
+                    "source_id": row.get("source_id"),
+                }
+                if len(module_header.encode("utf-8")) > 64_000:
+                    try:
+                        module_end = re.search(r"\bendmodule\b", text[end + 2:])
+                        module_text = text[
+                            start.start():end + 2 + module_end.end()
+                        ] if module_end else module_header
+                        record["module_interface_contract"] = (
+                            _compact_verilog_module_interface(module_text)
+                        )
+                    except ValueError:
+                        record["module_header"] = module_header
+                else:
+                    record["module_header"] = module_header
+                headers.append(record)
+                known_modules.add(name)
+
+    append_module_interfaces(modules)
+    runner = feedback.get("runner_report", {})
+    runner = runner.get("value", {}) if isinstance(runner, dict) else {}
+    compile_result = runner.get("compile", {}) if isinstance(runner.get("compile"), dict) else {}
+    compile_evidence = runner.get("compile_evidence", {}) if isinstance(runner.get("compile_evidence"), dict) else {}
+    if (
+        diagnosis.get("failure_class") not in {
+            "vcs_compile_failure",
+            "vcs_elaboration_failure",
+        }
+        or compile_result.get("status") != "fail"
+        or compile_result.get("returncode", 0) == 0
+    ):
+        return headers
+
+    identity = read_json_if_exists(
+        run_dir / "verification" / "board_interface" / "board_source_identity.json"
+    )
+    abi = identity.get("compute_slot_abi", {})
+    boundary = abi.get("replacement_boundary", {}) if isinstance(abi, dict) else {}
+    module_evidence = (
+        boundary.get("source_module_evidence", [])
+        if isinstance(boundary, dict)
+        else []
+    )
+    replacement_module = abi.get("replacement_module_identity") if isinstance(abi, dict) else None
+    if isinstance(replacement_module, dict):
+        target_modules = {
+            str(value)
+            for value in (
+                replacement_module.get("module"),
+                replacement_module.get("name"),
+                *replacement_module.get("declared_modules", []),
+            )
+            if value
+        }
+    elif isinstance(replacement_module, str) and replacement_module:
+        target_modules = {replacement_module}
+    else:
+        slot_module = abi.get("slot_module") if isinstance(abi, dict) else None
+        target_modules = {str(slot_module)} if slot_module else set()
+    materialized_by_id: dict[str, list[dict[str, Any]]] = {}
+    for row in identity.get("materialized_sources", []):
+        if isinstance(row, dict) and row.get("source_id"):
+            materialized_by_id.setdefault(str(row["source_id"]), []).append(row)
+    selected_cell_id = str(abi.get("selected_cell_id") or "") if isinstance(abi, dict) else ""
+    for evidence_row in module_evidence:
+        if not isinstance(evidence_row, dict):
+            continue
+        source_id = str(evidence_row.get("source_id") or "")
+        expected_sha = str(evidence_row.get("source_sha256") or "")
+        declared_modules = [
+            str(value)
+            for value in evidence_row.get("declared_modules", [])
+            if value
+        ]
+        modules_for_source = sorted(set(declared_modules) & target_modules)
+        materialized_rows = materialized_by_id.get(source_id, [])
+        if (
+            not source_id
+            or not expected_sha
+            or not modules_for_source
+            or len(materialized_rows) != 1
+        ):
+            continue
+        source = materialized_rows[0]
+        owner_cells = source.get("owner_cell_ids", [])
+        source_path = resolve_run_path(run_dir, source.get("local_path") or source.get("path"))
+        if (
+            source.get("hashes_match") is not True
+            or source.get("sha256") != expected_sha
+            or (selected_cell_id and owner_cells and selected_cell_id not in owner_cells)
+            or not source_path.is_file()
+            or sha256_file(source_path) != expected_sha
+        ):
+            continue
+        source_text = source_path.read_text(encoding="utf-8", errors="replace")
+        for module_name in modules_for_source:
+            start = re.search(rf"\bmodule\s+{re.escape(module_name)}\b", source_text)
+            header_end = source_text.find(");", start.start()) if start else -1
+            if start is None or header_end < 0:
+                continue
+            source_lines = source_text.splitlines()
+            start_line = source_text.count("\n", 0, start.start()) + 1
+            header_end_line = source_text.count("\n", 0, header_end) + 1
+            port_declaration_lines = [
+                index
+                for index, source_line in enumerate(source_lines, start=1)
+                if index > header_end_line
+                and re.match(r"\s*(?:input|output|inout)\b", source_line)
+            ]
+            declaration_end_line = max(port_declaration_lines, default=header_end_line)
+            declaration = "\n".join(
+                f"{index}: {source_lines[index - 1]}"
+                for index in range(start_line, declaration_end_line + 1)
+            )
+            headers.append(
+                {
+                    "module": module_name,
+                    "authority": "current_hash_bound_sample_project_compute_slot",
+                    "path": str(source_path),
+                    "sha256": expected_sha,
+                    "source_id": source_id,
+                    "selected_cell_id": selected_cell_id or None,
+                    "module_declaration": declaration,
+                }
+            )
+    log_value = evidence.get("compile_log_path") or compile_evidence.get("log_path")
+    log_path = resolve_run_path(run_dir, log_value)
+    expected_log_sha = str(
+        evidence.get("compile_log_sha256") or compile_evidence.get("log_sha256") or ""
+    )
+    if (
+        not log_path.is_file()
+        or not expected_log_sha
+        or sha256_file(log_path) != expected_log_sha
+    ):
+        return headers
+    manifest_rows = manifest.get("source_files", [])
+    source_rows_by_name: dict[str, list[dict[str, Any]]] = {}
+    for row in manifest_rows:
+        if not isinstance(row, dict):
             continue
         path = resolve_run_path(run_dir, row.get("path"))
-        if not path.is_file() or sha256_file(path) != row.get("sha256"):
+        if path.is_file():
+            source_rows_by_name.setdefault(path.name, []).append({**row, "resolved_path": path})
+    log_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    diagnostic_rows: list[tuple[str, int, str]] = []
+    for index, line in enumerate(log_lines):
+        if not line.lstrip().startswith("Error-["):
             continue
-        text = path.read_text(encoding="utf-8")
-        for name in sorted(names):
-            start = re.search(rf"\bmodule\s+{re.escape(name)}\b", text)
-            end = text.find(");", start.start()) if start else -1
-            if start and end >= 0:
-                headers.append({"module": name, "path": str(path),
-                                "sha256": row["sha256"], "source_id": row.get("source_id"),
-                                "module_header": text[start.start():end + 2]})
+        next_error = next(
+            (cursor for cursor in range(index + 1, len(log_lines))
+             if log_lines[cursor].lstrip().startswith("Error-[")),
+            len(log_lines),
+        )
+        diagnostic_lines = log_lines[index:next_error]
+        diagnostic = "\n".join(diagnostic_lines)
+        seen_locations: set[tuple[str, int]] = set()
+        for location in re.finditer(
+            r"([^/\\,\s\"']+\.sv)[\"']?,[ \t]*(?:\r?\n[ \t]*)?(\d+)(?::|(?=\r?\n)|$)",
+            diagnostic,
+        ):
+            key = (location.group(1), int(location.group(2)))
+            if key in seen_locations:
+                continue
+            seen_locations.add(key)
+            diagnostic_rows.append((key[0], key[1], diagnostic))
+    grouped_diagnostics: dict[tuple[str, int], list[str]] = {}
+    for basename, line_number, diagnostic in diagnostic_rows:
+        grouped_diagnostics.setdefault((basename, line_number), []).append(diagnostic)
+    board_root = (run_dir / "generated" / "board_integration").resolve()
+    for (basename, line_number), diagnostic_parts in grouped_diagnostics.items():
+        candidates = source_rows_by_name.get(basename, [])
+        if len(candidates) != 1:
+            continue
+        row = candidates[0]
+        path = row["resolved_path"]
+        role = str(row.get("role") or "")
+        if (
+            not path.is_relative_to(board_root)
+            or role not in {"compute_slot_adapter", "generated_accelerator", "testbench", "protocol_monitor"}
+            or sha256_file(path) != row.get("sha256")
+        ):
+            continue
+        source_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        if not 1 <= line_number <= len(source_lines):
+            continue
+        for source_line in source_lines[line_number - 1 : min(len(source_lines), line_number + 256)]:
+            instance = re.match(
+                r"\s*([A-Za-z_$][A-Za-z0-9_$]*)\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\(",
+                source_line,
+            )
+            if instance and instance.group(1) not in {
+                "if", "for", "while", "case", "function", "task", "property",
+                "sequence", "assign", "always", "always_comb", "always_ff",
+                "always_latch", "initial", "wire", "logic", "reg",
+            }:
+                modules.add(instance.group(1))
+                break
+        diagnostic = "\n\n".join(dict.fromkeys(diagnostic_parts))
+        mixed_port_connection_error = "Mixed port connection is not allowed" in diagnostic
+        if mixed_port_connection_error:
+            # VCS points into an instance's port list. Keep the instance start
+            # and nearby ordinary connections, while projecting very large
+            # generated port-family rows by hash instead of sending hundreds
+            # of thousands of irrelevant characters back to the model.
+            selected_lines = set(
+                range(max(1, line_number - 52), min(len(source_lines), line_number + 8) + 1)
+            )
+        else:
+            selected_lines = set(
+                range(max(1, line_number - 28), min(len(source_lines), line_number + 28) + 1)
+            )
+        missing_ports = list(dict.fromkeys(
+            port
+            for port in re.findall(r'Port\s+["\']([^"\']+)["\']\s+is not defined', diagnostic)
+        ))
+        reported_ports = list(dict.fromkeys([
+            *missing_ports,
+            *re.findall(r'\bport\s+["\']([^"\']+)["\']', diagnostic, flags=re.IGNORECASE),
+        ]))
+        for port in reported_ports[:64]:
+            for index, source_line in enumerate(source_lines, start=1):
+                if re.search(rf"\.\s*{re.escape(port)}\s*\(", source_line):
+                    selected_lines.add(index)
+
+        diagnostic_symbols = list(dict.fromkeys(
+            symbol
+            for pattern in (
+                r"offending expression is\s*:\s*([A-Za-z_$][A-Za-z0-9_$]*)",
+                r"\b(?:Identifier|Variable|Signal)\s+[\"']?([A-Za-z_$][A-Za-z0-9_$]*)[\"']?\s+(?:has not been declared|is undeclared|has multiple procedural drivers)",
+                r"\bidentifier\s+[\"']([A-Za-z_$][A-Za-z0-9_$]*)[\"']\s+bound by\s+\.\*\s+wildcard.*?specification\b",
+                r"\bExpression:\s*([A-Za-z_$][A-Za-z0-9_$]*)",
+            )
+            for symbol in re.findall(pattern, diagnostic, flags=re.IGNORECASE | re.DOTALL)
+        ))
+        for symbol in diagnostic_symbols[:8]:
+            references = [
+                index
+                for index, source_line in enumerate(source_lines, start=1)
+                if re.search(rf"\b{re.escape(symbol)}\b", source_line)
+            ]
+            # Keep declarations and all bounded references for the reported
+            # symbol so the repair agent can see cross-block signal ownership.
+            selected_lines.update(references[:96])
+
+        # Chisel can emit a single named-port instance spanning many thousands
+        # of lines. VCS reports the instance's opening line, while the failing
+        # connection is near its closing line. Include the connected tile
+        # client family so the repair Agent can compare it with the certified
+        # kernel port header without receiving unrelated wide scale wiring.
+        port_families = {
+            "io_ddrTile"
+            for port in [*missing_ports, *diagnostic_symbols]
+            if port.startswith("io_ddrTileRequest_") or port.startswith("io_ddrTileResponse_")
+        }
+        if port_families:
+            for index, source_line in enumerate(source_lines, start=1):
+                if re.search(
+                    r"\.\s*io_ddrTile(?:Request|Response)_|\bio_tile_[0-4]_|"
+                    r"\b(?:tile_owner|tile_valid|tile_response_[A-Za-z0-9_$]+|scheduled_layer|active_shadow_bank)\b|"
+                    r"\bc0_ddr4_s_axi_(?:"
+                    r"ar(?:id|addr|len|size|burst|lock|cache|prot|valid|ready)|"
+                    r"r(?:ready|valid|resp|id|data|last)|"
+                    r"aw(?:id|addr|len|size|burst|lock|cache|prot|valid|ready)|"
+                    r"w(?:data|strb|last|valid|ready)|b(?:ready|valid|resp|id))\b|"
+                    r"\bio_(?:in|out)(?:_(?:ready|valid|bits_[A-Za-z0-9_$]+))?\b",
+                    source_line,
+                ):
+                    selected_lines.add(index)
+            for index in range(line_number, len(source_lines)):
+                if re.match(r"^\s*\);\s*(?://.*)?$", source_lines[index]):
+                    selected_lines.update(
+                        range(max(1, index - 4), min(len(source_lines), index + 5) + 1)
+                    )
+                    break
+
+        wildcard_axi_ports = [
+            symbol for symbol in diagnostic_symbols
+            if re.fullmatch(r"io_axi(?:Read|Write)[A-Za-z0-9_$]*", symbol)
+        ] if not mixed_port_connection_error else []
+        if wildcard_axi_ports:
+            for index, source_line in enumerate(source_lines, start=1):
+                if re.search(
+                    r"\bc0_ddr4_s_axi_[A-Za-z0-9_$]+\b|"
+                    r"\bio_axi(?:Read|Write)[A-Za-z0-9_$]*\b|"
+                    r"\bio_(?:in|out)(?:_(?:ready|valid|bits_[A-Za-z0-9_$]+))?\b|"
+                    r"\bio_tile_[0-4]_(?:request|response)_[A-Za-z0-9_$]+\b|"
+                    r"\b(?:tile_owner|tile_valid|tile_response_[A-Za-z0-9_$]+|"
+                    r"scheduled_layer|active_shadow_bank|kernel_clock|kernel_reset)\b",
+                    source_line,
+                ):
+                    selected_lines.add(index)
+
+        weight_stream_families = {
+            match.group(1)
+            for value in [*reported_ports, *diagnostic_symbols]
+            if (match := re.match(r"(io_[A-Za-z0-9_$]*(?:Weight|Bias))", value))
+        }
+        if weight_stream_families and not mixed_port_connection_error:
+            family_pattern = "|".join(
+                re.escape(family) + r"(?:_[A-Za-z0-9_$]+)?"
+                for family in sorted(weight_stream_families)
+            )
+            for index, source_line in enumerate(source_lines, start=1):
+                if re.search(
+                    rf"\b(?:{family_pattern}|c0_ddr4_s_axi_[A-Za-z0-9_$]+|"
+                    r"io_axi(?:Read|Write)[A-Za-z0-9_$]*|"
+                    r"io_(?:in|out)(?:_(?:ready|valid|bits_[A-Za-z0-9_$]+))?|"
+                    r"io_tile_[0-4]_(?:request|response)_[A-Za-z0-9_$]+|"
+                    r"tile_owner|tile_valid|tile_response_[A-Za-z0-9_$]+|"
+                    r"scheduled_layer|active_shadow_bank)\b",
+                    source_line,
+                ):
+                    selected_lines.add(index)
+
+        wildcard_cfg_ports = [
+            symbol for symbol in diagnostic_symbols
+            if symbol.startswith("io_cfg") or symbol in {"io_start", "io_position"}
+        ]
+        if wildcard_cfg_ports and not mixed_port_connection_error:
+            for index, source_line in enumerate(source_lines, start=1):
+                if re.search(
+                    r"\bcfg_data\s*\[\s*(?:5:0|6|7|12:8)\s*\]|"
+                    r"\bcfg_data_valid\b|\bio_cfg_(?:seqlen|prefill|singleQuery|position)\b|"
+                    r"\b(?:io_start|io_position|sys_rst_n|user_rst)\b",
+                    source_line,
+                ):
+                    selected_lines.add(index)
+                if re.search(r"\bif\s*\(\s*cfg_data_valid\b", source_line):
+                    selected_lines.update(
+                        range(max(1, index - 80), min(len(source_lines), index + 80) + 1)
+                    )
+
+        wildcard_status_ports = [
+            symbol for symbol in diagnostic_symbols
+            if symbol in {"io_busy", "io_done", "io_performanceCycles", "io_performanceValid"}
+        ]
+        if wildcard_status_ports and not mixed_port_connection_error:
+            for index, source_line in enumerate(source_lines, start=1):
+                if re.search(
+                    r"\b(?:io_busy|io_done|io_performance[A-Za-z0-9_$]*|"
+                    r"cnn0_batch_count|cnn0_result_count|cfg_done)\b",
+                    source_line,
+                ):
+                    selected_lines.add(index)
+
+        # A generated adapter can fail on an unexpanded marker before the
+        # kernel instance. Include the rest of that small module so the repair
+        # agent sees the marker's actual consumer and module boundary.
+        marker_line = source_lines[line_number - 1]
+        if re.search(r"@@[A-Za-z0-9_]+@@", marker_line):
+            if path.stat().st_size <= 256 * 1024:
+                selected_lines.update(range(1, len(source_lines) + 1))
+            else:
+                for index in range(line_number, min(len(source_lines), line_number + 256) + 1):
+                    selected_lines.add(index)
+                    if re.match(r"^\s*endmodule\b", source_lines[index - 1]):
+                        break
+        expanded_lines = {
+            neighbor
+            for index in selected_lines
+            for neighbor in range(max(1, index - 2), min(len(source_lines), index + 2) + 1)
+            # A generated port family can occupy one enormous physical line.
+            # Retain it when directly selected by the failure, but do not pull
+            # unrelated wiring into an anchored repair solely as a neighbor.
+            if neighbor in selected_lines or len(source_lines[neighbor - 1]) <= 4096
+        }
+        if len(expanded_lines) > 384:
+            # Keep the failing instance boundary and exact named-port rows;
+            # surrounding context is expendable when a tool reports a very
+            # large port-family failure.
+            expanded_lines = selected_lines
+        source_line_projections: list[dict[str, Any]] = []
+        excerpt_lines: list[str] = []
+        for number in sorted(expanded_lines):
+            source_line = source_lines[number - 1]
+            if mixed_port_connection_error and len(source_line.encode("utf-8")) > 4096:
+                encoded_line = source_line.encode("utf-8")
+                projection = {
+                    "line": number,
+                    "sha256": hashlib.sha256(encoded_line).hexdigest(),
+                    "byte_length": len(encoded_line),
+                    "literal_backslash_n_count": source_line.count("\\n"),
+                    "prefix": source_line[:512],
+                    "suffix": source_line[-512:],
+                }
+                source_line_projections.append(projection)
+                excerpt_lines.append(
+                    f"{number}: <oversized physical source line projected; see source_line_projections>"
+                )
+            else:
+                excerpt_lines.append(f"{number}: {source_line}")
+        excerpt = "\n".join(excerpt_lines)
+        headers.append(
+            {
+                "compile_failure_source_excerpt": {
+                    "path": str(path),
+                    "sha256": row["sha256"],
+                    "source_id": row["source_id"],
+                    "role": role,
+                    "diagnostic_line": line_number,
+                    "diagnostic": diagnostic,
+                    "diagnostic_ports": reported_ports,
+                    "diagnostic_symbols": diagnostic_symbols,
+                    "source_lines": excerpt,
+                    **({"source_line_projections": source_line_projections} if source_line_projections else {}),
+                    "edit_authority": "current hash-bound VCS failure in run-owned generated board integration source",
+                }
+            }
+        )
+    append_module_interfaces(modules)
     return headers
 
 
@@ -32638,8 +34233,6 @@ def regenerate_target_model_reference(
                 "result": materialization,
             }
         )
-        if materialization.get("status") != "pass":
-            failed_tool = "framework_dut_weight_binding_materialization"
 
     semantic_result: dict[str, Any] | None = None
     if not failed_tool:
@@ -32654,16 +34247,23 @@ def regenerate_target_model_reference(
             timeout_sec=timeout_sec,
             label="reference_regeneration_semantic_testbench",
         )
+        semantic_purpose = (
+            "refresh_semantic_diagnostics_after_incomplete_binding_materialization"
+            if materialization and materialization.get("status") != "pass"
+            else "validate_rebound_dut_weight_binding"
+        )
         tool_results.append(
             {
                 "tool": requirements_tool,
                 "role": role or requirements_tool,
-                "purpose": "validate_rebound_dut_weight_binding",
+                "purpose": semantic_purpose,
                 "result": semantic_result,
             }
         )
         if semantic_result.get("status") != "pass":
             failed_tool = requirements_tool
+        elif materialization and materialization.get("status") != "pass":
+            failed_tool = "framework_dut_weight_binding_materialization"
 
     package = {
         "schema_version": "spatialaccagent.target_model_reference_regeneration.v1",
@@ -34008,6 +35608,12 @@ def execute_verification_capability_repair(
             if single_layer_compile_rtl_repair
             else "board_semantic_rtl_repair"
             if board_semantic_rtl_repair
+            else "preflight_repair"
+            if board_preflight_repair_actionable(
+                board_integration_repair=board_integration_repair,
+                generated_sources=generated_sources,
+                current_preflight_feedback=current_board_preflight_feedback,
+            )
             else
             "bootstrap"
             if board_bootstrap_required
@@ -35443,7 +37049,7 @@ def execute_verification_capability_repair(
                 )
             ),
             (
-                "When a selected-template bug must be fixed, apply the same semantic correction to both the persistent framework template and its current generated-project copy so this run and future runs do not diverge."
+                "When both persistent and current generated copies of a selected template are listed in approved_bounded_template_repair_exact_files, apply the same semantic correction to both. If only one exact path is listed, edit only that authorized copy."
                 if source_bundle.get("editable_contract", {}).get("approved_bounded_template_repair_exact_files")
                 else "Do not return a template edit in this capability step. The compile-validated generated Scala templates are the read-only semantic baseline; template repair is reopened only after a real simulator failure localizes a DUT defect."
             ),
@@ -36873,22 +38479,23 @@ def repair_loop_waiting_frontier(
                 key: result.get(key)
                 for key in (
                     "failure_class",
-                    "blocked_reasons",
-                    "agent_contract_blockers",
                     "source_identity_sha256",
                     "source_sha256",
+                    "target_modules",
                 )
                 if result.get(key) is not None
             },
             "patch": {
-                key: patch_report.get(key)
-                for key in (
-                    "failure_class",
-                    "blocked_reasons",
-                    "agent_contract_blockers",
-                    "agent_transaction_rejection",
-                )
-                if patch_report.get(key) is not None
+                "transaction_failure_class": (
+                    patch_report.get("agent_transaction_rejection", {}).get("failure_class")
+                    if isinstance(patch_report.get("agent_transaction_rejection"), dict)
+                    else None
+                ),
+                "unchanged_pre_edit_files": (
+                    patch_report.get("agent_transaction_rejection", {}).get("unchanged_pre_edit_files", [])
+                    if isinstance(patch_report.get("agent_transaction_rejection"), dict)
+                    else []
+                ),
             },
         }
     )

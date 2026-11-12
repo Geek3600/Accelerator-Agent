@@ -21,6 +21,7 @@ from accagent.framework.stage_repair_execute import (
     capability_repair_source_bundle,
     certified_stage_harness_metadata_errors,
     execute_verification_capability_repair,
+    expand_agent_text_repeats,
     exact_board_agent_task,
     prepare_exact_board_memory_runtime_inputs,
     exact_board_preflight_feedback,
@@ -48,6 +49,43 @@ from accagent.framework.verification_evidence_contract import (
 
 
 class RepairPatchExecutionTest(unittest.TestCase):
+    def test_repeat_expansion_error_names_each_missing_marker(self) -> None:
+        edit = {
+            "path": "adapter.sv",
+            "operation": "replace_text",
+            "content": "",
+            "text_replacements": [
+                {"old_text": "old", "new_text": "@@PRESENT@@\n"},
+            ],
+            "repeat_expansions": [
+                {
+                    "marker": "@@PRESENT@@",
+                    "first_index": 0,
+                    "last_index": 1,
+                    "template": "wire x_{index};\n",
+                },
+                {
+                    "marker": "@@MISSING_A@@",
+                    "first_index": 0,
+                    "last_index": 1,
+                    "template": "wire a_{index};\n",
+                },
+                {
+                    "marker": "@@MISSING_B@@",
+                    "first_index": 0,
+                    "last_index": 1,
+                    "template": "wire b_{index};\n",
+                },
+            ],
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"@@MISSING_A@@.*text_replacements\[0\]\.new_text=0.*"
+            r"@@MISSING_B@@.*text_replacements\[0\]\.new_text=0",
+        ):
+            expand_agent_text_repeats(edit)
+
     def test_stale_board_generation_step_runs_discovery_prerequisite(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             run = Path(temp_dir)
@@ -287,6 +325,88 @@ class RepairPatchExecutionTest(unittest.TestCase):
         )
         self.assertEqual(preservation["preserved_fields"], ["stage_harnesses"])
 
+    def test_agent_declared_blocker_prevents_patch_application(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            out_dir = run_dir / "repair_execution"
+            target = run_dir / "generated" / "board_integration" / "partial.sv"
+            out_dir.mkdir(parents=True)
+
+            result = apply_agent_file_edits(
+                {
+                    "status": "ready_to_apply",
+                    "blocked_reasons": ["adapter implementation is incomplete"],
+                    "approval_required_for": [],
+                    "file_edits": [
+                        {
+                            "path": str(target),
+                            "operation": "create",
+                            "content": "module partial; endmodule\n",
+                        }
+                    ],
+                },
+                run_dir,
+                out_dir,
+                allowed_exact_files={target},
+                allow_board_integration=True,
+            )
+
+            self.assertEqual(result["status"], "blocked")
+            self.assertFalse(target.exists())
+            self.assertTrue(
+                any(
+                    "implementation agent declared blocker" in value
+                    for value in result["blockers"]
+                )
+            )
+
+    def test_empty_text_replacements_do_not_block_create_with_repeat_expansion(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            out_dir = run_dir / "repair_execution"
+            target = run_dir / "generated" / "board_integration" / "adapter.sv"
+            out_dir.mkdir(parents=True)
+
+            result = apply_agent_file_edits(
+                {
+                    "status": "ready_to_apply",
+                    "approval_required_for": [],
+                    "file_edits": [
+                        {
+                            "path": str(target),
+                            "operation": "create",
+                            "content": "module adapter;\n@@PORTS@@endmodule\n",
+                            "text_replacements": [],
+                            "repeat_expansions": [
+                                {
+                                    "marker": "@@PORTS@@",
+                                    "first_index": 0,
+                                    "last_index": 1,
+                                    "template": "wire port_{index};\n",
+                                }
+                            ],
+                        }
+                    ],
+                },
+                run_dir,
+                out_dir,
+                allowed_exact_files={target},
+                allow_board_integration=True,
+            )
+            written_content = target.read_text(encoding="utf-8") if target.exists() else ""
+
+        self.assertEqual(result["status"], "pass", result["blockers"])
+        self.assertEqual(
+            written_content,
+            "module adapter;\nwire port_0;\nwire port_1;\nendmodule\n",
+        )
+        self.assertTrue(
+            any(
+                row.get("operation") == "ignore_empty_optional_text_replacements"
+                for row in result["protocol_normalizations"]
+            )
+        )
+
     def test_missing_board_manifest_can_be_initialized_with_merge_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run"
@@ -387,6 +507,12 @@ class RepairPatchExecutionTest(unittest.TestCase):
         self.assertIn("exact sample-board wrapper", prompt)
         self.assertIn("not compile-only prerequisites", prompt)
         self.assertIn("stage2_vcs_compile_authority", prompt)
+        self.assertIn("its absence alone is not a blocker", prompt)
+        self.assertIn("replaceable implementation input, not physical ABI evidence", prompt)
+        self.assertIn("exact compute_slot_abi JSON path", prompt)
+        self.assertIn("match the same exact port name", prompt)
+        self.assertIn("Do not infer a direction from a neighboring row", prompt)
+        self.assertIn("block only when those primary physical sources conflict", prompt)
         self.assertIn("status=ready_to_apply", prompt)
         self.assertIn("normal next step, not blockers", prompt)
         self.assertNotIn("target-model golden comparison", prompt)
@@ -523,6 +649,95 @@ class RepairPatchExecutionTest(unittest.TestCase):
         self.assertEqual(plan["top_module"], "BoardTb")
         self.assertEqual(testbench["top_module"], "BoardTb")
         self.assertEqual(testbench["declared_modules"], ["BoardTb"])
+
+    def test_compile_only_board_rebinds_hash_identical_sources_from_prior_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            run_dir = root / "current_run"
+            prior_root = root / "prior_run" / "generated" / "board_integration"
+            current_root = run_dir / "generated" / "board_integration"
+            prior_root.mkdir(parents=True)
+            current_root.mkdir(parents=True)
+            adapter_text = "module ComputeSlot; endmodule\n"
+            testbench_text = "module BoardTb; ComputeSlot dut(); endmodule\n"
+            adapter_hash = hashlib.sha256(adapter_text.encode("utf-8")).hexdigest()
+            testbench_hash = hashlib.sha256(testbench_text.encode("utf-8")).hexdigest()
+            for directory in (prior_root, current_root):
+                (directory / "compute_slot.sv").write_text(adapter_text, encoding="utf-8")
+                (directory / "board_compile_tb.sv").write_text(testbench_text, encoding="utf-8")
+            old_adapter = prior_root / "compute_slot.sv"
+            old_testbench = prior_root / "board_compile_tb.sv"
+            manifest = {
+                "multilayer_harness": {
+                    "top_module": "ComputeSlot",
+                    "source_files": [{
+                        "path": str(old_adapter),
+                        "sha256": adapter_hash,
+                        "role": "compute_slot_adapter",
+                        "source_id": "board.compute_slot",
+                    }],
+                },
+                "board_simulation_preflight_plan": {
+                    "top_module": "BoardTb",
+                    "testbench": {
+                        "source": {
+                            "path": str(old_testbench),
+                            "sha256": testbench_hash,
+                            "source_id": "board.compile_tb",
+                        },
+                        "top_module": "BoardTb",
+                    },
+                },
+            }
+
+            normalized = canonicalize_exact_board_manifest_declarations(
+                manifest,
+                run_dir,
+                run_dir / "repair_execution",
+            )
+
+        harness_source = normalized["multilayer_harness"]["source_files"][0]
+        testbench_source = normalized["board_simulation_preflight_plan"]["testbench"]["source"]
+        self.assertEqual(harness_source["path"], str(current_root / "compute_slot.sv"))
+        self.assertEqual(harness_source["sha256"], adapter_hash)
+        self.assertEqual(testbench_source["path"], str(current_root / "board_compile_tb.sv"))
+        self.assertEqual(testbench_source["sha256"], testbench_hash)
+
+    def test_compile_only_board_does_not_rebind_prior_run_source_when_hash_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            run_dir = root / "current_run"
+            prior_root = root / "prior_run" / "generated" / "board_integration"
+            current_root = run_dir / "generated" / "board_integration"
+            prior_root.mkdir(parents=True)
+            current_root.mkdir(parents=True)
+            old_text = "module ComputeSlot; endmodule\n"
+            (prior_root / "compute_slot.sv").write_text(old_text, encoding="utf-8")
+            (current_root / "compute_slot.sv").write_text(
+                "module ComputeSlot(input logic changed); endmodule\n",
+                encoding="utf-8",
+            )
+            old_path = prior_root / "compute_slot.sv"
+            manifest = {
+                "multilayer_harness": {
+                    "top_module": "ComputeSlot",
+                    "source_files": [{
+                        "path": str(old_path),
+                        "sha256": hashlib.sha256(old_text.encode("utf-8")).hexdigest(),
+                        "role": "compute_slot_adapter",
+                        "source_id": "board.compute_slot",
+                    }],
+                }
+            }
+
+            normalized = canonicalize_exact_board_manifest_declarations(
+                manifest,
+                run_dir,
+                run_dir / "repair_execution",
+            )
+
+        source = normalized["multilayer_harness"]["source_files"][0]
+        self.assertEqual(source["path"], str(old_path))
 
     def test_stage2_compile_authority_includes_declared_modules(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -765,6 +980,116 @@ class RepairPatchExecutionTest(unittest.TestCase):
         self.assertIn("replace leaves the file unchanged", result["blockers"][0])
         self.assertEqual(current_content, content)
 
+    def test_same_path_text_replacements_are_coalesced_atomically(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            source = run_dir / "generated" / "rtl" / "adapter.sv"
+            source.parent.mkdir(parents=True)
+            before = "wire req_valid = 1'b0;\nwire [31:0] req_count = 0;\n"
+            source.write_text(before, encoding="utf-8")
+            source_sha256 = hashlib.sha256(before.encode("utf-8")).hexdigest()
+
+            result = apply_agent_file_edits(
+                {
+                    "status": "ready_to_apply",
+                    "approval_required_for": [],
+                    "file_edits": [
+                        {
+                            "path": str(source),
+                            "operation": "replace_text",
+                            "expected_sha256": source_sha256,
+                            "content": "",
+                            "text_replacements": [
+                                {
+                                    "old_text": "wire req_valid = 1'b0;",
+                                    "new_text": "wire req_valid = 1'b1;",
+                                }
+                            ],
+                        },
+                        {
+                            "path": str(source),
+                            "operation": "replace_text",
+                            "expected_sha256": source_sha256,
+                            "content": "",
+                            "text_replacements": [
+                                {
+                                    "old_text": "wire [31:0] req_count = 0;",
+                                    "new_text": "wire [31:0] req_count = 32'd4;",
+                                }
+                            ],
+                        },
+                    ],
+                },
+                run_dir,
+                run_dir / "repair_execution",
+                allowed_exact_files={source},
+                allowed_semantic_rtl_files={source},
+            )
+
+            self.assertEqual(result["status"], "pass", result["blockers"])
+            self.assertEqual(len(result["files"]), 1)
+            self.assertIn(
+                "coalesce_same_path_text_replacements",
+                [row.get("operation") for row in result["protocol_normalizations"]],
+            )
+            self.assertEqual(
+                source.read_text(encoding="utf-8"),
+                "wire req_valid = 1'b1;\nwire [31:0] req_count = 32'd4;\n",
+            )
+
+    def test_coalesced_text_replacements_reject_missing_anchor_without_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            source = run_dir / "generated" / "rtl" / "adapter.sv"
+            source.parent.mkdir(parents=True)
+            before = "wire req_valid = 1'b0;\nwire [31:0] req_count = 0;\n"
+            source.write_text(before, encoding="utf-8")
+            source_sha256 = hashlib.sha256(before.encode("utf-8")).hexdigest()
+
+            result = apply_agent_file_edits(
+                {
+                    "status": "ready_to_apply",
+                    "approval_required_for": [],
+                    "file_edits": [
+                        {
+                            "path": str(source),
+                            "operation": "replace_text",
+                            "expected_sha256": source_sha256,
+                            "content": "",
+                            "text_replacements": [
+                                {
+                                    "old_text": "wire req_valid = 1'b0;",
+                                    "new_text": "wire req_valid = 1'b1;",
+                                }
+                            ],
+                        },
+                        {
+                            "path": str(source),
+                            "operation": "replace_text",
+                            "expected_sha256": source_sha256,
+                            "content": "",
+                            "text_replacements": [
+                                {
+                                    "old_text": "wire missing = 1'b0;",
+                                    "new_text": "wire missing = 1'b1;",
+                                }
+                            ],
+                        },
+                    ],
+                },
+                run_dir,
+                run_dir / "repair_execution",
+                allowed_exact_files={source},
+                allowed_semantic_rtl_files={source},
+            )
+
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(result["files"], [])
+            self.assertTrue(
+                any("old_text must match exactly once" in item for item in result["blockers"])
+            )
+            self.assertEqual(source.read_text(encoding="utf-8"), before)
+
     def test_empty_json_replace_text_noop_does_not_reject_other_agent_edits(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run"
@@ -829,6 +1154,51 @@ class RepairPatchExecutionTest(unittest.TestCase):
                 'object Harness { val probe = "new" }\n',
             )
             self.assertEqual(manifest.read_text(encoding="utf-8"), manifest_content)
+
+    def test_board_manifest_text_repair_reparses_json_before_write(self) -> None:
+        for replacement, expected_status in (
+            ('"compute_slot_adapter"', "pass"),
+            ("invalid_json", "blocked"),
+        ):
+            with self.subTest(replacement=replacement), tempfile.TemporaryDirectory() as temp_dir:
+                run_dir = Path(temp_dir) / "run"
+                manifest = run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
+                manifest.parent.mkdir(parents=True)
+                before = '{"source": {"role": "testbench"}, "retained_node": "node.17"}\n'
+                manifest.write_text(before, encoding="utf-8")
+                # This regression isolates edit transport; board source and VCS
+                # authority validation have separate fixtures and real-tool gates.
+                with patch(
+                    "accagent.framework.stage_repair_execute.canonicalize_exact_board_manifest_declarations",
+                    side_effect=lambda value, *args, **kwargs: value,
+                ):
+                    result = apply_agent_file_edits(
+                        {
+                            "status": "ready_to_apply",
+                            "file_edits": [{
+                                "path": str(manifest),
+                                "operation": "replace_text",
+                                "content": "",
+                                "text_replacements": [{
+                                    "old_text": '"testbench"',
+                                    "new_text": replacement,
+                                }],
+                            }],
+                        },
+                        run_dir,
+                        run_dir / "repair_execution",
+                        allowed_exact_files={manifest},
+                        allow_board_integration=True,
+                    )
+                self.assertEqual(result["status"], expected_status, result["blockers"])
+                if expected_status == "pass":
+                    written = json.loads(manifest.read_text(encoding="utf-8"))
+                    self.assertEqual(written["source"]["role"], "compute_slot_adapter")
+                    self.assertEqual(written["retained_node"], "node.17")
+                    self.assertEqual(result["files"][0]["operation"], "replace")
+                else:
+                    self.assertEqual(manifest.read_text(encoding="utf-8"), before)
+                    self.assertTrue(any("invalid JSON" in value for value in result["blockers"]))
 
     def test_nonempty_json_replace_text_still_rejects_the_atomic_edit_batch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2035,9 +2405,14 @@ class RepairPatchExecutionTest(unittest.TestCase):
                 "weight_manifest_generate",
                 "target_model_reference_generate",
                 "semantic_testbench_generate",
+                "semantic_testbench_generate",
             ],
         )
-        self.assertEqual(len(package["tool_results"]), 4)
+        self.assertEqual(len(package["tool_results"]), 5)
+        self.assertEqual(
+            package["tool_results"][-1]["purpose"],
+            "refresh_semantic_diagnostics_after_incomplete_binding_materialization",
+        )
 
     def test_capability_bundle_preserves_earliest_failed_real_tool_context(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

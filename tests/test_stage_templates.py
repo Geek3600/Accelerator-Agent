@@ -9,6 +9,7 @@ from accagent.framework.stage_templates import (
     implementation_contract_for_state,
     normalize_legacy_template_selection,
     template_source_checks,
+    validate_binding,
 )
 from tests.test_stage_pipeline import ROOT, adapter_path, state_for
 
@@ -57,6 +58,30 @@ def stage2_selection(family: str, root: Path) -> dict:
 
 
 class SemanticTemplateBindingTest(TestCase):
+    def test_attention_projection_width_is_optional_and_separate_from_residual_width(self) -> None:
+        bound = {
+            "hidden_size": {"status": "bound", "value": 1152},
+            "num_q_heads": {"status": "bound", "value": 4},
+            "num_kv_heads": {"status": "bound", "value": 1},
+            "head_dim": {"status": "bound", "value": 256},
+        }
+
+        self.assertEqual(validate_binding("self_attention", bound, {}), [])
+        self.assertEqual(
+            validate_binding(
+                "self_attention",
+                {
+                    **bound,
+                    "attention_projection_size": {"status": "bound", "value": 1152},
+                },
+                {},
+            ),
+            [
+                "self_attention: attention_projection_size=1152 "
+                "does not equal num_q_heads*head_dim=1024"
+            ],
+        )
+
     def test_legacy_non_rope_component_normalizes_read_only_only_for_exact_old_shape(self) -> None:
         with TemporaryDirectory() as temp:
             expected = stage2_selection("gpt2", Path(temp))

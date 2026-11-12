@@ -17,6 +17,7 @@ object PhysicalImplementation {
   private var cacheTileCountOverride = 0
   private var refillDataWidthOverride = 0
   private var crossTokenReuseOverride = 0
+  private var attentionOutputCrossTokenReuseOverride = 0
   private var numericPolicyConfigured = false
   private var numericWeightBits = 0
   private var numericActivationBits = 0
@@ -67,11 +68,19 @@ object PhysicalImplementation {
     crossTokenReuseOverride = tokens
   }
 
+  def configureAttentionOutputCrossTokenReuse(tokens: Int): Unit = {
+    require(tokens > 0, s"attention output cross-token reuse count must be positive, got: $tokens")
+    attentionOutputCrossTokenReuseOverride = tokens
+  }
+
   def resolveRefillDataWidthBits(default: Int): Int =
     if (refillDataWidthOverride > 0) refillDataWidthOverride else default
 
   def resolveCrossTokenReuseTokens(default: Int): Int =
     if (crossTokenReuseOverride > 0) crossTokenReuseOverride else default
+
+  def resolveAttentionOutputCrossTokenReuseTokens(default: Int): Int =
+    if (attentionOutputCrossTokenReuseOverride > 0) attentionOutputCrossTokenReuseOverride else default
 
   def configureFpgaIp(
     computeBackend: String,

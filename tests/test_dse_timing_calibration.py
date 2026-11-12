@@ -27,7 +27,7 @@ class TimingCycleCalibrationTest(unittest.TestCase):
             self.assertEqual(result["latency_cycles"],36)
             self.assertFalse((path.parent/"source_cycle_analysis.json").exists())
 
-    def test_schedule_context_failure_retries_without_editing_hardware(self):
+    def test_schedule_context_failure_does_not_block_backend_measurement(self):
         import tempfile,json
         from pathlib import Path
         from unittest.mock import patch
@@ -38,11 +38,11 @@ class TimingCycleCalibrationTest(unittest.TestCase):
             (out/"optimization_request.json").write_text(json.dumps({
                 "scope":"existing_design_timing","calibrate_timing_cycles":True}))
             with patch("accagent.framework.dse_timing_calibration.compiled_source_context",side_effect=ValueError("missing context")), \
-                 patch("accagent.framework.codegen_source_repair.repair_timing_sources",side_effect=AssertionError("no hardware edits")), \
-                 patch.object(backend,"timing_repair_followup",return_value=(out,{})) as followup:
-                backend.compiled_cycle_followup(root/"state.json",root,out)
-            plan=followup.call_args.args[2]
-            self.assertEqual(plan["timing_source_repair"]["status"],"cycle_analysis_pending")
+                 patch("accagent.framework.codegen_source_repair.repair_timing_sources",side_effect=AssertionError("no hardware edits")):
+                self.assertIsNone(backend.compiled_cycle_followup(root/"state.json",root,out))
+            qor=json.loads((out/"qor/qor_metrics.json").read_text())
+            self.assertEqual(qor["performance_estimation"]["status"],"unavailable")
+            self.assertEqual(qor["performance_estimation_error"],"missing context")
 
     def test_compile_failure_does_not_enter_schedule_analysis_loop(self):
         import tempfile,json

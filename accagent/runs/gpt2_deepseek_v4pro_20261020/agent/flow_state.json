@@ -322,9 +322,2593 @@
       "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/code_generation/sacg_state.json",
       "stage": "code_generation",
       "stage_passed": true
+    },
+    {
+      "attempt_count": 1,
+      "decision": "proceed",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/flow_events/007_proceed.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/flow_actions/007_flow_controller_promote_verification_artifacts_to_debug_loop.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/flow_actions/007_debug_loop_execute_layer1_operator_leaf_vcs_compile_only.json"
+      ],
+      "flow_event_index": 7,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "sacg_memory_check",
+              "verification_action_audit_check",
+              "stage_retry_request_check",
+              "stage_backtrack_request_check",
+              "stage_artifact_trust_barrier_check"
+            ],
+            "action_type": "verification_gate_promotion",
+            "consumes": [
+              "artifact.stage5.verification_plan",
+              "artifact.stage5.verification_artifact_contract",
+              "artifact.stage5.llm_action_audit",
+              "artifact.stage5.llm_io_quality",
+              "sacg_memory_truth"
+            ],
+            "id": "flow_controller.promote_verification_artifacts_to_debug_loop",
+            "on_failure": "Retry the same verification_artifacts transition after correcting the SACG memory update or audit record; do not rewind hardware design stages for orchestration/memory failures.",
+            "produces": [
+              "sacg_memory.verification_artifacts_promotion_record",
+              "sacg_memory.debug_loop_downstream_obligations"
+            ],
+            "rationale": "All current-stage verification planning checks passed, command returncode is 0, LLM action audit is pass, and SACG truth has no active contamination barriers, retry requests, or backtrack requests. Promote the stage and record downstream debug_loop obligations.",
+            "requires_approval": false,
+            "stage": "verification_artifacts",
+            "tool_roles": [
+              "sacg_memory_update",
+              "verification_action_audit",
+              "sacg_memory_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "case_real_weight_artifacts",
+              "case_target_model_reference",
+              "case_semantic_testbench",
+              "case_stage_leaf_static",
+              "boundary_contract_check",
+              "case_leaf_functional",
+              "required_real_tool_evidence_check",
+              "verification_action_audit_check"
+            ],
+            "action_type": "verification_gate_execution",
+            "consumes": [
+              "artifact.stage5.verification_plan",
+              "artifact.stage5.verification_artifact_contract",
+              "artifact.stage4.parameter_binding",
+              "artifact.stage5.generated_code_package",
+              "artifact.stage5.memory_layout",
+              "artifact.input.model_config",
+              "artifact.input.numeric_policy",
+              "artifact.input.case_adapter"
+            ],
+            "id": "debug_loop.execute_layer1_operator_leaf_vcs_compile_only",
+            "on_failure": "Run tool-output -> failure_slice_localization -> bounded repair -> rerun for the failed leaf gate; do not promote to single_transformer_layer or board AXI/DDR while layer1 VCS compile/elaborate/link evidence is absent.",
+            "produces": [
+              "artifact.stage7.operator_leaf_layer1_vcs_compile_only_evidence",
+              "verification/real_tools/case_stage_leaf_static__layer1_report.json",
+              "verification/real_tools/case_leaf_functional__layer1_report.json"
+            ],
+            "rationale": "Since no lower-layer certificates exist in hierarchical_learning_context, execute the bottom-most layer first with the registered compile-only VCS tools: prepare immutable weights/reference/semantic testbench, run leaf static checks, materialize boundary contracts, and run operator-leaf functional gates without invoking simulation.",
+            "requires_approval": false,
+            "stage": "debug_loop",
+            "targeted_replay_plan": {},
+            "tool_roles": [
+              "case_weight_manifest_generate",
+              "case_real_weight_artifacts",
+              "case_target_model_reference",
+              "case_semantic_testbench",
+              "case_stage_leaf_static",
+              "boundary_contract_check",
+              "case_leaf_functional"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/007_verification_artifacts/llm/flow_controller_agent_result.json",
+        "agent_status": "proceed",
+        "agent_summary": "verification_artifacts is passed with command returncode 0, current-stage static and contract checks closed, LLM action audit ungrounded count 0, and SACG truth shows zero active contamination barriers, zero open retry requests, and zero open backtrack requests. The design team should proceed to debug_loop and execute the planned verification gates bottom-up using the existing compile-only VCS modes. Pending runtime/golden/backend checks remain downstream execution obligations, not current-stage blockers."
+      },
+      "reason": "stage passed and no open backtrack request",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/flow_handoff_sources/007_49901bd1462d5064cc02e7222fa539f14ec7095ec6f3e071cc594369ed9d0be3.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification_artifacts/sacg_state.json",
+      "stage": "verification_artifacts",
+      "stage_passed": true
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/008_retry_replan.json"
+      ],
+      "flow_event_index": 8,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: e3892256-9d47-4bf4-8497-7840be01be3b)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/008_bd03af892b59e913b515a320540b01bb4a0cdeec081c97aa4a755e98d96c26e0.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/009_retry_replan.json"
+      ],
+      "flow_event_index": 9,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: d94b4246-3059-4349-894d-d01978195c6d)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/009_837edf04a4076b2573976f877d771e3e138832ae36cba62666c44c591bd8763c.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/010_retry_replan.json"
+      ],
+      "flow_event_index": 10,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: c13208a0-036d-4f22-8939-7357e39ebd41)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/010_e3347d098ab1a8e1352625d21ccb4b57d44b3e84ca3ad8150c06f3c5931ac7eb.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/011_retry_replan.json"
+      ],
+      "flow_event_index": 11,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 0648cc90-09c4-4e4c-a074-ef399681080f)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/011_4e24442fc28d88ed6621b3e6752b4e537fd11f678c69bbfa796b1753b342130b.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/012_retry_replan.json"
+      ],
+      "flow_event_index": 12,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: e565fbb1-480e-40e2-b05f-fad6070f10d4)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/012_ad06b12954c59637aee8e9d4a59363a532317e2d4b95ac0043e64a9c52e7abac.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/013_retry_replan.json"
+      ],
+      "flow_event_index": 13,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 8eb7e690-0d37-4bf5-800a-6bea97da7674)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/013_8b904b6d13a468c6cfff35aefd33add53176066302614d4105889633a59dc213.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/014_retry_replan.json"
+      ],
+      "flow_event_index": 14,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 4b39c92e-6325-4998-a3bf-667c469a8dee)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/014_e727ca2ead2cdeee1689567ffaa39e6aa56a0f1d5381902e36eac393243874f0.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/015_retry_replan.json"
+      ],
+      "flow_event_index": 15,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 05e6a3d6-1d5b-4b02-b462-c465dfd4948b)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/015_9d66bbacbe67ad5174c194196041a4e60bb9085738c5649c93c2dcc8f42af6c1.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/016_retry_replan.json"
+      ],
+      "flow_event_index": 16,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: a5b14884-2551-424d-a584-23cd7eb6ce84)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/016_2c081618ecf01f39622dca6cdccb2ca478c03c6b7038d0b1ecae0b893227daef.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/017_retry_replan.json"
+      ],
+      "flow_event_index": 17,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 4b9544c4-6951-4d43-9584-d227f3647e66)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/017_45b8204bcd0c3b160d535751fbfa0825e4e0ca74a27d040f87cdf72dcde16fe0.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/018_retry_replan.json"
+      ],
+      "flow_event_index": 18,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 5d17612b-c604-4739-bb5e-d256033b9305)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/018_5a332f5653950aad91b2784c0f6dab6be7a799e534706df5660c398975515c71.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/019_retry_replan.json"
+      ],
+      "flow_event_index": 19,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 8b87d861-a29b-479a-9e79-24d523b38b9f)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/019_64c4b441322f36f2986175c30c63b026bf6a755adf09985e3390f219f144eef1.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/020_retry_replan.json"
+      ],
+      "flow_event_index": 20,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: a3cfb528-bac0-455e-8a89-413b7c6cc557)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/020_155a229f4a36f0ddaa0863dda2c6f3bc864076ba3022811bf9171c1c02cb80ef.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/021_retry_replan.json"
+      ],
+      "flow_event_index": 21,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: d36b5efc-bfe3-4b99-9a94-d84f43d2c567)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/021_171e3674dc43e8ea0e791f2afe32c6086db862481ab98e2bc9da7629d3d9e485.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/022_retry_replan.json"
+      ],
+      "flow_event_index": 22,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: e678a10f-f853-440e-8050-37768384bc13)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/022_d1ba830782ac4c8fd1b4894122e8c62a8db14183dd1997ed9738284beaa2a406.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/023_retry_replan.json"
+      ],
+      "flow_event_index": 23,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: d4ce737c-5064-480b-a928-d5d543d7e6f0)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/023_3e19a9ec65922214e9695e0c3f83847dbcc8b95e561f003238c6a371b8101a51.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/024_retry_replan.json"
+      ],
+      "flow_event_index": 24,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: cb44e4be-843f-4670-9cfa-80290cb536b2)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/024_ac9adcd0f53bd1538e03ff3db39a76e8ee7f570b89adbbc00988dae386ee97da.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/025_retry_replan.json"
+      ],
+      "flow_event_index": 25,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 57892e01-d1e6-424d-a7e8-bc331d066d18)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/025_1e1bde80b2af647dcc8072077fe01bc1cfdd9dc7f765e8b03d9e220719a19439.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/026_retry_replan.json"
+      ],
+      "flow_event_index": 26,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: ff6622c1-51c8-401d-92a8-268b7b0b43ea)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/026_5cff4f73fe568d0081e58882064a31685c3f141cde07beb5c802f4792414cfc0.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/027_retry_replan.json"
+      ],
+      "flow_event_index": 27,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: b5f5606a-dfbc-4573-ab84-59cd502334c2)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/027_463ab71222f9cd6f39d8cf4093a023d6e45541b5e0863318182661c64ec4a393.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/028_retry_replan.json"
+      ],
+      "flow_event_index": 28,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 3bc4dac9-9659-4ab5-b687-de2f357a9ae0)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/028_b7af76d4e4ecd4dfec97937db76e4f6f53b8257fb40c3ef82f6c58cc8f0961ab.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/029_retry_replan.json"
+      ],
+      "flow_event_index": 29,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 08c43b9f-43d7-48bc-86d3-553364ce5ee9)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/029_be02734a4018c7734a6a6732f4b9aba142c7d24c4d098bc8f3d8b46e54442f65.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/030_retry_replan.json"
+      ],
+      "flow_event_index": 30,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 7452f9ee-c6da-40c7-8c66-75cfec483935)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/030_5d16c9224b5ce1f49b7d7d2de749f610cfe1df432f0b31dbad0842048d93091d.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/031_retry_replan.json"
+      ],
+      "flow_event_index": 31,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: da7ab7e9-5efd-451c-b943-ba8e657951f2)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/031_0eb5f02bcbeec07453035a0c32cab8b3365f4db94de74635e0b1793a496be0b5.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/032_retry_replan.json"
+      ],
+      "flow_event_index": 32,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 61626b6f-7625-45fc-8b56-f3b468374485)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/032_62225d6d5c97895b6982b7567b0adae73b8e5a860714d247de0c04cf1c819a74.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/033_retry_replan.json"
+      ],
+      "flow_event_index": 33,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: af44c8b6-7bb3-42ee-915b-930d37cb46d3)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/033_bc249d932dfb7262f24191ff66770cf67a99157a19617529e848820f2a789c7a.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/034_retry_replan.json"
+      ],
+      "flow_event_index": 34,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: db8c1c6f-6194-4098-98b7-f91a25f1fdeb)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/034_f86635427902b132a72caefcdd53e4cf60151c183cf6d993f30b7858b73f3ec5.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/035_retry_replan.json"
+      ],
+      "flow_event_index": 35,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: e987dae4-af77-443e-b539-c3d2433188a2)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/035_61d69aad4dac2f167b6b831b8f26296fa936c84ab260c6bcea3f0d3cf621a0c2.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/036_retry_replan.json"
+      ],
+      "flow_event_index": 36,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 76589566-aecc-4623-9f5d-6568f8781aaa)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/036_6664e4c067b36bc2c04ab9ebb47c5e86d158f102aeabcd91dbc00deb92d51ed9.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/037_retry_replan.json"
+      ],
+      "flow_event_index": 37,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: d5510e7c-c97b-41c5-b306-12c673f43ffe)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/037_fe77b51f493a58e76022937b363f0090035d318362b658f3d16cab8c8925b43d.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/038_retry_replan.json"
+      ],
+      "flow_event_index": 38,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: d54ebf5c-a5f2-46f1-9036-a18a11d37e17)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/038_03e4fb8c122f9d2529cfcaf02929511c90ef53a30673800bee0a8b461b6a3575.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/039_retry_replan.json"
+      ],
+      "flow_event_index": 39,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 1cd359ed-62ad-4b00-9cac-cf44a5656511)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/039_11f79f40006778b1b787c0762646562e38577dd3ecde84bfe486306f253d0461.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/040_retry_replan.json"
+      ],
+      "flow_event_index": 40,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 1b4b3906-dba9-41d9-9539-edb7f0932bbd)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/040_0b8753a97a80a7180dbe59294d944132f019c8b5588c14560d4667758fd57992.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/041_retry_replan.json"
+      ],
+      "flow_event_index": 41,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 3d73e78c-a2d1-4f36-a98b-8f4233667a53)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/041_aa1e3fa82fbef7b7bb5aed8c32e2ce0e31395d5dac1c28feccb6eec6fec7b3c1.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/042_retry_replan.json"
+      ],
+      "flow_event_index": 42,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: abef0343-814e-40c6-b62d-8c3dcf736d51)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/042_6ab3acc7e366380a6dc16416a5c225e2919af6b397983b5d895b4d5ba3e117c1.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/043_retry_replan.json"
+      ],
+      "flow_event_index": 43,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 61f13492-3b20-4438-ba7a-816d168defda)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/043_b7875620e9ebb03900d42860bff6034c9beea876b88c5edec11604251448efeb.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/044_retry_replan.json"
+      ],
+      "flow_event_index": 44,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 3b47d4c7-21ed-4d83-9bf9-ffa6531c10fc)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/044_b2859d2d42154f0f8a9cd7ec42efc48cbae99c7430e0a9796f854fe14989b11b.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/045_retry_replan.json"
+      ],
+      "flow_event_index": 45,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 09d085d4-3d8a-4e83-b622-e7b44f82a607)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/045_085191be8f7ca2767dfba84831ba33261f6c817d75b8d22933d187b6556e07a8.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/046_retry_replan.json"
+      ],
+      "flow_event_index": 46,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 00a0226c-65bb-4b30-b2d8-564e067a95a4)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/046_698cdb9dd4c493ef805ae912a7057007918d1d1e3a1c017dc9805706d680af57.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/047_retry_replan.json"
+      ],
+      "flow_event_index": 47,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: ce53bff1-99f6-4414-85a9-5da44bbbbb35)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/047_4c426f63bea79796b126911cc549548cd0b1f13bdd6df5fcd140f6995afe9cdd.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/048_retry_replan.json"
+      ],
+      "flow_event_index": 48,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 8b1047b6-e8f7-4ec7-bad1-577ee5a26111)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/048_a9070ab56621cc62d348fbf56b9cd721d785f59cda2746b15c559fbc74f0e24e.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/049_retry_replan.json"
+      ],
+      "flow_event_index": 49,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: b9a983fa-3220-4210-8f0e-f8803261d1d3)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/049_93e6ab4b00bf9e6305b31be5c0e14d4a28eae4c8808a966d15e65293edcd3478.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/050_retry_replan.json"
+      ],
+      "flow_event_index": 50,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: d884b87e-c387-47c6-97ce-d99b11143c4b)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/050_8494a9a1340550d5542c292ef681affa27a4a208099e234184420cb0b440e5f6.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/051_retry_replan.json"
+      ],
+      "flow_event_index": 51,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: e7d420d0-d0c0-4aa7-97d6-e81cd46ec784)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/051_f6993f2e8f9c036426ff1ccae5a78ec76fb54021bc04671a142b4d3bff540621.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/052_retry_replan.json"
+      ],
+      "flow_event_index": 52,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 4f25c93d-1cf1-493f-b97a-2d2787868fb2)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/052_53ae65cc3990af88f6fc08db73a33e22dea729f1a08eded4c2b6d53f94e97175.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/053_retry_replan.json"
+      ],
+      "flow_event_index": 53,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 658a5a05-36bb-49c0-8644-7397f17141f7)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/053_65d0cadec3348ff7c859b7b1083d5d1446f81f4db6401dc0f42f67df70ce1ac1.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/054_retry_replan.json"
+      ],
+      "flow_event_index": 54,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: ad5fa39f-0d6d-427d-9e6d-6c66ce4de1d9)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/054_e526321f7a2816bbf11bc15c6419dc055413cf73fcd55d8d1ca887f691393429.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/055_retry_replan.json"
+      ],
+      "flow_event_index": 55,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 92c06b10-e478-4fbe-8efb-e2646bf13f81)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/055_ce9801cfeddf1ac1804470f96689db72d02be8db4d498a55a98ce74b7bdab316.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/056_retry_replan.json"
+      ],
+      "flow_event_index": 56,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: f1185f40-64da-4805-bdc9-d22b56fdc149)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/056_3e51ce92704416a174d6c03d2e5be096971926999520632d70c33c722ffe4257.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/057_retry_replan.json"
+      ],
+      "flow_event_index": 57,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: af238994-f04f-4434-8fe0-7b9d9d8ae18b)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/057_b7c37bcd39fd2082bb438dfa70a5e7a38674be50534aebc65f70c832d21cb095.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/058_retry_replan.json"
+      ],
+      "flow_event_index": 58,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 18a672ce-17d3-4e79-a9c3-117d2a1dcf77)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/058_9c85f69fe68f6ea4558b4305dd6fd84141108faefcb02e48336b5e14251450c2.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/059_retry_replan.json"
+      ],
+      "flow_event_index": 59,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 2632db98-ad75-4a54-9967-6d0bba587587)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/059_665f225e9e62f64b68de102c775a8a4d7d910c163ec7a88d32cf96345fd3d12b.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/060_retry_replan.json"
+      ],
+      "flow_event_index": 60,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 64fac5fb-0f63-4de8-83e7-8d722484339d)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/060_d787d85674afde8efe26041925f2dacc7f701cdedd96cdb71e3d3a598d3de0b7.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/061_retry_replan.json"
+      ],
+      "flow_event_index": 61,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: eeaccfd0-2e72-47e6-ba3b-26941b409730)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/061_5101e179c520a75ff223d149befc9969a3fc370b2b7bdf76f89c34d057c71f25.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/062_retry_replan.json"
+      ],
+      "flow_event_index": 62,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 7e7987fd-b8df-4659-8e67-14125743840e)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/062_f0ed5cc2fa022c71fa5bfe2d56a81cd8467d9ac16d5cd60db81ef7f1b06a85bf.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/063_retry_replan.json"
+      ],
+      "flow_event_index": 63,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 25e606bb-b74e-49af-9849-1505ddbdc92e)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/063_d4a693f9ee8043fb28435fa93724df04aedacf6a1214475325bf925568ad25d7.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/064_retry_replan.json"
+      ],
+      "flow_event_index": 64,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 75f2d7a7-b46e-40d8-af58-44a9f52438a6)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/064_91bbec4d9836fa435dd005998c8388dc8119be11e34125c0a7c51fb6b6105b30.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/065_retry_replan.json"
+      ],
+      "flow_event_index": 65,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 35a7d33c-dcac-4c22-84b2-f91d431cb9cc)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/065_6a92e43eafd4b015e643b90f691be228ae32f1bf189fd84e085b344a0bc65286.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/066_retry_replan.json"
+      ],
+      "flow_event_index": 66,
+      "reason": "LLM flow controller failed transiently: HTTP Error 402: Payment Required; response_body={\"error\":{\"message\":\"Insufficient Balance (request_id: 7cf7e268-47d9-4e7b-bb85-6a88c690bc57)\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/066_cd3003cde8481b4ca8f2618490a39affd22f2c3da69a81bef62c6f160ef94669.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/067_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 67,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/067_e300c1e2bc23c75115c4a52b87c358a9cf1cfe154c24e65cabe43d27b51172da.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/068_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 68,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/068_a093870f603bb186f48fd433f7107135a1492cf010c180323fd529433988a35c.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/069_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 69,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/069_fc2daab0aaddad14f18290b1d1619b4b7a9586d2ab9be6d6ecb1512fa77399e6.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "attempt_count": 1,
+      "decision": "retry",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/070_retry.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_actions/070_stage7_localize_compute_slot_adapter_abi_failure.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/bounded_repairs/070_stage7_retry_compute_slot_adapter_after_localization.json"
+      ],
+      "flow_event_index": 70,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "ignored_unsupported_design_backtrack_requests": [
+        {
+          "id": "backtrack_request.0002",
+          "target_stage": "Stage7"
+        }
+      ],
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "failure_localization_check",
+              "backend_app_shell_integration_contract_static_check",
+              "artifact_hash_check",
+              "stage_artifact_trust_barrier_check",
+              "stage_retry_request_check",
+              "stage_backtrack_request_check"
+            ],
+            "action_type": "failure_localization",
+            "consumes": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/real_tools/case_compute_slot_adapter_generate.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/bounded_recovery_actions.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/backend/constraints/app_shell_integration_contract.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/backend/constraints/board_shell_contract.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/GeneratedAxiDdrTop.sv",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/vivado/GeneratedAxiDdrTop.sv",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/rtl/cnn_core.sv",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/board_interface/board_source_identity.json"
+            ],
+            "id": "STAGE7-LOCALIZE-COMPUTE-SLOT-ADAPTER-ABI-FAILURE",
+            "on_failure": "Keep active contamination barriers and open retry/backtrack requests active. Do not schedule app_shell_runtime_bitstream, board_runtime, or case_stage7_metrics. Return a bounded follow-up repair action that names the exact missing or mismatched source/contract fact; do not rewind Stage6, code_generation, or parameter_binding.",
+            "produces": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/case_diagnostics/compute_slot_adapter_failure_localization.json"
+            ],
+            "rationale": "The current real tool failure names missing c0_ddr4_s_axi ports from verification/rtl/cnn_core.sv, but the root cause may be contract/source path or top-boundary mismatch. Localize this current Stage7 evidence before retrying the same generator so the next retry is bounded and evidence-driven. Preserve the hash-validated Stage6 selection and do not schedule downstream bitstream/runtime tools.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "failure_slice_localization",
+              "backend_app_shell_integration_contract_static_check",
+              "artifact_hash_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "required_real_tool_evidence_check",
+              "backend_app_shell_integration_contract_static_check",
+              "artifact_hash_check",
+              "stage_artifact_trust_barrier_check",
+              "stage_retry_request_check"
+            ],
+            "action_type": "bounded_repair_retry",
+            "consumes": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/case_diagnostics/compute_slot_adapter_failure_localization.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/backend/constraints/app_shell_integration_contract.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/backend/constraints/board_shell_contract.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/GeneratedAxiDdrTop.sv",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/vivado/GeneratedAxiDdrTop.sv",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/board_integration/rtl/compute_slot_adapter.sv",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/board_interface/board_source_identity.json"
+            ],
+            "id": "STAGE7-RETRY-COMPUTE-SLOT-ADAPTER-AFTER-LOCALIZATION",
+            "on_failure": "Stop backend/board progression. Do not schedule app_shell_runtime_bitstream, board_runtime, or case_stage7_metrics. Run failure_slice_localization on the new tool log, name the exact missing source artifact or signal-level fact, and return a follow-up bounded repair or a Stage7 backtrack action only with an explicit hardware-design failure category and linked real tool/gate evidence. Never rewind code_generation or parameter_binding.",
+            "produces": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/backend/rtl/app_shell_9p_cnn_core_0_1.v",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/backend/reports/compute_slot_adapter_manifest.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/real_tools/case_compute_slot_adapter_generate.json"
+            ],
+            "rationale": "After localization names the exact source/top or contract correction, rerun the registered case_compute_slot_adapter_generate path. This is the existing Stage7 loader-to-DUT repair route and preserves the validated Stage6 exact target /cnn_core_0 and replacement module app_shell_9p_cnn_core_0_1, so no new target or semantic-contract approval is required.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "case_compute_slot_adapter_generate"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/070_backend_board/llm/flow_controller_agent_result.json",
+        "agent_status": "retry_current_stage",
+        "agent_summary": "Stage7 backend_board is incomplete because required real tool case_compute_slot_adapter_generate failed with current tool evidence (returncode=1) and the board ABI check reported missing c0_ddr4_s_axi ports from verification/rtl/cnn_core.sv. This is a current-stage backend adapter/loader-to-DUT failure, so the design team should retry Stage7 with bounded failure localization first and then rerun the registered case_compute_slot_adapter_generate path. Earlier hardware design stages must not be rewound; bitstream, board runtime, and Stage7 metrics remain blocked."
+      },
+      "reason": "Backend/board real-tool scope did not pass",
+      "request_id": "retry_request.0007",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/070_8625bd0fdc0bd27f083fe3e9f9787eaad15338ad5900924e36899a1864cfba3b.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/071_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 71,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/071_4dd4e0754694f40701537cd7bc25014d00af95b2357ca56ba81525617b931776.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/072_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 72,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/072_76457d28f8a27237beee743882bb1e982fd90874f75c73c2a9154f49225ab0af.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/073_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 73,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/073_5156df1362266a1e694ddb55d2b2d1254e647f180e6553b98ddb073191b99e3d.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/074_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 74,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/074_7015b5d275f6ba9f128c401dd982259be6f57c755b5eddc8654ac41048d07c5f.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/075_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 75,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/075_d9deba4240467c5b744d226ff70bb93a862faf83cc283aed4cae4a090b549674.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/076_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 76,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/076_539356a7e4e4571b82df66cd0704e85d8767bf26e70a3bcf76c27314d9725d9c.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "attempt_count": 1,
+      "decision": "proceed",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/077_proceed.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_actions/077_sacg_backend_board_reconcile_open_retry_backtrack.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_actions/077_backend_board_timing_evidence_review.json"
+      ],
+      "flow_event_index": 77,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "ignored_unsupported_design_backtrack_requests": [
+        {
+          "id": "backtrack_request.0002",
+          "target_stage": "Stage7"
+        }
+      ],
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "sacg_memory_check",
+              "stage_retry_request_check",
+              "stage_backtrack_request_check",
+              "stage_artifact_trust_barrier_check",
+              "artifact_hash_check"
+            ],
+            "action_type": "sacg_memory_reconciliation",
+            "consumes": [
+              "artifact.stage7.backend_board_plan",
+              "artifact.stage7.backend_real_tool_results",
+              "artifact.stage7.backend_bounded_recovery_actions",
+              "artifact.stage7.qor.qor_metrics",
+              "backend_board/real_tools/case_compute_slot_adapter_generate.json",
+              "backend_board/real_tools/app_shell_runtime_bitstream.json",
+              "backend_board/real_tools/case_stage7_metrics.json",
+              "backend_board/sacg_state.json",
+              "source_sacg_state"
+            ],
+            "id": "sacg.backend_board.reconcile_open_retry_backtrack",
+            "on_failure": "Keep retry/backtrack requests active and rerun the current backend_board stage; do not promote downstream artifacts and do not rewind hardware design stages.",
+            "produces": [
+              "backend_board/sacg_state.json",
+              "backend_board/sacg_reconciliation_report.json"
+            ],
+            "rationale": "Close the stale transition.0079 retry/backtrack requests using the passing transition.0083 real-tool and artifact evidence, so downstream consumers do not treat superseded Stage-7 evidence as active blockers.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "sacg_memory_update",
+              "sacg_memory_check",
+              "stage_retry_request_check",
+              "stage_backtrack_request_check",
+              "stage_artifact_trust_barrier_check",
+              "artifact_hash_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "timing_resource_check",
+              "real_tool.case_vivado_synthesis_report_check"
+            ],
+            "action_type": "backend_timing_gate_review",
+            "consumes": [
+              "backend_board/qor/qor_metrics.json",
+              "app_shell_runtime_bitstream/app_shell_synth_timing.rpt",
+              "backend_board/case_diagnostics/app_shell_runtime_vivado.json",
+              "artifact.stage7.qor.qor_metrics"
+            ],
+            "id": "backend_board.timing_evidence_review",
+            "on_failure": "If the timing target is applicable, route to Stage 7 run-local timing repair and do not promote final backend design; if repair status becomes compiled_pending_vcs, request current-source VCS compile-only verification and return to Stage 7. Never call code_generation or parameter_binding.",
+            "produces": [
+              "backend_board/qor/timing_risk_report.json",
+              "backend_board/qor/timing_target_decision.json"
+            ],
+            "rationale": "The QoR metrics contain a violated setup path while the current target checks cover resources only. Run a timing-resource check against the synthesis report to determine whether the 250MHz/clock-target evidence is an applicable acceptance target before relying on final backend closure.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "timing_resource_check"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/077_backend_board/llm/flow_controller_agent_result.json",
+        "agent_status": "proceed",
+        "agent_summary": "Current backend_board transition.0083 passed all required Stage-7 real tools and supersedes the transition.0079 contamination barriers. Promote current backend/board artifacts; reconcile the stale open retry/backtrack requests against current passing evidence without rewinding hardware design stages."
+      },
+      "reason": "stage passed and no open backtrack request",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/077_df38013fb5eda208215f627d777ee3823a60d2c4037d85ba3974531b9a12b4bb.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": true
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/078_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 78,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/078_c9732fd1c3b43650d207f2b99296a0cd9582cd73106f6d1bb6382d1729dfc449.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/079_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 79,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/079_0beed536fb6f876a75f4232928b2c2eeaaff3223e79f749451ca9a61a36f0bfe.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/080_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 80,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/080_a14e8f9127f1c7913b6be8d67c41087d9abaa2417c933449010df2074bf9fb78.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/081_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 81,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/081_23dd7affe36bcb76f8d6eb2eef181e6a71dd61ca7b47e31e14f8bc9eacd263fd.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/082_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 82,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/082_455247f3addd0369e752a1d67fa84623a6bf0eddb8f66b81837f4657b6b522ea.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/083_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 83,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/083_d8c4462f51b41cd7fbfb2f0df1c5c91a79d65409b919a9f24447d47550304702.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/084_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 84,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/084_8d38c757d67481f9b0b20e0f59e24da57b5b7e3ae26a0516543eb62bd1c4ffeb.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/085_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 85,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/085_65d25c232a184f6b1c9a3effe49fbbf92abd4ad32b8a0c031744efc53addf4c6.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "attempt_count": 1,
+      "decision": "retry",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/086_retry.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/bounded_repairs/086_stage7_bounded_compile_failure_repair.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_actions/086_stage7_recompile_current_timing_patch.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_actions/086_verification_current_source_vcs_compile_only.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_actions/086_stage7_rerun_backend_synthesis_metrics.json"
+      ],
+      "flow_event_index": 86,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "ignored_unsupported_design_backtrack_requests": [
+        {
+          "id": "backtrack_request.0002",
+          "target_stage": "Stage7"
+        }
+      ],
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "failure_localization_check",
+              "causal_repair_context_check",
+              "repair_boundary_check",
+              "stage_artifact_trust_barrier_check",
+              "sacg_memory_check"
+            ],
+            "action_type": "bounded_repair",
+            "consumes": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/timing_optimization/c77258dc3089ae3db0b6/incremental_compile.log",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/src/main/scala/spatialaccagent/templates/Linear.scala",
+              "artifact.stage7.backend_bounded_recovery_actions"
+            ],
+            "id": "stage7.bounded_compile_failure_repair",
+            "on_failure": "Keep backend_board failed. If the compiler error is not localizable to the current Linear.scala timing patch or exposes shared-template/parameter coupling, open a Stage 7 bounded-recovery request and retry the current stage; do not backtrack to code_generation or parameter_binding.",
+            "produces": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/timing_optimization/c77258dc3089ae3db0b6/compile_failure_localization.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/timing_optimization/c77258dc3089ae3db0b6/bounded_repair_plan.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/src/main/scala/spatialaccagent/templates/Linear.scala"
+            ],
+            "rationale": "The Stage 7 local timing patch changed Linear.scala and failed incremental Chisel compilation. Retry the same stage by localizing actual compiler errors and repairing only the offending LinearOutputRequantizer/delay-line logic. This is not a design-stage rewind and not code_generation or parameter_binding.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "failure_slice_localization",
+              "causal_repair_context_pack",
+              "bounded_template_repair"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "codegen_compile_gate_check",
+              "codegen_contract_check",
+              "artifact_hash_check",
+              "stage_retry_request_check",
+              "stage_backtrack_request_check"
+            ],
+            "action_type": "real_tool_execution",
+            "consumes": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/src/main/scala/spatialaccagent/templates/Linear.scala",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/timing_optimization/c77258dc3089ae3db0b6/compile_failure_localization.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/timing_optimization/c77258dc3089ae3db0b6/bounded_repair_plan.json"
+            ],
+            "id": "stage7.recompile_current_timing_patch",
+            "on_failure": "Return to stage7.bounded_compile_failure_repair with the new compiler error. Do not run current-source VCS or app_shell_runtime_bitstream on uncompilable sources, and do not rewind prior design stages.",
+            "produces": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/timing_optimization/c77258dc3089ae3db0b6/incremental_compile.log",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/vivado/GeneratedAxiDdrTop.sv",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/timing_optimization/c77258dc3089ae3db0b6/elaboration_manifest.json"
+            ],
+            "rationale": "After bounded repair, run the existing current-source Chisel compile/elaboration gate. A passing compile is required before current-source VCS verification or Stage 7 synthesis can consume the repaired Linear.scala.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "codegen_compile_gate",
+              "codegen_contract_check",
+              "artifact_hash_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "required_real_tool_evidence_check",
+              "artifact_hash_check",
+              "verification_action_audit_check",
+              "real_tool.case_leaf_functional",
+              "real_tool.case_single_layer_functional",
+              "real_tool.case_vcs_functional_sim"
+            ],
+            "action_type": "real_tool_execution",
+            "consumes": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/vivado/GeneratedAxiDdrTop.sv",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/src/main/scala/spatialaccagent/templates/Linear.scala",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/scripts/gen_xilinx_fp_ips_23.tcl",
+              "artifact.stage6.verification_result"
+            ],
+            "id": "verification.current_source_vcs_compile_only",
+            "on_failure": "Route missing or failed current-source VCS compile evidence back to the Stage 7 current-stage repair loop. Do not proceed to app_shell_runtime_bitstream and do not rewind to code_generation or parameter_binding.",
+            "produces": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/vcs/current_source_compile_only_leaf.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/vcs/current_source_compile_only_single_layer.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/vcs/current_source_compile_only_board_axi_ddr.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/case_diagnostics/current_source_vcs_compile_only.json"
+            ],
+            "rationale": "When Stage 7 reaches compiled_pending_vcs, verify the repaired current sources with real VCS compilation, elaboration, and linking in bottom-up order using the existing compile-only modes: operator leaf, single-layer kernel, and exact board wrapper. Simulation execution and numerical comparison are not acceptance prerequisites.",
+            "requires_approval": false,
+            "stage": "verification_artifacts",
+            "tool_roles": [
+              "case_leaf_functional",
+              "case_single_layer_functional",
+              "case_vcs_functional_sim",
+              "required_real_tool_evidence_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "real_tool.app_shell_runtime_bitstream",
+              "timing_resource_check",
+              "artifact_hash_check",
+              "stage_artifact_trust_barrier_check",
+              "sacg_memory_check"
+            ],
+            "action_type": "real_tool_execution",
+            "consumes": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/backend/constraints/app_shell_integration_contract.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/backend/rtl/app_shell_9p_cnn_core_0_1.v",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/vivado",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/simulation/fpga_ip_modules.txt",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/scripts/gen_xilinx_fp_ips_23.tcl",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/case_diagnostics/current_source_vcs_compile_only.json"
+            ],
+            "id": "stage7.rerun_backend_synthesis_metrics",
+            "on_failure": "If the real tool fails, retry the current backend_board stage as a framework/tool failure without rewinding design stages. If synthesis passes but the 150 MHz timing target is still missed, return to Stage 7 local timing repair with the new post-synthesis critical-path evidence.",
+            "produces": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/case_diagnostics/app_shell_runtime_vivado.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/qor/qor_metrics.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/app_shell_runtime_bitstream/app_shell_synth_timing.rpt"
+            ],
+            "rationale": "After current-source VCS compile-only passes, return to Stage 7 and rerun the real backend synthesis and metrics tools on the repaired current source. This produces fresh timing/resource evidence needed to determine whether the 150 MHz target is met.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "app_shell_runtime_bitstream",
+              "case_stage7_metrics",
+              "timing_resource_check"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/086_backend_board/llm/flow_controller_agent_result.json",
+        "agent_status": "retry_current_stage_with_bounded_repair",
+        "agent_summary": "backend_board did not pass. The current blocker is a Stage 7 local timing repair that changed Linear.scala and then failed incremental Chisel compilation. Do not backtrack to code_generation or parameter_binding. Retry the current backend_board stage with bounded compiler-error repair, recompile current sources, request current-source VCS compile-only verification when the repair reaches compiled_pending_vcs, and then return to Stage 7 synth/metrics."
+      },
+      "reason": "Backend/board real-tool scope did not pass",
+      "request_id": "retry_request.0007",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/086_65d25c232a184f6b1c9a3effe49fbbf92abd4ad32b8a0c031744efc53addf4c6.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/087_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 87,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/087_56c0e61bc7811a83d2a820bebf12b36fdde6f1dad795644720b0c3876f673172.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/088_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 88,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/088_9fdd555096731e43ecc21f7094d8c5a10a8c8748340a7c41d067c6f7a4c9998d.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/089_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 89,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/089_4854e1219167638b2e08dbc926e58f5572bd35214607efa8753d850dca381819.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/090_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 90,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/090_bc80c883e3cf788764aa52fa22af4b31cbeed9168c2f8ab79146b16ff08ba7e2.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "attempt_count": 1,
+      "decision": "retry",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/091_retry.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/bounded_repairs/091_stage7_retry_llm_backend_bounded_recovery.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_actions/091_stage7_current_source_vcs_compile_only.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/bounded_repairs/091_stage7_retry_case_compute_slot_adapter_generate.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_actions/091_stage7_run_app_shell_runtime_bitstream.json"
+      ],
+      "flow_event_index": 91,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "ignored_unsupported_design_backtrack_requests": [
+        {
+          "id": "backtrack_request.0002",
+          "target_stage": "Stage7"
+        }
+      ],
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "backend_bounded_recovery_action_check",
+              "llm_io_quality_check",
+              "artifact_hash_check"
+            ],
+            "action_type": "bounded_recovery",
+            "consumes": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/qor/qor_metrics.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/app_shell_runtime_bitstream/app_shell_synth_timing.rpt",
+              "sacg_memory_truth active Stage7 barriers and open retry/backtrack requests"
+            ],
+            "id": "stage7.retry_llm_backend_bounded_recovery",
+            "on_failure": "Keep Stage7 backend_board incomplete and retry the same stage after LLM provider recovery; do not rewind code_generation or parameter_binding and do not promote any rejected Stage7 artifact.",
+            "produces": [
+              "artifact.stage7.backend_bounded_recovery_actions(new promoted recovery plan)",
+              "backend_board/recovery_cycle_retry_plan.json"
+            ],
+            "rationale": "The Stage7 failure was an LLM I/O error, not a hardware-design failure. SACG flow policy requires retrying the current stage without rewinding hardware stages. This action re-establishes a bounded Stage7 recovery plan and records it as a new transition so the old contaminated plan is not used as validated input.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "backend_bounded_recovery",
+              "artifact_hash_check"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "real_tool.case_vcs_functional_sim",
+              "verification_artifact_contract_check",
+              "artifact_hash_check"
+            ],
+            "action_type": "verification_evidence_preparation",
+            "consumes": [
+              "current source archive sha256 a0624585612df309ce941b9c12a36b160728a410438fb3ee90dde1e561312caa",
+              "exact board wrapper and simulation sources discovered from the current user sample project",
+              "artifact.stage6.verification_result as current exact-board selection context"
+            ],
+            "id": "stage7.current_source_vcs_compile_only",
+            "on_failure": "Keep Stage7 backend_board blocked; localize the reported VCS compile/elaboration/link error and route it through bounded Stage7 repair. Do not run app_shell_runtime_bitstream or restart code_generation.",
+            "produces": [
+              "verification/vcs/current_source_compile_only_certificate.json",
+              "backend_board/case_diagnostics/current_source_vcs_compile_check.json"
+            ],
+            "rationale": "stage_local_capabilities marks the source-local patch and Chisel elaboration complete and requires current-source VCS compile-only verification before synthesis. The acceptance standard is successful real VCS compilation, elaboration, and linking only; simulation execution is not required.",
+            "requires_approval": false,
+            "stage": "verification_artifacts",
+            "tool_roles": [
+              "case_vcs_functional_sim"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "backend_app_shell_integration_contract_static_check",
+              "backend_bounded_recovery_action_check",
+              "artifact_hash_check"
+            ],
+            "action_type": "bounded_recovery",
+            "consumes": [
+              "validated Stage6 exact-board selection evidence",
+              "GeneratedAxiDdrTop current-source context",
+              "current-source VCS compile-only certificate from stage7.current_source_vcs_compile_only"
+            ],
+            "id": "stage7.retry_case_compute_slot_adapter_generate",
+            "on_failure": "Keep the Stage7 contamination barriers active and block downstream bitstream/board runtime. Retry the existing hash-verified board-source route; do not substitute a simplified wrapper or change the selected app-shell target without approval.",
+            "produces": [
+              "artifact.stage7.backend_package(new promoted version)",
+              "artifact.stage7.app_shell_target_selection_decision(new promoted version)"
+            ],
+            "rationale": "The open backtrack_request.0002 explicitly requests retrying the registered case_compute_slot_adapter_generate route using the existing hash-verified Stage6 exact-board selection and GeneratedAxiDdrTop context. This action resolves that recovery blocker without changing the validated target.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "case_compute_slot_adapter_generate"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "real_tool.app_shell_runtime_bitstream",
+              "timing_resource_check",
+              "deployment_board_check",
+              "artifact_hash_check"
+            ],
+            "action_type": "real_tool_execution",
+            "consumes": [
+              "new promoted artifact.stage7.backend_package",
+              "new promoted artifact.stage7.app_shell_target_selection_decision",
+              "current synthesis source archive sha256 a0624585612df309ce941b9c12a36b160728a410438fb3ee90dde1e561312caa",
+              "current Stage7 qor metrics and timing evidence"
+            ],
+            "id": "stage7.run_app_shell_runtime_bitstream",
+            "on_failure": "Keep board runtime blocked and remain in Stage7 local timing repair. If timing/resource evidence fails, localize the violating path or resource boundary before proposing any RTL repair; never restart code_generation or parameter_binding.",
+            "produces": [
+              "artifact.stage7.app_shell_runtime_bitstream",
+              "backend_board/case_diagnostics/app_shell_runtime_bitstream_evidence.json",
+              "backend_board/qor/case_stage7_metrics.json"
+            ],
+            "rationale": "The final Stage7 backend evidence requires a passing app_shell_runtime_bitstream after the exact compute-slot adapter passes. This action consumes only new promoted adapter evidence and current hashed source context, and remains within the Stage7 timing-repair scope.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "app_shell_runtime_bitstream"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/091_backend_board/llm/flow_controller_agent_result.json",
+        "agent_status": "retry_current_stage",
+        "agent_summary": "Retry current Stage7 backend_board after LLM provider recovery; do not rewind hardware design stages. The current source patch is compiled_pending_vcs, so first request current-source VCS compile-only verification, then retry the exact board case_compute_slot_adapter_generate route and app_shell_runtime_bitstream within Stage7 timing repair. Preserve Stage4 parameters and shared templates; never restart code_generation or parameter_binding for this timing-only repair."
+      },
+      "reason": "Backend/board real-tool scope did not pass",
+      "request_id": "retry_request.0007",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/091_bc80c883e3cf788764aa52fa22af4b31cbeed9168c2f8ab79146b16ff08ba7e2.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/092_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 92,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/092_670b104b01131179efef0fefca464fa432af7676da71f59e6217e66cded7a020.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/093_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 93,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/093_53670feb2ff18e17c70308ad4879d3a1c4ee2fc03eb02e0fc10a5076f5bb1bbb.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "attempt_count": 1,
+      "decision": "retry",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/094_retry.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/bounded_repairs/094_stage7_timing_patch_compile_repair.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_actions/094_stage7_timing_patch_current_source_vcs_compile_only.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_actions/094_stage7_rerun_backend_synthesis_metrics.json",
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_actions/094_stage7_contamination_barrier_audit.json"
+      ],
+      "flow_event_index": 94,
+      "flow_state_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_state.json",
+      "ignored_unsupported_design_backtrack_requests": [
+        {
+          "id": "backtrack_request.0002",
+          "target_stage": "Stage7"
+        }
+      ],
+      "llm_flow_controller": {
+        "agent_executable_actions": [
+          {
+            "acceptance_checkers": [
+              "repair_boundary_check",
+              "codegen_compile_gate_check",
+              "artifact_hash_check"
+            ],
+            "action_type": "bounded_repair",
+            "consumes": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/timing_optimization/b8ef325b29e977b4699d/incremental_compile.log",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/generated/chisel/src/main/scala/spatialaccagent/templates/Norm.scala",
+              "artifact.stage7.backend_bounded_recovery_actions as planning evidence only"
+            ],
+            "id": "stage7_timing_patch_compile_repair",
+            "on_failure": "Keep Stage7 blocked and continue bounded timing-source repair. Do not backtrack to code_generation or parameter_binding; capture the failing compile evidence and repair only the causal source boundary.",
+            "produces": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/timing_optimization/repaired_sources/Norm.scala",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/timing_optimization/compile_repair_report.json"
+            ],
+            "rationale": "The Stage7 run-local timing repair changed Norm.scala but the sbt incremental compile returned 1. Repair only the local compile failure while preserving the intended timing pipeline, Stage-4 parameters, shared-template contracts, and integer numeric policy.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "failure_slice_localization",
+              "bounded_template_repair",
+              "codegen_compile_gate"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "case_leaf_functional",
+              "case_single_layer_functional",
+              "real_tool.case_vcs_functional_sim",
+              "required_real_tool_evidence_check"
+            ],
+            "action_type": "real_tool_execution",
+            "consumes": [
+              "current compiled Chisel source archive after Stage7 timing repair",
+              "artifact.stage6.verification_result current source fingerprint",
+              "generated/exact-board wrapper compile source set"
+            ],
+            "id": "stage7_timing_patch_current_source_vcs_compile_only",
+            "on_failure": "Return to Stage7 bounded timing-source repair with the failing compile/tool evidence. Do not proceed to backend synthesis and do not rerun code_generation or parameter_binding.",
+            "produces": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/current_source_vcs_compile_only.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/current_source_compile_only.log"
+            ],
+            "rationale": "Once the timing-patch source compiles to compiled_pending_vcs, the current design must pass real VCS compile/elaboration/link in bottom-up order before backend synthesis. Compile-only execution is the acceptance standard; simulation and numerical comparison are not prerequisites.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "case_leaf_functional",
+              "case_single_layer_functional",
+              "case_vcs_functional_sim"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "real_tool.case_board_shell_wrapper_generate",
+              "real_tool.app_shell_runtime_bitstream",
+              "timing_resource_check",
+              "required_real_tool_evidence_check"
+            ],
+            "action_type": "real_tool_execution",
+            "consumes": [
+              "current compiled source archive after Stage7 timing repair",
+              "artifact.stage7.app_shell_integration_contract as current retry candidate planning/debug input",
+              "generated/backend/rtl/app_shell wrapper sources",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/current_source_vcs_compile_only.json"
+            ],
+            "id": "stage7_rerun_backend_synthesis_metrics",
+            "on_failure": "Keep Stage7 in the bounded backend-timing repair loop. Do not rewind to code_generation or parameter_binding. Do not claim backend pass without current real tool timing and metrics evidence.",
+            "produces": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/qor/qor_metrics.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/case_diagnostics/app_shell_runtime_vivado.json",
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/backend_pass_candidate.json"
+            ],
+            "rationale": "After current-source VCS compile-only evidence passes, rerun Stage7 backend synthesis and metrics using the current retry candidate and exact board wrapper. Promote only if real timing/resource and stage metrics tools pass.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "case_board_shell_wrapper_generate",
+              "case_compute_slot_adapter_generate",
+              "app_shell_runtime_bitstream",
+              "case_stage7_metrics"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "stage_artifact_trust_barrier_check",
+              "artifact_hash_check",
+              "sacg_memory_check",
+              "stage_retry_request_check",
+              "stage_backtrack_request_check"
+            ],
+            "action_type": "trust_audit",
+            "consumes": [
+              "source_sacg_state.memory active contamination barriers",
+              "current Stage7 retry candidate artifacts",
+              "artifact.stage7.backend_real_tool_results as planning evidence only"
+            ],
+            "id": "stage7_contamination_barrier_audit",
+            "on_failure": "Keep the relevant contamination barriers active and block downstream validated consumption until the current Stage7 candidate pass evidence supersedes transition.0079 artifacts.",
+            "produces": [
+              "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/stage7_trust_audit.json"
+            ],
+            "rationale": "SACG memory truth lists active transition.0079 contamination barriers on Stage7 artifacts. Until current Stage7 checks pass, those artifacts must remain planning/debug evidence only and must not be consumed as validated design inputs.",
+            "requires_approval": false,
+            "stage": "backend_board",
+            "tool_roles": [
+              "stage_artifact_trust_barrier",
+              "artifact_hash_check",
+              "sacg_memory_check"
+            ]
+          }
+        ],
+        "agent_record": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/agent/flow_controller/094_backend_board/llm/flow_controller_agent_result.json",
+        "agent_status": "retry_current_stage",
+        "agent_summary": "Stage7 run-local timing repair is compile_failed after editing Norm.scala. The current source must be compiler-repaired within Stage7, then current-source VCS compile-only verification must pass, and only then may Stage7 backend synthesis/metrics rerun. Do not backtrack to code_generation or parameter_binding. Transition.0079 Stage7 artifacts remain contamination-blocked planning evidence."
+      },
+      "reason": "Backend/board real-tool scope did not pass",
+      "request_id": "retry_request.0007",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/094_53670feb2ff18e17c70308ad4879d3a1c4ee2fc03eb02e0fc10a5076f5bb1bbb.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/095_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 95,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/095_303353b3562714da610be92499bbf8787fe7ba8a6ec81e4254fd2942a5b851d1.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/096_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 96,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/096_369ab070469b756bf37eb3fcc195b5673c3c72000709aff1d8ff593a3a2c5224.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/097_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 97,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/097_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/098_retry_replan.json"
+      ],
+      "flow_event_index": 98,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/098_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/099_retry_replan.json"
+      ],
+      "flow_event_index": 99,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/099_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/100_retry_replan.json"
+      ],
+      "flow_event_index": 100,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/100_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/101_retry_replan.json"
+      ],
+      "flow_event_index": 101,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/101_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/102_retry_replan.json"
+      ],
+      "flow_event_index": 102,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/102_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/103_retry_replan.json"
+      ],
+      "flow_event_index": 103,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/103_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/104_retry_replan.json"
+      ],
+      "flow_event_index": 104,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/104_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/105_retry_replan.json"
+      ],
+      "flow_event_index": 105,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/105_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/106_retry_replan.json"
+      ],
+      "flow_event_index": 106,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/106_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/107_retry_replan.json"
+      ],
+      "flow_event_index": 107,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/107_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/108_retry_replan.json"
+      ],
+      "flow_event_index": 108,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/108_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/109_retry_replan.json"
+      ],
+      "flow_event_index": 109,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/109_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/110_retry_replan.json"
+      ],
+      "flow_event_index": 110,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/110_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/111_retry_replan.json"
+      ],
+      "flow_event_index": 111,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/111_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/112_retry_replan.json"
+      ],
+      "flow_event_index": 112,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/112_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/113_retry_replan.json"
+      ],
+      "flow_event_index": 113,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/113_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/114_retry_replan.json"
+      ],
+      "flow_event_index": 114,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/114_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/115_retry_replan.json"
+      ],
+      "flow_event_index": 115,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/115_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/116_retry_replan.json"
+      ],
+      "flow_event_index": 116,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/116_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/117_retry_replan.json"
+      ],
+      "flow_event_index": 117,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/117_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/118_retry_replan.json"
+      ],
+      "flow_event_index": 118,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/118_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/119_retry_replan.json"
+      ],
+      "flow_event_index": 119,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/119_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/120_retry_replan.json"
+      ],
+      "flow_event_index": 120,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/120_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/121_retry_replan.json"
+      ],
+      "flow_event_index": 121,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/121_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/122_retry_replan.json"
+      ],
+      "flow_event_index": 122,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/122_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/123_retry_replan.json"
+      ],
+      "flow_event_index": 123,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/123_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/124_retry_replan.json"
+      ],
+      "flow_event_index": 124,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/124_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/125_retry_replan.json"
+      ],
+      "flow_event_index": 125,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/125_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/126_retry_replan.json"
+      ],
+      "flow_event_index": 126,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/126_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/127_retry_replan.json"
+      ],
+      "flow_event_index": 127,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/127_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/128_retry_replan.json"
+      ],
+      "flow_event_index": 128,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/128_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/129_retry_replan.json"
+      ],
+      "flow_event_index": 129,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/129_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/130_retry_replan.json"
+      ],
+      "flow_event_index": 130,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/130_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/131_retry_replan.json"
+      ],
+      "flow_event_index": 131,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/131_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/132_retry_replan.json"
+      ],
+      "flow_event_index": 132,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/132_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/133_retry_replan.json"
+      ],
+      "flow_event_index": 133,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/133_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/134_retry_replan.json"
+      ],
+      "flow_event_index": 134,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/134_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/135_retry_replan.json"
+      ],
+      "flow_event_index": 135,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/135_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/136_retry_replan.json"
+      ],
+      "flow_event_index": 136,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/136_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "retry_replan",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/137_retry_replan.json"
+      ],
+      "flow_event_index": 137,
+      "reason": "LLM flow controller failed transiently: missing LLM endpoint or API key",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/137_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/138_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 138,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/138_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/139_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 139,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/139_2dc27249d70c5809c88c44b165b848a62b1d3b64cc4c85d61483e674bf161c73.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/140_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 140,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/140_87ed2f61ca4b513e07441799dc3a50469e28728cb785198fa95d1b2338e6963d.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/141_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 141,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/141_6e9845fbb1478360f45cdf9aa3ca3e9376a43ba293111347b67d754d0bd6eb64.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "refresh_stage6_compile_evidence",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/142_refresh_stage6_compile_evidence.json"
+      ],
+      "flow_event_index": 142,
+      "reason": "required current Stage-6 compile evidence",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/142_3c51df353af69180c1e47a5aada4441c470ecc7b162186c447c20b5848d529a2.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": false,
+      "target_index": 7,
+      "target_stage": "debug_loop"
+    },
+    {
+      "decision": "proceed_verified_stage6",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_events/143_proceed_verified_stage6.json"
+      ],
+      "flow_event_index": 143,
+      "reason": "all Stage-6 verification scopes passed",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/debug_loop/flow_handoff_sources/143_4d0b9ac307b50f179a99105f50452f765144420ad03c10004d845044d67affd4.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/verification/sacg_state.json",
+      "stage": "debug_loop",
+      "stage_passed": true,
+      "target_index": 8,
+      "target_stage": "backend_board"
+    },
+    {
+      "decision": "complete_existing_design_timing",
+      "flow_action_records": [
+        "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_events/144_complete_existing_design_timing.json"
+      ],
+      "flow_event_index": 144,
+      "reason": "Current source-bound QoR meets the requested timing scope and resource limits",
+      "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/flow_handoff_sources/144_afaddbd2442cb287dbbdc8375011c8b1ad29e384790513332890b9f7be2c4dfa.json",
+      "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_deepseek_v4pro_20261020/backend_board/sacg_state.json",
+      "stage": "backend_board",
+      "stage_passed": true
     }
   ],
-  "legacy_stage_failures": {},
+  "legacy_stage_failures": {
+    "backend_board": 56,
+    "debug_loop": 59
+  },
   "schema_version": "spatialaccagent.flow_state.v0",
   "stage_attempts": {
     "parameter_binding": {
@@ -337,17 +2921,6 @@
         "stage_input_hash": "598b16322df1338f1b85956628991d9654c0e0f2eac5edf7e46acc7fac178dea"
       },
       "epoch_hash": "ecf4b73dfea42c1fcd7c678a813b5695f067f6e55661fcee019657bc4b9f9dc0"
-    },
-    "verification_artifacts": {
-      "count": 1,
-      "epoch": {
-        "module": "accagent.framework.stage_verification_plan",
-        "orchestration_hash": "5cbeb239573f138f7bb7441486e824e0a7adc4ec894fc4368ca6eb163a9c00db",
-        "stage": "verification_artifacts",
-        "stage_code_hash": "70bf757f2a97efb86fd132e395c0c45909ca5ed9446db4b77e33ffeed9e441d6",
-        "stage_input_hash": "f37712f8f1677be3845391f7b2f9ae50c24f4d7e31969e076169bd374994353f"
-      },
-      "epoch_hash": "4267b400dc541d52fb945b3baa6651aa963414953520044e382b669f0f984b16"
     }
   }
 }

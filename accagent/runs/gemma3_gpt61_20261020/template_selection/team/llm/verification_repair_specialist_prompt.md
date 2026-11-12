@@ -3,7 +3,7 @@ verification_repair_specialist
 </agent>
 
 <task>
-After the independent reviews, reconcile their findings with current checker evidence and the numeric, memory, runtime, deployment, and input-consistency trace. Enforce the active contamination barrier and determine whether strict template-selection closure is supported; do not claim readiness while the concrete binding failure remains.
+After the parallel reviews, reconcile model, numeric, template, attention, board-memory, runtime, deployment, and input-consistency evidence. Enforce the active SACG contamination barrier and report a stage disposition that preserves concrete blockers and does not mistake downstream obligations for current Stage-2 failures.
 </task>
 
 <rules>
@@ -84,88 +84,101 @@ After the independent reviews, reconcile their findings with current checker evi
 {
   "acceptance_checkers": [
     "sacg_static_check",
+    "sacg_memory_check",
+    "stage_artifact_trust_barrier_check",
     "template_binding_static_check",
-    "numeric_policy_check"
+    "numeric_policy_check",
+    "memory_runtime_plan_check"
   ],
-  "action_type": "evidence_and_repair_review",
+  "action_type": "cross_layer_evidence_gate",
   "agent": "verification_repair_specialist",
   "artifact_focus": [
-    "cross_layer_trace",
-    "checker_results",
-    "errors",
-    "unsupported_bindings",
-    "state_summary.sacg_memory_truth",
-    "review/template_selection/model_shape_coverage_review.json",
-    "review/template_selection/strict_binding_audit.json",
-    "review/template_selection/attention_semantic_binding_review.json"
+    "artifact.stage2.template_selection.cross_layer_trace",
+    "artifact.stage2.template_selection.checker_results",
+    "artifact.stage2.template_selection.errors",
+    "artifact.stage2.template_selection.unsupported_bindings",
+    "artifact.stage2.template_selection.status",
+    "artifact.input.target_board_profile",
+    "artifact.input.human_agent_boundary",
+    "artifact.stage2.template_selection.operator_coverage_review",
+    "artifact.stage2.template_selection.strict_template_binding_review",
+    "artifact.stage2.template_selection.attention_semantic_binding_review",
+    "artifact.stage2.template_selection contamination barrier"
   ],
   "constraints": [
     "constraint.numeric.policy",
+    "constraint.template.library",
     "constraint.memory.board",
     "constraint.runtime.board",
     "constraint.deployment.board",
     "constraint.cross_layer.input_consistency",
-    "constraint.template.library"
+    "constraint.human.boundary"
   ],
   "expected_artifacts": [
-    "review/template_selection/cross_layer_gate_disposition.json",
-    "review/template_selection/blocker_to_constraint_map.json"
+    "template_selection_cross_layer_gate.json",
+    "stage2_blocker_and_handoff_disposition.json",
+    "sacg_trust_boundary_disposition.json"
   ],
   "handoff_rule": {
     "completion_criteria": [],
     "evidence_rule": "Do not claim pass unless evidence is bound to SACG constraints or explicitly recorded as not_run.",
     "produces": [
-      "review/template_selection/cross_layer_gate_disposition.json",
-      "review/template_selection/blocker_to_constraint_map.json"
+      "sacg_focus",
+      "observations",
+      "risks",
+      "proposed_actions",
+      "approval_required_for"
     ]
   },
   "handoff_to": [
-    "template-selection stage gate",
-    "bounded template-repair authority if approval is required"
+    "template_selection_stage_orchestrator"
   ],
-  "id": "template_selection.cross_layer_gate_engineer",
-  "objective": "After the independent reviews, reconcile their findings with current checker evidence and the numeric, memory, runtime, deployment, and input-consistency trace. Enforce the active contamination barrier and determine whet...<len=338>",
-  "role": "cross-layer template gate and evidence auditor",
+  "id": "template_selection.cross_layer_gate",
+  "objective": "After the parallel reviews, reconcile model, numeric, template, attention, board-memory, runtime, deployment, and input-consistency evidence. Enforce the active SACG contamination barrier and report a stage disposition t...<len=325>",
+  "role": "cross-layer template evidence gate engineer",
   "role_assignment": {
     "collaboration_interfaces": {
       "acceptance_checkers": [
         "sacg_static_check",
+        "sacg_memory_check",
+        "stage_artifact_trust_barrier_check",
         "template_binding_static_check",
-        "numeric_policy_check"
+        "numeric_policy_check",
+        "memory_runtime_plan_check"
       ],
       "consumes": [
-        "all three parallel-group-0 review artifacts",
-        "artifact.stage2.template_selection",
+        "operator_coverage_review.json",
+        "strict_template_binding_review.json",
+        "attention_semantic_binding_review.json",
         "artifact.input.numeric_policy",
         "artifact.input.target_board_profile",
-        "state_summary.sacg_memory_truth"
+        "artifact.stage2.template_selection.cross_layer_trace",
+        "artifact.stage2.template_selection.checker_results"
       ],
       "downstream_consumers": [
-        "template-selection stage gate",
-        "bounded template-repair authority if an approved repair path is required"
+        "template_selection_stage_orchestrator"
       ],
       "produces": [
-        "cross-layer gate disposition",
-        "blocker-to-constraint map",
-        "stage promotion recommendation"
+        "template_selection_cross_layer_gate.json",
+        "stage2_blocker_and_handoff_disposition.json",
+        "sacg_trust_boundary_disposition.json"
       ]
     },
     "decision_authority": [
-      "May recommend stage disposition based only on current evidence and required checkers.",
-      "Must keep the stage incomplete if an illegal or unsupported binding remains.",
-      "May not approve edits or override the human boundary; route any required approval to the designated authority."
+      "Can recommend ready or blocked based only on current applicable evidence.",
+      "Cannot promote a design with an unresolved current-stage contradiction or treat planning evidence as validated."
     ],
-    "mission": "Produce an evidence-bounded stage disposition that reconciles specialist reviews, deterministic checker results, cross-layer trace, and SACG trust state.",
+    "mission": "Reconcile the independently reviewed evidence and issue a bounded stage-gate disposition consistent with SACG trust and closure rules.",
     "out_of_scope": [
-      "Claiming RTL, simulation, synthesis, board, or deployment closure.",
-      "Treating rejected transition artifacts as validated inputs.",
-      "Changing model facts, numeric policy, board assumptions, or template internals."
+      "Hardware synthesis, simulation, or board deployment.",
+      "Repairs that modify trusted templates or authoritative assumptions.",
+      "Treating missing downstream evidence as a Stage-2 blocker when the supplied gate policy classifies it as later-stage work."
     ],
     "primary_responsibilities": [
-      "Confirm which supplied checker results pass and fail, and map the strict binding failure to the affected constraints.",
-      "Verify the current trace includes numeric, board memory, runtime, deployment, and input-consistency facts.",
-      "Treat the artifact covered by the active contamination barrier as planning/debug evidence only, not a validated design input.",
-      "Do not require future simulation, synthesis, or deployment evidence to accept current Stage-2 facts, and do not overclaim downstream readiness."
+      "Check cross-layer trace presence and consistency.",
+      "Apply the active contamination barrier to the candidate artifact.",
+      "Keep the reported parameter-legality failure blocking until resolved and rechecked.",
+      "Defer lanes and array-dimension choices to Stage 4."
     ]
   },
   "role_profile": {
@@ -174,17 +187,34 @@ After the independent reviews, reconcile their findings with current checker evi
       "map failures to violated constraints",
       "enforce repair boundaries"
     ],
-    "constraint_focus": [
-      "constraint.template.library",
-      "constraint.numeric.policy",
-      "constraint.cross_layer.input_consistency",
-      "constraint.deployment.board",
-      "constraint.memory.board",
-      "constraint.runtime.board"
+    "collaboration_interfaces": [
+      "Consumes all parallel specialist reports, current input evidence, and checker results.",
+      "Produces a gate disposition for the stage orchestrator.",
+      "sacg_static_check, sacg_memory_check, stage_artifact_trust_barrier_check, and applicable binding/policy checks accept the evidence."
     ],
-    "family": "verification_repair"
+    "constraint_focus": [
+      "constraint.verification.plan",
+      "constraint.human.boundary",
+      "constraint.cross_layer.input_consistency"
+    ],
+    "decision_authority": [
+      "May classify stage readiness and preserve blockers under the supplied gate policy.",
+      "May not waive failures, change model/template/board assumptions, or authorize unapproved repairs."
+    ],
+    "family": "verification_repair",
+    "mission": "Provide an evidence-grounded, SACG-consistent gate decision across independent template reviews and cross-layer inputs.",
+    "out_of_scope": [
+      "Performing synthesis or deployment evidence generation.",
+      "Changing source templates or authoritative inputs.",
+      "Treating prior rejected artifacts as validated design inputs."
+    ],
+    "primary_responsibilities": [
+      "Reconcile specialist findings with current checker evidence and constraint trace.",
+      "Enforce trust boundaries and classify current-stage versus downstream obligations.",
+      "Map unresolved contradictions to bounded repair or approval boundaries."
+    ]
   },
-  "title": "Reconcile reviews and determine stage disposition"
+  "title": "Reconcile template evidence and determine stage gate"
 }
 </subtask>
 
@@ -355,9 +385,11 @@ After the independent reviews, reconcile their findings with current checker evi
       {
         "artifact_id": "artifact.stage2.template_selection",
         "id": "contamination_barrier.0001",
-        "observation_count": 1,
+        "last_observed_at": "2026-10-20T13:13:37+00:00",
+        "observation_count": 2,
         "observed_transition_ids": [
-          "transition.0001"
+          "transition.0001",
+          "transition.0002"
         ],
         "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
         "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
@@ -373,9 +405,11 @@ After the independent reviews, reconcile their findings with current checker evi
       {
         "artifact_id": "artifact.stage2.template_selection",
         "id": "contamination_barrier.0001",
-        "observation_count": 1,
+        "last_observed_at": "2026-10-20T13:13:37+00:00",
+        "observation_count": 2,
         "observed_transition_ids": [
-          "transition.0001"
+          "transition.0001",
+          "transition.0002"
         ],
         "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
         "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
@@ -394,9 +428,11 @@ After the independent reviews, reconcile their findings with current checker evi
       {
         "artifact_id": "artifact.stage2.template_selection",
         "id": "contamination_barrier.0001",
-        "observation_count": 1,
+        "last_observed_at": "2026-10-20T13:13:37+00:00",
+        "observation_count": 2,
         "observed_transition_ids": [
-          "transition.0001"
+          "transition.0001",
+          "transition.0002"
         ],
         "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
         "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",

@@ -235,6 +235,12 @@ def resolve_llm_cfg() -> LlmCfg:
 
     provider_name = _clean_text(codex_cfg.get("model_provider"))
     provider_cfg = _provider_config(codex_cfg, provider_name) if provider_name else {}
+    if env_wire_api.strip().lower().replace("_", "/") in {
+        "anthropic/messages",
+        "messages",
+    }:
+        provider_name = "Anthropic"
+        provider_cfg = {}
 
     configured_model = _clean_text(codex_cfg.get("model")) or _clean_text(codex_cfg.get("review_model"))
     requested_model_override = (

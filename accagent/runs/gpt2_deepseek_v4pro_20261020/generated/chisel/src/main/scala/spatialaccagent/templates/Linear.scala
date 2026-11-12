@@ -77,6 +77,115 @@ final case class LinearParams(
   val scheduleId: String = "token_interleaved_policy_mac_v3"
 }
 
+class LinearOutputRequantizer(outputBits: Int) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(new Bundle {
+      val value = SInt(32.W)
+      val channelScale = UInt(32.W)
+      val activationScale = UInt(32.W)
+      val outputScale = UInt(32.W)
+      val binaryShift = SInt(10.W)
+    }))
+    val out = Decoupled(UInt(outputBits.W))
+  })
+
+  io.in.ready := true.B
+
+  private val s0Valid = RegInit(false.B)
+  private val s0Value = Reg(SInt(32.W))
+  private val s0BinaryShift = Reg(SInt(10.W))
+  private val s0OutputScale = Reg(UInt(32.W))
+  private val s0MatrixActivation = Reg(UInt(66.W))
+
+  private val s1Valid = RegInit(false.B)
+  private val s1Value = Reg(SInt(32.W))
+  private val s1BinaryShift = Reg(SInt(10.W))
+  private val s1Composed = Reg(UInt(32.W))
+
+  private val s2Valid = RegInit(false.B)
+  private val s2Magnitude = Reg(UInt(65.W))
+  private val s2Negative = Reg(Bool())
+  private val s2Shift = Reg(SInt(10.W))
+
+  private val s3Valid = RegInit(false.B)
+  private val s3ScaledMagnitude = Reg(UInt(128.W))
+  private val s3Negative = Reg(Bool())
+
+  private val s4Valid = RegInit(false.B)
+  private val s4Result = Reg(UInt(outputBits.W))
+
+  io.out.valid := s4Valid
+  io.out.bits := s4Result
+
+  when(io.in.valid) {
+    s0Value := io.in.bits.value
+    s0BinaryShift := io.in.bits.binaryShift
+    s0OutputScale := io.in.bits.outputScale
+    val matrixProduct = Cat(0.U(1.W), io.in.bits.channelScale) * Cat(0.U(1.W), io.in.bits.activationScale)
+    s0MatrixActivation := (matrixProduct >> 31).pad(66)
+    s0Valid := true.B
+  }.otherwise {
+    s0Valid := false.B
+  }
+
+  when(s0Valid) {
+    s1Value := s0Value
+    s1BinaryShift := s0BinaryShift
+    val outputProduct = s0MatrixActivation * Cat(0.U(1.W), s0OutputScale)
+    val composedWide = outputProduct >> 31
+    s1Composed := Mux(composedWide > BigInt(0xffffffffL).U(32.W), BigInt(0xffffffffL).U(32.W), composedWide(31, 0))
+    s1Valid := true.B
+  }.otherwise {
+    s1Valid := false.B
+  }
+
+  when(s1Valid) {
+    val positiveMultiplier = Cat(0.U(1.W), s1Composed).asSInt
+    val product = s1Value * positiveMultiplier
+    val negative = product < 0.S
+    val magnitude = Mux(negative, (-product).asUInt, product.asUInt)
+    val shift = 31.S(10.W) - s1BinaryShift.pad(10)
+    s2Magnitude := magnitude
+    s2Negative := negative
+    s2Shift := shift
+    s2Valid := true.B
+  }.otherwise {
+    s2Valid := false.B
+  }
+
+  when(s2Valid) {
+    val tooFarRight = s2Shift > 63.S
+    val rightShift = Mux(s2Shift <= 0.S, 0.U(6.W), Mux(s2Shift > 63.S, 63.U(6.W), s2Shift.asUInt(5, 0)))
+    val leftMagnitude = Mux(s2Shift < 0.S, -s2Shift, 0.S(10.W))
+    val leftShift = Mux(leftMagnitude > 63.S, 63.U(6.W), leftMagnitude.asUInt(5, 0))
+    val quotient = s2Magnitude >> rightShift
+    val restored = (quotient << rightShift)(64, 0)
+    val remainder = s2Magnitude - restored
+    val halfway = (1.U(65.W) << Mux(rightShift === 0.U, 0.U, rightShift - 1.U))(64, 0)
+    val roundUp = rightShift =/= 0.U && (remainder > halfway || (remainder === halfway && quotient(0)))
+    val roundedRight = quotient + roundUp.asUInt
+    val leftShifted = (s2Magnitude.pad(128) << leftShift)(127, 0)
+    val scaledMagnitude = Mux(tooFarRight, 0.U(128.W), Mux(s2Shift < 0.S, leftShifted, roundedRight.pad(128)))
+    s3ScaledMagnitude := scaledMagnitude
+    s3Negative := s2Negative
+    s3Valid := true.B
+  }.otherwise {
+    s3Valid := false.B
+  }
+
+  when(s3Valid) {
+    val signedMagnitude = s3ScaledMagnitude.asSInt
+    val signedResult = Mux(s3Negative, -signedMagnitude, signedMagnitude)
+    val maximum = ((BigInt(1) << (outputBits - 1)) - 1).S(128.W)
+    val minimum = (-(BigInt(1) << (outputBits - 1))).S(128.W)
+    val saturated = Mux(signedResult > maximum, maximum, Mux(signedResult < minimum, minimum, signedResult))
+    s4Result := AccMath.resizeSignedToUInt(saturated, outputBits)
+    s4Valid := true.B
+  }.otherwise {
+    s4Valid := false.B
+  }
+}
+
 class Linear(p: LinearParams) extends Module {
   val io = IO(new Bundle {
     val start = Input(Bool())
@@ -246,7 +355,7 @@ class Linear(p: LinearParams) extends Module {
     }.otherwise { loadBeat := loadBeat + 1.U }
   }
 
-  val sIdle :: sInit :: sRun :: sDrain :: sCapture :: sWrite :: Nil = Enum(6)
+  val sIdle :: sInit :: sRun :: sDrain :: sCapture :: sWrite :: sWriteFlush :: Nil = Enum(7)
   val state = RegInit(sIdle)
   // Do not pin one physical weight bank for an entire matrix. The cache owns
   // the active/shadow handoff at completed tile boundaries, allowing a matrix
@@ -438,15 +547,17 @@ class Linear(p: LinearParams) extends Module {
       state := sInit
     }
   }
+  val requantLatency = 5
+  val outputWriteAddrWidth = log2Ceil((2 * outputChunkDepth) max 2)
+  val outputCmdValid = RegInit(VecInit(Seq.fill(requantLatency)(false.B)))
+  val outputCmdAddr = Reg(Vec(requantLatency, UInt(outputWriteAddrWidth.W)))
+  val writeFlushTimer = RegInit(0.U(log2Ceil(requantLatency max 2).W))
   when(state === sWrite) {
     when(writeToken === computeTokens - 1.U) {
       writeToken := 0.U
       when(outBeat === (p.outBeats - 1).U) {
-        inputFull(computeBank) := false.B
-        computeBank := ~computeBank
-        outputFull(writeBank) := true.B
-        writeBank := ~writeBank
-        state := sIdle
+        state := sWriteFlush
+        writeFlushTimer := 0.U
       }.otherwise {
         outBeat := outBeat + 1.U
         outputGroup := 0.U
@@ -454,40 +565,73 @@ class Linear(p: LinearParams) extends Module {
       }
     }.otherwise { writeToken := writeToken + 1.U }
   }
-  val outputValues = Wire(Vec(p.outLanes, UInt(p.outputBits.W)))
-  for (outputLane <- 0 until p.outLanes) {
-    val value = beatValues(writeToken)(outputLane)
-    if (p.integerMode) {
+  when(state === sWriteFlush) {
+    when(writeFlushTimer >= (requantLatency - 1).U) {
+      inputFull(computeBank) := false.B
+      computeBank := ~computeBank
+      outputFull(writeBank) := true.B
+      writeBank := ~writeBank
+      state := sIdle
+      writeFlushTimer := 0.U
+    }.otherwise {
+      writeFlushTimer := writeFlushTimer + 1.U
+    }
+  }
+  val outputWriteData = Wire(UInt(p.outputBeatBits.W))
+  if (p.integerMode) {
+    val outputRequantizers = Seq.tabulate(p.outLanes) { outputLane =>
+      val requantizer = Module(new LinearOutputRequantizer(p.outputBits))
+      val value = beatValues(writeToken)(outputLane)
       val activated = if (p.fusedActivation == "relu") Mux(value(31), 0.U(32.W), value) else value
       val channelIndex = AccMath.boundedIndex(outputGroup * p.macRows.U + outputLane.U, p.outDim)
       val channelMultiplier = Mux(
         io.scale.channelScale(channelIndex) === 0.U,
-        "h80000000".U(32.W),
+        BigInt(0x80000000L).U(32.W),
         io.scale.channelScale(channelIndex)
       )
       val activationMultiplier = Mux(
         io.scale.activationScale === 0.U,
-        "h80000000".U(32.W),
+        BigInt(0x80000000L).U(32.W),
         io.scale.activationScale
       )
-      val outputMultiplier = Mux(io.scale.outScale === 0.U, "h80000000".U(32.W), io.scale.outScale)
+      val outputMultiplier = Mux(io.scale.outScale === 0.U, BigInt(0x80000000L).U(32.W), io.scale.outScale)
       val combinedShift = io.scale.channelShift(channelIndex).pad(10) +
         io.scale.activationShift.pad(10) + io.scale.outputShift.pad(10)
-      outputValues(outputLane) := AccMath.requantizeQ31WithShift(
-        activated.asSInt,
-        AccMath.composeQ31Scales(channelMultiplier, activationMultiplier, outputMultiplier),
-        combinedShift,
-        p.outputBits
-      )
-    } else {
+      requantizer.io.in.bits.value := activated.asSInt
+      requantizer.io.in.bits.channelScale := channelMultiplier
+      requantizer.io.in.bits.activationScale := activationMultiplier
+      requantizer.io.in.bits.outputScale := outputMultiplier
+      requantizer.io.in.bits.binaryShift := combinedShift
+      requantizer.io.in.valid := state === sWrite
+      requantizer.io.out.ready := true.B
+      requantizer.io.out.bits
+    }
+    outputWriteData := VecInit(outputRequantizers).asUInt
+  } else {
+    val outputValues = Wire(Vec(p.outLanes, UInt(p.outputBits.W)))
+    for (outputLane <- 0 until p.outLanes) {
+      val value = beatValues(writeToken)(outputLane)
       val isNan = value(30, 23).andR && value(22, 0).orR
       val activated = if (p.fusedActivation == "relu") Mux(value(31) && !isNan, PhysicalMath.fp32Zero, value) else value
       outputValues(outputLane) := PhysicalMath.fromFp32(activated, p.outputBits)
     }
+    outputWriteData := outputValues.asUInt
   }
-  outputMem.io.writeEn := state === sWrite
-  outputMem.io.writeAddr := writeBank.asUInt * outputChunkDepth.U + writeToken * p.outBeats.U + outBeat
-  outputMem.io.writeData := outputValues.asUInt
+
+  val currentWriteAddr = writeBank.asUInt * outputChunkDepth.U + writeToken * p.outBeats.U + outBeat
+  for (stage <- 0 until requantLatency) {
+    if (stage == 0) {
+      outputCmdValid(stage) := state === sWrite
+      outputCmdAddr(stage) := Mux(state === sWrite, currentWriteAddr.pad(outputWriteAddrWidth), 0.U(outputWriteAddrWidth.W))
+    } else {
+      outputCmdValid(stage) := outputCmdValid(stage - 1)
+      outputCmdAddr(stage) := outputCmdAddr(stage - 1)
+    }
+  }
+
+  outputMem.io.writeEn := (if (p.integerMode) outputCmdValid(requantLatency - 1) else state === sWrite)
+  outputMem.io.writeAddr := (if (p.integerMode) outputCmdAddr(requantLatency - 1) else currentWriteAddr)
+  outputMem.io.writeData := outputWriteData
 
   val drainBeat = RegInit(0.U(log2Ceil(p.outBeats max 2).W))
   val drainToken = RegInit(0.U(tokenBits.W))

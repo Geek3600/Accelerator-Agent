@@ -2473,9 +2473,17 @@ def validated_vcs_compile_plan(
 def execution_output_plan(
     manifest: dict[str, Any],
     errors: list[str],
+    *,
+    include_runtime_outputs: bool | None = None,
 ) -> dict[str, Any]:
     raw = manifest.get("execution_outputs")
     raw = raw if isinstance(raw, dict) else {}
+    runtime_binding = manifest.get("runtime_constant_binding")
+    if include_runtime_outputs is None:
+        include_runtime_outputs = (
+            isinstance(runtime_binding, dict)
+            and runtime_binding.get("enabled") is True
+        )
     row = raw.get("compile_log") if isinstance(raw.get("compile_log"), dict) else {}
     path = safe_relative_path(row.get("path"))
     if row and path is None:
@@ -2489,7 +2497,86 @@ def execution_output_plan(
     }:
         errors.append("board simulation compile log path would overwrite a control manifest")
         return {}
-    return {"compile_log": {"path": path, "schema_version": ""}}
+    plan = {"compile_log": {"path": path, "schema_version": ""}}
+    reserved = {
+        Path("board_simulation_manifest.json"),
+        Path("board_simulation_executed_manifest.json"),
+        Path("vcs_stage.tar.gz"),
+    }
+    seen = {path}
+    runtime_output_names = [
+        "simulation_log",
+        "progress_event_log",
+        "elaborated_hierarchy_report",
+        "testbench_ast_scan_report",
+        "pipeline_overlap_report",
+        "runtime_loader_report",
+    ]
+    for name in runtime_output_names:
+        row = raw.get(name)
+        if not include_runtime_outputs:
+            continue
+        if row is None and name == "testbench_ast_scan_report":
+            continue
+        if not isinstance(row, dict):
+            errors.append(f"board simulation execution_outputs.{name} is missing")
+            continue
+        output_path = safe_relative_path(row.get("path"))
+        schema_version = str(row.get("schema_version") or "")
+        if output_path is None or output_path in reserved or output_path in seen:
+            errors.append(f"board simulation execution_outputs.{name}.path is invalid or duplicated")
+            continue
+        if name != "simulation_log" and not schema_version:
+            errors.append(f"board simulation execution_outputs.{name}.schema_version is missing")
+            continue
+        seen.add(output_path)
+        plan[name] = {"path": output_path, "schema_version": schema_version}
+
+    if isinstance(raw.get("performance_counter_report"), dict):
+        row = raw["performance_counter_report"]
+        output_path = safe_relative_path(row.get("path"))
+        if (
+            output_path is None
+            or output_path in reserved
+            or output_path in seen
+            or not str(row.get("schema_version") or "")
+        ):
+            errors.append("board simulation execution_outputs.performance_counter_report is invalid")
+        else:
+            plan["performance_counter_report"] = {
+                "path": output_path,
+                "schema_version": str(row["schema_version"]),
+            }
+            seen.add(output_path)
+
+    if not include_runtime_outputs:
+        return plan
+
+    monitor_rows = raw.get("protocol_monitor_reports", [])
+    if not isinstance(monitor_rows, list):
+        errors.append("board simulation execution_outputs.protocol_monitor_reports is not a list")
+        monitor_rows = []
+    plan["protocol_monitor_reports"] = []
+    for index, row in enumerate(monitor_rows):
+        if not isinstance(row, dict):
+            errors.append(f"board simulation execution_outputs.protocol_monitor_reports[{index}] is not an object")
+            continue
+        output_path = safe_relative_path(row.get("path"))
+        if output_path is None or output_path in reserved or output_path in seen:
+            errors.append(f"board simulation execution_outputs.protocol_monitor_reports[{index}].path is invalid or duplicated")
+            continue
+        if not str(row.get("schema_version") or "") or not str(row.get("interface") or ""):
+            errors.append(f"board simulation execution_outputs.protocol_monitor_reports[{index}] is missing interface/schema")
+            continue
+        seen.add(output_path)
+        plan["protocol_monitor_reports"].append(
+            {
+                "path": output_path,
+                "schema_version": str(row["schema_version"]),
+                "interface": str(row["interface"]),
+            }
+        )
+    return plan
 
 
 def structured_monitor_specs(
@@ -2559,11 +2646,14 @@ def structured_monitor_specs(
 
 def validate_compile_only_manifest(
     run_dir: Path,
+    *,
+    include_runtime: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
     manifest_path = run_dir / "verification" / "board_simulation" / "board_simulation_manifest.json"
     identity_path = run_dir / "verification" / "board_interface" / "board_source_identity.json"
     manifest = read_json(manifest_path)
-    manifest, _ = refresh_compile_only_timescale(run_dir, manifest)
+    if not include_runtime:
+        manifest, _ = refresh_compile_only_timescale(run_dir, manifest)
     identity = read_json(identity_path)
     errors: list[str] = []
     preflight = validate_exact_board_preflight(identity_path, manifest_path)
@@ -2659,7 +2749,7 @@ def validate_compile_only_manifest(
         errors.append("board compile top_module is missing")
 
     fixture_staging = external_fixture_staging_contract(
-        manifest, errors, include_runtime_files=False
+        manifest, errors, include_runtime_files=include_runtime
     )
     compile_plan = validated_vcs_compile_plan(
         manifest,
@@ -2670,8 +2760,42 @@ def validate_compile_only_manifest(
         errors,
     )
     output_plan = execution_output_plan(
-        manifest, errors
+        manifest, errors, include_runtime_outputs=include_runtime
     )
+    sample_runtime_auxiliary = (
+        sample_runtime_auxiliary_contract(manifest, errors)
+        if include_runtime
+        else []
+    )
+    binding = read_json(
+        run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
+    ) if include_runtime else {}
+    artifacts: dict[str, Path] = {}
+    if include_runtime:
+        raw_artifacts = manifest.get("artifacts", {})
+        if not isinstance(raw_artifacts, dict) or not raw_artifacts:
+            errors.append("full semantic board manifest has no hash-bound runtime artifacts")
+            raw_artifacts = {}
+        for name, row in raw_artifacts.items():
+            label = f"board runtime artifact {name}"
+            if not isinstance(row, dict):
+                errors.append(f"{label} is not an object")
+                continue
+            path = verified_file(row, label, errors)
+            if path is not None:
+                artifacts[str(name)] = path
+        if (
+            binding.get("status") != "pass"
+            or binding.get("dut_consumes_bound_weights") is not True
+            or binding.get("scope_coverage_complete") is not True
+            or binding.get("default_or_identity_weight_fallback_disabled") is not True
+            or not binding.get("consumed_tensor_hashes")
+        ):
+            errors.append("full semantic board run is not bound to complete DUT-consumed real model weights")
+        if not fixture_staging["runtime_files"] and not sample_runtime_auxiliary:
+            errors.append("full semantic board manifest has no runtime input/weight fixture files")
+        if not output_plan.get("progress_event_log"):
+            errors.append("full semantic board manifest has no structured runtime progress log")
     evidence = {
         "exact_sample_wrapper_unmodified": exact_wrapper,
         "source_identity_bound": identity_passed,
@@ -2684,22 +2808,35 @@ def validate_compile_only_manifest(
         "identity_path": str(identity_path),
         "source_entries": source_entries,
         "source_paths": [row["path"] for row in source_entries],
-        "artifact_paths": {},
+        "artifact_paths": artifacts,
         "testbench_path": testbench_entry["path"] if testbench_entry else None,
         "structured_monitor_specs": [],
         "execution_output_plan": output_plan,
         "vcs_compile_plan": compile_plan,
         "external_fixture_staging": fixture_staging,
-        "sample_runtime_auxiliary": [],
+        "sample_runtime_auxiliary": sample_runtime_auxiliary,
         "exact_board_preflight": preflight,
-        "weight_binding_evidence": {"validation_policy": COMPILE_ONLY_POLICY},
+        "weight_binding_evidence": (
+            {**binding, "validation_policy": "full_semantic_simulation"}
+            if include_runtime
+            else {"validation_policy": COMPILE_ONLY_POLICY}
+        ),
         "evidence": evidence,
     }
     return manifest, resolved, errors
 
 
 def validate_manifest(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
-    return validate_compile_only_manifest(run_dir)
+    policy = os.environ.get(
+        "SPATIALACC_VERIFICATION_POLICY", "full_semantic_simulation"
+    )
+    if policy == COMPILE_ONLY_POLICY:
+        return validate_compile_only_manifest(run_dir)
+    if policy == "full_semantic_simulation":
+        return validate_compile_only_manifest(run_dir, include_runtime=True)
+    return {}, {"exact_board_preflight": {}, "evidence": {}, "weight_binding_evidence": {}}, [
+        f"unsupported exact-board verification policy: {policy}"
+    ]
 
 
 def tool_profile(run_dir: Path) -> dict[str, Any]:
@@ -5246,6 +5383,10 @@ def fpga_ip_runtime_compile_setup(
 
 
 def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
+    active_policy = os.environ.get(
+        "SPATIALACC_VERIFICATION_POLICY", "full_semantic_simulation"
+    )
+    compile_only = active_policy == COMPILE_ONLY_POLICY
     fast_replay_requested = (
         str(os.environ.get("SPATIALACC_FAST_REPLAY") or "") == "1"
     )
@@ -5257,6 +5398,12 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         if fast_replay_requested
         else pending_exact_board_job(run_dir)
     )
+    if pending_job is not None:
+        prior_policy = str(
+            pending_job["job"].get("validation_policy") or "full_semantic_simulation"
+        )
+        if prior_policy != active_policy:
+            pending_job = None
     if pending_job is not None:
         expected_manifest = pending_job["job"].get("preflight_manifest_projection_sha256")
         manifest_path = Path(pending_job["manifest_path"])
@@ -5550,6 +5697,30 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         )
     plusargs = []
     workload_plusargs = list(plusargs)
+    if not compile_only:
+        runtime_plusargs = vcs.get("runtime_plusargs", {})
+        if not isinstance(runtime_plusargs, dict):
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "status": "fail",
+                "phase": "manifest_validation",
+                "errors": ["full semantic board VCS runtime_plusargs must be an object"],
+                "remote_tool_was_not_started": True,
+            }
+        for key, artifact_name in runtime_plusargs.items():
+            artifact_name = str(artifact_name)
+            artifact_path = resolved["artifact_paths"].get(artifact_name)
+            if not re.fullmatch(r"[A-Za-z0-9_]+", str(key)) or not isinstance(artifact_path, Path):
+                return {
+                    "schema_version": SCHEMA_VERSION,
+                    "status": "fail",
+                    "phase": "manifest_validation",
+                    "errors": [f"runtime plusarg {key} does not bind a current runtime artifact"],
+                    "remote_tool_was_not_started": True,
+                }
+            plusargs.append(
+                f"+{key}=artifacts/{artifact_name}{artifact_path.suffix}"
+            )
     plusargs.extend(checkpoint_runtime_plusargs(checkpoint_plan))
     if checkpoint_plan.get("mode") == "cold_capture":
         capture_tcl = stage_dir / NATIVE_CHECKPOINT_CAPTURE_TCL
@@ -5562,15 +5733,22 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         workload_plusargs.append("+vcs+loopreport")
     output_plan = resolved["execution_output_plan"]
     compile_log_relative = output_plan["compile_log"]["path"]
-    simulation_log_relative = compile_log_relative
+    simulation_log_relative = (
+        output_plan.get("simulation_log", {}).get("path", compile_log_relative)
+    )
     supplemental_jsonl_paths = []
     supplemental_vcd_paths = []
     runtime_loader_paths = []
     performance_counter_paths = []
     output_parents = (
-        {compile_log_relative.parent.as_posix()}
-        if compile_log_relative.parent != Path(".")
-        else set()
+        {
+            row["path"].parent.as_posix()
+            for value in output_plan.values()
+            for row in (value if isinstance(value, list) else [value])
+            if isinstance(row, dict)
+            and isinstance(row.get("path"), Path)
+            and row["path"].parent != Path(".")
+        }
     )
     checkpoint_outputs = checkpoint_plan.get("contract", {}).get("outputs", {})
     if checkpoint_plan.get("enabled") is True and isinstance(checkpoint_outputs, dict):
@@ -5589,6 +5767,15 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         compile_plan["commands"][-1]["cwd"] / compile_plan["output"]
     )
     remote_output_paths = [compile_log_relative, simulator_path]
+    if not compile_only:
+        remote_output_paths.extend(
+            row["path"]
+            for value in output_plan.values()
+            for row in (value if isinstance(value, list) else [value])
+            if isinstance(row, dict)
+            and isinstance(row.get("path"), Path)
+        )
+    remote_output_paths = list(dict.fromkeys(remote_output_paths))
     if checkpoint_plan.get("enabled") is True and isinstance(checkpoint_outputs, dict):
         remote_output_paths.extend(
             relative
@@ -5685,9 +5872,7 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         }
     fingerprint_material = {
         "schema_version": "spatialaccagent.board_remote_job_identity.v1",
-        "validation_policy": (
-            (COMPILE_ONLY_POLICY)
-        ),
+        "validation_policy": active_policy,
         "preflight_manifest_projection_sha256": preflight_manifest_projection_sha256(manifest),
         "source_identity_sha256": sha256_file(Path(resolved["identity_path"])),
         "source_closure_sha256": manifest.get("source_closure_sha256"),
@@ -5864,7 +6049,17 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             "summary": "reused the saved remote VCS simulator; no VCS compile was launched",
         }
         simulate_result = (
-            ({'status': 'not_run', 'summary': 'simulation skipped by VCS compile-only policy'})
+            run_remote_background_command(
+                host,
+                port,
+                simulate_command,
+                remote_dir,
+                out_dir,
+                timeout_sec,
+                "vcs_simulation",
+            )
+            if not compile_only
+            else {"status": "not_run", "summary": "simulation skipped by VCS compile-only policy"}
         )
         remote_job_reuse = {
             "status": "pass",
@@ -5951,7 +6146,21 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             "vcs_compile",
         )
         simulate_result = (
-            ({'status': 'not_run', 'summary': 'simulation skipped by VCS compile-only policy'})
+            run_remote_background_command(
+                host,
+                port,
+                simulate_command,
+                remote_dir,
+                out_dir,
+                timeout_sec,
+                "vcs_simulation",
+            )
+            if not compile_only and compile_result.get("status") == "pass"
+            else (
+                {"status": "not_run", "summary": "compile failed before VCS simulation"}
+                if not compile_only
+                else {"status": "not_run", "summary": "simulation skipped by VCS compile-only policy"}
+            )
         )
         remote_job_reuse = {
             "status": "not_run",
@@ -5974,6 +6183,23 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         ],
         timeout_sec,
     )
+    simulation_log_path = board_dir / simulation_log_relative
+    simulation_log_download = None
+    if not compile_only and simulation_log_relative != compile_log_relative:
+        _prepare_fresh_transfer_target(simulation_log_path)
+        simulation_log_download = run_transfer_command(
+            [
+                "scp",
+                "-q",
+                "-P",
+                str(port),
+                "-o",
+                "StrictHostKeyChecking=no",
+                f"{host}:{remote_dir}/{simulation_log_relative.as_posix()}",
+                str(simulation_log_path),
+            ],
+            timeout_sec,
+        )
     executable_check = run_transfer_command(
         [
             *ssh_base,
@@ -5988,23 +6214,107 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
             "failure_class": "vcs_elaboration_output_missing",
             "stderr_tail": executable_check.stderr[-4000:],
         }
+    copied_outputs: dict[str, dict[str, Any]] = {}
+    output_copy_ok = True
+    if not compile_only:
+        for name, value in output_plan.items():
+            rows = value if isinstance(value, list) else [value]
+            for index, row in enumerate(rows):
+                if not isinstance(row, dict) or not isinstance(row.get("path"), Path):
+                    continue
+                relative = row["path"]
+                if name == "compile_log":
+                    local_path = compile_log_path
+                    copied_ok = log_download.returncode == 0 and local_path.is_file()
+                elif name == "simulation_log":
+                    local_path = simulation_log_path
+                    copied_ok = (
+                        simulation_log_download.returncode == 0
+                        if simulation_log_download is not None
+                        else log_download.returncode == 0
+                    ) and local_path.is_file()
+                else:
+                    local_path = board_dir / relative
+                    _prepare_fresh_transfer_target(local_path)
+                    transfer = run_transfer_command(
+                        [
+                            "scp", "-q", "-P", str(port),
+                            "-o", "StrictHostKeyChecking=no",
+                            f"{host}:{remote_dir}/{relative.as_posix()}",
+                            str(local_path),
+                        ],
+                        timeout_sec,
+                    )
+                    copied_ok = transfer.returncode == 0 and local_path.is_file()
+                row_name = name if not isinstance(value, list) else f"{name}_{index}"
+                copied_outputs[row_name] = {
+                    "path": str(local_path),
+                    "relative_path": relative.as_posix(),
+                    "copied": copied_ok,
+                    "sha256": sha256_file(local_path) if copied_ok else None,
+                    "schema_version": row.get("schema_version"),
+                }
+                if name in {"simulation_log", "progress_event_log"} or name == "protocol_monitor_reports":
+                    output_copy_ok = output_copy_ok and copied_ok
+
+    simulation_passed = (
+        compile_only and simulate_result.get("status") == "not_run"
+    ) or (
+        not compile_only
+        and simulate_result.get("status") == "pass"
+        and simulation_log_path.is_file()
+        and output_copy_ok
+    )
     passed = (
         compile_result.get("status") == "pass"
         and executable_check.returncode == 0
         and log_download.returncode == 0
         and compile_log_path.is_file()
+        and simulation_passed
     )
+    executed_manifest_path = None
+    if not compile_only:
+        executed_manifest_path = board_dir / "board_simulation_executed_manifest.json"
+        executed_manifest = copy.deepcopy(manifest)
+        dynamic_records = [
+            {
+                "evidence_id": name,
+                "path": row["path"],
+                "sha256": row["sha256"],
+                "kind": "vcs_runtime_output",
+            }
+            for name, row in copied_outputs.items()
+            if row.get("copied") is True and row.get("sha256")
+        ]
+        executed_manifest.update(
+            {
+                "status": "pass" if passed else "fail",
+                "executed_validation_policy": active_policy,
+                "input_fingerprint_sha256": fingerprint,
+                "remote_workdir": remote_dir,
+                "run": simulate_result,
+                "compile": compile_result,
+                "dynamic_evidence_records": dynamic_records,
+            }
+        )
+        write_json(executed_manifest_path, executed_manifest)
     return {
         "schema_version": SCHEMA_VERSION,
         "verification_layer": "layer3_real_board_axi_ddr",
         "status": "pass" if passed else "fail",
-        "hardware_validation_status": "compile_only_pass" if passed else "fail",
+        "hardware_validation_status": (
+            "compile_only_pass" if passed and compile_only
+            else "runtime_pass" if passed
+            else "fail"
+        ),
         "stage_pass_eligible": passed,
         "phase": "remote_vcs",
-        "validation_policy": COMPILE_ONLY_POLICY,
-        "simulation_skipped": True,
+        "validation_policy": (
+            COMPILE_ONLY_POLICY if compile_only else "full_semantic_simulation"
+        ),
+        "simulation_skipped": compile_only,
         "compile": compile_result,
-        "run": {"status": "not_run", "summary": "simulation skipped by VCS compile-only policy"},
+        "run": simulate_result,
         "compile_evidence": {
             "status": "pass" if passed else "fail",
             "log_path": str(compile_log_path),
@@ -6017,8 +6327,10 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         },
         "summary": (
             "exact-board VCS compile and elaboration passed; simulation intentionally skipped"
+            if passed and compile_only
+            else "exact-board VCS compile, elaboration, and runtime simulation passed"
             if passed
-            else "exact-board VCS compile/elaboration or compile evidence failed"
+            else "exact-board VCS compile/elaboration or runtime simulation failed"
         ),
         "manifest": resolved["manifest_path"],
         "source_identity": resolved["identity_path"],
@@ -6027,16 +6339,22 @@ def _execute_board_vcs(run_dir: Path, timeout_sec: int) -> dict[str, Any]:
         "remote_workdir": remote_dir,
         "input_fingerprint_sha256": fingerprint,
         "compile_log": str(compile_log_path),
-        "sim_log": None,
-        "errors": (
-            []
-            if passed
-            else [
-                "compile failed"
-                if compile_result.get("status") != "pass"
-                else "elaborated VCS simulator executable or compile log is missing"
-            ]
-        ),
+        "sim_log": str(simulation_log_path) if not compile_only else None,
+        "executed_manifest": str(executed_manifest_path) if executed_manifest_path else None,
+        "outputs": copied_outputs,
+        "required_outputs_copied": output_copy_ok if not compile_only else False,
+        "progress_event_log_valid": bool(
+            copied_outputs.get("progress_event_log", {}).get("copied")
+        ) if not compile_only else False,
+        "errors": [] if passed else [
+            *( ["compile failed"] if compile_result.get("status") != "pass" else [] ),
+            *( ["elaborated VCS simulator executable or compile log is missing"]
+               if executable_check.returncode != 0 or log_download.returncode != 0 or not compile_log_path.is_file()
+               else [] ),
+            *( ["full semantic board VCS runtime or required runtime outputs failed"]
+               if not compile_only and not simulation_passed
+               else [] ),
+        ],
     }
 
 

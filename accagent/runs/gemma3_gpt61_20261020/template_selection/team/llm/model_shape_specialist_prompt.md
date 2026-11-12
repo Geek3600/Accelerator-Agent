@@ -3,7 +3,7 @@ model_shape_specialist
 </agent>
 
 <task>
-Using authoritative model inputs and current trusted template metadata, verify decoder operator sequence, residual/order semantics, and shape/head mapping; report coverage gaps or contradictions without treating the contaminated candidate artifact as validated.
+Independently verify that the decoder operator sequence and residual/operator order are completely represented by trusted selected templates, that any missing coverage is explicit, and that the supplied coverage evidence is checker-backed. Do not change model semantics or fill coverage with free-form RTL.
 </task>
 
 <rules>
@@ -83,91 +83,84 @@ Using authoritative model inputs and current trusted template metadata, verify d
 <subtask>
 {
   "acceptance_checkers": [
-    "model_config_check",
     "template_coverage_check",
-    "llm_semantic_extraction_check",
     "sacg_static_check"
   ],
   "action_type": "evidence_and_repair_review",
   "agent": "model_shape_specialist",
   "artifact_focus": [
-    "artifact.input.model_config",
-    "artifact.input.template_library",
-    "artifact.input.template_metadata",
-    "artifact.stage2.template_selection.operator_sequence",
-    "artifact.stage2.template_selection.selected_templates",
-    "artifact.stage2.template_selection.coverage",
-    "artifact.stage2.template_selection.checker_results"
+    "operator_sequence",
+    "selected_templates",
+    "coverage",
+    "missing_ops",
+    "checker_results",
+    "forbidden_edits"
   ],
   "constraints": [
     "constraint.model.decoder",
     "constraint.shape.model",
     "constraint.template.library",
-    "constraint.cross_layer.input_consistency"
+    "constraint.human.boundary",
+    "Active SACG contamination barriers for artifact.stage2.template_selection"
   ],
   "expected_artifacts": [
-    "operator_coverage_review.json",
-    "model_shape_head_mapping_review.json",
-    "operator_coverage_findings.json"
+    "operator_coverage_review with operator-to-template matrix and source/template identifiers",
+    "coverage_checker_evidence and a list of any uncovered or order-mismatched operators",
+    "bounded follow-up requirements for any discrepancy, without proposing free-form RTL"
   ],
   "handoff_rule": {
     "completion_criteria": [],
     "evidence_rule": "Do not claim pass unless evidence is bound to SACG constraints or explicitly recorded as not_run.",
     "produces": [
-      "sacg_focus",
-      "observations",
-      "risks",
-      "proposed_actions",
-      "approval_required_for"
+      "operator coverage matrix",
+      "review findings tied to constraint.model.decoder or constraint.shape.model",
+      "checker results for coverage and SACG consistency"
     ]
   },
   "handoff_to": [
-    "template_selection.strict_binding_numeric",
-    "template_selection.attention_semantics",
-    "template_selection.cross_layer_gate"
+    "template_selection.template_binding_engineer",
+    "template_selection.attention_semantic_engineer"
   ],
-  "id": "template_selection.operator_shape_coverage",
-  "objective": "Using authoritative model inputs and current trusted template metadata, verify decoder operator sequence, residual/order semantics, and shape/head mapping; report coverage gaps or contradictions without treating the cont...<len=261>",
-  "role": "model and operator coverage engineer",
+  "id": "template_selection.operator_coverage_engineer",
+  "objective": "Independently verify that the decoder operator sequence and residual/operator order are completely represented by trusted selected templates, that any missing coverage is explicit, and that the supplied coverage evidence...<len=306>",
+  "role": "operator coverage engineer",
   "role_assignment": {
     "collaboration_interfaces": {
       "acceptance_checkers": [
-        "model_config_check",
         "template_coverage_check",
-        "llm_semantic_extraction_check",
         "sacg_static_check"
       ],
       "consumes": [
         "artifact.input.model_config",
         "artifact.input.template_library",
         "artifact.input.template_metadata",
-        "artifact.stage2.template_selection as planning/debug evidence only"
+        "candidate_stage_artifact coverage and operator_sequence"
       ],
       "downstream_consumers": [
-        "template_selection.strict_binding_numeric",
-        "template_selection.attention_semantics",
-        "template_selection.cross_layer_gate"
+        "template_selection.template_binding_engineer",
+        "template_selection.attention_semantic_engineer",
+        "template-selection stage coordinator"
       ],
       "produces": [
-        "operator_coverage_review.json",
-        "model_shape_head_mapping_review.json",
-        "operator_coverage_findings.json"
+        "operator_coverage_review",
+        "checker evidence",
+        "constraint-linked discrepancy report"
       ]
     },
     "decision_authority": [
-      "Can classify coverage and shape evidence as consistent, inconsistent, or unresolved.",
-      "Cannot change source facts, template internals, or stage promotion policy."
+      "Accept or reject coverage evidence within this bounded scope.",
+      "May not resolve model-shape conflicts by changing authoritative inputs."
     ],
-    "mission": "Establish model/operator consistency against authoritative inputs and trusted template coverage.",
+    "mission": "Review only operator coverage, wrapper presence, and model operator ordering against trusted templates.",
     "out_of_scope": [
-      "Free-form RTL generation or template repair.",
-      "Changing model/numeric/board inputs.",
-      "Treating the contaminated stage artifact as validated."
+      "Repairing parameter legality.",
+      "Changing attention or numeric semantics.",
+      "Promoting artifacts covered by an active contamination barrier."
     ],
     "primary_responsibilities": [
-      "Audit operator coverage and order.",
-      "Audit hidden-size/head mapping and report contradictions.",
-      "Preserve the active contamination-barrier boundary."
+      "Produce an explicit operator-to-template mapping.",
+      "Check coverage and ordering evidence against the current source/template records.",
+      "Route shape or attention-specific contradictions to the corresponding specialists."
     ]
   },
   "role_profile": {
@@ -176,34 +169,49 @@ Using authoritative model inputs and current trusted template metadata, verify d
       "audit shape and head mapping",
       "track residual/operator order"
     ],
-    "collaboration_interfaces": [
-      "Consumes model configuration, template metadata, and candidate data only as planning/debug evidence.",
-      "Produces source-linked shape and coverage findings for the binding specialist, attention specialist, and cross-layer gate.",
-      "template_coverage_check, model_config_check, and llm_semantic_extraction_check accept the corresponding evidence."
-    ],
+    "collaboration_interfaces": {
+      "acceptance_checkers": [
+        "template_coverage_check",
+        "sacg_static_check"
+      ],
+      "consumes": [
+        "model configuration",
+        "template library and metadata",
+        "candidate coverage and checker evidence"
+      ],
+      "downstream_consumers": [
+        "template binding engineer",
+        "attention semantic engineer",
+        "stage coordinator"
+      ],
+      "produces": [
+        "coverage matrix",
+        "constraint-linked review findings",
+        "checker-backed acceptance status"
+      ]
+    },
     "constraint_focus": [
       "constraint.model.decoder",
-      "constraint.shape.model",
-      "constraint.template.library"
+      "constraint.shape.model"
     ],
     "decision_authority": [
-      "May determine whether evidence supports operator coverage and shape consistency.",
-      "May not alter model configuration or approve a template adapter."
+      "Declare coverage evidence sufficient or insufficient.",
+      "Flag model/operator-sequence contradictions for specialist handoff."
     ],
     "family": "model_shape",
-    "mission": "Establish that model semantics, dimensions, operator order, and trusted template coverage agree.",
+    "mission": "Establish complete, order-correct operator coverage using trusted templates.",
     "out_of_scope": [
-      "Changing model dimensions or attention configuration.",
-      "Editing trusted template internals or generating free-form RTL.",
-      "Selecting Stage-4 architecture dimensions."
+      "Changing model configuration or operator semantics.",
+      "Selecting DSE lanes or compute-array dimensions.",
+      "Writing free-form RTL or modifying template internals."
     ],
     "primary_responsibilities": [
-      "Revalidate operator sequence and residual ordering against model inputs.",
-      "Check shape and head mapping using authoritative model facts.",
-      "Report missing coverage explicitly and distinguish it from candidate-artifact claims."
+      "Compare the model decoder operator sequence with selected template coverage.",
+      "Check residual/operator ordering and wrapper coverage.",
+      "Identify uncovered operations or unsupported mappings without inventing implementations."
     ]
   },
-  "title": "Revalidate model shape and operator-template coverage"
+  "title": "Review decoder operator-to-template coverage"
 }
 </subtask>
 
@@ -374,17 +382,35 @@ Using authoritative model inputs and current trusted template metadata, verify d
       {
         "artifact_id": "artifact.stage2.template_selection",
         "id": "contamination_barrier.0001",
-        "last_observed_at": "2026-10-20T13:13:37+00:00",
-        "observation_count": 2,
+        "last_observed_at": "2026-10-20T13:42:59+00:00",
+        "observation_count": 7,
         "observed_transition_ids": [
           "transition.0001",
-          "transition.0002"
+          "transition.0002",
+          "transition.0003",
+          "transition.0004",
+          "transition.0005",
+          "transition.0007",
+          "transition.0008"
         ],
         "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
         "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
         "status": "active",
         "timestamp": "2026-10-20T13:09:12+00:00",
         "transition_id": "transition.0001"
+      },
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0002",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0006"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'design_team: template_selection.operator_coverage_engineer: IncompleteRead(29140 bytes read)', 'design_team: status is incomplete']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:33:34+00:00",
+        "transition_id": "transition.0006"
       }
     ],
     "open_backtrack_requests": [],
@@ -394,17 +420,35 @@ Using authoritative model inputs and current trusted template metadata, verify d
       {
         "artifact_id": "artifact.stage2.template_selection",
         "id": "contamination_barrier.0001",
-        "last_observed_at": "2026-10-20T13:13:37+00:00",
-        "observation_count": 2,
+        "last_observed_at": "2026-10-20T13:42:59+00:00",
+        "observation_count": 7,
         "observed_transition_ids": [
           "transition.0001",
-          "transition.0002"
+          "transition.0002",
+          "transition.0003",
+          "transition.0004",
+          "transition.0005",
+          "transition.0007",
+          "transition.0008"
         ],
         "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
         "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
         "status": "active",
         "timestamp": "2026-10-20T13:09:12+00:00",
         "transition_id": "transition.0001"
+      },
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0002",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0006"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'design_team: template_selection.operator_coverage_engineer: IncompleteRead(29140 bytes read)', 'design_team: status is incomplete']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:33:34+00:00",
+        "transition_id": "transition.0006"
       }
     ],
     "recent_failure_lessons": [],
@@ -412,22 +456,40 @@ Using authoritative model inputs and current trusted template metadata, verify d
     "schema_version": "spatialaccagent.sacg_memory.v0"
   },
   "sacg_memory_truth": {
-    "active_contamination_barrier_count": 1,
+    "active_contamination_barrier_count": 2,
     "active_contamination_barriers": [
       {
         "artifact_id": "artifact.stage2.template_selection",
         "id": "contamination_barrier.0001",
-        "last_observed_at": "2026-10-20T13:13:37+00:00",
-        "observation_count": 2,
+        "last_observed_at": "2026-10-20T13:42:59+00:00",
+        "observation_count": 7,
         "observed_transition_ids": [
           "transition.0001",
-          "transition.0002"
+          "transition.0002",
+          "transition.0003",
+          "transition.0004",
+          "transition.0005",
+          "transition.0007",
+          "transition.0008"
         ],
         "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
         "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
         "status": "active",
         "timestamp": "2026-10-20T13:09:12+00:00",
         "transition_id": "transition.0001"
+      },
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0002",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0006"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'design_team: template_selection.operator_coverage_engineer: IncompleteRead(29140 bytes read)', 'design_team: status is incomplete']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:33:34+00:00",
+        "transition_id": "transition.0006"
       }
     ],
     "active_contamination_barriers_truncated": false,

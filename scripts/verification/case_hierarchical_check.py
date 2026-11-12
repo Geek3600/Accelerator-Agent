@@ -30,6 +30,10 @@ from accagent.framework.board_validation_scope import (
     validation_scope_record_errors,
 )
 from accagent.framework.stage_verification_plan import leaf_module_checks
+from accagent.framework.verification_evidence_contract import (
+    COMPILE_ONLY_POLICY,
+    active_verification_policy,
+)
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -355,6 +359,18 @@ def check_multilayer_pipeline(run_dir: Path) -> dict[str, Any]:
     model = read_json(model_path) if model_path.exists() else {}
     task_path = task_card_path(run_dir)
     task_card = read_json(task_path) if task_path.exists() else {}
+    plan_path = run_dir / "verification_artifacts" / "verification_plan.json"
+    verification_plan = read_json(plan_path) if plan_path.exists() else {}
+    execution_policy = verification_plan.get("verification_execution_policy", {})
+    task_policy = task_card.get("acceptance_policy", {})
+    validation_policy = (
+        execution_policy.get("validation_policy")
+        if isinstance(execution_policy, dict)
+        else None
+    ) or (
+        task_policy.get("policy") if isinstance(task_policy, dict) else None
+    ) or active_verification_policy()
+    compile_only = validation_policy == COMPILE_ONLY_POLICY
     num_layers = int(model.get("num_layers") or model.get("num_hidden_layers") or 0)
     binding_path = run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
     binding = read_json(binding_path) if binding_path.exists() else {}
@@ -404,9 +420,22 @@ def check_multilayer_pipeline(run_dir: Path) -> dict[str, Any]:
             ),
             "path": str(binding_path),
             "status": (
-                ('pass' if scope is not None and int(harness.get('target_layer_count') or 0) == scope.validation_layer_count else 'fail')
+                "not_applicable"
+                if compile_only
+                else (
+                    "pass"
+                    if scope is not None
+                    and int(harness.get("target_layer_count") or 0)
+                    == scope.validation_layer_count
+                    else "fail"
+                )
             ),
-            "validation_policy": ('vcs_compile_only'),
+            "validation_policy": validation_policy,
+            "reason": (
+                "compile-only acceptance does not execute a multi-layer harness"
+                if compile_only
+                else None
+            ),
             "all_target_layers": binding.get("all_target_layers"),
             "harness_target_layer_count": harness.get("target_layer_count"),
             "validation_layer_indices": binding.get("validation_layer_indices"),
@@ -425,15 +454,27 @@ def check_multilayer_pipeline(run_dir: Path) -> dict[str, Any]:
         path = Path(str(row.get("path") or ""))
         if not path.is_file() or sha256_file(path) != row.get("sha256"):
             source_errors.append(str(path))
-    checks.append({"name": "multilayer_harness_sources", "status": "pass" if harness and not source_errors else "fail", "errors": source_errors})
+    checks.append(
+        {
+            "name": "multilayer_harness_sources",
+            "status": (
+                "not_applicable"
+                if compile_only
+                else "pass" if harness and not source_errors else "fail"
+            ),
+            "errors": source_errors,
+        }
+    )
     if num_layers <= 0:
         blockers.append("target model layer count is missing")
     if scope_errors:
         blockers.append("board validation scope is invalid: " + "; ".join(scope_errors))
-    if not harness or source_errors:
+    if not compile_only and (not harness or source_errors):
         blockers.append("hash-verified multi-layer pipeline harness is missing")
     if (
-        (scope is not None and int(harness.get('target_layer_count') or 0) != scope.validation_layer_count)
+        not compile_only
+        and scope is not None
+        and int(harness.get("target_layer_count") or 0) != scope.validation_layer_count
     ):
         blockers.append("multi-layer harness does not cover the configured compile-only layer scope")
     return result("multilayer_pipeline", checks, blockers, run_dir)

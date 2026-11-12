@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -26,6 +27,7 @@ from accagent.framework.semantic_runtime import (
 from accagent.framework.transcendental_contract import materialize_transcendental_contract
 from accagent.framework.verification_evidence_contract import certificate_contract_errors
 from accagent.framework.weight_layout import (
+    _policy_scalar_scale_fixed_point,
     build_stage_weight_layout,
     materialize_composite_weight_stream,
     materialize_stage_weight_stream,
@@ -91,10 +93,26 @@ def numeric_comparison_policy(
     return numeric_comparison(policy)
 
 
-def tensor_words(tensor: Any, bits: int) -> list[int]:
+def tensor_words(
+    tensor: Any,
+    bits: int,
+    *,
+    signed_integer: bool = False,
+    real_scale: float = 1.0,
+) -> list[int]:
     import torch
 
     value = tensor.detach().cpu().contiguous()
+    if signed_integer:
+        if bits != 8:
+            raise ValueError(f"signed W4A8 activation vectors require 8-bit codes, got {bits}")
+        if not math.isfinite(real_scale) or real_scale <= 0:
+            raise ValueError(f"activation real scale must be finite and positive, got {real_scale!r}")
+        values = value.to(torch.float64)
+        if not torch.isfinite(values).all():
+            raise ValueError("activation tensor contains a non-finite value")
+        codes = torch.round(values / real_scale).clamp(-128, 127).to(torch.int64).reshape(-1).tolist()
+        return [int(item) & 0xFF for item in codes]
     if bits == 16:
         raw = value.to(torch.float16).view(torch.int16).reshape(-1).tolist()
         return [int(item) & 0xFFFF for item in raw]
@@ -104,8 +122,16 @@ def tensor_words(tensor: Any, bits: int) -> list[int]:
     raise ValueError(f"unsupported floating-point testbench width: {bits}")
 
 
-def write_packed_memh(path: Path, tensor: Any, bits: int, lanes: int) -> dict[str, Any]:
-    words = tensor_words(tensor, bits)
+def write_packed_memh(
+    path: Path,
+    tensor: Any,
+    bits: int,
+    lanes: int,
+    *,
+    signed_integer: bool = False,
+    real_scale: float = 1.0,
+) -> dict[str, Any]:
+    words = tensor_words(tensor, bits, signed_integer=signed_integer, real_scale=real_scale)
     if len(words) % lanes:
         raise ValueError(f"tensor word count {len(words)} is not divisible by lanes={lanes}")
     mask = (1 << bits) - 1
@@ -126,7 +152,21 @@ def write_packed_memh(path: Path, tensor: Any, bits: int, lanes: int) -> dict[st
         "lanes": lanes,
         "beats": len(lines),
         "tensor_shape": list(tensor.shape),
-        "encoding": f"ieee_fp{bits}_lane0_lsb",
+        "encoding": (
+            "signed_int8_twos_complement_lane0_lsb"
+            if signed_integer
+            else f"ieee_fp{bits}_lane0_lsb"
+        ),
+        **(
+            {
+                "signed": True,
+                "real_scale_per_code": real_scale,
+                "rounding": "nearest_even",
+                "saturation_range": [-128, 127],
+            }
+            if signed_integer
+            else {}
+        ),
     }
 
 
@@ -313,7 +353,7 @@ def semantic_harness_tb(
         addr_port = sv_identifier(loader.get("addr_port"), "weight address")
         last_port = sv_identifier(loader.get("last_port"), "weight last")
         if int(loader.get("data_width_bits") or 0) != 32:
-            raise ValueError("semantic harness weight loader must consume 32-bit packed fp16 words")
+            raise ValueError("semantic harness weight loader must consume canonical 32-bit packed weight words")
         addr_width = int(loader.get("addr_width_bits") or 0)
         if addr_width <= 0:
             raise ValueError("semantic harness weight-loader address width is missing")
@@ -1632,6 +1672,33 @@ def reusable_operator_leaf_certificate(run_dir: Path) -> dict[str, Any]:
     }
 
 
+def activation_vector_encoding(numeric_policy: dict[str, Any]) -> tuple[bool, float]:
+    rules = numeric_policy.get("default_rules", {})
+    rules = rules if isinstance(rules, dict) else {}
+    activation_dtype = str(rules.get("activation_dtype") or "").strip().lower()
+    if activation_dtype in {"int8", "signed_int8", "i8"}:
+        if str(rules.get("weight_dtype") or "").strip().lower() not in {"int4", "signed_int4", "i4"}:
+            raise ValueError("integer semantic vectors currently require the declared W4A8 weight format")
+        if str(rules.get("acc_dtype") or "").strip().lower() not in {"int32", "signed_int32", "i32"}:
+            raise ValueError("integer semantic vectors currently require INT32 accumulators")
+        if rules.get("rounding") != "nearest_even" or rules.get("saturation") is not True:
+            raise ValueError("W4A8 semantic vectors require nearest-even rounding and signed saturation")
+        convention = _policy_scalar_scale_fixed_point().get("scalar_scale_convention", {})
+        real_scale = float(
+            rules.get("activation_real_scale")
+            or convention.get("activation_real_scale")
+            or 0
+        )
+        if not math.isfinite(real_scale) or real_scale <= 0:
+            raise ValueError("W4A8 activation real scale is not declared by the numeric policy")
+        return True, real_scale
+    if activation_dtype in {"fp16", "float16"}:
+        return False, 1.0
+    if activation_dtype in {"fp32", "float32"}:
+        return False, 1.0
+    raise ValueError(f"unsupported semantic activation dtype: {activation_dtype or 'missing'}")
+
+
 def generate(
     run_dir: Path,
     out_dir: Path,
@@ -1672,10 +1739,7 @@ def generate(
     if reference.get("status") != "ready":
         raise ValueError(f"target model reference is not ready: {reference.get('status')}")
     default_rules = numeric_policy.get("default_rules", {}) if isinstance(numeric_policy.get("default_rules"), dict) else {}
-    if default_rules.get("activation_dtype") not in {"fp16", "fp32"}:
-        raise ValueError("semantic vector encoding currently requires activation_dtype fp16 or fp32")
-    if default_rules.get("weight_dtype") != "fp16":
-        raise ValueError("semantic weight-stream encoding currently requires weight_dtype fp16")
+    signed_integer_vectors, activation_real_scale = activation_vector_encoding(numeric_policy)
     comparison_policy, comparison_policy_resolution = numeric_comparison_policy(numeric_policy)
     transcendental_contract = materialize_transcendental_contract(
         run_dir / "generated" / "chisel" / "src" / "main" / "resources" / "spatialaccagent" / "numeric"
@@ -1751,11 +1815,29 @@ def generate(
             lanes = scalar(stage, "lanes", 1)
             input_bits = scalar(stage, "input_bits", 32)
             output_bits = scalar(stage, "output_bits", input_bits)
+            if signed_integer_vectors and (input_bits != 8 or output_bits != 8):
+                raise ValueError(
+                    f"W4A8 stage requires INT8 input/output vectors, got {input_bits}/{output_bits} bits"
+                )
             input_vectors = [
-                write_packed_memh(stage_dir / f"input_{index}.memh", tensor, input_bits, lanes)
+                write_packed_memh(
+                    stage_dir / f"input_{index}.memh",
+                    tensor,
+                    input_bits,
+                    lanes,
+                    signed_integer=signed_integer_vectors,
+                    real_scale=activation_real_scale,
+                )
                 for index, tensor in enumerate(inputs)
             ]
-            expected_vector = write_packed_memh(stage_dir / "expected.memh", expected, output_bits, lanes)
+            expected_vector = write_packed_memh(
+                stage_dir / "expected.memh",
+                expected,
+                output_bits,
+                lanes,
+                signed_integer=signed_integer_vectors,
+                real_scale=activation_real_scale,
+            )
             weight_bindings = []
             required_weight_names = required_weights(op, stage_map)
             for name in required_weight_names:
@@ -1887,8 +1969,26 @@ def generate(
         weights_only=True,
     )
     single_dir = out_dir / "single_layer"
-    input_vector = write_packed_memh(single_dir / "input.memh", random_input, input_bits, input_lanes)
-    expected_vector = write_packed_memh(single_dir / "expected.memh", layer_output, output_bits, output_lanes)
+    if signed_integer_vectors and (input_bits != 8 or output_bits != 8):
+        raise ValueError(
+            f"W4A8 single-layer vectors require INT8 input/output, got {input_bits}/{output_bits} bits"
+        )
+    input_vector = write_packed_memh(
+        single_dir / "input.memh",
+        random_input,
+        input_bits,
+        input_lanes,
+        signed_integer=signed_integer_vectors,
+        real_scale=activation_real_scale,
+    )
+    expected_vector = write_packed_memh(
+        single_dir / "expected.memh",
+        layer_output,
+        output_bits,
+        output_lanes,
+        signed_integer=signed_integer_vectors,
+        real_scale=activation_real_scale,
+    )
     pipeline_plan_sha256 = sha256_file(pipeline_path)
     overlap_contract = single_layer_pipeline_overlap_contract(
         input_vector,
@@ -1950,8 +2050,22 @@ def generate(
     if not isinstance(board_model_output, torch.Tensor):
         raise ValueError("selected board-reference payload is not a tensor")
     board_dir = out_dir / "board"
-    board_input_vector = write_packed_memh(board_dir / "input.memh", random_input, input_bits, input_lanes)
-    board_expected_vector = write_packed_memh(board_dir / "expected.memh", board_model_output, output_bits, output_lanes)
+    board_input_vector = write_packed_memh(
+        board_dir / "input.memh",
+        random_input,
+        input_bits,
+        input_lanes,
+        signed_integer=signed_integer_vectors,
+        real_scale=activation_real_scale,
+    )
+    board_expected_vector = write_packed_memh(
+        board_dir / "expected.memh",
+        board_model_output,
+        output_bits,
+        output_lanes,
+        signed_integer=signed_integer_vectors,
+        real_scale=activation_real_scale,
+    )
     board_expected_vector.update(
         {
             "source_capture": board_reference["source_capture"],

@@ -10,6 +10,7 @@ from accagent.framework.board_progress import (
     BOARD_PROGRESS_EVENT_SCHEMA_VERSION,
     REQUIRED_PROGRESS_EVENT_FIELDS,
 )
+from accagent.framework.sacg_cctg_causal_slice import build_static_failure_context
 from scripts.verification import qwen_vcs_evidence_analyzer as analyzer
 from scripts.verification import case_vcs_evidence_analyzer as case_analyzer
 
@@ -732,6 +733,62 @@ class QwenVcsEvidenceAnalyzerTest(unittest.TestCase):
         self.assertEqual(retry["remote_workdir"], remote_workdir)
         self.assertTrue(retry["policy"]["hardware_edits_forbidden"])
 
+    def test_missing_completed_elaboration_output_retries_same_compile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir, _ = self.make_run(Path(tmp))
+            compile_log = run_dir / "verification" / "board_simulation" / "reports" / "vcs_compile.log"
+            compile_log.parent.mkdir(parents=True, exist_ok=True)
+            compile_log.write_text(
+                "All of 33 modules done\n"
+                "CPU time: 31.153 seconds to compile + 1.295 seconds to elab + .329 seconds to link\n",
+                encoding="utf-8",
+            )
+            fingerprint = "9" * 64
+            remote_workdir = "/home/hyyuan/workspace/spatialaccagent_artifacts/board_vcs/expired-job"
+            write_json(
+                run_dir / "verification" / "vcs" / "case_board_vcs_functional.json",
+                {
+                    "status": "fail",
+                    "phase": "remote_vcs",
+                    "validation_policy": "vcs_compile_only",
+                    "compile_log": str(compile_log),
+                    "input_fingerprint_sha256": fingerprint,
+                    "remote_workdir": remote_workdir,
+                    "compile_evidence": {
+                        "log_path": str(compile_log),
+                        "log_sha256": case_analyzer.sha256_file(compile_log),
+                    },
+                    "compile": {
+                        "status": "fail",
+                        "returncode": 0,
+                        "failure_class": "vcs_elaboration_output_missing",
+                        "remote_workdir": remote_workdir,
+                    },
+                    "run": {"status": "not_run"},
+                },
+            )
+            with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}):
+                report = case_analyzer.analyze_manifest_board(run_dir)
+            self.assertEqual(report["failure_class"], "vcs_execution_environment_failure")
+            retry = json.loads(
+                (
+                    run_dir
+                    / "verification"
+                    / "vcs"
+                    / case_analyzer.REMOTE_JOB_RETRY_REQUEST
+                ).read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(report["failure_class"], "vcs_execution_environment_failure")
+        self.assertEqual(
+            report["repair_handoff"]["repair_scope"],
+            "execution_environment_retry",
+        )
+        self.assertFalse(report["repair_handoff"]["agent_should_apply_code_changes"])
+        self.assertEqual(retry["input_fingerprint_sha256"], fingerprint)
+        self.assertEqual(retry["remote_workdir"], remote_workdir)
+        self.assertTrue(retry["policy"]["hardware_edits_forbidden"])
+
     def test_signal_termination_is_not_routed_to_hardware_repair(self) -> None:
         provenance = {
             "schema_version": (
@@ -1118,6 +1175,72 @@ class QwenVcsEvidenceAnalyzerTest(unittest.TestCase):
 
 
 class CaseCompileOnlyDiagnosisTest(unittest.TestCase):
+    def test_compile_failure_report_binds_exact_stage6_sacg_and_unique_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir, source = QwenVcsEvidenceAnalyzerTest().make_run(Path(temp_dir))
+            sacg_path = run_dir / "verification" / "sacg_state.json"
+            write_json(
+                sacg_path,
+                {
+                    "nodes": [
+                        {
+                            "id": "node.board_shell",
+                            "type": "pipeline_stage",
+                            "facts": {"source": "board_shell.sv"},
+                            "artifacts": ["artifact.board_shell"],
+                        }
+                    ],
+                    "edges": [],
+                    "constraints": [],
+                    "artifacts": [
+                        {
+                            "id": "artifact.board_shell",
+                            "type": "generated_rtl",
+                            "path": str(source.parent),
+                            "nodes": ["node.board_shell"],
+                        }
+                    ],
+                },
+            )
+            log = run_dir / "compile.log"
+            log.write_text(
+                "Error-[URMI] Unresolved modules\n"
+                "../sources/board_shell.sv, 5\n"
+                '"app_shell_9p_wrapper missing();"\n',
+                encoding="utf-8",
+            )
+            write_json(
+                run_dir / "verification" / "vcs" / "case_board_vcs_functional.json",
+                {
+                    "status": "fail",
+                    "phase": "remote_vcs",
+                    "validation_policy": "vcs_compile_only",
+                    "compile": {"status": "fail", "returncode": 1},
+                    "compile_evidence": {
+                        "log_path": str(log),
+                        "log_sha256": case_analyzer.sha256_file(log),
+                    },
+                },
+            )
+
+            report = case_analyzer.analyze_manifest_board(run_dir)
+            report_path = run_dir / "verification" / "case_vcs" / "diagnosis.json"
+            write_json(report_path, report)
+            projection = build_static_failure_context(
+                sacg_state_path=sacg_path,
+                failure_report_path=report_path,
+            )
+            expected_sacg_sha256 = case_analyzer.sha256_file(sacg_path)
+
+        self.assertEqual(report["failure_domain"], "compile_time")
+        self.assertEqual(report["source_file"], str(source))
+        self.assertEqual(report["sacg_state_sha256"], expected_sacg_sha256)
+        self.assertEqual(projection["status"], "static_context_ready")
+        self.assertEqual(
+            [node["id"] for node in projection["root_cause_candidates"]],
+            ["node.board_shell"],
+        )
+
     def test_compile_diagnostic_reaches_repair_without_runtime_requirements(self) -> None:
         diagnostic = (
             '#   error "floating-point module manifest is missing: $module_manifest"\n'

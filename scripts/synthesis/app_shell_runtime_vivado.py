@@ -54,6 +54,14 @@ def tcl_quote(value: Any) -> str:
     return "{" + str(value or "").replace("\\", "\\\\").replace("}", "\\}") + "}"
 
 
+def vivado_job_count() -> int:
+    try:
+        requested = int(os.environ.get("SPATIALACC_VIVADO_JOBS", "2"))
+    except ValueError:
+        requested = 2
+    return max(1, min(requested, 2))
+
+
 def check_file(path: Path, label: str) -> tuple[bool, dict[str, Any]]:
     ok = path.is_file() and path.stat().st_size > 0
     return ok, {
@@ -83,6 +91,10 @@ def run_cmd(argv: list[str], timeout_sec: int | None = None) -> dict[str, Any]:
             "stderr_tail": (exc.stderr or "")[-8000:] if isinstance(exc.stderr, str) else "",
             "duration_sec": time.monotonic() - started,
         }
+
+
+def isolated_remote_workdir(base_dir: str, attempt_id: str) -> str:
+    return f"{base_dir.rstrip('/')}/attempt_{attempt_id}"
 
 
 def parse_kv_report(path: Path) -> dict[str, str]:
@@ -540,7 +552,7 @@ def kernel_synthesis_reuse_basis(args: argparse.Namespace) -> dict[str, Any] | N
     prior = read_json(args.out)
     if (prior.get("status") != "pass" or prior.get("mode") != "synth"
             or prior.get("measurement_scope") != SYNTHESIS_KERNEL_SCOPE
-            or prior.get("collect_only") is True or prior.get("fpga_part") != args.fpga_part
+            or prior.get("fpga_part") != args.fpga_part
             or prior.get("clock_target_mhz") != args.clock_target_mhz):
         return None
     archive = Path(str(prior.get("closure_archive") or ""))
@@ -553,6 +565,11 @@ def kernel_synthesis_reuse_basis(args: argparse.Namespace) -> dict[str, Any] | N
             or any(not (reports / name).is_file() or not (reports / name).stat().st_size
                    for name in ["app_shell_synth_utilization.rpt", "app_shell_synth_timing.rpt"])):
         return None
+    return source_closure_reuse_basis(args, archive)
+
+
+def source_closure_reuse_basis(args: argparse.Namespace, archive: Path) -> dict[str, Any] | None:
+    """Compare archived synthesis inputs with the current generated design."""
     root = args.generated_vivado_dir.parent
     current = {}
     for directory, prefix in [(args.generated_vivado_dir, "generated_vivado"),
@@ -596,6 +613,82 @@ def kernel_synthesis_reuse_basis(args: argparse.Namespace) -> dict[str, Any] | N
             }
     except (OSError, tarfile.TarError):
         return None
+
+
+def recover_completed_kernel_synthesis(
+    args: argparse.Namespace, remote_host: str, remote_port: str,
+    remote_known_hosts: str, remote_base: str, expected_tcl: str,
+    expected_top: str, commands: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Collect matching remote results left behind by an interrupted runner."""
+    ssh = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", f"UserKnownHostsFile={remote_known_hosts}",
+           "-p", remote_port, remote_host]
+    scp = ["scp", "-q", "-P", remote_port, "-o", "StrictHostKeyChecking=no",
+           "-o", f"UserKnownHostsFile={remote_known_hosts}"]
+    tcl_digest = hashlib.sha256(expected_tcl.encode()).hexdigest()
+    probe = '''import hashlib,json,sys
+from pathlib import Path
+base=Path(sys.argv[1]); digest=sys.argv[2]
+candidates=[]
+for marker in base.glob("attempt_*/app_shell_runtime_inspection.txt"):
+ try:
+  folder=marker.parent
+  if hashlib.sha256((folder/"app_shell_runtime_vivado.tcl").read_bytes()).hexdigest()!=digest: continue
+  if all((folder/"app_shell_runtime_bitstream"/name).stat().st_size for name in
+         ("app_shell_synth_utilization.rpt","app_shell_synth_timing.rpt")):
+   candidates.append((marker.stat().st_mtime,str(folder)))
+ except OSError: continue
+print(json.dumps([folder for _,folder in sorted(candidates,reverse=True)[:32]]))
+'''
+    result = run_cmd([*ssh, shlex.join(["python3", "-c", probe, remote_base, tcl_digest])], 60)
+    commands.append(result)
+    if result["returncode"]:
+        return None
+    try:
+        candidates = json.loads(result["stdout_tail"])
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(candidates, list):
+        return None
+    filenames = ["app_shell_generated_vivado_closure.tar.gz", "app_shell_runtime_vivado.tcl",
+                 "app_shell_runtime_inspection.txt", "app_shell_runtime_bitstream/app_shell_synth_utilization.rpt",
+                 "app_shell_runtime_bitstream/app_shell_synth_timing.rpt"]
+    for remote in candidates:
+        if not isinstance(remote, str) or Path(remote).parent != Path(remote_base):
+            continue
+        folder = args.run_dir / "backend_board/synthesis_recovery" / Path(remote).name
+        folder.mkdir(parents=True, exist_ok=True)
+        result = run_cmd([*scp, *[f"{remote_host}:{remote}/{name}" for name in filenames], str(folder)], 600)
+        commands.append(result)
+        if result["returncode"]:
+            continue
+        if any(not (folder / Path(name).name).is_file() or not (folder / Path(name).name).stat().st_size
+               for name in filenames):
+            continue
+        archive = folder / filenames[0]
+        if (folder / filenames[1]).read_text(encoding="utf-8") != expected_tcl:
+            continue
+        inspection = parse_kv_report(folder / filenames[2])
+        if (inspection.get("kernel_synthesis_completed") != "1"
+                or inspection.get("kernel_top") != expected_top
+                or inspection.get("integration_ready") != "1"):
+            continue
+        basis = source_closure_reuse_basis(args, archive)
+        if basis is None:
+            continue
+        script_dir = args.run_dir / "generated/backend/scripts"
+        reports = args.run_dir / "app_shell_runtime_bitstream"
+        script_dir.mkdir(parents=True, exist_ok=True)
+        if reports.exists():
+            shutil.rmtree(reports)
+        reports.mkdir(parents=True, exist_ok=True)
+        for name in filenames[:2]:
+            shutil.copy2(folder / name, script_dir / name)
+        for name in filenames[2:]:
+            shutil.copy2(folder / Path(name).name, reports / Path(name).name)
+        return {**basis, "remote_workdir": remote, "new_synthesis_executed": False,
+                "recovery_reason": "completed remote synthesis survived local runner interruption"}
+    return None
 
 
 def reusable_kernel_synthesis(args: argparse.Namespace) -> bool:
@@ -678,10 +771,14 @@ def main(argv: list[str] | None = None) -> int:
     remote_port = str(first_nonblank(os.environ.get("REMOTE_PORT"), shell.get("remote_ssh_port"), "22"))
     vivado_bin = str(first_nonblank(os.environ.get("VIVADO_BIN"), ""))
     remote_known_hosts = os.environ.get("REMOTE_KNOWN_HOSTS", "/tmp/codex_ssh_known_hosts").strip()
-    remote_workdir = os.environ.get(
+    remote_workdir_base = os.environ.get(
         "REMOTE_WORKDIR",
         persistent_remote_tool_workdir(remote_host, "vivado_app_shell_runtime", run_dir.name),
     ).strip()
+    remote_workdir = isolated_remote_workdir(
+        remote_workdir_base,
+        f"{os.getpid()}_{time.time_ns()}",
+    )
     project_xpr = str(first_nonblank(os.environ.get("SPATIALACC_APP_SHELL_PROJECT_XPR"), shell.get("vivado_project_path"), ""))
     target_ip_name = str(first_nonblank(target.get("replacement_module_identity"), target.get("ip_name"), abi.get("replacement_module_identity"), ""))
     target_ooc_run = str(first_nonblank(target.get("ooc_run"), abi.get("ooc_run"), f"{target_ip_name}_synth_1" if target_ip_name else ""))
@@ -689,10 +786,11 @@ def main(argv: list[str] | None = None) -> int:
     board_interface = contract.get("board_interface", {}) if isinstance(contract.get("board_interface"), dict) else {}
     board_clock = str(first_nonblank(board_interface.get("clock"), ""))
     control_abi = abi.get("control_abi", {}) if isinstance(abi.get("control_abi"), dict) else {}
-    control_clock = str(first_nonblank(control_abi.get("clock_domain"), ""))
+    control_clock_value = first_nonblank(control_abi.get("clock_domain"))
+    control_clock = str(control_clock_value) if control_clock_value is not None else ""
     clock_port = board_clock or control_clock
     clock_domain_mismatch = board_clock and control_clock and board_clock != control_clock
-    jobs = int(os.environ.get("SPATIALACC_VIVADO_JOBS", "16"))
+    jobs = vivado_job_count()
 
     out_dir = run_dir / "app_shell_runtime_bitstream"
     script_dir = run_dir / "generated" / "backend" / "scripts"
@@ -744,7 +842,19 @@ def main(argv: list[str] | None = None) -> int:
     commands: list[dict[str, Any]] = []
     inspection: dict[str, str] = {}
     source_archive_sha256 = None
-    if not blockers and not args.collect_only:
+    recovered = None
+    if not blockers and not args.collect_only and args.mode == "synth":
+        recovered = recover_completed_kernel_synthesis(
+            args, remote_host, remote_port, remote_known_hosts, remote_workdir_base,
+            build_kernel_synthesis_tcl(kernel_top, kernel_clock, args.fpga_part, args.clock_target_mhz, jobs),
+            kernel_top, commands,
+        )
+    if recovered is not None:
+        remote_workdir = recovered["remote_workdir"]
+        source_archive_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+        inspection = parse_kv_report(inspection_path)
+        print(f"Recovered completed kernel synthesis from {remote_workdir}; no Vivado rerun.")
+    elif not blockers and not args.collect_only:
         script_dir.mkdir(parents=True, exist_ok=True)
         tcl_path.write_text(
             build_kernel_synthesis_tcl(kernel_top, kernel_clock, args.fpga_part, args.clock_target_mhz, jobs)
@@ -812,6 +922,10 @@ def main(argv: list[str] | None = None) -> int:
             run_step([*scp_base, f"{remote_host}:{remote_workdir}/app_shell_runtime_inspection.txt", str(inspection_path)], 300)
         inspection = parse_kv_report(inspection_path)
     elif args.collect_only and not blockers:
+        if archive.is_file():
+            source_archive_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+        else:
+            blockers.append(f"source closure archive is missing: {archive}")
         collected_inspection = inspection_path
         if not collected_inspection.is_file():
             collected_inspection = run_dir / "app_shell_runtime_inspection.txt"
@@ -878,6 +992,7 @@ def main(argv: list[str] | None = None) -> int:
         "fpga_part": args.fpga_part,
         "closure_archive": str(archive),
         "synthesis_source_archive_sha256": source_archive_sha256,
+        "synthesis_recovery": recovered,
         "out_dir": str(out_dir),
         "tcl": str(tcl_path),
         "remote_host": remote_host,

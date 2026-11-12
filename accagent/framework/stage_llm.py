@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import hashlib
+import http.client
 import copy
 import ast
+import math
 import os
 import re
 import shlex
@@ -22,6 +24,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from accagent.framework.agent_common import compact_json, write_json
+from accagent.framework.experiment_profile import (
+    active_profile as active_accord_experiment_profile,
+    without_design_graph_context,
+    without_guided_repair_context,
+    without_guided_repair_prompt_rules,
+)
 from accagent.framework.llm_config import resolved_llm_cfg
 from accagent.framework.llm_io import (
     PROMPT_PROTOCOL,
@@ -32,7 +40,8 @@ from accagent.framework.llm_io import (
     read_response_text,
     repair_prompt,
     response_payload,
-    responses_request_headers,
+    request_headers,
+    structured_output_payload,
     validate_schema,
 )
 from accagent.framework.sacg_utils import (
@@ -69,7 +78,7 @@ DUT and must not be added to its golden or weight-consumption requirements.
 Return one JSON object only. No markdown.
 """
 
-PROMPT_COMPACTION_PROTOCOL = "spatialaccagent.evidence_preserving_prompt_compaction.v12"
+PROMPT_COMPACTION_PROTOCOL = "spatialaccagent.evidence_preserving_prompt_compaction.v15"
 
 # The runner stages every exact-board job under this framework-owned relative
 # directory. These transport values are not part of the agent's design output.
@@ -80,15 +89,23 @@ FRAMEWORK_VCS_OUTPUT = "simv"
 ACTION_GROUNDING_REGISTRY = {
     "schema_version": "spatialaccagent.action_grounding_registry.v0",
     "verification_execution_policy": {
-        "validation_policy": "vcs_compile_only",
-        "acceptance": "Real current-source VCS compilation, elaboration and linking; simulator execution and numerical comparison are not acceptance prerequisites.",
+        "validation_policy": (
+            "full_semantic_simulation"
+            if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation"
+            else "vcs_compile_only"
+        ),
+        "acceptance": (
+            "Real exact-sample-board VCS compile, elaboration, link and runtime execution with hash-bound real model weights and inputs; runtime progress and DDR evidence are required."
+            if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation"
+            else "Real current-source VCS compilation, elaboration and linking; simulator execution and numerical comparison are not acceptance prerequisites."
+        ),
         "existing_tool_modes": {
-            "case_leaf_functional": "scripts/verification/case_leaf_operator_verify.py: current-source VCS compile-only evidence for operator leaves",
-            "case_single_layer_functional": "scripts/verification/case_single_layer_stream_sim.py: current-source VCS compile-only evidence for the connected kernel",
-            "case_vcs_functional_sim": "scripts/verification/case_board_vcs_functional.py: compile-only VCS evidence for the exact discovered board wrapper; simulation is not invoked",
+            "case_leaf_functional": "scripts/verification/case_leaf_operator_verify.py: current-source VCS compile-only evidence; it is insufficient by itself for full_semantic_simulation acceptance" if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation" else "scripts/verification/case_leaf_operator_verify.py: current-source VCS compile-only evidence for operator leaves",
+            "case_single_layer_functional": "scripts/verification/case_single_layer_stream_sim.py: current-source VCS compile-only evidence; it is insufficient by itself for full_semantic_simulation acceptance" if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation" else "scripts/verification/case_single_layer_stream_sim.py: current-source VCS compile-only evidence for the connected kernel",
+            "case_vcs_functional_sim": "scripts/verification/case_board_vcs_functional.py: exact sample-board physical AXI/DDR VCS simulation with hash-bound runtime evidence" if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation" else "scripts/verification/case_board_vcs_functional.py: compile-only VCS evidence for the exact discovered board wrapper; simulation is not invoked",
         },
-        "executor": "accagent/framework/stage_verification.py: compile_only_stage_gates and compile_only_required_gates_by_level select the existing layer tools in bottom-up order",
-        "planning_boundary": "Historical functional/golden DAG nodes describe optional diagnostic capabilities. Missing runtime/golden results and layer certificates are downstream execution obligations during verification_artifacts planning, not missing compile-only capabilities. Use existing tool roles; do not invent another compile-only runner merely because a role retains a functional_sim name.",
+        "executor": "accagent/framework/stage_verification.py: lower-layer tools currently provide compile/elaboration gates; the full policy additionally requires the exact-board runtime gate" if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation" else "accagent/framework/stage_verification.py: compile_only_stage_gates and compile_only_required_gates_by_level select the existing layer tools in bottom-up order",
+        "planning_boundary": "Runtime, DDR and pipeline evidence are acceptance obligations for the exact-board gate. Compile-only lower-layer reports must not be described as functional proof." if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation" else "Historical functional/golden DAG nodes describe optional diagnostic capabilities. Missing runtime/golden results and layer certificates are downstream execution obligations during verification_artifacts planning, not missing compile-only capabilities. Use existing tool roles; do not invent another compile-only runner merely because a role retains a functional_sim name.",
     },
     "policy": (
         "Executable actions should use these tool/checker names when applicable. "
@@ -1480,10 +1497,33 @@ def retry_after_seconds(exc: Exception) -> float | None:
 def retry_sleep_seconds(exc: Exception, attempt: int) -> float:
     base = retry_float_env("SPATIALACC_LLM_RETRY_BASE_SEC", 8.0)
     max_delay = retry_float_env("SPATIALACC_LLM_RETRY_MAX_SEC", 90.0)
+    if not math.isfinite(base):
+        base = 8.0
+    if not math.isfinite(max_delay):
+        max_delay = 90.0
     retry_after = retry_after_seconds(exc)
-    delay = min(max_delay, base * (2 ** max(0, attempt - 1)))
-    if isinstance(exc, urllib.error.HTTPError) and exc.code == 429:
-        delay = min(max_delay, max(delay, base * attempt * attempt))
+    exponent = max(0, attempt - 1)
+    if max_delay <= 0 or base <= 0:
+        delay = 0.0
+    elif base >= max_delay:
+        delay = max_delay
+    else:
+        saturation_exponent = math.log2(max_delay) - math.log2(base)
+        if exponent >= saturation_exponent:
+            delay = max_delay
+        else:
+            try:
+                delay = min(max_delay, math.ldexp(base, exponent))
+            except OverflowError:
+                delay = max_delay
+    if (
+        isinstance(exc, urllib.error.HTTPError)
+        and exc.code == 429
+        and base > 0
+        and delay < max_delay
+    ):
+        quadratic_attempt = max(0, attempt)
+        delay = min(max_delay, max(delay, base * quadratic_attempt * quadratic_attempt))
     if provider_capacity_error(exc):
         delay = max(
             delay,
@@ -1571,7 +1611,8 @@ def call_llm(
     llm = resolved_llm_cfg()
     effort = llm.reasoning_effort if reasoning_effort is None else reasoning_effort
     stream = llm.stream if stream_override is None else stream_override
-    payload = response_payload(
+    payload = structured_output_payload(
+        llm.wire_api,
         model,
         SYSTEM,
         prompt,
@@ -1587,7 +1628,7 @@ def call_llm(
     req = urllib.request.Request(
         endpoint,
         data=json.dumps(payload).encode("utf-8"),
-        headers=responses_request_headers(key, stream),
+        headers=request_headers(llm.wire_api, key, stream),
         method="POST",
     )
     with llm_inflight_slot(schema_name):
@@ -1595,6 +1636,9 @@ def call_llm(
 
 
 def transient_llm_error(exc: Exception) -> bool:
+    # A truncated HTTP response must retry the request, not restart its stage.
+    if isinstance(exc, (http.client.IncompleteRead, http.client.RemoteDisconnected)):
+        return True
     if isinstance(exc, PromptCompactionNeeded):
         return True
     if isinstance(exc, ResponseIncompleteError):
@@ -1608,7 +1652,10 @@ def transient_llm_error(exc: Exception) -> bool:
             return True
         if route_failover_error(exc):
             return True
-        if exc.code == 302 and "redirect error that would lead to an infinite loop" in str(exc).lower():
+        # Some OpenAI-compatible gateways report a redirect loop as either
+        # 301 or 302.  Both are an upstream route condition, not a malformed
+        # agent request, so keep the same bounded/unbounded retry policy.
+        if exc.code in {301, 302} and "redirect error that would lead to an infinite loop" in str(exc).lower():
             return True
         return exc.code in {408, 409, 425, 426, 429, 500, 502, 503, 504, 524, 530}
     if isinstance(exc, (TimeoutError, socket.timeout, ssl.SSLError, urllib.error.URLError)):
@@ -1661,6 +1708,7 @@ def llm_context_window_error(exc: Exception) -> bool:
             "context_length_exceeded",
             "input exceeds the context window",
             "maximum context length",
+            "context window is full",
             "request too large",
         )
     )
@@ -2576,8 +2624,19 @@ def _compact_shared_board_source_index_for_generation(
         "used_in",
         "hashes_match",
         "is_global_include",
+        "sha256",
+        "source_hash_sha256",
+        "local_sha256",
+        "remote_sha256",
+        "source_hash_role",
+        "compile_order",
     }
     original_columns = [str(value) for value in index.get("column_order", [])]
+    retained_columns.update(
+        value
+        for value in original_columns
+        if value.endswith("_path") or value == "parent_composite_file"
+    )
     selected_columns = [value for value in original_columns if value in retained_columns]
     columns = index.get("columns", {}) if isinstance(index.get("columns"), dict) else {}
     projected = {
@@ -2588,12 +2647,12 @@ def _compact_shared_board_source_index_for_generation(
             "row_count",
             "rows_sha256",
             "sparse_presence",
+            "path_prefixes",
             "views",
         )
         if key in index
     }
     if isinstance(projected.get("views"), dict):
-        projected["views"].pop("source_hashes", None)
         if (
             projected.get("source_index_authority")
             == "exact_board_identity_source_closure"
@@ -2609,11 +2668,7 @@ def _compact_shared_board_source_index_for_generation(
         if key in selected_columns
     }
     derived = index.get("derived_fields", {}) if isinstance(index.get("derived_fields"), dict) else {}
-    projected["derived_fields"] = {
-        key: copy.deepcopy(value)
-        for key, value in derived.items()
-        if key in {"compile_order", "evidence_refs"}
-    }
+    projected["derived_fields"] = copy.deepcopy(derived)
     available_view_fields = set(selected_columns) | set(projected["derived_fields"])
     for view in projected.get("views", {}).values():
         if not isinstance(view, dict) or not isinstance(view.get("columns"), list):
@@ -2646,27 +2701,38 @@ def _compact_shared_board_source_index_for_generation(
     omitted = [value for value in original_columns if value not in selected_columns]
     projected["omitted_path_and_owner_alias_contract"] = {
         "columns": omitted,
+        "retained_path_columns": sorted(
+            value
+            for value in selected_columns
+            if value.endswith("_path") or value == "parent_composite_file"
+        ),
         "canonical_sha256": _canonical_json_sha256(
             {key: columns.get(key) for key in omitted}
         ),
         "full_rows_are_bound_by_identity_and_compile_authority_hashes": True,
-        "generation_uses_source_ids_and_structured_module_metadata_not_host_paths": True,
+        "source_paths_and_hashes_are_recoverable_from_shared_columns": True,
     }
     projected["per_source_integrity_contract"] = {
         "omitted_columns": [
-            value for value in ("sha256", "size_bytes") if value in omitted
+            value
+            for value in ("sha256", "source_hash_sha256", "size_bytes")
+            if value in omitted
         ],
         "canonical_sha256": _canonical_json_sha256(
-            {key: columns.get(key) for key in ("sha256", "size_bytes") if key in columns}
+            {
+                key: columns.get(key)
+                for key in ("sha256", "source_hash_sha256", "size_bytes")
+                if key in columns
+            }
         ),
         "full_rows_are_bound_by_board_identity_and_compile_authority_artifact_sha256": True,
-        "integrity_metadata_is_not_a_generation_decision": True,
+        "source_file_hashes_are_available_for_exact_compile_manifest_binding": True,
     }
     projected["projection_policy"] = {
         "every_source_id_preserved": True,
         "language_library_role_and_module_identity_preserved": True,
-        "per_source_integrity_is_hash_bound_once_not_repeated_in_prompt": True,
-        "host_path_aliases_are_not_generation_decisions": True,
+        "per_source_paths_and_integrity_are_shared_through_compact_column_views": True,
+        "host_path_aliases_expand_through_preserved_prefixes": True,
     }
     return projected
 
@@ -3312,6 +3378,7 @@ def _apply_shared_board_source_index(
                 check["root_source_ids"] = _projection_ref("source_ids")
     source_hashes = identity.get("source_hashes", [])
     identity_value["source_hashes"] = {
+        **_projection_ref("source_hashes"),
         "row_count": len(source_hashes) if isinstance(source_hashes, list) else 0,
         "canonical_sha256": _canonical_json_sha256(source_hashes),
         "full_rows_are_integrity_metadata_bound_by_identity_artifact_sha256": True,
@@ -3852,49 +3919,121 @@ def _interface_headers(
     return headers
 
 
+def _verilog_matching_paren(text: str, opening: int) -> int | None:
+    if opening < 0 or opening >= len(text) or text[opening] != "(":
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    line_comment = False
+    block_comment = False
+    index = opening
+    while index < len(text):
+        char = text[index]
+        next_char = text[index + 1] if index + 1 < len(text) else ""
+        if line_comment:
+            if char == "\n":
+                line_comment = False
+        elif block_comment:
+            if char == "*" and next_char == "/":
+                block_comment = False
+                index += 1
+        elif in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == "/" and next_char == "/":
+            line_comment = True
+            index += 1
+        elif char == "/" and next_char == "*":
+            block_comment = True
+            index += 1
+        elif char == '"':
+            in_string = True
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return None
+
+
 def _compact_verilog_module_interface(text: str) -> dict[str, Any]:
     """Losslessly index ANSI-style module ports without sending generated logic."""
 
     module = re.search(
-        r"(?m)^\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\s*\(", text
+        r"(?m)^[ \t]*module\s+([A-Za-z_][A-Za-z0-9_$]*)\b", text
     )
     if not module:
         raise ValueError("certified kernel source has no ANSI module header")
-    header_end = text.find(");", module.end())
-    if header_end < 0:
+    cursor = module.end()
+
+    def skip_space(position: int) -> int:
+        while position < len(text) and text[position].isspace():
+            position += 1
+        return position
+
+    cursor = skip_space(cursor)
+    if cursor < len(text) and text[cursor] == "#":
+        cursor = skip_space(cursor + 1)
+        if cursor >= len(text) or text[cursor] != "(":
+            raise ValueError("certified kernel parameter header is malformed")
+        parameter_end = _verilog_matching_paren(text, cursor)
+        if parameter_end is None:
+            raise ValueError("certified kernel parameter header is unterminated")
+        cursor = skip_space(parameter_end + 1)
+    if cursor >= len(text) or text[cursor] != "(":
+        raise ValueError("certified kernel source has no ANSI module header")
+    port_open = cursor
+    port_close = _verilog_matching_paren(text, port_open)
+    if port_close is None:
         raise ValueError("certified kernel ANSI module header is unterminated")
-    header = text[module.start() : header_end + 1]
+    header = text[module.start() : port_close + 1]
+    port_lines = text[port_open + 1 : port_close].splitlines()
     ports: list[tuple[str, str, str]] = []
     direction: str | None = None
     packed_width = ""
-    for line_number, raw_line in enumerate(header.splitlines()[1:], 2):
-        line = raw_line.strip().rstrip(",")
-        if not line:
-            continue
-        if line == ")":
-            continue
-        declaration = re.fullmatch(
-            r"(?:(input|output|inout)\s+)?"
-            r"(?:(?:wire|reg|logic)\s+)?"
-            r"(\[[^]]+\])?\s*"
-            r"([A-Za-z_$][A-Za-z0-9_$]*)",
-            line,
+    first_port_line = text.count("\n", 0, port_open) + 2
+    for line_number, raw_line in enumerate(port_lines, first_port_line):
+        # Some board adapters emit several fully-qualified ANSI declarations
+        # on one line. Split only at commas that begin a new direction; commas
+        # inside packed ranges or expressions remain part of the declaration.
+        declarations = re.split(
+            r",\s*(?=(?:input|output|inout)\s+)", raw_line.strip()
         )
-        if not declaration:
-            raise ValueError(
-                f"unsupported certified kernel ANSI port syntax at header line {line_number}"
+        for line in declarations:
+            line = line.strip().rstrip(",")
+            if not line:
+                continue
+            if line == ")":
+                continue
+            declaration = re.fullmatch(
+                r"(?:(input|output|inout)\s+)?"
+                r"(?:(?:wire|reg|logic)\s+)?"
+                r"(\[[^]]+\])?\s*"
+                r"([A-Za-z_$][A-Za-z0-9_$]*)",
+                line,
             )
-        declared_direction, declared_width, name = declaration.groups()
-        if declared_direction:
-            direction = declared_direction
-            packed_width = declared_width or ""
-        elif declared_width:
-            raise ValueError(
-                f"kernel port width continuation lacks an explicit direction at line {line_number}"
-            )
-        if not direction:
-            raise ValueError(f"kernel port direction is missing at line {line_number}")
-        ports.append((direction, packed_width, name))
+            if not declaration:
+                raise ValueError(
+                    f"unsupported certified kernel ANSI port syntax at header line {line_number}"
+                )
+            declared_direction, declared_width, name = declaration.groups()
+            if declared_direction:
+                direction = declared_direction
+                packed_width = declared_width or ""
+            elif declared_width:
+                raise ValueError(
+                    f"kernel port width continuation lacks an explicit direction at line {line_number}"
+                )
+            if not direction:
+                raise ValueError(f"kernel port direction is missing at line {line_number}")
+            ports.append((direction, packed_width, name))
     if not ports:
         raise ValueError("certified kernel module has no declared ports")
 
@@ -3961,6 +4100,7 @@ def _compact_verilog_module_interface(text: str) -> dict[str, Any]:
             "port_order_preserved": True,
             "direction_and_packed_width_preserved": True,
             "numeric_name_ranges_expand_losslessly": True,
+            "parameterized_ansi_headers_supported": True,
             "module_body_omitted_as_read_only_implementation": True,
         },
     }
@@ -4007,9 +4147,234 @@ def _compact_exact_board_generation_kernel_inputs(
     if not isinstance(adaptive, dict):
         return result
     kernel = adaptive.get("kernel_binding_design_inputs")
-    if not isinstance(kernel, dict):
-        return result
+    kernel = kernel if isinstance(kernel, dict) else {}
     certified_sources = kernel.get("certified_top_sources")
+    certified_kernel_modules: set[str] = set()
+    if isinstance(certified_sources, list):
+        for source in certified_sources:
+            if not isinstance(source, dict) or not isinstance(source.get("content"), str):
+                continue
+            try:
+                certified_kernel_modules.add(
+                    _compact_verilog_module_interface(source["content"])["module"]
+                )
+            except ValueError:
+                continue
+    generated_source_by_digest: dict[str, str] = {}
+    generator_sources = kernel.get("current_generator_sources")
+    template_dependencies: dict[str, set[str]] = {}
+    template_symbols: dict[str, set[str]] = {}
+    if isinstance(generator_sources, list):
+        for source in generator_sources:
+            if not isinstance(source, dict) or not isinstance(source.get("content"), str):
+                continue
+            path = Path(str(source.get("path") or ""))
+            if path.suffix != ".scala" or "templates" not in path.parts:
+                continue
+            content = source["content"]
+            key = str(path)
+            template_symbols[key] = set(re.findall(
+                r"(?m)^\s*(?:(?:private|protected|final|abstract|sealed|case)\s+)*(?:class|object|trait)\s+([A-Za-z_$][A-Za-z0-9_$]*)",
+                content,
+            ))
+            template_dependencies[key] = set(re.findall(
+                r"\b(?:new|extends|with)\s+([A-Za-z_$][A-Za-z0-9_$]*)", content
+            ))
+    relevant_templates = {
+        path for path, symbols in template_symbols.items()
+        if symbols.intersection(certified_kernel_modules)
+    }
+    pending_templates = list(relevant_templates)
+    while pending_templates:
+        dependencies = template_dependencies[pending_templates.pop()]
+        for path, symbols in template_symbols.items():
+            if path not in relevant_templates and symbols.intersection(dependencies):
+                relevant_templates.add(path)
+                pending_templates.append(path)
+
+    if isinstance(generator_sources, list):
+        for source in generator_sources:
+            if not isinstance(source, dict) or not isinstance(source.get("content"), str):
+                continue
+            source_content = source["content"]
+            source_digest = hashlib.sha256(source_content.encode("utf-8")).hexdigest()
+            expected_digest = str(source.get("sha256") or "")
+            if expected_digest and expected_digest != source_digest:
+                continue
+            generated_source_by_digest.setdefault(
+                source_digest, str(source.get("path") or "")
+            )
+    bundle_documents = bundle.get("documents")
+    if isinstance(bundle_documents, list) and generated_source_by_digest:
+        retained_documents: list[Any] = []
+        duplicate_sources: list[dict[str, str]] = []
+        for document in bundle_documents:
+            if not isinstance(document, dict) or not isinstance(document.get("content"), str):
+                retained_documents.append(document)
+                continue
+            document_content = document["content"]
+            document_digest = hashlib.sha256(
+                document_content.encode("utf-8")
+            ).hexdigest()
+            expected_digest = str(document.get("sha256") or "")
+            if expected_digest and expected_digest != document_digest:
+                retained_documents.append(document)
+                continue
+            supplied_path = generated_source_by_digest.get(document_digest)
+            if supplied_path:
+                duplicate_sources.append(
+                    {
+                        "path": str(document.get("path") or ""),
+                        "sha256": document_digest,
+                        "content_supplied_by": supplied_path,
+                    }
+                )
+            else:
+                retained_documents.append(document)
+        if duplicate_sources:
+            bundle["documents"] = retained_documents
+            existing_aliases = bundle.get(
+                "duplicate_documents_supplied_by_current_generator_sources"
+            )
+            existing_aliases = (
+                existing_aliases if isinstance(existing_aliases, list) else []
+            )
+            known_aliases = {
+                (str(row.get("path") or ""), str(row.get("sha256") or ""))
+                for row in existing_aliases
+                if isinstance(row, dict)
+            }
+            bundle["duplicate_documents_supplied_by_current_generator_sources"] = (
+                existing_aliases
+                + [
+                    row
+                    for row in duplicate_sources
+                    if (row["path"], row["sha256"]) not in known_aliases
+                ]
+            )
+    bundle_documents = bundle.get("documents")
+    allowed_edit_paths = {
+        Path(str(value)).resolve()
+        for value in editable.get("allowed_exact_files", [])
+        if str(value)
+    }
+    projected_read_only_rtl = 0
+    if isinstance(bundle_documents, list):
+        for document in bundle_documents:
+            if not isinstance(document, dict) or not isinstance(
+                document.get("content"), str
+            ):
+                continue
+            source_path = Path(str(document.get("path") or ""))
+            if (
+                source_path.suffix.lower() not in {".v", ".sv"}
+                or "generated" not in source_path.parts
+                or "board_integration" not in source_path.parts
+                or source_path.resolve() in allowed_edit_paths
+            ):
+                continue
+            source_content = document["content"]
+            source_bytes = source_content.encode("utf-8")
+            if len(source_bytes) <= 64_000:
+                continue
+            source_digest = hashlib.sha256(source_bytes).hexdigest()
+            expected_digest = str(document.get("sha256") or "")
+            if expected_digest and expected_digest != source_digest:
+                raise ValueError(
+                    "read-only generated board RTL differs from its supplied SHA-256"
+                )
+            document["content_projection"] = {
+                "schema_version": "spatialaccagent.read_only_board_rtl_projection.v1",
+                "source_sha256": source_digest,
+                "source_bytes": len(source_bytes),
+                "interface_contract": _compact_verilog_module_interface(
+                    source_content
+                ),
+                "source_body_omitted_from_prompt": True,
+                "full_hash_bound_source_remains_on_disk": True,
+                "editable": False,
+            }
+            document.pop("content", None)
+            projected_read_only_rtl += 1
+    if projected_read_only_rtl:
+        compaction_policy = bundle.get("compaction_policy")
+        if isinstance(compaction_policy, dict):
+            compaction_policy.pop("implementation_agent_uses_supplied_complete_source_bodies", None)
+            compaction_policy["authorized_edit_targets_retain_complete_source_bodies"] = True
+            compaction_policy["read_only_generated_board_rtl_uses_hash_bound_complete_interfaces"] = True
+        bundle["read_only_generated_board_rtl_projection_count"] = projected_read_only_rtl
+    if isinstance(generator_sources, list):
+        for source in generator_sources:
+            if not isinstance(source, dict) or not isinstance(source.get("content"), str):
+                continue
+            source_path = Path(str(source.get("path") or ""))
+            if source_path.suffix != ".scala" or "templates" not in source_path.parts:
+                continue
+            source_content = source["content"]
+            source_bytes = source_content.encode("utf-8")
+            source_digest = hashlib.sha256(source_bytes).hexdigest()
+            expected_digest = str(source.get("sha256") or "")
+            if expected_digest and expected_digest != source_digest:
+                raise ValueError(
+                    "hash-bound Chisel template source differs from its supplied SHA-256"
+                )
+            declared_symbols = sorted(
+                {
+                    (kind, name)
+                    for kind, name in re.findall(
+                        r"(?m)^\s*(?:(?:private|protected|final|abstract|sealed|case)\s+)*(class|object|trait|def|enum)\s+([A-Za-z_$][A-Za-z0-9_$]*)",
+                        source_content,
+                    )
+                }
+            )
+            constructor_dependencies = sorted(
+                set(
+                    re.findall(
+                        r"\bnew\s+([A-Za-z_$][A-Za-z0-9_$]*)",
+                        source_content,
+                    )
+                )
+            )
+            owner_modules = sorted(
+                module_name
+                for module_name in certified_kernel_modules
+                if re.search(
+                    rf"(?m)^\s*(?:class|object)\s+{re.escape(module_name)}\b",
+                    source_content,
+                )
+            )
+            if owner_modules or str(source_path) in relevant_templates:
+                source["implementation_contract_for"] = owner_modules
+                source["implementation_source_sha256"] = source_digest
+                source["full_hash_bound_source_remains_on_disk"] = True
+                source["implementation_body_reason"] = (
+                    "certified_kernel_owner" if owner_modules else "reachable_constructor_dependency"
+                )
+                continue
+            io_field_declarations = [
+                line.strip()
+                for line in source_content.splitlines()
+                if len(line.encode("utf-8")) <= 320
+                and re.search(r"\bval\s+[A-Za-z_$][A-Za-z0-9_$]*\b", line)
+                and re.search(
+                    r"\b(?:Input|Output|Flipped|Decoupled|Valid|Irrevocable)\s*\(",
+                    line,
+                )
+            ]
+            source["content_projection"] = {
+                "schema_version": "spatialaccagent.scala_template_prompt_projection.v1",
+                "source_sha256": source_digest,
+                "source_bytes": len(source_bytes),
+                "declared_symbols": [
+                    {"kind": kind, "name": name}
+                    for kind, name in declared_symbols
+                ],
+                "constructor_dependencies": constructor_dependencies,
+                "io_field_declarations": io_field_declarations,
+                "template_body_omitted": True,
+                "full_hash_bound_source_remains_on_disk": True,
+            }
+            source.pop("content", None)
     if not isinstance(certified_sources, list):
         return result
     projected_sources: list[dict[str, Any]] = []
@@ -4048,8 +4413,201 @@ def _compact_exact_board_generation_kernel_inputs(
     kernel["prompt_projection_policy"] = {
         "full_hash_bound_sources_remain_on_disk": True,
         "certified_top_implementation_body_omitted": True,
+        "certified_kernel_owner_template_body_supplied": bool(certified_kernel_modules),
         "ordered_complete_top_port_interface_supplied": True,
-        "current_generator_sources_remain_complete": True,
+        "generated_top_and_parameter_sources_remain_complete": True,
+        "reachable_template_dependency_bodies_supplied": True,
+        "unrelated_template_bodies_projected_to_hash_bound_symbols_dependencies_and_io_fields": True,
+    }
+    return result
+
+
+def _compact_exact_board_context_window_retry_inputs(
+    compact_inputs: dict[str, Any],
+) -> dict[str, Any]:
+    """Tighten an exact-board repair request after a provider rejects its compact form."""
+
+    result = copy.deepcopy(compact_inputs)
+    package = result.get("verification_capability_repair_package")
+    if not isinstance(package, dict):
+        return result
+    phase = package.get("generation_phase_contract", {})
+    if not isinstance(phase, dict) or phase.get("status") not in {
+        "generation_required_before_probe",
+        "repair_deterministic_preflight",
+        "repair_existing_board_sources",
+    }:
+        return result
+
+    context = package.get("exact_board_integration_repair_context", {})
+    if not isinstance(context, dict):
+        return result
+    adaptive = context.get("adaptive_design_inputs", {})
+    if not isinstance(adaptive, dict):
+        return result
+    shared_index = adaptive.get("shared_board_source_index", {})
+    shared_index = shared_index if isinstance(shared_index, dict) else {}
+    source_view = shared_index.get("views", {}).get("source_ids", {})
+    source_ids = source_view.get("values") if isinstance(source_view, dict) else None
+    if not isinstance(source_ids, list):
+        try:
+            source_ids = _decode_encoded_column(
+                shared_index.get("columns", {}).get("source_id", {})
+            )
+        except (TypeError, ValueError):
+            source_ids = []
+    source_positions = {str(value): index for index, value in enumerate(source_ids)}
+    if len(source_positions) != len(source_ids):
+        source_positions = {}
+
+    def source_selection(values: Any) -> dict[str, Any] | None:
+        if not isinstance(values, list) or not source_positions:
+            return None
+        try:
+            indices = [source_positions[str(value)] for value in values]
+        except KeyError:
+            return None
+        if [source_ids[index] for index in indices] != values:
+            return None
+        return {
+            "encoding": "spatialaccagent.ordered_source_index_selection.v1",
+            "source_ids": _projection_ref("source_ids"),
+            "indices": indices,
+            "row_count": len(indices),
+            "canonical_sha256": _canonical_json_sha256(values),
+            "order_is_selection_order": True,
+        }
+
+    identity_artifact = adaptive.get("exact_board_source_identity")
+    if isinstance(identity_artifact, dict) and isinstance(identity_artifact.get("value"), dict):
+        identity = identity_artifact["value"]
+        selected_ids = source_selection(identity.get("discovery_selected_source_ids"))
+        if selected_ids is not None:
+            identity["discovery_selected_source_ids"] = selected_ids
+        compute_slot = identity.get("compute_slot_abi", {})
+        boundary = compute_slot.get("replacement_boundary", {}) if isinstance(compute_slot, dict) else {}
+        retained_ids = source_selection(boundary.get("retained_source_ids")) if isinstance(boundary, dict) else None
+        if retained_ids is not None:
+            boundary["retained_source_ids"] = retained_ids
+        if isinstance(identity.get("source_hashes"), list):
+            hashes = identity["source_hashes"]
+            identity["source_hashes"] = {
+                "row_count": len(hashes),
+                "canonical_sha256": _canonical_json_sha256(hashes),
+                "full_hash_bound_rows_remain_on_disk": True,
+            }
+        closure = identity.get("selected_simulation_source_closure")
+        if isinstance(closure, dict):
+            closure["source_files"] = _projection_ref("identity_source_files")
+        identity_artifact["value"] = {
+            key: identity[key]
+            for key in (
+                "schema_version",
+                "status",
+                "top_module",
+                "wrapper_top_module",
+                "exact_user_sample_wrapper",
+                "axi_interfaces",
+                "axi_interfaces_sha256",
+                "compute_slot_abi",
+                "compute_slot_abi_sha256",
+                "control_abi",
+                "discovery_provenance_contract",
+                "discovery_selected_source_ids",
+                "policy",
+                "selected_simulation_source_closure",
+                "selected_simulation_source_closure_sha256",
+                "selected_simulation_source_roots",
+                "source_hashes",
+                "timing_contract",
+                "timing_contract_sha256",
+                "identity_contract_validation",
+            )
+            if key in identity
+        }
+
+    certificate = adaptive.get("single_layer_promotion_certificate")
+    if isinstance(certificate, dict) and isinstance(certificate.get("value"), dict):
+        value = certificate["value"]
+        binding = value.get("evidence_binding", {})
+        files = binding.get("file_bindings", []) if isinstance(binding, dict) else []
+        gates = sorted(
+            {
+                str(row.get("gate"))
+                for row in files
+                if isinstance(row, dict) and row.get("gate")
+            }
+        )
+        certificate["value"] = {
+            key: copy.deepcopy(value[key])
+            for key in (
+                "artifact_id",
+                "schema_version",
+                "level_id",
+                "status",
+                "gate_execution_scope",
+                "required_gates",
+                "validation_policy",
+                "functional_semantics_claimed",
+                "evidence_contract_fingerprint",
+                "source_gate_selector",
+                "source_result",
+                "policy",
+            )
+            if key in value
+        } | {
+            "evidence_binding": {
+                "binding_sha256": binding.get("binding_sha256") if isinstance(binding, dict) else None,
+                "file_binding_count": len(files) if isinstance(files, list) else 0,
+                "gate_ids": gates,
+                "full_bindings_remain_in_hash_bound_certificate": True,
+            }
+        }
+
+    compile_authority = adaptive.get("stage2_vcs_compile_authority")
+    if isinstance(compile_authority, dict) and isinstance(compile_authority.get("value"), dict):
+        value = compile_authority["value"]
+        if isinstance(value.get("source_files"), list):
+            value["source_files"] = _columnarize_record_lists(value["source_files"])
+
+    vivado_authority = adaptive.get("vivado_vcs_compile_authority")
+    if isinstance(vivado_authority, dict) and isinstance(vivado_authority.get("value"), dict):
+        value = vivado_authority["value"]
+        export_contexts = value.get("export_contexts")
+        if isinstance(export_contexts, list):
+            value["export_contexts"] = [
+                {
+                    key: copy.deepcopy(row[key])
+                    for key in (
+                        "remote_path",
+                        "original_text_chars",
+                        "original_text_sha256",
+                        "command_text_encoding",
+                        "status",
+                    )
+                    if key in row
+                }
+                | {"full_hash_bound_export_remains_on_disk": True}
+                for row in export_contexts
+                if isinstance(row, dict)
+            ]
+
+    # Compile-only exact-board repair does not consume runtime probe authority.
+    adaptive.pop("debug_observability_authority", None)
+    context["context_window_retry_projection"] = {
+        "schema_version": "spatialaccagent.exact_board_context_window_projection.v1",
+        "trigger": "provider_rejected_prior_compact_request_for_context_window",
+        "full_hash_bound_sources_and_certificates_remain_on_disk": True,
+        "editable_sources_and_manifest_remain_complete": True,
+        "compute_slot_abi_and_kernel_interface_remain_complete": True,
+        "runtime_observability_omitted_for_compile_only_exact_board_repair": True,
+    }
+    result["context_window_retry_encoding"] = {
+        "ordered_source_index_selection": (
+            "Resolve source_ids from the shared board source index, then select the listed "
+            "zero-based indices in order. Verify row_count and canonical_sha256 against "
+            "the reconstructed ordered IDs."
+        )
     }
     return result
 
@@ -4539,8 +5097,17 @@ def compact_repair_source_bundle(
     required_paths = preserve_full_text_paths or set()
     required_hashes = preserve_full_text_hashes or set()
     projected_docs = []
-    for row in document_rows:
+    projected_doc_indices: dict[tuple[str, str, str], int] = {}
+    duplicate_document_aliases = copy.deepcopy(
+        bundle.get("duplicate_document_aliases", [])
+    )
+    if not isinstance(duplicate_document_aliases, list):
+        duplicate_document_aliases = []
+    for source_index, row in enumerate(document_rows):
         if not isinstance(row, dict):
+            continue
+        if isinstance(row.get("$ref"), str):
+            projected_docs.append(copy.deepcopy(row))
             continue
         content = str(row.get("content") or "")
         declared_modules = {
@@ -4587,6 +5154,38 @@ def compact_repair_source_bundle(
             projection["declaration_authority"] = (
                 "external_simulation_fixture.compile_authority.compile_sources"
             )
+        path = str(projection.get("path") or row.get("path") or "")
+        source_hash = str(
+            projection.get("sha256")
+            or projection.get("source_sha256")
+            or row.get("sha256")
+            or ""
+        )
+        identity = (
+            path,
+            source_hash,
+            _canonical_json_sha256(projection),
+        )
+        first_index = projected_doc_indices.get(identity)
+        if path and source_hash and first_index is not None:
+            reference = (
+                "#/verification_capability_repair_package/repair_source_bundle/"
+                f"documents/{first_index}"
+            )
+            projected_docs.append(
+                {"$ref": reference, "path": path, "sha256": source_hash}
+            )
+            duplicate_document_aliases.append(
+                {
+                    "source_document_index": source_index,
+                    "path": path,
+                    "sha256": source_hash,
+                    "represented_by": reference,
+                }
+            )
+            continue
+        if path and source_hash:
+            projected_doc_indices[identity] = len(projected_docs)
         projected_docs.append(projection)
     compact_editable = _columnarize_record_lists(bundle.get("editable_contract", {}))
     original_editable = (
@@ -4809,6 +5408,7 @@ def compact_repair_source_bundle(
         "document_count": len(document_rows),
         "document_chars": bundle.get("document_chars"),
         "duplicate_documents_removed": bundle.get("duplicate_documents_removed"),
+        "duplicate_document_aliases": duplicate_document_aliases,
         "editable_contract": compact_editable,
         "generated_module_inventory": _columnarize_record_lists(
             bundle.get("generated_module_inventory", [])
@@ -4826,6 +5426,7 @@ def compact_repair_source_bundle(
         "compaction_policy": {
             "full_document_text_or_json_omitted_except_selected_editable_interface_and_certified_lifecycle_sources": True,
             "evidence_preserved_by_path_and_sha256": True,
+            "identical_document_content_uses_resolvable_json_pointer_aliases": True,
             "source_hash_validation_owner": "framework_executor_before_file_edits_and_tool_execution",
             "implementation_agent_uses_supplied_complete_source_bodies": True,
         },
@@ -6245,6 +6846,201 @@ def compact_board_preflight_repair_package(result: dict[str, Any]) -> dict[str, 
     # This phase is fully described by generation_phase_contract.  Exposing a
     # second enum to the Agent has caused label drift without adding authority.
     result.pop("generation_mode", None)
+
+    feedback = result.get("current_board_preflight_feedback")
+    preflight = feedback.get("preflight") if isinstance(feedback, dict) else None
+    preflight_value = (
+        preflight.get("value") if isinstance(preflight, dict) else None
+    )
+    exact_preflight = (
+        preflight_value.get("exact_board_preflight")
+        if isinstance(preflight_value, dict)
+        else None
+    )
+    checks = (
+        exact_preflight.get("checks", [])
+        if isinstance(exact_preflight, dict)
+        else []
+    )
+    failed_checks = sorted(
+        str(check.get("name"))
+        for check in checks
+        if isinstance(check, dict) and check.get("status") == "fail"
+    )
+    projection = result.get("materialization_failure_projection")
+    blockers = (
+        projection.get("unscoped_blockers", [])
+        if isinstance(projection, dict)
+        else []
+    )
+    blocker_text = "\n".join(str(value) for value in blockers)
+    manifest_role_abi_failure = (
+        failed_checks == ["simulation_compile_source_set"]
+        and "simulation.source_replacements" in blocker_text
+        and "generated_role" in blocker_text
+        and "compute-slot adapter" in blocker_text
+        and "module ABI" in blocker_text
+    )
+    if not manifest_role_abi_failure:
+        return result
+
+    # This deterministic failure is confined to the manifest's adapter/source
+    # binding. Keep the exact public ABI and source identities, but omit the
+    # unrelated lower-layer certificates and implementation bodies.
+    context = result.get("exact_board_integration_repair_context")
+    if isinstance(context, dict):
+        context["manifest_only_repair_contract"] = {
+            "status": "current_preflight_failure_is_only_source_replacement_role_and_abi_binding",
+            "edit_target": context.get("required_binding_manifest"),
+            "generated_adapter_rtl_is_read_only": True,
+            "preserve_exact_board_and_kernel_abis": True,
+            "source_replacement_must_reference_a_replaced_source_id": True,
+            "generated_source_role_must_be_compute_slot_adapter": True,
+            "generated_module_must_match_the_adapter_source_declaration": True,
+            "replacement_module_must_match_the_exact_sample_compute_slot": True,
+            "testbench_source_must_remain_a_distinct_testbench_role": True,
+        }
+        adaptive = context.get("adaptive_design_inputs")
+        if isinstance(adaptive, dict):
+            adaptive.pop("debug_observability_authority", None)
+            adaptive.pop("vivado_vcs_compile_authority", None)
+            promotion = adaptive.get("single_layer_promotion_certificate")
+            if isinstance(promotion, dict):
+                promotion_value = promotion.get("value")
+                if isinstance(promotion_value, dict):
+                    promotion["value"] = {
+                        key: copy.deepcopy(promotion_value[key])
+                        for key in (
+                            "artifact_id",
+                            "schema_version",
+                            "status",
+                            "level_id",
+                            "gate_execution_scope",
+                            "validation_policy",
+                            "functional_semantics_claimed",
+                            "evidence_contract_fingerprint",
+                            "source_gate_selector",
+                            "source_result",
+                        )
+                        if key in promotion_value
+                    }
+
+            kernel = adaptive.get("kernel_binding_design_inputs")
+            if isinstance(kernel, dict):
+                for source_key in (
+                    "current_generator_sources",
+                    "board_control_reference_sources",
+                    "current_sample_board_control_sources",
+                ):
+                    sources = kernel.get(source_key)
+                    if not isinstance(sources, list):
+                        continue
+                    projected_sources = []
+                    for source in sources:
+                        if not isinstance(source, dict):
+                            continue
+                        projection = {
+                            key: copy.deepcopy(source[key])
+                            for key in (
+                                "path",
+                                "sha256",
+                                "source_sha256",
+                                "bytes",
+                                "source_id",
+                                "role",
+                                "declared_modules",
+                                "module",
+                                "interface_contract",
+                            )
+                            if key in source
+                        }
+                        content_projection = source.get("content_projection")
+                        if isinstance(content_projection, dict):
+                            for key in (
+                                "source_sha256",
+                                "source_bytes",
+                                "declared_symbols",
+                                "interface_contract",
+                            ):
+                                if key in content_projection:
+                                    projection.setdefault(
+                                        key, copy.deepcopy(content_projection[key])
+                                    )
+                        if projection:
+                            projected_sources.append(projection)
+                    kernel[source_key] = projected_sources
+                # The certified top interface is the only kernel detail needed
+                # to bind a board manifest after a deterministic preflight
+                # failure. Its ordered ports remain complete and lossless.
+                certified = kernel.get("certified_top_sources")
+                if isinstance(certified, list):
+                    kernel["certified_top_sources"] = [
+                        {
+                            key: copy.deepcopy(source[key])
+                            for key in (
+                                "path",
+                                "sha256",
+                                "source_sha256",
+                                "module",
+                                "interface_contract",
+                            )
+                            if key in source
+                        }
+                        for source in certified
+                        if isinstance(source, dict)
+                    ]
+                kernel["prompt_projection_policy"] = {
+                    "scope": "deterministic_board_manifest_preflight_repair",
+                    "generated_rtl_bodies_omitted": True,
+                    "source_paths_and_hashes_preserved": True,
+                    "certified_kernel_and_sample_board_interfaces_preserved": True,
+                    "compile_source_and_edit_authorities_preserved": True,
+                }
+        disposition = result.get("current_repair_agent_disposition")
+        if isinstance(disposition, dict):
+            disposition.pop("executable_actions", None)
+            disposition["manifest_repair_scope"] = (
+                "Repair the current source-replacement role and ABI fields in the authorized binding manifest, then rerun the existing preflight and VCS compile gates."
+            )
+
+    bundle = result.get("repair_source_bundle")
+    if isinstance(bundle, dict):
+        editable = bundle.get("editable_contract")
+        editable = editable if isinstance(editable, dict) else {}
+        read_only_templates = {
+            str(value)
+            for value in editable.get("read_only_template_sources", [])
+            if str(value)
+        }
+        documents = bundle.get("documents")
+        if isinstance(documents, list) and read_only_templates:
+            retained_documents = []
+            omitted_templates = []
+            for document in documents:
+                if not isinstance(document, dict):
+                    retained_documents.append(document)
+                    continue
+                path = str(document.get("path") or "")
+                if path not in read_only_templates:
+                    retained_documents.append(document)
+                    continue
+                omitted_templates.append(
+                    {
+                        key: copy.deepcopy(document[key])
+                        for key in ("path", "bytes", "sha256", "content_sha256")
+                        if key in document
+                    }
+                )
+            bundle["documents"] = retained_documents
+            if omitted_templates:
+                bundle["manifest_repair_omitted_read_only_template_sources"] = (
+                    omitted_templates
+                )
+                bundle["manifest_repair_template_projection_policy"] = {
+                    "full_template_bodies_omitted": True,
+                    "source_paths_and_hashes_preserved": True,
+                    "templates_remain_read_only": True,
+                }
     return result
 
 
@@ -6501,11 +7297,13 @@ def compact_board_post_vcs_repair_package(result: dict[str, Any]) -> dict[str, A
                 "connected_kernel_lifecycle_authority",
                 "kernel_binding_design_inputs",
                 "target_board_profile",
+                "exact_board_address_mapping_evidence",
                 "shared_board_source_index",
                 "exact_board_source_identity",
                 "model_derived_memory_layout",
-                "full_weight_image_manifest",
             ]
+            if not compile_phase_failure:
+                required_keys.append("full_weight_image_manifest")
             if failure_class == "vcs_runtime_zero_time_livelock":
                 required_keys.append("debug_observability_authority")
             elif not compile_phase_failure:
@@ -6533,6 +7331,24 @@ def compact_board_post_vcs_repair_package(result: dict[str, Any]) -> dict[str, A
                     }
                 else:
                     required_context[key] = copy.deepcopy(value)
+            manifest_artifact = adaptive.get("full_weight_image_manifest")
+            manifest_value = _bound_artifact_value(manifest_artifact)
+            if (
+                compile_phase_failure
+                and isinstance(manifest_value, dict)
+                and "scale_consumer_binding" in manifest_value
+            ):
+                compact_manifest = {
+                    key: copy.deepcopy(manifest_artifact.get(key))
+                    for key in ("path", "sha256")
+                    if isinstance(manifest_artifact, dict) and key in manifest_artifact
+                }
+                compact_manifest["value"] = {
+                    "scale_consumer_binding": copy.deepcopy(
+                        manifest_value["scale_consumer_binding"]
+                    )
+                }
+                required_context["full_weight_image_manifest"] = compact_manifest
             context["adaptive_design_inputs"] = required_context
             context["prompt_slice_policy"] = {
                 "failure_phase": "compile" if compile_phase_failure else "runtime",
@@ -6560,6 +7376,13 @@ def compact_board_post_vcs_repair_package(result: dict[str, Any]) -> dict[str, A
         )
         if key in editable
     }
+    rewrite_authority = editable.get("board_manifest_rewrite_authority")
+    if isinstance(rewrite_authority, dict):
+        target_file = rewrite_authority.get("target_file")
+        if isinstance(target_file, dict):
+            compact_editable["board_manifest_rewrite_authority"] = {
+                "target_file": copy.deepcopy(target_file)
+            }
     manifest = compact_editable.get("current_board_manifest_file")
     manifest_path = (
         str(manifest.get("path") or "") if isinstance(manifest, dict) else ""
@@ -6789,18 +7612,144 @@ def _operator_leaf_stage_ids(documents: list[dict[str, Any]]) -> set[str]:
     stage_ids: set[str] = set()
     for document in documents:
         path = str(document.get("path") or "")
-        for match in re.finditer(r"(stage_[A-Za-z0-9_]+)", path):
+        for match in re.finditer(r"(stage_\d+_[A-Za-z0-9_]+)", path):
             stage_ids.add(match.group(1))
     return stage_ids
+
+
+def _compact_operator_leaf_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _compact_operator_leaf_payload(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        if len(value) <= 64:
+            return [_compact_operator_leaf_payload(item) for item in value]
+        return {
+            "projection": "hash_bound_array_summary",
+            "item_count": len(value),
+            "canonical_sha256": _canonical_json_sha256(value),
+            "sample": [_compact_operator_leaf_payload(item) for item in value[:2]],
+            "full_payload_remains_on_disk": True,
+        }
+    if isinstance(value, str) and len(value.encode("utf-8")) > 16_384:
+        return {
+            "projection": "hash_bound_string_summary",
+            "byte_count": len(value.encode("utf-8")),
+            "sha256": hashlib.sha256(value.encode("utf-8")).hexdigest(),
+            "prefix": value[:256],
+            "full_payload_remains_on_disk": True,
+        }
+    return copy.deepcopy(value)
+
+
+def _operator_leaf_required_scale_payloads(
+    connected_contract: dict[str, Any],
+    *,
+    stage_ids: set[str],
+    requirements_sha256: str,
+) -> list[dict[str, Any]]:
+    """Keep exact large Q31 channel arrays needed to bind semantic harnesses."""
+
+    payloads: list[dict[str, Any]] = []
+    for segment in connected_contract.get("stage_segments", []):
+        if not isinstance(segment, dict):
+            continue
+        stage_id = str(segment.get("stage_id") or "")
+        if stage_ids and stage_id not in stage_ids:
+            continue
+        for target in segment.get("targets", []):
+            if not isinstance(target, dict):
+                continue
+            materialized = target.get("materialized_target")
+            materialized = materialized if isinstance(materialized, dict) else {}
+            quantization = materialized.get("quantization")
+            quantization = quantization if isinstance(quantization, dict) else {}
+            fixed_point = quantization.get("scale_fixed_point")
+            fixed_point = fixed_point if isinstance(fixed_point, dict) else {}
+            channels = fixed_point.get("channels")
+            if not isinstance(channels, list) or len(channels) <= 64:
+                continue
+            channel_fields = sorted(
+                {str(key) for row in channels if isinstance(row, dict) for key in row}
+            )
+            scalar_types = (str, int, float, bool, type(None))
+            compactable = bool(channel_fields) and all(
+                isinstance(row, dict)
+                and set(row) == set(channel_fields)
+                and all(isinstance(row[field], scalar_types) for field in channel_fields)
+                for row in channels
+            )
+            compact_channels = (
+                [[row[field] for field in channel_fields] for row in channels]
+                if compactable
+                else copy.deepcopy(channels)
+            )
+            compact_fixed_point = copy.deepcopy(fixed_point)
+            compact_fixed_point["channels"] = compact_channels
+            payloads.append(
+                {
+                    "stage_id": stage_id,
+                    "stage_index": segment.get("stage_index"),
+                    "op": segment.get("op"),
+                    "layout_contract_sha256": segment.get(
+                        "layout_contract_sha256"
+                    ),
+                    "requirements_sha256": requirements_sha256,
+                    "target_id": target.get("target_id"),
+                    "target_kind": target.get("target_kind"),
+                    "port": target.get("port"),
+                    "dut_port_role": target.get("dut_port_role"),
+                    "source_tensor_hashes": copy.deepcopy(
+                        target.get("source_tensor_hashes", [])
+                    ),
+                    "scale_consumer_binding": copy.deepcopy(
+                        target.get("scale_consumer_binding", {})
+                    ),
+                    "scale_metadata": _compact_operator_leaf_payload(
+                        target.get("scale_metadata", {})
+                    ),
+                    "channel_count": len(channels),
+                    "channel_encoding": (
+                        "ordered_field_value_rows_v1"
+                        if compactable
+                        else "lossless_json_values_v1"
+                    ),
+                    "channel_fields": channel_fields,
+                    "channels_sha256": _canonical_json_sha256(channels),
+                    "scale_fixed_point": compact_fixed_point,
+                }
+            )
+    return payloads
+
+
+def _operator_leaf_stage_rows(
+    rows: Any, stage_ids: set[str]
+) -> list[dict[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    stage_rows = [row for row in rows if isinstance(row, dict)]
+    matched = [row for row in stage_rows if str(row.get("stage_id") or "") in stage_ids]
+    if matched:
+        stage_rows = matched
+    return [_compact_operator_leaf_payload(row) for row in stage_rows]
 
 
 def _compact_operator_leaf_json_document(
     document: dict[str, Any], stage_ids: set[str]
 ) -> None:
-    """Remove layer-2 catalogs from a layer-1 repair prompt."""
+    """Keep leaf-stage semantics while omitting duplicated model-wide payloads."""
 
     content = document.get("json_content")
     path = str(document.get("path") or "")
+    if not isinstance(content, dict) and isinstance(document.get("content"), str):
+        try:
+            parsed = json.loads(document["content"])
+        except (TypeError, ValueError):
+            parsed = None
+        if isinstance(parsed, dict):
+            content = parsed
     if not isinstance(content, dict):
         return
     if "dut_weight_binding_requirements.json" in path:
@@ -6821,18 +7770,57 @@ def _compact_operator_leaf_json_document(
             "agent_manifest_schema",
             "agent_manifest_example",
             "semantic_runtime_constant_contract",
+            "required_scale_payloads",
         }
         projected = {
-            key: copy.deepcopy(content[key])
+            key: (
+                copy.deepcopy(content[key])
+                if key == "required_scale_payloads"
+                else _compact_operator_leaf_payload(content[key])
+            )
             for key in keep
             if key in content
         }
         stage_requirements = content.get("stage_requirements")
         if isinstance(stage_requirements, dict):
             projected["stage_requirements"] = {
-                key: copy.deepcopy(value)
+                key: _compact_operator_leaf_payload(value)
                 for key, value in stage_requirements.items()
                 if key in stage_ids
+            }
+        elif isinstance(stage_requirements, list):
+            projected["stage_requirements"] = _operator_leaf_stage_rows(
+                stage_requirements, stage_ids
+            )
+        connected_stream = content.get("connected_weight_stream_contract")
+        if isinstance(connected_stream, dict):
+            projected["required_scale_payloads"] = (
+                _operator_leaf_required_scale_payloads(
+                    connected_stream,
+                    stage_ids=stage_ids,
+                    requirements_sha256=str(document.get("sha256") or ""),
+                )
+            )
+            projected["omitted_connected_weight_stream_contract"] = {
+                key: copy.deepcopy(connected_stream[key])
+                for key in (
+                    "schema_version",
+                    "status",
+                    "path",
+                    "sha256",
+                    "contract_sha256",
+                    "word_bits",
+                    "word_count",
+                    "stage_order",
+                )
+                if key in connected_stream
+            } | {
+                "stage_segment_count": len(
+                    connected_stream.get("stage_segments", [])
+                    if isinstance(connected_stream.get("stage_segments"), list)
+                    else []
+                ),
+                "full_payload_remains_hash_bound_on_disk": True,
             }
         document["json_content"] = projected
     elif "semantic_testbench_manifest.json" in path:
@@ -6852,18 +7840,27 @@ def _compact_operator_leaf_json_document(
             "dut_weight_binding_requirements_sha256",
         }
         projected = {
-            key: copy.deepcopy(content[key])
+            key: _compact_operator_leaf_payload(content[key])
             for key in keep
             if key in content
         }
         stage_contracts = content.get("stage_contracts")
         if isinstance(stage_contracts, dict):
             projected["stage_contracts"] = {
-                key: copy.deepcopy(value)
+                key: _compact_operator_leaf_payload(value)
                 for key, value in stage_contracts.items()
                 if key in stage_ids
             }
+        elif isinstance(stage_contracts, list):
+            projected["stage_contracts"] = _operator_leaf_stage_rows(
+                stage_contracts, stage_ids
+            )
         document["json_content"] = projected
+    if isinstance(document.get("json_content"), dict):
+        document.pop("content", None)
+        document.pop("content_head", None)
+        document.pop("content_tail", None)
+        document["content_projection"] = "operator_leaf_semantic_metadata"
 
 
 def _compact_operator_leaf_repair_bundle(
@@ -6894,9 +7891,49 @@ def _compact_operator_leaf_repair_bundle(
     }
 
 
+def _intern_lossless_json_subtrees(value: Any, *, minimum_bytes: int = 256) -> Any:
+    """Replace repeated prompt subtrees with backward JSON Pointer references."""
+    seen: dict[str, str] = {}
+    pointer_root = "#/verification_capability_repair_package"
+
+    def escape(token: str) -> str:
+        return token.replace("~", "~0").replace("/", "~1")
+
+    def visit(item: Any, path: str) -> Any:
+        if isinstance(item, dict):
+            compact = {
+                str(key): visit(child, f"{path}/{escape(str(key))}")
+                for key, child in item.items()
+            }
+        elif isinstance(item, list):
+            compact = [visit(child, f"{path}/{index}") for index, child in enumerate(item)]
+        else:
+            return item
+
+        if isinstance(compact, dict) and "$ref" in compact:
+            return compact
+        canonical = json.dumps(
+            compact, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+        )
+        if len(canonical.encode("utf-8")) < minimum_bytes:
+            return compact
+        reference = seen.get(canonical)
+        if reference:
+            return {"$ref": reference}
+        seen[canonical] = pointer_root + path
+        return compact
+
+    return visit(value, "")
+
+
 def compact_verification_capability_repair_package(package: dict[str, Any]) -> dict[str, Any]:
+    operator_leaf_scope = package.get("verification_scope") == "operator_leaf_closure"
+    operator_leaf_capability_prompt = (
+        operator_leaf_scope
+        and package.get("repair_kind") == "semantic_loader_harness_binding"
+    )
     localized_operator_leaf_repair = (
-        package.get("verification_scope") == "operator_leaf_closure"
+        operator_leaf_scope
         and package.get("repair_kind") == "localized_semantic_dut_repair"
     )
     board_semantic_rtl_repair = (
@@ -7091,6 +8128,45 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
         result["exact_board_integration_repair_context"] = compact_exact_board_integration_context(context)
     bundle = package.get("repair_source_bundle", {})
     if isinstance(bundle, dict):
+        bundle = copy.deepcopy(bundle)
+        if operator_leaf_capability_prompt:
+            editable_sources = (
+                bundle.get("editable_contract", {})
+                if isinstance(bundle.get("editable_contract"), dict)
+                else {}
+            )
+            approved_sources = {
+                str(value)
+                for value in editable_sources.get(
+                    "approved_bounded_template_repair_exact_files", []
+                )
+                if str(value)
+            }
+            harness_roots = [
+                str(value).rstrip("/")
+                for value in editable_sources.get(
+                    "allowed_create_or_replace_roots", []
+                )
+                if str(value).rstrip("/")
+            ]
+            for document in bundle.get("documents", []):
+                if not isinstance(document, dict):
+                    continue
+                path = str(document.get("path") or "")
+                is_semantic_harness = any(
+                    path == root or path.startswith(root + "/")
+                    for root in harness_roots
+                )
+                is_dut_source = Path(path.split("#", 1)[0]).suffix.lower() == ".scala" and (
+                    "/templates/" in "/" + path.lstrip("/")
+                    or "/generated/chisel/src/main/scala/" in "/" + path.lstrip("/")
+                )
+                if (
+                    is_dut_source
+                    and not is_semantic_harness
+                    and path not in approved_sources
+                ):
+                    document.pop("content_preservation", None)
         context = package.get("exact_board_integration_repair_context", {})
         adaptive = (
             context.get("adaptive_design_inputs", {})
@@ -7117,7 +8193,7 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
         # the prompt exceed provider context limits before the Agent can act.
         # Keep source identities for the closure, but preserve full text only
         # for the generated board owners selected below.
-        if board_semantic_rtl_repair:
+        if board_semantic_rtl_repair or operator_leaf_capability_prompt:
             lifecycle_modules = set()
         identity = _bound_artifact_value(
             adaptive.get("exact_board_source_identity", {})
@@ -7178,7 +8254,11 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
             )
         else:
             for field in (
-                *(() if localized_operator_leaf_repair else ("read_only_template_sources",)),
+                *(
+                    ()
+                    if operator_leaf_capability_prompt or localized_operator_leaf_repair
+                    else ("read_only_template_sources",)
+                ),
                 "approved_bounded_template_repair_exact_files",
                 "allowed_exact_files",
                 "localized_allowed_exact_files",
@@ -7324,13 +8404,38 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
             for field in ("sha256", "source_sha256", "content_sha256")
             if row.get(field)
         )
+        if operator_leaf_capability_prompt:
+            for row in bundle.get("documents", []):
+                if not isinstance(row, dict):
+                    continue
+                path = str(row.get("path") or "")
+                source_path = path.split("#", 1)[0]
+                is_dut_source = Path(source_path).suffix.lower() == ".scala" and (
+                    "/templates/" in "/" + source_path.lstrip("/")
+                    or "/generated/chisel/src/main/scala/"
+                    in "/" + source_path.lstrip("/")
+                )
+                is_semantic_harness = any(
+                    source_path == root or source_path.startswith(root + "/")
+                    for root in editable_roots
+                )
+                if (
+                    not is_dut_source
+                    or is_semantic_harness
+                    or path in approved_sources
+                ):
+                    continue
+                selected_source_paths.discard(path)
+                for field in ("sha256", "source_sha256", "content_sha256"):
+                    if row.get(field):
+                        selected_source_hashes.discard(str(row[field]))
         compact_bundle = compact_repair_source_bundle(
             bundle,
             preserve_full_text_modules=lifecycle_modules,
             preserve_full_text_paths=selected_source_paths,
             preserve_full_text_hashes=selected_source_hashes,
         )
-        if localized_operator_leaf_repair:
+        if package.get("verification_scope") == "operator_leaf_closure":
             _compact_operator_leaf_repair_bundle(
                 compact_bundle,
                 stage_ids=_operator_leaf_stage_ids(
@@ -7340,11 +8445,22 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
                         if isinstance(row, dict)
                     ]
                 ),
-                read_only_template_paths={
-                    str(value)
-                    for value in editable.get("read_only_template_sources", [])
-                    if str(value)
-                },
+                read_only_template_paths=(
+                    {
+                        str(value)
+                        for value in editable.get("read_only_template_sources", [])
+                        if str(value)
+                    }
+                    - approved_sources
+                    if operator_leaf_capability_prompt
+                    else {
+                        str(value)
+                        for value in editable.get("read_only_template_sources", [])
+                        if str(value)
+                    }
+                    if localized_operator_leaf_repair
+                    else set()
+                ),
             )
         if package.get("verification_scope") == "single_layer_closure":
             compact_bundle["single_layer_generation_authority"] = {
@@ -7655,14 +8771,20 @@ def compact_verification_capability_repair_package(package: dict[str, Any]) -> d
         "schema_version": PROMPT_COMPACTION_PROTOCOL,
         "full_context_replaced_by_hash_bound_projection": True,
         "semantic_requirements_preserved": True,
+        "identical_json_subtrees_are_losslessly_referenced_once": True,
         "file_edits_return_complete_create_replace_or_hash_bound_unique_text_replacements": True,
     }
     if bootstrap_board_generation:
-        return compact_board_bootstrap_repair_package(result)
-    if deterministic_preflight_repair:
-        return compact_board_preflight_repair_package(result)
-    if post_vcs_board_repair:
-        return compact_board_post_vcs_repair_package(result)
+        result = compact_board_bootstrap_repair_package(result)
+    elif deterministic_preflight_repair:
+        result = compact_board_preflight_repair_package(result)
+    elif post_vcs_board_repair:
+        result = compact_board_post_vcs_repair_package(result)
+    compact_bytes = len(
+        json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    )
+    if compact_bytes > 400_000:
+        result = _intern_lossless_json_subtrees(result)
     return result
 
 
@@ -8807,6 +9929,11 @@ def compact_full_weight_image_manifest(
     manifest = _bound_artifact_value(value)
     if not manifest:
         return compact_bound_artifact(value)
+    segments = manifest.get("layer_segments")
+    if isinstance(segments, dict) and isinstance(segments.get("table"), dict):
+        return copy.deepcopy(value)
+    if not isinstance(segments, list):
+        return copy.deepcopy(value)
     projected: dict[str, Any] = {
         key: value.get(key)
         for key in ("path", "sha256", "source_path", "source_sha256")
@@ -9021,6 +10148,9 @@ def compact_transformer_block_weight_catalog(value: Any) -> Any:
     catalog = _bound_artifact_value(value)
     if not catalog:
         return compact_bound_artifact(value)
+    tensors = catalog.get("tensors")
+    if isinstance(tensors, dict) and tensors.get("encoding") == "spatialaccagent.lossless_dictionary_column_rows.v1":
+        return copy.deepcopy(value)
     projected: dict[str, Any] = {
         key: value.get(key)
         for key in ("path", "sha256", "source_path", "source_sha256")
@@ -9097,39 +10227,6 @@ def _compact_board_identity_generation_semantics(identity: dict[str, Any]) -> di
         return copy.deepcopy(value)
 
     compact = project(identity)
-    compute_slot = compact.get("compute_slot_abi", {})
-    if isinstance(compute_slot, dict):
-        required_ports = compute_slot.get("required_ports", [])
-        port_bindings = compute_slot.get("port_bindings", [])
-        by_name = {
-            str(row.get("name")): row
-            for row in required_ports
-            if isinstance(row, dict) and row.get("name")
-        }
-        derived = bool(port_bindings) and all(
-            isinstance(binding, dict)
-            and str(binding.get("accelerator_port") or "") in by_name
-            and all(
-                binding.get(field) == by_name[str(binding["accelerator_port"])].get(field)
-                for field in ("direction", "port_id", "width_bits")
-            )
-            and set(binding).issubset(
-                {"accelerator_port", "direction", "port_id", "width_bits"}
-            )
-            for binding in port_bindings
-        )
-        if derived:
-            compute_slot["port_bindings"] = {
-                "$ref": (
-                    "#/verification_capability_repair_package/exact_board_integration_repair_context/"
-                    "adaptive_design_inputs/exact_board_source_identity/value/compute_slot_abi/"
-                    "required_ports"
-                ),
-                "field_aliases": {"accelerator_port": "name"},
-                "selected_fields": ["name", "direction", "port_id", "width_bits"],
-                "row_count": len(port_bindings),
-                "canonical_sha256": _canonical_json_sha256(port_bindings),
-            }
     validation = compact.get("identity_contract_validation", {})
     original_validation = identity.get("identity_contract_validation", {})
     if isinstance(validation, dict) and isinstance(original_validation, dict):
@@ -9190,10 +10287,75 @@ def compact_board_source_identity(value: Any) -> Any:
                 "row_count": len(source_ids),
                 "canonical_sha256": _canonical_json_sha256(source_ids),
             }
-    projected["value"] = _columnarize_record_lists(identity_projection)
+    compact_identity = _columnarize_record_lists(identity_projection)
+    # Keep ABI rows literal: compressing direction values independently from
+    # port names invites index/direction confusion in generation prompts.
+    for parent_path, rows_key in (
+        (("compute_slot_abi",), "required_ports"),
+        (("compute_slot_abi",), "port_bindings"),
+        (("compute_slot_abi", "control_abi"), "port_classifications"),
+        (("control_abi",), "port_classifications"),
+    ):
+        source_parent = identity_projection
+        compact_parent = compact_identity
+        for key in parent_path:
+            source_parent = source_parent.get(key, {}) if isinstance(source_parent, dict) else {}
+            compact_parent = compact_parent.get(key, {}) if isinstance(compact_parent, dict) else {}
+        rows = source_parent.get(rows_key) if isinstance(source_parent, dict) else None
+        if (
+            isinstance(rows, dict)
+            and rows.get("encoding") == "spatialaccagent.lossless_dictionary_column_rows.v1"
+        ):
+            try:
+                rows = _decode_lossless_columnar_rows(rows)
+            except (TypeError, ValueError):
+                rows = None
+        elif (
+            rows_key == "port_bindings"
+            and isinstance(rows, dict)
+            and str(rows.get("$ref") or "").endswith(
+                "/compute_slot_abi/required_ports"
+            )
+        ):
+            required_ports = identity_projection.get("compute_slot_abi", {}).get(
+                "required_ports", []
+            )
+            if (
+                isinstance(required_ports, dict)
+                and required_ports.get("encoding")
+                == "spatialaccagent.lossless_dictionary_column_rows.v1"
+            ):
+                try:
+                    required_ports = _decode_lossless_columnar_rows(required_ports)
+                except (TypeError, ValueError):
+                    required_ports = []
+            if isinstance(required_ports, list):
+                aliases = rows.get("field_aliases", {})
+                aliases = aliases if isinstance(aliases, dict) else {}
+                selected = rows.get("selected_fields", [])
+                selected = selected if isinstance(selected, list) else []
+                rows = [
+                    {
+                        str(field): copy.deepcopy(
+                            port.get(str(aliases.get(field, field)))
+                        )
+                        for field in selected
+                        if str(aliases.get(field, field)) in port
+                    }
+                    for port in required_ports
+                    if isinstance(port, dict)
+                ]
+        if (
+            isinstance(rows, list)
+            and all(isinstance(row, dict) for row in rows)
+            and isinstance(compact_parent, dict)
+        ):
+            compact_parent[rows_key] = copy.deepcopy(rows)
+    projected["value"] = compact_identity
     projected["compaction_policy"] = {
         "abi_timing_axi_and_validation_semantics_preserved": True,
-        "record_lists_are_lossless_columnar_tables": True,
+        "abi_port_and_control_rows_remain_explicit": True,
+        "other_record_lists_are_lossless_columnar_tables": True,
         "full_source_closure_reused_through_shared_board_source_index": True,
         "canonical_identity_sha256": _canonical_json_sha256(identity),
     }
@@ -9338,6 +10500,9 @@ def compact_exact_board_integration_context(context: dict[str, Any]) -> dict[str
                 adaptive.get("certified_single_layer_binding", {})
             ),
             "single_layer_promotion_certificate": compact_bound_artifact(adaptive.get("single_layer_promotion_certificate", {})),
+            "stage2_vcs_compile_authority": copy.deepcopy(
+                adaptive.get("stage2_vcs_compile_authority", {})
+            ),
             "connected_kernel_lifecycle_authority": compact_bound_artifact(
                 adaptive.get("connected_kernel_lifecycle_authority", {})
             ),
@@ -9383,9 +10548,37 @@ def compact_exact_board_integration_context(context: dict[str, Any]) -> dict[str
                 adaptive.get("sample_project_vcs_input_projection", {})
             ),
         }
+        if "exact_board_address_mapping_evidence" in adaptive:
+            compact_adaptive["exact_board_address_mapping_evidence"] = copy.deepcopy(
+                adaptive["exact_board_address_mapping_evidence"]
+            )
+        kernel_authority = _bound_artifact_value(
+            compact_adaptive["stage2_vcs_compile_authority"]
+        )
+        declaration = kernel_authority.get("module_declaration")
+        if isinstance(declaration, str) and len(declaration.encode("utf-8")) > 64_000:
+            kernel_authority["module_declaration"] = {
+                "source_sha256": hashlib.sha256(declaration.encode("utf-8")).hexdigest(),
+                "source_bytes": len(declaration.encode("utf-8")),
+                "interface_contract": _compact_verilog_module_interface(declaration),
+            }
         identity = _bound_artifact_value(adaptive.get("exact_board_source_identity", {}))
         compile_authority = _bound_artifact_value(adaptive.get("vivado_vcs_compile_authority", {}))
         shared_index = _shared_board_source_index(identity, compile_authority)
+        reused_shared_index = False
+        if not shared_index:
+            existing_index = adaptive.get("shared_board_source_index")
+            if (
+                isinstance(existing_index, dict)
+                and isinstance(existing_index.get("columns"), dict)
+                and isinstance(existing_index.get("views"), dict)
+                and isinstance(existing_index.get("row_count"), int)
+            ):
+                # Retry compaction can receive an already-projected identity
+                # whose source rows are refs into this index. Preserve that
+                # authority instead of dropping it and leaving those refs dangling.
+                shared_index = copy.deepcopy(existing_index)
+                reused_shared_index = True
         identity_projection = compact_adaptive.get("exact_board_source_identity", {})
         compile_projection = compact_adaptive.get("vivado_vcs_compile_authority", {})
         if (
@@ -9393,51 +10586,54 @@ def compact_exact_board_integration_context(context: dict[str, Any]) -> dict[str
             and isinstance(identity_projection, dict)
             and isinstance(compile_projection, dict)
         ):
-            sample_source_ids = adaptive.get(
-                "sample_project_vcs_input_projection", {}
-            ).get("compiler_input_source_ids", [])
-            all_source_ids = [
-                str(row.get("source_id"))
-                for row in identity.get("selected_simulation_source_closure", {}).get(
-                    "source_files", []
+            if reused_shared_index:
+                compact_adaptive["shared_board_source_index"] = shared_index
+            else:
+                sample_source_ids = adaptive.get(
+                    "sample_project_vcs_input_projection", {}
+                ).get("compiler_input_source_ids", [])
+                all_source_ids = [
+                    str(row.get("source_id"))
+                    for row in identity.get("selected_simulation_source_closure", {}).get(
+                        "source_files", []
+                    )
+                    if isinstance(row, dict) and row.get("source_id")
+                ]
+                if (
+                    isinstance(sample_source_ids, list)
+                    and [value for value in all_source_ids if value in set(sample_source_ids)]
+                    == sample_source_ids
+                ):
+                    shared_index.setdefault("views", {})[
+                        "compiler_input_source_ids"
+                    ] = {
+                        "column": "source_id",
+                        "exclude_source_ids": [
+                            value for value in all_source_ids if value not in set(sample_source_ids)
+                        ],
+                        "row_count": len(sample_source_ids),
+                        "canonical_sha256": _canonical_json_sha256(sample_source_ids),
+                    }
+                identity_projection = copy.deepcopy(identity_projection)
+                compile_projection = copy.deepcopy(compile_projection)
+                compact_adaptive["exact_board_source_identity"] = identity_projection
+                compact_adaptive["vivado_vcs_compile_authority"] = compile_projection
+                compact_adaptive["shared_board_source_index"] = (
+                    _compact_shared_board_source_index_for_generation(shared_index)
                 )
-                if isinstance(row, dict) and row.get("source_id")
-            ]
-            if (
-                isinstance(sample_source_ids, list)
-                and [value for value in all_source_ids if value in set(sample_source_ids)]
-                == sample_source_ids
-            ):
-                shared_index.setdefault("views", {})[
-                    "compiler_input_source_ids"
-                ] = {
-                    "column": "source_id",
-                    "exclude_source_ids": [
-                        value for value in all_source_ids if value not in set(sample_source_ids)
-                    ],
-                    "row_count": len(sample_source_ids),
-                    "canonical_sha256": _canonical_json_sha256(sample_source_ids),
-                }
-            identity_projection = copy.deepcopy(identity_projection)
-            compile_projection = copy.deepcopy(compile_projection)
-            compact_adaptive["exact_board_source_identity"] = identity_projection
-            compact_adaptive["vivado_vcs_compile_authority"] = compile_projection
-            compact_adaptive["shared_board_source_index"] = (
-                _compact_shared_board_source_index_for_generation(shared_index)
-            )
-            compact_adaptive["sample_project_vcs_input_projection"] = (
-                _compact_sample_project_vcs_input_projection(
-                    adaptive.get("sample_project_vcs_input_projection", {}),
+                compact_adaptive["sample_project_vcs_input_projection"] = (
+                    _compact_sample_project_vcs_input_projection(
+                        adaptive.get("sample_project_vcs_input_projection", {}),
+                        shared_index,
+                    )
+                )
+                _apply_shared_board_source_index(
+                    identity_projection,
+                    compile_projection,
+                    identity,
+                    compile_authority,
                     shared_index,
                 )
-            )
-            _apply_shared_board_source_index(
-                identity_projection,
-                compile_projection,
-                identity,
-                compile_authority,
-                shared_index,
-            )
         result["adaptive_design_inputs"] = compact_adaptive
     return result
 
@@ -10491,6 +11687,335 @@ def _adapter_repair_priority_context(
     return priority, remainder
 
 
+def _compact_backend_adapter_source_snapshot(
+    compact_inputs: dict[str, Any],
+    *,
+    max_source_bytes: int = 64_000,
+) -> None:
+    """Project a large editable adapter to diagnostic windows bound to its full-file hash."""
+
+    snapshot = compact_inputs.get("source_snapshot")
+    if not isinstance(snapshot, dict):
+        return
+    source = snapshot.get("content")
+    if not isinstance(source, str) or len(source.encode("utf-8")) <= max_source_bytes:
+        return
+    from accagent.framework.prompt_source_encoding import encode_numbered_source
+
+    lossless_encoding = encode_numbered_source(source)
+    if isinstance(lossless_encoding, dict) and len(
+        json.dumps(lossless_encoding, ensure_ascii=False).encode("utf-8")
+    ) <= max_source_bytes:
+        return
+
+    lines = source.splitlines(keepends=True)
+    generated_top_interface = compact_inputs.get("generated_top_interface")
+    generated_top_module = (
+        str(generated_top_interface.get("module") or "")
+        if isinstance(generated_top_interface, dict)
+        else ""
+    )
+    diagnostic = json.dumps(
+        compact_inputs.get("failure_diagnostics", {}),
+        ensure_ascii=True,
+        sort_keys=True,
+    )
+    tokens = re.findall(r"\b[A-Za-z_$][A-Za-z0-9_$]*\b", diagnostic)
+    identifiers = list(dict.fromkeys(
+        token for token in tokens
+        if len(token) >= 6
+        and any(char in token for char in "_$0123456789")
+        and token in source
+    ))
+    tile_service_diagnostic = any(
+        re.search(
+            r"(?:ddr.*tile|tile.*ddr).*(?:request|response)|"
+            r"(?:request|response).*(?:tile|ddr)",
+            token,
+            flags=re.IGNORECASE,
+        )
+        for token in identifiers
+    )
+    selected: set[int] = set()
+    tile_service_context: set[int] = set()
+    generated_top_connection_lines: list[int] = []
+    generated_top_instance_lines: list[int] = []
+    candidate_generated_instance_lines: list[dict[str, Any]] = []
+    for index in range(min(80, len(lines))):
+        selected.add(index)
+    for index in range(max(0, len(lines) - 80), len(lines)):
+        selected.add(index)
+    instance_start = re.compile(
+        r"^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\("
+    )
+    for index, line in enumerate(lines):
+        match = instance_start.search(line)
+        if match is None:
+            continue
+        module_type = match.group(1)
+        if module_type == generated_top_module:
+            generated_top_instance_lines.append(index + 1)
+            selected.update(range(max(0, index - 2), min(len(lines), index + 8)))
+        if module_type.startswith("Generated"):
+            candidate_generated_instance_lines.append({
+                "line": index + 1,
+                "module_type": module_type,
+                "instance_name": match.group(2),
+            })
+            selected.update(range(max(0, index - 2), min(len(lines), index + 5)))
+    for token in identifiers:
+        hits = [index for index, line in enumerate(lines) if token in line][:32]
+        for index in hits:
+            selected.update(range(max(0, index - 6), min(len(lines), index + 7)))
+
+    # Keep the generated-top's DDR tile request/response glue adjacent to an
+    # AXI read diagnostic, even when the diagnostic names only a board pin.
+    if tile_service_diagnostic:
+        for index, line in enumerate(lines):
+            if re.search(
+                r"\b(?:[A-Za-z_$][A-Za-z0-9_$]*_s_axi_"
+                r"(?:ar(?:valid|ready|addr|id|len|size)|"
+                r"r(?:ready|valid|data|last|id|resp))|"
+                r"tile[_$]?owner|owner[_$]?tile)\b",
+                line,
+                flags=re.IGNORECASE,
+            ):
+                context = range(max(0, index - 12), min(len(lines), index + 13))
+                selected.update(context)
+                tile_service_context.update(context)
+
+    if tile_service_diagnostic or any("_s_axi_ar" in token.lower() for token in identifiers):
+        for index, line in enumerate(lines):
+            if re.search(
+                r"\bio_[A-Za-z_$][A-Za-z0-9_$]*(?:tile|ddr)[A-Za-z0-9_$]*"
+                r"(?:request|response)[A-Za-z0-9_$]*\b",
+                line,
+                flags=re.IGNORECASE,
+            ):
+                selected.add(index)
+                generated_top_connection_lines.append(index)
+            elif re.search(
+                r"\bio_tile_\d+_(?:"
+                r"request_(?:ready|valid|bits_(?:ddrWordAddress|tileIndex|tileWordCount|layerIndex|shadowBank))|"
+                r"response_(?:ready|valid|bits_(?:data|last|wordIndex|validWords))"
+                r")\b",
+                line,
+            ):
+                selected.add(index)
+                generated_top_connection_lines.append(index)
+
+    instance_context: set[int] = set()
+    if generated_top_module and not generated_top_instance_lines:
+        # When a generated wrapper changed identity, preserve the complete
+        # scalar/control prefix of the old generated instance. Its high-fanout
+        # scale/shift bindings are represented by the adjacent port contract.
+        for candidate in candidate_generated_instance_lines:
+            start = int(candidate["line"]) - 1
+            first_bulk_binding = next((
+                index for index in range(start + 1, len(lines))
+                if re.search(
+                    r"\.io_[A-Za-z_$][A-Za-z0-9_$]*(?:channelScale|channelShift)_0\s*\(",
+                    lines[index],
+                )
+            ), None)
+            if first_bulk_binding is not None:
+                instance_context.update(range(0, first_bulk_binding))
+            else:
+                instance_context.update(range(max(0, start - 2), min(len(lines), start + 64)))
+    for connection_index in generated_top_connection_lines:
+        for index in range(connection_index - 1, -1, -1):
+            if instance_start.search(lines[index]):
+                instance_context.update(range(max(0, index - 2), min(len(lines), index + 5)))
+                break
+    selected.update(instance_context)
+
+    def render(indices: set[int]) -> str:
+        return "".join(lines[index] for index in sorted(indices))
+
+    if len(render(selected).encode("utf-8")) > max_source_bytes:
+        focused: set[int] = set(range(min(40, len(lines))))
+        focused.update(range(max(0, len(lines) - 40), len(lines)))
+        for token in identifiers:
+            for index, line in enumerate(lines):
+                if token in line:
+                    focused.add(index)
+        for index, line in enumerate(lines):
+            if re.search(
+                r"\bio_[A-Za-z_$][A-Za-z0-9_$]*(?:tile|ddr)[A-Za-z0-9_$]*"
+                r"(?:request|response)[A-Za-z0-9_$]*\b",
+                line,
+                flags=re.IGNORECASE,
+            ):
+                focused.add(index)
+        focused.update(tile_service_context)
+        focused.update(instance_context)
+        selected = focused
+
+    snapshot.pop("content", None)
+    snapshot["source_view"] = {
+        "encoding": "diagnostic_source_windows_v1",
+        "full_source_sha256": snapshot.get("sha256"),
+        "generated_top_module": generated_top_module or None,
+        "generated_top_instance_lines": generated_top_instance_lines,
+        "candidate_generated_instance_lines": candidate_generated_instance_lines,
+        "total_bytes": len(source.encode("utf-8")),
+        "total_lines": len(lines),
+        "omitted_line_count": len(lines) - len(selected),
+        "diagnostic_identifiers": identifiers,
+        "windows": [{
+            "start_line": start + 1,
+            "end_line": end,
+            "content": "".join(lines[start:end]),
+        } for start, end in _contiguous_line_ranges(selected)],
+        "edit_policy": (
+            "Use exact source text from these windows for replace_text old_text/new_text anchors. "
+            "The executor applies the patch to the complete on-disk file only if its full-source "
+            "SHA256 still matches the supplied sha256."
+        ),
+    }
+
+
+def _contiguous_line_ranges(indices: set[int]) -> list[tuple[int, int]]:
+    ordered = sorted(indices)
+    if not ordered:
+        return []
+    ranges = []
+    start = previous = ordered[0]
+    for index in ordered[1:]:
+        if index != previous + 1:
+            ranges.append((start, previous + 1))
+            start = index
+        previous = index
+    ranges.append((start, previous + 1))
+    return ranges
+
+
+def restore_exact_board_manifest_target(
+    compact_inputs: dict[str, Any], original_inputs: dict[str, Any]
+) -> dict[str, Any]:
+    """Restore a duplicated manifest target only from the same authorized source."""
+
+    result = copy.deepcopy(compact_inputs)
+    compact_package = result.get("verification_capability_repair_package")
+    original_package = original_inputs.get("verification_capability_repair_package")
+    if not isinstance(compact_package, dict) or not isinstance(original_package, dict):
+        return result
+    if compact_package.get("generation_phase_contract", {}).get("status") != (
+        "repair_deterministic_preflight"
+    ):
+        return result
+    original_context = original_package.get("exact_board_integration_repair_context", {})
+    compact_context = compact_package.get("exact_board_integration_repair_context", {})
+    original_context = original_context if isinstance(original_context, dict) else {}
+    compact_context = compact_context if isinstance(compact_context, dict) else {}
+    original_manifest = str(original_context.get("required_binding_manifest") or "")
+    compact_manifest = str(compact_context.get("required_binding_manifest") or "")
+    if (
+        not original_manifest
+        or not compact_manifest
+        or _resolve_workspace_path(original_manifest)
+        != _resolve_workspace_path(compact_manifest)
+    ):
+        return result
+
+    original_editable = original_package.get("repair_source_bundle", {}).get(
+        "editable_contract", {}
+    )
+    compact_editable = compact_package.get("repair_source_bundle", {}).get(
+        "editable_contract", {}
+    )
+    if not isinstance(original_editable, dict) or not isinstance(compact_editable, dict):
+        return result
+    original_allowed = {
+        _resolve_workspace_path(value)
+        for value in original_editable.get("allowed_exact_files", [])
+        if str(value)
+    }
+    compact_allowed = {
+        _resolve_workspace_path(value)
+        for value in compact_editable.get("allowed_exact_files", [])
+        if str(value)
+    }
+    resolved_manifest = _resolve_workspace_path(compact_manifest)
+    if resolved_manifest not in original_allowed or resolved_manifest not in compact_allowed:
+        return result
+    original_authority = original_editable.get("board_manifest_rewrite_authority", {})
+    original_target = (
+        original_authority.get("target_file")
+        if isinstance(original_authority, dict)
+        else None
+    )
+    if isinstance(original_target, dict) and "$ref" in original_target:
+        try:
+            original_target = _resolve_compact_dedup_references(
+                original_inputs, original_target
+            )
+        except ValueError:
+            original_target = None
+    if not isinstance(original_target, dict) or not original_target.get("path"):
+        original_target = original_editable.get("current_board_manifest_file")
+        if isinstance(original_target, dict) and "$ref" in original_target:
+            try:
+                original_target = _resolve_compact_dedup_references(
+                    original_inputs, original_target
+                )
+            except ValueError:
+                original_target = None
+    if not isinstance(original_target, dict):
+        return result
+    original_target_path = str(original_target.get("path") or "")
+    if not original_target_path or _resolve_workspace_path(original_target_path) != resolved_manifest:
+        return result
+
+    compact_authority = compact_editable.get("board_manifest_rewrite_authority")
+    compact_authority = compact_authority if isinstance(compact_authority, dict) else {}
+    compact_target = compact_authority.get("target_file")
+    compact_target_was_reference = False
+    if isinstance(compact_target, dict) and "$ref" in compact_target:
+        compact_target_was_reference = True
+        try:
+            compact_target = _resolve_compact_dedup_references(
+                result, compact_target
+            )
+        except ValueError:
+            compact_target = None
+    if isinstance(compact_target, dict) and compact_target.get("path"):
+        if compact_target_was_reference:
+            if (
+                _resolve_workspace_path(str(compact_target.get("path") or ""))
+                != resolved_manifest
+                or compact_target.get("sha256") != original_target.get("sha256")
+                or compact_target.get("bytes") != original_target.get("bytes")
+            ):
+                return result
+            compact_authority["target_file"] = copy.deepcopy(compact_target)
+            compact_editable["board_manifest_rewrite_authority"] = (
+                compact_authority
+            )
+        return result
+    materialized_source = original_target
+    compact_current_manifest = compact_editable.get("current_board_manifest_file")
+    if isinstance(compact_current_manifest, dict) and "$ref" in compact_current_manifest:
+        try:
+            compact_current_manifest = _resolve_compact_dedup_references(
+                result, compact_current_manifest
+            )
+        except ValueError:
+            compact_current_manifest = None
+    if isinstance(compact_current_manifest, dict) and compact_current_manifest.get("path"):
+        if (
+            _resolve_workspace_path(str(compact_current_manifest["path"]))
+            != resolved_manifest
+            or compact_current_manifest.get("sha256") != original_target.get("sha256")
+            or compact_current_manifest.get("bytes") != original_target.get("bytes")
+        ):
+            return result
+        materialized_source = compact_current_manifest
+    compact_authority["target_file"] = copy.deepcopy(materialized_source)
+    compact_editable["board_manifest_rewrite_authority"] = compact_authority
+    return result
+
+
 def compact_retry_prompt(
     agent: str,
     stage: str,
@@ -10500,6 +12025,7 @@ def compact_retry_prompt(
     prompt_rules: list[str] | None = None,
     *,
     proactive: bool = False,
+    context_window_retry: bool = False,
 ) -> str:
     retry_inputs = {"stage": stage, "agent": agent, **inputs}
     implementation_schema = "file_edits" in output_schema.get("properties", {})
@@ -10535,6 +12061,11 @@ def compact_retry_prompt(
         agent == "verification_capability_repair_agent"
         and has_proven_board_to_lower_layer_contradiction(package)
     )
+    operator_leaf_capability_repair = bool(
+        agent == "verification_capability_repair_agent"
+        and isinstance(package, dict)
+        and package.get("verification_scope") == "operator_leaf_closure"
+    )
     board_interface_domain_retry = agent in {
         "exact_board_interface_domain_agent",
         "exact_board_interface_domain_repair_agent",
@@ -10544,6 +12075,7 @@ def compact_retry_prompt(
         or bootstrap_board_generation
         or deterministic_preflight_board_repair
         or current_trace_lower_layer_repair
+        or operator_leaf_capability_repair
     ):
         focused_package = compact_verification_capability_repair_package(
             copy.deepcopy(package)
@@ -10601,6 +12133,13 @@ def compact_retry_prompt(
         compact_inputs = _compact_exact_board_generation_kernel_inputs(
             compact_inputs
         )
+        if context_window_retry:
+            compact_inputs = _compact_exact_board_context_window_retry_inputs(
+                compact_inputs
+            )
+        compact_inputs = restore_exact_board_manifest_target(
+            compact_inputs, {"verification_capability_repair_package": package}
+        )
         request_errors = exact_board_compact_request_errors(compact_inputs)
         if request_errors:
             raise ValueError(
@@ -10610,6 +12149,7 @@ def compact_retry_prompt(
     implementation_schema = "file_edits" in output_schema.get("properties", {})
     adapter_priority = None
     if agent == "backend_compute_slot_repair_agent":
+        _compact_backend_adapter_source_snapshot(compact_inputs)
         adapter_priority = _adapter_repair_priority_context(compact_inputs)
         if adapter_priority is not None:
             adapter_priority, compact_inputs = adapter_priority
@@ -10654,10 +12194,30 @@ def compact_retry_prompt(
         "If compact inputs include stage_gate_policy, report only current-stage blockers in risks and move later-stage obligations to proposed_actions.",
         "Return conservative review findings; mark evidence as not_run only when the relevant field is absent from compact inputs.",
     ]
+    if compile_only_board_request:
+        rules.extend(
+            [
+                "For a direct VCS compile/elaboration failure, cite scalar field_observations only from current_board_vcs_feedback. Put compiler-interface and source facts in causal_prediction.evidence_refs and root_cause; do not use a module-header object or port-list array as a scalar observation.",
+                "For replace_text, copy every old_text anchor byte-for-byte from the current editable source snapshot and include its current expected_sha256 when supplied. Keep the replacement within the diagnosed interface boundary; do not invent signal names, tie off live clients, or use a compile-only stub to silence elaboration errors.",
+            ]
+        )
+    if agent == "backend_compute_slot_repair_agent":
+        rules.extend(
+            [
+                "The generated-top instance is the active accelerator boundary. Do not append a second generated-top instance as a presence-only or clock/reset-only scaffold, and do not preserve an obsolete compute instance as the active execution path when the diagnosed backend contract requires the current generated top.",
+                "Connect the current generated-top control, activation, DDR tile request/response, weight, and output paths to source-evidenced adapter signals at that instance. The checker inspects the generated-top instance itself; matching port text elsewhere in the file does not satisfy the contract.",
+                "If the supplied hash-bound source windows and interface/loader contracts do not establish a required connection, return blocked with the precise missing signal mapping. Do not return a disconnected instance or infer runtime behavior from module presence.",
+            ]
+        )
+    if context_window_retry:
+        rules.insert(
+            2,
+            "This is a lossless second-level projection of current exact-board evidence. Resolve ordered_source_index_selection from the shared board source index and verify its row_count and canonical_sha256 before using source IDs.",
+        )
     if adapter_priority is not None:
         rules.insert(
             1,
-            "For this adapter repair, use the complete source_snapshot, generated_top_interface, weight_stream_contract, and exact_board_loader_source_context in <adapter_repair_priority_context> first; this block is authoritative and appears before compact_inputs to keep the editable source and its routing evidence visible. The compact_inputs.adapter_repair_priority_context entry is only an index, not a missing-source indication.",
+            "For this adapter repair, use source_snapshot, generated_top_interface, weight_stream_contract, and exact_board_loader_source_context in <adapter_repair_priority_context> first. A large source_snapshot may contain diagnostic_source_windows_v1 instead of the full file body: those exact line windows, the full-file SHA256, and on-disk artifact are authoritative. Return anchored replace_text edits from visible source text; the executor applies them to the full file only after checking its SHA256. The priority block appears before compact_inputs; its compact_inputs.adapter_repair_priority_context entry is only an index.",
         )
     if layer3_context:
         rules.extend(
@@ -10698,6 +12258,8 @@ def compact_retry_prompt(
                 "Before returning, self-check every executable action: each tool_roles entry must be listed in action_grounding_registry.tool_roles or action_grounding_registry.acceptance_checkers, or start with planned_tool.; each acceptance_checkers entry must be listed in action_grounding_registry.acceptance_checkers or start with planned_checker.",
             ]
         )
+    if active_accord_experiment_profile() == "B2":
+        rules = without_guided_repair_prompt_rules(rules)
     rules.append("Return one JSON object only.")
     return build_prompt(
         agent=f"{agent}_compact_retry",
@@ -11198,6 +12760,13 @@ def _semantic_rtl_compact_request_errors(package: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(errors))
 
 
+def _resolve_workspace_path(value: Any) -> Path:
+    path = Path(str(value))
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parents[2] / path
+    return path.resolve()
+
+
 def exact_board_compact_request_errors(compact_inputs: dict[str, Any]) -> list[str]:
     """Fail fast on compact exact-board inputs that the manifest consumer cannot use."""
 
@@ -11240,7 +12809,7 @@ def exact_board_compact_request_errors(compact_inputs: dict[str, Any]) -> list[s
         editable = bundle.get("editable_contract", {})
         editable = editable if isinstance(editable, dict) else {}
         allowed_manifest_paths = {
-            Path(str(value)).resolve()
+            _resolve_workspace_path(value)
             for value in editable.get("allowed_exact_files", [])
             if str(value)
         }
@@ -11248,16 +12817,26 @@ def exact_board_compact_request_errors(compact_inputs: dict[str, Any]) -> list[s
         rewrite = rewrite if isinstance(rewrite, dict) else {}
         target = rewrite.get("target_file", {})
         target = target if isinstance(target, dict) else {}
-        resolved_manifest_path = Path(manifest_path).resolve() if manifest_path else None
+        resolved_manifest_path = (
+            _resolve_workspace_path(manifest_path) if manifest_path else None
+        )
         if resolved_manifest_path not in allowed_manifest_paths:
             errors.append(
                 "deterministic-preflight repair manifest is outside exact editable-file authority"
             )
         target_path = str(target.get("path") or "")
-        resolved_target_path = Path(target_path).resolve() if target_path else None
+        resolved_target_path = (
+            _resolve_workspace_path(target_path) if target_path else None
+        )
         if resolved_target_path != resolved_manifest_path:
             errors.append(
                 "deterministic-preflight repair target differs from the authorized binding manifest"
+            )
+            errors.append(
+                "deterministic-preflight binding path mismatch: "
+                f"target={target_path!r} resolved_target={str(resolved_target_path)!r} "
+                f"manifest={manifest_path!r} "
+                f"resolved_manifest={str(resolved_manifest_path)!r}"
             )
         documents_by_path = {
             str(row.get("path") or ""): row
@@ -11285,8 +12864,27 @@ def exact_board_compact_request_errors(compact_inputs: dict[str, Any]) -> list[s
                     continue
                 path = str(source.get("path") or "")
                 expected_sha256 = str(source.get("sha256") or "")
-                content = documents_by_path.get(path, {}).get("content")
-                if not path or not isinstance(content, str) or not content:
+                document = documents_by_path.get(path, {})
+                content = document.get("content")
+                projection = document.get("content_projection")
+                projected_hash = (
+                    str(projection.get("source_sha256") or "")
+                    if isinstance(projection, dict)
+                    and projection.get("full_hash_bound_source_remains_on_disk") is True
+                    and projection.get("editable") is False
+                    and isinstance(projection.get("interface_contract"), dict)
+                    else ""
+                )
+                if projected_hash:
+                    if (
+                        not expected_sha256
+                        or projected_hash != expected_sha256
+                        or document.get("sha256") != expected_sha256
+                    ):
+                        errors.append(
+                            f"deterministic-preflight projected board source hash differs: {path}"
+                        )
+                elif not path or not isinstance(content, str) or not content:
                     errors.append(
                         f"deterministic-preflight current board source is incomplete: {path or '<missing>'}"
                     )
@@ -11294,7 +12892,7 @@ def exact_board_compact_request_errors(compact_inputs: dict[str, Any]) -> list[s
                     not expected_sha256
                     or hashlib.sha256(content.encode("utf-8")).hexdigest()
                     != expected_sha256
-                    or documents_by_path[path].get("sha256") != expected_sha256
+                    or document.get("sha256") != expected_sha256
                 ):
                     errors.append(
                         f"deterministic-preflight current board source hash differs: {path}"
@@ -11341,6 +12939,25 @@ def exact_board_compact_request_errors(compact_inputs: dict[str, Any]) -> list[s
             expected_sha256 = str(source.get("sha256") or "")
             document = documents_by_path.get(path, {})
             content = document.get("content")
+            projection = document.get("content_projection")
+            projected_hash = (
+                str(projection.get("source_sha256") or "")
+                if isinstance(projection, dict)
+                and projection.get("full_hash_bound_source_remains_on_disk") is True
+                and projection.get("editable") is False
+                and isinstance(projection.get("interface_contract"), dict)
+                else ""
+            )
+            if projected_hash:
+                if (
+                    not expected_sha256
+                    or projected_hash != expected_sha256
+                    or document.get("sha256") != expected_sha256
+                ):
+                    errors.append(
+                        f"post-VCS projected board source hash differs: {path}"
+                    )
+                continue
             if not path or not isinstance(content, str) or not content:
                 errors.append(f"post-VCS board source is not complete: {path or '<missing>'}")
                 continue
@@ -11718,6 +13335,11 @@ def build_stage_agent_prompt_inputs(
             "broad_action_registry_omitted": True,
             "current_failure_testbench_checkpoint_authority_and_atomic_edit_contract_are_complete": True,
         }
+    experiment_profile = active_accord_experiment_profile()
+    if experiment_profile == "B0":
+        prompt_inputs = without_design_graph_context(prompt_inputs)
+    elif experiment_profile == "B2":
+        prompt_inputs = without_guided_repair_context(prompt_inputs)
     return (
         prompt_inputs,
         checkpoint_hook_specialist,
@@ -11734,6 +13356,7 @@ def run_stage_agent(
     fallback_summary: str,
     output_schema: dict[str, Any] | None = None,
     prompt_rules: list[str] | None = None,
+    compact_json_blocks: set[str] | tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Run one stage-local LLM worker and return its structured output record."""
 
@@ -11763,8 +13386,16 @@ def run_stage_agent(
         "When hierarchical_learning_context supplies connected-kernel timing knowledge, preserve its elastic variable-latency token-pipeline semantics: required boundary order and cross-token overlap matter, while strict same-cycle start/end across unequal-latency stages is not required.",
         "At board scope, distinguish independent AXI/prefetch progress from output or lifecycle-frontier progress. A current frontier stall localizes what to observe next, but is neither a pass claim nor a preselected RTL root cause.",
         "A board output-frontier symptom alone cannot reopen a certified connected kernel. Require a current hash-bound lower-layer contradiction with direct core start, ingress, egress, named causal-boundary, and current-certificate evidence before scheduling lower-layer revalidation.",
-        "At every verification layer, use successful current-source VCS compilation, elaboration, and linking as the sole acceptance standard. Repair actual compiler errors; do not add runtime, golden-output, waveform, or weight-consumption prerequisites.",
-        "The action_grounding_registry.verification_execution_policy documents the existing compile-only modes of the leaf, connected-kernel and exact-board tools. These modes already execute real VCS compile/elaboration/link without running simulation. A functional_sim role name does not imply simulation must execute. Reuse these existing roles rather than declaring a planned_tool capability gap solely from their names. At verification_artifacts planning, future VCS certificates are downstream obligations; actual execution still requires them in bottom-up order before backend synthesis.",
+        (
+            "At the exact-board verification layer, require real VCS simulation with current model weights and inputs, valid pipeline progress and DDR evidence before promotion; use the exact sample-project AXI/DDR wrapper. Lower-layer compile-only certificates are not functional proof."
+            if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation"
+            else "At every verification layer, use successful current-source VCS compilation, elaboration, and linking as the sole acceptance standard. Repair actual compiler errors; do not add runtime, golden-output, waveform, or weight-consumption prerequisites."
+        ),
+        (
+            "The action_grounding_registry.verification_execution_policy requires actual runtime evidence for the exact-board gate under full_semantic_simulation. Do not accept its compile-only report as functional evidence. Reuse the existing gate roles and repair missing runtime producers through the normal agent workflow."
+            if os.environ.get("SPATIALACC_VERIFICATION_POLICY") == "full_semantic_simulation"
+            else "The action_grounding_registry.verification_execution_policy documents the existing compile-only modes of the leaf, connected-kernel and exact-board tools. These modes already execute real VCS compile/elaboration/link without running simulation. A functional_sim role name does not imply simulation must execute. Reuse these existing roles rather than declaring a planned_tool capability gap solely from their names. At verification_artifacts planning, future VCS certificates are downstream obligations; actual execution still requires them in bottom-up order before backend synthesis."
+        ),
         "Applying the recorded framework loose defaults for initially missing atol, rtol, or max_mismatch_fraction is authorized and is not a repair-time tolerance change. Never derive or loosen those values from DUT output.",
         "A random generator may produce input stimulus only. Never generate expected output randomly, derive it from RTL output, replace model inference with an identity/default implementation, or treat sampled weights as complete evidence.",
         "During repair, keep checkpoint, stimulus, target-model reference, numeric policy, tolerance, testbench contract, and exact board-wrapper source hashes immutable. Repair the DUT, loader/harness, instrumentation, or integration that violated the contract.",
@@ -11773,6 +13404,16 @@ def run_stage_agent(
         "When a verifier capability is missing, classify it as a checker/golden-reference repair, not as hardware correctness. When real RTL/tool evidence shows liveness, value, order, or protocol failure, localize the earliest causal boundary/module before proposing a code repair.",
         "Use approval_required_for for architecture, pipeline, memory layout, numeric policy, or major template changes.",
     ]
+    if active_accord_experiment_profile() == "B2":
+        active_rules = [
+            (
+                "For hardware debug, diagnose current failures from the supplied tool reports and sources, "
+                "then choose a bounded repair and rerun the failed gate."
+                if "For hardware debug, enforce the three-layer repair loop:" in rule
+                else rule
+            )
+            for rule in active_rules
+        ]
     if agent == "flow_controller_agent":
         active_rules.append(
             "Use exact internal stage names for backtrack targets. Public Stage 5 contains both code_generation and verification_artifacts: verification-plan, artifact-contract, or action-audit repairs target verification_artifacts; hardware regeneration targets code_generation. Do not use the ambiguous label stage5 for those actions."
@@ -11810,6 +13451,8 @@ def run_stage_agent(
             "for changes outside the supplied authority, including architecture, numeric policy, or major "
             "template changes; resolve an actual remaining source or compiler gap from the resulting tool feedback."
         )
+    if active_accord_experiment_profile() == "B2":
+        active_rules = without_guided_repair_prompt_rules(active_rules)
     llm_dir = out_dir / "llm"
     llm_dir.mkdir(parents=True, exist_ok=True)
     source_state = inputs.get("source_sacg_state")
@@ -11855,6 +13498,11 @@ def run_stage_agent(
         agent == "verification_capability_repair_agent"
         and has_proven_board_to_lower_layer_contradiction(repair_package)
     )
+    operator_leaf_capability_repair = bool(
+        agent == "verification_capability_repair_agent"
+        and isinstance(repair_package, dict)
+        and repair_package.get("verification_scope") == "operator_leaf_closure"
+    )
     exact_board_rejected_transaction_retry = bool(
         agent == "exact_board_integration_generation_agent"
         and isinstance(repair_package, dict)
@@ -11865,14 +13513,14 @@ def run_stage_agent(
         == "ready"
     )
     request_path = prompt_path
-    # A post-VCS board repair or a proven board-to-kernel contradiction already
-    # has a bounded evidence package. Persisting the broad history hides the
-    # current causal proof and adds no implementation authority.
+    # Focused capability repairs already carry the current source and evidence
+    # authority; repeating the full history only increases request size.
     focused_capability_repair_prompt = (
         exact_board_post_vcs_repair
         or exact_board_bootstrap_generation
         or exact_board_preflight_repair
         or current_trace_lower_layer_repair
+        or operator_leaf_capability_repair
     )
     full_prompt: str | None = None
     proactive_compaction = False
@@ -11893,6 +13541,7 @@ def run_stage_agent(
             inputs=prompt_inputs,
             output_schema=active_schema,
             rules=active_rules,
+            compact_json_blocks=compact_json_blocks,
         )
         prompt = full_prompt
         prompt_byte_count = len(prompt.encode("utf-8"))
@@ -12150,20 +13799,64 @@ def run_stage_agent(
             record["compact_retry_prompt_hash"] = prompt_hash(retry_prompt)
             record["compact_retry_prompt_bytes"] = len(retry_prompt.encode("utf-8"))
             record["compact_retry_after_error"] = str(first_exc)
-            raw_text, retry_errors = call_llm_with_retry(
-                endpoint,
-                key,
-                model,
-                retry_prompt,
-                f"{agent}_compact_retry_json",
-                active_schema,
-                timeout_sec,
-                reasoning_effort=compact_retry_reasoning_effort(
-                    worker_effort or llm.reasoning_effort
-                ),
-                allow_auto_compact=False,
-                transaction_observer=observe_transaction,
-            )
+            try:
+                raw_text, retry_errors = call_llm_with_retry(
+                    endpoint,
+                    key,
+                    model,
+                    retry_prompt,
+                    f"{agent}_compact_retry_json",
+                    active_schema,
+                    timeout_sec,
+                    reasoning_effort=compact_retry_reasoning_effort(
+                        worker_effort or llm.reasoning_effort
+                    ),
+                    allow_auto_compact=False,
+                    transaction_observer=observe_transaction,
+                )
+            except Exception as compact_exc:
+                if (
+                    agent != "exact_board_integration_generation_agent"
+                    or not llm_context_window_error(compact_exc)
+                ):
+                    raise
+                context_window_retry_prompt = compact_retry_prompt(
+                    agent,
+                    stage,
+                    task,
+                    inputs,
+                    active_schema,
+                    active_rules,
+                    context_window_retry=True,
+                )
+                context_window_retry_path = (
+                    llm_dir / f"{agent}_context_window_retry_prompt.md"
+                )
+                context_window_retry_path.write_text(
+                    context_window_retry_prompt, encoding="utf-8"
+                )
+                record["context_window_retry_request_path"] = str(
+                    context_window_retry_path
+                )
+                record["context_window_retry_prompt_bytes"] = len(
+                    context_window_retry_prompt.encode("utf-8")
+                )
+                record["context_window_retry_after_error"] = str(compact_exc)
+                raw_text, retry_errors = call_llm_with_retry(
+                    endpoint,
+                    key,
+                    model,
+                    context_window_retry_prompt,
+                    f"{agent}_context_window_retry_json",
+                    active_schema,
+                    timeout_sec,
+                    reasoning_effort=compact_retry_reasoning_effort(
+                        worker_effort or llm.reasoning_effort
+                    ),
+                    allow_auto_compact=False,
+                    transaction_observer=observe_transaction,
+                )
+                record["prompt_compaction_protocol"] = PROMPT_COMPACTION_PROTOCOL
             retry_errors = [f"full prompt failed: {first_exc}", *retry_errors]
         if retry_errors:
             record["retry_errors"] = retry_errors
@@ -12185,9 +13878,20 @@ def run_stage_agent(
             )
             repair_attempt = 1
             while max_repair_attempts is None or repair_attempt <= max_repair_attempts:
+                repair_context = prompt
+                if agent == "exact_board_integration_generation_agent":
+                    repair_context = compact_retry_prompt(
+                        agent,
+                        stage,
+                        task,
+                        inputs,
+                        active_schema,
+                        active_rules,
+                        context_window_retry=True,
+                    )
                 fix_prompt = repair_prompt(
                     agent,
-                    prompt,
+                    repair_context,
                     invalid_text,
                     validation_error,
                     active_schema,

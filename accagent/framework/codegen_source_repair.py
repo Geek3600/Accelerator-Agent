@@ -45,6 +45,97 @@ def bind_source_anchors(edits: list[dict], sources: dict[str, str]) -> list[dict
     return bound
 
 
+def timing_signal_source_context(timing: dict, sources: dict[str, str]) -> list[dict]:
+    """Expose all source definitions of timing endpoint signals, including their enclosing class."""
+    signal_names = set()
+    for endpoint in (timing.get("source"), timing.get("destination")):
+        if not isinstance(endpoint, str):
+            continue
+        for component in endpoint.split("/"):
+            component = re.sub(r"_reg(?:_\d+)?(?:\[\d+\])?$", "", component)
+            component = re.sub(r"(?:_\d+)?(?:\[\d+\])?$", "", component)
+            if len(component) >= 5 and component not in {"spatialacc_kernel_clock"}:
+                signal_names.add(component)
+    results = []
+    for path, source in sources.items():
+        lines = source.splitlines()
+        for index, line in enumerate(lines):
+            if not any(re.search(r"\b" + re.escape(name) + r"\b", line) for name in signal_names):
+                continue
+            if not re.search(r"\b(?:val|def)\b", line):
+                continue
+            owner = next((row.strip() for row in reversed(lines[:index + 1])
+                          if re.search(r"\bclass\s+\w+", row)), None)
+            results.append({"path": path, "line": index + 1, "enclosing_class": owner,
+                            "source_excerpt": "\n".join(lines[max(0, index - 32):index + 49])})
+    return results
+
+
+def critical_timing_path_detail_context(timing: dict, *, max_chars: int = 100000) -> dict:
+    """Return the hash-checked cell/net trace for the worst Vivado setup path."""
+    report_name = timing.get("report_path")
+    if not isinstance(report_name, str) or not report_name:
+        return {"status": "missing", "reason": "timing report path is absent"}
+    report_path = Path(report_name)
+    if not report_path.is_file():
+        return {"status": "missing", "reason": "timing report is not available locally",
+                "report_path": report_name}
+    content = report_path.read_bytes()
+    report_sha256 = hashlib.sha256(content).hexdigest()
+    expected_sha256 = timing.get("report_sha256")
+    if expected_sha256 and expected_sha256 != report_sha256:
+        return {"status": "stale", "reason": "timing report hash does not match the measured path",
+                "report_path": report_name, "expected_sha256": expected_sha256,
+                "actual_sha256": report_sha256}
+    text = content.decode(errors="replace")
+    section = re.search(r"(?m)^Max Delay Paths\s*$", text)
+    if not section:
+        return {"status": "missing", "reason": "Max Delay Paths section is absent",
+                "report_path": report_name, "report_sha256": report_sha256}
+    path_text = text[section.end():]
+    slack_rows = list(re.finditer(r"(?m)^Slack\s+\([^)]+\)\s*:", path_text))
+    if not slack_rows:
+        return {"status": "missing", "reason": "no setup path is present in the report",
+                "report_path": report_name, "report_sha256": report_sha256}
+    start = slack_rows[0].start()
+    end = slack_rows[1].start() if len(slack_rows) > 1 else len(path_text)
+    path_excerpt = path_text[start:end].strip()
+    truncated = len(path_excerpt) > max_chars
+    if truncated:
+        path_excerpt = path_excerpt[:max_chars]
+    return {
+        "status": "pass",
+        "report_path": report_name,
+        "report_sha256": report_sha256,
+        "hash_verified": bool(expected_sha256),
+        "path_excerpt": path_excerpt,
+        "truncated": truncated,
+    }
+
+
+def recent_timing_implementation_context(out_dir: Path, *, limit: int = 4) -> list[dict]:
+    """Retain Agent-reported schedule costs across source-fingerprint changes."""
+    reports = sorted((out_dir / "timing_optimization").glob("*/application.json"),
+                     key=lambda path: path.stat().st_mtime_ns, reverse=True)
+    records = []
+    for path in reports:
+        try:
+            report = read_json(path)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(report, dict) or not report.get("implementation_summary"):
+            continue
+        records.append({
+            "report_path": str(path),
+            "status": report.get("status"),
+            "synthesis_source_archive_sha256": report.get("synthesis_source_archive_sha256"),
+            "implementation_summary": report["implementation_summary"],
+        })
+        if len(records) >= limit:
+            break
+    return records
+
+
 def repair_timing_sources(
     run_dir: Path, out_dir: Path, qor: dict, *, analysis_context_run_dir: Path | None = None,
     analysis_context: dict | None = None,
@@ -87,12 +178,13 @@ def repair_timing_sources(
         if prior.get("status") == "applied_pending_validation":
             return compile_timing_sources(run_dir, attempt_dir, prior)
         if prior.get("status") in {"compile_failed", "blocked"}:
-            log_path = Path(prior.get("incremental_compile", {}).get("log_path") or attempt_dir / "incremental_compile.log")
+            incremental_compile = prior.get("incremental_compile") or {}
+            log_path = Path(incremental_compile.get("log_path") or attempt_dir / "incremental_compile.log")
             if log_path.is_file():
                 prior["compiler_diagnostics"] = log_path.read_text(errors="replace")[-64000:]
             patch_path = attempt_dir / "agent_patch_application.json"
             if prior.get("status") == "blocked" and patch_path.is_file():
-                rejection = read_json(patch_path).get("agent_transaction_rejection", {})
+                rejection = read_json(patch_path).get("agent_transaction_rejection") or {}
                 prior["patch_rejection_feedback"] = {
                     "blockers": rejection.get("blockers", []),
                     "rejected_file_edits": rejection.get("rejected_file_edits", []),
@@ -101,6 +193,55 @@ def repair_timing_sources(
     sources = {str(path.resolve()): path.read_text() for path in sorted(template_dir.glob("*.scala"))}
     if not sources:
         return {"status": "blocked", "blockers": ["current run operator sources are missing"]}
+
+    # A compact LLM retry can resend the pre-edit anchor after the previous
+    # transaction already changed the run-local source.  In that case the
+    # source is the authoritative state: do not ask the LLM for the same
+    # patch again or leave the timing loop blocked on a stale rejection.  The
+    # existing compile/VCS gates still validate the current source before the
+    # backend is allowed to run.
+    rejected = prior.get("patch_rejection_feedback", {}).get("rejected_file_edits", [])
+    if isinstance(rejected, list) and rejected:
+        already_applied = True
+        matched_paths = []
+        for edit in rejected:
+            if not isinstance(edit, dict):
+                already_applied = False
+                break
+            source = sources.get(str(Path(edit.get("path", "")).resolve()))
+            replacements = edit.get("text_replacements")
+            if not isinstance(source, str) or not isinstance(replacements, list) or not replacements:
+                already_applied = False
+                break
+            for replacement in replacements:
+                if not isinstance(replacement, dict):
+                    already_applied = False
+                    break
+                old_text = replacement.get("old_text")
+                new_text = replacement.get("new_text")
+                if (not isinstance(old_text, str) or not old_text
+                        or not isinstance(new_text, str) or not new_text
+                        or old_text == new_text
+                        or old_text in source
+                        or source.count(new_text) != 1):
+                    already_applied = False
+                    break
+            if not already_applied:
+                break
+            matched_paths.append(str(Path(edit["path"]).resolve()))
+        if already_applied:
+            report = {
+                "status": "applied_pending_validation",
+                "changed_sources": [],
+                "blockers": [],
+                "idempotent_source_reuse": True,
+                "idempotent_source_paths": matched_paths,
+                "implementation_summary": (
+                    "The rejected repair is already present in the current run-local source; "
+                    "reuse it and validate through the normal compile/VCS/backend gates."
+                ),
+            }
+            return compile_timing_sources(run_dir, attempt_dir, report)
     parameter_context = {name: source for name, source in context["sources"].items()
                          if Path(name).name in {"GeneratedDesignParams.scala", "GeneratedAcceleratorTop.scala"}}
     diagnoses = list((out_dir / "qor").glob("*/llm/source_cycle_analysis_agent_result.json"))
@@ -115,12 +256,19 @@ def repair_timing_sources(
             "Optimize the critical path in THIS EXISTING accelerator design. Use the actual Vivado "
             "path and the complete current-run operator sources. Return actual bounded file_edits, "
             "not an audit or a plan. Pipeline or restructure the long combinational cone and align "
-            "its control/valid signals where needed. Do not change clock constraints, false paths or "
+            "its control/valid signals where needed. Registers added only before or after an "
+            "unchanged combinational operator do not partition its internal critical path; identify "
+            "and restructure or pipeline the actual reported operator. Do not change clock constraints, false paths or "
             "multicycle declarations to hide the delay. Preserve arithmetic semantics, W/A precision, "
             "DSE parameters, ready/valid backpressure, token overlap, DDR weights and active/shadow "
             "prefetch, external ABI and reset behavior. ONLY the supplied current-run Scala source "
             "paths are writable. Never edit shared framework templates or any other run. Do not "
             "regenerate a design/package or restart Stage5. Use exact old_text/new_text anchors. "
+            "For each source file, emit one file_edit and make every text_replacements old_text "
+            "unique and non-overlapping in the same original source snapshot. If multiple changes "
+            "touch the same source block, combine them into one replacement spanning the smallest "
+            "enclosing block; never emit overlapping or sequential anchors that depend on earlier "
+            "edits. Verify every old_text occurs exactly once in source_snapshots before returning. "
             "Optimize toward the explicit supplied clock target; the synthesis constraint itself "
             "is not the stopping goal. Meeting a throughput target alone does not satisfy a "
             "separate requested clock target. Report any added pipeline latency or initiation-interval "
@@ -131,18 +279,38 @@ def repair_timing_sources(
             "a previous schedule blocker can remain unresolved even when measured_qor lacks it. "
             "Treat that diagnosis as fallible prior feedback; confirm its guards and progress paths "
             "against source_snapshots, then repair any still-present completion defect first. "
+            "critical_path_source_definitions lists matching signal declarations and enclosing "
+            "classes; distinguish similarly named signals by synthesis hierarchy and active "
+            "integer/float configuration before proposing edits. Treat matches as candidates, "
+            "not definitive mappings, and copy anchors from current source_snapshots. "
             "Preserve parallelism, token-chunk reuse and the selected array; do not bypass an operator, "
             "discard tokens, or reduce reuse/precision to manufacture a finite cycle estimate. "
             "Prefer pipelining that retains throughput; do not replace parallel computation with "
-            "a long serialized loop merely to raise Fmax. On retry use previous_repair_feedback, "
+            "a long serialized loop merely to raise Fmax. Preserve the pre-repair per-beat issue "
+            "interval: added arithmetic stages must overlap successive beats, with aligned operand "
+            "and metadata registers and correct stall/valid handling, rather than waiting for the "
+            "whole arithmetic latency before launching every next beat. Derive the required valid, "
+            "stall, drain, and metadata behavior directly from the complete supplied current-source "
+            "control and memory-write code; producing a reviewed pipeline design as separate input "
+            "is not a prerequisite. Return a bounded source patch when that source establishes the "
+            "contract. Request more context only when a specific controlling source region is absent "
+            "from the supplied snapshots, and name the missing file and region. Check "
+            "recent_timing_implementations against current source_snapshots; they are advisory Agent "
+            "reports, not measured cycle counts. If an earlier timing patch reduced this issue rate, "
+            "restore its overlap as part of this repair. Distinguish pipeline latency, arithmetic "
+            "II, and the enclosing FSM's actual launch interval in your summary. "
+            "On retry use previous_repair_feedback, "
             "especially rejected_file_edits; replace each rejected anchor with enough surrounding "
             "source lines to make it unique, copied literally from source_snapshots. "
             "The executor incrementally compiles/elaborates this existing project, reruns needed "
             "VCS compilation and obtains fresh Vivado timing; your response cannot grant a pass."
         ),
-        inputs={"measured_qor": qor, "critical_timing_path": timing,
+        inputs={"critical_path_source_definitions": timing_signal_source_context(timing, sources),
+                "critical_timing_path_detail": critical_timing_path_detail_context(timing),
+                "measured_qor": qor, "critical_timing_path": timing,
                 "source_snapshots": sources, "read_only_synthesized_parameters": parameter_context,
                 "previous_repair_feedback": prior,
+                "recent_timing_implementations": recent_timing_implementation_context(out_dir),
                 "latest_schedule_feedback_for_source_recheck": schedule_feedback,
                 "workload": context["workload"], "synthesis_source_archive_sha256": fingerprint},
         out_dir=attempt_dir, output_schema=SCHEMA,

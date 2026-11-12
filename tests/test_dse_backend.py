@@ -19,6 +19,7 @@ from accagent.framework.stage_backend import (
     backend_tool_report_digest,
     adapter_repair_board_source_context,
     builtin_backend_tool,
+    build_app_shell_integration_contract,
     build_plan,
     check_upstream_hierarchical_verification_closure,
     classify_qor_optimization,
@@ -38,6 +39,40 @@ from accagent.framework.verification_evidence_contract import COMPILE_ONLY_POLIC
 
 
 class DseBackendTest(unittest.TestCase):
+    def test_app_shell_contract_consumes_profile_sample_vivado_project(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            profile = root / "profile.json"
+            sample_project = "/workspace/board/sample.xpr"
+            profile.write_text(json.dumps({
+                "shell": {"sample_vivado_project": sample_project},
+                "runtime_interface": {"remote_host": "user@board-host"},
+            }))
+            identity = {
+                "status": "pass",
+                "compute_slot_abi": {
+                    "status": "pass", "all_required_ports_bound": True,
+                    "replacement_module_identity": "replacement_ip",
+                    "replacement_instance_boundary": "/compute_slot",
+                    "selected_cell_id": "cell-id",
+                },
+                "compute_slot_abi_sha256": "abi-hash",
+            }
+            plan = {"resolved_board_profile": {"path": str(profile)}}
+            board_shell_contract = {
+                "board_interface": {"clock": "slot_clk", "reset": "slot_reset",
+                                     "signal_prefix": "slot", "data_width_bits": 512},
+                "generated_core": {"top_module": "GeneratedAxiDdrTop"},
+                "runtime_abi": {"control_protocol": "xdma_raw_register_and_ddr"},
+            }
+            with patch("accagent.framework.stage_backend.current_app_shell_binding_artifacts",
+                       return_value=(identity, {})):
+                contract = build_app_shell_integration_contract(
+                    root, {"design_id": "test"}, plan, board_shell_contract)
+
+        self.assertEqual(contract["shell_project"]["vivado_project_path"], sample_project)
+        self.assertEqual(contract["status"], "ready_for_app_shell_generation")
+
     def test_synthesis_clock_uses_discovered_slot_without_qor_target(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -57,6 +92,24 @@ class DseBackendTest(unittest.TestCase):
                 patch.dict("os.environ", {"SPATIALACC_CLOCK_TARGET_MHZ": ""}):
                 tool = builtin_backend_tool("app_shell_runtime_bitstream", root, [])
             self.assertNotIn("--clock-target-mhz", tool["execution"]["argv"])
+
+    def test_synthesis_clock_uses_run_timing_request_before_board_clock_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            contract = root / "contract.json"
+            contract.write_text(json.dumps({"board_interface": {"clock": "slot_clk"}}))
+            identity = root / "verification/board_interface/board_source_identity.json"
+            identity.parent.mkdir(parents=True)
+            identity.write_text(json.dumps({"timing_contract": {"clock_domains": [
+                {"name": "slot_clk", "frequency_hz": 250000000}]}}))
+            request = root / "backend_board/optimization_request.json"
+            request.parent.mkdir(parents=True)
+            request.write_text(json.dumps({"clock_frequency_mhz": 150.0}))
+            with patch("accagent.framework.stage_backend.app_shell_integration_contract_path", return_value=contract), \
+                patch.dict("os.environ", {"SPATIALACC_CLOCK_TARGET_MHZ": ""}):
+                tool = builtin_backend_tool("app_shell_runtime_bitstream", root, [])
+            argv = tool["execution"]["argv"]
+            self.assertEqual(argv[argv.index("--clock-target-mhz") + 1], "150.0")
 
     def test_successful_backend_proceeds_to_optimization_without_duplicate_reviews(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

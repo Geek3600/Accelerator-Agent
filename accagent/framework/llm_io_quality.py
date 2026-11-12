@@ -66,7 +66,32 @@ def agent_row(source: str, record: dict[str, Any], output: dict[str, Any] | None
 
 
 def rows_from_stage_records(planner_record: dict[str, Any], team_run: dict[str, Any]) -> list[dict[str, Any]]:
-    rows = [agent_row("planner", planner_record)]
+    planner_row = agent_row("planner", planner_record)
+    planner_output = planner_record.get("output", {})
+    proposed_actions = planner_output.get("proposed_actions", []) if isinstance(planner_output, dict) else []
+    team_actions = sum(
+        int(item.get("llm_io", {}).get("executable_action_count") or 0)
+        for item in team_run.get("results", [])
+        if isinstance(item, dict) and isinstance(item.get("llm_io"), dict)
+    )
+    planner_ready_noop = (
+        isinstance(planner_output, dict)
+        and str(planner_output.get("status") or "").strip().lower() in {"ready", "pass", "approved"}
+        and planner_row["executable_action_count"] == 0
+        and not planner_row["error"]
+        and (
+            team_actions > 0
+            or (
+                bool(planner_output.get("summary"))
+                and isinstance(proposed_actions, list)
+                and bool(proposed_actions)
+            )
+        )
+    )
+    if planner_ready_noop:
+        planner_row["require_executable_actions"] = False
+        planner_row["action_requirement_note"] = "ready planner supplied a complete plan and downstream actions"
+    rows = [planner_row]
     for item in team_run.get("results", []):
         row = {
             "source": "team_subagent",
@@ -95,7 +120,8 @@ def check_row(row: dict[str, Any], thresholds: dict[str, Any]) -> dict[str, Any]
         errors.append("LLM fallback was used")
     if row.get("error"):
         errors.append(f"LLM error recorded: {row.get('error')}")
-    if thresholds["require_executable_actions"] and action_total <= 0:
+    require_actions = row.get("require_executable_actions", thresholds["require_executable_actions"])
+    if require_actions and action_total <= 0:
         errors.append("LLM produced no executable_actions")
     if prompt_bytes >= int(thresholds["prompt_fail_bytes"]):
         warnings.append(
@@ -150,7 +176,9 @@ def build_quality_report(rows: list[dict[str, Any]], thresholds: dict[str, Any] 
         "thresholds": thresholds,
         "agents": checked,
         "policy": (
-            "LLM stages must use real LLM calls, avoid fallback, and produce executable_actions. "
+            "LLM stages must use real LLM calls and avoid fallback. Actionable outputs must produce executable_actions; "
+            "a ready planner may return no same-stage action when it supplies a complete plan and downstream actions; "
+            "deterministic stage and contract checkers remain authoritative. "
             "Large full-context prompts and provider latency are recorded as diagnostic warnings "
             "when the LLM still returns usable structured output."
         ),

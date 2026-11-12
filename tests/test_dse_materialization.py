@@ -70,12 +70,17 @@ class DseMaterializationTest(unittest.TestCase):
                         "fifo_depth": 16,
                         "activation_banks": 2,
                         "weight_banks_by_role": {"weight_qkv": 1},
+                        "attention_output_cross_token_reuse_tokens": 1,
                     },
                 }
             ]
         )
         self.assertEqual(report["status"], "pass")
         self.assertIn("GeneratedDesignParams.lanes", report["generated_fields"].values())
+        self.assertIn(
+            "GeneratedDesignParams.attentionOutputCrossTokenReuseTokens",
+            report["generated_fields"].values(),
+        )
 
     def test_generated_source_forwards_candidate_into_fpga_ip_configuration(self) -> None:
         source = """
@@ -85,6 +90,8 @@ class DseMaterializationTest(unittest.TestCase):
         val fifoDepth: Int = 32
         val activationBanks: Int = 4
         val weightBanksByRole: Map[String, Int] = Map.empty
+        val attentionOutputCrossTokenReuseTokens: Int = 1
+        PhysicalImplementation.configureAttentionOutputCrossTokenReuse(1)
         PhysicalImplementation.configureFpgaIp(
           GeneratedDesignParams.fifoDepth,
           GeneratedDesignParams.activationBanks,
@@ -100,6 +107,7 @@ class DseMaterializationTest(unittest.TestCase):
                 "fifo_depth": 32,
                 "activation_banks": 4,
                 "weight_banks_by_role": {},
+                "attention_output_cross_token_reuse_tokens": 1,
             },
         )
         self.assertEqual(report["status"], "pass", report["errors"])
@@ -154,6 +162,10 @@ class DseMaterializationTest(unittest.TestCase):
                 second_root
                 / "src/main/scala/spatialaccagent/generated/GeneratedDesignParams.scala"
             ).read_text(encoding="utf-8")
+            attention_template = (
+                first_root
+                / "src/main/scala/spatialaccagent/templates/Attention.scala"
+            ).read_text(encoding="utf-8")
             def elaborated_sv(root: Path) -> bytes:
                 return b"".join(
                     path.read_bytes()
@@ -177,8 +189,11 @@ class DseMaterializationTest(unittest.TestCase):
                 "val computeArrayCols: Int = 2",
                 "val fifoDepth: Int = 16",
                 "val activationBanks: Int = 2",
+                "val attentionOutputCrossTokenReuseTokens: Int = 1",
+                "PhysicalImplementation.configureAttentionOutputCrossTokenReuse(1)",
             ):
                 self.assertIn(marker, first_params)
+            self.assertIn("crossTokenReuseTokens = outCrossTokenReuseTokens", attention_template)
             for marker in (
                 "val lanes: Int = 8",
                 "val computeArrayRows: Int = 4",
@@ -196,7 +211,7 @@ class DseMaterializationTest(unittest.TestCase):
 
             def linear_pe_count(root: Path) -> int:
                 return sum(
-                    len(re.findall(rb"\bPhysicalFp32Mul(?:Pipeline)?(?:_[0-9]+)?\s+multipliers_[A-Za-z0-9_]+\s*\(", path.read_bytes()))
+                    len(re.findall(rb"\bPhysicalLinearMul(?:_[0-9]+)?\s+multipliers_[A-Za-z0-9_]+\s*\(", path.read_bytes()))
                     for path in (root / "vivado").glob("Linear*.sv")
                 )
 
@@ -206,7 +221,7 @@ class DseMaterializationTest(unittest.TestCase):
             self.assertGreater(
                 second_pe_count,
                 first_pe_count,
-                "With all other DSE dimensions fixed, a larger global PE array must emit more DSP multiplier IP instances.",
+                "With all other DSE dimensions fixed, a larger global PE array must emit more multiplier instances.",
             )
             self.assertEqual(
                 first_closure["policy"],

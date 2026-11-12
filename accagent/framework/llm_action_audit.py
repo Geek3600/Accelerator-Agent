@@ -17,6 +17,7 @@ GENERIC_ACTION_ALIASES = {
     "operator_leaf_golden_compare": "case_leaf_golden_compare",
     "leaf_golden_compare": "case_leaf_golden_compare",
     "boundary_contract_checker": "boundary_contract_check",
+    "debug_boundary_contract": "boundary_contract_check",
     "case_multilayer_pipeline_check": "case_multilayer_pipeline",
     "single_layer_functional_sim": "case_single_layer_functional",
     "single_layer_golden_compare": "case_single_layer_golden_compare",
@@ -60,7 +61,17 @@ GENERIC_ACTION_ALIASES = {
     "output_validity_check": "output_validity_check",
     "targeted_failed_checker_rerun": "targeted_failed_checker_rerun",
     "team_aggregate": "team_aggregate",
+    "backend_app_shell_target_discovery_contract": "backend_app_shell_target_discovery_check",
+    "llm_action_audit": "verification_action_audit_check",
 }
+
+NATIVE_STAGE_ACTION_ROLES = {
+    "stage6_gate_selector_contract_refinement",
+    "stage_contract_validation",
+    "verification_contract_promotion",
+    "verification_gate_dag_refinement",
+}
+POLICY_CONTEXT_ROLE = "verification_execution_policy"
 
 
 def read_json_or_empty(path: Path) -> dict[str, Any]:
@@ -143,6 +154,43 @@ def case_adapter_registry_names(case_adapter: dict[str, Any] | None) -> set[str]
     return names
 
 
+def declared_handoff_roles(team_plan: dict[str, Any] | None) -> set[str]:
+    """Return exact handoff targets and role IDs declared by this team plan."""
+
+    if not isinstance(team_plan, dict):
+        return set()
+    roles: set[str] = set()
+    stage = str(team_plan.get("stage") or "").strip()
+    subtasks = team_plan.get("subtasks", [])
+    if not isinstance(subtasks, list):
+        return roles
+    for subtask in subtasks:
+        if not isinstance(subtask, dict):
+            continue
+        handoff_rule = subtask.get("handoff_rule", {})
+        handoff_rule = handoff_rule if isinstance(handoff_rule, dict) else {}
+        role_assignment = subtask.get("role_assignment", {})
+        role_assignment = role_assignment if isinstance(role_assignment, dict) else {}
+        interfaces = role_assignment.get("collaboration_interfaces", {})
+        interfaces = interfaces if isinstance(interfaces, dict) else {}
+        candidates = [
+            handoff_rule.get("target"),
+            *(subtask.get("handoff_to", []) if isinstance(subtask.get("handoff_to"), list) else []),
+            *(handoff_rule.get("handoff_to", []) if isinstance(handoff_rule.get("handoff_to"), list) else []),
+            *(interfaces.get("handoff_to", []) if isinstance(interfaces.get("handoff_to"), list) else []),
+            subtask.get("id"),
+            subtask.get("agent"),
+        ]
+        for value in candidates:
+            role = str(value).strip() if isinstance(value, str) else ""
+            if not role:
+                continue
+            roles.add(role)
+            if stage and not role.startswith(f"{stage}."):
+                roles.add(f"{stage}.{role}")
+    return roles
+
+
 def automatic_aliases(known: set[str]) -> dict[str, str]:
     aliases = dict(GENERIC_ACTION_ALIASES)
     for name in known:
@@ -204,32 +252,91 @@ def audit_action(
     known_tools: set[str],
     known_checkers: set[str],
     aliases: dict[str, str] | None = None,
+    handoff_roles: set[str] | None = None,
 ) -> dict[str, Any]:
     aliases = aliases or {}
+    handoff_roles = handoff_roles or set()
     action = item["action"]
+    action_type = str(action.get("action_type") or "")
+    action_id = str(action.get("id") or "")
+    stage_name = str(action.get("stage") or "")
+    is_verification_artifact_stage = stage_name in {
+        "verification_artifacts",
+        "stage5.verification_artifacts",
+    }
     tool_roles = [str(value) for value in action.get("tool_roles", []) if value is not None]
     checkers = [str(value) for value in action.get("acceptance_checkers", []) if value is not None]
-    tool_norm = [normalize_ref(value, known_tools, aliases, "planned_tool.") for value in tool_roles]
-    checker_norm = [normalize_ref(value, known_checkers, aliases, "planned_checker.") for value in checkers]
+    handoff_tokens = action_type.replace("-", "_").replace(".", "_").split("_")
+    handoff_tokens.extend(action_id.replace("-", "_").replace(".", "_").split("_"))
+    is_handoff = "handoff" in handoff_tokens
+    handoff_role_refs = list(dict.fromkeys(
+        [value for value in [*tool_roles, *checkers] if is_handoff and value in handoff_roles]
+    ))
+    framework_action_refs = []
+    framework_checker_refs = []
+    policy_refs = []
+    policy_checker_refs = []
+    tool_refs = []
+    for value in tool_roles:
+        if is_handoff and value in handoff_roles:
+            continue
+        if is_verification_artifact_stage and value in NATIVE_STAGE_ACTION_ROLES:
+            framework_action_refs.append(value)
+            continue
+        if is_verification_artifact_stage and value == POLICY_CONTEXT_ROLE:
+            policy_refs.append(value)
+            continue
+        tool_refs.append(value)
+    checker_refs = []
+    for value in checkers:
+        if is_handoff and value in handoff_roles:
+            continue
+        if is_verification_artifact_stage and value in NATIVE_STAGE_ACTION_ROLES:
+            framework_action_refs.append(value)
+            framework_checker_refs.append(value)
+            continue
+        if is_verification_artifact_stage and value == POLICY_CONTEXT_ROLE:
+            policy_refs.append(value)
+            policy_checker_refs.append(value)
+            continue
+        checker_refs.append(value)
+    tool_norm = [normalize_ref(value, known_tools, aliases, "planned_tool.") for value in tool_refs]
+    checker_norm = [normalize_ref(value, known_checkers, aliases, "planned_checker.") for value in checker_refs]
     canonical_tools = [value for value, _ in tool_norm]
     canonical_checkers = [value for value, _ in checker_norm]
-    unknown_tools = [original for original, (value, _) in zip(tool_roles, tool_norm) if value not in known_tools and not value.startswith("planned_tool.")]
-    unknown_checkers = [original for original, (value, _) in zip(checkers, checker_norm) if value not in known_checkers and not value.startswith("planned_checker.")]
-    planned_tools = [value for value in canonical_tools if value.startswith("planned_tool.")]
-    planned_checkers = [value for value in canonical_checkers if value.startswith("planned_checker.")]
+    unknown_tools = [original for original, (value, _) in zip(tool_refs, tool_norm) if value not in known_tools and not value.startswith("planned_tool.")]
+    unknown_checkers = [original for original, (value, _) in zip(checker_refs, checker_norm) if value not in known_checkers and not value.startswith("planned_checker.")]
     normalized_aliases = [
         {"original": original, "canonical": canonical}
-        for original, (canonical, alias_from) in [*zip(tool_roles, tool_norm), *zip(checkers, checker_norm)]
+        for original, (canonical, alias_from) in [*zip(tool_refs, tool_norm), *zip(checker_refs, checker_norm)]
         if alias_from is not None and original != canonical
     ]
+    if not unknown_checkers and not any(
+        value in known_checkers or value.startswith("planned_checker.")
+        for value in canonical_checkers
+    ) and (framework_checker_refs or policy_checker_refs):
+        contract_checker = "verification_artifact_contract_check"
+        if contract_checker in known_checkers:
+            canonical_checkers = [contract_checker]
+            normalized_aliases.extend(
+                {"original": original, "canonical": contract_checker}
+                for original in [*framework_checker_refs, *policy_checker_refs]
+            )
+        else:
+            unknown_checkers.extend([*framework_checker_refs, *policy_checker_refs])
+    planned_tools = [value for value in canonical_tools if value.startswith("planned_tool.")]
+    planned_checkers = [value for value in canonical_checkers if value.startswith("planned_checker.")]
     return {
         "source": item["source"],
         "id": action.get("id"),
-        "action_type": action.get("action_type"),
+        "action_type": action_type,
         "tool_roles": tool_roles,
         "acceptance_checkers": checkers,
         "canonical_tool_roles": canonical_tools,
         "canonical_acceptance_checkers": canonical_checkers,
+        "grounded_handoff_role_references": handoff_role_refs,
+        "grounded_framework_action_references": sorted(set(framework_action_refs)),
+        "grounded_policy_references": sorted(set(policy_refs)),
         "normalized_aliases": normalized_aliases,
         "unknown_tool_roles": unknown_tools,
         "unknown_acceptance_checkers": unknown_checkers,
@@ -242,17 +349,19 @@ def audit_action(
 def build_audit_from_action_items(
     action_items: list[dict[str, Any]],
     case_adapter: dict[str, Any] | None = None,
+    team_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     adapter_names = case_adapter_registry_names(case_adapter)
     known_checkers = set(ACTION_GROUNDING_REGISTRY["acceptance_checkers"]) | adapter_names
     # Registered checks are executable validation operations too. Naming one in
     # tool_roles must not invent a missing capability or discard its evidence gate.
+    handoff_roles = declared_handoff_roles(team_plan)
     known_tools = set(ACTION_GROUNDING_REGISTRY["tool_roles"]) | known_checkers
     aliases = {
-        **automatic_aliases(known_tools | known_checkers),
+        **automatic_aliases((known_tools - handoff_roles) | known_checkers),
         **case_adapter_aliases(case_adapter),
     }
-    audits = [audit_action(item, known_tools, known_checkers, aliases) for item in action_items]
+    audits = [audit_action(item, known_tools, known_checkers, aliases, handoff_roles) for item in action_items]
     failed = [item for item in audits if item["status"] != "pass"]
     planned_tools = [tool for item in audits for tool in item.get("planned_tools", [])]
     planned_checkers = [checker for item in audits for checker in item.get("planned_checkers", [])]
@@ -267,16 +376,25 @@ def build_audit_from_action_items(
         "planned_checker_count": len(planned_checkers),
         "planned_tools": sorted(set(planned_tools)),
         "planned_checkers": sorted(set(planned_checkers)),
-        "policy": "LLM actions must be grounded in configured framework tool/checker names or explicitly marked planned_tool/planned_checker.",
+        "declared_handoff_roles": sorted(handoff_roles),
+        "policy": (
+            "LLM actions must be grounded in configured framework tool/checker names, exact handoff targets declared "
+            "by the current team plan (including as role references in handoff actions), or explicitly marked "
+            "planned_tool/planned_checker."
+        ),
     }
 
 
-def build_audit_from_outputs(outputs: list[tuple[str, dict[str, Any]]], case_adapter: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_audit_from_outputs(
+    outputs: list[tuple[str, dict[str, Any]]],
+    case_adapter: dict[str, Any] | None = None,
+    team_plan: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     action_items: list[dict[str, Any]] = []
     for source, output in outputs:
         if isinstance(output, dict):
             action_items.extend(collect_actions_from_output(source, output))
-    return build_audit_from_action_items(action_items, case_adapter)
+    return build_audit_from_action_items(action_items, case_adapter, team_plan)
 
 
 def build_audit(paths: list[Path], case_adapter: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -1,4 +1,5 @@
 import hashlib
+import gzip
 import json
 from argparse import Namespace
 from pathlib import Path
@@ -102,6 +103,112 @@ class FlowActionHandoffTest(TestCase):
             "on_failure": "Keep the current layer blocked and localize the failure.",
         }
 
+    def test_control_only_retry_handoff_replans_from_current_evidence(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            verification_path = run_dir / "verification" / "verification_result.json"
+            self.write_json(
+                verification_path,
+                {
+                    "status": "needs_repair",
+                    "results": [
+                        {"checker": "case_multilayer_pipeline", "status": "fail"}
+                    ],
+                },
+            )
+            state = {"artifacts": [], "transitions": [], "memory": {}}
+            handoff = {
+                "actions": [
+                    {
+                        "action": {
+                            "id": "retry.debug_loop.after_framework_error",
+                            "stage": "debug_loop",
+                            "action_type": "current_stage_retry",
+                            "tool_roles": [
+                                "sacg_memory_check",
+                                "stage_retry_request",
+                                "verification_action_audit_check",
+                                "artifact_hash_check",
+                            ],
+                            "acceptance_checkers": ["sacg_static_check"],
+                            "requires_approval": False,
+                        }
+                    }
+                ]
+            }
+            live_repair_actions = [
+                {"id": "repair.from_current_failure", "scope": "regression_rerun"}
+            ]
+
+            def artifact_path_for_test(_state: dict, artifact_id: str) -> Path:
+                if artifact_id == "artifact.stage6.verification_result":
+                    return verification_path
+                return run_dir / "missing.json"
+
+            with (
+                patch("accagent.framework.stage_repair.artifact_path", side_effect=artifact_path_for_test),
+                patch("accagent.framework.stage_repair.case_adapter_for_state", return_value={}),
+                patch(
+                    "accagent.framework.stage_repair.enrich_verification_with_tool_reports",
+                    side_effect=lambda value, *_args: value,
+                ),
+                patch("accagent.framework.stage_repair.load_vcs_diagnosis", return_value={}),
+                patch("accagent.framework.stage_repair.load_debug_closure_localization", return_value={}),
+                patch(
+                    "accagent.framework.stage_repair.build_repair_loop_report",
+                    return_value={"current_layer": {"id": "board_axi_ddr_wrapped_system"}},
+                ),
+                patch("accagent.framework.stage_repair.validate_stage6_flow_handoff", return_value=[]),
+                patch("accagent.framework.stage_repair.prior_repair_execution_feedback", return_value=None),
+                patch(
+                    "accagent.framework.stage_repair.rematerialized_lower_layer_capability_evidence",
+                    return_value=[],
+                ),
+                patch("accagent.framework.stage_repair.diagnosis_applicability_report", return_value={}),
+                patch("accagent.framework.stage_repair.required_capability_repair_actions", return_value=[]),
+                patch("accagent.framework.stage_repair.build_repair_actions", return_value=live_repair_actions),
+                patch("accagent.framework.stage_repair.build_repair_workflow", return_value={}),
+                patch("accagent.framework.stage_repair.authoritative_repair_routing_priority", return_value={}),
+                patch("accagent.framework.stage_repair.diagnosis_prompt_projection", return_value={}),
+            ):
+                plan = build_repair_plan(state, run_dir, handoff)
+
+            self.assertEqual(plan["repair_actions"], live_repair_actions)
+            self.assertEqual(
+                plan["diagnostics"]["flow_controller_handoff_routing"]["status"],
+                "control_only_replanned_from_live_evidence",
+            )
+
+    def test_same_stage_retry_action_types_are_control_only(self) -> None:
+        for action_type in (
+            "framework_retry",
+            "current_stage_retry",
+            "retry_current_stage",
+        ):
+            with self.subTest(action_type=action_type):
+                actions = flow_handoff_repair_actions(
+                    {
+                        "actions": [
+                            {
+                                "action": {
+                                    "id": f"retry.{action_type}",
+                                    "stage": "debug_loop",
+                                    "action_type": action_type,
+                                    "tool_roles": [
+                                        "sacg_validate",
+                                        "stage_retry_request",
+                                        "artifact_hash_check",
+                                    ],
+                                }
+                            }
+                        ]
+                    },
+                    {},
+                    {},
+                    {"current_layer": {"id": "board_axi_ddr_wrapped_system"}},
+                )
+                self.assertEqual(actions, [])
+
     def test_current_handoff_is_consumed_once_and_new_source_is_eligible(self) -> None:
         with TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run"
@@ -180,6 +287,33 @@ class FlowActionHandoffTest(TestCase):
             result = pending_stage6_flow_handoff(run_dir, state_path)
             self.assertEqual(result["status"], "not_required")
 
+    def test_stale_source_identity_skips_snapshot_hashing(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run"
+            current_state = run_dir / "verification_artifacts" / "current.json"
+            stale_state = run_dir / "debug_loop" / "flow_handoff_sources" / "stale.json"
+            self.write_json(current_state, {"revision": "current"})
+            self.write_json(stale_state, {"revision": "stale"})
+            self.write_json(
+                run_dir / "debug_loop" / "flow_events" / "001_retry.json",
+                {
+                    "schema_version": "spatialaccagent.flow_event_action_record.v0",
+                    "flow_event_index": 1,
+                    "sacg_state": str(stale_state),
+                    "source_identities": {
+                        "source_sacg_state_sha256": self.sha256(stale_state),
+                    },
+                },
+            )
+
+            with patch(
+                "accagent.framework.flow_action_handoff.source_sacg_identity",
+                side_effect=AssertionError("stale snapshots must not be opened"),
+            ):
+                result = pending_stage6_flow_handoff(run_dir, current_state)
+
+            self.assertEqual(result["status"], "not_required")
+
     def test_top_agent_snapshot_survives_later_source_state_update(self) -> None:
         with TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run"
@@ -224,8 +358,28 @@ class FlowActionHandoffTest(TestCase):
             snapshot_path = Path(materialized["sacg_state"])
             handoff = pending_stage6_flow_handoff(run_dir, state_path)
             self.assertEqual(materialized["source_sacg_state"], str(state_path))
-            self.assertEqual(snapshot_path.read_bytes(), state_path.read_bytes())
+            with gzip.open(snapshot_path, "rb") as snapshot:
+                self.assertEqual(snapshot.read(), state_path.read_bytes())
             self.assertEqual(handoff["status"], "ready")
+
+            duplicate_event = {
+                "stage": "debug_loop",
+                "decision": "retry",
+                "sacg_state": str(state_path),
+                "llm_flow_controller": event["llm_flow_controller"],
+            }
+            agent.flow_events.append(duplicate_event)
+            agent.materialize_flow_event_actions(duplicate_event)
+            duplicate_record = json.loads(
+                (run_dir / "debug_loop" / "flow_events" / "002_retry.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(duplicate_record["sacg_state"], str(snapshot_path))
+            self.assertEqual(
+                len(list((run_dir / "debug_loop" / "flow_handoff_sources").glob("*.json.gz"))),
+                1,
+            )
 
             self.write_json(state_path, {"artifacts": [{"id": "changed"}], "transitions": []})
 

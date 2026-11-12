@@ -105,6 +105,21 @@ class CurlDirectHttpTransportTests(unittest.TestCase):
         self.assertEqual(raised.exception.reason, "max_output_tokens")
         self.assertEqual(raised.exception.response_id, "resp-test")
 
+    def test_completed_event_with_incomplete_body_retains_usage_without_guessing_reason(self) -> None:
+        stream = (
+            b'data: {"type":"response.output_text.delta","delta":"partial JSON"}\n'
+            b'data: {"type":"response.completed","response":{"status":"incomplete",'
+            b'"incomplete_details":null,"usage":{"input_tokens":9000,"output_tokens":4096,'
+            b'"output_tokens_details":{"reasoning_tokens":4096}}}}\n'
+        )
+
+        with self.assertRaises(llm_io.ResponseIncompleteError) as raised:
+            llm_io.response_stream_text(stream.splitlines(keepends=True))
+
+        self.assertEqual(raised.exception.reason, "unknown")
+        self.assertEqual(raised.exception.usage["output_tokens"], 4096)
+        self.assertIn('"reasoning_tokens": 4096', str(raised.exception))
+
     def test_response_payload_accepts_optional_output_budget(self) -> None:
         payload = llm_io.response_payload(
             "test-model",
@@ -123,6 +138,16 @@ class CurlDirectHttpTransportTests(unittest.TestCase):
         self.assertEqual(headers["User-Agent"], "codex-cli")
         self.assertEqual(headers["Accept"], "application/json")
         self.assertEqual(headers["Connection"], "close")
+
+    def test_anthropic_messages_headers_use_bearer_auth_and_version(self) -> None:
+        headers = llm_io.request_headers(
+            "anthropic/messages", "secret-for-test", stream=True
+        )
+
+        self.assertEqual(headers["Authorization"], "Bearer secret-for-test")
+        self.assertEqual(headers["anthropic-version"], "2023-06-01")
+        self.assertEqual(headers["Accept"], "text/event-stream")
+        self.assertNotIn("secret-for-test", headers.get("User-Agent", ""))
 
     def test_curl_direct_http1_preserves_http_error_semantics(self) -> None:
         with (

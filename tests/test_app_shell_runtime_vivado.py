@@ -1,14 +1,131 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import tempfile
 import unittest
+import shutil
+from argparse import Namespace
 from pathlib import Path
+from unittest.mock import patch
 
-from scripts.synthesis.app_shell_runtime_vivado import build_kernel_synthesis_tcl, build_tcl, create_source_closure_archive, main, requires_generated_ip
+from scripts.synthesis.app_shell_runtime_vivado import build_kernel_synthesis_tcl, build_tcl, create_source_closure_archive, isolated_remote_workdir, main, requires_generated_ip
+from scripts.synthesis import app_shell_runtime_vivado as synthesis
 
 
 class AppShellRuntimeVivadoTest(unittest.TestCase):
+    def test_missing_control_clock_is_not_stringified_as_a_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            generated = root / "generated/chisel/vivado"
+            generated.mkdir(parents=True)
+            (generated / "GeneratedAxiDdrTop.sv").write_text("module Kernel; endmodule\n")
+            closure = generated.parent / "simulation/fpga_ip_simulation_closure.json"
+            closure.parent.mkdir()
+            closure.write_text(json.dumps({"status": "ready", "compute_backend": "integer_dsp",
+                                           "required_ip_modules": []}))
+            contract = root / "contract.json"
+            contract.write_text(json.dumps({
+                "board_interface": {"clock": "c0_ddr4_s_axi_clk"},
+                "compute_slot_abi": {"control_abi": {"clock_domain": None}},
+                "integration_target": {},
+            }))
+            wrapper = root / "adapter.sv"
+            wrapper.write_text("module Adapter; endmodule\n")
+            modules = root / "modules.txt"
+            ip_tcl = root / "ip.tcl"
+            report = root / "report.json"
+
+            result = main([
+                "--run-dir", str(root), "--contract", str(contract),
+                "--wrapper-rtl", str(wrapper), "--generated-vivado-dir", str(generated),
+                "--ip-module-manifest", str(modules), "--ip-generation-tcl", str(ip_tcl),
+                "--fpga-part", "test_part", "--clock-target-mhz", "150",
+                "--mode", "bitstream", "--collect-only", "--out", str(report),
+            ])
+
+            output = json.loads(report.read_text())
+            self.assertEqual(result, 1)
+        self.assertFalse(any("does not match compute-slot control clock" in item
+                             for item in output["blockers"]))
+
+    def test_vivado_worker_count_is_capped_at_two(self) -> None:
+        with patch.dict("os.environ", {"SPATIALACC_VIVADO_JOBS": "8"}):
+            self.assertEqual(synthesis.vivado_job_count(), 2)
+        with patch.dict("os.environ", {"SPATIALACC_VIVADO_JOBS": "1"}):
+            self.assertEqual(synthesis.vivado_job_count(), 1)
+
+    def test_interrupted_synthesis_recovers_reports_without_launching_vivado(self) -> None:
+        for mutation in (None, "rtl", "clock", "incomplete"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                generated = root / "generated/chisel/vivado"
+                generated.mkdir(parents=True)
+                rtl = generated / "GeneratedAxiDdrTop.sv"
+                rtl.write_text("module DifferentTop(\n input clock,\n output result\n); endmodule\n")
+                closure = generated.parent / "simulation/fpga_ip_simulation_closure.json"
+                closure.parent.mkdir()
+                closure.write_text(json.dumps({"status": "ready", "compute_backend": "integer_dsp",
+                                               "required_ip_modules": []}))
+                remote = root / "remote/attempt_finished"
+                remote.mkdir(parents=True)
+                archive = remote / "app_shell_generated_vivado_closure.tar.gz"
+                create_source_closure_archive(archive, generated, None, None)
+                tcl = build_kernel_synthesis_tcl("DifferentTop", "clock", "part", 150, 16)
+                (remote / "app_shell_runtime_vivado.tcl").write_text(tcl if mutation != "clock" else tcl + "# other clock\n")
+                (remote / "app_shell_runtime_inspection.txt").write_text(
+                    "kernel_synthesis_completed=1\nkernel_top=DifferentTop\nintegration_ready="
+                    + ("0" if mutation == "incomplete" else "1") + "\n")
+                for kind in ("timing", "utilization"):
+                    (remote / f"app_shell_synth_{kind}.rpt").write_text("completed remote result\n")
+                if mutation == "rtl":
+                    rtl.write_text(rtl.read_text() + "// changed RTL\n")
+                old_reports = root / "app_shell_runtime_bitstream"
+                old_reports.mkdir()
+                (old_reports / "app_shell_synth_power.rpt").write_text("stale attempt\n")
+                args = Namespace(run_dir=root, generated_vivado_dir=generated,
+                                 ip_module_manifest=root / "unused_modules",
+                                 ip_generation_tcl=root / "unused_ip")
+
+                def run(argv, timeout_sec=None):
+                    if argv[0] == "ssh":
+                        output = json.dumps([str(remote)])
+                    else:
+                        self.assertEqual(argv[0], "scp")
+                        folder = Path(argv[-1])
+                        for name in ("app_shell_generated_vivado_closure.tar.gz", "app_shell_runtime_vivado.tcl",
+                                     "app_shell_runtime_inspection.txt", "app_shell_synth_timing.rpt",
+                                     "app_shell_synth_utilization.rpt"):
+                            shutil.copy2(remote / name, folder / name)
+                        output = ""
+                    return {"argv": argv, "returncode": 0, "stdout_tail": output, "stderr_tail": ""}
+
+                commands = []
+                with patch.object(synthesis, "run_cmd", side_effect=run):
+                    recovered = synthesis.recover_completed_kernel_synthesis(
+                        args, "host", "22", "known_hosts", str(remote.parent), tcl, "DifferentTop", commands)
+                if mutation is not None:
+                    self.assertIsNone(recovered)
+                    self.assertTrue((old_reports / "app_shell_synth_power.rpt").is_file())
+                    continue
+                self.assertFalse(recovered["new_synthesis_executed"])
+                self.assertTrue(recovered["complete_source_payload_matches"])
+                self.assertEqual((root / "app_shell_runtime_bitstream/app_shell_synth_timing.rpt").read_text(),
+                                 "completed remote result\n")
+                self.assertEqual((root / "generated/backend/scripts" / archive.name).read_bytes(), archive.read_bytes())
+                self.assertEqual(len(commands), 2)
+                self.assertFalse((old_reports / "app_shell_synth_power.rpt").exists())
+
+    def test_remote_synthesis_attempts_use_isolated_workdirs(self) -> None:
+        base = "/remote/vivado/run"
+
+        first = isolated_remote_workdir(base, "123_456")
+        second = isolated_remote_workdir(base, "124_789")
+
+        self.assertEqual(first, "/remote/vivado/run/attempt_123_456")
+        self.assertEqual(second, "/remote/vivado/run/attempt_124_789")
+        self.assertNotEqual(first, second)
+
     def test_only_explicit_integer_closure_can_omit_generated_ip(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -41,6 +158,8 @@ class AppShellRuntimeVivadoTest(unittest.TestCase):
             generated = root / "vivado"
             generated.mkdir()
             (generated / "GeneratedAxiDdrTop.sv").write_text("module AnotherTop(\n input clock,\n output result\n); endmodule\n", encoding="utf-8")
+            archive = root / "generated/backend/scripts/app_shell_generated_vivado_closure.tar.gz"
+            create_source_closure_archive(archive, generated, None, None)
             modules = root / "modules.txt"
             modules.write_text("fp_mul\n", encoding="utf-8")
             ip_tcl = root / "ip.tcl"
@@ -60,10 +179,12 @@ class AppShellRuntimeVivadoTest(unittest.TestCase):
                 "--fpga-part", "test_part", "--clock-target-mhz", "250", "--collect-only", "--out", str(report),
             ])
             output = json.loads(report.read_text(encoding="utf-8"))
+            archive_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
         self.assertEqual(result, 0)
         self.assertEqual(output["synthesis_top"], "AnotherTop")
         self.assertEqual(output["timing_clock"], "spatialacc_kernel_clock")
         self.assertEqual(output["measurement_scope"], "generated_kernel_synthesis")
+        self.assertEqual(output["synthesis_source_archive_sha256"], archive_sha256)
 
     def test_kernel_synthesis_exposes_real_top_ports_without_board_tieoffs(self) -> None:
         text = build_kernel_synthesis_tcl("CustomKernel", "compute_clk", "target_part", 200.0, 16)

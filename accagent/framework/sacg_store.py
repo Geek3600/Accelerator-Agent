@@ -559,6 +559,45 @@ class SACGStore:
         self.state["transitions"].append(transition)
         return transition
 
+    def authorize_repair_artifacts(
+        self, transition_id: str, artifact_ids: list[str], *,
+        requested_paths: dict[str, list[str]] | None = None,
+    ) -> list[str]:
+        """Authorize exact graph-bound files for a declared repair transition."""
+        transition = get_item(self.state, "transitions", transition_id)
+        if transition.get("status") != "declared":
+            raise ValueError("repair transition must be declared")
+        if transition.get("repair_scope_class") != "auto_allowed":
+            raise ValueError("repair scope is not automatically authorized")
+        authorized: list[str] = []
+        for artifact_id in artifact_ids:
+            artifact = get_item(self.state, "artifacts", artifact_id)
+            related = any(
+                set(artifact.get(key, [])) & set(transition.get("touched_" + key, []))
+                for key in ("nodes", "edges", "constraints")
+            )
+            if not related:
+                raise ValueError(f"artifact is unrelated to transition: {artifact_id}")
+            path = Path(str(artifact.get("path") or "")).resolve()
+            requested = (requested_paths or {}).get(artifact_id)
+            if path.is_file():
+                candidates = [path]
+                if requested and {Path(value).resolve() for value in requested} != {path}:
+                    raise ValueError(f"requested path differs from artifact: {artifact_id}")
+            elif path.is_dir() and requested:
+                candidates = [Path(value).resolve() for value in requested]
+                if any(not candidate.is_relative_to(path) for candidate in candidates):
+                    raise ValueError(f"requested path is outside artifact: {artifact_id}")
+            else:
+                raise ValueError(f"repair artifact requires existing exact files: {artifact_id}")
+            if any(not candidate.is_file() for candidate in candidates):
+                raise ValueError(f"repair target must be an existing exact file: {artifact_id}")
+            authorized.extend(str(candidate) for candidate in candidates)
+        if not authorized:
+            raise ValueError("repair requires at least one exact artifact")
+        transition["authorized_repair_scope"] = sorted(set(authorized))
+        return transition["authorized_repair_scope"]
+
     def bind_artifact(
         self,
         artifact_id: str,

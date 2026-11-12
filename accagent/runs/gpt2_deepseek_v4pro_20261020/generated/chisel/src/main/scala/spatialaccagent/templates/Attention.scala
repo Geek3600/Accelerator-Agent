@@ -597,13 +597,18 @@ class IntegerAttention(p: AttentionParams) extends Module {
   nextK := kCollect
   nextV := vCollect
 
-  private val sWait :: sQRead :: sQCapture :: sScore :: sSoftmax :: sVRead :: sVCapture :: sPV :: sPVFinish :: sProjectRead :: sProjectCapture :: sProjectFeed :: sProjectDrain :: Nil = Enum(13)
+  private val sWait :: sQRead :: sQCapture :: sScore :: sSoftmaxMax :: sSoftmaxExp :: sSoftmaxDiv :: sSoftmaxDivWait :: sSoftmaxProb :: sVRead :: sVCapture :: sPV :: sPVFinish :: sProjectRead :: sProjectCapture :: sProjectFeed :: sProjectDrain :: Nil = Enum(17)
   private val state = RegInit(sWait)
   private val collectToken = RegInit(0.U(rowBits.W))
   private val row = RegInit(0.U(rowBits.W))
   private val head = RegInit(0.U(p.qkv.headBits.W))
   private val key = RegInit(0.U(rowBits.W))
   private val projectHead = RegInit(0.U(p.qkv.headBits.W))
+  private val projectGroupSize: Int = p.outLinear.tokenTileSize
+  private val projectGroupTokenBits: Int = log2Ceil(projectGroupSize + 1 max 2)
+  private val projectRowsFed = RegInit(0.U(projectGroupTokenBits.W))
+  private val drainRow = RegInit(0.U(rowBits.W))
+  private val groupStartRow = RegInit(0.U(rowBits.W))
   private val tokenReady = RegInit(0.U(p.seqLen.W))
   private val collectionClosed = RegInit(false.B)
   private val qHeadReg = Reg(UInt(vectorBits.W))
@@ -614,11 +619,26 @@ class IntegerAttention(p: AttentionParams) extends Module {
   private val contextAcc = Reg(Vec(p.headDim, SInt(accBits.W)))
   private val valueToken = RegInit(0.U(rowBits.W))
   private val projectWord = Reg(UInt(vectorBits.W))
+  private val maximumScoreReg = RegInit((-2147483648L).S(32.W))
+  private val softmaxKeyAllowed = Reg(Vec(p.seqLen, Bool()))
+  private val softmaxExpReg = Reg(Vec(p.seqLen, UInt(expBits.W)))
+  private val safeExpSumReg = RegInit(1.U(sumBits.W))
+  private val reciprocalQ31Reg = Reg(UInt(32.W))
   private val seqLimit = RegInit(p.seqLen.U(p.seqBits.W))
-  private val activeSeq = Mux(io.cfgValid && io.cfg.seqlen =/= 0.U && io.cfg.seqlen <= p.seqLen.U, io.cfg.seqlen, seqLimit)
+  private   val activeSeq = Mux(io.cfgValid && io.cfg.seqlen =/= 0.U && io.cfg.seqlen <= p.seqLen.U, io.cfg.seqlen, seqLimit)
   when(io.cfgValid) { seqLimit := activeSeq }
 
+  val remainingRows = activeSeq - groupStartRow
+  val targetGroupTokens = Mux(
+    remainingRows >= projectGroupSize.U(remainingRows.getWidth.W),
+    projectGroupSize.U(projectGroupTokenBits.W),
+    remainingRows(projectGroupTokenBits - 1, 0)
+  )
+  val nextGroupStart = groupStartRow.pad(p.seqBits) + targetGroupTokens
+  val nextGroupRow = nextGroupStart(rowBits - 1, 0)
+
   val fields = io.in.bits.data.asTypeOf(Vec(3 * p.qkvElemsPerBeat, UInt(8.W)))
+
   val finalHeadBeat = io.in.bits.addr === (p.qkv.headBeats - 1).U
   val kvHead = io.in.bits.head / p.kvGroupSize.U
   for (lane <- 0 until p.qkvElemsPerBeat) {
@@ -676,7 +696,7 @@ class IntegerAttention(p: AttentionParams) extends Module {
   val scaledDot = (dot * invSqrtQ16.S(32.W)) >> 16
   when(state === sScore) {
     scores(AccMath.boundedIndex(key, p.seqLen)) := scaledDot.asUInt(31, 0).asSInt
-    when(key === row) { state := sSoftmax }
+    when(key === row) { state := sSoftmaxMax }
       .otherwise { key := key + 1.U; state := sQRead }
   }
 
@@ -691,29 +711,69 @@ class IntegerAttention(p: AttentionParams) extends Module {
   val maskedScores = (0 until p.seqLen).map { index =>
     Mux(keyAllowed(index), scores(index), minimumScore)
   }
-  val maximumScore = maskedScores.reduce((left, right) => Mux(left > right, left, right))
-  val expValues = (0 until p.seqLen).map { index =>
-    val difference = Mux(keyAllowed(index), (maximumScore - scores(index)).asUInt, 0.U(32.W))
+  def maxTree(values: Seq[SInt]): SInt = {
+    if (values.size == 1) values.head
+    else maxTree(values.grouped(2).map { pair =>
+      if (pair.size == 1) pair.head else Mux(pair(0) > pair(1), pair(0), pair(1))
+    }.toSeq)
+  }
+  val maximumScore = maxTree(maskedScores)
+
+  when(state === sSoftmaxMax) {
+    maximumScoreReg := maximumScore
+    for (index <- 0 until p.seqLen) {
+      softmaxKeyAllowed(index) := keyAllowed(index)
+    }
+    state := sSoftmaxExp
+  }
+
+  val expValuesComb = (0 until p.seqLen).map { index =>
+    val difference = Mux(softmaxKeyAllowed(index), (maximumScoreReg - scores(index)).asUInt, 0.U(32.W))
     val tableIndexWide = difference >> 4
     val tableIndex = Mux(tableIndexWide > 255.U, 255.U(8.W), tableIndexWide(7, 0))
-    Mux(keyAllowed(index), expTable(tableIndex), 0.U(expBits.W))
+    Mux(softmaxKeyAllowed(index), expTable(tableIndex), 0.U(expBits.W))
   }
-  val expSum = expValues.map(_.pad(sumBits)).reduce(_ + _)
-  val safeExpSum = Mux(expSum === 0.U, 1.U(sumBits.W), expSum)
-  val reciprocalQ31 = AccMath.unsignedDivideFixed(
-    (BigInt(1) << 31).U(32.W), safeExpSum, numeratorBits = 32, denominatorBits = sumBits
-  )
-  when(state === sSoftmax) {
+  def sumTree(values: Seq[UInt]): UInt = {
+    if (values.size == 1) values.head
+    else sumTree(values.grouped(2).map { pair =>
+      if (pair.size == 1) pair.head else pair(0) + pair(1)
+    }.toSeq)
+  }
+  val expSumComb = sumTree(expValuesComb.map(_.pad(sumBits)))
+
+  when(state === sSoftmaxExp) {
+    for (index <- 0 until p.seqLen) {
+      softmaxExpReg(index) := expValuesComb(index)
+    }
+    safeExpSumReg := Mux(expSumComb === 0.U, 1.U(sumBits.W), expSumComb)
+    state := sSoftmaxDiv
+  }
+
+  val reciprocalDivider = Module(new PhysicalFixedDivider(numeratorBits = 32, denominatorBits = sumBits))
+  reciprocalDivider.io.in.bits.numerator := (BigInt(1) << 31).U(32.W)
+  reciprocalDivider.io.in.bits.denominator := safeExpSumReg
+  reciprocalDivider.io.in.valid := state === sSoftmaxDiv
+  reciprocalDivider.io.out.ready := state === sSoftmaxDivWait
+  when(state === sSoftmaxDiv && reciprocalDivider.io.in.ready) {
+    state := sSoftmaxDivWait
+  }
+  when(state === sSoftmaxDivWait && reciprocalDivider.io.out.valid) {
+    reciprocalQ31Reg := reciprocalDivider.io.out.bits
+    state := sSoftmaxProb
+  }
+
+  when(state === sSoftmaxProb) {
     for (index <- 0 until p.seqLen) {
       // The common exponential-table fraction cancels in exp/S. Thus
       // exp * floor(2^31/S) is already the Q31 probability code; shifting it
       // right by the table's Q16 fraction would destroy the normalization and
       // can make every INT8 probability zero. Round Q31 to Q7, then saturate
       // the unit-probability code (128) to signed INT8 maximum before PV.
-      // expValues is an unsigned integer code and reciprocalQ31 is floor(2^31 / sum(exp)).
-      // Their product is already the probability in Q31 code units; preserve
-      // the full 49-bit product before converting Q31 to signed-INT8 Q7.
-      val product = expValues(index) * reciprocalQ31
+      // softmaxExpReg is an unsigned integer code and reciprocalQ31Reg is
+      // floor(2^31 / sum(exp)). Their product is already the probability in
+      // Q31 code units; preserve the full 49-bit product before converting
+      // Q31 to signed-INT8 Q7.
+      val product = softmaxExpReg(index) * reciprocalQ31Reg
       val probabilityBase = product(48, 24)
       val probabilityRemainder = product(23, 0)
       val probabilityHalf = (BigInt(1) << 23).U(24.W)
@@ -721,7 +781,7 @@ class IntegerAttention(p: AttentionParams) extends Module {
         (probabilityRemainder === probabilityHalf && probabilityBase(0))
       val probabilityRounded = probabilityBase.pad(26) + probabilityRoundUp.asUInt
       probabilities(index) := Mux(
-        index.U <= row,
+        softmaxKeyAllowed(index),
         Mux(probabilityRounded > 127.U, 127.U(8.W), probabilityRounded(7, 0)),
         0.U(8.W)
       )
@@ -806,22 +866,45 @@ class IntegerAttention(p: AttentionParams) extends Module {
   outputProjection.io.in.bits.addr := row * p.qHeads.U + projectHead
   outputProjection.io.in.bits.last := projectHead === (p.qHeads - 1).U
   when(outputProjection.io.in.fire) {
-    when(projectHead === (p.qHeads - 1).U) { state := sProjectDrain }
-      .otherwise { projectHead := projectHead + 1.U; state := sProjectRead }
+    when(projectHead === (p.qHeads - 1).U) {
+      projectHead := 0.U
+      when(projectRowsFed === targetGroupTokens - 1.U) {
+        projectRowsFed := 0.U
+        drainRow := groupStartRow
+        state := sProjectDrain
+      }.otherwise {
+        projectRowsFed := projectRowsFed + 1.U
+        row := row + 1.U
+        state := sWait
+      }
+    }.otherwise {
+      projectHead := projectHead + 1.U
+      state := sProjectRead
+    }
   }
   io.out.valid := outputProjection.io.out.valid
   io.out.bits := outputProjection.io.out.bits
   outputProjection.io.out.ready := io.out.ready
   when(io.out.fire && io.out.bits.last && state === sProjectDrain) {
-    tokenReady := tokenReady & ~(1.U(p.seqLen.W) << row)
-    when(row === activeSeq - 1.U) {
-      row := 0.U
-      collectToken := 0.U
-      collectionClosed := false.B
-      state := sWait
+    tokenReady := tokenReady & ~(1.U(p.seqLen.W) << drainRow)
+    when(drainRow.pad(p.seqBits) + 1.U === nextGroupStart) {
+      when(nextGroupStart >= activeSeq) {
+        row := 0.U
+        collectToken := 0.U
+        collectionClosed := false.B
+        groupStartRow := 0.U
+        projectRowsFed := 0.U
+        drainRow := 0.U
+        state := sWait
+      }.otherwise {
+        groupStartRow := nextGroupRow
+        row := nextGroupRow
+        projectRowsFed := 0.U
+        drainRow := nextGroupRow
+        state := sWait
+      }
     }.otherwise {
-      row := row + 1.U
-      state := sWait
+      drainRow := drainRow + 1.U
     }
   }
   dontTouch(io.mask)

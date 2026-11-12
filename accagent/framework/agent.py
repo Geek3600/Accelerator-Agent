@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import gzip
 import shutil
 import sys
 import hashlib
 import importlib.util
 import json
 import os
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,12 @@ from accagent.framework.stage_agent import (
     temporary_env,
 )
 from accagent.framework.config import CFG, RunCfg
+from accagent.framework.experiment_profile import (
+    PROFILE_ENV as ACCORD_PROFILE_ENV,
+    active_profile as active_accord_experiment_profile,
+    without_design_graph_context,
+    without_guided_repair_context,
+)
 from accagent.framework.stage_input_common import DEFAULT_TEMPLATE_DIR
 from accagent.framework.stage_llm import run_stage_agent
 from accagent.framework.workflow_contract import (
@@ -187,6 +195,8 @@ class TopAgent:
             "SPATIALACC_LLM_MODE": "llm",
             "SPATIALACC_LLM_MODEL": cfg.llm.model,
             "SPATIALACC_LLM_ENDPOINT": cfg.llm.endpoint,
+            "SPATIALACC_LLM_BASE_URL": cfg.llm.base_url,
+            "SPATIALACC_LLM_WIRE_API": cfg.llm.wire_api,
             "SPATIALACC_LLM_API_KEY": cfg.llm.api_key,
             "SPATIALACC_LLM_FALLBACK_ENDPOINT": cfg.llm.fallback_endpoint,
             "SPATIALACC_LLM_FALLBACK_BASE_URL": cfg.llm.fallback_base_url,
@@ -203,6 +213,8 @@ class TopAgent:
             "SPATIALACC_LLM_LIMITER_DIR": str(self.out / "agent" / "llm_limiter"),
             "SPATIALACC_TEAM_LLM_WORKERS": "1",
         }
+        if ACCORD_PROFILE_ENV in os.environ:
+            self.tool_env[ACCORD_PROFILE_ENV] = active_accord_experiment_profile()
         self.results: list[StageResult] = []
         self.flow_events: list[dict[str, Any]] = []
         self.flow_state: dict[str, Any] = self.default_flow_state()
@@ -357,16 +369,35 @@ class TopAgent:
         original_source_sacg_state = str(source_sacg_path)
         source_sacg_sha256 = ""
         if source_sacg_path.is_file():
-            source_sacg_bytes = source_sacg_path.read_bytes()
-            source_sacg_sha256 = hashlib.sha256(source_sacg_bytes).hexdigest()
+            source_digest = hashlib.sha256()
+            with source_sacg_path.open("rb") as source_file:
+                for chunk in iter(lambda: source_file.read(1024 * 1024), b""):
+                    source_digest.update(chunk)
+            source_sacg_sha256 = source_digest.hexdigest()
             snapshot_path = (
                 stage_dir
                 / "flow_handoff_sources"
-                / f"{event_index:03d}_{source_sacg_sha256}.json"
+                / f"{source_sacg_sha256}.json.gz"
             )
             snapshot_path.parent.mkdir(parents=True, exist_ok=True)
             if not snapshot_path.exists():
-                snapshot_path.write_bytes(source_sacg_bytes)
+                fd, temporary_name = tempfile.mkstemp(
+                    dir=snapshot_path.parent,
+                    prefix=f".{source_sacg_sha256}.",
+                    suffix=".tmp",
+                )
+                os.close(fd)
+                try:
+                    with source_sacg_path.open("rb") as source_file, gzip.open(
+                        temporary_name, "wb", compresslevel=1
+                    ) as snapshot_file:
+                        shutil.copyfileobj(source_file, snapshot_file, length=1024 * 1024)
+                    os.replace(temporary_name, snapshot_path)
+                finally:
+                    try:
+                        os.unlink(temporary_name)
+                    except FileNotFoundError:
+                        pass
             event["source_sacg_state"] = original_source_sacg_state
             event["sacg_state"] = str(snapshot_path.resolve())
         flow_controller_result = Path(
@@ -575,6 +606,16 @@ class TopAgent:
             ],
         }
         stage_input = stage_inputs.get(stage, self.out)
+        if stage == "debug_loop":
+            evidence_hash = self.file_tree_hash([stage_input])
+            validation_policy = os.environ.get(
+                "SPATIALACC_VERIFICATION_POLICY", "vcs_compile_only"
+            )
+            if validation_policy != "full_semantic_simulation":
+                return evidence_hash
+            return hashlib.sha256(
+                f"{evidence_hash}\0{validation_policy}".encode("utf-8")
+            ).hexdigest()
         if isinstance(stage_input, list):
             return self.file_tree_hash(stage_input)
         return self.file_tree_hash([stage_input])
@@ -665,9 +706,26 @@ class TopAgent:
         module: str,
         report_path: Path,
         sacg_state: Path | None = None,
+        source_state: Path | None = None,
     ) -> StageResult | None:
         if not self.resume_enabled():
             return None
+        if source_state is not None and source_state.is_file():
+            try:
+                source = read_json(source_state)
+            except Exception:
+                return None
+            memory = source.get("memory", {}) if isinstance(source.get("memory"), dict) else {}
+            for request in memory.get("backtrack_requests", []):
+                if not isinstance(request, dict) or request.get("status") != "open":
+                    continue
+                if not is_evidence_supported_design_backtrack(request):
+                    continue
+                target = self.stage_key_for_target(
+                    str(request.get("target_stage") or ""), [stage]
+                )
+                if target == stage:
+                    return None
         checkpoint_path = self.checkpoint_path(stage)
         if not checkpoint_path.exists() or not report_path.exists():
             return None
@@ -888,6 +946,11 @@ class TopAgent:
                 "framework_never_terminates_a_valid_llm_repair_or_replan_loop": True,
             },
         }
+        experiment_profile = active_accord_experiment_profile()
+        if experiment_profile == "B0":
+            inputs = without_design_graph_context(inputs)
+        elif experiment_profile == "B2":
+            inputs = without_guided_repair_context(inputs)
         with temporary_env(self.tool_env):
             record = run_stage_agent(
                 agent="flow_controller_agent",
@@ -1018,6 +1081,11 @@ class TopAgent:
                     "target_index": current_index,
                 })
                 return current_index, sacg_state, event
+            if result.passed and target_index == current_index:
+                deferred_backtracks.append(
+                    {"id": latest.get("id"), "target_stage": target}
+                )
+                continue
             if target_index > current_index:
                 deferred_backtracks.append(
                     {"id": latest.get("id"), "target_stage": target}
@@ -1104,7 +1172,7 @@ class TopAgent:
 
         if result.passed:
             next_index = current_index + 1
-            event.update({"decision": "proceed", "reason": "stage passed and no open backtrack request"})
+            event.update({"decision": "proceed", "reason": "stage passed with no unresolved earlier-stage backtrack"})
             return (next_index if next_index < len(stage_specs) else None), sacg_state, event
 
         retries = open_items("retry_requests")
@@ -1273,6 +1341,7 @@ class TopAgent:
                 module=module,
                 report_path=report_path,
                 sacg_state=expected_state,
+                source_state=sacg_state,
             )
             if stage_result is None:
                 if name == "input_preparation":

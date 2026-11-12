@@ -67,6 +67,50 @@ class DseCalibrationTest(unittest.TestCase):
                         self.assertIsNone(dse_calibration.publish_sample(root / "run", invalid))
                 self.assertEqual(dse_calibration.load_samples(), [])
 
+    def test_publishes_only_complete_rtl_counter_as_cycle_calibration(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            report = self.make_report(root / "run")
+            report["performance_model"] = "synthesizable_dut_counter"
+            report["performance_estimation"] = {
+                **report["performance_estimation"],
+                "counter_source": "synthesizable_dut_counter",
+                "rtl_cycles_measured": True,
+                "measurement_complete": True,
+                "count_is_latency": True,
+            }
+            report["performance_tokens_per_second"] = (
+                report["performance_estimation"]["processed_tokens"]
+                * report["clock_frequency_mhz"] * 1_000_000
+                / report["performance_estimation"]["latency_cycles"]
+            )
+            with patch.object(dse_calibration, "SAMPLE_DIR", root / "samples"):
+                path = dse_calibration.publish_sample(root / "run", report)
+                self.assertIsNotNone(path)
+                sample = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(sample["cycle_evidence"]["kind"], "rtl_counter")
+            self.assertTrue(sample["performance_estimation"]["rtl_cycles_measured"])
+            self.assertEqual(
+                sample["performance_estimation"]["synthesis_source_archive_sha256"],
+                report["performance_estimation"]["synthesis_source_archive_sha256"],
+            )
+
+    def test_rejects_bounded_timeout_counter_from_cycle_calibration(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            report = self.make_report(root / "run")
+            report["performance_model"] = "synthesizable_dut_counter"
+            report["performance_estimation"] = {
+                **report["performance_estimation"],
+                "counter_source": "synthesizable_dut_counter",
+                "rtl_cycles_measured": False,
+                "measurement_complete": False,
+                "count_is_latency": False,
+            }
+            with patch.object(dse_calibration, "SAMPLE_DIR", root / "samples"):
+                self.assertIsNone(dse_calibration.publish_sample(root / "run", report))
+                self.assertEqual(dse_calibration.load_samples(), [])
+
     def test_loader_ignores_broken_or_wrong_model_samples(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

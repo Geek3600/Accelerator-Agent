@@ -13,10 +13,10 @@ from accagent.framework.numeric_policy import canonical_dtype
 from accagent.framework.dse_ledger import candidate_fingerprint, candidate_id, ledger_path, load_latest, measurement_summary
 from accagent.framework.dse_candidates import physical_candidate_tuples
 from accagent.framework.dse_calibration import load_samples
-from accagent.framework.dse_estimator import MODEL as ESTIMATOR_MODEL, RESOURCE_HEADROOM_FRACTION, cost_features, estimate, linear_schedule_id, rank_candidates, validation_report
+from accagent.framework.dse_estimator import MODEL as ESTIMATOR_MODEL, RESOURCE_HEADROOM_FRACTION, cost_features, estimate, linear_schedule_id, rank_candidates, source_schedule_blockers, validation_report
 from accagent.framework.stage_input_common import DEFAULT_TEMPLATE_DIR
 from accagent.framework.dse_materialization import validate_candidate_universe
-from accagent.framework.sacg_store import SACGStore
+from accagent.framework.sacg_store import SACGStore, utc_now
 from accagent.framework.sacg_utils import (
     add_constraint,
     add_invariant,
@@ -74,6 +74,7 @@ DSE_OVERRIDE_KEYS = (
     "cache_tile_count",
     "cache_refill_data_width_bits",
     "cross_token_reuse_tokens",
+    "attention_output_cross_token_reuse_tokens",
 )
 
 DSE_NEXT_EXACT_MEASUREMENT_STATUS = "next_exact_measurement_selected"
@@ -540,6 +541,9 @@ def architecture_candidate_space(search: dict[str, Any], weight_roles: set[str])
         "cache_tile_count": candidate_values(search.get("cache_tile_count", [2]), 2),
         "cache_refill_data_width_bits": selected_refill_widths,
         "cross_token_reuse_tokens": candidate_values(search.get("cross_token_reuse_tokens", [4, 8, 16]), 16),
+        "attention_output_cross_token_reuse_tokens": candidate_values(
+            search.get("attention_output_cross_token_reuse_tokens", [1]), 1,
+        ),
         "physical_weight_layouts": declared_weight_layout_candidates(search, weight_banks, weight_roles),
         "excluded_until_hardware_binding": [
             "burst_beats",
@@ -565,13 +569,14 @@ def candidate_parameter_points(search: dict[str, Any], weight_roles: set[str]) -
 
     space = architecture_candidate_space(search, weight_roles)
     raw: list[dict[str, Any]] = []
-    for physical, layout, cache_tile_words, cache_tile_count, refill_width, reuse_tokens in product(
+    for physical, layout, cache_tile_words, cache_tile_count, refill_width, reuse_tokens, attention_output_reuse_tokens in product(
         space["physical_candidate_tuples"],
         space["physical_weight_layouts"],
         space["cache_tile_words"],
         space["cache_tile_count"],
         space["cache_refill_data_width_bits"],
         space["cross_token_reuse_tokens"],
+        space["attention_output_cross_token_reuse_tokens"],
     ):
         point = {
             **physical,
@@ -580,6 +585,7 @@ def candidate_parameter_points(search: dict[str, Any], weight_roles: set[str]) -
             "cache_tile_count": cache_tile_count,
             "cache_refill_data_width_bits": refill_width,
             "cross_token_reuse_tokens": reuse_tokens,
+            "attention_output_cross_token_reuse_tokens": attention_output_reuse_tokens,
             **{
                 **PHYSICAL_IMPLEMENTATION,
                 "compute_backend": str(search.get("compute_backend") or PHYSICAL_IMPLEMENTATION["compute_backend"]),
@@ -658,6 +664,9 @@ def fallback_params(shape: dict[str, Any], numeric: dict[str, Any], search: dict
         "numeric_policy_id": numeric.get("policy_id"),
         "cache_refill_data_width_bits": supported_refill_widths(search)[0],
         "cross_token_reuse_tokens": first_value(search, "cross_token_reuse_tokens", 16),
+        "attention_output_cross_token_reuse_tokens": first_value(
+            search, "attention_output_cross_token_reuse_tokens", 1,
+        ),
     }
 
 
@@ -699,6 +708,10 @@ def bind_stage_params(
         "activation_banks": (selected_architecture or {}).get("activation_banks", defaults["activation_banks"]),
         "cache_refill_data_width_bits": (selected_architecture or {}).get("cache_refill_data_width_bits", supported_refill_widths(search)[0]),
         "cross_token_reuse_tokens": (selected_architecture or {}).get("cross_token_reuse_tokens", defaults.get("cross_token_reuse_tokens", 16)),
+        "attention_output_cross_token_reuse_tokens": (selected_architecture or {}).get(
+            "attention_output_cross_token_reuse_tokens",
+            defaults.get("attention_output_cross_token_reuse_tokens", 1),
+        ),
         "burst_beats": (selected_architecture or {}).get("burst_beats", defaults["burst_beats"]),
         "pipeline_depth": (selected_architecture or {}).get("pipeline_depth", defaults["pipeline_depth"]),
         "clock_target_mhz": defaults["clock_target_mhz"],
@@ -1298,6 +1311,35 @@ def measured_dominates(left: dict[str, Any], right: dict[str, Any]) -> bool:
     )
 
 
+def apply_candidate_schedule_gate(
+    record: dict[str, Any],
+    parameters: dict[str, Any],
+    workload: dict[str, Any],
+    terms: list[dict[str, Any]],
+    *,
+    linear_source: str | None = None,
+    attention_source: str | None = None,
+) -> list[dict[str, Any]]:
+    """Apply liveness eligibility before fallible resource/latency estimation."""
+    blockers = source_schedule_blockers(
+        parameters,
+        workload,
+        terms,
+        linear_source=linear_source,
+        attention_source=attention_source,
+    )
+    if blockers:
+        record["feasible"] = False
+        errors = list(record.get("hard_constraint_errors", []))
+        for blocker in blockers:
+            reason = blocker.get("reason", "source schedule has no finite completion")
+            message = f"DSE source schedule is blocked: {reason}"
+            if message not in errors:
+                errors.append(message)
+        record["hard_constraint_errors"] = errors
+    return blockers
+
+
 def build_dse_search(state: dict[str, Any], run_dir: Path | None = None) -> dict[str, Any]:
     design_space = dict(constraint_facts(state, "constraint.arch.design_space"))
     from accagent.framework.stage_input import current_task_qor_targets
@@ -1322,18 +1364,19 @@ def build_dse_search(state: dict[str, Any], run_dir: Path | None = None) -> dict
     declared_campaign_policy = search.get("campaign_array_policy", {})
     if not isinstance(declared_campaign_policy, dict):
         declared_campaign_policy = {}
-    # This is the current campaign policy, not a model-specific template
-    # dimension. Keep the reduced 16x32 trial as the only admitted array point
-    # while preserving unrelated policy annotations supplied by the design
-    # space. Arrays at or above 1024 positions remain deferred.
+    # Keep the current campaign defaults unless this run explicitly supplies
+    # its own array-trial policy. This lets a later accepted design revision
+    # narrow the candidate geometry without changing the default search.
     search["campaign_array_policy"] = {
-        **declared_campaign_policy,
         **campaign_array_defaults,
+        **declared_campaign_policy,
     }
     plan = read_json(artifact_path(state, "artifact.stage3.pipeline_plan"))
     weight_roles = set(weight_role_capacity_bits(plan))
     template_dir = Path(constraint_facts(state, "constraint.template.library").get("template_dir") or DEFAULT_TEMPLATE_DIR)
     linear_source = (template_dir / "Linear.scala").read_text(encoding="utf-8") if (template_dir / "Linear.scala").is_file() else None
+    attention_source = (template_dir / "Attention.scala").read_text(encoding="utf-8") if (template_dir / "Attention.scala").is_file() else None
+    norm_source = (template_dir / "Norm.scala").read_text(encoding="utf-8") if (template_dir / "Norm.scala").is_file() else None
     measurements = load_latest(ledger_path(run_dir or artifact_path(state, "artifact.stage3.pipeline_plan").resolve().parents[1]), linear_schedule=linear_schedule_id(linear_source))
     calibration = load_samples()
     decoder = constraint_facts(state, "constraint.model.decoder")
@@ -1366,23 +1409,46 @@ def build_dse_search(state: dict[str, Any], run_dir: Path | None = None) -> dict
             record,
             board.get("resource_budget", {}) if isinstance(board.get("resource_budget"), dict) else {},
         )
+        feature_parameters = {
+            **PHYSICAL_IMPLEMENTATION,
+            **parameters,
+            "elem_bits": dtype_bits(numeric.get("activation_dtype"), 16),
+            "activation_bits": dtype_bits(numeric.get("activation_dtype"), 16),
+            "scale_bits": dtype_bits(numeric.get("scale_dtype"), 32),
+            "rounding": numeric.get("rounding"),
+            "saturation": numeric.get("saturation"),
+            "scale_shift": 31 if numeric_compute_backend({"default_rules": numeric}) == "integer_dsp" else 0,
+        }
+        weight_terms = semantic_weight_storage_terms(plan)
+        apply_candidate_schedule_gate(
+            record,
+            feature_parameters,
+            workload,
+            weight_terms,
+            linear_source=linear_source,
+            attention_source=attention_source,
+        )
         try:
             features = cost_features(
-                {
-                    **PHYSICAL_IMPLEMENTATION,
-                    **parameters,
-                    "elem_bits": dtype_bits(numeric.get("activation_dtype"), 16),
-                    "activation_bits": dtype_bits(numeric.get("activation_dtype"), 16),
-                    "scale_bits": dtype_bits(numeric.get("scale_dtype"), 32),
-                    "rounding": numeric.get("rounding"),
-                    "saturation": numeric.get("saturation"),
-                    "scale_shift": 31 if numeric_compute_backend({"default_rules": numeric}) == "integer_dsp" else 0,
-                },
-                workload, semantic_weight_storage_terms(plan), str(plan.get("model_type", "")), str(board.get("fpga_part", "")),
+                feature_parameters,
+                workload, weight_terms, str(plan.get("model_type", "")), str(board.get("fpga_part", "")),
                 linear_source=linear_source,
+                attention_source=attention_source,
+                norm_source=norm_source,
             )
             record["structural_cost_proxy"] = features["proxies"]
             record["resource_lower_bounds"] = features["resource_lower_bounds"]
+            if features["proxies"].get("cycle_model_status") == "blocked":
+                blockers = features["proxies"].get("cycle_model_blockers", [])
+                if blockers:
+                    apply_candidate_schedule_gate(
+                        record,
+                        feature_parameters,
+                        workload,
+                        weight_terms,
+                        linear_source=linear_source,
+                        attention_source=attention_source,
+                    )
             record["materialized_refill_service"] = {
                 "cache_refill_data_width_bits": int(parameters["cache_refill_data_width_bits"]),
                 "materialized_refill_rate_bits_per_cycle": int(
@@ -1571,6 +1637,7 @@ def dse_llm_candidate_record(record: dict[str, Any]) -> dict[str, Any]:
                 "cache_tile_count",
                 "cache_refill_data_width_bits",
                 "cross_token_reuse_tokens",
+                "attention_output_cross_token_reuse_tokens",
             )
             if parameters.get(key) is not None
         },
@@ -1598,6 +1665,71 @@ def dse_llm_candidate_record(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _dse_llm_encode_column(values: list[Any]) -> dict[str, Any]:
+    """Dictionary-encode repeated candidate facts without dropping information."""
+
+    dictionary: list[Any] = []
+    indices: list[int] = []
+    lookup: dict[str, int] = {}
+    for value in values:
+        key = json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+        index = lookup.get(key)
+        if index is None:
+            index = len(dictionary)
+            lookup[key] = index
+            dictionary.append(value)
+        indices.append(index)
+    if len(dictionary) == 1:
+        return {"shared": dictionary[0]}
+    return {"value_dictionary": dictionary, "row_indices": indices}
+
+
+def dse_llm_candidate_table(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Encode every selector-visible candidate field as aligned columns."""
+
+    projected = [
+        dse_llm_candidate_record(record)
+        for record in records
+        if isinstance(record, dict)
+    ]
+    parameter_names = sorted(
+        {
+            key
+            for candidate in projected
+            for key in candidate.get("parameters", {})
+        }
+    )
+    fact_names = sorted(
+        {
+            key
+            for candidate in projected
+            for key in candidate
+            if key not in {"candidate_id", "parameters"}
+        }
+    )
+    return {
+        "schema_version": "spatialaccagent.stage4_dse_candidate_table.v1",
+        "candidate_count": len(projected),
+        "candidate_ids": [candidate.get("candidate_id") for candidate in projected],
+        "column_encoding": (
+            "Columns align by candidate_ids index. A shared value applies to every row; "
+            "otherwise value_dictionary[row_indices[i]] is the exact value for row i."
+        ),
+        "parameter_columns": {
+            key: _dse_llm_encode_column(
+                [candidate.get("parameters", {}).get(key) for candidate in projected]
+            )
+            for key in parameter_names
+        },
+        "candidate_fact_columns": {
+            key: _dse_llm_encode_column(
+                [candidate.get(key) for candidate in projected]
+            )
+            for key in fact_names
+        },
+    }
+
+
 def dse_llm_selection_evidence(
     dse: dict[str, Any],
     eligible_records: list[dict[str, Any]],
@@ -1607,9 +1739,29 @@ def dse_llm_selection_evidence(
 
     search_space = dse.get("search_space", {})
     search_space = search_space if isinstance(search_space, dict) else {}
+    ranked_ids = dse.get("estimated_ranked_candidate_ids", [])
+    ranked_ids = ranked_ids if isinstance(ranked_ids, list) else []
+    rank_order = {str(candidate_id): index for index, candidate_id in enumerate(ranked_ids)}
+
+    def ranked_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        indexed = [(index, record) for index, record in enumerate(records) if isinstance(record, dict)]
+        return [
+            record
+            for _, record in sorted(
+                indexed,
+                key=lambda pair: (
+                    rank_order.get(str(pair[1].get("candidate_id")), len(rank_order) + pair[0]),
+                    pair[0],
+                ),
+            )
+        ]
+
+    ordered_eligible = ranked_records(eligible_records)
+    ordered_pareto = ranked_records(pareto_records)
     return {
         "schema_version": "spatialaccagent.stage4_dse_llm_selection_evidence.v1",
         "candidate_count": dse.get("candidate_count"),
+        "eligible_candidate_count": len(ordered_eligible),
         "qor_targets": dse.get("qor_targets", {}),
         "resource_budget": dse.get("resource_budget", {}),
         "selection_objective": "Meet throughput and clock targets within resource budgets while retaining at least 15% measured resource headroom for final candidates, then maximize tokens per second; resource minimization is only a tie-breaker.",
@@ -1633,21 +1785,17 @@ def dse_llm_selection_evidence(
                 "cache_tile_count",
                 "cache_refill_data_width_bits",
                 "cross_token_reuse_tokens",
+                "attention_output_cross_token_reuse_tokens",
             )
         },
-        "eligible_candidates": [
-            dse_llm_candidate_record(record)
-            for record in eligible_records
-            if isinstance(record, dict)
-        ],
-        "measured_pareto_candidates": [
-            dse_llm_candidate_record(record)
-            for record in pareto_records
-            if isinstance(record, dict)
-        ],
+        "candidate_ordering": (
+            "Rows are ordered by estimated_ranked_candidate_ids, followed by eligible rows "
+            "not present in that ranking; columns align with candidate_ids."
+        ),
+        "eligible_candidate_table": dse_llm_candidate_table(ordered_eligible),
+        "measured_pareto_candidate_table": dse_llm_candidate_table(ordered_pareto),
         "qor_calibration_samples": dse.get("qor_calibration_samples", []),
         "qor_estimator": dse.get("qor_estimator", {}),
-        "estimated_ranked_candidate_ids": dse.get("estimated_ranked_candidate_ids", []),
         "policy": {
             "candidate_ids_and_parameters_are_complete_for_selection": True,
             "eligible_candidates_are_the_only_selectable_candidates": True,
@@ -1802,6 +1950,10 @@ def build_parameter_bindings(state: dict[str, Any], selected_architecture: dict[
             "cross_token_reuse_tokens": selected_architecture.get(
                 "cross_token_reuse_tokens", first_value(search, "cross_token_reuse_tokens", 16)
             ),
+            "attention_output_cross_token_reuse_tokens": selected_architecture.get(
+                "attention_output_cross_token_reuse_tokens",
+                first_value(search, "attention_output_cross_token_reuse_tokens", 1),
+            ),
             "weight_banks_by_role": weight_layout["weight_banks_by_role"],
             "burst_beats": selected_architecture.get("burst_beats", first_value(search, "burst_beats", 1)),
             "pipeline_depth": selected_architecture.get("pipeline_depth", first_value(search, "pipeline_depth", 1)),
@@ -1829,6 +1981,7 @@ def build_parameter_bindings(state: dict[str, Any], selected_architecture: dict[
             "activation_banks": "physical XPM activation-bank parameter retained across DSE backtracks",
             "cache_tile_words": "actual bounded weight-cache logical words per cache set; materialized into WeightTileCache XPM depth",
             "cache_tile_count": "actual bounded weight-cache tile slots per active/shadow bank; materialized into WeightTileCache",
+            "attention_output_cross_token_reuse_tokens": "attention's internal output projection token chunk; separately bound because row completion waits for this projection",
             "burst_beats": "generator compatibility default; excluded from DSE until it changes generated board behavior",
             "pipeline_depth": "generator compatibility default; excluded from DSE until it changes generated hardware",
             "clock_target_mhz": "board shell clock is unknown unless non-null; this is not timing evidence",
@@ -1914,6 +2067,38 @@ def stage4_llm_errors(
     if stage4_measurement_request_ready(output, selected_architecture, campaign_complete):
         return []
     return stage_worker_errors(output, memory_truth)
+
+
+def close_resolved_empty_dse_backtracks(
+    store: SACGStore,
+    *,
+    transition_id: str,
+    selected_candidate_id: str,
+) -> int:
+    """Close Stage-4 empty-candidate backtracks only after an eligible binding exists."""
+    if not selected_candidate_id:
+        return 0
+    memory = store.state.setdefault("memory", {})
+    closed = 0
+    for request in memory.get("backtrack_requests", []):
+        if not isinstance(request, dict) or request.get("status") != "open":
+            continue
+        if (
+            request.get("stage") != "stage4.parameter_binding"
+            or request.get("target_stage") != "stage3.pipeline_planning"
+            or request.get("verification_scope") != "formal_dse_campaign"
+            or "stage4_dse_candidate_eligibility" not in request.get("failed_gates", [])
+        ):
+            continue
+        request["status"] = "closed"
+        request["closed_at"] = utc_now()
+        request["closed_by_transition"] = transition_id
+        request["resolution_summary"] = (
+            "Stage-4 reevaluated the candidate universe and promoted an eligible binding "
+            f"for candidate {selected_candidate_id}."
+        )
+        closed += 1
+    return closed
 
 
 def update_sacg(
@@ -2127,8 +2312,163 @@ def update_sacg(
         next_actions=[] if not errors else ["retry stage4.parameter_binding before Stage5 code generation"],
         retryable=bool(errors),
     )
+    if not errors and checks.get("status") == "pass":
+        close_resolved_empty_dse_backtracks(
+            store,
+            transition_id=transition["id"],
+            selected_candidate_id=str(selected_architecture.get("candidate_id") or ""),
+        )
     store.save()
     return transition["id"]
+
+
+def record_empty_dse_eligibility_backtrack(
+    store: SACGStore,
+    constraint_report: dict[str, Any],
+    *,
+    constraint_report_path: Path,
+    candidate_records_path: Path,
+) -> dict[str, Any] | None:
+    """Route a fully evidenced empty legal DSE set back to pipeline planning."""
+
+    policy = constraint_report.get("policy", {})
+    policy = policy if isinstance(policy, dict) else {}
+    try:
+        candidate_count = int(constraint_report.get("candidate_count", 0) or 0)
+        feasible_count = int(constraint_report.get("feasible_candidate_count", -1))
+    except (TypeError, ValueError):
+        return None
+    blocked = constraint_report.get("infeasible_candidates", [])
+    if (
+        constraint_report.get("status") != "fail"
+        or candidate_count <= 0
+        or feasible_count != 0
+        or len(blocked) != candidate_count
+        or policy.get("candidate_universe_is_complete_and_unsampled") is not True
+        or policy.get("deterministic_evaluator_enforces_hard_constraints") is not True
+    ):
+        return None
+
+    failures: list[str] = []
+    for candidate in blocked:
+        if not isinstance(candidate, dict):
+            return None
+        candidate_errors = candidate.get("hard_constraint_errors", [])
+        if not isinstance(candidate_errors, list) or not candidate_errors:
+            return None
+        failures.extend(str(error) for error in candidate_errors if str(error).strip())
+    if not failures:
+        return None
+
+    unique_failures = list(dict.fromkeys(failures))
+    reason = (
+        f"Deterministic Stage-4 DSE rejected all {candidate_count} candidates under the "
+        f"complete hard-constraint projection; pipeline planning must resolve the "
+        f"earliest infeasible design contract. First rejection: {unique_failures[0]}"
+    )
+    return store.record_backtrack_request(
+        stage="stage4.parameter_binding",
+        target_stage="stage3.pipeline_planning",
+        reason=reason,
+        missing_or_invalid_contracts=unique_failures[:8],
+        evidence=[str(constraint_report_path), str(candidate_records_path)],
+        context={
+            "verification_scope": "formal_dse_campaign",
+            "failed_gates": ["stage4_dse_candidate_eligibility"],
+        },
+    )
+
+
+def write_empty_dse_failure_report(
+    *,
+    source_state: Path,
+    state_path: Path,
+    report_path: Path,
+    constraint_report: dict[str, Any],
+    constraint_report_path: Path,
+    candidate_records_path: Path,
+    dse_search_path: Path,
+    dse_pareto_path: Path,
+    dse_measurements_path: Path,
+    llm: dict[str, Any],
+) -> tuple[Path, dict[str, Any]]:
+    """Persist empty-universe evidence and route only a proven design failure."""
+
+    copy_state(source_state, state_path)
+    store = SACGStore(state_path)
+    request = record_empty_dse_eligibility_backtrack(
+        store,
+        constraint_report,
+        constraint_report_path=constraint_report_path,
+        candidate_records_path=candidate_records_path,
+    )
+    error = (
+        "Stage4 DSE has no eligible candidate for exact measurement or final Pareto selection"
+    )
+    if request is not None:
+        store.record_failure_lesson(
+            stage="stage4.parameter_binding",
+            failure_class="dse_empty_eligible_set",
+            summary=request["reason"],
+            violated_constraints=request["missing_or_invalid_contracts"],
+            artifacts=["artifact.stage4.dse_constraint_report", "artifact.stage4.dse_candidate_records"],
+            recommended_action="Replan the earliest infeasible pipeline contract, then rerun Stage4 against the newly evaluated candidate universe.",
+            retry_scope="upstream_replan",
+        )
+        next_actions = ["stage3.pipeline_planning"]
+    else:
+        store.record_retry_request(
+            stage="stage4.parameter_binding",
+            reason="Stage4 produced no eligible candidate with incomplete or inconclusive hard-constraint evidence",
+            target_stage="stage4.parameter_binding",
+            required_inputs=["complete candidate universe", "deterministic hard-constraint report"],
+            blocked_artifacts=["artifact.stage4.parameter_binding", "artifact.stage4.selected_architecture"],
+        )
+        next_actions = ["retry stage4.parameter_binding after repairing or regenerating its evidence"]
+    store.record_stage_outcome(
+        stage="stage4.parameter_binding",
+        status="incomplete",
+        transition_id=None,
+        summary=error,
+        errors=[error],
+        artifacts=["artifact.stage4.dse_constraint_report", "artifact.stage4.dse_candidate_records"],
+        next_actions=next_actions,
+        retryable=True,
+    )
+    store.save()
+
+    outputs = {
+        "dse_search_space": str(dse_search_path),
+        "dse_candidate_records": str(candidate_records_path),
+        "dse_constraint_report": str(constraint_report_path),
+        "dse_pareto_frontier": str(dse_pareto_path),
+        "dse_measurements": str(dse_measurements_path),
+        "sacg_state": str(state_path),
+        "llm_agent": str(llm.get("result_path") or ""),
+    }
+    report = {
+        "schema_version": "spatialaccagent.parameter_binding_report.v0",
+        "stage": "parameter_binding",
+        "status": "incomplete",
+        "source_sacg_state": str(source_state),
+        "outputs": outputs,
+        "llm_agent": llm.get("output", {}),
+        "llm_executable_actions": (llm.get("output") or {}).get("executable_actions", []),
+        "formal_dse_campaign": {
+            "status": "blocked_empty_legal_set",
+            "campaign_complete": False,
+            "eligible_candidate_count": 0,
+            "selected_candidate_requires_exact_measurement": False,
+        },
+        "dse_constraint_summary": {
+            "candidate_count": constraint_report.get("candidate_count"),
+            "feasible_candidate_count": constraint_report.get("feasible_candidate_count"),
+            "backtrack_request_id": request.get("id") if request else None,
+        },
+        "errors": [error],
+    }
+    write_json(report_path, report)
+    return report_path, report
 
 
 def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
@@ -2177,11 +2517,11 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 "cache_tile_count",
                 "cache_refill_data_width_bits",
                 "cross_token_reuse_tokens",
+                "attention_output_cross_token_reuse_tokens",
             )
         },
         "candidate_count": dse["candidate_count"],
         "measurement_summary": dse["measurement_summary"],
-        "unmeasured_candidate_ids": dse["unmeasured_candidate_ids"],
         "materialized_refill_rate_contract": dse.get("materialized_refill_rate_contract", {}),
         "policy": dse["policy"],
         "measurement_ledger": str(dse_measurements_path),
@@ -2246,10 +2586,8 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             "dse_selection_evidence": selection_evidence,
             "formal_dse_campaign": {
                 "campaign_complete": campaign_complete,
-                "eligible_candidate_ids": eligible_candidate_ids,
                 "eligible_candidate_count": len(eligible_records),
                 "measured_pareto_frontier": {
-                    "candidate_ids": dse.get("pareto_candidate_ids", []),
                     "candidate_count": len(pareto_records),
                 },
             },
@@ -2270,9 +2608,22 @@ def bind_parameters(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             "Treat resource_budget as capacity constraints, not a resource-minimization objective. Prioritize candidates expected to meet qor_targets, then maximize end-to-end tokens per second. A higher clock alone does not compensate for more cycles: throughput equals processed_tokens * achieved_clock_hz / total_cycles. Do not prefer a tiny array just because it saves resources or is easier to compile. With insufficient calibration, use structural cycle priority to explore useful parallelism within the budget; do not default to candidate-ID order. Final measured selection must prefer a budget-fitting target-meeting Pareto candidate whenever one exists; use resource or power savings only to break comparable-performance ties.",
             "The deterministic evaluator owns legality and hardware-effective parameter filtering; do not modify candidate parameters or claim a hardware pass before measurement.",
             "Each eligible candidate's qor_estimate is produced by the calibrated structural estimator, not by this LLM. Use estimated_ranked_candidate_ids to prioritize the next measurement. When qor_estimate is insufficient_evidence, the order uses uncalibrated structural cycle/resource proxies only; treat it as measurement priority, never as QoR or feasibility evidence. Do not invent or override estimates. Calibrated estimates cannot prove feasibility or Pareto membership; inspect leave-one-source-out errors and sensitivity bounds, especially for cross-model extrapolation. Current source-bound synthesis results automatically recalibrate subsequent estimates.",
-            "dse_selection_evidence is the complete current candidate decision set; use its candidate_id and parameters directly. Do not claim that the candidate universe or measurement status is absent merely because full evaluator records are stored on disk.",
+            "dse_selection_evidence.eligible_candidate_table is the complete current selectable set. Its candidate_ids are exact, and every parameter and decision fact is preserved in the index-aligned columns using the declared shared-value or value_dictionary encoding. Candidate rows follow estimated priority; use dse_search_space.estimated_ranked_candidate_ids for rank and never claim that candidates or measurement states are missing.",
         ],
     )
+    if not eligible_records:
+        return write_empty_dse_failure_report(
+            source_state=source_state,
+            state_path=state_path,
+            report_path=report_path,
+            constraint_report=dse_constraint_report,
+            constraint_report_path=dse_constraint_path,
+            candidate_records_path=dse_records_path,
+            dse_search_path=dse_search_path,
+            dse_pareto_path=dse_pareto_path,
+            dse_measurements_path=dse_measurements_path,
+            llm=llm,
+        )
     selected_architecture, selection_rationale = select_dse_candidate(dse, llm["output"])
     measurement_request_ready = stage4_measurement_request_ready(
         llm["output"],

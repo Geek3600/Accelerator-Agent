@@ -735,6 +735,51 @@ class DomainRepairFlowTests(unittest.TestCase):
 
 
 class ProgressiveSelectorTests(unittest.TestCase):
+    def test_reducer_accepts_map_schema_alias_without_coverage_claims(self) -> None:
+        output = {
+            "schema_version": impl.SELECTION_MAP_SCHEMA_VERSION,
+            "status": "pass",
+            "candidate_cells": [],
+            "candidate_wrapper_sources": [],
+            "candidate_relevant_sources": [],
+            "candidate_replacement_sources": [],
+            "findings": [],
+            "blockers": [],
+        }
+        record = {"output": output}
+
+        normalized, errors = impl._validate_selection_reduce_record(
+            record, {"object_ids": [], "source_ids": []}, [], set(), set()
+        )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            normalized["schema_version"], impl.SELECTION_REDUCE_SCHEMA_VERSION
+        )
+
+    def test_reducer_map_schema_alias_does_not_allow_map_coverage_claims(self) -> None:
+        output = {
+            "schema_version": impl.SELECTION_MAP_SCHEMA_VERSION,
+            "status": "pass",
+            "reviewed_object_ids": ["cell:invented"],
+            "reviewed_source_ids": [],
+            "candidate_cells": [],
+            "candidate_wrapper_sources": [],
+            "candidate_relevant_sources": [],
+            "candidate_replacement_sources": [],
+            "findings": [],
+            "blockers": [],
+        }
+        record = {"output": output}
+
+        _, errors = impl._validate_selection_reduce_record(
+            record, {"object_ids": [], "source_ids": []}, [], set(), set()
+        )
+
+        self.assertIn(
+            "progressive selector returned an unsupported reduction schema", errors
+        )
+
     def test_selected_source_review_can_precede_exclusive_replacement_proof(self) -> None:
         facts = {"objects": [{"object_id": "cell:slot", "kind": "cell"}]}
         sources = [{"source_id": "source:wrapper"}]
@@ -1227,6 +1272,15 @@ class ProgressiveSelectorTests(unittest.TestCase):
             self.assertNotIn("reviewed_object_ids", final_text)
             self.assertNotIn("reviewed_source_ids", final_text)
             self.assertTrue(final_inputs["complete_coverage"]["all_fact_and_source_units_reviewed"])
+            final_selector = next(
+                call
+                for call in calls
+                if call["agent"] == "exact_board_interface_selector_agent"
+            )
+            relevant_source_items = final_selector["output_schema"]["properties"][
+                "relevant_sample_source_ids"
+            ]["items"]
+            self.assertNotIn("enum", relevant_source_items)
             ledger_ref = record["progressive_selection"]["coverage_ledger"]
             ledger_path = Path(ledger_ref["path"])
             self.assertTrue(ledger_path.is_file())
@@ -1358,6 +1412,39 @@ class ProgressiveSelectorTests(unittest.TestCase):
 
 
 class DomainSourceReviewTests(unittest.TestCase):
+    def test_source_metadata_binding_does_not_hide_semantic_or_transport_errors(self) -> None:
+        context = {
+            "source_id": "source:one", "segment_id": "segment:one",
+            "sha256": "a" * 64, "segment_text_sha256": "b" * 64,
+            "text_encoding": "utf-8", "start_line": 1, "end_line": 5,
+            "start_byte": 0, "end_byte": 80,
+        }
+        record = {
+            "error": "deterministic board source-review validation failed: stale hash",
+            "output": {
+                "schema_version": impl.DOMAIN_SOURCE_REVIEW_SCHEMA_VERSION,
+                "status": "pass", "reviewed_source_ids": ["source:one"],
+                "reviewed_segment_ids": ["segment:one"],
+                "source_summaries": [{
+                    "source_id": "source:one", "segment_id": "segment:one",
+                    "sha256": "mistyped", "start_line": 99,
+                    "summary": "LLM source semantics retained", "findings": [],
+                }],
+                "cross_source_findings": [], "blockers": [],
+            },
+        }
+        output, errors = impl._validate_source_review_record(record, [context])
+        self.assertEqual(errors, [])
+        self.assertEqual(output["source_summaries"][0]["sha256"], context["sha256"])
+        self.assertEqual(output["source_summaries"][0]["start_line"], 1)
+        self.assertEqual(output["source_summaries"][0]["summary"], "LLM source semantics retained")
+        output["source_summaries"][0]["source_id"] = "source:wrong"
+        _, errors = impl._validate_source_review_record(record, [context])
+        self.assertTrue(any("wrong source" in error for error in errors))
+        record["error"] = "HTTP Error 402"
+        _, errors = impl._validate_source_review_record(record, [context])
+        self.assertTrue(any("HTTP Error 402" in error for error in errors))
+
     def test_oversized_source_is_losslessly_segmented(self) -> None:
         text = "".join(f"assign signal_{index} = value_{index};\n" for index in range(500))
         context = {

@@ -1,9 +1,9 @@
 {
   "agent": "attention_semantics_specialist",
-  "duration_sec": 41.49101117497776,
+  "duration_sec": 46.523630081966985,
   "error": null,
   "http_transport": "urllib",
-  "live_transaction_id": "6e3da3bcda6b49debd68a3c6dcdc997e",
+  "live_transaction_id": "134a4220ffc241718fa9d78a844b0288",
   "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/attention_semantics_specialist_live_transaction.json",
   "max_output_tokens": null,
   "mode": "llm",
@@ -11,68 +11,98 @@
   "output": {
     "agent": "attention_semantics_specialist",
     "approval_required_for": [
-      "Any proposed change to authoritative hidden_size, num_q_heads, num_kv_heads, or head_dim, or any attention architecture/template-internal change; obtain explicit approval and authoritative model evidence before making such a change."
+      "Any actual change to authoritative model head counts, head_dim, hidden_size, or attention template internals; first reconcile source evidence, and obtain approval before an architecture or major template change."
     ],
     "executable_actions": [
       {
         "acceptance_checkers": [
-          "model_config_check",
-          "parameter_binding_static_check",
+          "llm_semantic_extraction_check",
+          "no_static_keyword_semantic_matching_check",
+          "template_coverage_check",
           "template_binding_static_check",
-          "template_coverage_check"
+          "parameter_binding_static_check"
         ],
-        "action_type": "bounded_evidence_reconciliation",
+        "action_type": "evidence_and_repair_review",
         "consumes": [
           "artifact.input.model_config",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.stage2.template_selection",
+          "constraint.model.decoder",
           "constraint.shape.model",
-          "artifact.stage.template_selection.attention_semantics",
-          "artifact.stage.template_selection.parameter_bindings",
-          "artifact.stage.template_selection.template_source_checks",
-          "artifact.stage.template_selection.checker_results"
+          "constraint.template.library"
         ],
-        "id": "template_selection.reconcile_attention_shape_and_cache_evidence",
-        "on_failure": "Keep template selection blocked and report the exact unresolved authoritative dimension or KV-cache evidence. Do not alter model dimensions, template internals, or checker policy; request bounded architecture/model-owner clarification if the authoritative evidence remains contradictory.",
+        "id": "template_selection.attention_evidence_review",
+        "on_failure": "Record failed or unavailable evidence as not_run or failed, retain the candidate as diagnostic-only, and hand off the explicit 1152-versus-1024 contradiction; do not promote or change model dimensions or template internals.",
         "produces": [
-          "artifact.stage.template_selection.attention_component_source_evidence_matrix",
-          "artifact.stage.template_selection.attention_shape_and_kv_cache_disposition",
-          "artifact.stage.template_selection.updated_checker_results"
+          "template_selection/attention_semantic_binding_review.json",
+          "template_selection/attention_component_evidence_map.json"
         ],
-        "rationale": "The current parameter checker identifies an illegal attention/block shape, and the candidate does not substantiate its KV-cache not-required disposition. Reconcile against authoritative model facts and existing hash-bound template evidence, then rerun current-stage checks; this is evidence review, not permission to alter the model or template.",
+        "rationale": "Create the expected attention-specific handoff artifacts, validate semantic component coverage without relying on static keyword matching alone, and report the known head-binding failure separately from coverage.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "llm_semantic_extraction",
+          "no_static_keyword_semantic_matching",
+          "template_coverage_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "model_config_check",
+          "template_binding_static_check",
+          "parameter_binding_static_check",
+          "template_coverage_check"
+        ],
+        "action_type": "static_binding_recheck",
+        "consumes": [
+          "artifact.input.model_config",
+          "template_selection/authoritative_model_shape_reconciliation.json",
+          "template_selection/refined_template_selection.json"
+        ],
+        "id": "template_selection.attention_binding_recheck_after_shape_reconciliation",
+        "on_failure": "Keep the selection blocked and diagnostic-only. Return unresolved facts to the model-shape reconciliation and template-binding owners; do not infer or alter head dimensions to satisfy the checker.",
+        "produces": [
+          "template_selection/attention_semantic_binding_review.json",
+          "template_selection/refined_template_selection_binding_results.json"
+        ],
+        "rationale": "After the model-shape reconciliation owner supplies authoritative bindings, rerun strict self-attention and decoder-block binding checks against those facts. This action validates a correction; it does not authorize changing the model architecture.",
         "requires_approval": false,
         "stage": "template_selection",
         "tool_roles": [
           "model_config_check",
-          "parameter_binding_static_check",
           "template_binding_static_check",
+          "parameter_binding_static_check",
           "template_coverage_check"
         ]
       }
     ],
     "observations": [
-      "The candidate hash-binds Q/K/V projection and RoPE to DecoderBlock.scala, SHA-256 ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785; GQA mapping to QKVProjection.scala, SHA-256 3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1; softmax to Softmax.scala, SHA-256 4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2; output projection to Attention.scala, SHA-256 c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e; and causal mask to Mask.scala, SHA-256 bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a. The corresponding supplied attention semantic and template source/interface checker results pass.",
-      "The stated GQA ratio is internally consistent: 4 query heads / 1 KV head = group size 4. The candidate binds head_dim=256, so query projection width is 4\u00d7256=1024, while hidden_size is 1152.",
-      "The supplied template_parameter_binding_check fails for both self_attention and gemma3_text_block because hidden_size=1152 does not equal num_q_heads\u00d7head_dim=1024. Both bindings are marked incomplete and the errors are repeated in unsupported_bindings. This is a current-stage legality blocker; the passing operator coverage and attention semantic expansion checks do not clear it.",
-      "The candidate marks KV cache as required=false/status=not_required and supplies a DecoderBlock.scala source hash, but no visible model evidence explains why cache behavior is unnecessary. The supplied model facts include causal attention and a 16-position streamed-token configuration; those facts do not by themselves prove caching is required, but the not-required classification cannot be accepted without an evidence-backed disposition.",
-      "Causal masking is required and bound to model_config.attention.causal=true and seq_len=16. Softmax and output projection are also marked required and covered.",
-      "The cross-layer trace reports numeric policy, board memory/runtime/deployment, and input-consistency facts present. Numeric bindings show 4-bit weights, 8-bit activations, and 32-bit accumulation; these do not resolve the attention shape legality issue. Candidate-bound lanes and array dimensions are not selected yet and are not this stage's blocker."
+      "The component inventory marks Q/K/V projection, RoPE, GQA mapping, softmax, output projection, and causal mask as covered, with hash-bound source evidence in DecoderBlock.scala, QKVProjection.scala, Softmax.scala, Attention.scala, and Mask.scala. The candidate reports attention_semantic_expansion_check and template_source_and_interface_check as passing; this is coverage evidence, not a pass of strict parameter legality.",
+      "GQA mapping is internally consistent: num_q_heads=4 and num_kv_heads=1 imply a group size of 4, matching the recorded gqa_group_size=4.",
+      "The candidate binds hidden_size=1152, num_q_heads=4, and head_dim=256. Their product is 1024, not 1152. The candidate's strict template parameter binding check consequently fails for both gemma3_text_block and self_attention, and both bindings are marked incomplete.",
+      "The causal-mask binding records causal=true and the mask template binding is ready. KV-cache is explicitly not required; preserve that scope and do not add KV-cache requirements.",
+      "sacg_memory_truth reports two active contamination barriers on artifact.stage2.template_selection. The rejected candidate is planning/debug evidence only and must not be consumed downstream as a validated selection until a refined candidate passes current checks."
     ],
     "proposed_actions": [
-      "Reconcile hidden_size, num_q_heads, num_kv_heads, and head_dim against the authoritative model configuration and shape constraint; rerun model and parameter/template binding checks without changing model parameters by assumption.",
-      "Resolve KV-cache requiredness from authoritative model/config semantics and the selected attention implementation evidence. Record required/not-required with its model basis and source-hash binding; do not silently retain the current optional classification.",
-      "Hand off the resulting component-to-source matrix, shape findings, and unresolved attention blocker disposition to template_selection.cross_layer_evidence_gate."
+      "Hand off the hidden_size/num_q_heads/head_dim contradiction to template_selection.model_shape_reconciliation_engineer to identify the authoritative model facts; hand off the resulting exact bindings to template_selection.template_binding_engineer.",
+      "Record component coverage separately from binding legality, preserve kv_cache as not_required, and rerun strict binding checks only after authoritative model-shape reconciliation. Keep the candidate blocked if the discrepancy remains or cannot be resolved from supplied model evidence."
     ],
     "risks": [
-      "Current-stage blocker: the selected attention and block parameter bindings contradict the supplied legality checker for hidden_size, query-head count, and head dimension. Do not change authoritative model dimensions or suppress the checker error to force promotion.",
-      "Current-stage evidence gap: KV-cache is classified not_required without supplied model evidence establishing that disposition. If token-by-token causal execution requires retained prior K/V state, the selected coverage may omit required behavior; establish the requirement from authoritative model/config evidence before accepting the classification.",
-      "Do not infer that a passing attention_semantic_expansion_check makes the failed parameter binding legal, and do not infer source implementation details beyond the supplied hash-bound evidence."
+      "Current-stage blocker: the head-dimension inconsistency is an explicit strict-binding failure; attention component coverage does not make the selection legal.",
+      "Current SACG trust blocker: active contamination barriers prohibit treating the supplied stage-2 candidate as a validated downstream artifact.",
+      "Do not resolve the mismatch by guessing or changing model dimensions or template internals. If authoritative model evidence requires an architecture or head-dimension change, obtain approval before making that change."
     ],
     "sacg_focus": {
       "artifacts": [
         "artifact.input.model_config",
-        "artifact.stage.template_selection.attention_semantics",
-        "artifact.stage.template_selection.parameter_bindings",
-        "artifact.stage.template_selection.template_source_checks",
-        "artifact.stage.template_selection.checker_results"
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.stage2.template_selection",
+        "template_selection/attention_semantic_binding_review.json",
+        "template_selection/attention_component_evidence_map.json"
       ],
       "constraints": [
         "constraint.model.decoder",
@@ -82,47 +112,48 @@
         "constraint.cross_layer.input_consistency"
       ],
       "edges": [
-        "self_attention -> Q/K/V projection",
-        "self_attention -> RoPE",
-        "self_attention -> GQA head mapping",
+        "self_attention -> qkv_projection",
+        "self_attention -> rope",
+        "self_attention -> gqa_head_mapping",
         "self_attention -> softmax",
-        "self_attention -> output projection",
-        "self_attention -> KV-cache requirement",
-        "self_attention -> causal mask",
-        "model parameters -> self_attention parameter binding",
-        "model parameters -> gemma3_text_block parameter binding"
+        "self_attention -> output_projection",
+        "self_attention -> causal_mask"
       ],
       "nodes": [
-        "self_attention",
         "gemma3_text_block",
+        "self_attention",
         "qkv_projection",
         "rope",
         "gqa_head_mapping",
         "softmax",
         "output_projection",
-        "kv_cache",
         "causal_mask",
-        "model.hidden_size",
-        "model.num_q_heads",
-        "model.num_kv_heads",
-        "model.head_dim"
+        "kv_cache"
       ]
     },
-    "schema_version": "spatialaccagent.team_agent_output.v0",
+    "schema_version": "spatialaccagent.attention_semantics_review.v0",
     "stage": "template_selection",
     "status": "blocked",
-    "summary": "Hash-bound evidence declares coverage for Q/K/V projection, RoPE, GQA mapping, softmax, output projection, and causal mask. However, attention and block parameter bindings fail the supplied legality check (1152 != 4\u00d7256), and the claim that KV-cache behavior is not required is not supported by visible model evidence. Do not promote attention coverage as complete."
+    "summary": "The candidate records template-backed coverage for the required attention components, and its GQA group-size arithmetic is consistent. However, strict head-dimension binding fails: hidden_size=1152 but num_q_heads \u00d7 head_dim=4 \u00d7 256=1024. The candidate remains diagnostic-only under active SACG contamination barriers; do not promote it."
   },
-  "prompt_bytes": 79511,
-  "prompt_hash": "ccefc3de4f039c7ca8f83f2a301f7788ed119498d49b5a439c38a0b380b26283",
+  "prompt_bytes": 84844,
+  "prompt_hash": "5aafb9ac8a433bc2347c37b5844f85f0afab1554c6257cf1716e0b715568ff20",
   "prompt_protocol": "spatialaccagent.llm_io.v0",
-  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.team_agent_output.v0\",\n  \"agent\": \"attention_semantics_specialist\",\n  \"stage\": \"template_selection\",\n  \"status\": \"blocked\",\n  \"summary\": \"Hash-bound evidence declares coverage for Q/K/V projection, RoPE, GQA mapping, softmax, output projection, and causal mask. However, attention and block parameter bindings fail the supplied legality check (1152 != 4\u00d7256), and the claim that KV-cache behavior is not required is not supported by visible model evidence. Do not promote attention coverage as complete.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"self_attention\",\n      \"gemma3_text_block\",\n      \"qkv_projection\",\n      \"rope\",\n      \"gqa_head_mapping\",\n      \"softmax\",\n      \"output_projection\",\n      \"kv_cache\",\n      \"causal_mask\",\n      \"model.hidden_size\",\n      \"model.num_q_heads\",\n      \"model.num_kv_heads\",\n      \"model.head_dim\"\n    ],\n    \"edges\": [\n      \"self_attention -> Q/K/V projection\",\n      \"self_attention -> RoPE\",\n      \"self_attention -> GQA head mapping\",\n      \"self_attention -> softmax\",\n      \"self_attention -> output projection\",\n      \"self_attention -> KV-cache requirement\",\n      \"self_attention -> causal mask\",\n      \"model parameters -> self_attention parameter binding\",\n      \"model parameters -> gemma3_text_block parameter binding\"\n    ],\n    \"constraints\": [\n      \"constraint.model.decoder\",\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.cross_layer.input_consistency\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.model_config\",\n      \"artifact.stage.template_selection.attention_semantics\",\n      \"artifact.stage.template_selection.parameter_bindings\",\n      \"artifact.stage.template_selection.template_source_checks\",\n      \"artifact.stage.template_selection.checker_results\"\n    ]\n  },\n  \"observations\": [\n    \"The candidate hash-binds Q/K/V projection and RoPE to DecoderBlock.scala, SHA-256 ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785; GQA mapping to QKVProjection.scala, SHA-256 3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1; softmax to Softmax.scala, SHA-256 4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2; output projection to Attention.scala, SHA-256 c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e; and causal mask to Mask.scala, SHA-256 bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a. The corresponding supplied attention semantic and template source/interface checker results pass.\",\n    \"The stated GQA ratio is internally consistent: 4 query heads / 1 KV head = group size 4. The candidate binds head_dim=256, so query projection width is 4\u00d7256=1024, while hidden_size is 1152.\",\n    \"The supplied template_parameter_binding_check fails for both self_attention and gemma3_text_block because hidden_size=1152 does not equal num_q_heads\u00d7head_dim=1024. Both bindings are marked incomplete and the errors are repeated in unsupported_bindings. This is a current-stage legality blocker; the passing operator coverage and attention semantic expansion checks do not clear it.\",\n    \"The candidate marks KV cache as required=false/status=not_required and supplies a DecoderBlock.scala source hash, but no visible model evidence explains why cache behavior is unnecessary. The supplied model facts include causal attention and a 16-position streamed-token configuration; those facts do not by themselves prove caching is required, but the not-required classification cannot be accepted without an evidence-backed disposition.\",\n    \"Causal masking is required and bound to model_config.attention.causal=true and seq_len=16. Softmax and output projection are also marked required and covered.\",\n    \"The cross-layer trace reports numeric policy, board memory/runtime/deployment, and input-consistency facts present. Numeric bindings show 4-bit weights, 8-bit activations, and 32-bit accumulation; these do not resolve the attention shape legality issue. Candidate-bound lanes and array dimensions are not selected yet and are not this stage's blocker.\"\n  ],\n  \"risks\": [\n    \"Current-stage blocker: the selected attention and block parameter bindings contradict the supplied legality checker for hidden_size, query-head count, and head dimension. Do not change authoritative model dimensions or suppress the checker error to force promotion.\",\n    \"Current-stage evidence gap: KV-cache is classified not_required without supplied model evidence establishing that disposition. If token-by-token causal execution requires retained prior K/V state, the selected coverage may omit required behavior; establish the requirement from authoritative model/config evidence before accepting the classification.\",\n    \"Do not infer that a passing attention_semantic_expansion_check makes the failed parameter binding legal, and do not infer source implementation details beyond the supplied hash-bound evidence.\"\n  ],\n  \"proposed_actions\": [\n    \"Reconcile hidden_size, num_q_heads, num_kv_heads, and head_dim against the authoritative model configuration and shape constraint; rerun model and parameter/template binding checks without changing model parameters by assumption.\",\n    \"Resolve KV-cache requiredness from authoritative model/config semantics and the selected attention implementation evidence. Record required/not-required with its model basis and source-hash binding; do not silently retain the current optional classification.\",\n    \"Hand off the resulting component-to-source matrix, shape findings, and unresolved attention blocker disposition to template_selection.cross_layer_evidence_gate.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"template_selection.reconcile_attention_shape_and_cache_evidence\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"bounded_evidence_reconciliation\",\n      \"rationale\": \"The current parameter checker identifies an illegal attention/block shape, and the candidate does not substantiate its KV-cache not-required disposition. Reconcile against authoritative model facts and existing hash-bound template evidence, then rerun current-stage checks; this is evidence review, not permission to alter the model or template.\",\n      \"consumes\": [\n        \"artifact.input.model_config\",\n        \"constraint.shape.model\",\n        \"artifact.stage.template_selection.attention_semantics\",\n        \"artifact.stage.template_selection.parameter_bindings\",\n        \"artifact.stage.template_selection.template_source_checks\",\n        \"artifact.stage.template_selection.checker_results\"\n      ],\n      \"produces\": [\n        \"artifact.stage.template_selection.attention_component_source_evidence_matrix\",\n        \"artifact.stage.template_selection.attention_shape_and_kv_cache_disposition\",\n        \"artifact.stage.template_selection.updated_checker_results\"\n      ],\n      \"tool_roles\": [\n        \"model_config_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"template_coverage_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"model_config_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"template_coverage_check\"\n      ],\n      \"on_failure\": \"Keep template selection blocked and report the exact unresolved authoritative dimension or KV-cache evidence. Do not alter model dimensions, template internals, or checker policy; request bounded architecture/model-owner clarification if the authoritative evidence remains contradictory.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any proposed change to authoritative hidden_size, num_q_heads, num_kv_heads, or head_dim, or any attention architecture/template-internal change; obtain explicit approval and authoritative model evidence before making such a change.\"\n  ]\n}",
+  "raw_text": "{\"schema_version\":\"spatialaccagent.attention_semantics_review.v0\",\"agent\":\"attention_semantics_specialist\",\"stage\":\"template_selection\",\"status\":\"blocked\",\"summary\":\"The candidate records template-backed coverage for the required attention components, and its GQA group-size arithmetic is consistent. However, strict head-dimension binding fails: hidden_size=1152 but num_q_heads \u00d7 head_dim=4 \u00d7 256=1024. The candidate remains diagnostic-only under active SACG contamination barriers; do not promote it.\",\"sacg_focus\":{\"nodes\":[\"gemma3_text_block\",\"self_attention\",\"qkv_projection\",\"rope\",\"gqa_head_mapping\",\"softmax\",\"output_projection\",\"causal_mask\",\"kv_cache\"],\"edges\":[\"self_attention -> qkv_projection\",\"self_attention -> rope\",\"self_attention -> gqa_head_mapping\",\"self_attention -> softmax\",\"self_attention -> output_projection\",\"self_attention -> causal_mask\"],\"constraints\":[\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.numeric.policy\",\"constraint.template.library\",\"constraint.cross_layer.input_consistency\"],\"artifacts\":[\"artifact.input.model_config\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"template_selection/attention_semantic_binding_review.json\",\"template_selection/attention_component_evidence_map.json\"]},\"observations\":[\"The component inventory marks Q/K/V projection, RoPE, GQA mapping, softmax, output projection, and causal mask as covered, with hash-bound source evidence in DecoderBlock.scala, QKVProjection.scala, Softmax.scala, Attention.scala, and Mask.scala. The candidate reports attention_semantic_expansion_check and template_source_and_interface_check as passing; this is coverage evidence, not a pass of strict parameter legality.\",\"GQA mapping is internally consistent: num_q_heads=4 and num_kv_heads=1 imply a group size of 4, matching the recorded gqa_group_size=4.\",\"The candidate binds hidden_size=1152, num_q_heads=4, and head_dim=256. Their product is 1024, not 1152. The candidate's strict template parameter binding check consequently fails for both gemma3_text_block and self_attention, and both bindings are marked incomplete.\",\"The causal-mask binding records causal=true and the mask template binding is ready. KV-cache is explicitly not required; preserve that scope and do not add KV-cache requirements.\",\"sacg_memory_truth reports two active contamination barriers on artifact.stage2.template_selection. The rejected candidate is planning/debug evidence only and must not be consumed downstream as a validated selection until a refined candidate passes current checks.\"],\"risks\":[\"Current-stage blocker: the head-dimension inconsistency is an explicit strict-binding failure; attention component coverage does not make the selection legal.\",\"Current SACG trust blocker: active contamination barriers prohibit treating the supplied stage-2 candidate as a validated downstream artifact.\",\"Do not resolve the mismatch by guessing or changing model dimensions or template internals. If authoritative model evidence requires an architecture or head-dimension change, obtain approval before making that change.\"],\"proposed_actions\":[\"Hand off the hidden_size/num_q_heads/head_dim contradiction to template_selection.model_shape_reconciliation_engineer to identify the authoritative model facts; hand off the resulting exact bindings to template_selection.template_binding_engineer.\",\"Record component coverage separately from binding legality, preserve kv_cache as not_required, and rerun strict binding checks only after authoritative model-shape reconciliation. Keep the candidate blocked if the discrepancy remains or cannot be resolved from supplied model evidence.\"],\"executable_actions\":[{\"id\":\"template_selection.attention_evidence_review\",\"stage\":\"template_selection\",\"action_type\":\"evidence_and_repair_review\",\"rationale\":\"Create the expected attention-specific handoff artifacts, validate semantic component coverage without relying on static keyword matching alone, and report the known head-binding failure separately from coverage.\",\"consumes\":[\"artifact.input.model_config\",\"artifact.input.template_library\",\"artifact.input.template_metadata\",\"artifact.stage2.template_selection\",\"constraint.model.decoder\",\"constraint.shape.model\",\"constraint.template.library\"],\"produces\":[\"template_selection/attention_semantic_binding_review.json\",\"template_selection/attention_component_evidence_map.json\"],\"tool_roles\":[\"llm_semantic_extraction\",\"no_static_keyword_semantic_matching\",\"template_coverage_check\",\"template_binding_static_check\",\"parameter_binding_static_check\"],\"acceptance_checkers\":[\"llm_semantic_extraction_check\",\"no_static_keyword_semantic_matching_check\",\"template_coverage_check\",\"template_binding_static_check\",\"parameter_binding_static_check\"],\"on_failure\":\"Record failed or unavailable evidence as not_run or failed, retain the candidate as diagnostic-only, and hand off the explicit 1152-versus-1024 contradiction; do not promote or change model dimensions or template internals.\",\"requires_approval\":false},{\"id\":\"template_selection.attention_binding_recheck_after_shape_reconciliation\",\"stage\":\"template_selection\",\"action_type\":\"static_binding_recheck\",\"rationale\":\"After the model-shape reconciliation owner supplies authoritative bindings, rerun strict self-attention and decoder-block binding checks against those facts. This action validates a correction; it does not authorize changing the model architecture.\",\"consumes\":[\"artifact.input.model_config\",\"template_selection/authoritative_model_shape_reconciliation.json\",\"template_selection/refined_template_selection.json\"],\"produces\":[\"template_selection/attention_semantic_binding_review.json\",\"template_selection/refined_template_selection_binding_results.json\"],\"tool_roles\":[\"model_config_check\",\"template_binding_static_check\",\"parameter_binding_static_check\",\"template_coverage_check\"],\"acceptance_checkers\":[\"model_config_check\",\"template_binding_static_check\",\"parameter_binding_static_check\",\"template_coverage_check\"],\"on_failure\":\"Keep the selection blocked and diagnostic-only. Return unresolved facts to the model-shape reconciliation and template-binding owners; do not infer or alter head dimensions to satisfy the checker.\",\"requires_approval\":false}],\"approval_required_for\":[\"Any actual change to authoritative model head counts, head_dim, hidden_size, or attention template internals; first reconcile source evidence, and obtain approval before an architecture or major template change.\"]}",
   "reasoning_effort": "medium",
   "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/attention_semantics_specialist_prompt.md",
   "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/attention_semantics_specialist_result.json",
   "schema_version": "spatialaccagent.stage_worker_record.v0",
-  "stage": "template_selection.attention semantic and template engineer",
+  "stage": "template_selection.attention semantics and template engineer",
   "stream": false,
+  "supersedes_artifact_snapshot": {
+    "archived_file_count": 2,
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/history/attention_semantics_specialist_result.814abd5a6ed3d78c.bfbe2c1c4354b7f9.5aafb9ac8a433bc2.snapshot.json",
+    "replaced_prompt_hash": "a43185dea3a279ae876b96c7d49165b737605127e5141c2f442721e26c393edb",
+    "replaced_result_sha256": "814abd5a6ed3d78ceaea4ab3cc785ad14eebdaad2af15e87d72f376b3ee8f0d0",
+    "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
+    "snapshot_id": "814abd5a6ed3d78c.bfbe2c1c4354b7f9.5aafb9ac8a433bc2"
+  },
   "transport": "responses_json",
   "used_fallback": false
 }

@@ -512,6 +512,22 @@ class DebugLoopResumeTest(TestCase):
         self.assertTrue(repair_execution_requires_fresh_agent_planning(report))
         self.assertIsNone(terminal_repair_loop_disposition(report))
 
+    def test_no_progress_wait_is_terminal_without_new_producer_evidence(self) -> None:
+        report = {
+            "repair_loop_disposition": {
+                "status": "blocked",
+                "no_progress_waiting_decisions": ["semantic_loader_harness_binding"],
+                "summary": "the same no-edit decision recurred without new evidence",
+            },
+            "step_results": [],
+        }
+
+        self.assertFalse(repair_execution_requires_fresh_agent_planning(report))
+        self.assertEqual(
+            terminal_repair_loop_disposition(report),
+            report["repair_loop_disposition"],
+        )
+
     def test_debug_loop_enables_remote_reruns_by_default(self) -> None:
         args = parse_args(["--sacg-state", "state.json"])
 

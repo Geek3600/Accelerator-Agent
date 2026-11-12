@@ -151,8 +151,12 @@ class QKVProjection(p: QKVProjectionParams) extends Module {
   val qValues = Reg(Vec(p.qkvElemsPerBeat, UInt(p.elemBits.W)))
   val kValues = Reg(Vec(p.qkvElemsPerBeat, UInt(p.elemBits.W)))
   val vValues = Reg(Vec(p.qkvElemsPerBeat, UInt(p.elemBits.W)))
-  val sCollect :: sReadIssue :: sReadCapture :: sEmit :: Nil = Enum(4)
+  val sCollect :: sReadIssue :: sReadCapture :: sRequantDrain :: sEmit :: Nil = Enum(5)
   val state = RegInit(sCollect)
+  val captureCountWidth = log2Ceil(p.qkvElemsPerBeat + 1 max 2)
+  val qCaptureCnt = RegInit(0.U(captureCountWidth.W))
+  val kCaptureCnt = RegInit(0.U(captureCountWidth.W))
+  val vCaptureCnt = RegInit(0.U(captureCountWidth.W))
 
   projection.io.out.ready := state === sCollect
   projectedMemory.io.writeEn := projection.io.out.fire
@@ -168,6 +172,9 @@ class QKVProjection(p: QKVProjectionParams) extends Module {
       emitBeat := 0.U
       readField := 0.U
       readLane := 0.U
+      qCaptureCnt := 0.U
+      kCaptureCnt := 0.U
+      vCaptureCnt := 0.U
       state := sReadIssue
     }.otherwise {
       collectBeat := collectBeat + 1.U
@@ -196,30 +203,94 @@ class QKVProjection(p: QKVProjectionParams) extends Module {
 
   val readBeatValues = projectedMemory.io.readData.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
   val readValue = readBeatValues(AccMath.boundedIndex(selectedLane, p.lanes))
-  when(state === sReadCapture) {
-    when(readField === 0.U) {
-      val qValue = if (p.integerMode) AccMath.requantizeQ31WithShift(readValue.asSInt, io.qScale, io.qScaleShift, 8) else readValue
-      qValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := qValue
-    }.elsewhen(readField === 1.U) {
-      val kValue = if (p.integerMode) AccMath.requantizeQ31WithShift(readValue.asSInt, io.kScale, io.kScaleShift, 8) else readValue
-      kValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := kValue
-    }.otherwise {
-      val vValue = if (p.integerMode) AccMath.requantizeQ31WithShift(readValue.asSInt, io.vScale, io.vScaleShift, 8) else readValue
-      vValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := vValue
+
+  if (p.integerMode) {
+    val qRequant = Module(new LinearOutputRequantizer(8))
+    val kRequant = Module(new LinearOutputRequantizer(8))
+    val vRequant = Module(new LinearOutputRequantizer(8))
+
+    qRequant.io.in.valid := state === sReadCapture && readField === 0.U
+    qRequant.io.in.bits.value := readValue.asSInt.pad(32)
+    qRequant.io.in.bits.channelScale := "h80000000".U(32.W)
+    qRequant.io.in.bits.activationScale := "h80000000".U(32.W)
+    qRequant.io.in.bits.outputScale := io.qScale
+    qRequant.io.in.bits.binaryShift := io.qScaleShift.pad(10)
+    qRequant.io.out.ready := true.B
+
+    kRequant.io.in.valid := state === sReadCapture && readField === 1.U
+    kRequant.io.in.bits.value := readValue.asSInt.pad(32)
+    kRequant.io.in.bits.channelScale := "h80000000".U(32.W)
+    kRequant.io.in.bits.activationScale := "h80000000".U(32.W)
+    kRequant.io.in.bits.outputScale := io.kScale
+    kRequant.io.in.bits.binaryShift := io.kScaleShift.pad(10)
+    kRequant.io.out.ready := true.B
+
+    vRequant.io.in.valid := state === sReadCapture && readField === 2.U
+    vRequant.io.in.bits.value := readValue.asSInt.pad(32)
+    vRequant.io.in.bits.channelScale := "h80000000".U(32.W)
+    vRequant.io.in.bits.activationScale := "h80000000".U(32.W)
+    vRequant.io.in.bits.outputScale := io.vScale
+    vRequant.io.in.bits.binaryShift := io.vScaleShift.pad(10)
+    vRequant.io.out.ready := true.B
+
+    when(qRequant.io.out.valid && qCaptureCnt < p.qkvElemsPerBeat.U(captureCountWidth.W)) {
+      qValues(AccMath.boundedIndex(qCaptureCnt, p.qkvElemsPerBeat)) := qRequant.io.out.bits
+      qCaptureCnt := qCaptureCnt + 1.U
+    }
+    when(kRequant.io.out.valid && kCaptureCnt < p.qkvElemsPerBeat.U(captureCountWidth.W)) {
+      kValues(AccMath.boundedIndex(kCaptureCnt, p.qkvElemsPerBeat)) := kRequant.io.out.bits
+      kCaptureCnt := kCaptureCnt + 1.U
+    }
+    when(vRequant.io.out.valid && vCaptureCnt < p.qkvElemsPerBeat.U(captureCountWidth.W)) {
+      vValues(AccMath.boundedIndex(vCaptureCnt, p.qkvElemsPerBeat)) := vRequant.io.out.bits
+      vCaptureCnt := vCaptureCnt + 1.U
     }
 
-    when(readLane === (p.qkvElemsPerBeat - 1).U) {
-      readLane := 0.U
-      when(readField === 2.U) {
-        readField := 0.U
-        state := sEmit
+    when(state === sReadCapture) {
+      when(readLane === (p.qkvElemsPerBeat - 1).U) {
+        readLane := 0.U
+        when(readField === 2.U) {
+          readField := 0.U
+          state := sRequantDrain
+        }.otherwise {
+          readField := readField + 1.U
+          state := sReadIssue
+        }
       }.otherwise {
-        readField := readField + 1.U
+        readLane := readLane + 1.U
         state := sReadIssue
       }
-    }.otherwise {
-      readLane := readLane + 1.U
-      state := sReadIssue
+    }
+
+    when(state === sRequantDrain &&
+        qCaptureCnt === p.qkvElemsPerBeat.U(captureCountWidth.W) &&
+        kCaptureCnt === p.qkvElemsPerBeat.U(captureCountWidth.W) &&
+        vCaptureCnt === p.qkvElemsPerBeat.U(captureCountWidth.W)) {
+      state := sEmit
+    }
+  } else {
+    when(state === sReadCapture) {
+      when(readField === 0.U) {
+        qValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := readValue
+      }.elsewhen(readField === 1.U) {
+        kValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := readValue
+      }.otherwise {
+        vValues(AccMath.boundedIndex(readLane, p.qkvElemsPerBeat)) := readValue
+      }
+
+      when(readLane === (p.qkvElemsPerBeat - 1).U) {
+        readLane := 0.U
+        when(readField === 2.U) {
+          readField := 0.U
+          state := sEmit
+        }.otherwise {
+          readField := readField + 1.U
+          state := sReadIssue
+        }
+      }.otherwise {
+        readLane := readLane + 1.U
+        state := sReadIssue
+      }
     }
   }
 
@@ -235,17 +306,26 @@ class QKVProjection(p: QKVProjectionParams) extends Module {
       emitBeat := 0.U
       when(emitHead === (p.qHeads - 1).U) {
         emitHead := 0.U
+        qCaptureCnt := 0.U
+        kCaptureCnt := 0.U
+        vCaptureCnt := 0.U
         state := sCollect
       }.otherwise {
         emitHead := emitHead + 1.U
         readField := 0.U
         readLane := 0.U
+        qCaptureCnt := 0.U
+        kCaptureCnt := 0.U
+        vCaptureCnt := 0.U
         state := sReadIssue
       }
     }.otherwise {
       emitBeat := emitBeat + 1.U
       readField := 0.U
       readLane := 0.U
+      qCaptureCnt := 0.U
+      kCaptureCnt := 0.U
+      vCaptureCnt := 0.U
       state := sReadIssue
     }
   }

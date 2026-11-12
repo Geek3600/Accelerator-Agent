@@ -1,9 +1,9 @@
 {
   "agent": "numeric_template_specialist",
-  "duration_sec": 67.41587649000576,
+  "duration_sec": 66.76730248105014,
   "error": null,
   "http_transport": "urllib",
-  "live_transaction_id": "679ed5ecb9d94c478f323373cae62805",
+  "live_transaction_id": "a224d0802cd142a998ef07588ea36f60",
   "live_transaction_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/numeric_template_specialist_live_transaction.json",
   "max_output_tokens": null,
   "mode": "llm",
@@ -11,141 +11,160 @@
   "output": {
     "agent": "numeric_template_specialist",
     "approval_required_for": [
-      "Any change to model hidden_size, num_q_heads, head_dim, or attention/GQA architecture that is not a source-backed correction of the supplied facts",
-      "Any template substitution or major template/architecture change",
-      "Any change to the supplied numeric policy"
+      "Upstream authoritative adjudication of the conflicting model shape facts if supplied source evidence does not unambiguously identify the controlling values.",
+      "Any proposed change to authoritative model shape values, architecture dimensions, template internals, memory layout, or numeric policy."
     ],
     "executable_actions": [
       {
         "acceptance_checkers": [
-          "template_binding_static_check",
-          "parameter_binding_static_check",
-          "numeric_policy_check",
-          "sacg_memory_check",
-          "stage_artifact_trust_barrier_check"
+          "human_boundary_check",
+          "model_config_check",
+          "sacg_static_check"
         ],
-        "action_type": "evidence_and_repair_review",
+        "action_type": "authoritative_input_resolution",
         "consumes": [
-          "artifact.stage2.template_selection",
+          "artifact.input.field_evidence",
+          "artifact.input.material_index",
           "artifact.input.model_config",
-          "artifact.input.numeric_policy",
-          "artifact.input.template_library",
-          "artifact.input.template_metadata",
-          "artifact.input.design_space"
+          "artifact.input.task_card",
+          "artifact.stage2.template_selection",
+          "constraint.shape.model",
+          "constraint.cross_layer.input_consistency",
+          "constraint.human.boundary"
         ],
-        "id": "numeric_template.persist_strict_binding_audit",
-        "on_failure": "Keep the candidate blocked; record any checker as failed or not_run, retain the unsupported disposition, and do not promote or treat the candidate as a validated design input.",
+        "id": "template_selection.resolve_authoritative_shape_conflict",
+        "on_failure": "Keep template selection blocked and preserve the input conflict as unresolved. Do not alter model dimensions, template internals, or candidate bindings to force legality.",
         "produces": [
-          "review/template_selection/strict_binding_audit.json",
-          "review/template_selection/unsupported_binding_disposition.json"
+          "artifact.template_selection.authoritative_shape_resolution"
         ],
-        "rationale": "Persist a checker-grounded audit of all supplied bindings. Preserve the two head-dimension legality errors; source/interface and numeric passes are evidence for their respective checks only and cannot establish strict binding.",
-        "requires_approval": false,
+        "rationale": "The supplied shape facts conflict, and this specialist cannot choose among them. Obtain source-backed upstream authority or an explicit unresolved disposition before rebinding; do not guess a replacement or modify templates.",
+        "requires_approval": true,
         "stage": "template_selection",
         "tool_roles": [
-          "template_binding_static_check",
-          "parameter_binding_static_check",
-          "numeric_policy_check"
+          "human_boundary_check",
+          "model_config_check",
+          "sacg_validate"
         ]
       },
       {
         "acceptance_checkers": [
-          "model_config_check",
           "parameter_binding_static_check",
-          "template_binding_static_check"
+          "template_binding_static_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "sacg_static_check",
+          "stage_artifact_trust_barrier_check",
+          "sacg_memory_check"
         ],
-        "action_type": "evidence_and_repair_review",
+        "action_type": "candidate_binding_recheck",
         "consumes": [
+          "artifact.template_selection.authoritative_shape_resolution",
           "artifact.input.model_config",
-          "artifact.stage2.template_selection",
-          "constraint.shape.model",
-          "constraint.template.library",
-          "template_selection.model_shape_coverage_engineer findings"
+          "artifact.input.numeric_policy",
+          "artifact.input.template_library",
+          "artifact.input.template_metadata",
+          "artifact.input.design_space",
+          "artifact.stage2.template_selection"
         ],
-        "id": "numeric_template.reconcile_authoritative_attention_shape",
-        "on_failure": "If authoritative evidence is unavailable or confirms the supplied 1152/4/256 values, keep both bindings unsupported and the stage blocked. Do not use defaults or change template internals; route any required model, architecture, or template decision for approval.",
+        "id": "template_selection.rebind_and_recheck_fresh_candidate",
+        "on_failure": "Retain the fresh candidate as unpromoted, report the exact failed binding or checker, and keep active contamination barriers effective. Do not alter template internals or relax numeric policy.",
         "produces": [
-          "review/template_selection/model_shape_reconciliation.json",
-          "updated review/template_selection/strict_binding_audit.json",
-          "updated review/template_selection/unsupported_binding_disposition.json"
+          "artifact.stage2.template_selection.fresh_candidate",
+          "artifact.stage2.template_selection.parameter_binding_review",
+          "artifact.stage2.template_selection.checker_evidence"
         ],
-        "rationale": "Resolve whether the model-shape facts or the candidate bindings are inconsistent using authoritative model evidence and the model-shape coverage engineer's findings. This is a fact audit, not permission to select substitute dimensions or alter the architecture.",
+        "rationale": "Once the authoritative shape resolution is accepted, check a fresh candidate against the resolved inputs and the existing trusted template interfaces. Candidate-bound DSE dimensions remain for their later authorized selection stage.",
         "requires_approval": false,
         "stage": "template_selection",
         "tool_roles": [
-          "model_config_check",
           "parameter_binding_static_check",
-          "template_binding_static_check"
+          "template_binding_static_check",
+          "numeric_policy_check",
+          "template_coverage_check",
+          "sacg_validate"
         ]
       }
     ],
     "observations": [
-      "The parameter_binding_static_check reports two legality errors: gemma3_text_block and self_attention each have hidden_size=1152 but num_q_heads \u00d7 head_dim = 4 \u00d7 256 = 1024. Both bindings are incomplete despite having no missing parameters.",
-      "The remaining bound model values include intermediate_size=6912, num_kv_heads=1, and target_max_seq_len=16. Attention evidence records GQA group size 4. No alternate head count or head dimension is supported by the supplied evidence, so none is proposed.",
-      "The selected templates' source and constructor/interface checks pass. Hash-bound source records cover DecoderBlock.scala (ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785), Norm.scala (f3319af0d66c9e8c19e7cc789b9fc5799b62e0ad49811ef7da43ceb6dc2eeddf), Attention.scala (c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e), Residual.scala (8bef8dac50264c2278438a18e5be48328ed1fd1bfb3f9bbee3c522f11258aca3), FFN.scala (1896b7ea12ac548124a1a25266baa7d9ea087af21ee60d57633f6843db91a58c), Elementwise.scala (53f25bee2ff7dc030db606d1842a45ddd856b475c388ee82d6260779d4ec8870), Softmax.scala (4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2), and Mask.scala (bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a). The supplied checks report no missing required constructor parameters or metadata inconsistencies.",
-      "Numeric bindings are sourced from the supplied policy: weight=4 bits, activation/element/input/output=8 bits, accumulator=32 bits, integer_mode=true; norm epsilon is bound as 1e-06. numeric_policy_check passes. No numeric-policy change is indicated or authorized by this audit.",
-      "lanes, compute_array_rows, and compute_array_cols are null candidate_bound values from the design-space domain, not constructor defaults. The stage gate reserves concrete DSE choices for Stage 4, so these are not current Stage-2 blockers.",
-      "Operator coverage is 11/11, source/interface, mandatory FPGA-IP, attention-semantic, and cross-layer trace checks pass, and no operators are missing. Those results do not override the failed parameter-binding checker.",
-      "The state_summary.sacg_memory_truth lists active contamination_barrier.0001 for this rejected candidate, while the separately supplied sacg_memory_truth slice is empty. The candidate's explicit parameter-binding failure independently blocks promotion; reconcile the memory views rather than treating the barrier as cleared."
+      "Binding/legality matrix: gemma3_text_block / decoder_block has no missing required parameters; hidden_size=1152, num_q_heads=4, num_kv_heads=1, head_dim=256, intermediate_size=6912, token_count=16, max_seq_len=16, input_bits=8, elem_bits=8, output_bits=8, weight_bits=4, acc_bits=32, integer_mode=true are bound. lanes, compute_array_rows, and compute_array_cols are candidate_bound with null values. Legality fails because 1152 != 4\u00d7256=1024.",
+      "Binding/legality matrix: self_attention / attention has no missing required parameters; hidden_size=1152, num_q_heads=4, num_kv_heads=1, head_dim=256, seq_len=16, elem_bits=8, weight_bits=4, acc_bits=32, integer_mode=true are bound. lanes is candidate_bound with null value. Legality fails because 1152 != 4\u00d7256=1024.",
+      "The remaining selected templates have no missing required parameters and no listed legality errors: rms_norm_input, rms_norm_post_attention, rms_norm_pre_ffn, and rms_norm_post_ffn bind hidden_size=1152, eps=1e-6, activation input/output bits=8, integer_mode=true; residual_add_1 and residual_add_2 bind hidden_size=1152, elem_bits=8, integer_mode=true; mlp_gate_proj, mlp_up_proj, and mlp_down_proj bind hidden_size=1152, intermediate_size=6912, elem_bits=8, weight_bits=4, acc_bits=32, integer_mode=true; activation_mul binds hidden_size=6912, elem_bits=8, integer_mode=true; softmax binds seq_len=16, elem_bits=8; causal_mask binds seq_len=16, causal=true. lanes is candidate_bound with null value for these templates.",
+      "The unresolved conflict is in values attributed by the candidate to constraint.shape.model: hidden_size=1152, num_q_heads=4, and head_dim=256. The supplied evidence does not establish which of these model facts is authoritative if they conflict. The model_config bindings shown here provide norm.eps and attention.causal, not an adjudication of the shape tuple. This role cannot choose a controlling field or infer a replacement.",
+      "Current checker evidence: template_parameter_binding_check failed with the two dimension errors; template_source_and_interface_check passed; operator coverage, mandatory FPGA-IP binding, attention-semantic expansion, and cross-layer trace checks passed. The candidate reports all 11 required operators covered and a block wrapper present.",
+      "Source/interface evidence passes for the supplied source hashes: DecoderBlock.scala ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785; Norm.scala f3319af0d66c9e8c19e7cc789b9fc5799b62e0ad49811ef7da43ceb6dc2eeddf; Attention.scala c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e; Residual.scala 8bef8dac50264c2278438a18e5be48328ed1fd1bfb3f9bbee3c522f11258aca3; FFN.scala 1896b7ea12ac548124a1a25266baa7d9ea087af21ee60d57633f6843db91a58c; Elementwise.scala 53f25bee2ff7dc030db606d1842a45ddd856b475c388ee82d6260779d4ec8870; Softmax.scala 4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2; Mask.scala bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a. Constructor and metadata required-parameter checks report no errors for the selected templates.",
+      "Numeric bindings trace to the supplied numeric policy defaults: weight=4 bits, activation=8 bits, accumulator=32 bits, with independent dtypes and integer_mode=true. The candidate cross-layer trace reports the numeric policy as present, but a separate numeric_policy_check result is not recorded. numeric_compare is not_run and is not a Stage-2 acceptance prerequisite; no numerical comparison or simulation is required here.",
+      "Three or more DSE values are not resolved at this stage: lanes and the wrapper compute-array dimensions remain candidate_bound/null. The supplied stage gate classifies their later concrete selection as not a current-stage blocker.",
+      "sacg_memory_truth reports two active contamination barriers on artifact.stage2.template_selection (transitions 0001 and 0006), and no open retry or backtrack requests. Rejected artifacts remain planning/debug evidence only; downstream stages must not consume them as validated design inputs."
     ],
     "proposed_actions": [
-      "Record the current strict-binding audit and unsupported disposition, preserving both legality errors and the passing source, constructor, and numeric evidence.",
-      "Hand off the shape contradiction to template_selection.model_shape_coverage_engineer and the cross-layer gate. Obtain source-backed confirmation of hidden_size, num_q_heads, and head_dim; do not infer replacement values.",
-      "Only regenerate bindings and rerun the static checks if authoritative model evidence resolves the conflict. If the supplied shape values are confirmed, retain the unsupported disposition and seek a separately approved architecture/template decision rather than editing template internals."
+      "Request source-backed resolution of the authoritative hidden_size/num_q_heads/head_dim facts from the upstream model-input authority; do not propose or silently substitute a value.",
+      "After authorized resolution, refresh only the candidate parameter bindings from those inputs and rerun the relevant static checks. Preserve template internals, numeric policy, and source/interface hashes.",
+      "Keep rejected artifacts quarantined. Do not advance downstream from this candidate unless a fresh candidate passes the applicable checks and SACG trust handling."
     ],
     "risks": [
-      "Current-stage strict binding is blocked by the two head-dimension legality errors. The candidate must not be promoted or consumed downstream as a validated design input.",
-      "The authoritative model-shape facts have not been reconciled against the legality invariant. Changing model dimensions, head mapping, attention architecture, numeric policy, or template implementation without evidence and required approval could mask the mismatch.",
-      "SACG memory views disagree about the active contamination barrier; downstream trust should remain conservative until the current memory/trust check resolves the discrepancy."
+      "Current-stage blocker: the selected block wrapper and self-attention templates bind mutually inconsistent model dimensions. The authoritative shape inputs must be resolved upstream; selecting a value here or changing template internals would exceed this role's authority.",
+      "The active SACG contamination barriers prevent downstream consumption of rejected template-selection artifacts as validated inputs until a fresh candidate is checked and promoted through the applicable trust-barrier process."
     ],
     "sacg_focus": {
       "artifacts": [
-        "review/template_selection/strict_binding_audit.json",
-        "review/template_selection/unsupported_binding_disposition.json"
+        "artifact.input.model_config",
+        "artifact.input.numeric_policy",
+        "artifact.input.template_library",
+        "artifact.input.template_metadata",
+        "artifact.input.design_space",
+        "artifact.input.field_evidence",
+        "artifact.stage2.template_selection"
       ],
       "constraints": [
         "constraint.shape.model",
         "constraint.numeric.policy",
         "constraint.template.library",
-        "constraint.arch.design_space"
+        "constraint.arch.design_space",
+        "constraint.parameter.binding",
+        "constraint.cross_layer.input_consistency",
+        "constraint.human.boundary",
+        "Active SACG contamination barriers for artifact.stage2.template_selection"
       ],
       "edges": [
-        "constraint.shape.model -> decoder_block parameter bindings",
-        "constraint.shape.model -> attention parameter bindings",
-        "constraint.numeric.policy -> selected template numeric bindings",
-        "template source hashes -> constructor/interface metadata"
+        "constraint.shape.model -> artifact.stage2.template_selection.parameter_bindings",
+        "constraint.numeric.policy -> artifact.stage2.template_selection.parameter_bindings",
+        "constraint.template.library -> artifact.stage2.template_selection.template_source_checks",
+        "constraint.cross_layer.input_consistency -> authoritative shape resolution",
+        "artifact.stage2.template_selection -> active contamination barriers"
       ],
       "nodes": [
-        "artifact.stage2.template_selection",
-        "artifact.input.model_config",
-        "artifact.input.numeric_policy",
-        "artifact.input.template_library",
-        "artifact.input.template_metadata",
-        "artifact.input.design_space"
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.parameter.binding",
+        "constraint.cross_layer.input_consistency",
+        "constraint.source.evidence",
+        "constraint.human.boundary"
       ]
     },
     "schema_version": "spatialaccagent.numeric_template_specialist.v0",
     "stage": "template_selection",
     "status": "blocked",
-    "summary": "The current candidate cannot be strictly bound: both the decoder block and self-attention bind hidden_size=1152, num_q_heads=4, and head_dim=256, violating hidden_size = num_q_heads \u00d7 head_dim (1152 \u2260 1024). Source/interface and numeric-policy checks pass, but they do not clear this legality failure. Do not use defaults, change template internals, or choose substitute dimensions."
+    "summary": "Template selection is blocked by an unresolved authoritative shape conflict: the bound hidden_size is 1152, while num_q_heads \u00d7 head_dim is 4 \u00d7 256 = 1024. Source/interface evidence passes, but the block wrapper and self-attention bindings fail legality. No replacement value is inferred."
   },
-  "prompt_bytes": 81707,
-  "prompt_hash": "d5a567f25d8109d6037bff5a215eaae6196bff4519283baeed26012f3a9310bb",
+  "prompt_bytes": 87183,
+  "prompt_hash": "a025dbdd714804af4ea852eaa07f6ac493773a4d50e35aa5be21867796e3f974",
   "prompt_protocol": "spatialaccagent.llm_io.v0",
-  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.numeric_template_specialist.v0\",\n  \"agent\": \"numeric_template_specialist\",\n  \"stage\": \"template_selection\",\n  \"status\": \"blocked\",\n  \"summary\": \"The current candidate cannot be strictly bound: both the decoder block and self-attention bind hidden_size=1152, num_q_heads=4, and head_dim=256, violating hidden_size = num_q_heads \u00d7 head_dim (1152 \u2260 1024). Source/interface and numeric-policy checks pass, but they do not clear this legality failure. Do not use defaults, change template internals, or choose substitute dimensions.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"artifact.stage2.template_selection\",\n      \"artifact.input.model_config\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"artifact.input.design_space\"\n    ],\n    \"edges\": [\n      \"constraint.shape.model -> decoder_block parameter bindings\",\n      \"constraint.shape.model -> attention parameter bindings\",\n      \"constraint.numeric.policy -> selected template numeric bindings\",\n      \"template source hashes -> constructor/interface metadata\"\n    ],\n    \"constraints\": [\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\"\n    ],\n    \"artifacts\": [\n      \"review/template_selection/strict_binding_audit.json\",\n      \"review/template_selection/unsupported_binding_disposition.json\"\n    ]\n  },\n  \"observations\": [\n    \"The parameter_binding_static_check reports two legality errors: gemma3_text_block and self_attention each have hidden_size=1152 but num_q_heads \u00d7 head_dim = 4 \u00d7 256 = 1024. Both bindings are incomplete despite having no missing parameters.\",\n    \"The remaining bound model values include intermediate_size=6912, num_kv_heads=1, and target_max_seq_len=16. Attention evidence records GQA group size 4. No alternate head count or head dimension is supported by the supplied evidence, so none is proposed.\",\n    \"The selected templates' source and constructor/interface checks pass. Hash-bound source records cover DecoderBlock.scala (ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785), Norm.scala (f3319af0d66c9e8c19e7cc789b9fc5799b62e0ad49811ef7da43ceb6dc2eeddf), Attention.scala (c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e), Residual.scala (8bef8dac50264c2278438a18e5be48328ed1fd1bfb3f9bbee3c522f11258aca3), FFN.scala (1896b7ea12ac548124a1a25266baa7d9ea087af21ee60d57633f6843db91a58c), Elementwise.scala (53f25bee2ff7dc030db606d1842a45ddd856b475c388ee82d6260779d4ec8870), Softmax.scala (4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2), and Mask.scala (bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a). The supplied checks report no missing required constructor parameters or metadata inconsistencies.\",\n    \"Numeric bindings are sourced from the supplied policy: weight=4 bits, activation/element/input/output=8 bits, accumulator=32 bits, integer_mode=true; norm epsilon is bound as 1e-06. numeric_policy_check passes. No numeric-policy change is indicated or authorized by this audit.\",\n    \"lanes, compute_array_rows, and compute_array_cols are null candidate_bound values from the design-space domain, not constructor defaults. The stage gate reserves concrete DSE choices for Stage 4, so these are not current Stage-2 blockers.\",\n    \"Operator coverage is 11/11, source/interface, mandatory FPGA-IP, attention-semantic, and cross-layer trace checks pass, and no operators are missing. Those results do not override the failed parameter-binding checker.\",\n    \"The state_summary.sacg_memory_truth lists active contamination_barrier.0001 for this rejected candidate, while the separately supplied sacg_memory_truth slice is empty. The candidate's explicit parameter-binding failure independently blocks promotion; reconcile the memory views rather than treating the barrier as cleared.\"\n  ],\n  \"risks\": [\n    \"Current-stage strict binding is blocked by the two head-dimension legality errors. The candidate must not be promoted or consumed downstream as a validated design input.\",\n    \"The authoritative model-shape facts have not been reconciled against the legality invariant. Changing model dimensions, head mapping, attention architecture, numeric policy, or template implementation without evidence and required approval could mask the mismatch.\",\n    \"SACG memory views disagree about the active contamination barrier; downstream trust should remain conservative until the current memory/trust check resolves the discrepancy.\"\n  ],\n  \"proposed_actions\": [\n    \"Record the current strict-binding audit and unsupported disposition, preserving both legality errors and the passing source, constructor, and numeric evidence.\",\n    \"Hand off the shape contradiction to template_selection.model_shape_coverage_engineer and the cross-layer gate. Obtain source-backed confirmation of hidden_size, num_q_heads, and head_dim; do not infer replacement values.\",\n    \"Only regenerate bindings and rerun the static checks if authoritative model evidence resolves the conflict. If the supplied shape values are confirmed, retain the unsupported disposition and seek a separately approved architecture/template decision rather than editing template internals.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"numeric_template.persist_strict_binding_audit\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"evidence_and_repair_review\",\n      \"rationale\": \"Persist a checker-grounded audit of all supplied bindings. Preserve the two head-dimension legality errors; source/interface and numeric passes are evidence for their respective checks only and cannot establish strict binding.\",\n      \"consumes\": [\n        \"artifact.stage2.template_selection\",\n        \"artifact.input.model_config\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.design_space\"\n      ],\n      \"produces\": [\n        \"review/template_selection/strict_binding_audit.json\",\n        \"review/template_selection/unsupported_binding_disposition.json\"\n      ],\n      \"tool_roles\": [\n        \"template_binding_static_check\",\n        \"parameter_binding_static_check\",\n        \"numeric_policy_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"template_binding_static_check\",\n        \"parameter_binding_static_check\",\n        \"numeric_policy_check\",\n        \"sacg_memory_check\",\n        \"stage_artifact_trust_barrier_check\"\n      ],\n      \"on_failure\": \"Keep the candidate blocked; record any checker as failed or not_run, retain the unsupported disposition, and do not promote or treat the candidate as a validated design input.\",\n      \"requires_approval\": false\n    },\n    {\n      \"id\": \"numeric_template.reconcile_authoritative_attention_shape\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"evidence_and_repair_review\",\n      \"rationale\": \"Resolve whether the model-shape facts or the candidate bindings are inconsistent using authoritative model evidence and the model-shape coverage engineer's findings. This is a fact audit, not permission to select substitute dimensions or alter the architecture.\",\n      \"consumes\": [\n        \"artifact.input.model_config\",\n        \"artifact.stage2.template_selection\",\n        \"constraint.shape.model\",\n        \"constraint.template.library\",\n        \"template_selection.model_shape_coverage_engineer findings\"\n      ],\n      \"produces\": [\n        \"review/template_selection/model_shape_reconciliation.json\",\n        \"updated review/template_selection/strict_binding_audit.json\",\n        \"updated review/template_selection/unsupported_binding_disposition.json\"\n      ],\n      \"tool_roles\": [\n        \"model_config_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\"\n      ],\n      \"acceptance_checkers\": [\n        \"model_config_check\",\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\"\n      ],\n      \"on_failure\": \"If authoritative evidence is unavailable or confirms the supplied 1152/4/256 values, keep both bindings unsupported and the stage blocked. Do not use defaults or change template internals; route any required model, architecture, or template decision for approval.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Any change to model hidden_size, num_q_heads, head_dim, or attention/GQA architecture that is not a source-backed correction of the supplied facts\",\n    \"Any template substitution or major template/architecture change\",\n    \"Any change to the supplied numeric policy\"\n  ]\n}",
+  "raw_text": "{\n  \"schema_version\": \"spatialaccagent.numeric_template_specialist.v0\",\n  \"agent\": \"numeric_template_specialist\",\n  \"stage\": \"template_selection\",\n  \"status\": \"blocked\",\n  \"summary\": \"Template selection is blocked by an unresolved authoritative shape conflict: the bound hidden_size is 1152, while num_q_heads \u00d7 head_dim is 4 \u00d7 256 = 1024. Source/interface evidence passes, but the block wrapper and self-attention bindings fail legality. No replacement value is inferred.\",\n  \"sacg_focus\": {\n    \"nodes\": [\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.parameter.binding\",\n      \"constraint.cross_layer.input_consistency\",\n      \"constraint.source.evidence\",\n      \"constraint.human.boundary\"\n    ],\n    \"edges\": [\n      \"constraint.shape.model -> artifact.stage2.template_selection.parameter_bindings\",\n      \"constraint.numeric.policy -> artifact.stage2.template_selection.parameter_bindings\",\n      \"constraint.template.library -> artifact.stage2.template_selection.template_source_checks\",\n      \"constraint.cross_layer.input_consistency -> authoritative shape resolution\",\n      \"artifact.stage2.template_selection -> active contamination barriers\"\n    ],\n    \"constraints\": [\n      \"constraint.shape.model\",\n      \"constraint.numeric.policy\",\n      \"constraint.template.library\",\n      \"constraint.arch.design_space\",\n      \"constraint.parameter.binding\",\n      \"constraint.cross_layer.input_consistency\",\n      \"constraint.human.boundary\",\n      \"Active SACG contamination barriers for artifact.stage2.template_selection\"\n    ],\n    \"artifacts\": [\n      \"artifact.input.model_config\",\n      \"artifact.input.numeric_policy\",\n      \"artifact.input.template_library\",\n      \"artifact.input.template_metadata\",\n      \"artifact.input.design_space\",\n      \"artifact.input.field_evidence\",\n      \"artifact.stage2.template_selection\"\n    ]\n  },\n  \"observations\": [\n    \"Binding/legality matrix: gemma3_text_block / decoder_block has no missing required parameters; hidden_size=1152, num_q_heads=4, num_kv_heads=1, head_dim=256, intermediate_size=6912, token_count=16, max_seq_len=16, input_bits=8, elem_bits=8, output_bits=8, weight_bits=4, acc_bits=32, integer_mode=true are bound. lanes, compute_array_rows, and compute_array_cols are candidate_bound with null values. Legality fails because 1152 != 4\u00d7256=1024.\",\n    \"Binding/legality matrix: self_attention / attention has no missing required parameters; hidden_size=1152, num_q_heads=4, num_kv_heads=1, head_dim=256, seq_len=16, elem_bits=8, weight_bits=4, acc_bits=32, integer_mode=true are bound. lanes is candidate_bound with null value. Legality fails because 1152 != 4\u00d7256=1024.\",\n    \"The remaining selected templates have no missing required parameters and no listed legality errors: rms_norm_input, rms_norm_post_attention, rms_norm_pre_ffn, and rms_norm_post_ffn bind hidden_size=1152, eps=1e-6, activation input/output bits=8, integer_mode=true; residual_add_1 and residual_add_2 bind hidden_size=1152, elem_bits=8, integer_mode=true; mlp_gate_proj, mlp_up_proj, and mlp_down_proj bind hidden_size=1152, intermediate_size=6912, elem_bits=8, weight_bits=4, acc_bits=32, integer_mode=true; activation_mul binds hidden_size=6912, elem_bits=8, integer_mode=true; softmax binds seq_len=16, elem_bits=8; causal_mask binds seq_len=16, causal=true. lanes is candidate_bound with null value for these templates.\",\n    \"The unresolved conflict is in values attributed by the candidate to constraint.shape.model: hidden_size=1152, num_q_heads=4, and head_dim=256. The supplied evidence does not establish which of these model facts is authoritative if they conflict. The model_config bindings shown here provide norm.eps and attention.causal, not an adjudication of the shape tuple. This role cannot choose a controlling field or infer a replacement.\",\n    \"Current checker evidence: template_parameter_binding_check failed with the two dimension errors; template_source_and_interface_check passed; operator coverage, mandatory FPGA-IP binding, attention-semantic expansion, and cross-layer trace checks passed. The candidate reports all 11 required operators covered and a block wrapper present.\",\n    \"Source/interface evidence passes for the supplied source hashes: DecoderBlock.scala ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785; Norm.scala f3319af0d66c9e8c19e7cc789b9fc5799b62e0ad49811ef7da43ceb6dc2eeddf; Attention.scala c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e; Residual.scala 8bef8dac50264c2278438a18e5be48328ed1fd1bfb3f9bbee3c522f11258aca3; FFN.scala 1896b7ea12ac548124a1a25266baa7d9ea087af21ee60d57633f6843db91a58c; Elementwise.scala 53f25bee2ff7dc030db606d1842a45ddd856b475c388ee82d6260779d4ec8870; Softmax.scala 4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2; Mask.scala bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a. Constructor and metadata required-parameter checks report no errors for the selected templates.\",\n    \"Numeric bindings trace to the supplied numeric policy defaults: weight=4 bits, activation=8 bits, accumulator=32 bits, with independent dtypes and integer_mode=true. The candidate cross-layer trace reports the numeric policy as present, but a separate numeric_policy_check result is not recorded. numeric_compare is not_run and is not a Stage-2 acceptance prerequisite; no numerical comparison or simulation is required here.\",\n    \"Three or more DSE values are not resolved at this stage: lanes and the wrapper compute-array dimensions remain candidate_bound/null. The supplied stage gate classifies their later concrete selection as not a current-stage blocker.\",\n    \"sacg_memory_truth reports two active contamination barriers on artifact.stage2.template_selection (transitions 0001 and 0006), and no open retry or backtrack requests. Rejected artifacts remain planning/debug evidence only; downstream stages must not consume them as validated design inputs.\"\n  ],\n  \"risks\": [\n    \"Current-stage blocker: the selected block wrapper and self-attention templates bind mutually inconsistent model dimensions. The authoritative shape inputs must be resolved upstream; selecting a value here or changing template internals would exceed this role's authority.\",\n    \"The active SACG contamination barriers prevent downstream consumption of rejected template-selection artifacts as validated inputs until a fresh candidate is checked and promoted through the applicable trust-barrier process.\"\n  ],\n  \"proposed_actions\": [\n    \"Request source-backed resolution of the authoritative hidden_size/num_q_heads/head_dim facts from the upstream model-input authority; do not propose or silently substitute a value.\",\n    \"After authorized resolution, refresh only the candidate parameter bindings from those inputs and rerun the relevant static checks. Preserve template internals, numeric policy, and source/interface hashes.\",\n    \"Keep rejected artifacts quarantined. Do not advance downstream from this candidate unless a fresh candidate passes the applicable checks and SACG trust handling.\"\n  ],\n  \"executable_actions\": [\n    {\n      \"id\": \"template_selection.resolve_authoritative_shape_conflict\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"authoritative_input_resolution\",\n      \"rationale\": \"The supplied shape facts conflict, and this specialist cannot choose among them. Obtain source-backed upstream authority or an explicit unresolved disposition before rebinding; do not guess a replacement or modify templates.\",\n      \"consumes\": [\n        \"artifact.input.field_evidence\",\n        \"artifact.input.material_index\",\n        \"artifact.input.model_config\",\n        \"artifact.input.task_card\",\n        \"artifact.stage2.template_selection\",\n        \"constraint.shape.model\",\n        \"constraint.cross_layer.input_consistency\",\n        \"constraint.human.boundary\"\n      ],\n      \"produces\": [\n        \"artifact.template_selection.authoritative_shape_resolution\"\n      ],\n      \"tool_roles\": [\n        \"human_boundary_check\",\n        \"model_config_check\",\n        \"sacg_validate\"\n      ],\n      \"acceptance_checkers\": [\n        \"human_boundary_check\",\n        \"model_config_check\",\n        \"sacg_static_check\"\n      ],\n      \"on_failure\": \"Keep template selection blocked and preserve the input conflict as unresolved. Do not alter model dimensions, template internals, or candidate bindings to force legality.\",\n      \"requires_approval\": true\n    },\n    {\n      \"id\": \"template_selection.rebind_and_recheck_fresh_candidate\",\n      \"stage\": \"template_selection\",\n      \"action_type\": \"candidate_binding_recheck\",\n      \"rationale\": \"Once the authoritative shape resolution is accepted, check a fresh candidate against the resolved inputs and the existing trusted template interfaces. Candidate-bound DSE dimensions remain for their later authorized selection stage.\",\n      \"consumes\": [\n        \"artifact.template_selection.authoritative_shape_resolution\",\n        \"artifact.input.model_config\",\n        \"artifact.input.numeric_policy\",\n        \"artifact.input.template_library\",\n        \"artifact.input.template_metadata\",\n        \"artifact.input.design_space\",\n        \"artifact.stage2.template_selection\"\n      ],\n      \"produces\": [\n        \"artifact.stage2.template_selection.fresh_candidate\",\n        \"artifact.stage2.template_selection.parameter_binding_review\",\n        \"artifact.stage2.template_selection.checker_evidence\"\n      ],\n      \"tool_roles\": [\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"numeric_policy_check\",\n        \"template_coverage_check\",\n        \"sacg_validate\"\n      ],\n      \"acceptance_checkers\": [\n        \"parameter_binding_static_check\",\n        \"template_binding_static_check\",\n        \"numeric_policy_check\",\n        \"template_coverage_check\",\n        \"sacg_static_check\",\n        \"stage_artifact_trust_barrier_check\",\n        \"sacg_memory_check\"\n      ],\n      \"on_failure\": \"Retain the fresh candidate as unpromoted, report the exact failed binding or checker, and keep active contamination barriers effective. Do not alter template internals or relax numeric policy.\",\n      \"requires_approval\": false\n    }\n  ],\n  \"approval_required_for\": [\n    \"Upstream authoritative adjudication of the conflicting model shape facts if supplied source evidence does not unambiguously identify the controlling values.\",\n    \"Any proposed change to authoritative model shape values, architecture dimensions, template internals, memory layout, or numeric policy.\"\n  ]\n}",
   "reasoning_effort": "medium",
   "request_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/numeric_template_specialist_prompt.md",
   "result_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/numeric_template_specialist_result.json",
   "schema_version": "spatialaccagent.stage_worker_record.v0",
-  "stage": "template_selection.strict template-binding and numeric-policy engineer",
+  "stage": "template_selection.template binding engineer",
   "stream": false,
   "supersedes_artifact_snapshot": {
     "archived_file_count": 2,
-    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/history/numeric_template_specialist_result.719030dd441329df.2cfab238ec8f1c24.d5a567f25d8109d6.snapshot.json",
-    "replaced_prompt_hash": "accafd7e083c3f57c480a3756cc8db662f3423de5c3c8ea75424abfb9ed4a5d2",
-    "replaced_result_sha256": "719030dd441329dfe9f25d33b8b5f2181243cce22a033ea2c437d4ea35385e11",
+    "manifest_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/llm/history/numeric_template_specialist_result.40c4de38cdd0fe64.349a676f9ce6270c.a025dbdd714804af.snapshot.json",
+    "replaced_prompt_hash": "c9256f3a390bff72c19ac00737495da7ef291a1adc619cd7d7ae6f390bbb3d0d",
+    "replaced_result_sha256": "40c4de38cdd0fe644daa39ba99ae467b4b7a17e1d780bcd7cf20bcb089c22f98",
     "schema_version": "spatialaccagent.stage_worker_artifact_snapshot.v1",
-    "snapshot_id": "719030dd441329df.2cfab238ec8f1c24.d5a567f25d8109d6"
+    "snapshot_id": "40c4de38cdd0fe64.349a676f9ce6270c.a025dbdd714804af"
   },
   "transport": "responses_json",
   "used_fallback": false

@@ -396,6 +396,132 @@ class ThirdLayerProducerOrderTest(TestCase):
 
         self.assertEqual(status, "pass", summary)
 
+    def test_stage6_compile_only_policy_does_not_require_runtime_contract_flags(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            contract_path = Path(temp_dir) / "verification_artifact_contract.json"
+            contract_path.write_text(
+                json.dumps(
+                    {
+                        "status": "pass",
+                        "summary": "legacy Stage5 contract",
+                        "policy": {
+                            name: True
+                            for name in [
+                                "smoke_is_not_acceptance",
+                                "real_weight_artifacts_required",
+                                "complete_transformer_block_weight_consumption_required",
+                                "transformer_blocks_are_the_only_accelerator_scope",
+                                "real_target_model_reference_required",
+                                "random_or_rtl_derived_expected_output_forbidden",
+                                "contract_guided_debug_closure_required",
+                                "downstream_failure_requires_failure_slice",
+                                "later_stage_missing_gate_or_tool_requires_stage5_backtrack",
+                                "same_stage_retry_can_supersede_prior_stage5_barriers_after_promotion",
+                                "lower_layer_pass_evidence_is_reusable_not_absolute",
+                                "higher_layer_trace_can_trigger_targeted_lower_layer_backtrack",
+                                "do_not_reopen_passed_lower_layer_without_contradicting_boundary_trace",
+                            ]
+                        },
+                        "backtrack_contract": {
+                            "target_stage": "stage5.verification_artifacts"
+                        },
+                        "debug_loop_contract": {
+                            "layer_order": [
+                                "operator_leaf_modules",
+                                "single_transformer_layer_kernel",
+                                "board_axi_ddr_wrapped_system",
+                            ],
+                            "anti_spin_policy": {
+                                "lower_layer_pass_evidence_is_reusable_not_absolute": True,
+                                "passed_lower_layer_can_be_challenged_by_current_layer_trace": True,
+                                "do_not_reopen_passed_lower_layer_without_contradicting_current_layer_trace": True,
+                            },
+                        },
+                        "retry_reconciliation_contract": {
+                            "stage": "stage5.verification_artifacts"
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            state = {
+                "artifacts": [
+                    {
+                        "id": "artifact.stage5.verification_artifact_contract",
+                        "path": str(contract_path),
+                    }
+                ]
+            }
+
+            with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}):
+                status, summary = check_verification_artifact_contract(state)
+
+        self.assertEqual(status, "pass", summary)
+        self.assertIn("deferred by vcs_compile_only", summary)
+
+    def test_stage6_full_semantic_policy_keeps_runtime_contract_requirements(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            contract_path = Path(temp_dir) / "verification_artifact_contract.json"
+            contract_path.write_text(
+                json.dumps(
+                    {
+                        "status": "pass",
+                        "policy": {
+                            name: True
+                            for name in [
+                                "smoke_is_not_acceptance",
+                                "real_weight_artifacts_required",
+                                "complete_transformer_block_weight_consumption_required",
+                                "transformer_blocks_are_the_only_accelerator_scope",
+                                "real_target_model_reference_required",
+                                "random_or_rtl_derived_expected_output_forbidden",
+                                "contract_guided_debug_closure_required",
+                                "downstream_failure_requires_failure_slice",
+                                "later_stage_missing_gate_or_tool_requires_stage5_backtrack",
+                                "same_stage_retry_can_supersede_prior_stage5_barriers_after_promotion",
+                                "lower_layer_pass_evidence_is_reusable_not_absolute",
+                                "higher_layer_trace_can_trigger_targeted_lower_layer_backtrack",
+                                "do_not_reopen_passed_lower_layer_without_contradicting_boundary_trace",
+                            ]
+                        },
+                        "backtrack_contract": {
+                            "target_stage": "stage5.verification_artifacts"
+                        },
+                        "debug_loop_contract": {
+                            "layer_order": [
+                                "operator_leaf_modules",
+                                "single_transformer_layer_kernel",
+                                "board_axi_ddr_wrapped_system",
+                            ],
+                            "anti_spin_policy": {
+                                "lower_layer_pass_evidence_is_reusable_not_absolute": True,
+                                "passed_lower_layer_can_be_challenged_by_current_layer_trace": True,
+                                "do_not_reopen_passed_lower_layer_without_contradicting_current_layer_trace": True,
+                            },
+                        },
+                        "retry_reconciliation_contract": {
+                            "stage": "stage5.verification_artifacts"
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            state = {
+                "artifacts": [
+                    {
+                        "id": "artifact.stage5.verification_artifact_contract",
+                        "path": str(contract_path),
+                    }
+                ]
+            }
+
+            with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "full_semantic_simulation"}):
+                status, summary = check_verification_artifact_contract(state)
+
+        self.assertEqual(status, "fail")
+        self.assertIn("real_functional_sim_required", summary)
+        self.assertIn("board_runtime_required_for_final_pass", summary)
+
     def test_stage6_reads_promoted_stage5_verification_inputs_without_relabeling(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -10,13 +10,65 @@ from accagent.framework.semantic_runtime import (
     tensor_sha256,
 )
 from scripts.verification.semantic_testbench_generator import (
+    activation_vector_encoding,
     semantic_harness_tb,
     stream_metadata_contract,
+    tensor_words,
     validate_harness_weight_hashes,
+    write_packed_memh,
 )
 
 
 class SemanticRuntimeContractTest(TestCase):
+    def test_w4a8_activation_vectors_use_signed_int8_policy_encoding(self) -> None:
+        policy = {
+            "default_rules": {
+                "weight_dtype": "int4",
+                "activation_dtype": "int8",
+                "acc_dtype": "int32",
+                "rounding": "nearest_even",
+                "saturation": True,
+            }
+        }
+        integer_mode, real_scale = activation_vector_encoding(policy)
+        self.assertTrue(integer_mode)
+        self.assertEqual(real_scale, 1.0)
+        self.assertEqual(
+            tensor_words(
+                torch.tensor([-200.0, -1.5, -0.5, 0.5, 1.5, 200.0]),
+                8,
+                signed_integer=True,
+                real_scale=real_scale,
+            ),
+            [0x80, 0xFE, 0x00, 0x00, 0x02, 0x7F],
+        )
+
+    def test_w4a8_memh_packs_signed_codes_with_lane_zero_in_lsb(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "input.memh"
+            result = write_packed_memh(
+                path,
+                torch.tensor([-1.0, 2.0, -128.0, 127.0]),
+                8,
+                4,
+                signed_integer=True,
+            )
+            self.assertEqual(path.read_text(encoding="ascii"), "7f8002ff\n")
+            self.assertEqual(result["encoding"], "signed_int8_twos_complement_lane0_lsb")
+            self.assertEqual(result["saturation_range"], [-128, 127])
+
+    def test_w4a8_vector_encoding_rejects_incomplete_numeric_contract(self) -> None:
+        with self.assertRaisesRegex(ValueError, "nearest-even rounding"):
+            activation_vector_encoding({
+                "default_rules": {
+                    "weight_dtype": "int4",
+                    "activation_dtype": "int8",
+                    "acc_dtype": "int32",
+                    "rounding": "truncate",
+                    "saturation": True,
+                }
+            })
+
     def runtime_record(self, path: Path, tensor: torch.Tensor) -> dict:
         torch.save(tensor, path)
         return {

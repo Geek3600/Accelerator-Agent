@@ -1,0 +1,559 @@
+package spatialaccagent.templates
+
+import chisel3._
+import chisel3.util._
+
+final case class SoftmaxParams(
+  seqLen: Int,
+  lanes: Int = 16,
+  elemBits: Int = 16,
+  fracBits: Int = 8,
+  batchSize: Int = 16,
+  causal: Boolean = true,
+  slidingWindow: Int = 0,
+  probabilityFracBits: Int = 7,
+  integerMode: Boolean = false
+) {
+  require(seqLen > 0, "seqLen must be positive")
+  require(lanes > 0, "lanes must be positive")
+  if (integerMode) {
+    require(elemBits == 8, "integer softmax requires signed INT8 score/probability elements")
+    require(probabilityFracBits > 0 && probabilityFracBits < 31, "integer softmax probability scale must fit Q31")
+  } else {
+    require(elemBits == 16 || elemBits == 32, "softmax elements must be IEEE fp16 or fp32")
+  }
+  require(fracBits >= 0, "fracBits must be non-negative")
+  require(seqLen % lanes == 0, "softmax requires seqLen divisible by lanes")
+  require(slidingWindow >= 0, "slidingWindow must be non-negative")
+
+  val beats: Int = seqLen / lanes
+  val beatBits: Int = lanes * elemBits
+  val addrBits: Int = log2Ceil(batchSize * beats max 2)
+  val rowBits: Int = log2Ceil(seqLen max 2)
+  val seqBits: Int = log2Ceil(seqLen + 1 max 2)
+}
+
+private class IntegerSoftmax(p: SoftmaxParams) extends Module {
+  require(p.integerMode, "IntegerSoftmax requires the integer numeric policy")
+
+  val io = IO(new Bundle {
+    val cfg = Input(new StageConfig(p.seqBits))
+    val cfgValid = Input(Bool())
+    val rowIndex = Input(UInt(p.rowBits.W))
+    val mask = Input(UInt(p.seqLen.W))
+    val in = Flipped(Decoupled(new StreamBeat(StreamSpec(p.beatBits, p.addrBits))))
+    val out = Decoupled(new StreamBeat(StreamSpec(p.beatBits, p.addrBits)))
+  })
+
+  private val sCollect :: sEmit :: Nil = Enum(2)
+  private val state = RegInit(sCollect)
+  private val scores = Reg(Vec(p.seqLen, SInt(8.W)))
+  private val collectBeat = RegInit(0.U(log2Ceil(p.beats max 2).W))
+  private val emitBeat = RegInit(0.U(log2Ceil(p.beats max 2).W))
+  private val activeBeats = RegInit(p.beats.U(log2Ceil(p.beats + 1 max 2).W))
+  private val rowIndexReg = RegInit(0.U(p.rowBits.W))
+  private val maskReg = RegInit(0.U(p.seqLen.W))
+  private val inputStartReg = RegInit(false.B)
+  private val inputLastReg = RegInit(false.B)
+  private val inputAddrReg = RegInit(0.U(p.addrBits.W))
+
+  io.in.ready := state === sCollect
+  io.out.valid := state === sEmit
+
+  val inputValues = io.in.bits.data.asTypeOf(Vec(p.lanes, SInt(8.W)))
+  // Exclude masked, noncausal, and inactive tail positions from the row
+  // maximum. Otherwise an arbitrarily large score that cannot participate in
+  // the row can underflow every valid exponential after max subtraction.
+  val keyAllowed = (0 until p.seqLen).map { index =>
+    val active = index.U < (activeBeats * p.lanes.U)
+    val causalKeep = if (p.causal) index.U <= rowIndexReg else true.B
+    val explicitMaskEnabled = maskReg.orR
+    active && causalKeep && (!explicitMaskEnabled || maskReg(index))
+  }
+  val minimumScore = (-128).S(8.W)
+  val maxScore: SInt = (0 until p.seqLen).map { index =>
+    Mux(keyAllowed(index), scores(index), minimumScore)
+  }.reduce((left, right) => Mux(left > right, left, right))
+
+  // The exponential approximation is an explicit bounded integer PWL table.
+  // Codes are unsigned Q8 and the common Q8 scale cancels in exp/sum. The
+  // reciprocal is Q31, and the final probability is requantized to signed
+  // INT8 Q7 with saturation. This avoids variable floating-point operators and
+  // preserves a nonzero unit-probability representation for one-element rows.
+  val expValues = (0 until p.seqLen).map { index =>
+    val difference = (maxScore - scores(index)).asUInt
+    val keep = keyAllowed(index)
+    val approximation = Mux(
+      difference >= 64.U,
+      0.U(16.W),
+      Mux(
+        difference >= 32.U,
+        8.U(16.W),
+        Mux(
+          difference >= 16.U,
+          32.U(16.W),
+          Mux(difference >= 8.U, 128.U(16.W), 256.U(16.W))
+        )
+      )
+    )
+    Mux(keep, approximation, 0.U(16.W))
+  }
+  private val sumBits = 16 + log2Ceil(p.seqLen max 2)
+  val expSum = expValues.reduce { (left, right) =>
+    left.pad(sumBits) +& right.pad(sumBits)
+  }
+  val safeExpSum = Mux(expSum === 0.U, 1.U(sumBits.W), expSum)
+  val reciprocalQ31 = AccMath.unsignedDivideFixed(
+    (BigInt(1) << 31).U(32.W),
+    safeExpSum,
+    numeratorBits = 32,
+    denominatorBits = sumBits
+  )
+  val probabilityValues = VecInit(expValues.map { value =>
+    val product = value * reciprocalQ31
+    val probabilityShift = 31 - p.probabilityFracBits
+    val probabilityBase = product(47, probabilityShift)
+    val probabilityRemainder = product(probabilityShift - 1, 0)
+    val probabilityHalf = (BigInt(1) << (probabilityShift - 1)).U(probabilityShift.W)
+    val probabilityRoundUp = probabilityRemainder > probabilityHalf ||
+      (probabilityRemainder === probabilityHalf && probabilityBase(0))
+    val probabilityRounded = probabilityBase.pad(49) + probabilityRoundUp.asUInt
+    Mux(
+      probabilityRounded > 127.U,
+      127.U(8.W),
+      probabilityRounded(7, 0)
+    )
+  })
+  val outputValues = Wire(Vec(p.lanes, UInt(8.W)))
+  for (lane <- 0 until p.lanes) {
+    val index = emitBeat * p.lanes.U + lane.U
+    outputValues(lane) := probabilityValues(AccMath.boundedIndex(index, p.seqLen))
+  }
+  io.out.bits.data := outputValues.asUInt
+  io.out.bits.st := inputStartReg && emitBeat === 0.U
+  io.out.bits.addr := inputAddrReg + emitBeat
+  io.out.bits.last := inputLastReg && emitBeat === activeBeats - 1.U
+
+  when(io.in.fire) {
+    when(collectBeat === 0.U) {
+      rowIndexReg := io.rowIndex
+      maskReg := io.mask
+      inputStartReg := io.in.bits.st
+      inputAddrReg := io.in.bits.addr
+    }
+    for (lane <- 0 until p.lanes) {
+      val index = collectBeat * p.lanes.U + lane.U
+      scores(AccMath.boundedIndex(index, p.seqLen)) := inputValues(lane)
+    }
+    when(io.in.bits.last || collectBeat === (p.beats - 1).U) {
+      activeBeats := collectBeat + 1.U
+      inputLastReg := io.in.bits.last || collectBeat === (p.beats - 1).U
+      collectBeat := 0.U
+      emitBeat := 0.U
+      state := sEmit
+    }.otherwise {
+      collectBeat := collectBeat + 1.U
+    }
+  }
+
+  when(io.out.fire) {
+    when(emitBeat === activeBeats - 1.U) {
+      emitBeat := 0.U
+      collectBeat := 0.U
+      state := sCollect
+    }.otherwise {
+      emitBeat := emitBeat + 1.U
+    }
+  }
+
+  dontTouch(io.cfg)
+  dontTouch(io.cfgValid)
+}
+
+class Softmax(p: SoftmaxParams) extends Module {
+  val io = IO(new Bundle {
+    val cfg = Input(new StageConfig(p.seqBits))
+    val cfgValid = Input(Bool())
+    val rowIndex = Input(UInt(p.rowBits.W))
+    val mask = Input(UInt(p.seqLen.W))
+    val in = Flipped(Decoupled(new StreamBeat(StreamSpec(p.beatBits, p.addrBits))))
+    val out = Decoupled(new StreamBeat(StreamSpec(p.beatBits, p.addrBits)))
+  })
+
+  if (p.integerMode) {
+    val core = Module(new IntegerSoftmax(p))
+    core.io.cfg := io.cfg
+    core.io.cfgValid := io.cfgValid
+    core.io.rowIndex := io.rowIndex
+    core.io.mask := io.mask
+    core.io.in <> io.in
+    io.out <> core.io.out
+  } else {
+  val expTablePath = "src/main/resources/spatialaccagent/numeric/exp2_fraction_q24.mem"
+  val q11Width = 16
+  val expFractionBits = 24
+  val log2eFixed = 2955
+  val expBits = 26
+  val sumBits = expBits + log2Ceil(p.seqLen max 2)
+  val metaBits = p.addrBits + 1
+
+  val scoreMemory = Module(new PhysicalSimpleDualPortMemory(p.beats, p.beatBits, "activation"))
+  val keepMemory = Module(new PhysicalSimpleDualPortMemory(p.beats, p.lanes, "activation"))
+  val expMemory = Module(new PhysicalSimpleDualPortMemory(p.beats, p.lanes * expBits, "activation"))
+  val metaMemory = Module(new PhysicalSimpleDualPortMemory(p.beats, metaBits, "activation"))
+  val expRom = Module(new PhysicalRom(2048, expBits, expTablePath))
+
+  val states = Enum(23)
+  val sCollect = states(0)
+  val sMaxRead = states(1)
+  val sMaxCapture = states(2)
+  val sMaxCompareIssue = states(3)
+  val sMaxCompareWait = states(4)
+  val sExpRead = states(5)
+  val sExpCapture = states(6)
+  val sShiftIssue = states(7)
+  val sShiftWait = states(8)
+  val sClassifyIssue = states(9)
+  val sClassifyWait = states(10)
+  val sConvertIssue = states(11)
+  val sConvertWait = states(12)
+  val sTableIssue = states(13)
+  val sTableCapture = states(14)
+  val sExpCommit = states(15)
+  val sEmitRead = states(16)
+  val sEmitCapture = states(17)
+  val sProbabilityConvertIssue = states(18)
+  val sProbabilityConvertWait = states(19)
+  val sProbabilityDivideIssue = states(20)
+  val sProbabilityDivideWait = states(21)
+  val sEmit = states(22)
+  val state = RegInit(sCollect)
+
+  val seqLimit = RegInit(p.seqLen.U(p.seqBits.W))
+  val rowIndexReg = RegInit(0.U(p.rowBits.W))
+  val maskReg = RegInit(0.U(p.seqLen.W))
+  val activeBeats = RegInit(p.beats.U(log2Ceil(p.beats + 1 max 2).W))
+  val collectBeat = RegInit(0.U(log2Ceil(p.beats max 2).W))
+  val workBeat = RegInit(0.U(log2Ceil(p.beats max 2).W))
+  val workLane = RegInit(0.U(log2Ceil(p.lanes max 2).W))
+  val emitBeat = RegInit(0.U(log2Ceil(p.beats max 2).W))
+  val emitLane = RegInit(0.U(log2Ceil(p.lanes max 2).W))
+
+  val scoreBeatReg = Reg(UInt(p.beatBits.W))
+  val keepBeatReg = Reg(UInt(p.lanes.W))
+  val expBeatReg = Reg(Vec(p.lanes, UInt(expBits.W)))
+  val emitExpReg = Reg(UInt((p.lanes * expBits).W))
+  val emitMetaReg = Reg(UInt(metaBits.W))
+  val outputBeatReg = Reg(Vec(p.lanes, UInt(p.elemBits.W)))
+  val maxReg = Reg(UInt(32.W))
+  val maxInitialized = RegInit(false.B)
+  val expSumReg = RegInit(0.U(sumBits.W))
+  val shiftedReg = Reg(UInt(32.W))
+  val scaledReg = Reg(UInt(32.W))
+  val q11Reg = Reg(SInt(q11Width.W))
+  val geZeroReg = RegInit(false.B)
+  val leMinusSixteenReg = RegInit(false.B)
+  val probabilityNumeratorFpReg = Reg(UInt(32.W))
+  val probabilityDenominatorFpReg = Reg(UInt(32.W))
+
+  val normalizedCfgSeq = Mux(
+    io.cfg.seqlen === 0.U || io.cfg.seqlen > p.seqLen.U,
+    p.seqLen.U(p.seqBits.W),
+    io.cfg.seqlen
+  )
+  when(io.cfgValid) {
+    seqLimit := normalizedCfgSeq
+  }
+
+  val inputValues = io.in.bits.data.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))
+  val inputKeep = Wire(Vec(p.lanes, Bool()))
+  val firstCollect = collectBeat === 0.U
+  val collectRow = Mux(firstCollect, io.rowIndex, rowIndexReg)
+  val collectLimit = Mux(firstCollect, Mux(io.cfgValid, normalizedCfgSeq, seqLimit), seqLimit)
+  val collectMask = Mux(firstCollect, io.mask, maskReg)
+  for (lane <- 0 until p.lanes) {
+    val index = collectBeat * p.lanes.U + lane.U
+    val inSequence = index < collectLimit
+    val maskKeep = collectMask(AccMath.boundedIndex(index, p.seqLen))
+    val causalKeep = if (p.causal) index <= collectRow else true.B
+    val windowKeep = if (p.slidingWindow > 0) index + p.slidingWindow.U > collectRow else true.B
+    inputKeep(lane) := inSequence && maskKeep && causalKeep && windowKeep
+  }
+
+  io.in.ready := state === sCollect
+  scoreMemory.io.writeEn := io.in.fire
+  scoreMemory.io.writeAddr := collectBeat
+  scoreMemory.io.writeData := io.in.bits.data
+  keepMemory.io.writeEn := io.in.fire
+  keepMemory.io.writeAddr := collectBeat
+  keepMemory.io.writeData := inputKeep.asUInt
+  metaMemory.io.writeEn := io.in.fire
+  metaMemory.io.writeAddr := collectBeat
+  metaMemory.io.writeData := Cat(io.in.bits.addr, io.in.bits.st)
+  expMemory.io.writeEn := state === sExpCommit
+  expMemory.io.writeAddr := workBeat
+  expMemory.io.writeData := expBeatReg.asUInt
+
+  when(io.in.fire) {
+    when(firstCollect) {
+      rowIndexReg := io.rowIndex
+      maskReg := io.mask
+    }
+    when(io.in.bits.last || collectBeat === (p.beats - 1).U) {
+      activeBeats := collectBeat +& 1.U
+      collectBeat := 0.U
+      workBeat := 0.U
+      workLane := 0.U
+      maxInitialized := false.B
+      expSumReg := 0.U
+      state := sMaxRead
+    }.otherwise {
+      collectBeat := collectBeat + 1.U
+    }
+  }
+
+  val readingMax = state === sMaxRead
+  val readingExp = state === sExpRead
+  val readingEmit = state === sEmitRead
+  scoreMemory.io.readEn := readingMax || readingExp
+  scoreMemory.io.readAddr := workBeat
+  keepMemory.io.readEn := readingMax || readingExp
+  keepMemory.io.readAddr := workBeat
+  expMemory.io.readEn := readingEmit
+  expMemory.io.readAddr := emitBeat
+  metaMemory.io.readEn := readingEmit
+  metaMemory.io.readAddr := emitBeat
+  expRom.io.readEn := state === sTableIssue
+
+  // XPM supplies the first requested beat on the capture cycle. Subsequent
+  // lanes use the registered copy while the same beat is being scanned.
+  val currentScoreBeat = Mux(workLane === 0.U, scoreMemory.io.readData, scoreBeatReg)
+  val currentKeepBeat = Mux(workLane === 0.U, keepMemory.io.readData, keepBeatReg)
+  val selectedLane = AccMath.boundedIndex(workLane, p.lanes)
+  val selectedScore = if (p.lanes == 1) {
+    currentScoreBeat.asTypeOf(Vec(1, UInt(p.elemBits.W)))(0)
+  } else {
+    currentScoreBeat.asTypeOf(Vec(p.lanes, UInt(p.elemBits.W)))(selectedLane)
+  }
+  val selectedScoreFp = PhysicalMath.toFp32(selectedScore, p.elemBits)
+  val selectedKeep = if (p.lanes == 1) currentKeepBeat(0) else currentKeepBeat(selectedLane)
+
+  def advanceMax(): Unit = {
+    when(workLane === (p.lanes - 1).U) {
+      workLane := 0.U
+      when(workBeat === activeBeats - 1.U) {
+        workBeat := 0.U
+        state := sExpRead
+      }.otherwise {
+        workBeat := workBeat + 1.U
+        state := sMaxRead
+      }
+    }.otherwise {
+      workLane := workLane + 1.U
+      state := sMaxCapture
+    }
+  }
+
+  when(state === sMaxRead) {
+    state := sMaxCapture
+  }
+  when(state === sMaxCapture) {
+    when(workLane === 0.U) {
+      scoreBeatReg := scoreMemory.io.readData
+      keepBeatReg := keepMemory.io.readData
+    }
+    when(!selectedKeep) {
+      advanceMax()
+    }.elsewhen(!maxInitialized) {
+      maxReg := selectedScoreFp
+      maxInitialized := true.B
+      advanceMax()
+    }.otherwise {
+      state := sMaxCompareIssue
+    }
+  }
+
+  val maxCompare = Module(new PhysicalFp32CompareLt)
+  maxCompare.io.a := maxReg
+  maxCompare.io.b := selectedScoreFp
+  maxCompare.io.inValid := state === sMaxCompareIssue && maxCompare.io.inReady
+  when(state === sMaxCompareIssue && maxCompare.io.inReady) {
+    state := sMaxCompareWait
+  }
+  when(state === sMaxCompareWait && maxCompare.io.outValid) {
+    maxReg := Mux(maxCompare.io.out(0), selectedScoreFp, maxReg)
+    advanceMax()
+  }
+
+  def advanceExp(): Unit = {
+    when(workLane === (p.lanes - 1).U) {
+      workLane := 0.U
+      state := sExpCommit
+    }.otherwise {
+      workLane := workLane + 1.U
+      state := sExpCapture
+    }
+  }
+
+  when(state === sExpRead) {
+    state := sExpCapture
+  }
+  when(state === sExpCapture) {
+    when(workLane === 0.U) {
+      scoreBeatReg := scoreMemory.io.readData
+      keepBeatReg := keepMemory.io.readData
+      for (lane <- 0 until p.lanes) {
+        expBeatReg(lane) := 0.U
+      }
+    }
+    when(!selectedKeep) {
+      expBeatReg(AccMath.boundedIndex(workLane, p.lanes)) := 0.U
+      advanceExp()
+    }.otherwise {
+      state := sShiftIssue
+    }
+  }
+
+  val subtract = Module(new PhysicalFp32Sub)
+  subtract.io.a := selectedScoreFp
+  subtract.io.b := maxReg
+  subtract.io.inValid := state === sShiftIssue && subtract.io.inReady
+  when(state === sShiftIssue && subtract.io.inReady) {
+    state := sShiftWait
+  }
+  when(state === sShiftWait && subtract.io.outValid) {
+    shiftedReg := subtract.io.out
+    state := sClassifyIssue
+  }
+
+  val scaleForQ11 = Module(new PhysicalFp32Mul)
+  val compareZero = Module(new PhysicalFp32CompareLt)
+  val compareMinusSixteen = Module(new PhysicalFp32CompareLt)
+  scaleForQ11.io.a := shiftedReg
+  scaleForQ11.io.b := PhysicalMath.fp32Constant(2048.0)
+  compareZero.io.a := shiftedReg
+  compareZero.io.b := PhysicalMath.fp32Zero
+  compareMinusSixteen.io.a := PhysicalMath.fp32Constant(-16.0)
+  compareMinusSixteen.io.b := shiftedReg
+  val classifyReady = scaleForQ11.io.inReady && compareZero.io.inReady && compareMinusSixteen.io.inReady
+  val classifyIssue = state === sClassifyIssue && classifyReady
+  scaleForQ11.io.inValid := classifyIssue
+  compareZero.io.inValid := classifyIssue
+  compareMinusSixteen.io.inValid := classifyIssue
+  when(classifyIssue) {
+    state := sClassifyWait
+  }
+  when(state === sClassifyWait && scaleForQ11.io.outValid && compareZero.io.outValid && compareMinusSixteen.io.outValid) {
+    scaledReg := scaleForQ11.io.out
+    geZeroReg := !compareZero.io.out(0)
+    leMinusSixteenReg := !compareMinusSixteen.io.out(0)
+    state := sConvertIssue
+  }
+
+  val q11Convert = Module(new PhysicalFp32ToSigned(q11Width))
+  q11Convert.io.in := scaledReg
+  q11Convert.io.inValid := state === sConvertIssue && q11Convert.io.inReady
+  when(state === sConvertIssue && q11Convert.io.inReady) {
+    state := sConvertWait
+  }
+  when(state === sConvertWait && q11Convert.io.outValid) {
+    q11Reg := q11Convert.io.out
+    state := sTableIssue
+  }
+
+  val logProduct = q11Reg * log2eFixed.S(13.W)
+  val logBits = logProduct.asUInt
+  expRom.io.readAddr := logBits(21, 11)
+  val integerFloor = logProduct >> 22
+  val shiftMagnitude = (0.S(logProduct.getWidth.W) - integerFloor).asUInt
+  when(state === sTableIssue) {
+    state := sTableCapture
+  }
+  val expOne = (BigInt(1) << expFractionBits).U(expBits.W)
+  val tableExp = expRom.io.readData >> shiftMagnitude
+  val boundedExp = Mux(geZeroReg, expOne, Mux(leMinusSixteenReg, 0.U(expBits.W), tableExp))
+  when(state === sTableCapture) {
+    expBeatReg(AccMath.boundedIndex(workLane, p.lanes)) := boundedExp
+    expSumReg := expSumReg + boundedExp
+    advanceExp()
+  }
+  when(state === sExpCommit) {
+    when(workBeat === activeBeats - 1.U) {
+      emitBeat := 0.U
+      emitLane := 0.U
+      state := sEmitRead
+    }.otherwise {
+      workBeat := workBeat + 1.U
+      state := sExpRead
+    }
+  }
+
+  when(state === sEmitRead) {
+    state := sEmitCapture
+  }
+  when(state === sEmitCapture) {
+    emitExpReg := expMemory.io.readData
+    emitMetaReg := metaMemory.io.readData
+    emitLane := 0.U
+    state := sProbabilityConvertIssue
+  }
+
+  val emitExpValues = emitExpReg.asTypeOf(Vec(p.lanes, UInt(expBits.W)))
+  val safeExpSum = Mux(expSumReg === 0.U, 1.U(sumBits.W), expSumReg)
+  val probabilityNumerator = Module(new PhysicalUIntToFp32(expBits))
+  val probabilityDenominator = Module(new PhysicalUIntToFp32(sumBits))
+  val probabilityDivide = Module(new PhysicalFp32Div)
+  probabilityNumerator.io.in := emitExpValues(AccMath.boundedIndex(emitLane, p.lanes))
+  probabilityDenominator.io.in := safeExpSum
+  val probabilityConvertReady = probabilityNumerator.io.inReady && probabilityDenominator.io.inReady
+  val probabilityConvertIssue = state === sProbabilityConvertIssue && probabilityConvertReady
+  probabilityNumerator.io.inValid := probabilityConvertIssue
+  probabilityDenominator.io.inValid := probabilityConvertIssue
+  when(probabilityConvertIssue) {
+    state := sProbabilityConvertWait
+  }
+  when(
+    state === sProbabilityConvertWait &&
+      probabilityNumerator.io.outValid &&
+      probabilityDenominator.io.outValid
+  ) {
+    probabilityNumeratorFpReg := probabilityNumerator.io.out
+    probabilityDenominatorFpReg := probabilityDenominator.io.out
+    state := sProbabilityDivideIssue
+  }
+
+  probabilityDivide.io.a := probabilityNumeratorFpReg
+  probabilityDivide.io.b := probabilityDenominatorFpReg
+  probabilityDivide.io.inValid := state === sProbabilityDivideIssue && probabilityDivide.io.inReady
+  when(state === sProbabilityDivideIssue && probabilityDivide.io.inReady) {
+    state := sProbabilityDivideWait
+  }
+  when(state === sProbabilityDivideWait && probabilityDivide.io.outValid) {
+    outputBeatReg(AccMath.boundedIndex(emitLane, p.lanes)) := PhysicalMath.fromFp32(probabilityDivide.io.out, p.elemBits)
+    when(emitLane === (p.lanes - 1).U) {
+      emitLane := 0.U
+      state := sEmit
+    }.otherwise {
+      emitLane := emitLane + 1.U
+      state := sProbabilityConvertIssue
+    }
+  }
+
+  io.out.valid := state === sEmit
+  io.out.bits.data := outputBeatReg.asUInt
+  io.out.bits.st := emitMetaReg(0)
+  io.out.bits.addr := emitMetaReg(metaBits - 1, 1)
+  io.out.bits.last := emitBeat === activeBeats - 1.U
+  when(io.out.fire) {
+    when(io.out.bits.last) {
+      emitBeat := 0.U
+      state := sCollect
+    }.otherwise {
+      emitBeat := emitBeat + 1.U
+      state := sEmitRead
+    }
+  }
+
+  dontTouch(io.cfg)
+  }
+}

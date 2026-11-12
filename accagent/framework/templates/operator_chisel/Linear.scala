@@ -456,7 +456,7 @@ class Linear(p: LinearParams) extends Module {
   }
   val outputValues = Wire(Vec(p.outLanes, UInt(p.outputBits.W)))
   for (outputLane <- 0 until p.outLanes) {
-    val value = beatValues(writeToken)(outputLane)
+    val value = if (p.tokenTileSize == 1) beatValues(0)(outputLane) else beatValues(writeToken)(outputLane)
     if (p.integerMode) {
       val activated = if (p.fusedActivation == "relu") Mux(value(31), 0.U(32.W), value) else value
       val channelIndex = AccMath.boundedIndex(outputGroup * p.macRows.U + outputLane.U, p.outDim)

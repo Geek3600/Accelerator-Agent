@@ -67,6 +67,39 @@ class TargetModelReferenceTest(unittest.TestCase):
         self.assertEqual(plan["input_layernorm"]["module_path"], "ln_1")
         self.assertEqual(plan["attn"]["module_path"], "attn")
 
+    def test_capture_plan_prefers_existing_model_module_for_shared_stage_record(self) -> None:
+        adapter = {
+            "semantic_stages": {
+                "mlp_down_proj": {
+                    "expected": {
+                        "record": "post_feedforward_layernorm",
+                        "value": "input",
+                    },
+                    "required_weight_suffixes": ["mlp.down_proj.weight"],
+                },
+                "rms_norm_post_ffn": {
+                    "expected": {
+                        "record": "post_feedforward_layernorm",
+                        "value": "output",
+                    },
+                    "required_weight_suffixes": ["post_feedforward_layernorm.weight"],
+                },
+            }
+        }
+
+        plan = semantic_capture_plan(
+            adapter,
+            available_module_paths={"post_feedforward_layernorm"},
+        )
+
+        self.assertEqual(
+            plan["post_feedforward_layernorm"],
+            {
+                "module_path": "post_feedforward_layernorm",
+                "values": {"input", "output"},
+            },
+        )
+
     def test_capture_plan_rejects_invalid_selector(self) -> None:
         with self.assertRaisesRegex(ValueError, "invalid capture selector"):
             semantic_capture_plan(

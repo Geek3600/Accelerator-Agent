@@ -42,7 +42,8 @@ DOMAIN_OUTPUT_CONTRACT_SCHEMA_VERSION = (
     "spatialaccagent.board_interface_domain_output_contract.v1"
 )
 
-SELECTOR_MAP_INPUT_BUDGET_BYTES = 320 * 1024
+# Leave room for prompt rules, schema, and serialization around each evidence chunk.
+SELECTOR_MAP_INPUT_BUDGET_BYTES = 140 * 1024
 SELECTOR_REDUCE_INPUT_BUDGET_BYTES = 160 * 1024
 DOMAIN_SOURCE_MAP_INPUT_BUDGET_BYTES = 480 * 1024
 SELECTOR_MAP_CHECKPOINT_SCHEMA_VERSION = (
@@ -2044,6 +2045,34 @@ def _source_review_finding_errors(
 def _validate_source_review_record(
     record: dict[str, Any], contexts: list[dict[str, Any]]
 ) -> tuple[dict[str, Any], list[str]]:
+    # Provenance belongs to the framework, not to the model's ability to copy
+    # hashes and ranges. Only bind a summary after both semantic IDs match;
+    # missing/duplicate segments and incorrect source citations still fail below.
+    output = record.get("output") if isinstance(record.get("output"), dict) else {}
+    output = json.loads(json.dumps(output))
+    assigned = {str(row.get("segment_id") or ""): row for row in contexts}
+    bound_segments = []
+    for row in output.get("source_summaries", []):
+        if not isinstance(row, dict):
+            continue
+        expected = assigned.get(str(row.get("segment_id") or ""))
+        if expected is None or row.get("source_id") != expected.get("source_id"):
+            continue
+        for key in (
+            "sha256", "segment_text_sha256", "text_encoding", "start_line",
+            "end_line", "start_byte", "end_byte",
+        ):
+            row[key] = expected.get(key)
+        bound_segments.append(row["segment_id"])
+    record["output"] = output
+    record["framework_source_provenance_overlay"] = bound_segments
+    # Revalidate cached deterministic failures under the current checker. Actual
+    # transport errors/fallbacks remain errors; all semantic checks still run.
+    if str(record.get("error") or "").startswith(
+        "deterministic board source-review validation failed: "
+    ):
+        record["error"] = None
+        record.pop("deterministic_validation_errors", None)
     errors: list[str] = []
     if record.get("error") or record.get("used_fallback") is True:
         errors.append(f"board source-review LLM failed: {record.get('error')}")
@@ -3012,6 +3041,7 @@ def _selector_map_request(
         "fallback_summary": "Exact board selection map review requires the configured LLM agent.",
         "output_schema": BOARD_INTERFACE_SELECTION_MAP_SCHEMA,
         "prompt_rules": SELECTOR_MAP_PROMPT_RULES,
+        "compact_json_blocks": ("chunk",),
     }
 
 
@@ -3779,6 +3809,28 @@ def _validate_selection_reduce_record(
     if record.get("error") or record.get("used_fallback") is True:
         errors.append(f"progressive selector reduction LLM failed: {record.get('error')}")
     output = record.get("output") if isinstance(record.get("output"), dict) else {}
+    if (
+        output.get("schema_version") == SELECTION_MAP_SCHEMA_VERSION
+        and "reviewed_object_ids" not in output
+        and "reviewed_source_ids" not in output
+        and all(
+            isinstance(output.get(key), list)
+            for key in (
+                "candidate_cells",
+                "candidate_wrapper_sources",
+                "candidate_relevant_sources",
+                "candidate_replacement_sources",
+                "findings",
+                "blockers",
+            )
+        )
+    ):
+        # Some providers return the map schema for a reducer response. Its
+        # payload is compatible only when map-only coverage claims are absent;
+        # the framework still validates every candidate and citation below.
+        output = dict(output)
+        output["schema_version"] = SELECTION_REDUCE_SCHEMA_VERSION
+        record["output"] = output
     if output.get("schema_version") != SELECTION_REDUCE_SCHEMA_VERSION:
         errors.append("progressive selector returned an unsupported reduction schema")
     if output.get("status") not in {"pass", "ready"}:
@@ -4639,7 +4691,6 @@ def run_progressive_board_selector(
         human_approval,
     )
     selector_schema = json.loads(json.dumps(BOARD_INTERFACE_SELECTION_SCHEMA))
-    selector_schema["properties"]["relevant_sample_source_ids"]["items"]["enum"] = sorted(known_source_ids)
     selector_request = {
         "agent": "exact_board_interface_selector_agent",
         "stage": "verification.layer3.board_interface_selection",

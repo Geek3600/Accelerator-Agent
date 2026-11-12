@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 
-MODEL = "calibrated_bounded_ddr_pipeline_ratio_v10_integer_precision_image_abi"
+MODEL = "calibrated_bounded_ddr_pipeline_ratio_v20_attention_output_reuse"
 RESOURCE_KEYS = ("lut", "ff", "dsp", "bram36", "bram18", "uram")
 # Estimated and structural candidates should retain implementation headroom;
 # fitting just below a discovered capacity is not a good final design point.
@@ -24,11 +24,291 @@ def linear_schedule_id(source: str | None = None) -> str:
     return match.group(1) if match else "legacy_blocking_fp"
 
 
-def integer_operator_source_identity() -> dict[str, str]:
+def _integer_norm_service(
+    hidden: int, lanes: int, source: str | None = None,
+) -> tuple[int, dict[str, int]]:
+    """Count one no-stall IntegerVectorNorm token from its bound FSM source."""
+    if source is None:
+        source = (Path(__file__).parent / "templates/operator_chisel/Norm.scala").read_text(encoding="utf-8")
+    beats = math.ceil(hidden / lanes)
+    sqrt_iterations = 32  # PhysicalIntegerSqrt(64): one bit-pair per cycle.
+    stats_capture_cycles = 2 if "statsAccumulatePending" in source else 1
+    finalize_stages = re.findall(r"finalizeStage\s*===\s*(\d+)\.U", source)
+    finalize_cycles = max(map(int, finalize_stages)) + 1 if finalize_stages else 1
+    reciprocal_match = re.search(
+        r"when\(state === sReciprocal\)\s*\{.*?divIterationReg === (\d+)\.U",
+        source,
+        re.S,
+    )
+    reciprocal_cycles = int(reciprocal_match.group(1)) + 1 if reciprocal_match else 1
+    emit_stages = re.findall(r"emitStage\s*===\s*(\d+)\.U", source)
+    emit_capture_cycles = max(map(int, emit_stages)) + 1 if emit_stages else 1
+    components = {
+        "input_collect": beats,
+        "statistics_read_capture": (1 + stats_capture_cycles) * beats,
+        "statistics_finalize": finalize_cycles,
+        "sqrt_issue": 1,
+        "sqrt_iterations": sqrt_iterations,
+        "sqrt_result_accept": 1,
+        "reciprocal": reciprocal_cycles,
+        "output_read_capture_and_handshake": (1 + emit_capture_cycles + 1) * beats,
+    }
+    return sum(components.values()), components
+
+
+def _integer_linear_service_profile(
+    *, input_dim: int, output_dim: int, input_lanes: int, output_lanes: int,
+    rows: int, cols: int, token_tile_size: int, tokens: int,
+    source: str | None = None,
+) -> tuple[list[int], dict[str, int]]:
+    """Count Linear's no-stall integer FSM work and ping-pong service interval."""
+    if min(input_dim, output_dim, input_lanes, output_lanes, rows, cols, token_tile_size, tokens) <= 0:
+        raise ValueError("integer Linear cycle dimensions must be positive")
+    if input_dim % cols or output_dim % rows or input_dim % input_lanes or output_dim % output_lanes:
+        raise ValueError("integer Linear cycle dimensions must tile the materialized array and stream widths")
+    if cols & (cols - 1):
+        raise ValueError("integer Linear reduction columns must be a power of two")
+
+    mac_terms = input_dim // cols
+    output_tiles = output_dim // rows
+    input_beats = input_dim // input_lanes
+    output_beats = output_dim // output_lanes
+    output_pipe_indices = re.findall(r"writePipeValid(\d+)", source or "")
+    output_requant_pipeline_tail_cycles = (
+        max(map(int, output_pipe_indices)) + 1
+        if output_pipe_indices and "outputWritePendingForDrain" in str(source)
+        else 0
+    )
+    # Cache-word reads are synchronous. Each accepted MAC then traverses the
+    # registered multiplier, log2(cols) registered reduction levels, and the
+    # registered partial-sum accumulator.
+    pipeline_tail_cycles = 1 + 1 + int(math.log2(cols)) + 1
+    profiles: list[int] = []
+    max_internal_chunk_cycles = 0
+    max_chunk_compute_ii = 0
+    for chunk_start in range(0, tokens, token_tile_size):
+        chunk_tokens = min(token_tile_size, tokens - chunk_start)
+        # sIdle selects the full input bank. Every output tile then executes
+        # sInit, streamed MAC issue and pipeline drain, sCapture, and sWrite
+        # once per token while the internal output ping-pong bank fills.
+        chunk_components = {
+            "sInit": 1,
+            "mac_issue": chunk_tokens * mac_terms,
+            "mac_pipeline_drain": pipeline_tail_cycles,
+            "sCapture": 1,
+            "sWrite": chunk_tokens,
+        }
+        chunk_compute_cycles = 1 + output_tiles * sum(chunk_components.values())
+        chunk_compute_ii = math.ceil(chunk_compute_cycles / chunk_tokens)
+        # Linear's two input/output banks overlap collection, compute, and
+        # output drain. The slowest of those services bounds token admission;
+        # output drain is counted separately from the internal sWrite cycles.
+        service_ii = max(
+            input_beats,
+            output_beats + output_requant_pipeline_tail_cycles,
+            chunk_compute_ii,
+        )
+        profiles.extend([service_ii] * chunk_tokens)
+        max_internal_chunk_cycles = max(max_internal_chunk_cycles, chunk_compute_cycles)
+        max_chunk_compute_ii = max(max_chunk_compute_ii, chunk_compute_ii)
+
+    components = {
+        "mac_terms_per_output_tile": mac_terms,
+        "output_tiles": output_tiles,
+        "input_beats_per_token": input_beats,
+        "output_beats_per_token": output_beats,
+        "synchronous_cache_read_cycles_per_mac": 1,
+        "integer_multiplier_cycles": 1,
+        "reduction_register_levels": int(math.log2(cols)),
+        "accumulator_register_cycles": 1,
+        "pipeline_tail_cycles_per_output_tile": pipeline_tail_cycles,
+        "output_requant_pipeline_tail_cycles": output_requant_pipeline_tail_cycles,
+        "maximum_internal_chunk_compute_cycles": max_internal_chunk_cycles,
+        "maximum_chunk_compute_ii_cycles_per_token": max_chunk_compute_ii,
+        "maximum_chunk_fsm_cycles": {
+            "sIdle": 1,
+            "sInit_per_output_tile": 1,
+            "mac_issue_per_output_tile": max(
+                min(token_tile_size, tokens - start) * mac_terms
+                for start in range(0, tokens, token_tile_size)
+            ),
+            "mac_pipeline_drain_per_output_tile": pipeline_tail_cycles,
+            "sCapture_per_output_tile": 1,
+            "sWrite_per_output_tile": max(
+                min(token_tile_size, tokens - start)
+                for start in range(0, tokens, token_tile_size)
+            ),
+        },
+        "attention_projection_completion_after_final_input_cycles": (
+            max_internal_chunk_cycles + output_requant_pipeline_tail_cycles + output_beats + 1
+        ),
+    }
+    return profiles, components
+
+
+def _integer_attention_row_services(
+    sequence: int,
+    heads: int,
+    *,
+    output_projection_cycles: int = 0,
+    softmax_cycles_per_head: int = 1,
+) -> list[int]:
+    """Count shared-template causal-row states and the serialized output projection."""
+    return [
+        1 + heads * (6 * (row + 1) + softmax_cycles_per_head + 4) + output_projection_cycles
+        for row in range(sequence)
+    ]
+
+
+def _integer_attention_softmax_cycles(source: str | None = None) -> tuple[int, dict[str, int]]:
+    """Count the current integer Attention Softmax control states from source."""
+    if source is None:
+        source = (Path(__file__).parent / "templates/operator_chisel/Attention.scala").read_text(encoding="utf-8")
+    if all(state in source for state in ("sSoftmaxMax", "sSoftmaxExp", "sSoftmaxDivide", "sSoftmaxProb")):
+        match = re.search(
+            r"when\(state === sSoftmaxDivide\)\s*\{.*?divIterationReg === (\d+)\.U",
+            source,
+            re.S,
+        )
+        if not match:
+            raise ValueError("iterative integer Attention Softmax has no statically bounded divider counter")
+        iterations = int(match.group(1)) + 1
+        components = {
+            "maximum_state": 1,
+            "exponential_sum_state": 1,
+            "restoring_divider_iterations": iterations,
+            "probability_state": 1,
+        }
+        return sum(components.values()), components
+    if re.search(r"state === sSoftmax\b", source):
+        return 1, {"combinational_softmax_state": 1}
+    raise ValueError("integer Attention source has no recognized finite Softmax schedule")
+
+
+def _pipeline_cycles(stage_profiles: list[tuple[str, list[int], bool]], tokens: int) -> int:
+    """Schedule nominal token services, optionally waiting for a whole-sequence barrier."""
+    finishes = [0] * tokens
+    for _, profile, waits_for_all_inputs in stage_profiles:
+        stage_finishes = [0] * tokens
+        previous_output = 0
+        barrier_cycle = max(finishes, default=0) if waits_for_all_inputs else 0
+        for token in range(tokens):
+            service = profile[token % len(profile)]
+            previous_output = max(finishes[token], previous_output, barrier_cycle) + service
+            stage_finishes[token] = previous_output
+        finishes = stage_finishes
+    return finishes[-1] if finishes else 0
+
+
+def _attention_projection_chunk_deadlock(
+    *, integer_mac: bool, token_tile_size: int, sequence: int, matrix_roles: set[str],
+    attention_source: str | None = None, linear_source: str | None = None,
+) -> dict[str, Any] | None:
+    """Recognize the template's row-to-chunk cyclic wait from both source sides."""
+    has_attention_output = any(
+        ("attn" in role.lower() or "attention" in role.lower())
+        and ("out" in role.lower() or "proj" in role.lower())
+        for role in matrix_roles
+    )
+    if not integer_mac or not has_attention_output or sequence <= 1 or token_tile_size <= 1:
+        return None
+    root = Path(__file__).parent / "templates/operator_chisel"
+    try:
+        attention = attention_source or (root / "Attention.scala").read_text(encoding="utf-8")
+        linear = linear_source or (root / "Linear.scala").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    attention_waits_for_projection = (
+        "private val outputProjection = Module(new Linear(p.outLinear))" in attention
+        and "state === sProjectDrain" in attention
+        and "when(io.out.fire && io.out.bits.last" in attention
+    )
+    linear_waits_for_chunk = (
+        "when(loadToken === loadChunkTokens - 1.U)" in linear
+        and "inputFull(loadBank) := true.B" in linear
+        and "state === sIdle && inputFull(computeBank)" in linear
+    )
+    if not (attention_waits_for_projection and linear_waits_for_chunk):
+        return None
+    return {
+        "kind": "cyclic_stream_wait",
+        "reason": (
+            "IntegerAttention waits for its output-projection result before advancing to the next row, "
+            "while the output Linear starts only after collecting token_tile_size input tokens; "
+            f"the selected chunk is {token_tile_size} tokens."
+        ),
+        "token_tile_size": token_tile_size,
+        "sequence_length": sequence,
+        "attention_source": "templates/operator_chisel/Attention.scala",
+        "linear_source": "templates/operator_chisel/Linear.scala",
+    }
+
+
+def effective_linear_token_tile_size(parameters: dict[str, Any], tokens: int, sequence: int) -> int:
+    """Return the exact bounded input chunk used by the materialized Linear."""
+    if parameters.get("cross_token_reuse_tokens") is None:
+        raise ValueError("estimator requires materialized cross_token_reuse_tokens")
+    tile_size = int(parameters["cross_token_reuse_tokens"])
+    batch_context = int(parameters.get("linear_batch_size", tokens) or tokens)
+    max_seq_len = int(parameters.get("max_seq_len", sequence) or sequence)
+    tile_size = max(1, min(batch_context, sequence, tile_size))
+    if max_seq_len > 1:
+        tile_size = min(tile_size, max(1, max_seq_len // 2))
+    return tile_size
+
+
+def effective_attention_output_token_tile_size(
+    parameters: dict[str, Any], tokens: int, sequence: int,
+) -> int:
+    """Return the separately bound token chunk used by Attention's output Linear."""
+    output_tokens = parameters.get("attention_output_cross_token_reuse_tokens", 1)
+    return effective_linear_token_tile_size(
+        {**parameters, "cross_token_reuse_tokens": output_tokens}, tokens, sequence,
+    )
+
+
+def source_schedule_blockers(
+    parameters: dict[str, Any],
+    workload: dict[str, Any],
+    terms: list[dict[str, Any]],
+    *,
+    linear_source: str | None = None,
+    attention_source: str | None = None,
+) -> list[dict[str, Any]]:
+    """Check source-level stream liveness independently of QoR estimation."""
+    if str(parameters.get("compute_backend") or "vivado_fp_ip") != "integer_dsp":
+        return []
+    sequence = int(workload.get("sequence_length", 0) or 0)
+    tokens = int(workload.get("processed_tokens", 0) or 0)
+    if sequence <= 0 or tokens <= 0 or parameters.get("cross_token_reuse_tokens") is None:
+        return []
+    matrix_roles = {
+        str(term.get("physical_role") or "")
+        for term in terms
+        if isinstance(term.get("factors"), list)
+        and len(term["factors"]) >= 2
+        and not str(term.get("physical_role") or "").endswith("_bias")
+    }
+    blocker = _attention_projection_chunk_deadlock(
+        integer_mac=True,
+        token_tile_size=effective_attention_output_token_tile_size(parameters, tokens, sequence),
+        sequence=sequence,
+        matrix_roles=matrix_roles,
+        attention_source=attention_source,
+        linear_source=linear_source,
+    )
+    return [blocker] if blocker else []
+
+
+def integer_operator_source_identity(source_overrides: dict[str, str] | None = None) -> dict[str, str]:
     """Fingerprint integer operator implementations for calibration isolation."""
     root = Path(__file__).parent / "templates/operator_chisel"
     result: dict[str, str] = {}
+    source_overrides = source_overrides or {}
     for name in ("Common.scala", "PhysicalResources.scala", "Linear.scala", "WeightTileCache.scala", "QKVProjection.scala", "DecoderBlock.scala", "Norm.scala", "Softmax.scala", "Attention.scala", "Activation.scala", "RoPE.scala", "Residual.scala", "Elementwise.scala", "FFN.scala", "KVCache.scala"):
+        if name in source_overrides:
+            result[name] = hashlib.sha256(source_overrides[name].encode("utf-8")).hexdigest()
+            continue
         path = root / name
         if not path.is_file():
             raise ValueError(f"integer DSE source identity is missing {path}")
@@ -69,7 +349,7 @@ def integer_operator_source_identity() -> dict[str, str]:
     return result
 
 
-def cost_features(parameters: dict, workload: dict, terms: list[dict], family: str, part: str, *, linear_source: str | None = None) -> dict:
+def cost_features(parameters: dict, workload: dict, terms: list[dict], family: str, part: str, *, linear_source: str | None = None, attention_source: str | None = None, norm_source: str | None = None, allow_cycle_break_fallback: bool = False) -> dict:
     if not family or not part:
         raise ValueError("estimator requires a model family and target part")
     lanes = int(parameters["lanes"])
@@ -195,18 +475,20 @@ def cost_features(parameters: dict, workload: dict, terms: list[dict], family: s
         )
     if integer_mac and (scale_bits, scale_shift, rounding, saturation) != (32, 31, "nearest_even", True):
         raise ValueError("integer_dsp cost features require the explicit INT32 Q31 nearest-even saturating scale contract")
-    services = []
+    services: list[tuple[str, int]] = []
     # The materialized Linear schedule uses cross_token_reuse_tokens as its
     # bounded activation/cache context. Keep the legacy token_tile_size key as
     # a compatibility fallback, but never let the estimator silently revert to
     # the old fixed 16-token traversal.
-    if parameters.get("cross_token_reuse_tokens") is None:
-        raise ValueError("estimator requires materialized cross_token_reuse_tokens")
-    token_tile_size = int(parameters["cross_token_reuse_tokens"])
+    token_tile_size = effective_linear_token_tile_size(parameters, tokens, sequence)
+    attention_output_token_tile_size = effective_attention_output_token_tile_size(
+        parameters, tokens, sequence,
+    )
     architecture_regime = {
         "refill_data_width_bits": cache_refill_data_width_bits,
         "refill_payload_units": "full_board_axi_payload_bits",
         "cross_token_reuse_tokens": token_tile_size,
+        "attention_output_cross_token_reuse_tokens": attention_output_token_tile_size,
         "cache_tile_words": cache_tile_words,
         "cache_tile_count": cache_tile_count,
         "linear_schedule": linear_schedule,
@@ -224,10 +506,15 @@ def cost_features(parameters: dict, workload: dict, terms: list[dict], family: s
         "saturation": saturation,
         "integer_operator_latency_contract": (
             {
-                "contract_id": "w4a8_bounded_integer_operator_schedule_v1",
-                "source_sha256": integer_operator_source_identity(),
-                "normalization": "two streamed vector passes plus fixed restoring statistics/reciprocal stages and a 32-cycle iterative 64-bit square root",
-                "attention": "causal and explicitly masked QK/PV rows with signed A8xA8 products, independent Q/K/V Q31 projection scales, and row Softmax",
+                "contract_id": "w4a8_bounded_integer_operator_schedule_v2",
+                "source_sha256": integer_operator_source_identity({
+                    **({"Linear.scala": linear_source} if linear_source is not None else {}),
+                    **({"Attention.scala": attention_source} if attention_source is not None else {}),
+                    **({"Norm.scala": norm_source} if norm_source is not None else {}),
+                }),
+                "normalization": "streamed input/statistics/output passes, source-counted finalize and reciprocal FSM states, and a 32-cycle iterative 64-bit square root",
+                "attention": "causal and explicitly masked QK/PV rows dispatched on tokenReady, signed A8xA8 products, source-counted Softmax/divider states, and serialized output projection",
+                "linear": "synchronous cache read, registered INT4xINT8 multiplier, registered reduction tree and accumulator, sInit/sCapture/sWrite control, output requant pipeline, and two-bank drain",
                 "rope": "fixed-point rotate-half with runtime Q15 tables",
                 "requantization": "signed accumulator times unsigned Q31 multiplier, composed channel/activation/output exponents up to 10 signed bits, nearest-even rounding and signed saturation in the output stage",
                 "activation_residual": "one elastic integer stage per accepted beat",
@@ -239,69 +526,216 @@ def cost_features(parameters: dict, workload: dict, terms: list[dict], family: s
     # generated batch context and maxSeqLen/2, so reuse candidates alter real
     # chunking, refill traversals, and activation storage rather than merely
     # changing metadata.
-    batch_context = int(parameters.get("batch_size", workload.get("batch_size", sequence)) or sequence)
-    max_seq_len = int(parameters.get("max_seq_len", workload.get("sequence_length", sequence)) or sequence)
-    token_tile_size = max(1, min(batch_context, sequence, token_tile_size))
-    if max_seq_len > 1:
-        token_tile_size = min(token_tile_size, max(1, max_seq_len // 2))
+    # LinearParams.batchSize is a token capacity, not the model's batch count.
+    # A batch of one with a 32-token sequence still needs a 32-token context.
     # Record the effective bounded context after the same legality clamp used
     # by LinearParams. The estimator must not describe one reuse value while
     # charging traffic and cycles for a different materialized schedule.
     architecture_regime["cross_token_reuse_tokens"] = token_tile_size
+    attention_output_roles = [
+        role for role in matrices
+        if ("attn" in role.lower() or "attention" in role.lower())
+        and ("out" in role.lower() or "proj" in role.lower())
+    ]
+    q_heads = int(workload.get("num_q_heads", 0) or 0)
+    head_dim = int(workload.get("head_dim", 0) or 0)
+    if q_heads > 0 and head_dim > 0:
+        # Attention emits the concatenated query-head vector, which need not
+        # equal hidden_size (for example, Gemma 3 1B uses 4 x 256 -> 1152).
+        for role in attention_output_roles:
+            input_dimensions[role] = q_heads * head_dim
+    source_blockers = source_schedule_blockers(
+        parameters,
+        workload,
+        terms,
+        attention_source=attention_source,
+        linear_source=linear_source,
+    )
+    cycle_blockers = source_blockers[0] if source_blockers else None
+    fallback_roles = (
+        set(attention_output_roles)
+        if cycle_blockers and allow_cycle_break_fallback else set()
+    )
+    role_reuse_tokens = {
+        role: (
+            1 if role in fallback_roles
+            else attention_output_token_tile_size if role in attention_output_roles
+            else token_tile_size
+        )
+        for role in matrices
+    }
+    role_token_chunks = {
+        role: math.ceil(tokens / reuse_tokens)
+        for role, reuse_tokens in role_reuse_tokens.items()
+    }
+    architecture_regime["effective_cross_token_reuse_tokens_by_role"] = role_reuse_tokens
     # This is the materialized Linear schedule context, not a legacy fixed
     # token tile. All traffic and cycle estimates below must follow the selected
     # cross-token reuse candidate.
-    token_chunks = math.ceil(tokens / token_tile_size)
-    token_slot_factor = token_chunks * token_tile_size / tokens
+    linear_services: dict[str, int] = {}
+    linear_service_profiles: dict[str, list[int]] = {}
+    linear_cycle_components: dict[str, dict[str, int]] = {}
     for role, elements in matrices.items():
         input_dim = input_dimensions[role]
+        role_token_tile_size = role_reuse_tokens[role]
         if linear_schedule in {"token_interleaved_fp_pipeline_v2", "token_interleaved_policy_mac_v3"}:
+            if role in attention_output_roles and elements % input_dim:
+                raise ValueError(
+                    f"attention output projection has {elements} weight elements, "
+                    f"not divisible by its {input_dim}-wide input"
+                )
             output_dim = math.ceil(elements / input_dim)
-            mac_terms = math.ceil(input_dim / cols)
-            output_tiles = math.ceil(output_dim / rows)
-            # Integer MAC/reduction stages are one-cycle elastic DSP logic;
-            # FP estimates retain their separately calibrated Vivado-IP fill.
-            pipe_fill = (1 + int(math.log2(cols)) + 1) if integer_mac else (9 + 12 * int(math.log2(cols)) + 12)
-            compute = output_tiles * (mac_terms * token_slot_factor + pipe_fill * token_chunks / tokens)
-            services.append(max(input_dim / lanes, compute + math.ceil(output_dim / lanes)))
-            linear_activation_bits += 2 * token_tile_size * (input_dim + output_dim) * int(parameters.get("elem_bits", 16))
+            is_attention_output = role in attention_output_roles
+            input_lanes = head_dim if integer_mac and is_attention_output and head_dim > 0 else lanes
+            if integer_mac:
+                profile, components = _integer_linear_service_profile(
+                    input_dim=input_dim,
+                    output_dim=output_dim,
+                    input_lanes=input_lanes,
+                    output_lanes=lanes,
+                    rows=rows,
+                    cols=cols,
+                    token_tile_size=role_token_tile_size,
+                    tokens=tokens,
+                    source=linear_source,
+                )
+                service = max(profile)
+                linear_cycle_components[role] = components
+            else:
+                mac_terms = math.ceil(input_dim / cols)
+                output_tiles = math.ceil(output_dim / rows)
+                pipe_fill = 9 + 12 * int(math.log2(cols)) + 12
+                role_chunks = role_token_chunks[role]
+                compute = output_tiles * (mac_terms + pipe_fill * role_chunks / tokens)
+                service = max(
+                    math.ceil(input_dim / input_lanes),
+                    math.ceil(compute) + math.ceil(output_dim / lanes),
+                )
+                profile = [service] * tokens
+            linear_service_profiles[role] = profile
+            linear_services[role] = service
+            if not integer_mac:
+                services.append((f"linear:{role}", service))
+            linear_activation_bits += 2 * role_token_tile_size * (input_dim + output_dim) * int(parameters.get("elem_bits", 16))
         else:
             mac_service = 2 + 9 + 12 + 12 * math.log2(cols)
-            services.append(input_dim / lanes + elements * mac_service / (rows * cols))
+            service = math.ceil(input_dim / lanes + elements * mac_service / (rows * cols))
+            services.append((f"linear:{role}", service))
+    attention_softmax_cycles, attention_softmax_components = (
+        _integer_attention_softmax_cycles(attention_source) if integer_mac else (0, {})
+    )
+    cycle_model_fallback = None
     if integer_mac:
-        q_heads = int(workload.get("num_q_heads", 0) or 0)
-        head_dim = int(workload.get("head_dim", 0) or 0)
         intermediate = int(workload.get("intermediate_size", hidden) or hidden)
         vector_beats = math.ceil(hidden / lanes)
         intermediate_beats = math.ceil(intermediate / lanes)
-        # Structural cycles follow the current integer operator topology:
-        # two streamed norm passes, causal QK/PV key visits, per-head rotate
-        # beats, gated activation/multiply, and two residual streams. These are
-        # bounded source-derived estimates, not measured latency or QoR.
-        # Two normalization operators each perform a bounded 32-iteration
-        # restoring square root after their streamed statistics pass. Charge
-        # that source-bound latency rather than treating sqrt as combinational.
-        norm_sqrt_iterations = 32
-        norm_cycles = 2 * sequence * vector_beats * 2 + 2 * sequence * norm_sqrt_iterations
-        attention_cycles = q_heads * sequence * (sequence + 1) + q_heads * sequence
-        rope_cycles = q_heads * sequence * math.ceil(max(1, head_dim) / lanes)
-        ffn_pointwise_cycles = sequence * intermediate_beats * 2
-        residual_cycles = 2 * sequence * vector_beats
-        services.extend([
-            norm_cycles,
-            attention_cycles,
-            rope_cycles,
-            ffn_pointwise_cycles,
-            residual_cycles,
+        norm_service, norm_components = _integer_norm_service(hidden, lanes, norm_source)
+        qkv_roles = [role for role in linear_services if "qkv" in role.lower()]
+        gate_roles = [role for role in linear_services if "gate" in role.lower()]
+        up_roles = [role for role in linear_services if "up" in role.lower()]
+        down_roles = [role for role in linear_services if "down" in role.lower()]
+        classified_roles = set(qkv_roles + attention_output_roles + gate_roles + up_roles + down_roles)
+        unknown_roles = [role for role in linear_services if role not in classified_roles]
+        attention_projection_cycles = max(
+            (
+                linear_cycle_components[role]["attention_projection_completion_after_final_input_cycles"]
+                for role in attention_output_roles
+            ),
+            default=0,
+        )
+        if cycle_blockers and attention_output_roles and allow_cycle_break_fallback:
+            # This explicit scenario changes the projection role's token
+            # context. Its Linear schedule, activation storage, and repeated
+            # DDR tile traversal are all recomputed with that same context.
+            # It does not describe the currently bound RTL.
+            cycle_model_fallback = {
+                "kind": "counterfactual_single_token_projection_delivery",
+                "reason": "break the detected Attention/Linear chunk wait at the producer-consumer boundary",
+                "original_token_tile_size": token_tile_size,
+                "fallback_projection_token_tile_size": 1,
+                "bound_attention_output_token_tile_size": attention_output_token_tile_size,
+                "projection_completion_cycles": attention_projection_cycles,
+                "affected_roles": sorted(fallback_roles),
+                "effective_cross_token_reuse_tokens_by_role": role_reuse_tokens,
+                "token_chunks_by_role": role_token_chunks,
+                "selected_array_dimensions_unchanged": True,
+                "ddr_traffic_recomputed_for_role_reuse": True,
+            }
+
+        # These stage profiles follow the bound integer template FSMs. The
+        # attention FSM starts row r when tokenReady(r) is set; causal row
+        # dependencies do not impose a whole-sequence input barrier. Linear
+        # chunking is represented by its configured token context and checked
+        # for cyclic producer/consumer waits above.
+        stage_profiles: list[tuple[str, list[int], bool]] = [
+            ("norm1", [norm_service] * sequence, False),
+        ]
+        consumed_roles: set[str] = set()
+        for role in qkv_roles:
+            stage_profiles.append((f"linear:{role}", linear_service_profiles[role], False))
+            consumed_roles.add(role)
+        for role in unknown_roles:
+            stage_profiles.append((f"linear:{role}", linear_service_profiles[role], False))
+            consumed_roles.add(role)
+
+        has_rope = any(term.get("stage") and "rope" in str(term["stage"]).lower() for term in terms)
+        if has_rope:
+            rope_service = q_heads * math.ceil(max(1, head_dim) / lanes)
+            stage_profiles.append(("rope", [rope_service] * sequence, False))
+        elif any(name in family.lower() for name in ("llama", "qwen", "mistral")):
+            rope_service = q_heads * math.ceil(max(1, head_dim) / lanes)
+            stage_profiles.append(("rope", [rope_service] * sequence, False))
+
+        attention_profile = _integer_attention_row_services(
+            sequence,
+            q_heads,
+            output_projection_cycles=attention_projection_cycles,
+            softmax_cycles_per_head=attention_softmax_cycles,
+        )
+        stage_profiles.append(("attention", attention_profile, False))
+        consumed_roles.update(attention_output_roles)
+        stage_profiles.extend([
+            ("residual1", [vector_beats] * sequence, False),
+            ("norm2", [norm_service] * sequence, False),
         ])
+
+        expand_roles = gate_roles + up_roles
+        if expand_roles:
+            stage_profiles.append((
+                "mlp_expand",
+                [
+                    max(linear_service_profiles[role][token] for role in expand_roles)
+                    for token in range(tokens)
+                ],
+                False,
+            ))
+            consumed_roles.update(expand_roles)
+        ffn_pointwise_service = intermediate_beats * (2 if gate_roles else 1)
+        stage_profiles.append(("ffn_pointwise", [ffn_pointwise_service] * sequence, False))
+        for role in down_roles:
+            stage_profiles.append((f"linear:{role}", linear_service_profiles[role], False))
+            consumed_roles.add(role)
+        stage_profiles.append(("residual2", [vector_beats] * sequence, False))
+        for role in linear_services:
+            if role not in consumed_roles:
+                stage_profiles.append((f"linear:{role}", linear_service_profiles[role], False))
+
+        services = [(name, max(profile)) for name, profile, _ in stage_profiles]
+        stage_profiles_by_name = {name: profile for name, profile, _ in stage_profiles}
     else:
-        services.extend([hidden * 24, sequence * hidden * 24])
-    compute_cycles_per_layer = sum(services) + (tokens - 1) * max(services)
+        services.extend([("norm", hidden * 24), ("attention", sequence * hidden * 24)])
+        stage_profiles = [(name, [cycles] * tokens, False) for name, cycles in services]
+        stage_profiles_by_name = {name: profile for name, profile, _ in stage_profiles}
+        cycle_blockers = None
+    stage_services = {name: max(profile) for name, profile in stage_profiles_by_name.items()}
+    bottleneck_cycles_per_token = max(stage_services.values())
+    nominal_compute_cycles = _pipeline_cycles(stage_profiles, tokens)
+    compute_cycles_per_layer = None if (cycle_blockers and cycle_model_fallback is None) else nominal_compute_cycles
     axi_bits = int(workload.get("axi_data_width_bits", 0) or 0)
     if axi_bits <= 0 or axi_bits % 8:
         raise ValueError("estimator requires a declared byte-aligned board AXI data width")
     weight_image_bytes_per_layer = sum(
-        math.ceil(int(term["elements"]) * int(term["element_bits"]) / 8.0)
+        (int(term["elements"]) * int(term["element_bits"]) + 7) // 8
         for term in terms
     )
 
@@ -312,13 +746,15 @@ def cost_features(parameters: dict, workload: dict, terms: list[dict], family: s
     # vector terms remain part of the complete model-semantic image.
     refill_words_per_layer = 0
     cache_tile_entry_bits = 0
+    refill_traversals_by_role: dict[str, int] = {}
     for role, elements in role_elements.items():
         bits = role_bits[role]
         if role in matrices:
             width_elements = rows * cols if cols > lanes else lanes * lanes
             matrix_entries = math.ceil((elements * bits) / max(1, width_elements * bits))
             tile_count = math.ceil(matrix_entries / cache_tile_words)
-            traversals = 1 if tile_count <= cache_tile_count else token_chunks
+            traversals = 1 if tile_count <= cache_tile_count else role_token_chunks[role]
+            refill_traversals_by_role[role] = traversals
             # Only the logical entries in the final tile transfer from DDR;
             # XPM slot padding is storage overhead, not image traffic.
             refill_words_per_layer += (
@@ -331,7 +767,7 @@ def cost_features(parameters: dict, workload: dict, terms: list[dict], family: s
         weight_image_bytes_per_layer,
         refill_words_per_layer * 4.0,
     )
-    ddr_refill_beats_per_layer = math.ceil(weight_image_bytes_per_layer / (axi_bits / 8))
+    semantic_image_beats_per_layer = math.ceil(weight_image_bytes_per_layer / (axi_bits // 8))
     # The cache response contract consumes a selected wide payload containing
     # complete 32-bit image words. Credit the selected physical payload rate;
     # AXI transfer cycles remain separate from cache-service cycles so board
@@ -357,6 +793,8 @@ def cost_features(parameters: dict, workload: dict, terms: list[dict], family: s
     # measured bandwidth or a claim that arbitration never stalls.
     tile_requests_per_layer = 0
     tile_axi_bursts_per_layer = 0
+    tile_requests_by_role: dict[str, int] = {}
+    tile_axi_bursts_by_role: dict[str, int] = {}
     axi_words_per_burst = max(1, min(256, 4096 // (axi_bits // 8))) * axi_words_per_beat
     for role, elements in matrices.items():
         input_dim = input_dimensions[role]
@@ -364,14 +802,19 @@ def cost_features(parameters: dict, workload: dict, terms: list[dict], family: s
         width_elements = rows * cols if cols > lanes else lanes * lanes
         entries = math.ceil(output_dim * input_dim / width_elements)
         tile_count = math.ceil(entries / cache_tile_words)
-        traversals = 1 if tile_count <= cache_tile_count else token_chunks
-        tile_requests_per_layer += tile_count * traversals
+        traversals = 1 if tile_count <= cache_tile_count else role_token_chunks[role]
+        role_tile_requests = tile_count * traversals
+        role_axi_bursts = 0
+        tile_requests_per_layer += role_tile_requests
         image_words_per_cache_word = width_elements * role_bits[role] // 32
         for tile_index in range(tile_count):
             tile_entries = min(cache_tile_words, entries - tile_index * cache_tile_words)
             tile_words = tile_entries * image_words_per_cache_word
             tile_beats = math.ceil(tile_words / axi_words_per_beat)
-            tile_axi_bursts_per_layer += math.ceil(tile_beats / max(1, axi_words_per_burst // axi_words_per_beat)) * traversals
+            role_axi_bursts += math.ceil(tile_beats / max(1, axi_words_per_burst // axi_words_per_beat)) * traversals
+        tile_requests_by_role[role] = role_tile_requests
+        tile_axi_bursts_by_role[role] = role_axi_bursts
+        tile_axi_bursts_per_layer += role_axi_bursts
     # Account for AXI's maximum 256-beat and 4-KiB burst boundaries as well
     # as per-tile ownership/request setup. Wide AXI beats and wide cache
     # responses share their steady-state beat rate; the service setup costs
@@ -383,12 +826,26 @@ def cost_features(parameters: dict, workload: dict, terms: list[dict], family: s
         + 2 * tile_requests_per_layer
         + 2 * axi_bursts_per_layer
     )
+    ddr_refill_beats_per_layer = math.ceil(refill_bytes_per_layer / (axi_bits // 8))
     initial_refill_cycles = refill_service_cycles_per_layer
-    overlapped_refill_stall_cycles = max(0, refill_service_cycles_per_layer - compute_cycles_per_layer)
-    pipeline_cycles = (
-        initial_refill_cycles
-        + layers * compute_cycles_per_layer
-        + max(0, layers - 1) * overlapped_refill_stall_cycles
+    if cycle_blockers and cycle_model_fallback is None:
+        overlapped_refill_stall_cycles = None
+        compute_cycles_all_layers = None
+        exposed_refill_stall_cycles = None
+        pipeline_cycles = None
+    else:
+        overlapped_refill_stall_cycles = max(0, refill_service_cycles_per_layer - compute_cycles_per_layer)
+        compute_cycles_all_layers = layers * compute_cycles_per_layer
+        exposed_refill_stall_cycles = max(0, layers - 1) * overlapped_refill_stall_cycles
+        pipeline_cycles = (
+            initial_refill_cycles
+            + compute_cycles_all_layers
+            + exposed_refill_stall_cycles
+        )
+    input_transfer_bytes = math.ceil(tokens * hidden * int(parameters.get("input_bits", activation_bits)) / 8)
+    output_transfer_bytes = math.ceil(tokens * hidden * int(parameters.get("output_bits", activation_bits)) / 8)
+    activation_transfer_beats_per_layer = math.ceil(
+        (input_transfer_bytes + output_transfer_bytes) / (axi_bits // 8)
     )
     operators = len({str(term.get("stage")) for term in terms})
     processing_elements = len(matrices) * rows * cols
@@ -448,17 +905,58 @@ def cost_features(parameters: dict, workload: dict, terms: list[dict], family: s
             ) if parameters.get("weight_memory") == "xpm_uram" else 0,
         },
         "proxies": {
-            "cycles": pipeline_cycles,
+            "cycles": int(pipeline_cycles) if pipeline_cycles is not None else None,
+            "cycle_model_status": (
+                "counterfactual_cycle_break"
+                if cycle_model_fallback else ("blocked" if cycle_blockers else "estimated")
+            ),
+            "cycle_model_blockers": [cycle_blockers] if cycle_blockers else [],
+            "cycle_model_fallback": cycle_model_fallback,
             "compute_cycles_per_layer": compute_cycles_per_layer,
+            "operator_stage_service_cycles_per_token": stage_services,
+            "operator_stage_service_profile_cycles_per_token": stage_profiles_by_name,
+            "operator_stage_sequence_barriers": [
+                name for name, _, waits_for_all_inputs in stage_profiles if waits_for_all_inputs
+            ],
+            "integer_norm_service_cycle_components": norm_components if integer_mac else {},
+            "integer_attention_softmax_cycles_per_head": attention_softmax_cycles if integer_mac else None,
+            "integer_attention_softmax_cycle_components": attention_softmax_components if integer_mac else {},
+            "integer_linear_fsm_cycle_components": linear_cycle_components if integer_mac else {},
+            "pipeline_steady_state_ii_cycles": bottleneck_cycles_per_token,
+            "compute_cycles_all_layers": compute_cycles_all_layers,
+            "pipeline_cycle_terms": {
+                "initial_weight_refill": initial_refill_cycles,
+                "compute_all_layers": compute_cycles_all_layers,
+                "exposed_inter_layer_refill_stall": exposed_refill_stall_cycles,
+                "total": int(pipeline_cycles) if pipeline_cycles is not None else None,
+            },
+            "cycle_model_precision": "source_fsm_state_count_with_causal_ready_token_schedule_no_external_stalls",
+            "cycle_model_is_rtl_exact": False,
+            "cycle_model_unmodeled_effects": [
+                "DDR/MIG read and write response latency variation",
+                "AXI backpressure, arbitration, and read/write turnaround",
+                "top-level input/output transfer overlap with weight refill",
+                "finite inter-stage FIFO occupancy and ready/valid backpressure outside the detected chunk barrier",
+                "runtime modifications to generated RTL that differ from the shared Chisel templates",
+            ],
             "ddr_refill_beats_per_layer": ddr_refill_beats_per_layer,
+            "semantic_weight_image_beats_per_layer": semantic_image_beats_per_layer,
+            "semantic_weight_image_bytes_per_layer": weight_image_bytes_per_layer,
             "ddr_refill_words_per_layer": refill_words_per_layer,
             "ddr_refill_bytes_per_layer": refill_bytes_per_layer,
+            "activation_input_bytes_per_layer": input_transfer_bytes,
+            "activation_output_bytes_per_layer": output_transfer_bytes,
+            "activation_transfer_beats_per_layer": activation_transfer_beats_per_layer,
             "cache_refill_data_width_bits": cache_refill_data_width_bits,
             "effective_cross_token_reuse_tokens": token_tile_size,
+            "effective_cross_token_reuse_tokens_by_role": role_reuse_tokens,
+            "ddr_refill_traversals_by_role": refill_traversals_by_role,
             "response_words_per_cycle": response_words_per_cycle,
             "axi_words_per_beat": axi_words_per_beat,
             "tile_requests_per_layer": tile_requests_per_layer,
+            "tile_requests_by_role": tile_requests_by_role,
             "axi_bursts_per_layer": axi_bursts_per_layer,
+            "tile_axi_bursts_by_role": tile_axi_bursts_by_role,
             "axi_transfer_cycles_per_layer": axi_transfer_cycles,
             "cache_response_cycles_per_layer": refill_response_cycles,
             "materialized_refill_rate_bits_per_cycle": cache_refill_data_width_bits,
@@ -493,7 +991,43 @@ def _value(sample: dict, key: str) -> float:
     return float(sample[key])
 
 
+def _has_measured_cycle_counter(sample: dict) -> bool:
+    evidence = sample.get("cycle_evidence")
+    performance = sample.get("performance_estimation")
+    return (
+        isinstance(evidence, dict)
+        and evidence.get("kind") == "rtl_counter"
+        and evidence.get("status") == "pass"
+        and sample.get("performance_model") == "synthesizable_dut_counter"
+        and isinstance(performance, dict)
+        and performance.get("rtl_cycles_measured") is True
+        and performance.get("measurement_complete") is True
+        and performance.get("count_is_latency") is True
+    )
+
+
 def estimate(features: dict, samples: list[dict]) -> dict[str, Any]:
+    if features.get("proxies", {}).get("cycle_model_status") == "counterfactual_cycle_break":
+        proxies = features["proxies"]
+        return {
+            "status": "counterfactual_schedule",
+            "model": MODEL,
+            "reason": "cycle count assumes an explicit single-token boundary change that is not present in the bound RTL",
+            "latency_cycles": proxies.get("cycles"),
+            "performance_tokens_per_second": None,
+            "cycle_model_blockers": proxies.get("cycle_model_blockers", []),
+            "cycle_model_fallback": proxies.get("cycle_model_fallback"),
+        }
+    if features.get("proxies", {}).get("cycle_model_status") == "blocked":
+        blockers = features["proxies"].get("cycle_model_blockers", [])
+        return {
+            "status": "blocked_schedule",
+            "model": MODEL,
+            "reason": blockers[0]["reason"] if blockers else "source schedule has no finite completion",
+            "cycle_model_blockers": blockers,
+            "latency_cycles": None,
+            "performance_tokens_per_second": None,
+        }
     compatible = [
         sample for sample in samples
         if isinstance(sample.get("cost_features"), dict)
@@ -524,18 +1058,40 @@ def estimate(features: dict, samples: list[dict]) -> dict[str, Any]:
     ]
     estimates = {}
     spreads = []
-    for key in (*RESOURCE_KEYS, "cycles", "clock_frequency_mhz"):
+    for key in (*RESOURCE_KEYS, "clock_frequency_mhz"):
         proxy = features["proxies"][key]
         corrected = [_value(sample, key) * proxy / sample["cost_features"]["proxies"][key] for sample in anchors]
         estimates[key] = sum(weight * value for weight, value in zip(weights, corrected)) / sum(weights)
         if estimates[key] > 0:
             spreads.append(max(abs(value / estimates[key] - 1) for value in corrected))
+    cycle_anchors = [sample for sample in anchors if _has_measured_cycle_counter(sample)]
+    if cycle_anchors:
+        cycle_weights = [
+            weight for sample, weight in zip(anchors, weights)
+            if _has_measured_cycle_counter(sample)
+        ]
+        corrected_cycles = [
+            _value(sample, "cycles") * features["proxies"]["cycles"]
+            / sample["cost_features"]["proxies"]["cycles"]
+            for sample in cycle_anchors
+        ]
+        estimates["cycles"] = sum(
+            weight * value for weight, value in zip(cycle_weights, corrected_cycles)
+        ) / sum(cycle_weights)
+        if estimates["cycles"] > 0:
+            spreads.append(max(abs(value / estimates["cycles"] - 1) for value in corrected_cycles))
+        cycle_estimate_source = "source_bound_rtl_counter_calibration"
+    else:
+        estimates["cycles"] = float(features["proxies"]["cycles"])
+        cycle_estimate_source = "uncalibrated_integer_structural_proxy"
     cycles = max(1, round(estimates["cycles"]))
     for key, minimum in features.get("resource_lower_bounds", {}).items():
         estimates[key] = max(estimates[key], minimum)
     clock = estimates["clock_frequency_mhz"]
     tps = features["workload"]["processed_tokens"] * clock * 1_000_000 / cycles
     factor = max(1.25, 1 + min(distances), 1 + max(spreads, default=0))
+    if not cycle_anchors:
+        factor = max(2.0, factor)
     cross_model = any(sample["cost_features"].get("family") != features["family"] for sample in anchors)
     if cross_model:
         factor = max(2.0, factor)
@@ -544,6 +1100,10 @@ def estimate(features: dict, samples: list[dict]) -> dict[str, Any]:
         "resources": {key: max(0, round(estimates[key])) for key in RESOURCE_KEYS},
         "clock_frequency_mhz": clock, "latency_cycles": cycles,
         "performance_tokens_per_second": tps,
+        "cycle_estimate_source": cycle_estimate_source,
+        "cycle_calibration_sample_count": len(cycle_anchors),
+        "cycle_calibration_source_fingerprints": [sample["source_fingerprint"] for sample in cycle_anchors],
+        "cycle_estimate_is_rtl_exact": False,
         "anchor_source_fingerprints": [sample["source_fingerprint"] for sample in anchors],
         "calibration_sample_count": len(anchors),
         "cross_model_extrapolation": not bool(same_family),
@@ -553,8 +1113,8 @@ def estimate(features: dict, samples: list[dict]) -> dict[str, Any]:
             "performance_tokens_per_second": [tps / factor, tps * factor],
             "resources": {key: [value / factor, value * factor] for key, value in ((key, estimates[key]) for key in RESOURCE_KEYS)},
         },
-        "uncertainty": "Sensitivity bounds, not statistical confidence intervals. Confirm with the next synthesis/source-cycle result.",
-        "assumptions": "Source-bound ratios calibrate structural pipeline fill/bottleneck, PE and memory-packing proxies. Clock is inherited from compatible synthesis anchors; bank counts do not imply compute speedup. Architectural changes require new anchors.",
+        "uncertainty": "Sensitivity bounds, not statistical confidence intervals. Cycle predictions without a matching RTL counter anchor are uncalibrated structural estimates.",
+        "assumptions": "Only source-bound RTL counter reports calibrate cycle counts. Analytical source-schedule/DSE cycles are not cycle calibration labels. Clock and resources use compatible synthesis anchors; bank counts do not imply compute speedup. Architectural changes require new anchors.",
     }
 
 
@@ -562,6 +1122,7 @@ def validation_report(samples: list[dict]) -> dict:
     errors: dict[str, list[float]] = defaultdict(list)
     zero_errors: dict[str, list[float]] = defaultdict(list)
     count = 0
+    cycle_validation_count = 0
     for held_out in samples:
         if not held_out.get("cost_features"):
             continue
@@ -570,9 +1131,17 @@ def validation_report(samples: list[dict]) -> dict:
         if prediction["status"] != "estimated":
             continue
         count += 1
-        for key in (*RESOURCE_KEYS, "clock_frequency_mhz", "performance_tokens_per_second"):
+        validation_keys = (*RESOURCE_KEYS, "clock_frequency_mhz")
+        if _has_measured_cycle_counter(held_out):
+            validation_keys = (*validation_keys, "cycles", "performance_tokens_per_second")
+            cycle_validation_count += 1
+        for key in validation_keys:
             actual = _value(held_out, key)
-            predicted = prediction["resources"][key] if key in RESOURCE_KEYS else prediction[key]
+            predicted = (
+                prediction["resources"][key] if key in RESOURCE_KEYS
+                else prediction["latency_cycles"] if key == "cycles"
+                else prediction[key]
+            )
             if actual > 0:
                 errors[key].append(abs(predicted - actual) / actual)
             else:
@@ -581,6 +1150,7 @@ def validation_report(samples: list[dict]) -> dict:
         "method": "leave_one_source_fingerprint_out",
         "sample_count": len(samples),
         "held_out_prediction_count": count,
+        "cycle_validation_sample_count": cycle_validation_count,
         "mean_relative_absolute_error": {key: sum(values) / len(values) for key, values in errors.items()},
         "mean_absolute_error_for_zero_actual": {key: sum(values) / len(values) for key, values in zero_errors.items()},
         "status": "evaluated" if errors else "insufficient_independent_samples",

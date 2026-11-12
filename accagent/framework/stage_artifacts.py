@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -440,6 +441,7 @@ def build_runtime_config(state: dict[str, Any], memory_layout: dict[str, Any], g
                 "cache_tile_count",
                 "cache_refill_data_width_bits",
                 "cross_token_reuse_tokens",
+                "attention_output_cross_token_reuse_tokens",
                 "burst_beats",
                 "pipeline_depth",
             )
@@ -736,6 +738,15 @@ def build_codegen_contract_check(
             "generated cross-token reuse must be positive and match Stage-4: "
             f"generated={reuse_tokens} binding={bound_reuse_tokens}"
         )
+    attention_output_reuse_tokens = scalar(params.get("attention_output_cross_token_reuse_tokens"), 1)
+    bound_attention_output_reuse_tokens = scalar(
+        binding_global_params.get("attention_output_cross_token_reuse_tokens"), 1,
+    )
+    if attention_output_reuse_tokens <= 0 or bound_attention_output_reuse_tokens != attention_output_reuse_tokens:
+        errors.append(
+            "generated attention output reuse must be positive and match Stage-4: "
+            f"generated={attention_output_reuse_tokens} binding={bound_attention_output_reuse_tokens}"
+        )
     if elem_bits > input_bits:
         errors.append(f"elem_bits={elem_bits} exceeds input_bits={input_bits}")
 
@@ -746,9 +757,11 @@ def build_codegen_contract_check(
         params_text = params_scala.read_text(encoding="utf-8")
         generated_config_tokens = (
             f"val crossTokenReuseTokens: Int = {reuse_tokens}",
+            f"val attentionOutputCrossTokenReuseTokens: Int = {attention_output_reuse_tokens}",
             f"val cacheRefillDataWidthBits: Int = {refill_bits}",
             f"val boardAxiDataWidthBits: Int = {board_refill_bits}",
             "PhysicalImplementation.configureCrossTokenReuse(",
+            "PhysicalImplementation.configureAttentionOutputCrossTokenReuse(",
             "PhysicalImplementation.configureRefillDataWidth(",
         )
         for token in generated_config_tokens:
@@ -924,6 +937,18 @@ def build_codegen_contract_check(
     return result
 
 
+def stage5_parameters_from_codegen_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    physical_binding = manifest.get("dse_physical_binding_check")
+    if isinstance(physical_binding, dict):
+        parameters = physical_binding.get("parameters")
+        if isinstance(parameters, dict):
+            return parameters
+    generated_top = manifest.get("generated_top", {})
+    generated_top = generated_top if isinstance(generated_top, dict) else {}
+    parameters = generated_top.get("params", {})
+    return parameters if isinstance(parameters, dict) else {}
+
+
 def build_codegen_package_static_check(manifest: dict[str, Any], log_path: Path) -> dict[str, Any]:
     errors = []
     warnings = []
@@ -972,6 +997,18 @@ def build_codegen_package_static_check(manifest: dict[str, Any], log_path: Path)
         errors.append(f"compile_gate status is {(manifest.get('compile_gate') or {}).get('status')}")
     if (manifest.get("contract_check") or {}).get("status") != "pass":
         errors.append(f"contract_check status is {(manifest.get('contract_check') or {}).get('status')}")
+    sv_manifest = manifest.get("stage5_sv_manifest")
+    if isinstance(sv_manifest, dict):
+        from .dse_materialization import validate_stage5_sv_manifest
+
+        physical_binding = manifest.get("dse_physical_binding_check")
+        if not isinstance(physical_binding, dict):
+            errors.append("code generation manifest is missing the Stage-4 physical binding check")
+        elif physical_binding.get("status") != "pass":
+            errors.append("Stage-4 physical binding check did not pass")
+        expected_parameters = stage5_parameters_from_codegen_manifest(manifest)
+        sv_check = validate_stage5_sv_manifest(root, expected_parameters, sv_manifest)
+        errors.extend(sv_check["errors"])
     result = {
         "schema_version": "spatialaccagent.codegen_package_static_check.v0",
         "checker": "codegen_package_static_check",
@@ -985,11 +1022,87 @@ def build_codegen_package_static_check(manifest: dict[str, Any], log_path: Path)
             "planned_output_status",
             "template_source_coverage",
             "compile_and_contract_gate_status",
+            "stage4_physical_parameter_binding_to_stage5_sv_signature",
         ],
         "log_path": str(log_path),
     }
     write_json(log_path, result)
     return result
+
+
+def compact_codegen_manifest_for_review(
+    manifest: dict[str, Any], manifest_path: Path
+) -> dict[str, Any]:
+    """Keep the full manifest on disk and bound only the LLM review projection."""
+
+    review_manifest = dict(manifest)
+    sv_manifest = manifest.get("stage5_sv_manifest")
+    if not isinstance(sv_manifest, dict):
+        return review_manifest
+    port_signatures = sv_manifest.get("port_signatures")
+    if not isinstance(port_signatures, dict):
+        return review_manifest
+
+    canonical = json.dumps(
+        port_signatures, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    if len(canonical) < 1_000_000:
+        return review_manifest
+
+    source_files = []
+    direction_counts: dict[str, int] = {}
+    module_count = 0
+    port_count = 0
+    for source_file, modules in sorted(port_signatures.items()):
+        module_summaries = []
+        for module in modules if isinstance(modules, list) else []:
+            if not isinstance(module, dict):
+                continue
+            ports = module.get("ports") if isinstance(module.get("ports"), list) else []
+            per_module_directions: dict[str, int] = {}
+            for port in ports:
+                if not isinstance(port, dict):
+                    continue
+                direction = str(port.get("direction") or "unknown")
+                direction_counts[direction] = direction_counts.get(direction, 0) + 1
+                per_module_directions[direction] = per_module_directions.get(direction, 0) + 1
+            module_count += 1
+            port_count += len(ports)
+            module_payload = json.dumps(
+                module, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+            ).encode("utf-8")
+            module_summaries.append(
+                {
+                    "module": module.get("module"),
+                    "port_count": len(ports),
+                    "direction_counts": per_module_directions,
+                    "signature_sha256": hashlib.sha256(module_payload).hexdigest(),
+                }
+            )
+        source_files.append({"source_file": source_file, "modules": module_summaries})
+
+    compact_sv_manifest = {
+        key: value for key, value in sv_manifest.items() if key != "port_signatures"
+    }
+    compact_sv_manifest["port_signatures_summary"] = {
+        "canonical_sha256": hashlib.sha256(canonical).hexdigest(),
+        "source_file_count": len(port_signatures),
+        "module_count": module_count,
+        "port_count": port_count,
+        "direction_counts": direction_counts,
+        "source_files": source_files,
+        "full_manifest_path": str(manifest_path),
+        "full_signature_artifact_path": str(
+            Path(str(manifest.get("generated_package_root") or ""))
+            / "stage5_sv_manifest.json"
+        ),
+    }
+    review_manifest["stage5_sv_manifest"] = compact_sv_manifest
+    review_manifest["review_projection"] = {
+        "purpose": "bounded LLM code-generation review; authoritative files remain unchanged",
+        "full_manifest_path": str(manifest_path),
+    }
+    return review_manifest
 
 
 def compile_enabled() -> bool:
@@ -1016,6 +1129,18 @@ def sbt_failure_markers(stdout: str, stderr: str) -> list[str]:
     text = f"{stdout}\n{stderr}"
     markers = ("Exception in thread", "ExceptionInInitializerError", "[error]", "Caused by:")
     return [marker for marker in markers if marker in text]
+
+
+def compile_gate_has_warning_markers(compile_gate: dict[str, Any]) -> bool:
+    """Return whether an SBT step emitted a warning marker inspected by the contract gate."""
+
+    for step in compile_gate.get("steps", []):
+        if not isinstance(step, dict):
+            continue
+        for key in ("stdout_tail", "stderr_tail"):
+            if re.search(r"(?m)^\s*\[warn\]", str(step.get(key) or "")):
+                return True
+    return False
 
 
 REQUIRED_ELABORATED_TOPS = (
@@ -1338,6 +1463,9 @@ def generate_chisel_package(run_dir: Path, state: dict[str, Any], manifest: dict
     cache_tile_words = scalar(global_params.get("cache_tile_words"), 256)
     cache_tile_count = scalar(global_params.get("cache_tile_count"), 2)
     cache_refill_data_width_bits = scalar(global_params.get("cache_refill_data_width_bits"), 0)
+    attention_output_reuse_tokens = scalar(
+        global_params.get("attention_output_cross_token_reuse_tokens"), 1,
+    )
     memory_facts = constraint_facts(state, "constraint.memory.board")
     memory_system_facts = memory_facts.get("memory_system", {}) if isinstance(memory_facts.get("memory_system"), dict) else memory_facts
     board_axi_width_bits = scalar(memory_system_facts.get("axi_data_width_bits"), 0)
@@ -1377,6 +1505,7 @@ def generate_chisel_package(run_dir: Path, state: dict[str, Any], manifest: dict
             "cache_tile_count": cache_tile_count,
             "cache_refill_data_width_bits": cache_refill_data_width_bits,
             "cross_token_reuse_tokens": scalar(global_params.get("cross_token_reuse_tokens"), 16),
+            "attention_output_cross_token_reuse_tokens": attention_output_reuse_tokens,
         },
     )
 
@@ -1434,6 +1563,7 @@ object GeneratedDesignParams {{
   val cacheRefillDataWidthBits: Int = {cache_refill_data_width_bits}
   val boardAxiDataWidthBits: Int = {board_axi_width_bits}
   val crossTokenReuseTokens: Int = {scalar(global_params.get("cross_token_reuse_tokens"), 16)}
+  val attentionOutputCrossTokenReuseTokens: Int = {attention_output_reuse_tokens}
   // Materialize the reuse control before any PhysicalImplementation call or
   // parameter construction. Keep this declaration independent of the case
   // class parameter family so every generated complete top has the same
@@ -1443,6 +1573,7 @@ object GeneratedDesignParams {{
   // parameter object. It is a concrete Stage-4 value, never a model-family
   // default or a later forward reference.
   require(crossTokenReuseTokens > 0, "generated cross-token reuse must be positive")
+  require(attentionOutputCrossTokenReuseTokens > 0, "generated attention output reuse must be positive")
   // Materialize every physical control as a concrete generated value before
   // invoking PhysicalImplementation or constructing any operator parameter.
   // Complete-top elaboration must not depend on Scala initialization order.
@@ -1486,6 +1617,7 @@ object GeneratedDesignParams {{
   // controls above for all downstream parameter families.
   PhysicalImplementation.configureRefillDataWidth({cache_refill_data_width_bits})
   PhysicalImplementation.configureCrossTokenReuse({scalar(global_params.get("cross_token_reuse_tokens"), 16)})
+  PhysicalImplementation.configureAttentionOutputCrossTokenReuse({attention_output_reuse_tokens})
   PhysicalImplementation.configureNumericPolicy(
     weightBits, elemBits, accBits, scaleBits, scaleShift, roundingMode, saturationEnabled
   )
@@ -1824,6 +1956,7 @@ object GeneratedContractCheck extends App {
   require(GeneratedDesignParams.cacheRefillDataWidthBits == GeneratedDesignParams.boardAxiDataWidthBits, "generated refill payload must equal the discovered board AXI width")
   require(GeneratedDesignParams.configuredRefillDataWidthBits == GeneratedDesignParams.refillDataWidthBits, "selected refill width must reach the generated configuration")
   require(GeneratedDesignParams.configuredCrossTokenReuseTokens == GeneratedDesignParams.crossTokenReuseTokens, "selected cross-token reuse must reach the generated configuration")
+  require(GeneratedDesignParams.attentionOutputCrossTokenReuseTokens > 0, "attention output reuse must be positive")
   require(GeneratedDesignParams.materializedRefillDataWidthBits == GeneratedDesignParams.cacheRefillDataWidthBits, "materialized refill width must equal the selected cache payload")
   require(GeneratedDesignParams.materializedCrossTokenReuseTokens == GeneratedDesignParams.crossTokenReuseTokens, "materialized reuse must equal the selected reuse context")
   println(
@@ -1861,6 +1994,7 @@ object GeneratedSACGMetadata {{
             "cache_tile_count": cache_tile_count,
             "cache_refill_data_width_bits": cache_refill_data_width_bits,
             "cross_token_reuse_tokens": scalar(global_params.get("cross_token_reuse_tokens"), 16),
+            "attention_output_cross_token_reuse_tokens": attention_output_reuse_tokens,
         },
     )
     physical_binding_path = root / "logs" / "dse_physical_binding_check.json"
@@ -2013,6 +2147,7 @@ claimed.
             "cache_refill_data_width_bits": cache_refill_data_width_bits,
             "board_axi_data_width_bits": board_axi_width_bits,
             "cross_token_reuse_tokens": scalar(global_params.get("cross_token_reuse_tokens"), 16),
+            "attention_output_cross_token_reuse_tokens": attention_output_reuse_tokens,
         },
     }
 
@@ -2440,8 +2575,19 @@ def generate_code(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "param_class": generated_package["param_class"],
         "params": generated_package["params"],
     }
+    manifest["dse_physical_binding_check"] = generated_package["dse_physical_binding_check"]
+    manifest["dse_physical_binding_check_path"] = generated_package["dse_physical_binding_check_path"]
     compile_gate = run_codegen_compile_gate(package_root)
     manifest["compile_gate"] = compile_gate
+    if compile_gate.get("status") == "pass" and compile_gate.get("elaboration_enabled"):
+        from .dse_materialization import build_stage5_sv_manifest
+
+        sv_manifest = build_stage5_sv_manifest(
+            package_root, generated_package["dse_physical_binding_check"]["parameters"]
+        )
+        sv_manifest["provenance"] = "captured_after_successful_stage5_compile_and_elaboration"
+        write_json(package_root / "stage5_sv_manifest.json", sv_manifest)
+        manifest["stage5_sv_manifest"] = sv_manifest
     set_codegen_output_status(
         manifest,
         "generated.codegen_compile_gate",
@@ -2458,7 +2604,10 @@ def generate_code(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         contract_check_path,
     )
     manifest["contract_check"] = contract_check
-    if compile_gate.get("status") == "fail" and getattr(args, "_compile_source_repair_attempts", 0) < 3:
+    compile_repair_needed = compile_gate.get("status") == "fail" or (
+        contract_check.get("status") == "fail" and compile_gate_has_warning_markers(compile_gate)
+    )
+    if compile_repair_needed and getattr(args, "_compile_source_repair_attempts", 0) < 3:
         from accagent.framework.codegen_source_repair import repair_compile_sources
 
         args._compile_source_repair_attempts = getattr(args, "_compile_source_repair_attempts", 0) + 1
@@ -2489,12 +2638,14 @@ def generate_code(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         candidate_artifact=manifest,
         out_dir=out_dir,
     )
+    review_manifest = compact_codegen_manifest_for_review(manifest, candidate_manifest_path)
     llm = run_stage_agent(
         agent="code_generation_agent",
         stage="code_generation",
         task="Review the accelerator code generation manifest, generated code package, and team handoff for missing cross-layer design outputs.",
         inputs={
-            "candidate_artifact_manifest": manifest,
+            "candidate_artifact_manifest": review_manifest,
+            "candidate_artifact_manifest_path": str(candidate_manifest_path),
             "stage_gate_policy": manifest.get("stage_gate_policy", {}),
             "compile_gate": compile_gate,
             "contract_check": contract_check,

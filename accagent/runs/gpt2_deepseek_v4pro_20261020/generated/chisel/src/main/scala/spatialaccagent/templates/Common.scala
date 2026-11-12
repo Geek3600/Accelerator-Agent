@@ -257,6 +257,74 @@ class PhysicalIntegerSqrt(width: Int) extends Module {
   }
 }
 
+/** Pipelined unsigned restoring divider. Numerator bits are emitted
+  * through one comparison/subtract stage per bit, so the combinational
+  * carry chain is replaced by registered stages and the numerator path.
+  */
+class PhysicalFixedDivider(
+  numeratorBits: Int,
+  denominatorBits: Int
+) extends Module {
+  require(numeratorBits > 0 && denominatorBits > 0)
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(new Bundle {
+      val numerator = UInt(numeratorBits.W)
+      val denominator = UInt(denominatorBits.W)
+    }))
+    val out = Decoupled(UInt(numeratorBits.W))
+  })
+  private val remWidth = denominatorBits + 1
+  private val stages = numeratorBits
+  private val rem = Reg(Vec(stages, UInt(remWidth.W)))
+  private val quo = Reg(Vec(stages, Bool()))
+  private val num = Reg(Vec(stages, UInt(numeratorBits.W)))
+  private val valid = RegInit(VecInit(Seq.fill(stages)(false.B)))
+  private val den = Reg(UInt(remWidth.W))
+  private val denominatorWide = Cat(0.U(1.W), io.in.bits.denominator)
+  private val pipeReady = !valid(stages - 1) || io.out.ready
+  io.in.ready := pipeReady
+  io.out.valid := valid(stages - 1)
+  io.out.bits := Cat(quo.toSeq)
+
+  when(pipeReady) {
+    val firstShift = Cat(0.U(denominatorBits.W), io.in.bits.numerator(numeratorBits - 1))
+    val firstTake = firstShift >= denominatorWide
+    when(io.in.fire) {
+      rem(0) := Mux(firstTake, firstShift - denominatorWide, firstShift)
+      quo(0) := firstTake
+      num(0) := io.in.bits.numerator
+      den := denominatorWide
+      valid(0) := true.B
+    }.otherwise {
+      rem(0) := 0.U
+      quo(0) := false.B
+      num(0) := 0.U
+      valid(0) := false.B
+    }
+  }
+
+  for (stage <- 1 until stages) {
+    val prevRem = rem(stage - 1)
+    val prevNum = num(stage - 1)
+    val currentBit = prevNum(numeratorBits - 1 - stage)
+    val shifted = Cat(prevRem(denominatorBits - 1, 0), currentBit)
+    val take = shifted >= den
+    when(pipeReady) {
+      when(valid(stage - 1)) {
+        rem(stage) := Mux(take, shifted - den, shifted)
+        quo(stage) := take
+        num(stage) := prevNum
+        valid(stage) := true.B
+      }.otherwise {
+        rem(stage) := 0.U
+        quo(stage) := false.B
+        num(stage) := 0.U
+        valid(stage) := false.B
+      }
+    }
+  }
+}
+
 /**
   * Physical arithmetic facade used by all trusted templates. Each operation
   * instantiates the matching Vivado floating_point IP; there is no behavioral

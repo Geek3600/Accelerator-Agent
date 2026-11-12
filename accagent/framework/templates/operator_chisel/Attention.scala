@@ -22,11 +22,12 @@ final case class AttentionParams(
   cacheTileCount: Int = PhysicalImplementation.resolveCacheTileCount(2),
   refillDataWidthBits: Int = PhysicalImplementation.resolveRefillDataWidthBits(512),
   crossTokenReuseTokens: Int = PhysicalImplementation.resolveCrossTokenReuseTokens(16),
+  outCrossTokenReuseTokens: Int = PhysicalImplementation.resolveAttentionOutputCrossTokenReuseTokens(1),
   weightBits: Int = 0,
   integerMode: Boolean = false,
   accBits: Int = 32
 ) {
-  require(hiddenSize == qHeads * headDim, "attention hidden size must equal qHeads * headDim")
+  require(hiddenSize > 0, "attention hidden size must be positive")
   require(qHeads > 0 && kvHeads > 0 && qHeads % kvHeads == 0, "invalid GQA head grouping")
   require(headDim > 0 && seqLen > 0, "attention dimensions must be positive")
   if (integerMode) {
@@ -39,6 +40,7 @@ final case class AttentionParams(
   }
   require(hiddenSize % lanes == 0, "hiddenSize must be divisible by output lanes")
   require(headDim % qkvElemsPerBeat == 0, "headDim must align to QKV stream beats")
+  require(outCrossTokenReuseTokens > 0, "attention output cross-token reuse must be positive")
 
   val qkv: QKVProjectionParams = QKVProjectionParams(
     hiddenSize, qHeads, kvHeads, headDim, lanes, elemBits, qkvElemsPerBeat, batchSize, seqLen,
@@ -84,7 +86,7 @@ final case class AttentionParams(
     cacheTileWords = cacheTileWords,
     cacheTileCount = cacheTileCount,
     refillDataWidthBits = refillDataWidthBits,
-    crossTokenReuseTokens = crossTokenReuseTokens
+    crossTokenReuseTokens = outCrossTokenReuseTokens
   )
   val addrBits: Int = outLinear.outputAddrBits
 }

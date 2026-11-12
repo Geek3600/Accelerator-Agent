@@ -9,6 +9,7 @@ from accagent.framework.stage_artifacts import (
     CODEGEN_STAGE5_CONSTRAINTS,
     build_memory_layout,
     codegen_stage_gate_policy,
+    compile_gate_has_warning_markers,
     generate_chisel_package,
     run_codegen_compile_gate,
     sbt_failure_markers,
@@ -45,6 +46,14 @@ def prepared_state(family: str, root: Path) -> tuple[dict, dict]:
 
 
 class SemanticCodeGenerationTest(TestCase):
+    def test_codegen_warning_gate_detects_only_warning_markers(self):
+        self.assertTrue(compile_gate_has_warning_markers({
+            "steps": [{"stdout_tail": "[info] elaborating\n[warn] W004: singleton Vec index"}]
+        }))
+        self.assertFalse(compile_gate_has_warning_markers({
+            "steps": [{"stdout_tail": "[info] warning-free elaboration"}]
+        }))
+
     def test_boolean_backend_binding_uses_scala_literals(self):
         values = {"weight_bits": 4, "acc_bits": 32, "cache_tile_words": 256,
                   "cache_tile_count": 2, "cache_refill_data_width_bits": 512,

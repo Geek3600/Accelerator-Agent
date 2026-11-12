@@ -84,6 +84,30 @@ class LlmConfigTests(unittest.TestCase):
         self.assertEqual(cfg.http_transport, "curl_direct_http1")
         self.assertEqual(cfg.configuration_error, "")
 
+    def test_anthropic_messages_route_is_run_scoped(self) -> None:
+        env = {
+            "SPATIALACC_LLM_MODEL": "claude-opus-5",
+            "SPATIALACC_LLM_ENDPOINT": "https://www.a8pi.com/v1/messages",
+            "SPATIALACC_LLM_BASE_URL": "https://www.a8pi.com",
+            "SPATIALACC_LLM_WIRE_API": "anthropic/messages",
+            "SPATIALACC_LLM_API_KEY": "test-anthropic-token",
+        }
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch.object(llm_config, "_read_toml", return_value={}),
+            patch.object(llm_config, "_read_json", return_value={}),
+        ):
+            llm_config.resolve_llm_cfg.cache_clear()
+            cfg = llm_config.resolve_llm_cfg()
+
+        llm_config.resolve_llm_cfg.cache_clear()
+        self.assertEqual(cfg.provider, "Anthropic")
+        self.assertEqual(cfg.model, "claude-opus-5")
+        self.assertEqual(cfg.endpoint, "https://www.a8pi.com/v1/messages")
+        self.assertEqual(cfg.base_url, "https://www.a8pi.com")
+        self.assertEqual(cfg.wire_api, "anthropic/messages")
+        self.assertEqual(cfg.api_key_source, "env:SPATIALACC_LLM_API_KEY")
+
     def test_optional_output_budget_is_resolved_from_environment(self) -> None:
         with (
             patch.dict(

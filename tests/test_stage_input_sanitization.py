@@ -20,6 +20,7 @@ from accagent.framework.stage_input import (
     sanitize_llm_payload,
     task_qor_hard_constraints,
     task_qor_targets,
+    task_timing_optimization_request,
 )
 
 
@@ -266,6 +267,32 @@ class StageInputSanitizationTest(unittest.TestCase):
                 "lut_ff_bram_uram_dsp <= discovered_target_board_resource_budget",
                 "power_w measured",
             ])
+
+    def test_run_local_fmax_request_is_separate_from_initial_dse_targets(self) -> None:
+        tasks = [
+            (
+                "After a legal candidate is verified, continue the run-local critical-path "
+                "optimization loop until source-bound Vivado post-synthesis Fmax is at least 150 MHz.",
+                150.0,
+            ),
+            (
+                "For the current existing-design timing optimization, achieved clock frequency "
+                "must be at least 100 MHz.",
+                100.0,
+            ),
+            (
+                "There is no minimum achieved clock requirement. Keep the 150 MHz timing-target envelope "
+                "while maximizing throughput.",
+                150.0,
+            ),
+        ]
+
+        for task, frequency in tasks:
+            self.assertNotIn("clock_frequency_mhz", task_qor_targets(task))
+            self.assertEqual(
+                task_timing_optimization_request(task),
+                {"scope": "existing_design_timing", "clock_frequency_mhz": frequency, "source": "task_spec"},
+            )
 
     def test_task_qor_constraints_override_an_incomplete_llm_design_space(self) -> None:
         targets = task_qor_targets(

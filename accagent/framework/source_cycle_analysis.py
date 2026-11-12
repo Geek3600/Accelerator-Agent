@@ -29,7 +29,6 @@ def _synthesis_source_context(run_dir: Path) -> tuple[dict[str, str], str]:
         or report.get("status") != "pass"
         or report.get("mode") != "synth"
         or report.get("measurement_scope") != "generated_kernel_synthesis"
-        or report.get("collect_only") is True
     ):
         raise ValueError("source-cycle analysis requires the latest generated-kernel synthesis to pass")
     archive = Path(str(report.get("closure_archive", "")))
@@ -144,6 +143,11 @@ def source_context(run_dir: Path) -> dict[str, Any]:
             "performance_model": PERFORMANCE_MODEL,
             "physical_transformer_blocks": 1,
             "model_layer_execution": "sequential_reuse_of_the_same_block",
+            "layer_start_contract": (
+                "one accepted top-level io.start per model-layer pass; after the current layer's "
+                "final output handshake and when next-layer input and weights are ready, the external "
+                "controller starts the next pass at the earliest legal cycle with no extra handoff bubble"
+            ),
             "initial_layer_weights_preloaded": True,
             "runtime_constants_preloaded": True,
             "next_layer_weight_prefetch": "overlapped_with_current_layer_compute",
@@ -180,6 +184,106 @@ def _cycle_analysis_prompt_sources(sources: dict[str, str]) -> tuple[dict[str, s
     if not prompt_sources:
         raise ValueError("source-cycle analysis has no compact RTL or design-source context")
     return prompt_sources, omitted_rtl
+
+
+def _matching_scala_brace(source: str, opening: int) -> int | None:
+    depth = 0
+    block_comment_depth = 0
+    quote = ""
+    index = opening
+    while index < len(source):
+        if quote == "line_comment":
+            if source[index] == "\n":
+                quote = ""
+            index += 1
+            continue
+        if quote == "block_comment":
+            if source.startswith("/*", index):
+                block_comment_depth += 1
+                index += 2
+            elif source.startswith("*/", index):
+                block_comment_depth -= 1
+                index += 2
+                if block_comment_depth == 0:
+                    quote = ""
+            else:
+                index += 1
+            continue
+        if quote == '"""':
+            if source.startswith('"""', index):
+                quote = ""
+                index += 3
+            else:
+                index += 1
+            continue
+        if quote in {'"', "'"}:
+            if source[index] == "\\":
+                index += 2
+            elif source[index] == quote:
+                quote = ""
+                index += 1
+            else:
+                index += 1
+            continue
+        if source.startswith("//", index):
+            quote = "line_comment"
+            index += 2
+        elif source.startswith("/*", index):
+            quote = "block_comment"
+            block_comment_depth = 1
+            index += 2
+        elif source.startswith('"""', index):
+            quote = '"""'
+            index += 3
+        elif source[index] in {'"', "'"}:
+            quote = source[index]
+            index += 1
+        elif source[index] == "{":
+            depth += 1
+            index += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+            index += 1
+        else:
+            index += 1
+    return None
+
+
+def _chisel_class_index(sources: dict[str, str]) -> list[dict[str, Any]]:
+    """Index Module(new ...) calls within their declaring Scala class scopes."""
+    declaration = re.compile(
+        r"(?m)^[ \t]*(?:(?:private|protected|final|sealed|abstract|case)\s+)*(?:class|object|trait)\s+([A-Za-z_]\w*)\b"
+    )
+    instance = re.compile(r"\bModule\s*\(\s*new\s+([A-Za-z_]\w*)\b")
+    index: list[dict[str, Any]] = []
+    for path, source in sources.items():
+        if not path.endswith(".scala"):
+            continue
+        for match in declaration.finditer(source):
+            opening = source.find("{", match.end())
+            if opening < 0:
+                continue
+            closing = _matching_scala_brace(source, opening)
+            if closing is None:
+                continue
+            body = source[opening + 1:closing]
+            modules = [
+                {
+                    "module": child.group(1),
+                    "line": source.count("\n", 0, opening + 1 + child.start()) + 1,
+                }
+                for child in instance.finditer(body)
+            ]
+            index.append({
+                "source": path,
+                "class": match.group(1),
+                "line_start": source.count("\n", 0, match.start()) + 1,
+                "line_end": source.count("\n", 0, closing) + 1,
+                "module_instantiations": modules,
+            })
+    return index
 
 
 def source_fingerprint(run_dir: Path) -> str:
@@ -276,6 +380,10 @@ def ensure_source_cycle_analysis(run_dir: Path, *, context_override: dict[str, A
             cache_valid = False
         if cache_valid:
             return path
+    if context_override is None:
+        promoted = _promote_matching_compiled_analysis(run_dir, context)
+        if promoted is not None:
+            return promoted
     synthesis_report = run_dir / "backend_board" / "case_diagnostics" / "app_shell_runtime_vivado.json"
     synthesis = (json.loads(synthesis_report.read_text(encoding="utf-8"))
                  if context_override is None else {
@@ -341,6 +449,7 @@ def ensure_source_cycle_analysis(run_dir: Path, *, context_override: dict[str, A
         inputs={
             **context,
             "sources": prompt_sources,
+            "chisel_class_index": _chisel_class_index(context["sources"]),
             "omitted_emitted_rtl": omitted_rtl,
             "source_context_summary": {
                 "archive_source_count": len(context["sources"]),
@@ -367,6 +476,7 @@ def ensure_source_cycle_analysis(run_dir: Path, *, context_override: dict[str, A
             "Historical diagnoses and repair summaries are fallible feedback, not source evidence. Reconcile latest_repair_feedback_for_source_recheck with previous_attempt_for_correction_only against the supplied current sources. For every alleged non-completing FSM or stream dependency, cite the exact current branch and guard and check its alternative progress paths, independent feed/drain counters, and the actually instantiated numeric-mode implementation. If a previous dependency has been repaired, explicitly retract it and derive the current finite schedule or identify a different source-grounded blocker; do not repeat the old diagnosis from memory. A repair summary alone also cannot prove completion.",
             "Use only the supplied RTL, workload configuration, and matching analysis context. For a synthesized source the archive SHA-256 is supplied; for a compile-verified source compile_evidence and compiled_source_snapshot_sha256 identify current VCS-compiled hardware awaiting synthesis. In the latter case derive cycles only; no achieved clock or synthesis result is claimed. Do not use board-integration testbench RTL or an older cycle report. Cite the generated accelerator top and operator-pipeline source paths.",
             "All matching Chisel sources, design parameters, runtime configuration, and small emitted arithmetic RTL are included. omitted_emitted_rtl indexes mechanically expanded RTL omitted from this exact synthesis archive projection, including large flattened top/block modules. Derive their loop, counter, memory behavior and complete connectivity from the matching Chisel top/block/operator sources and parameter bindings. The archive digest binds both included and omitted files; omission of expanded RTL is not missing hardware context.",
+            "Use chisel_class_index to keep Module(new ...) calls within their declaring Scala class scopes, then verify the selected path from the top using the static numeric-mode parameters and source branches. A source file may contain mutually exclusive floating-point and integer implementations; never attribute a child declared in one class to another class in the same file. Require external IP latency configuration only for IPs reachable in the selected implementation; inactive alternatives do not make source context incomplete.",
             "Treat the supplied synthesis_evidence or compile_evidence as the already-validated source/build provenance. A source-schedule derivation needs no extra attestation or synthesis run. Compile-only evidence does not establish functional correctness or measured performance; it supplies the current source for analysis and diagnosis.",
             "The architecture has exactly one physical Transformer block. The same block executes model layers sequentially with layer-specific weights. For this nominal estimate assume next-layer prefetch adds zero handoff cycles; do not try to prove the assumption from the single-block RTL and do not add another check. Never treat layers as parallel hardware stages, and never multiply token count by model_layers.",
             "processed_tokens is the input sequence length times batch size for one complete model inference, not tokens multiplied by layers. One token means one full sequence position/hidden vector, not one StreamBeat; derive how many beats form a token from the configured hidden size, lane width, and RTL framing. Prefer dimensions supplied from runtime_config. The framework rejects token/layer counts that disagree with that configuration.",
@@ -379,6 +489,7 @@ def ensure_source_cycle_analysis(run_dir: Path, *, context_override: dict[str, A
             "Distinguish serialized calls from tagged, decoupled arithmetic pipelines with multiple operations in flight. When the actual source interleaves independent partial-sum contexts and the generated IP has C_Rate=1, pipeline latency is fill/drain overhead, not a per-MAC issue interval. Count the actual request handshakes, context reuse hazards, reduction levels and partial-sum folding/bias phases; do not multiply every request by the full multiplier/reduction/adder latency. Account for overlapping input fill, computation and output drain when the source has separate ping-pong buffers. Count reachable row/group transitions, not an intended matrix loop that the RTL does not execute, and identify skipped work separately from legitimate throughput improvement.",
             "Report start_to_first_input_cycles as cycles from accepted run start to the first beat of the first complete token, steady_state_ii_cycles as cycles between starts of complete tokens in the no-stall steady state (including all beats per hidden vector), and last_token_start_to_completion_cycles as cycles from the first beat of the final token through the final output transfer. This counts pipeline fill and drain exactly once.",
             "Use mode=single_block_reuse and operator_token_overlap=true. The framework computes model_layers * (start_to_first_input_cycles + (processed_tokens - 1) * steady_state_ii_cycles + last_token_start_to_completion_cycles), with zero inter-layer handoff by assumption.",
+            "schedule_policy.layer_start_contract is the explicit nominal controller schedule: each model layer is one block pass with one accepted top-level io.start; later starts occur at the earliest legal cycle after the prior final output handshake, assuming the next input and prefetched weights are ready. Confirm from the supplied top that io.start reaches the block and the final output handshake ends the active pass, then use this contract rather than requiring external controller RTL. This is an analytical no-stall assumption, not measured board-controller evidence; charge each pass's own startup and completion through the formula above, but no extra inter-layer bubble.",
             "If warm-up, a sequence barrier, or backpressure makes ingress token intervals nonuniform, return pipeline_schedule.token_start_intervals as run-length encoded {cycles, repetitions} terms covering exactly processed_tokens-1 actual ingress gaps. The framework sums these gaps instead of repeating steady_state_ii_cycles. Keep last_token_start_to_completion_cycles relative to the actual final-token start; never return ready with a known representation overcount or silently replace the actual final-token start by an idealized one.",
             "For the nominal compute-only estimate, assume inter-layer weight handoff is zero and memory-transfer stalls are excluded. This is an ideal no-stall projection, not a measured whole-system result. Do not block because the single-block RTL does not contain the whole-model weight scheduler.",
             "Do not invent dimensions or unexplained cycle constants. Derive operator initiation intervals and token schedule from the synthesized RTL and IP configuration; if those finite source-grounded bounds or connected operator-stream evidence are missing, return blocked rather than reverting to serial per-operator latency sums. Board runtime and numerical validation are not required for this analytical estimate.",
@@ -386,6 +497,48 @@ def ensure_source_cycle_analysis(run_dir: Path, *, context_override: dict[str, A
     )
     output = record.get("output") or {}
     return save_source_cycle_analysis(run_dir, context, output, context_override=context_override)
+
+
+def _promote_matching_compiled_analysis(run_dir: Path, synthesis_context: dict[str, Any]) -> Path | None:
+    compiled_path = analysis_path(run_dir).with_name("compiled_source_cycle_analysis.json")
+    try:
+        compiled = json.loads(compiled_path.read_text(encoding="utf-8"))
+        from accagent.framework.dse_timing_calibration import compiled_source_context
+
+        compiled_context = compiled_source_context(run_dir)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    compiled_fingerprint = hashlib.sha256(json.dumps(compiled_context, sort_keys=True).encode()).hexdigest()
+    references = compiled.get("source_refs")
+    compiled_sources = compiled_context.get("sources", {})
+    synthesized_sources = synthesis_context.get("sources", {})
+    if (
+        compiled.get("status") != "pass"
+        or compiled.get("counter_source") != "source_schedule_analysis"
+        or compiled.get("performance_model") != PERFORMANCE_MODEL
+        or compiled.get("source_fingerprint") != compiled_fingerprint
+        or compiled_context.get("workload") != synthesis_context.get("workload")
+        or not isinstance(references, list)
+        or not references
+        or any(
+            reference not in compiled_sources
+            or reference not in synthesized_sources
+            or compiled_sources[reference] != synthesized_sources[reference]
+            for reference in references
+        )
+    ):
+        return None
+    output = dict(compiled)
+    output["status"] = "ready"
+    path = save_source_cycle_analysis(run_dir, synthesis_context, output)
+    promoted = json.loads(path.read_text(encoding="utf-8"))
+    promoted["analysis_reuse"] = {
+        "kind": "matching_compiled_source_analysis",
+        "compiled_source_fingerprint": compiled_fingerprint,
+        "matched_source_reference_count": len(references),
+    }
+    path.write_text(json.dumps(promoted, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
 
 
 def save_source_cycle_analysis(

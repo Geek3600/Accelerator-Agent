@@ -1,0 +1,165 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+%Template version as of 6/27/2024
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{ACCORD: Contract-Guided Agentic Design of FPGA Spatial Accelerators for LLMs\\
+}
+
+% \author{\IEEEauthorblockN{1\textsuperscript{st} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% \and
+% \IEEEauthorblockN{2\textsuperscript{nd} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% \and
+% \IEEEauthorblockN{3\textsuperscript{rd} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% \and
+% \IEEEauthorblockN{4\textsuperscript{th} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% \and
+% \IEEEauthorblockN{5\textsuperscript{th} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% \and
+% \IEEEauthorblockN{6\textsuperscript{th} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% }
+
+\maketitle
+
+\begin{abstract}
+This document is a model and instructions for \LaTeX.
+This and the IEEEtran.cls file define the components of your paper [title, text, heads, etc.]. *CRITICAL: Do Not Use Symbols, Special Characters, Footnotes, 
+or Math in Paper Title or Abstract.
+\end{abstract}
+
+\begin{IEEEkeywords}
+component, formatting, style, styling, insert.
+\end{IEEEkeywords}
+
+\looseness=-1
+\section{Introduction}
+The growing computational and memory demands of large language model (LLM) inference have driven the development of specialized hardware architectures. Among them, spatial dataflow architectures improve efficiency by streaming intermediate results directly between compute stages, substantially reducing off-chip memory accesses~\cite{streamtensor}. Realizing such customized dataflow execution, however, demands fine-grained hardware reconfigurability. FPGAs provide an ideal flexible platform for implementing these workload-specific architectures. However, designing an efficient FPGA spatial accelerator beyond requiring deep hardware expertise to balance compute parallelism, stream buffering, and memory hierarchy organization~\cite{allo,streamtensor}, demands continuous repetition to accommodate evolving deployment requirements, leading to repeated engineering effort and long  design cycles.
+
+\looseness=-1
+To alleviate this design effort, compiler- and high-level synthesis (HLS)-based frameworks, such as Allo~\cite{allo}, HIDA~\cite{hida}, and StreamTensor~\cite{streamtensor}, generate spatial accelerators through structured intermediate representations (IRs) and successive optimization and lowering passes. However, extending these frameworks to new model requirements, numerical formats, or hardware platforms may still require additional compiler and hardware development.
+
+\looseness=-1
+Meanwhile, LLM-based agents offer another approach by generating hardware code and iteratively refining it with EDA tool feedback. Prior studies have explored RTL generation and debugging~\cite{mage,rtlfixer}, functional verification~\cite{assertllm,correctbench}, HLS optimization~\cite{hlspilot}, and multi-stage module design~\cite{mahl}. GPT4AIGChip~\cite{gpt4aigchip} and Design Conductor 2.0~\cite{designconductor2} further demonstrate accelerator-level automation. Despite these advances, coordinating interdependent design decisions throughout an end-to-end FPGA spatial accelerator workflow remains challenging.
+
+\looseness=-1
+Unlike designing standalone RTL modules, realizing an FPGA spatial accelerator entails a multi-stage design flow that must coordinate tightly interdependent decisions—spanning high-level architectural partitioning, pipeline and buffer scheduling, and low-level physical implementation.
+When extending agentic automation to this multi-stage workflow, these intricate dependencies directly translate into two fundamental challenges. \textbf{First, preserving cross-stage design consistency.}
+Early design decisions, such as operator dimensions and compute parallelism, constrain subsequent hardware configurations and RTL interfaces. If later-stage agents overlook these constraints, individually valid modules may become incompatible during integration. This problem is particularly difficult in long design workflows, where LLMs may fail to reliably retrieve and apply earlier decisions~\cite{lostmiddle,longbench,locomo}, leading to cross-stage inconsistencies and invalid designs.
+\textbf{Second, tracing downstream failures to their cross-stage root causes.}
+Failures reported during simulation, synthesis, or physical implementation may originate from decisions made several stages earlier. For example, a timing violation may stem from an upstream parallelism choice rather than the reported module. Identifying such causes requires tracing design dependencies across stages, while LLM agents may struggle to reconsider earlier decisions during iterative repair~\cite{swesearch}. Consequently, agents may repeatedly address symptoms rather than root causes, resulting in ineffective repairs and prolonged repair loops.
+
+\looseness=-1
+To address these challenges, we propose \textbf{ACCORD}, a contract-guided multi-agent framework for automated end-to-end FPGA spatial accelerator design. ACCORD decomposes the entire development cycle into coordinated stages managed by domain-specialized agents. Rather than relying on fragile LLM context windows to retain decisions across this long workflow, ACCORD formalizes accelerator development as state transitions $S_t = (G_t, A_t, R_t)$ over a shared \emph{Design Contract Graph (DCG)}, where $G_t$ explicitly tracks cross-stage hardware contracts, $A_t$ contains design artifacts, and $R_t$ records verification evidence. The DCG serves as a persistent backbone that simultaneously enables forward constraint propagation to preserve multi-stage consistency and backward failure tracing to isolate root causes upon downstream EDA failures. Under this formulation, ACCORD maps model topologies and board constraints onto trusted templates to derive balanced spatial pipelines, localizes bugs via hierarchical validation and dependency-guided repair, and strictly anchors tool receipts to concrete design revisions to achieve sound closure.
+
+\looseness=-1
+The main contributions of this paper are summarized as follows:
+\begin{itemize}
+\looseness=-1
+\item \textbf{Contract-guided agentic accelerator design.}
+We present ACCORD, a multi-agent framework for end-to-end FPGA spatial accelerator design that organizes the long design workflow into contract-guided design transitions.
+\looseness=-1
+\item \textbf{DCG-guided spatial architecture generation.}
+We introduce the Design Contract Graph (DCG) to explicitly capture cross-stage design constraints and guide hardware-template binding, spatial pipeline construction, and hardware-bound design space exploration.
+\looseness=-1
+\item \textbf{Cross-stage failure tracing and repair.}
+We develop a dependency-guided mechanism that traces downstream EDA failures to possible upstream causes, bounds the affected repair scope, and tracks validation results across design revisions.
+\looseness=-1
+\item \textbf{Comprehensive evaluation.}
+We evaluate ACCORD across diverse LLM specifications, numerical formats, FPGA platforms, and upstream LLM backbones, covering end-to-end design, cross-stage consistency, failure diagnosis, and generated hardware quality.
+\end{itemize}
+
+
+\looseness=-1
+\section{Background \& Motivation}
+\subsection{FPGA Spatial Accelerators for LLMs}
+An FPGA spatial accelerator consists of compute engines, on-chip buffers, and memory interfaces connected through streaming data paths. Intermediate results are transferred between compute stages through FIFOs, enabling pipelined execution and reducing off-chip memory accesses. Efficient execution requires coordinated decisions on compute parallelism, stream layouts, and buffer allocation under FPGA resource constraints~\cite{allo,streamtensor,hida}.
+
+\looseness=-1
+Compiler-based frameworks automate these design tasks through structured intermediate representations (IRs) and hardware optimization passes. Allo~\cite{allo} supports composable accelerator design through reusable kernels and hardware customization, HIDA~\cite{hida} employs hierarchical representations for dataflow optimization, and StreamTensor~\cite{streamtensor} explicitly models stream layouts for LLM dataflow accelerators. While these frameworks simplify hardware generation, extending them to unsupported model structures, numerical formats, or platform interfaces may require additional compiler and hardware development.
+
+
+\looseness=-1
+\subsection{Agentic Accelerator Design Automation}
+LLM-based agents automate hardware design by generating RTL or HLS code, invoking EDA tools, and refining designs based on tool feedback. Prior studies have explored RTL generation and repair~\cite{mage,rtlfixer}, functional verification~\cite{assertllm,correctbench}, and HLS optimization~\cite{hlspilot}. Multi-agent approaches, such as RTLSquad~\cite{rtlsquad} and MAHL~\cite{mahl}, coordinate specialized agents across design tasks. Beyond individual tasks, GPT4AIGChip~\cite{gpt4aigchip} explores LLM-driven ai accelerator design, while Design Conductor 2.0~\cite{designconductor2} demonstrates end-to-end accelerator development through FPGA implementation.
+
+\looseness=-1
+\subsection{Motivation and Challenges}
+Designing an FPGA spatial accelerator involves a sequence of closely related decisions, from model specifications and architecture planning to RTL generation and physical implementation. Unlike standalone hardware modules, the compute engines, on-chip buffers, and streaming interfaces must satisfy constraints established across multiple design stages. When these stages are handled by different LLM agents, maintaining such dependencies throughout the design process introduces two fundamental challenges.
+
+\looseness=-1
+\noindent\textbf{Challenge 1: Preserving cross-stage design consistency.}
+Cross-stage inconsistencies can arise in both forward design and iterative refinement. During forward design, decisions made at early stages impose constraints on downstream implementations. For example, in grouped-query attention (GQA), different numbers of query and key/value heads result in distinct projection dimensions, affecting compute arrays, buffers, and streaming interfaces. If an RTL generation agent assumes identical dimensions, its modules may pass local verification but fail during integration. Conversely, modifications made during iterative refinement may invalidate earlier design decisions. For example, reducing compute parallelism to meet timing constraints requires updating the affected design stages; otherwise, they may follow conflicting design assumptions.
+
+\looseness=-1
+Compiler-based frameworks, such as Allo~\cite{allo} and StreamTensor~\cite{streamtensor}, manage similar dependencies through structured IRs and explicit hardware representations. In contrast, agent-driven workflows may distribute design decisions across specifications, architecture configurations, generated RTL, and tool reports. As the workflow progresses, earlier constraints may be forgotten or incorrectly interpreted, while later modifications may not be propagated to other affected stages. These difficulties are further compounded by the limitations of LLMs in retrieving and using information from long contexts~\cite{in2,helmet,readagent}. Consequently, successful verification of individual components does not necessarily establish consistency across the complete accelerator. These observations motivate a persistent representation of cross-stage design states that keeps design decisions aligned throughout the design process.
+
+\looseness=-1
+\noindent\textbf{Challenge 2: Tracing downstream failures to their cross-stage root causes.} Hardware design failures are not always caused by the component where they are reported. For example, increasing compute parallelism may introduce wider datapaths and higher routing demands, causing timing violations during physical implementation despite passing functional verification. In such cases, modifying the reported critical path alone may not resolve the underlying architectural problem.
+
+\looseness=-1
+Determining the appropriate repair therefore requires tracing dependencies between the reported failure and earlier design decisions. This is particularly difficult for LLM agents when relevant decisions and tool results are distributed across a long design history. Existing studies have shown that software agents may struggle to reconsider earlier decisions after unsuccessful repair attempts~\cite{swesearch}. Similarly, Design Conductor 2.0 reports cases where complex RTL modifications were proposed for problems that could instead be resolved through simpler backend script changes~\cite{designconductor2}. Without effective root-cause analysis, agents may repeatedly modify the wrong components, leading to ineffective repairs and prolonged repair loops.
+
+\looseness=-1
+Furthermore, correcting an upstream decision can affect downstream components and invalidate previous verification or implementation results. Thus, effective repair requires identifying possible root causes, determining the affected design scope, and revalidating the modified artifacts.
+
+\looseness=-1
+\noindent\textbf{Design Implications.} During forward generation, design constraints must be propagated and checked to preserve consistency. When downstream failures occur, the same dependencies should support backward root-cause tracing and guide targeted repairs. Moreover, validation results must remain associated with the design revisions they verify. These requirements motivate the contract-guided design and evidence-bound refinement mechanisms of ACCORD.
+
+
+\section{Method}
+\subsection{Overview and Design State Model}
+\subsection{Contract-Guided Spatial Generation}
+\subsection{Hardware-Bound Design Space Exploration}
+\subsection{Evidence-Guided Verification and Repair}
+\subsection{Implementation Feedback and Design Closure}
+
+\section{Evaluation}
+\subsection{Experimental Setup}
+\subsection{End-to-End Design Automation}
+\subsection{Contract Checking and Repair}
+\subsection{Hardware Quality and Design Efficiency}
+
+\section{Conclusion}
+
+
+
+\vspace{12pt}
+\clearpage
+\bibliographystyle{IEEEtran} 
+\bibliography{references} 
+\end{document}

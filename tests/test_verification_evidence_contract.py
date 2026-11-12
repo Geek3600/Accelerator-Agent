@@ -11,13 +11,18 @@ from accagent.framework.stage_verification import (
     build_promotion_evidence_binding,
     build_results,
     check_required_real_tool_evidence,
+    policy_selected_stage6_gates,
     run_verification,
     stage6_selector_blockers,
+    selector_certificate_reused_at_scope_entry,
 )
 from accagent.framework.stage_verification_plan import current_certificate_validation_summary
 from accagent.framework.verification_evidence_contract import (
     PROMOTION_CERTIFICATE_SCHEMA_VERSION,
     PROMOTION_EVIDENCE_BINDING_SCHEMA_VERSION,
+    COMPILE_ONLY_POLICY,
+    FULL_SEMANTIC_POLICY,
+    active_verification_policy,
     certificate_contract_errors,
     certificate_contract_fingerprint,
     evidence_contract_for_level,
@@ -55,6 +60,136 @@ def live_evidence_binding(root: Path, gates: list[str]) -> dict:
 
 
 class VerificationEvidenceContractTest(TestCase):
+    def test_full_semantic_policy_rejects_compile_only_certificate_reuse(self) -> None:
+        gates = ["case_vcs_functional_sim"]
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": COMPILE_ONLY_POLICY}):
+                compile_certificate = {
+                    "schema_version": PROMOTION_CERTIFICATE_SCHEMA_VERSION,
+                    "status": "pass",
+                    "validation_policy": COMPILE_ONLY_POLICY,
+                    "functional_semantics_claimed": False,
+                    "evidence_contract": evidence_contract_for_level("axi_ddr_functional"),
+                    "evidence_contract_fingerprint": certificate_contract_fingerprint(
+                        "axi_ddr_functional", gates
+                    ),
+                    "tool_environment_contract": tool_environment_contract({}),
+                    "required_gates": [{"name": gate, "status": "pass"} for gate in gates],
+                    "evidence_binding": live_evidence_binding(root, gates),
+                }
+            with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": FULL_SEMANTIC_POLICY}):
+                self.assertTrue(
+                    certificate_contract_errors(compile_certificate, "axi_ddr_functional", gates)
+                )
+                self.assertFalse(
+                    selector_contract_matches_certificate(
+                        compile_certificate["evidence_contract"],
+                        compile_certificate,
+                        "axi_ddr_functional",
+                    )
+                )
+
+    def test_runtime_certificate_contract_and_board_receipt_require_runtime_evidence(self) -> None:
+        gates = ["case_vcs_functional_sim"]
+        with TemporaryDirectory() as temp_dir, patch.dict(
+            "os.environ", {"SPATIALACC_VERIFICATION_POLICY": FULL_SEMANTIC_POLICY}
+        ):
+            root = Path(temp_dir)
+            certificate = {
+                "schema_version": PROMOTION_CERTIFICATE_SCHEMA_VERSION,
+                "status": "pass",
+                "validation_policy": FULL_SEMANTIC_POLICY,
+                "functional_semantics_claimed": True,
+                "evidence_contract": evidence_contract_for_level("axi_ddr_functional"),
+                "evidence_contract_fingerprint": certificate_contract_fingerprint(
+                    "axi_ddr_functional", gates
+                ),
+                "tool_environment_contract": tool_environment_contract({}),
+                "required_gates": [{"name": gate, "status": "pass"} for gate in gates],
+                "evidence_binding": live_evidence_binding(root, gates),
+            }
+            self.assertEqual(certificate_contract_errors(certificate, "axi_ddr_functional", gates), [])
+
+            compile_log = root / "compile.log"
+            compile_log.write_text("VCS compilation and elaboration complete\n", encoding="utf-8")
+            runtime_outputs = {}
+            for name in (
+                "progress_event_log",
+                "runtime_loader_report",
+                "pipeline_overlap_report",
+                "elaborated_hierarchy_report",
+            ):
+                output = root / f"{name}.json"
+                output.write_text("{}\n", encoding="utf-8")
+                runtime_outputs[name] = {"path": str(output), "copied": True}
+            executed_manifest = root / "executed_manifest.json"
+            executed_manifest.write_text(json.dumps({
+                "status": "pass",
+                "executed_validation_policy": FULL_SEMANTIC_POLICY,
+                "dynamic_evidence_records": [{"evidence_id": "progress_event_log"}],
+            }), encoding="utf-8")
+            report = {
+                "status": "pass",
+                "validation_policy": FULL_SEMANTIC_POLICY,
+                "evidence_contract": evidence_contract_for_level("axi_ddr_functional"),
+                "hardware_validation_status": "runtime_pass",
+                "simulation_skipped": False,
+                "run": {"status": "pass"},
+                "required_outputs_copied": True,
+                "progress_event_log_valid": True,
+                "outputs": runtime_outputs,
+                "executed_manifest": str(executed_manifest),
+                "compile_evidence": {
+                    "status": "pass",
+                    "compile": {"status": "pass", "returncode": 0},
+                    "logs": [{"path": str(compile_log), "sha256": sha256_file(compile_log)}],
+                },
+            }
+            report_path = root / "runtime_report.json"
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+            self.assertEqual(semantic_evidence_report_errors(report_path, "axi_ddr_functional"), [])
+            report["hardware_validation_status"] = "compile_only_pass"
+            report["simulation_skipped"] = True
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+            self.assertTrue(semantic_evidence_report_errors(report_path, "axi_ddr_functional"))
+
+    def test_runtime_policy_does_not_filter_selected_stage6_gates(self) -> None:
+        adapter = {
+            "evidence_gates": {
+                "leaf_functional": "leaf",
+                "single_layer_functional": "layer",
+                "board_interface_discovery": "board",
+                "multilayer_pipeline": "multi",
+                "axi_ddr_interface": "axi",
+                "functional_sim": "runtime",
+            }
+        }
+        selected = ["leaf", "layer", "board", "multi", "axi", "runtime", "board_semantic"]
+        self.assertEqual(
+            policy_selected_stage6_gates(adapter, selected, FULL_SEMANTIC_POLICY),
+            selected,
+        )
+        self.assertEqual(
+            policy_selected_stage6_gates(adapter, selected, COMPILE_ONLY_POLICY),
+            selected[:-1],
+        )
+
+    def test_unknown_verification_policy_fails_instead_of_downgrading(self) -> None:
+        with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "full_semantic_simulaton"}):
+            with self.assertRaisesRegex(ValueError, "unsupported SPATIALACC_VERIFICATION_POLICY"):
+                active_verification_policy()
+
+    def test_reused_scope_bypass_is_disabled_for_full_semantic_policy(self) -> None:
+        env = {
+            "SPATIALACC_DEBUG_LOOP_REUSED_SCOPES": "board_axi_ddr_closure",
+            "SPATIALACC_VERIFICATION_POLICY": FULL_SEMANTIC_POLICY,
+        }
+        with patch.dict("os.environ", env):
+            self.assertFalse(selector_certificate_reused_at_scope_entry("board_axi_ddr_promotion_certificate"))
+        with patch.dict("os.environ", {**env, "SPATIALACC_VERIFICATION_POLICY": COMPILE_ONLY_POLICY}):
+            self.assertTrue(selector_certificate_reused_at_scope_entry("board_axi_ddr_promotion_certificate"))
+
     def test_compile_only_pass_reconciles_only_the_supplied_current_scope_contract(self) -> None:
         contract = {
             "status": "ready",
@@ -112,8 +247,9 @@ class VerificationEvidenceContractTest(TestCase):
                 for level in levels:
                     contract = evidence_contract_for_level(level)
                     self.assertTrue(contract["vcs_compile_and_elaboration_required"])
-                    self.assertFalse(contract["simulation_execution_required"])
-                    self.assertFalse(contract["functional_semantics_claimed"])
+                    expected_runtime = setting == FULL_SEMANTIC_POLICY
+                    self.assertEqual(contract["simulation_execution_required"], expected_runtime)
+                    self.assertEqual(contract["functional_semantics_claimed"], expected_runtime)
                     self.assertNotIn("dut_weight_consumption_proof_required", contract)
 
     def test_compile_only_accepts_only_a_passing_required_vcs_tool(self) -> None:
@@ -553,6 +689,8 @@ class VerificationEvidenceContractTest(TestCase):
             current = {
                 **old,
                 "schema_version": PROMOTION_CERTIFICATE_SCHEMA_VERSION,
+                "validation_policy": COMPILE_ONLY_POLICY,
+                "functional_semantics_claimed": False,
                 "evidence_contract": evidence_contract_for_level("operator_leaf_functional"),
                 "evidence_contract_fingerprint": certificate_contract_fingerprint(
                     "operator_leaf_functional", gates
@@ -595,6 +733,8 @@ class VerificationEvidenceContractTest(TestCase):
                     {
                         "schema_version": PROMOTION_CERTIFICATE_SCHEMA_VERSION,
                         "status": "pass",
+                        "validation_policy": COMPILE_ONLY_POLICY,
+                        "functional_semantics_claimed": False,
                         "required_gates": [{"name": gate, "status": "pass"} for gate in gates],
                     }
                 ),
@@ -610,6 +750,8 @@ class VerificationEvidenceContractTest(TestCase):
                     {
                         "schema_version": PROMOTION_CERTIFICATE_SCHEMA_VERSION,
                         "status": "pass",
+                        "validation_policy": COMPILE_ONLY_POLICY,
+                        "functional_semantics_claimed": False,
                         "required_gates": [{"name": gate, "status": "pass"} for gate in gates],
                         "evidence_contract": evidence_contract_for_level("operator_leaf_functional"),
                         "evidence_contract_fingerprint": certificate_contract_fingerprint(
@@ -710,6 +852,9 @@ class VerificationEvidenceContractTest(TestCase):
             with patch(
                 "accagent.framework.stage_debug_loop.case_adapter_for_state",
                 return_value=adapter,
+            ), patch(
+                "accagent.framework.stage_debug_loop.stage2_compile_only_authority",
+                return_value={"status": "ready"},
             ):
                 self.assertIsNotNone(
                     validated_scope_certificate(state, "single_layer_closure")

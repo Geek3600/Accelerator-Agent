@@ -173,6 +173,56 @@ def fixed_checkpoint_request(manifest: dict) -> dict:
 
 
 class BoardVcsFunctionalTest(unittest.TestCase):
+    def test_full_semantic_policy_selects_runtime_manifest_validation(self) -> None:
+        with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "full_semantic_simulation"}):
+            with patch.object(
+                board_vcs,
+                "validate_compile_only_manifest",
+                return_value=(
+                    {"status": "ready"},
+                    {"execution_output_plan": {"progress_event_log": {"path": Path("progress.jsonl")}}},
+                    [],
+                ),
+            ) as validate:
+                result = board_vcs.validate_manifest(Path("run"))
+
+        validate.assert_called_once_with(Path("run"), include_runtime=True)
+        self.assertEqual(result[0]["status"], "ready")
+
+    def test_runtime_execution_outputs_require_hashed_runtime_evidence_paths(self) -> None:
+        manifest = {
+            "execution_outputs": {
+                "compile_log": {"path": "reports/compile.log"},
+                "simulation_log": {"path": "reports/sim.log"},
+                "progress_event_log": {
+                    "path": "reports/progress.jsonl",
+                    "schema_version": "spatialaccagent.board_progress_event.v1",
+                },
+                "elaborated_hierarchy_report": {
+                    "path": "reports/hierarchy.json",
+                    "schema_version": "spatialaccagent.elaborated_hierarchy.v1",
+                },
+                "pipeline_overlap_report": {
+                    "path": "reports/overlap.json",
+                    "schema_version": "spatialaccagent.pipeline_overlap.v1",
+                },
+                "runtime_loader_report": {
+                    "path": "reports/loader.json",
+                    "schema_version": "spatialaccagent.runtime_loader.v1",
+                },
+            }
+        }
+        errors: list[str] = []
+
+        outputs = board_vcs.execution_output_plan(
+            manifest, errors, include_runtime_outputs=True
+        )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(outputs["simulation_log"]["path"], Path("reports/sim.log"))
+        self.assertEqual(outputs["progress_event_log"]["path"], Path("reports/progress.jsonl"))
+        self.assertEqual(outputs["pipeline_overlap_report"]["path"], Path("reports/overlap.json"))
+
     def test_changed_compile_manifest_does_not_attach_a_stale_job(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir)

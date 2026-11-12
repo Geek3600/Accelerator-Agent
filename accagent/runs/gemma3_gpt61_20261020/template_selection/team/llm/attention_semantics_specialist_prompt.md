@@ -3,7 +3,7 @@ attention_semantics_specialist
 </agent>
 
 <task>
-Verify that the selected attention implementation covers every required semantic component—Q/K/V projection, RoPE, GQA head mapping, softmax, output projection, required KV-cache behavior, and causal mask—with the supplied source-hash evidence and model parameters.
+Independently verify that the attention selection covers required Q/K/V projection, RoPE, GQA mapping, softmax, output projection, and causal mask semantics, and that head-related bindings agree with model evidence and the selected templates. Preserve the stated KV-cache scope.
 </task>
 
 <rules>
@@ -85,14 +85,16 @@ Verify that the selected attention implementation covers every required semantic
   "acceptance_checkers": [
     "template_coverage_check",
     "template_binding_static_check",
-    "model_config_check"
+    "llm_semantic_extraction_check",
+    "no_static_keyword_semantic_matching_check"
   ],
   "action_type": "evidence_and_repair_review",
   "agent": "attention_semantics_specialist",
   "artifact_focus": [
     "attention_semantics",
-    "parameter_bindings for self_attention and gemma3_text_block",
-    "template_source_checks for attention-related sources",
+    "parameter_bindings for self_attention",
+    "selected_templates for attention submodules",
+    "template_source_checks",
     "checker_results"
   ],
   "constraints": [
@@ -103,9 +105,8 @@ Verify that the selected attention implementation covers every required semantic
     "constraint.cross_layer.input_consistency"
   ],
   "expected_artifacts": [
-    "attention component-to-template/source evidence matrix",
-    "GQA/head-dimension semantic consistency findings",
-    "explicit disposition of required and not-required attention components"
+    "template_selection/attention_semantic_binding_review.json",
+    "template_selection/attention_component_evidence_map.json"
   ],
   "handoff_rule": {
     "completion_criteria": [],
@@ -119,67 +120,67 @@ Verify that the selected attention implementation covers every required semantic
     ]
   },
   "handoff_to": [
+    "template_selection.model_shape_reconciliation_engineer",
+    "template_selection.template_binding_engineer",
     "template_selection.cross_layer_evidence_gate"
   ],
   "id": "template_selection.attention_semantic_engineer",
-  "objective": "Verify that the selected attention implementation covers every required semantic component\u2014Q/K/V projection, RoPE, GQA head mapping, softmax, output projection, required KV-cache behavior, and causal mask\u2014with the suppli...<len=265>",
-  "role": "attention semantic and template engineer",
+  "objective": "Independently verify that the attention selection covers required Q/K/V projection, RoPE, GQA mapping, softmax, output projection, and causal mask semantics, and that head-related bindings agree with model evidence and t...<len=278>",
+  "role": "attention semantics and template engineer",
   "role_assignment": {
     "collaboration_interfaces": {
       "acceptance_checkers": [
         "template_coverage_check",
         "template_binding_static_check",
-        "model_config_check"
+        "llm_semantic_extraction_check",
+        "no_static_keyword_semantic_matching_check"
       ],
       "consumes": [
+        "artifact.stage2.template_selection as diagnostic-only evidence",
         "artifact.input.model_config",
-        "candidate attention_semantics and selected_templates",
-        "attention-related parameter_bindings and template_source_checks",
-        "shape findings from template_selection.operator_coverage_shape_engineer"
+        "artifact.input.template_library",
+        "artifact.input.template_metadata"
       ],
       "downstream_consumers": [
-        "template_selection.cross_layer_evidence_gate"
-      ],
-      "handoff_to": [
+        "template_selection.model_shape_reconciliation_engineer",
+        "template_selection.template_binding_engineer",
         "template_selection.cross_layer_evidence_gate"
       ],
       "produces": [
-        "attention component coverage matrix",
-        "GQA and head-dimension consistency findings",
-        "attention-specific unresolved blocker list"
+        "attention component evidence map",
+        "head-mapping consistency review",
+        "attention-specific unresolved blockers"
       ]
     },
     "decision_authority": [
-      "May report missing or contradictory attention evidence and identify the affected semantic component.",
-      "May not declare a required component optional unless the supplied model evidence supports that classification.",
-      "May not alter attention parameters or template internals."
+      "May report semantic coverage and internal head-mapping consistency.",
+      "May not waive the strict self-attention binding check or invent model-specific template names."
     ],
-    "mission": "Confirm that trusted templates implement the model's required attention semantics without semantic drift.",
+    "mission": "Verify attention semantics and template-backed component coverage across model and template layers.",
     "out_of_scope": [
-      "Free-form attention RTL or changes to trusted template internals.",
-      "Overriding authoritative model dimensions or numeric policy.",
-      "Later-stage functional simulation or backend evidence."
+      "Changing attention template internals or model head dimensions.",
+      "Claiming KV-cache behavior is required when the supplied selection marks it not required.",
+      "Simulation, synthesis, and runtime validation."
     ],
     "primary_responsibilities": [
-      "Check Q/K/V projection, RoPE, GQA mapping, softmax, output projection, KV-cache requirement, and causal-mask coverage.",
-      "Compare attention component evidence and source hashes with the selected attention template bindings.",
-      "Identify whether the hidden-size/head-dimension mismatch affects attention legality or semantic consistency."
+      "Check Q/K/V projection, RoPE, GQA head mapping, softmax, output projection, and causal-mask evidence.",
+      "Confirm the reported GQA group size against the supplied query and KV head counts.",
+      "Separate component-coverage evidence from self-attention parameter legality and identify dependencies on the dimension contradiction."
     ]
   },
   "role_profile": {
     "capabilities": [
       "extract model semantics",
       "audit shape and head mapping",
-      "track operator and attention semantics"
+      "track residual/operator order"
     ],
     "constraint_focus": [
       "constraint.model.decoder",
-      "constraint.shape.model",
-      "constraint.template.library"
+      "constraint.shape.model"
     ],
     "family": "model_shape"
   },
-  "title": "Verify attention semantic expansion and template evidence"
+  "title": "Verify attention expansion and head mapping"
 }
 </subtask>
 
@@ -245,6 +246,10 @@ Verify that the selected attention implementation covers every required semantic
     {
       "id": "artifact.input.human_agent_boundary",
       "type": "input.human_agent_boundary"
+    },
+    {
+      "id": "artifact.stage2.template_selection",
+      "type": "stage.template_selection"
     }
   ],
   "constraints": [
@@ -342,18 +347,117 @@ Verify that the selected attention implementation covers every required semantic
   },
   "nodes": 23,
   "sacg_memory": {
-    "active_contamination_barriers": [],
+    "active_contamination_barriers": [
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0001",
+        "last_observed_at": "2026-10-20T13:38:19+00:00",
+        "observation_count": 6,
+        "observed_transition_ids": [
+          "transition.0001",
+          "transition.0002",
+          "transition.0003",
+          "transition.0004",
+          "transition.0005",
+          "transition.0007"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:09:12+00:00",
+        "transition_id": "transition.0001"
+      },
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0002",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0006"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'design_team: template_selection.operator_coverage_engineer: IncompleteRead(29140 bytes read)', 'design_team: status is incomplete']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:33:34+00:00",
+        "transition_id": "transition.0006"
+      }
+    ],
     "open_backtrack_requests": [],
     "open_retry_requests": [],
     "policy": "SACG memory is the long-context design memory for preserving goals, failures, lessons, retry needs, and cross-layer consistency across stages.",
-    "recent_contamination_barriers": [],
+    "recent_contamination_barriers": [
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0001",
+        "last_observed_at": "2026-10-20T13:38:19+00:00",
+        "observation_count": 6,
+        "observed_transition_ids": [
+          "transition.0001",
+          "transition.0002",
+          "transition.0003",
+          "transition.0004",
+          "transition.0005",
+          "transition.0007"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:09:12+00:00",
+        "transition_id": "transition.0001"
+      },
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0002",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0006"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'design_team: template_selection.operator_coverage_engineer: IncompleteRead(29140 bytes read)', 'design_team: status is incomplete']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:33:34+00:00",
+        "transition_id": "transition.0006"
+      }
+    ],
     "recent_failure_lessons": [],
     "recent_stage_outcomes": [],
     "schema_version": "spatialaccagent.sacg_memory.v0"
   },
   "sacg_memory_truth": {
-    "active_contamination_barrier_count": 0,
-    "active_contamination_barriers": [],
+    "active_contamination_barrier_count": 2,
+    "active_contamination_barriers": [
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0001",
+        "last_observed_at": "2026-10-20T13:38:19+00:00",
+        "observation_count": 6,
+        "observed_transition_ids": [
+          "transition.0001",
+          "transition.0002",
+          "transition.0003",
+          "transition.0004",
+          "transition.0005",
+          "transition.0007"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:09:12+00:00",
+        "transition_id": "transition.0001"
+      },
+      {
+        "artifact_id": "artifact.stage2.template_selection",
+        "id": "contamination_barrier.0002",
+        "observation_count": 1,
+        "observed_transition_ids": [
+          "transition.0006"
+        ],
+        "policy": "Downstream stages must treat artifacts from rejected transitions as planning/debug evidence only, not validated design inputs.",
+        "reason": "strict template binding failed: ['gemma3_text_block: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'self_attention: hidden_size=1152 does not equal num_q_heads*head_dim=1024', 'design_team: template_selection.operator_coverage_engineer: IncompleteRead(29140 bytes read)', 'design_team: status is incomplete']",
+        "status": "active",
+        "timestamp": "2026-10-20T13:33:34+00:00",
+        "transition_id": "transition.0006"
+      }
+    ],
     "active_contamination_barriers_truncated": false,
     "open_backtrack_request_count": 0,
     "open_backtrack_requests": [],

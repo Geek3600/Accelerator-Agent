@@ -12,6 +12,8 @@ from accagent.framework.stage_params import (
     build_dse_search,
     build_parameter_bindings,
     dse_llm_constraint_report,
+    dse_llm_candidate_record,
+    dse_llm_selection_evidence,
     normalize_legacy_dse_handoff,
     select_dse_candidate,
     stage4_llm_errors,
@@ -63,10 +65,45 @@ class SemanticParameterBindingTest(TestCase):
         self.assertTrue(any((p["compute_array_rows"], p["compute_array_cols"]) == (16, 32) for p in points))
         self.assertEqual({(p["lanes"], p["fifo_depth"], p["activation_banks"]) for p in points}, {(16, 32, 2)})
         self.assertEqual(space["cache_refill_data_width_bits"], [512])
+        self.assertEqual(space["attention_output_cross_token_reuse_tokens"], [1])
         self.assertTrue(all(p["compute_array_rows"] * p["compute_array_cols"] < 1024 for p in points))
         search["campaign_array_policy"].update(preferred_rows=32, parallel_multiply_positions=1024)
         with self.assertRaises(ValueError):
             architecture_candidate_space(search, {"projection_weight"})
+
+    def test_explicit_run_array_policy_overrides_campaign_default(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            state = prepare_state("gpt2", root / "inputs")
+            design_space = next(
+                row["facts"]
+                for row in state["constraints"]
+                if row["id"] == "constraint.arch.design_space"
+            )
+            design_space["search_params"]["campaign_array_policy"] = {
+                "parallel_multiply_positions": 64,
+                "preferred_rows": 8,
+                "preferred_cols": 8,
+                "defer_array_positions_at_or_above": 1024,
+            }
+
+            dse = build_dse_search(state, root)
+
+        self.assertEqual(dse["search_space"]["array_trial_binding"]["preferred_rows"], 8)
+        self.assertEqual(dse["search_space"]["array_trial_binding"]["preferred_cols"], 8)
+        self.assertEqual(dse["search_space"]["attention_output_cross_token_reuse_tokens"], [1])
+        self.assertTrue(all(
+            record["parameters"]["attention_output_cross_token_reuse_tokens"] == 1
+            for record in dse["records"]
+        ))
+        self.assertEqual(
+            {
+                (item["compute_array_rows"], item["compute_array_cols"])
+                for item in dse["search_space"]["physical_candidate_tuples"]
+                if item["compute_array_rows"] == 8 and item["compute_array_cols"] == 8
+            },
+            {(8, 8)},
+        )
 
     def test_backtrack_attaches_current_numeric_check_evidence(self) -> None:
         for numeric_valid in (True, False):
@@ -199,6 +236,90 @@ class SemanticParameterBindingTest(TestCase):
         self.assertNotIn("infeasible_candidates", projected)
         self.assertNotIn("candidate_signatures", projected["candidate_materialization"])
         self.assertEqual(projected["candidate_materialization"]["status"], "pass")
+
+    def test_dse_selection_table_is_lossless_and_compact_for_full_candidate_universe(self) -> None:
+        role_banks = {
+            "weight": 1,
+            "weight_attn_out": 1,
+            "weight_attn_out_bias": 1,
+            "weight_mlp_down": 1,
+            "weight_mlp_down_bias": 1,
+            "weight_mlp_up": 1,
+            "weight_mlp_up_bias": 1,
+            "weight_qkv": 1,
+            "weight_qkv_bias": 1,
+        }
+        records = []
+        for index in range(360):
+            records.append({
+                "candidate_id": f"arch_{index:04d}",
+                "parameters": {
+                    "lanes": (8, 16)[index % 2],
+                    "compute_array_rows": (4, 8, 16)[index % 3],
+                    "compute_array_cols": (4, 16, 32, 64)[index % 4],
+                    "fifo_depth": (64, 128, 256)[index % 3],
+                    "activation_banks": (2, 4)[index % 2],
+                    "weight_banks": 1,
+                    "weight_banks_by_role": role_banks,
+                    "cache_tile_words": 256,
+                    "cache_tile_count": 2,
+                    "cache_refill_data_width_bits": 512,
+                    "cross_token_reuse_tokens": (4, 8, 16)[index % 3],
+                },
+                "feasible": True,
+                "hard_constraint_errors": [],
+                "measurement": None,
+                "resource_lower_bounds": {"uram": 16 + 8 * (index % 4)},
+                "resource_headroom": {
+                    "maximum_utilization_fraction": 0.85,
+                    "measured_utilization": {},
+                    "missing_resource_measurements": ["bram18", "bram36", "dsp", "ff", "lut", "uram"],
+                    "status": "unknown",
+                },
+                "qor_estimate": {
+                    "model": "structural_proxy_v1",
+                    "reason": "no source-bound calibration sample",
+                    "status": "insufficient_evidence",
+                },
+            })
+        ranked_ids = [record["candidate_id"] for record in reversed(records)]
+        evidence = dse_llm_selection_evidence(
+            {
+                "candidate_count": len(records),
+                "estimated_ranked_candidate_ids": ranked_ids,
+                "search_space": {
+                    "lanes": [8, 16],
+                    "compute_array_rows": [4, 8, 16],
+                    "compute_array_cols": [4, 16, 32, 64],
+                    "fifo_depth": [64, 128, 256],
+                },
+            },
+            records,
+            [],
+        )
+        table = evidence["eligible_candidate_table"]
+        self.assertNotIn("eligible_candidates", evidence)
+        self.assertEqual(table["candidate_ids"], ranked_ids)
+
+        def expand(column: dict, row_index: int) -> object:
+            if "shared" in column:
+                return column["shared"]
+            return column["value_dictionary"][column["row_indices"][row_index]]
+
+        for row_index, candidate_id in enumerate(table["candidate_ids"]):
+            actual = {"candidate_id": candidate_id, "parameters": {}}
+            actual["parameters"] = {
+                key: expand(column, row_index)
+                for key, column in table["parameter_columns"].items()
+            }
+            actual.update({
+                key: expand(column, row_index)
+                for key, column in table["candidate_fact_columns"].items()
+            })
+            expected = dse_llm_candidate_record(records[int(candidate_id[5:])])
+            self.assertEqual(actual, expected)
+
+        self.assertLess(len(json.dumps(evidence, separators=(",", ":"))), 50000)
 
     def test_dse_requires_an_explicit_llm_candidate_selection(self) -> None:
         dse = {
@@ -752,6 +873,7 @@ class SemanticParameterBindingTest(TestCase):
 
         self.assertEqual(bindings["global_params"]["fifo_depth"], 48)
         self.assertEqual(bindings["global_params"]["activation_banks"], 3)
+        self.assertEqual(bindings["global_params"]["attention_output_cross_token_reuse_tokens"], 1)
 
     def test_wrong_model_weight_role_layout_is_rejected_instead_of_silently_reused(self) -> None:
         with TemporaryDirectory() as temp:

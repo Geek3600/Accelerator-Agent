@@ -101,6 +101,58 @@ class WeightLayoutTest(TestCase):
         self.assertEqual(targets[2]["port"]["data_width_bits"], 64)
         self.assertEqual(contract["stream_word_count"], 32)
 
+    def test_attention_contract_includes_qk_norm_vector_loader_targets(self) -> None:
+        policy = {
+            "policy_id": "w4a8",
+            "default_rules": {
+                "weight_dtype": "int4",
+                "activation_dtype": "int8",
+                "acc_dtype": "int32",
+                "rounding": "nearest_even",
+                "saturation": True,
+            },
+        }
+        rows = [
+            binding("self_attn.q_proj.weight", [16, 4]),
+            binding("self_attn.k_proj.weight", [8, 4]),
+            binding("self_attn.v_proj.weight", [8, 4]),
+            binding("self_attn.q_norm.weight", [8]),
+            binding("self_attn.k_norm.weight", [8]),
+            binding("self_attn.o_proj.weight", [4, 8]),
+        ]
+
+        contract = build_stage_weight_layout(
+            stage(
+                "attention",
+                "self_attention",
+                lanes=4,
+                head_dim=8,
+                qkv_elems_per_beat=8,
+                elem_bits=8,
+                input_bits=8,
+            ),
+            {},
+            rows,
+            policy,
+        )
+
+        targets = contract["storage_targets"]
+        self.assertEqual(
+            [row["target_id"] for row in targets],
+            [
+                "attention.qkv.weight",
+                "attention.q_norm.weight",
+                "attention.k_norm.weight",
+                "attention.out_proj.weight",
+            ],
+        )
+        self.assertEqual(targets[1]["dut_port_role"], "weight_q_norm")
+        self.assertEqual(targets[2]["dut_port_role"], "weight_k_norm")
+        self.assertEqual(targets[1]["storage_scalar_dtype"], "int8")
+        self.assertEqual(targets[1]["port"]["data_width_bits"], 64)
+        self.assertEqual(targets[1]["stream_word_count"], 2)
+        self.assertEqual(contract["stream_word_count"], sum(row["stream_word_count"] for row in targets))
+
     def test_linear_stream_is_port_tile_major_and_lsb_first(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

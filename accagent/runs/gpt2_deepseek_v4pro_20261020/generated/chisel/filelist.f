@@ -2,6 +2,7 @@ PhysicalSimpleDualPortMemory.sv
 PhysicalSimpleDualPortMemory_2.sv
 PhysicalSimpleDualPortMemory_3.sv
 PhysicalIntegerSqrt.sv
+PhysicalFixedDivider.sv
 IntegerVectorNorm.sv
 VectorNorm.sv
 PhysicalSimpleDualPortMemory_4.sv
@@ -11,11 +12,13 @@ WeightTileCache.sv
 PhysicalSimpleDualPortMemory_7.sv
 PhysicalLinearMul.sv
 PhysicalLinearAdd.sv
+LinearOutputRequantizer.sv
 Linear.sv
 PhysicalSimpleDualPortMemory_8.sv
 QKVProjection.sv
 PhysicalSimpleDualPortMemory_9.sv
 PhysicalSimpleDualPortMemory_12.sv
+PhysicalFixedDivider_1.sv
 PhysicalSimpleDualPortMemory_14.sv
 PhysicalSimpleDualPortMemory_15.sv
 WeightTileCache_1.sv

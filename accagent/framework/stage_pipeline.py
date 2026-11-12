@@ -333,6 +333,10 @@ def pipeline_dataflow_for_state(state: dict[str, Any]) -> dict[str, Any]:
             raise PipelinePlanningError(f"{adapter_path}: {op} uses an unsupported numeric role: {numeric_spec}")
         if not metadata.get("latency_kind"):
             raise PipelinePlanningError(f"{adapter_path}: {op} is missing latency_kind")
+        latency_features = metadata.get("latency_features", [])
+        if (not isinstance(latency_features, list)
+                or any(not isinstance(feature, str) or not feature for feature in latency_features)):
+            raise PipelinePlanningError(f"{adapter_path}: {op} latency_features must be a list of non-empty strings")
     seen_storage_terms: set[str] = set()
     for term in storage_terms:
         if not isinstance(term, dict):
@@ -407,19 +411,28 @@ def symbolic_latency(metadata: dict[str, Any], shape: dict[str, Any], binding: d
     head_dim = int(shape.get("head_dim") or 1)
     q_heads = int(shape.get("num_q_heads") or 1)
     latency_kind = str(metadata.get("latency_kind"))
-    if latency_kind == "self_attention":
+    # Older accepted adapter snapshots encoded semantic modifiers in the
+    # latency kind (for example ``self_attention_mqa_sliding``).  Keep the
+    # original value in evidence, but dispatch on the stable base operator.
+    base_latency_kind = latency_kind
+    for suffix in ("_mqa_sliding", "_gqa_sliding", "_gelu_tanh"):
+        if base_latency_kind.endswith(suffix):
+            base_latency_kind = base_latency_kind[:-len(suffix)]
+            break
+    latency_features = metadata.get("latency_features", [])
+    if base_latency_kind == "self_attention":
         stream_width = hidden
         cycles = (seq_len * hidden + seq_len * seq_len * q_heads * head_dim) // max(lanes, 1)
-    elif latency_kind == "linear_hidden_to_intermediate":
+    elif base_latency_kind == "linear_hidden_to_intermediate":
         stream_width = intermediate
         cycles = seq_len * hidden * intermediate // max(lanes, 1)
-    elif latency_kind == "linear_intermediate_to_hidden":
+    elif base_latency_kind == "linear_intermediate_to_hidden":
         stream_width = hidden
         cycles = seq_len * intermediate * hidden // max(lanes, 1)
-    elif latency_kind == "pointwise_intermediate":
+    elif base_latency_kind == "pointwise_intermediate":
         stream_width = intermediate
         cycles = seq_len * intermediate // max(lanes, 1)
-    elif latency_kind == "pointwise_hidden":
+    elif base_latency_kind == "pointwise_hidden":
         stream_width = hidden
         cycles = seq_len * hidden // max(lanes, 1)
     else:
@@ -435,6 +448,9 @@ def symbolic_latency(metadata: dict[str, Any], shape: dict[str, Any], binding: d
             "stream_width": stream_width,
             "lanes": lanes,
             "latency_kind": latency_kind,
+            "base_latency_kind": base_latency_kind,
+            "latency_features": latency_features,
+            "unmodelled_latency_features": latency_features,
         },
     }
 

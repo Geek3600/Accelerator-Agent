@@ -4660,185 +4660,155 @@ module QKVProjection(
   output          io_out_bits_last
 );
 
-  wire [127:0] _projectedMemory_io_readData;
-  wire         _projection_io_out_valid;
-  wire [127:0] _projection_io_out_bits_data;
-  wire         _projection_io_out_bits_last;
-  reg  [7:0]   collectBeat;
-  reg  [3:0]   emitHead;
-  reg  [2:0]   emitBeat;
-  reg  [1:0]   readField;
-  reg  [2:0]   readLane;
-  reg  [7:0]   qValues_0;
-  reg  [7:0]   qValues_1;
-  reg  [7:0]   qValues_2;
-  reg  [7:0]   qValues_3;
-  reg  [7:0]   qValues_4;
-  reg  [7:0]   qValues_5;
-  reg  [7:0]   qValues_6;
-  reg  [7:0]   qValues_7;
-  reg  [7:0]   kValues_0;
-  reg  [7:0]   kValues_1;
-  reg  [7:0]   kValues_2;
-  reg  [7:0]   kValues_3;
-  reg  [7:0]   kValues_4;
-  reg  [7:0]   kValues_5;
-  reg  [7:0]   kValues_6;
-  reg  [7:0]   kValues_7;
-  reg  [7:0]   vValues_0;
-  reg  [7:0]   vValues_1;
-  reg  [7:0]   vValues_2;
-  reg  [7:0]   vValues_3;
-  reg  [7:0]   vValues_4;
-  reg  [7:0]   vValues_5;
-  reg  [7:0]   vValues_6;
-  reg  [7:0]   vValues_7;
-  reg  [1:0]   state;
-  wire         projection_io_out_ready = state == 2'h0;
-  wire         projectedMemory_io_writeEn =
+  wire             _vRequant_io_out_valid;
+  wire [7:0]       _vRequant_io_out_bits;
+  wire             _kRequant_io_out_valid;
+  wire [7:0]       _kRequant_io_out_bits;
+  wire             _qRequant_io_out_valid;
+  wire [7:0]       _qRequant_io_out_bits;
+  wire [127:0]     _projectedMemory_io_readData;
+  wire             _projection_io_out_valid;
+  wire [127:0]     _projection_io_out_bits_data;
+  wire             _projection_io_out_bits_last;
+  reg  [7:0]       collectBeat;
+  reg  [3:0]       emitHead;
+  reg  [2:0]       emitBeat;
+  reg  [1:0]       readField;
+  reg  [2:0]       readLane;
+  reg  [7:0]       qValues_0;
+  reg  [7:0]       qValues_1;
+  reg  [7:0]       qValues_2;
+  reg  [7:0]       qValues_3;
+  reg  [7:0]       qValues_4;
+  reg  [7:0]       qValues_5;
+  reg  [7:0]       qValues_6;
+  reg  [7:0]       qValues_7;
+  reg  [7:0]       kValues_0;
+  reg  [7:0]       kValues_1;
+  reg  [7:0]       kValues_2;
+  reg  [7:0]       kValues_3;
+  reg  [7:0]       kValues_4;
+  reg  [7:0]       kValues_5;
+  reg  [7:0]       kValues_6;
+  reg  [7:0]       kValues_7;
+  reg  [7:0]       vValues_0;
+  reg  [7:0]       vValues_1;
+  reg  [7:0]       vValues_2;
+  reg  [7:0]       vValues_3;
+  reg  [7:0]       vValues_4;
+  reg  [7:0]       vValues_5;
+  reg  [7:0]       vValues_6;
+  reg  [7:0]       vValues_7;
+  reg  [2:0]       state;
+  reg  [3:0]       qCaptureCnt;
+  reg  [3:0]       kCaptureCnt;
+  reg  [3:0]       vCaptureCnt;
+  wire             projection_io_out_ready = state == 3'h0;
+  wire             projectedMemory_io_writeEn =
     projection_io_out_ready & _projection_io_out_valid;
-  wire [10:0]  _GEN = {1'h0, emitHead, 6'h0};
-  wire [10:0]  _GEN_0 = {4'h0, {1'h0, emitBeat, 3'h0} + {4'h0, readLane}};
-  wire         _selectedElement_T = readField == 2'h1;
-  wire         _selectedElement_T_2 = readField == 2'h2;
-  wire [10:0]  selectedElement =
-    _selectedElement_T_2
+  wire [10:0]      _GEN = {1'h0, emitHead, 6'h0};
+  wire [10:0]      _GEN_0 = {4'h0, {1'h0, emitBeat, 3'h0} + {4'h0, readLane}};
+  wire             _kRequant_io_in_valid_T_1 = readField == 2'h1;
+  wire             _vRequant_io_in_valid_T_1 = readField == 2'h2;
+  wire [10:0]      selectedElement =
+    _vRequant_io_in_valid_T_1
       ? _GEN + _GEN_0 - 11'h200
-      : _selectedElement_T ? _GEN + _GEN_0 + 11'h300 : _GEN + _GEN_0;
-  wire [10:0]  selectedBeat = selectedElement / 11'h10;
-  wire         projectedMemory_io_readEn = state == 2'h1;
-  wire         _io_out_bits_last_T = emitHead == 4'hB;
+      : _kRequant_io_in_valid_T_1 ? _GEN + _GEN_0 + 11'h300 : _GEN + _GEN_0;
+  wire [10:0]      selectedBeat = selectedElement / 11'h10;
+  wire [10:0]      selectedLane = selectedElement % 11'h10;
+  wire             projectedMemory_io_readEn = state == 3'h1;
+  wire             _vRequant_io_in_valid_T = state == 3'h2;
+  wire [15:0][7:0] _GEN_1 =
+    {{_projectedMemory_io_readData[127:120]},
+     {_projectedMemory_io_readData[119:112]},
+     {_projectedMemory_io_readData[111:104]},
+     {_projectedMemory_io_readData[103:96]},
+     {_projectedMemory_io_readData[95:88]},
+     {_projectedMemory_io_readData[87:80]},
+     {_projectedMemory_io_readData[79:72]},
+     {_projectedMemory_io_readData[71:64]},
+     {_projectedMemory_io_readData[63:56]},
+     {_projectedMemory_io_readData[55:48]},
+     {_projectedMemory_io_readData[47:40]},
+     {_projectedMemory_io_readData[39:32]},
+     {_projectedMemory_io_readData[31:24]},
+     {_projectedMemory_io_readData[23:16]},
+     {_projectedMemory_io_readData[15:8]},
+     {_projectedMemory_io_readData[7:0]}};
+  wire [7:0]       _GEN_2 = _GEN_1[selectedLane[3:0]];
+  wire [31:0]      vRequant_io_in_bits_value = {{24{_GEN_2[7]}}, _GEN_2};
+  wire             io_out_valid_0 = state == 3'h4;
+  wire             _io_out_bits_last_T = emitHead == 4'hB;
   always @(posedge clock) begin
-    automatic logic             _GEN_1;
-    automatic logic             _GEN_2 = readField == 2'h0;
-    automatic logic [15:0][7:0] _GEN_3 =
-      {{_projectedMemory_io_readData[127:120]},
-       {_projectedMemory_io_readData[119:112]},
-       {_projectedMemory_io_readData[111:104]},
-       {_projectedMemory_io_readData[103:96]},
-       {_projectedMemory_io_readData[95:88]},
-       {_projectedMemory_io_readData[87:80]},
-       {_projectedMemory_io_readData[79:72]},
-       {_projectedMemory_io_readData[71:64]},
-       {_projectedMemory_io_readData[63:56]},
-       {_projectedMemory_io_readData[55:48]},
-       {_projectedMemory_io_readData[47:40]},
-       {_projectedMemory_io_readData[39:32]},
-       {_projectedMemory_io_readData[31:24]},
-       {_projectedMemory_io_readData[23:16]},
-       {_projectedMemory_io_readData[15:8]},
-       {_projectedMemory_io_readData[7:0]}};
-    automatic logic [10:0]      selectedLane = selectedElement % 11'h10;
-    automatic logic [7:0]       _GEN_4 = _GEN_3[selectedLane[3:0]];
-    automatic logic [40:0]      _GEN_5 = {{33{_GEN_4[7]}}, _GEN_4};
-    automatic logic [40:0]      _GEN_6 = {{2{_GEN_4[7]}}, _GEN_4, 31'h0};
-    automatic logic             qValue_negative = $signed(_GEN_6) < 41'sh0;
-    automatic logic [40:0]      qValue_magnitude =
-      qValue_negative ? 41'h0 - _GEN_6 : _GEN_6;
-    automatic logic [64:0]      _qValue_remainder_T =
-      {24'h0, qValue_magnitude} - {24'h0, qValue_magnitude[40:31], 31'h0};
-    automatic logic [190:0]     _GEN_7 =
-      {180'h0,
-       {1'h0, qValue_magnitude[40:31]}
-         + {10'h0,
-            _qValue_remainder_T > 65'h40000000 | _qValue_remainder_T == 65'h40000000
-              & qValue_magnitude[31]}};
-    automatic logic [190:0]     qValue_signedResult =
-      qValue_negative ? 191'h0 - _GEN_7 : _GEN_7;
-    automatic logic [7:0]       qValue_saturated;
-    automatic logic             _GEN_8 = readLane == 3'h0;
-    automatic logic             _GEN_9 = readLane == 3'h1;
-    automatic logic             _GEN_10 = readLane == 3'h2;
-    automatic logic             _GEN_11 = readLane == 3'h3;
-    automatic logic             _GEN_12 = readLane == 3'h4;
-    automatic logic             _GEN_13 = readLane == 3'h5;
-    automatic logic             _GEN_14 = readLane == 3'h6;
-    automatic logic [40:0]      kValue_product = _GEN_5 * {9'h0, io_kScale};
-    automatic logic             kValue_negative = $signed(kValue_product) < 41'sh0;
-    automatic logic [40:0]      kValue_magnitude =
-      kValue_negative ? 41'h0 - kValue_product : kValue_product;
-    automatic logic [64:0]      _kValue_remainder_T =
-      {24'h0, kValue_magnitude} - {24'h0, kValue_magnitude[40:31], 31'h0};
-    automatic logic [190:0]     _GEN_15 =
-      {180'h0,
-       {1'h0, kValue_magnitude[40:31]}
-         + {10'h0,
-            _kValue_remainder_T > 65'h40000000 | _kValue_remainder_T == 65'h40000000
-              & kValue_magnitude[31]}};
-    automatic logic [190:0]     kValue_signedResult =
-      kValue_negative ? 191'h0 - _GEN_15 : _GEN_15;
-    automatic logic [7:0]       kValue_saturated;
-    automatic logic [40:0]      vValue_product = _GEN_5 * {9'h0, io_vScale};
-    automatic logic             vValue_negative = $signed(vValue_product) < 41'sh0;
-    automatic logic [40:0]      vValue_magnitude =
-      vValue_negative ? 41'h0 - vValue_product : vValue_product;
-    automatic logic [64:0]      _vValue_remainder_T =
-      {24'h0, vValue_magnitude} - {24'h0, vValue_magnitude[40:31], 31'h0};
-    automatic logic [190:0]     _GEN_16 =
-      {180'h0,
-       {1'h0, vValue_magnitude[40:31]}
-         + {10'h0,
-            _vValue_remainder_T > 65'h40000000 | _vValue_remainder_T == 65'h40000000
-              & vValue_magnitude[31]}};
-    automatic logic [190:0]     vValue_signedResult =
-      vValue_negative ? 191'h0 - _GEN_16 : _GEN_16;
-    automatic logic [7:0]       vValue_saturated;
-    automatic logic             _GEN_17 = _GEN_2 | _selectedElement_T;
-    _GEN_1 = state == 2'h2;
-    qValue_saturated =
-      $signed(qValue_signedResult) > 191'sh7F
-        ? 8'h7F
-        : $signed(qValue_signedResult) < -191'sh80 ? 8'h80 : qValue_signedResult[7:0];
-    kValue_saturated =
-      $signed(kValue_signedResult) > 191'sh7F
-        ? 8'h7F
-        : $signed(kValue_signedResult) < -191'sh80 ? 8'h80 : kValue_signedResult[7:0];
-    vValue_saturated =
-      $signed(vValue_signedResult) > 191'sh7F
-        ? 8'h7F
-        : $signed(vValue_signedResult) < -191'sh80 ? 8'h80 : vValue_signedResult[7:0];
+    automatic logic _GEN_3;
+    automatic logic _GEN_4;
+    automatic logic _GEN_5;
+    _GEN_3 = _qRequant_io_out_valid & ~(qCaptureCnt[3]);
+    _GEN_4 = _kRequant_io_out_valid & ~(kCaptureCnt[3]);
+    _GEN_5 = _vRequant_io_out_valid & ~(vCaptureCnt[3]);
     if (reset) begin
       collectBeat <= 8'h0;
       emitHead <= 4'h0;
       emitBeat <= 3'h0;
       readField <= 2'h0;
       readLane <= 3'h0;
-      state <= 2'h0;
+      state <= 3'h0;
+      qCaptureCnt <= 4'h0;
+      kCaptureCnt <= 4'h0;
+      vCaptureCnt <= 4'h0;
     end
     else begin
-      automatic logic _GEN_18;
-      automatic logic _GEN_19 = io_out_ready & (&state);
-      automatic logic _GEN_20;
-      _GEN_18 = projectedMemory_io_writeEn & _projection_io_out_bits_last;
-      _GEN_20 = (&emitBeat) & _io_out_bits_last_T;
+      automatic logic _GEN_6;
+      automatic logic _GEN_7 = io_out_ready & io_out_valid_0;
+      automatic logic _GEN_8;
+      _GEN_6 = projectedMemory_io_writeEn & _projection_io_out_bits_last;
+      _GEN_8 = (&emitBeat) & _io_out_bits_last_T;
       if (projectedMemory_io_writeEn)
         collectBeat <= _projection_io_out_bits_last ? 8'h0 : collectBeat + 8'h1;
-      if (_GEN_19 & (&emitBeat))
+      if (_GEN_7 & (&emitBeat))
         emitHead <= _io_out_bits_last_T ? 4'h0 : emitHead + 4'h1;
-      else if (_GEN_18)
+      else if (_GEN_6)
         emitHead <= 4'h0;
-      if (_GEN_19) begin
+      if (_GEN_7) begin
         emitBeat <= (&emitBeat) ? 3'h0 : emitBeat + 3'h1;
-        state <= {1'h0, ~_GEN_20};
+        state <= {2'h0, ~_GEN_8};
+        qCaptureCnt <= 4'h0;
+        kCaptureCnt <= 4'h0;
+        vCaptureCnt <= 4'h0;
       end
       else begin
-        if (_GEN_18)
+        if (_GEN_6)
           emitBeat <= 3'h0;
-        if (_GEN_1)
-          state <= {(&readLane) & _selectedElement_T_2, 1'h1};
+        if (state == 3'h3 & qCaptureCnt == 4'h8 & kCaptureCnt == 4'h8
+            & vCaptureCnt == 4'h8)
+          state <= 3'h4;
+        else if (_vRequant_io_in_valid_T)
+          state <= {1'h0, (&readLane) & _vRequant_io_in_valid_T_1, 1'h1};
         else if (projectedMemory_io_readEn)
-          state <= 2'h2;
-        else if (_GEN_18)
-          state <= 2'h1;
+          state <= 3'h2;
+        else if (_GEN_6)
+          state <= 3'h1;
+        if (_GEN_3)
+          qCaptureCnt <= qCaptureCnt + 4'h1;
+        else if (_GEN_6)
+          qCaptureCnt <= 4'h0;
+        if (_GEN_4)
+          kCaptureCnt <= kCaptureCnt + 4'h1;
+        else if (_GEN_6)
+          kCaptureCnt <= 4'h0;
+        if (_GEN_5)
+          vCaptureCnt <= vCaptureCnt + 4'h1;
+        else if (_GEN_6)
+          vCaptureCnt <= 4'h0;
       end
-      if (~_GEN_19 | _GEN_20) begin
-        if (_GEN_1 & (&readLane))
-          readField <= _selectedElement_T_2 ? 2'h0 : readField + 2'h1;
-        else if (_GEN_18)
+      if (~_GEN_7 | _GEN_8) begin
+        if (_vRequant_io_in_valid_T & (&readLane))
+          readField <= _vRequant_io_in_valid_T_1 ? 2'h0 : readField + 2'h1;
+        else if (_GEN_6)
           readField <= 2'h0;
-        if (_GEN_1)
+        if (_vRequant_io_in_valid_T)
           readLane <= (&readLane) ? 3'h0 : readLane + 3'h1;
-        else if (_GEN_18)
+        else if (_GEN_6)
           readLane <= 3'h0;
       end
       else begin
@@ -4846,86 +4816,54 @@ module QKVProjection(
         readLane <= 3'h0;
       end
     end
-    if (_GEN_1 & _GEN_2 & _GEN_8)
-      qValues_0 <= qValue_saturated;
-    if (_GEN_1 & _GEN_2 & _GEN_9)
-      qValues_1 <= qValue_saturated;
-    if (_GEN_1 & _GEN_2 & _GEN_10)
-      qValues_2 <= qValue_saturated;
-    if (_GEN_1 & _GEN_2 & _GEN_11)
-      qValues_3 <= qValue_saturated;
-    if (_GEN_1 & _GEN_2 & _GEN_12)
-      qValues_4 <= qValue_saturated;
-    if (_GEN_1 & _GEN_2 & _GEN_13)
-      qValues_5 <= qValue_saturated;
-    if (_GEN_1 & _GEN_2 & _GEN_14)
-      qValues_6 <= qValue_saturated;
-    if (_GEN_1 & _GEN_2 & (&readLane))
-      qValues_7 <= qValue_saturated;
-    if (~_GEN_1 | _GEN_2 | ~(_selectedElement_T & _GEN_8)) begin
-    end
-    else
-      kValues_0 <= kValue_saturated;
-    if (~_GEN_1 | _GEN_2 | ~(_selectedElement_T & _GEN_9)) begin
-    end
-    else
-      kValues_1 <= kValue_saturated;
-    if (~_GEN_1 | _GEN_2 | ~(_selectedElement_T & _GEN_10)) begin
-    end
-    else
-      kValues_2 <= kValue_saturated;
-    if (~_GEN_1 | _GEN_2 | ~(_selectedElement_T & _GEN_11)) begin
-    end
-    else
-      kValues_3 <= kValue_saturated;
-    if (~_GEN_1 | _GEN_2 | ~(_selectedElement_T & _GEN_12)) begin
-    end
-    else
-      kValues_4 <= kValue_saturated;
-    if (~_GEN_1 | _GEN_2 | ~(_selectedElement_T & _GEN_13)) begin
-    end
-    else
-      kValues_5 <= kValue_saturated;
-    if (~_GEN_1 | _GEN_2 | ~(_selectedElement_T & _GEN_14)) begin
-    end
-    else
-      kValues_6 <= kValue_saturated;
-    if (~_GEN_1 | _GEN_2 | ~(_selectedElement_T & (&readLane))) begin
-    end
-    else
-      kValues_7 <= kValue_saturated;
-    if (~_GEN_1 | _GEN_17 | ~_GEN_8) begin
-    end
-    else
-      vValues_0 <= vValue_saturated;
-    if (~_GEN_1 | _GEN_17 | ~_GEN_9) begin
-    end
-    else
-      vValues_1 <= vValue_saturated;
-    if (~_GEN_1 | _GEN_17 | ~_GEN_10) begin
-    end
-    else
-      vValues_2 <= vValue_saturated;
-    if (~_GEN_1 | _GEN_17 | ~_GEN_11) begin
-    end
-    else
-      vValues_3 <= vValue_saturated;
-    if (~_GEN_1 | _GEN_17 | ~_GEN_12) begin
-    end
-    else
-      vValues_4 <= vValue_saturated;
-    if (~_GEN_1 | _GEN_17 | ~_GEN_13) begin
-    end
-    else
-      vValues_5 <= vValue_saturated;
-    if (~_GEN_1 | _GEN_17 | ~_GEN_14) begin
-    end
-    else
-      vValues_6 <= vValue_saturated;
-    if (~_GEN_1 | _GEN_17 | ~(&readLane)) begin
-    end
-    else
-      vValues_7 <= vValue_saturated;
+    if (_GEN_3 & qCaptureCnt[2:0] == 3'h0)
+      qValues_0 <= _qRequant_io_out_bits;
+    if (_GEN_3 & qCaptureCnt[2:0] == 3'h1)
+      qValues_1 <= _qRequant_io_out_bits;
+    if (_GEN_3 & qCaptureCnt[2:0] == 3'h2)
+      qValues_2 <= _qRequant_io_out_bits;
+    if (_GEN_3 & qCaptureCnt[2:0] == 3'h3)
+      qValues_3 <= _qRequant_io_out_bits;
+    if (_GEN_3 & qCaptureCnt[2:0] == 3'h4)
+      qValues_4 <= _qRequant_io_out_bits;
+    if (_GEN_3 & qCaptureCnt[2:0] == 3'h5)
+      qValues_5 <= _qRequant_io_out_bits;
+    if (_GEN_3 & qCaptureCnt[2:0] == 3'h6)
+      qValues_6 <= _qRequant_io_out_bits;
+    if (_GEN_3 & (&(qCaptureCnt[2:0])))
+      qValues_7 <= _qRequant_io_out_bits;
+    if (_GEN_4 & kCaptureCnt[2:0] == 3'h0)
+      kValues_0 <= _kRequant_io_out_bits;
+    if (_GEN_4 & kCaptureCnt[2:0] == 3'h1)
+      kValues_1 <= _kRequant_io_out_bits;
+    if (_GEN_4 & kCaptureCnt[2:0] == 3'h2)
+      kValues_2 <= _kRequant_io_out_bits;
+    if (_GEN_4 & kCaptureCnt[2:0] == 3'h3)
+      kValues_3 <= _kRequant_io_out_bits;
+    if (_GEN_4 & kCaptureCnt[2:0] == 3'h4)
+      kValues_4 <= _kRequant_io_out_bits;
+    if (_GEN_4 & kCaptureCnt[2:0] == 3'h5)
+      kValues_5 <= _kRequant_io_out_bits;
+    if (_GEN_4 & kCaptureCnt[2:0] == 3'h6)
+      kValues_6 <= _kRequant_io_out_bits;
+    if (_GEN_4 & (&(kCaptureCnt[2:0])))
+      kValues_7 <= _kRequant_io_out_bits;
+    if (_GEN_5 & vCaptureCnt[2:0] == 3'h0)
+      vValues_0 <= _vRequant_io_out_bits;
+    if (_GEN_5 & vCaptureCnt[2:0] == 3'h1)
+      vValues_1 <= _vRequant_io_out_bits;
+    if (_GEN_5 & vCaptureCnt[2:0] == 3'h2)
+      vValues_2 <= _vRequant_io_out_bits;
+    if (_GEN_5 & vCaptureCnt[2:0] == 3'h3)
+      vValues_3 <= _vRequant_io_out_bits;
+    if (_GEN_5 & vCaptureCnt[2:0] == 3'h4)
+      vValues_4 <= _vRequant_io_out_bits;
+    if (_GEN_5 & vCaptureCnt[2:0] == 3'h5)
+      vValues_5 <= _vRequant_io_out_bits;
+    if (_GEN_5 & vCaptureCnt[2:0] == 3'h6)
+      vValues_6 <= _vRequant_io_out_bits;
+    if (_GEN_5 & (&(vCaptureCnt[2:0])))
+      vValues_7 <= _vRequant_io_out_bits;
   end // always @(posedge)
   Linear projection (
     .clock                               (clock),
@@ -9593,7 +9531,43 @@ module QKVProjection(
     .io_readAddr  (selectedBeat[7:0]),
     .io_readData  (_projectedMemory_io_readData)
   );
-  assign io_out_valid = &state;
+  LinearOutputRequantizer qRequant (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (_vRequant_io_in_valid_T & readField == 2'h0),
+    .io_in_bits_value           (vRequant_io_in_bits_value),
+    .io_in_bits_channelScale    (32'h80000000),
+    .io_in_bits_activationScale (32'h80000000),
+    .io_in_bits_outputScale     (32'h80000000),
+    .io_in_bits_binaryShift     (10'h0),
+    .io_out_valid               (_qRequant_io_out_valid),
+    .io_out_bits                (_qRequant_io_out_bits)
+  );
+  LinearOutputRequantizer kRequant (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (_vRequant_io_in_valid_T & _kRequant_io_in_valid_T_1),
+    .io_in_bits_value           (vRequant_io_in_bits_value),
+    .io_in_bits_channelScale    (32'h80000000),
+    .io_in_bits_activationScale (32'h80000000),
+    .io_in_bits_outputScale     (io_kScale),
+    .io_in_bits_binaryShift     (10'h0),
+    .io_out_valid               (_kRequant_io_out_valid),
+    .io_out_bits                (_kRequant_io_out_bits)
+  );
+  LinearOutputRequantizer vRequant (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (_vRequant_io_in_valid_T & _vRequant_io_in_valid_T_1),
+    .io_in_bits_value           (vRequant_io_in_bits_value),
+    .io_in_bits_channelScale    (32'h80000000),
+    .io_in_bits_activationScale (32'h80000000),
+    .io_in_bits_outputScale     (io_vScale),
+    .io_in_bits_binaryShift     (10'h0),
+    .io_out_valid               (_vRequant_io_out_valid),
+    .io_out_bits                (_vRequant_io_out_bits)
+  );
+  assign io_out_valid = io_out_valid_0;
   assign io_out_bits_data =
     {vValues_7,
      vValues_6,

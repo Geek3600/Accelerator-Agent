@@ -1585,6 +1585,22 @@ module Linear_1(
   output          io_out_bits_last
 );
 
+  wire [7:0]          _outputRequantizers_requantizer_15_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_14_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_13_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_12_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_11_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_10_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_9_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_8_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_7_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_6_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_5_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_4_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_3_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_2_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_1_io_out_bits;
+  wire [7:0]          _outputRequantizers_requantizer_io_out_bits;
   wire                _accumulatorAdds_15_io_in_ready;
   wire                _accumulatorAdds_15_io_out_valid;
   wire [31:0]         _accumulatorAdds_15_io_out_bits_value;
@@ -7518,7 +7534,18 @@ module Linear_1(
     & _accumulatorAdds_10_io_out_valid & _accumulatorAdds_11_io_out_valid
     & _accumulatorAdds_12_io_out_valid & _accumulatorAdds_13_io_out_valid
     & _accumulatorAdds_14_io_out_valid & _accumulatorAdds_15_io_out_valid;
-  wire                outputMem_io_writeEn = state == 3'h5;
+  reg                 outputCmdValid_0;
+  reg                 outputCmdValid_1;
+  reg                 outputCmdValid_2;
+  reg                 outputCmdValid_3;
+  reg                 outputCmdValid_4;
+  reg  [9:0]          outputCmdAddr_0;
+  reg  [9:0]          outputCmdAddr_1;
+  reg  [9:0]          outputCmdAddr_2;
+  reg  [9:0]          outputCmdAddr_3;
+  reg  [9:0]          outputCmdAddr_4;
+  reg  [2:0]          writeFlushTimer;
+  wire                outputRequantizers_requantizer_io_in_valid = state == 3'h5;
   wire [9:0]          _GEN_35 = {5'h0, outputGroup, 4'h0};
   wire [1023:0][31:0] _GEN_36 =
     {{io_scale_channelScale_0},
@@ -8545,8 +8572,10 @@ module Linear_1(
      {io_scale_channelScale_2},
      {io_scale_channelScale_1},
      {io_scale_channelScale_0}};
-  wire                _activationMultiplier_T_15 = io_scale_activationScale == 32'h0;
-  wire                _outputMultiplier_T_15 = io_scale_outScale == 32'h0;
+  wire                _outputRequantizers_activationMultiplier_T_15 =
+    io_scale_activationScale == 32'h0;
+  wire                _outputRequantizers_outputMultiplier_T_15 =
+    io_scale_outScale == 32'h0;
   wire [1023:0][7:0]  _GEN_37 =
     {{io_scale_channelShift_0},
      {io_scale_channelShift_0},
@@ -9584,8 +9613,7 @@ module Linear_1(
      {beatValues_2_0},
      {beatValues_1_0},
      {beatValues_0_0}};
-  wire [31:0]         _GEN_42 = _GEN_41[writeToken];
-  wire [7:0][31:0]    _GEN_43 =
+  wire [7:0][31:0]    _GEN_42 =
     {{beatValues_7_1},
      {beatValues_6_1},
      {beatValues_5_1},
@@ -9594,8 +9622,7 @@ module Linear_1(
      {beatValues_2_1},
      {beatValues_1_1},
      {beatValues_0_1}};
-  wire [31:0]         _GEN_44 = _GEN_43[writeToken];
-  wire [7:0][31:0]    _GEN_45 =
+  wire [7:0][31:0]    _GEN_43 =
     {{beatValues_7_2},
      {beatValues_6_2},
      {beatValues_5_2},
@@ -9604,8 +9631,7 @@ module Linear_1(
      {beatValues_2_2},
      {beatValues_1_2},
      {beatValues_0_2}};
-  wire [31:0]         _GEN_46 = _GEN_45[writeToken];
-  wire [7:0][31:0]    _GEN_47 =
+  wire [7:0][31:0]    _GEN_44 =
     {{beatValues_7_3},
      {beatValues_6_3},
      {beatValues_5_3},
@@ -9614,8 +9640,7 @@ module Linear_1(
      {beatValues_2_3},
      {beatValues_1_3},
      {beatValues_0_3}};
-  wire [31:0]         _GEN_48 = _GEN_47[writeToken];
-  wire [7:0][31:0]    _GEN_49 =
+  wire [7:0][31:0]    _GEN_45 =
     {{beatValues_7_4},
      {beatValues_6_4},
      {beatValues_5_4},
@@ -9624,8 +9649,7 @@ module Linear_1(
      {beatValues_2_4},
      {beatValues_1_4},
      {beatValues_0_4}};
-  wire [31:0]         _GEN_50 = _GEN_49[writeToken];
-  wire [7:0][31:0]    _GEN_51 =
+  wire [7:0][31:0]    _GEN_46 =
     {{beatValues_7_5},
      {beatValues_6_5},
      {beatValues_5_5},
@@ -9634,8 +9658,7 @@ module Linear_1(
      {beatValues_2_5},
      {beatValues_1_5},
      {beatValues_0_5}};
-  wire [31:0]         _GEN_52 = _GEN_51[writeToken];
-  wire [7:0][31:0]    _GEN_53 =
+  wire [7:0][31:0]    _GEN_47 =
     {{beatValues_7_6},
      {beatValues_6_6},
      {beatValues_5_6},
@@ -9644,8 +9667,7 @@ module Linear_1(
      {beatValues_2_6},
      {beatValues_1_6},
      {beatValues_0_6}};
-  wire [31:0]         _GEN_54 = _GEN_53[writeToken];
-  wire [7:0][31:0]    _GEN_55 =
+  wire [7:0][31:0]    _GEN_48 =
     {{beatValues_7_7},
      {beatValues_6_7},
      {beatValues_5_7},
@@ -9654,8 +9676,7 @@ module Linear_1(
      {beatValues_2_7},
      {beatValues_1_7},
      {beatValues_0_7}};
-  wire [31:0]         _GEN_56 = _GEN_55[writeToken];
-  wire [7:0][31:0]    _GEN_57 =
+  wire [7:0][31:0]    _GEN_49 =
     {{beatValues_7_8},
      {beatValues_6_8},
      {beatValues_5_8},
@@ -9664,8 +9685,7 @@ module Linear_1(
      {beatValues_2_8},
      {beatValues_1_8},
      {beatValues_0_8}};
-  wire [31:0]         _GEN_58 = _GEN_57[writeToken];
-  wire [7:0][31:0]    _GEN_59 =
+  wire [7:0][31:0]    _GEN_50 =
     {{beatValues_7_9},
      {beatValues_6_9},
      {beatValues_5_9},
@@ -9674,8 +9694,7 @@ module Linear_1(
      {beatValues_2_9},
      {beatValues_1_9},
      {beatValues_0_9}};
-  wire [31:0]         _GEN_60 = _GEN_59[writeToken];
-  wire [7:0][31:0]    _GEN_61 =
+  wire [7:0][31:0]    _GEN_51 =
     {{beatValues_7_10},
      {beatValues_6_10},
      {beatValues_5_10},
@@ -9684,8 +9703,7 @@ module Linear_1(
      {beatValues_2_10},
      {beatValues_1_10},
      {beatValues_0_10}};
-  wire [31:0]         _GEN_62 = _GEN_61[writeToken];
-  wire [7:0][31:0]    _GEN_63 =
+  wire [7:0][31:0]    _GEN_52 =
     {{beatValues_7_11},
      {beatValues_6_11},
      {beatValues_5_11},
@@ -9694,8 +9712,7 @@ module Linear_1(
      {beatValues_2_11},
      {beatValues_1_11},
      {beatValues_0_11}};
-  wire [31:0]         _GEN_64 = _GEN_63[writeToken];
-  wire [7:0][31:0]    _GEN_65 =
+  wire [7:0][31:0]    _GEN_53 =
     {{beatValues_7_12},
      {beatValues_6_12},
      {beatValues_5_12},
@@ -9704,8 +9721,7 @@ module Linear_1(
      {beatValues_2_12},
      {beatValues_1_12},
      {beatValues_0_12}};
-  wire [31:0]         _GEN_66 = _GEN_65[writeToken];
-  wire [7:0][31:0]    _GEN_67 =
+  wire [7:0][31:0]    _GEN_54 =
     {{beatValues_7_13},
      {beatValues_6_13},
      {beatValues_5_13},
@@ -9714,8 +9730,7 @@ module Linear_1(
      {beatValues_2_13},
      {beatValues_1_13},
      {beatValues_0_13}};
-  wire [31:0]         _GEN_68 = _GEN_67[writeToken];
-  wire [7:0][31:0]    _GEN_69 =
+  wire [7:0][31:0]    _GEN_55 =
     {{beatValues_7_14},
      {beatValues_6_14},
      {beatValues_5_14},
@@ -9724,8 +9739,7 @@ module Linear_1(
      {beatValues_2_14},
      {beatValues_1_14},
      {beatValues_0_14}};
-  wire [31:0]         _GEN_70 = _GEN_69[writeToken];
-  wire [7:0][31:0]    _GEN_71 =
+  wire [7:0][31:0]    _GEN_56 =
     {{beatValues_7_15},
      {beatValues_6_15},
      {beatValues_5_15},
@@ -9734,936 +9748,37 @@ module Linear_1(
      {beatValues_2_15},
      {beatValues_1_15},
      {beatValues_0_15}};
-  wire [31:0]         _GEN_72 = _GEN_71[writeToken];
-  wire [65:0]         outputValues_0_matrixProduct =
-    {34'h0, _GEN_36[_GEN_35] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_35]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_0_outputProduct =
-    {64'h0, outputValues_0_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_0_product =
-    {{33{_GEN_42[31]}}, _GEN_42}
-    * {33'h0,
-       (|(outputValues_0_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_0_outputProduct[62:31]};
-  wire                outputValues_0_negative = $signed(outputValues_0_product) < 65'sh0;
-  wire [64:0]         outputValues_0_magnitude =
-    outputValues_0_negative ? 65'h0 - outputValues_0_product : outputValues_0_product;
-  wire [9:0]          _outputValues_0_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_39[8], _GEN_39});
-  wire                outputValues_0_tooFarRight =
-    $signed(_outputValues_0_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_0_rightShift =
-    $signed(_outputValues_0_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_0_tooFarRight ? 6'h3F : _outputValues_0_effectiveShift_T[5:0];
-  wire                _outputValues_0_scaledMagnitude_T =
-    $signed(_outputValues_0_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_0_leftMagnitude =
-    _outputValues_0_scaledMagnitude_T ? 10'h0 - _outputValues_0_effectiveShift_T : 10'h0;
-  wire [64:0]         outputValues_0_quotient =
-    outputValues_0_magnitude >> outputValues_0_rightShift;
-  wire [127:0]        _outputValues_0_restored_T =
-    {63'h0, outputValues_0_quotient} << outputValues_0_rightShift;
-  wire [64:0]         _outputValues_0_remainder_T =
-    outputValues_0_magnitude - _outputValues_0_restored_T[64:0];
-  wire [127:0]        _outputValues_0_halfway_T_4 =
-    128'h1
-    << (outputValues_0_rightShift == 6'h0 ? 6'h0 : outputValues_0_rightShift - 6'h1);
-  wire [190:0]        outputValues_0_scaledMagnitude =
-    outputValues_0_tooFarRight
-      ? 191'h0
-      : _outputValues_0_scaledMagnitude_T
-          ? {126'h0, outputValues_0_magnitude}
-            << ($signed(outputValues_0_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_0_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_0_quotient
-               + {64'h0,
-                  (|outputValues_0_rightShift)
-                    & (_outputValues_0_remainder_T > _outputValues_0_halfway_T_4[64:0]
-                       | _outputValues_0_remainder_T == _outputValues_0_halfway_T_4[64:0]
-                       & outputValues_0_quotient[0])}};
-  wire [190:0]        outputValues_0_signedResult =
-    outputValues_0_negative
-      ? 191'h0 - outputValues_0_scaledMagnitude
-      : outputValues_0_scaledMagnitude;
-  wire [5:0]          _GEN_73 = {1'h0, outputGroup, 4'h0};
-  wire [9:0]          _GEN_74 = {4'h0, _GEN_73 + 6'h1};
+  wire [5:0]          _GEN_57 = {1'h0, outputGroup, 4'h0};
+  wire [9:0]          _GEN_58 = {4'h0, _GEN_57 + 6'h1};
+  wire [8:0]          _GEN_59 = _GEN_38 + {_GEN_37[_GEN_58][7], _GEN_37[_GEN_58]};
+  wire [9:0]          _GEN_60 = {4'h0, _GEN_57 + 6'h2};
+  wire [8:0]          _GEN_61 = _GEN_38 + {_GEN_37[_GEN_60][7], _GEN_37[_GEN_60]};
+  wire [9:0]          _GEN_62 = {4'h0, _GEN_57 + 6'h3};
+  wire [8:0]          _GEN_63 = _GEN_38 + {_GEN_37[_GEN_62][7], _GEN_37[_GEN_62]};
+  wire [9:0]          _GEN_64 = {4'h0, _GEN_57 + 6'h4};
+  wire [8:0]          _GEN_65 = _GEN_38 + {_GEN_37[_GEN_64][7], _GEN_37[_GEN_64]};
+  wire [9:0]          _GEN_66 = {4'h0, _GEN_57 + 6'h5};
+  wire [8:0]          _GEN_67 = _GEN_38 + {_GEN_37[_GEN_66][7], _GEN_37[_GEN_66]};
+  wire [9:0]          _GEN_68 = {4'h0, _GEN_57 + 6'h6};
+  wire [8:0]          _GEN_69 = _GEN_38 + {_GEN_37[_GEN_68][7], _GEN_37[_GEN_68]};
+  wire [9:0]          _GEN_70 = {4'h0, _GEN_57 + 6'h7};
+  wire [8:0]          _GEN_71 = _GEN_38 + {_GEN_37[_GEN_70][7], _GEN_37[_GEN_70]};
+  wire [9:0]          _GEN_72 = {4'h0, _GEN_57 + 6'h8};
+  wire [8:0]          _GEN_73 = _GEN_38 + {_GEN_37[_GEN_72][7], _GEN_37[_GEN_72]};
+  wire [9:0]          _GEN_74 = {4'h0, _GEN_57 + 6'h9};
   wire [8:0]          _GEN_75 = _GEN_38 + {_GEN_37[_GEN_74][7], _GEN_37[_GEN_74]};
-  wire [65:0]         outputValues_1_matrixProduct =
-    {34'h0, _GEN_36[_GEN_74] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_74]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_1_outputProduct =
-    {64'h0, outputValues_1_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_1_product =
-    {{33{_GEN_44[31]}}, _GEN_44}
-    * {33'h0,
-       (|(outputValues_1_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_1_outputProduct[62:31]};
-  wire                outputValues_1_negative = $signed(outputValues_1_product) < 65'sh0;
-  wire [64:0]         outputValues_1_magnitude =
-    outputValues_1_negative ? 65'h0 - outputValues_1_product : outputValues_1_product;
-  wire [9:0]          _outputValues_1_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_75[8], _GEN_75});
-  wire                outputValues_1_tooFarRight =
-    $signed(_outputValues_1_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_1_rightShift =
-    $signed(_outputValues_1_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_1_tooFarRight ? 6'h3F : _outputValues_1_effectiveShift_T[5:0];
-  wire                _outputValues_1_scaledMagnitude_T =
-    $signed(_outputValues_1_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_1_leftMagnitude =
-    _outputValues_1_scaledMagnitude_T ? 10'h0 - _outputValues_1_effectiveShift_T : 10'h0;
-  wire [64:0]         outputValues_1_quotient =
-    outputValues_1_magnitude >> outputValues_1_rightShift;
-  wire [127:0]        _outputValues_1_restored_T =
-    {63'h0, outputValues_1_quotient} << outputValues_1_rightShift;
-  wire [64:0]         _outputValues_1_remainder_T =
-    outputValues_1_magnitude - _outputValues_1_restored_T[64:0];
-  wire [127:0]        _outputValues_1_halfway_T_4 =
-    128'h1
-    << (outputValues_1_rightShift == 6'h0 ? 6'h0 : outputValues_1_rightShift - 6'h1);
-  wire [190:0]        outputValues_1_scaledMagnitude =
-    outputValues_1_tooFarRight
-      ? 191'h0
-      : _outputValues_1_scaledMagnitude_T
-          ? {126'h0, outputValues_1_magnitude}
-            << ($signed(outputValues_1_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_1_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_1_quotient
-               + {64'h0,
-                  (|outputValues_1_rightShift)
-                    & (_outputValues_1_remainder_T > _outputValues_1_halfway_T_4[64:0]
-                       | _outputValues_1_remainder_T == _outputValues_1_halfway_T_4[64:0]
-                       & outputValues_1_quotient[0])}};
-  wire [190:0]        outputValues_1_signedResult =
-    outputValues_1_negative
-      ? 191'h0 - outputValues_1_scaledMagnitude
-      : outputValues_1_scaledMagnitude;
-  wire [9:0]          _GEN_76 = {4'h0, _GEN_73 + 6'h2};
+  wire [9:0]          _GEN_76 = {4'h0, _GEN_57 + 6'hA};
   wire [8:0]          _GEN_77 = _GEN_38 + {_GEN_37[_GEN_76][7], _GEN_37[_GEN_76]};
-  wire [65:0]         outputValues_2_matrixProduct =
-    {34'h0, _GEN_36[_GEN_76] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_76]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_2_outputProduct =
-    {64'h0, outputValues_2_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_2_product =
-    {{33{_GEN_46[31]}}, _GEN_46}
-    * {33'h0,
-       (|(outputValues_2_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_2_outputProduct[62:31]};
-  wire                outputValues_2_negative = $signed(outputValues_2_product) < 65'sh0;
-  wire [64:0]         outputValues_2_magnitude =
-    outputValues_2_negative ? 65'h0 - outputValues_2_product : outputValues_2_product;
-  wire [9:0]          _outputValues_2_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_77[8], _GEN_77});
-  wire                outputValues_2_tooFarRight =
-    $signed(_outputValues_2_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_2_rightShift =
-    $signed(_outputValues_2_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_2_tooFarRight ? 6'h3F : _outputValues_2_effectiveShift_T[5:0];
-  wire                _outputValues_2_scaledMagnitude_T =
-    $signed(_outputValues_2_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_2_leftMagnitude =
-    _outputValues_2_scaledMagnitude_T ? 10'h0 - _outputValues_2_effectiveShift_T : 10'h0;
-  wire [64:0]         outputValues_2_quotient =
-    outputValues_2_magnitude >> outputValues_2_rightShift;
-  wire [127:0]        _outputValues_2_restored_T =
-    {63'h0, outputValues_2_quotient} << outputValues_2_rightShift;
-  wire [64:0]         _outputValues_2_remainder_T =
-    outputValues_2_magnitude - _outputValues_2_restored_T[64:0];
-  wire [127:0]        _outputValues_2_halfway_T_4 =
-    128'h1
-    << (outputValues_2_rightShift == 6'h0 ? 6'h0 : outputValues_2_rightShift - 6'h1);
-  wire [190:0]        outputValues_2_scaledMagnitude =
-    outputValues_2_tooFarRight
-      ? 191'h0
-      : _outputValues_2_scaledMagnitude_T
-          ? {126'h0, outputValues_2_magnitude}
-            << ($signed(outputValues_2_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_2_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_2_quotient
-               + {64'h0,
-                  (|outputValues_2_rightShift)
-                    & (_outputValues_2_remainder_T > _outputValues_2_halfway_T_4[64:0]
-                       | _outputValues_2_remainder_T == _outputValues_2_halfway_T_4[64:0]
-                       & outputValues_2_quotient[0])}};
-  wire [190:0]        outputValues_2_signedResult =
-    outputValues_2_negative
-      ? 191'h0 - outputValues_2_scaledMagnitude
-      : outputValues_2_scaledMagnitude;
-  wire [9:0]          _GEN_78 = {4'h0, _GEN_73 + 6'h3};
+  wire [9:0]          _GEN_78 = {4'h0, _GEN_57 + 6'hB};
   wire [8:0]          _GEN_79 = _GEN_38 + {_GEN_37[_GEN_78][7], _GEN_37[_GEN_78]};
-  wire [65:0]         outputValues_3_matrixProduct =
-    {34'h0, _GEN_36[_GEN_78] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_78]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_3_outputProduct =
-    {64'h0, outputValues_3_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_3_product =
-    {{33{_GEN_48[31]}}, _GEN_48}
-    * {33'h0,
-       (|(outputValues_3_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_3_outputProduct[62:31]};
-  wire                outputValues_3_negative = $signed(outputValues_3_product) < 65'sh0;
-  wire [64:0]         outputValues_3_magnitude =
-    outputValues_3_negative ? 65'h0 - outputValues_3_product : outputValues_3_product;
-  wire [9:0]          _outputValues_3_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_79[8], _GEN_79});
-  wire                outputValues_3_tooFarRight =
-    $signed(_outputValues_3_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_3_rightShift =
-    $signed(_outputValues_3_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_3_tooFarRight ? 6'h3F : _outputValues_3_effectiveShift_T[5:0];
-  wire                _outputValues_3_scaledMagnitude_T =
-    $signed(_outputValues_3_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_3_leftMagnitude =
-    _outputValues_3_scaledMagnitude_T ? 10'h0 - _outputValues_3_effectiveShift_T : 10'h0;
-  wire [64:0]         outputValues_3_quotient =
-    outputValues_3_magnitude >> outputValues_3_rightShift;
-  wire [127:0]        _outputValues_3_restored_T =
-    {63'h0, outputValues_3_quotient} << outputValues_3_rightShift;
-  wire [64:0]         _outputValues_3_remainder_T =
-    outputValues_3_magnitude - _outputValues_3_restored_T[64:0];
-  wire [127:0]        _outputValues_3_halfway_T_4 =
-    128'h1
-    << (outputValues_3_rightShift == 6'h0 ? 6'h0 : outputValues_3_rightShift - 6'h1);
-  wire [190:0]        outputValues_3_scaledMagnitude =
-    outputValues_3_tooFarRight
-      ? 191'h0
-      : _outputValues_3_scaledMagnitude_T
-          ? {126'h0, outputValues_3_magnitude}
-            << ($signed(outputValues_3_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_3_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_3_quotient
-               + {64'h0,
-                  (|outputValues_3_rightShift)
-                    & (_outputValues_3_remainder_T > _outputValues_3_halfway_T_4[64:0]
-                       | _outputValues_3_remainder_T == _outputValues_3_halfway_T_4[64:0]
-                       & outputValues_3_quotient[0])}};
-  wire [190:0]        outputValues_3_signedResult =
-    outputValues_3_negative
-      ? 191'h0 - outputValues_3_scaledMagnitude
-      : outputValues_3_scaledMagnitude;
-  wire [9:0]          _GEN_80 = {4'h0, _GEN_73 + 6'h4};
+  wire [9:0]          _GEN_80 = {4'h0, _GEN_57 + 6'hC};
   wire [8:0]          _GEN_81 = _GEN_38 + {_GEN_37[_GEN_80][7], _GEN_37[_GEN_80]};
-  wire [65:0]         outputValues_4_matrixProduct =
-    {34'h0, _GEN_36[_GEN_80] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_80]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_4_outputProduct =
-    {64'h0, outputValues_4_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_4_product =
-    {{33{_GEN_50[31]}}, _GEN_50}
-    * {33'h0,
-       (|(outputValues_4_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_4_outputProduct[62:31]};
-  wire                outputValues_4_negative = $signed(outputValues_4_product) < 65'sh0;
-  wire [64:0]         outputValues_4_magnitude =
-    outputValues_4_negative ? 65'h0 - outputValues_4_product : outputValues_4_product;
-  wire [9:0]          _outputValues_4_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_81[8], _GEN_81});
-  wire                outputValues_4_tooFarRight =
-    $signed(_outputValues_4_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_4_rightShift =
-    $signed(_outputValues_4_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_4_tooFarRight ? 6'h3F : _outputValues_4_effectiveShift_T[5:0];
-  wire                _outputValues_4_scaledMagnitude_T =
-    $signed(_outputValues_4_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_4_leftMagnitude =
-    _outputValues_4_scaledMagnitude_T ? 10'h0 - _outputValues_4_effectiveShift_T : 10'h0;
-  wire [64:0]         outputValues_4_quotient =
-    outputValues_4_magnitude >> outputValues_4_rightShift;
-  wire [127:0]        _outputValues_4_restored_T =
-    {63'h0, outputValues_4_quotient} << outputValues_4_rightShift;
-  wire [64:0]         _outputValues_4_remainder_T =
-    outputValues_4_magnitude - _outputValues_4_restored_T[64:0];
-  wire [127:0]        _outputValues_4_halfway_T_4 =
-    128'h1
-    << (outputValues_4_rightShift == 6'h0 ? 6'h0 : outputValues_4_rightShift - 6'h1);
-  wire [190:0]        outputValues_4_scaledMagnitude =
-    outputValues_4_tooFarRight
-      ? 191'h0
-      : _outputValues_4_scaledMagnitude_T
-          ? {126'h0, outputValues_4_magnitude}
-            << ($signed(outputValues_4_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_4_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_4_quotient
-               + {64'h0,
-                  (|outputValues_4_rightShift)
-                    & (_outputValues_4_remainder_T > _outputValues_4_halfway_T_4[64:0]
-                       | _outputValues_4_remainder_T == _outputValues_4_halfway_T_4[64:0]
-                       & outputValues_4_quotient[0])}};
-  wire [190:0]        outputValues_4_signedResult =
-    outputValues_4_negative
-      ? 191'h0 - outputValues_4_scaledMagnitude
-      : outputValues_4_scaledMagnitude;
-  wire [9:0]          _GEN_82 = {4'h0, _GEN_73 + 6'h5};
+  wire [9:0]          _GEN_82 = {4'h0, _GEN_57 + 6'hD};
   wire [8:0]          _GEN_83 = _GEN_38 + {_GEN_37[_GEN_82][7], _GEN_37[_GEN_82]};
-  wire [65:0]         outputValues_5_matrixProduct =
-    {34'h0, _GEN_36[_GEN_82] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_82]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_5_outputProduct =
-    {64'h0, outputValues_5_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_5_product =
-    {{33{_GEN_52[31]}}, _GEN_52}
-    * {33'h0,
-       (|(outputValues_5_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_5_outputProduct[62:31]};
-  wire                outputValues_5_negative = $signed(outputValues_5_product) < 65'sh0;
-  wire [64:0]         outputValues_5_magnitude =
-    outputValues_5_negative ? 65'h0 - outputValues_5_product : outputValues_5_product;
-  wire [9:0]          _outputValues_5_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_83[8], _GEN_83});
-  wire                outputValues_5_tooFarRight =
-    $signed(_outputValues_5_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_5_rightShift =
-    $signed(_outputValues_5_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_5_tooFarRight ? 6'h3F : _outputValues_5_effectiveShift_T[5:0];
-  wire                _outputValues_5_scaledMagnitude_T =
-    $signed(_outputValues_5_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_5_leftMagnitude =
-    _outputValues_5_scaledMagnitude_T ? 10'h0 - _outputValues_5_effectiveShift_T : 10'h0;
-  wire [64:0]         outputValues_5_quotient =
-    outputValues_5_magnitude >> outputValues_5_rightShift;
-  wire [127:0]        _outputValues_5_restored_T =
-    {63'h0, outputValues_5_quotient} << outputValues_5_rightShift;
-  wire [64:0]         _outputValues_5_remainder_T =
-    outputValues_5_magnitude - _outputValues_5_restored_T[64:0];
-  wire [127:0]        _outputValues_5_halfway_T_4 =
-    128'h1
-    << (outputValues_5_rightShift == 6'h0 ? 6'h0 : outputValues_5_rightShift - 6'h1);
-  wire [190:0]        outputValues_5_scaledMagnitude =
-    outputValues_5_tooFarRight
-      ? 191'h0
-      : _outputValues_5_scaledMagnitude_T
-          ? {126'h0, outputValues_5_magnitude}
-            << ($signed(outputValues_5_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_5_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_5_quotient
-               + {64'h0,
-                  (|outputValues_5_rightShift)
-                    & (_outputValues_5_remainder_T > _outputValues_5_halfway_T_4[64:0]
-                       | _outputValues_5_remainder_T == _outputValues_5_halfway_T_4[64:0]
-                       & outputValues_5_quotient[0])}};
-  wire [190:0]        outputValues_5_signedResult =
-    outputValues_5_negative
-      ? 191'h0 - outputValues_5_scaledMagnitude
-      : outputValues_5_scaledMagnitude;
-  wire [9:0]          _GEN_84 = {4'h0, _GEN_73 + 6'h6};
+  wire [9:0]          _GEN_84 = {4'h0, _GEN_57 + 6'hE};
   wire [8:0]          _GEN_85 = _GEN_38 + {_GEN_37[_GEN_84][7], _GEN_37[_GEN_84]};
-  wire [65:0]         outputValues_6_matrixProduct =
-    {34'h0, _GEN_36[_GEN_84] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_84]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_6_outputProduct =
-    {64'h0, outputValues_6_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_6_product =
-    {{33{_GEN_54[31]}}, _GEN_54}
-    * {33'h0,
-       (|(outputValues_6_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_6_outputProduct[62:31]};
-  wire                outputValues_6_negative = $signed(outputValues_6_product) < 65'sh0;
-  wire [64:0]         outputValues_6_magnitude =
-    outputValues_6_negative ? 65'h0 - outputValues_6_product : outputValues_6_product;
-  wire [9:0]          _outputValues_6_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_85[8], _GEN_85});
-  wire                outputValues_6_tooFarRight =
-    $signed(_outputValues_6_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_6_rightShift =
-    $signed(_outputValues_6_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_6_tooFarRight ? 6'h3F : _outputValues_6_effectiveShift_T[5:0];
-  wire                _outputValues_6_scaledMagnitude_T =
-    $signed(_outputValues_6_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_6_leftMagnitude =
-    _outputValues_6_scaledMagnitude_T ? 10'h0 - _outputValues_6_effectiveShift_T : 10'h0;
-  wire [64:0]         outputValues_6_quotient =
-    outputValues_6_magnitude >> outputValues_6_rightShift;
-  wire [127:0]        _outputValues_6_restored_T =
-    {63'h0, outputValues_6_quotient} << outputValues_6_rightShift;
-  wire [64:0]         _outputValues_6_remainder_T =
-    outputValues_6_magnitude - _outputValues_6_restored_T[64:0];
-  wire [127:0]        _outputValues_6_halfway_T_4 =
-    128'h1
-    << (outputValues_6_rightShift == 6'h0 ? 6'h0 : outputValues_6_rightShift - 6'h1);
-  wire [190:0]        outputValues_6_scaledMagnitude =
-    outputValues_6_tooFarRight
-      ? 191'h0
-      : _outputValues_6_scaledMagnitude_T
-          ? {126'h0, outputValues_6_magnitude}
-            << ($signed(outputValues_6_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_6_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_6_quotient
-               + {64'h0,
-                  (|outputValues_6_rightShift)
-                    & (_outputValues_6_remainder_T > _outputValues_6_halfway_T_4[64:0]
-                       | _outputValues_6_remainder_T == _outputValues_6_halfway_T_4[64:0]
-                       & outputValues_6_quotient[0])}};
-  wire [190:0]        outputValues_6_signedResult =
-    outputValues_6_negative
-      ? 191'h0 - outputValues_6_scaledMagnitude
-      : outputValues_6_scaledMagnitude;
-  wire [9:0]          _GEN_86 = {4'h0, _GEN_73 + 6'h7};
+  wire [9:0]          _GEN_86 = {4'h0, _GEN_57 + 6'hF};
   wire [8:0]          _GEN_87 = _GEN_38 + {_GEN_37[_GEN_86][7], _GEN_37[_GEN_86]};
-  wire [65:0]         outputValues_7_matrixProduct =
-    {34'h0, _GEN_36[_GEN_86] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_86]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_7_outputProduct =
-    {64'h0, outputValues_7_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_7_product =
-    {{33{_GEN_56[31]}}, _GEN_56}
-    * {33'h0,
-       (|(outputValues_7_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_7_outputProduct[62:31]};
-  wire                outputValues_7_negative = $signed(outputValues_7_product) < 65'sh0;
-  wire [64:0]         outputValues_7_magnitude =
-    outputValues_7_negative ? 65'h0 - outputValues_7_product : outputValues_7_product;
-  wire [9:0]          _outputValues_7_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_87[8], _GEN_87});
-  wire                outputValues_7_tooFarRight =
-    $signed(_outputValues_7_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_7_rightShift =
-    $signed(_outputValues_7_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_7_tooFarRight ? 6'h3F : _outputValues_7_effectiveShift_T[5:0];
-  wire                _outputValues_7_scaledMagnitude_T =
-    $signed(_outputValues_7_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_7_leftMagnitude =
-    _outputValues_7_scaledMagnitude_T ? 10'h0 - _outputValues_7_effectiveShift_T : 10'h0;
-  wire [64:0]         outputValues_7_quotient =
-    outputValues_7_magnitude >> outputValues_7_rightShift;
-  wire [127:0]        _outputValues_7_restored_T =
-    {63'h0, outputValues_7_quotient} << outputValues_7_rightShift;
-  wire [64:0]         _outputValues_7_remainder_T =
-    outputValues_7_magnitude - _outputValues_7_restored_T[64:0];
-  wire [127:0]        _outputValues_7_halfway_T_4 =
-    128'h1
-    << (outputValues_7_rightShift == 6'h0 ? 6'h0 : outputValues_7_rightShift - 6'h1);
-  wire [190:0]        outputValues_7_scaledMagnitude =
-    outputValues_7_tooFarRight
-      ? 191'h0
-      : _outputValues_7_scaledMagnitude_T
-          ? {126'h0, outputValues_7_magnitude}
-            << ($signed(outputValues_7_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_7_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_7_quotient
-               + {64'h0,
-                  (|outputValues_7_rightShift)
-                    & (_outputValues_7_remainder_T > _outputValues_7_halfway_T_4[64:0]
-                       | _outputValues_7_remainder_T == _outputValues_7_halfway_T_4[64:0]
-                       & outputValues_7_quotient[0])}};
-  wire [190:0]        outputValues_7_signedResult =
-    outputValues_7_negative
-      ? 191'h0 - outputValues_7_scaledMagnitude
-      : outputValues_7_scaledMagnitude;
-  wire [9:0]          _GEN_88 = {4'h0, _GEN_73 + 6'h8};
-  wire [8:0]          _GEN_89 = _GEN_38 + {_GEN_37[_GEN_88][7], _GEN_37[_GEN_88]};
-  wire [65:0]         outputValues_8_matrixProduct =
-    {34'h0, _GEN_36[_GEN_88] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_88]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_8_outputProduct =
-    {64'h0, outputValues_8_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_8_product =
-    {{33{_GEN_58[31]}}, _GEN_58}
-    * {33'h0,
-       (|(outputValues_8_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_8_outputProduct[62:31]};
-  wire                outputValues_8_negative = $signed(outputValues_8_product) < 65'sh0;
-  wire [64:0]         outputValues_8_magnitude =
-    outputValues_8_negative ? 65'h0 - outputValues_8_product : outputValues_8_product;
-  wire [9:0]          _outputValues_8_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_89[8], _GEN_89});
-  wire                outputValues_8_tooFarRight =
-    $signed(_outputValues_8_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_8_rightShift =
-    $signed(_outputValues_8_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_8_tooFarRight ? 6'h3F : _outputValues_8_effectiveShift_T[5:0];
-  wire                _outputValues_8_scaledMagnitude_T =
-    $signed(_outputValues_8_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_8_leftMagnitude =
-    _outputValues_8_scaledMagnitude_T ? 10'h0 - _outputValues_8_effectiveShift_T : 10'h0;
-  wire [64:0]         outputValues_8_quotient =
-    outputValues_8_magnitude >> outputValues_8_rightShift;
-  wire [127:0]        _outputValues_8_restored_T =
-    {63'h0, outputValues_8_quotient} << outputValues_8_rightShift;
-  wire [64:0]         _outputValues_8_remainder_T =
-    outputValues_8_magnitude - _outputValues_8_restored_T[64:0];
-  wire [127:0]        _outputValues_8_halfway_T_4 =
-    128'h1
-    << (outputValues_8_rightShift == 6'h0 ? 6'h0 : outputValues_8_rightShift - 6'h1);
-  wire [190:0]        outputValues_8_scaledMagnitude =
-    outputValues_8_tooFarRight
-      ? 191'h0
-      : _outputValues_8_scaledMagnitude_T
-          ? {126'h0, outputValues_8_magnitude}
-            << ($signed(outputValues_8_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_8_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_8_quotient
-               + {64'h0,
-                  (|outputValues_8_rightShift)
-                    & (_outputValues_8_remainder_T > _outputValues_8_halfway_T_4[64:0]
-                       | _outputValues_8_remainder_T == _outputValues_8_halfway_T_4[64:0]
-                       & outputValues_8_quotient[0])}};
-  wire [190:0]        outputValues_8_signedResult =
-    outputValues_8_negative
-      ? 191'h0 - outputValues_8_scaledMagnitude
-      : outputValues_8_scaledMagnitude;
-  wire [9:0]          _GEN_90 = {4'h0, _GEN_73 + 6'h9};
-  wire [8:0]          _GEN_91 = _GEN_38 + {_GEN_37[_GEN_90][7], _GEN_37[_GEN_90]};
-  wire [65:0]         outputValues_9_matrixProduct =
-    {34'h0, _GEN_36[_GEN_90] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_90]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_9_outputProduct =
-    {64'h0, outputValues_9_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_9_product =
-    {{33{_GEN_60[31]}}, _GEN_60}
-    * {33'h0,
-       (|(outputValues_9_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_9_outputProduct[62:31]};
-  wire                outputValues_9_negative = $signed(outputValues_9_product) < 65'sh0;
-  wire [64:0]         outputValues_9_magnitude =
-    outputValues_9_negative ? 65'h0 - outputValues_9_product : outputValues_9_product;
-  wire [9:0]          _outputValues_9_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_91[8], _GEN_91});
-  wire                outputValues_9_tooFarRight =
-    $signed(_outputValues_9_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_9_rightShift =
-    $signed(_outputValues_9_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_9_tooFarRight ? 6'h3F : _outputValues_9_effectiveShift_T[5:0];
-  wire                _outputValues_9_scaledMagnitude_T =
-    $signed(_outputValues_9_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_9_leftMagnitude =
-    _outputValues_9_scaledMagnitude_T ? 10'h0 - _outputValues_9_effectiveShift_T : 10'h0;
-  wire [64:0]         outputValues_9_quotient =
-    outputValues_9_magnitude >> outputValues_9_rightShift;
-  wire [127:0]        _outputValues_9_restored_T =
-    {63'h0, outputValues_9_quotient} << outputValues_9_rightShift;
-  wire [64:0]         _outputValues_9_remainder_T =
-    outputValues_9_magnitude - _outputValues_9_restored_T[64:0];
-  wire [127:0]        _outputValues_9_halfway_T_4 =
-    128'h1
-    << (outputValues_9_rightShift == 6'h0 ? 6'h0 : outputValues_9_rightShift - 6'h1);
-  wire [190:0]        outputValues_9_scaledMagnitude =
-    outputValues_9_tooFarRight
-      ? 191'h0
-      : _outputValues_9_scaledMagnitude_T
-          ? {126'h0, outputValues_9_magnitude}
-            << ($signed(outputValues_9_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_9_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_9_quotient
-               + {64'h0,
-                  (|outputValues_9_rightShift)
-                    & (_outputValues_9_remainder_T > _outputValues_9_halfway_T_4[64:0]
-                       | _outputValues_9_remainder_T == _outputValues_9_halfway_T_4[64:0]
-                       & outputValues_9_quotient[0])}};
-  wire [190:0]        outputValues_9_signedResult =
-    outputValues_9_negative
-      ? 191'h0 - outputValues_9_scaledMagnitude
-      : outputValues_9_scaledMagnitude;
-  wire [9:0]          _GEN_92 = {4'h0, _GEN_73 + 6'hA};
-  wire [8:0]          _GEN_93 = _GEN_38 + {_GEN_37[_GEN_92][7], _GEN_37[_GEN_92]};
-  wire [65:0]         outputValues_10_matrixProduct =
-    {34'h0, _GEN_36[_GEN_92] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_92]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_10_outputProduct =
-    {64'h0, outputValues_10_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_10_product =
-    {{33{_GEN_62[31]}}, _GEN_62}
-    * {33'h0,
-       (|(outputValues_10_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_10_outputProduct[62:31]};
-  wire                outputValues_10_negative =
-    $signed(outputValues_10_product) < 65'sh0;
-  wire [64:0]         outputValues_10_magnitude =
-    outputValues_10_negative ? 65'h0 - outputValues_10_product : outputValues_10_product;
-  wire [9:0]          _outputValues_10_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_93[8], _GEN_93});
-  wire                outputValues_10_tooFarRight =
-    $signed(_outputValues_10_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_10_rightShift =
-    $signed(_outputValues_10_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_10_tooFarRight ? 6'h3F : _outputValues_10_effectiveShift_T[5:0];
-  wire                _outputValues_10_scaledMagnitude_T =
-    $signed(_outputValues_10_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_10_leftMagnitude =
-    _outputValues_10_scaledMagnitude_T
-      ? 10'h0 - _outputValues_10_effectiveShift_T
-      : 10'h0;
-  wire [64:0]         outputValues_10_quotient =
-    outputValues_10_magnitude >> outputValues_10_rightShift;
-  wire [127:0]        _outputValues_10_restored_T =
-    {63'h0, outputValues_10_quotient} << outputValues_10_rightShift;
-  wire [64:0]         _outputValues_10_remainder_T =
-    outputValues_10_magnitude - _outputValues_10_restored_T[64:0];
-  wire [127:0]        _outputValues_10_halfway_T_4 =
-    128'h1
-    << (outputValues_10_rightShift == 6'h0 ? 6'h0 : outputValues_10_rightShift - 6'h1);
-  wire [190:0]        outputValues_10_scaledMagnitude =
-    outputValues_10_tooFarRight
-      ? 191'h0
-      : _outputValues_10_scaledMagnitude_T
-          ? {126'h0, outputValues_10_magnitude}
-            << ($signed(outputValues_10_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_10_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_10_quotient
-               + {64'h0,
-                  (|outputValues_10_rightShift)
-                    & (_outputValues_10_remainder_T > _outputValues_10_halfway_T_4[64:0]
-                       | _outputValues_10_remainder_T == _outputValues_10_halfway_T_4[64:0]
-                       & outputValues_10_quotient[0])}};
-  wire [190:0]        outputValues_10_signedResult =
-    outputValues_10_negative
-      ? 191'h0 - outputValues_10_scaledMagnitude
-      : outputValues_10_scaledMagnitude;
-  wire [9:0]          _GEN_94 = {4'h0, _GEN_73 + 6'hB};
-  wire [8:0]          _GEN_95 = _GEN_38 + {_GEN_37[_GEN_94][7], _GEN_37[_GEN_94]};
-  wire [65:0]         outputValues_11_matrixProduct =
-    {34'h0, _GEN_36[_GEN_94] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_94]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_11_outputProduct =
-    {64'h0, outputValues_11_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_11_product =
-    {{33{_GEN_64[31]}}, _GEN_64}
-    * {33'h0,
-       (|(outputValues_11_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_11_outputProduct[62:31]};
-  wire                outputValues_11_negative =
-    $signed(outputValues_11_product) < 65'sh0;
-  wire [64:0]         outputValues_11_magnitude =
-    outputValues_11_negative ? 65'h0 - outputValues_11_product : outputValues_11_product;
-  wire [9:0]          _outputValues_11_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_95[8], _GEN_95});
-  wire                outputValues_11_tooFarRight =
-    $signed(_outputValues_11_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_11_rightShift =
-    $signed(_outputValues_11_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_11_tooFarRight ? 6'h3F : _outputValues_11_effectiveShift_T[5:0];
-  wire                _outputValues_11_scaledMagnitude_T =
-    $signed(_outputValues_11_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_11_leftMagnitude =
-    _outputValues_11_scaledMagnitude_T
-      ? 10'h0 - _outputValues_11_effectiveShift_T
-      : 10'h0;
-  wire [64:0]         outputValues_11_quotient =
-    outputValues_11_magnitude >> outputValues_11_rightShift;
-  wire [127:0]        _outputValues_11_restored_T =
-    {63'h0, outputValues_11_quotient} << outputValues_11_rightShift;
-  wire [64:0]         _outputValues_11_remainder_T =
-    outputValues_11_magnitude - _outputValues_11_restored_T[64:0];
-  wire [127:0]        _outputValues_11_halfway_T_4 =
-    128'h1
-    << (outputValues_11_rightShift == 6'h0 ? 6'h0 : outputValues_11_rightShift - 6'h1);
-  wire [190:0]        outputValues_11_scaledMagnitude =
-    outputValues_11_tooFarRight
-      ? 191'h0
-      : _outputValues_11_scaledMagnitude_T
-          ? {126'h0, outputValues_11_magnitude}
-            << ($signed(outputValues_11_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_11_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_11_quotient
-               + {64'h0,
-                  (|outputValues_11_rightShift)
-                    & (_outputValues_11_remainder_T > _outputValues_11_halfway_T_4[64:0]
-                       | _outputValues_11_remainder_T == _outputValues_11_halfway_T_4[64:0]
-                       & outputValues_11_quotient[0])}};
-  wire [190:0]        outputValues_11_signedResult =
-    outputValues_11_negative
-      ? 191'h0 - outputValues_11_scaledMagnitude
-      : outputValues_11_scaledMagnitude;
-  wire [9:0]          _GEN_96 = {4'h0, _GEN_73 + 6'hC};
-  wire [8:0]          _GEN_97 = _GEN_38 + {_GEN_37[_GEN_96][7], _GEN_37[_GEN_96]};
-  wire [65:0]         outputValues_12_matrixProduct =
-    {34'h0, _GEN_36[_GEN_96] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_96]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_12_outputProduct =
-    {64'h0, outputValues_12_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_12_product =
-    {{33{_GEN_66[31]}}, _GEN_66}
-    * {33'h0,
-       (|(outputValues_12_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_12_outputProduct[62:31]};
-  wire                outputValues_12_negative =
-    $signed(outputValues_12_product) < 65'sh0;
-  wire [64:0]         outputValues_12_magnitude =
-    outputValues_12_negative ? 65'h0 - outputValues_12_product : outputValues_12_product;
-  wire [9:0]          _outputValues_12_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_97[8], _GEN_97});
-  wire                outputValues_12_tooFarRight =
-    $signed(_outputValues_12_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_12_rightShift =
-    $signed(_outputValues_12_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_12_tooFarRight ? 6'h3F : _outputValues_12_effectiveShift_T[5:0];
-  wire                _outputValues_12_scaledMagnitude_T =
-    $signed(_outputValues_12_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_12_leftMagnitude =
-    _outputValues_12_scaledMagnitude_T
-      ? 10'h0 - _outputValues_12_effectiveShift_T
-      : 10'h0;
-  wire [64:0]         outputValues_12_quotient =
-    outputValues_12_magnitude >> outputValues_12_rightShift;
-  wire [127:0]        _outputValues_12_restored_T =
-    {63'h0, outputValues_12_quotient} << outputValues_12_rightShift;
-  wire [64:0]         _outputValues_12_remainder_T =
-    outputValues_12_magnitude - _outputValues_12_restored_T[64:0];
-  wire [127:0]        _outputValues_12_halfway_T_4 =
-    128'h1
-    << (outputValues_12_rightShift == 6'h0 ? 6'h0 : outputValues_12_rightShift - 6'h1);
-  wire [190:0]        outputValues_12_scaledMagnitude =
-    outputValues_12_tooFarRight
-      ? 191'h0
-      : _outputValues_12_scaledMagnitude_T
-          ? {126'h0, outputValues_12_magnitude}
-            << ($signed(outputValues_12_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_12_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_12_quotient
-               + {64'h0,
-                  (|outputValues_12_rightShift)
-                    & (_outputValues_12_remainder_T > _outputValues_12_halfway_T_4[64:0]
-                       | _outputValues_12_remainder_T == _outputValues_12_halfway_T_4[64:0]
-                       & outputValues_12_quotient[0])}};
-  wire [190:0]        outputValues_12_signedResult =
-    outputValues_12_negative
-      ? 191'h0 - outputValues_12_scaledMagnitude
-      : outputValues_12_scaledMagnitude;
-  wire [9:0]          _GEN_98 = {4'h0, _GEN_73 + 6'hD};
-  wire [8:0]          _GEN_99 = _GEN_38 + {_GEN_37[_GEN_98][7], _GEN_37[_GEN_98]};
-  wire [65:0]         outputValues_13_matrixProduct =
-    {34'h0, _GEN_36[_GEN_98] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_98]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_13_outputProduct =
-    {64'h0, outputValues_13_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_13_product =
-    {{33{_GEN_68[31]}}, _GEN_68}
-    * {33'h0,
-       (|(outputValues_13_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_13_outputProduct[62:31]};
-  wire                outputValues_13_negative =
-    $signed(outputValues_13_product) < 65'sh0;
-  wire [64:0]         outputValues_13_magnitude =
-    outputValues_13_negative ? 65'h0 - outputValues_13_product : outputValues_13_product;
-  wire [9:0]          _outputValues_13_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_99[8], _GEN_99});
-  wire                outputValues_13_tooFarRight =
-    $signed(_outputValues_13_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_13_rightShift =
-    $signed(_outputValues_13_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_13_tooFarRight ? 6'h3F : _outputValues_13_effectiveShift_T[5:0];
-  wire                _outputValues_13_scaledMagnitude_T =
-    $signed(_outputValues_13_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_13_leftMagnitude =
-    _outputValues_13_scaledMagnitude_T
-      ? 10'h0 - _outputValues_13_effectiveShift_T
-      : 10'h0;
-  wire [64:0]         outputValues_13_quotient =
-    outputValues_13_magnitude >> outputValues_13_rightShift;
-  wire [127:0]        _outputValues_13_restored_T =
-    {63'h0, outputValues_13_quotient} << outputValues_13_rightShift;
-  wire [64:0]         _outputValues_13_remainder_T =
-    outputValues_13_magnitude - _outputValues_13_restored_T[64:0];
-  wire [127:0]        _outputValues_13_halfway_T_4 =
-    128'h1
-    << (outputValues_13_rightShift == 6'h0 ? 6'h0 : outputValues_13_rightShift - 6'h1);
-  wire [190:0]        outputValues_13_scaledMagnitude =
-    outputValues_13_tooFarRight
-      ? 191'h0
-      : _outputValues_13_scaledMagnitude_T
-          ? {126'h0, outputValues_13_magnitude}
-            << ($signed(outputValues_13_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_13_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_13_quotient
-               + {64'h0,
-                  (|outputValues_13_rightShift)
-                    & (_outputValues_13_remainder_T > _outputValues_13_halfway_T_4[64:0]
-                       | _outputValues_13_remainder_T == _outputValues_13_halfway_T_4[64:0]
-                       & outputValues_13_quotient[0])}};
-  wire [190:0]        outputValues_13_signedResult =
-    outputValues_13_negative
-      ? 191'h0 - outputValues_13_scaledMagnitude
-      : outputValues_13_scaledMagnitude;
-  wire [9:0]          _GEN_100 = {4'h0, _GEN_73 + 6'hE};
-  wire [8:0]          _GEN_101 = _GEN_38 + {_GEN_37[_GEN_100][7], _GEN_37[_GEN_100]};
-  wire [65:0]         outputValues_14_matrixProduct =
-    {34'h0, _GEN_36[_GEN_100] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_100]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_14_outputProduct =
-    {64'h0, outputValues_14_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_14_product =
-    {{33{_GEN_70[31]}}, _GEN_70}
-    * {33'h0,
-       (|(outputValues_14_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_14_outputProduct[62:31]};
-  wire                outputValues_14_negative =
-    $signed(outputValues_14_product) < 65'sh0;
-  wire [64:0]         outputValues_14_magnitude =
-    outputValues_14_negative ? 65'h0 - outputValues_14_product : outputValues_14_product;
-  wire [9:0]          _outputValues_14_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_101[8], _GEN_101});
-  wire                outputValues_14_tooFarRight =
-    $signed(_outputValues_14_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_14_rightShift =
-    $signed(_outputValues_14_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_14_tooFarRight ? 6'h3F : _outputValues_14_effectiveShift_T[5:0];
-  wire                _outputValues_14_scaledMagnitude_T =
-    $signed(_outputValues_14_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_14_leftMagnitude =
-    _outputValues_14_scaledMagnitude_T
-      ? 10'h0 - _outputValues_14_effectiveShift_T
-      : 10'h0;
-  wire [64:0]         outputValues_14_quotient =
-    outputValues_14_magnitude >> outputValues_14_rightShift;
-  wire [127:0]        _outputValues_14_restored_T =
-    {63'h0, outputValues_14_quotient} << outputValues_14_rightShift;
-  wire [64:0]         _outputValues_14_remainder_T =
-    outputValues_14_magnitude - _outputValues_14_restored_T[64:0];
-  wire [127:0]        _outputValues_14_halfway_T_4 =
-    128'h1
-    << (outputValues_14_rightShift == 6'h0 ? 6'h0 : outputValues_14_rightShift - 6'h1);
-  wire [190:0]        outputValues_14_scaledMagnitude =
-    outputValues_14_tooFarRight
-      ? 191'h0
-      : _outputValues_14_scaledMagnitude_T
-          ? {126'h0, outputValues_14_magnitude}
-            << ($signed(outputValues_14_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_14_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_14_quotient
-               + {64'h0,
-                  (|outputValues_14_rightShift)
-                    & (_outputValues_14_remainder_T > _outputValues_14_halfway_T_4[64:0]
-                       | _outputValues_14_remainder_T == _outputValues_14_halfway_T_4[64:0]
-                       & outputValues_14_quotient[0])}};
-  wire [190:0]        outputValues_14_signedResult =
-    outputValues_14_negative
-      ? 191'h0 - outputValues_14_scaledMagnitude
-      : outputValues_14_scaledMagnitude;
-  wire [9:0]          _GEN_102 = {4'h0, _GEN_73 + 6'hF};
-  wire [8:0]          _GEN_103 = _GEN_38 + {_GEN_37[_GEN_102][7], _GEN_37[_GEN_102]};
-  wire [65:0]         outputValues_15_matrixProduct =
-    {34'h0, _GEN_36[_GEN_102] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_102]}
-    * {34'h0, _activationMultiplier_T_15 ? 32'h80000000 : io_scale_activationScale};
-  wire [98:0]         outputValues_15_outputProduct =
-    {64'h0, outputValues_15_matrixProduct[65:31]}
-    * {67'h0, _outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale};
-  wire [64:0]         outputValues_15_product =
-    {{33{_GEN_72[31]}}, _GEN_72}
-    * {33'h0,
-       (|(outputValues_15_outputProduct[98:63]))
-         ? 32'hFFFFFFFF
-         : outputValues_15_outputProduct[62:31]};
-  wire                outputValues_15_negative =
-    $signed(outputValues_15_product) < 65'sh0;
-  wire [64:0]         outputValues_15_magnitude =
-    outputValues_15_negative ? 65'h0 - outputValues_15_product : outputValues_15_product;
-  wire [9:0]          _outputValues_15_effectiveShift_T =
-    10'h1F - (_GEN_40 + {_GEN_103[8], _GEN_103});
-  wire                outputValues_15_tooFarRight =
-    $signed(_outputValues_15_effectiveShift_T) > 10'sh3F;
-  wire [5:0]          outputValues_15_rightShift =
-    $signed(_outputValues_15_effectiveShift_T) < 10'sh1
-      ? 6'h0
-      : outputValues_15_tooFarRight ? 6'h3F : _outputValues_15_effectiveShift_T[5:0];
-  wire                _outputValues_15_scaledMagnitude_T =
-    $signed(_outputValues_15_effectiveShift_T) < 10'sh0;
-  wire [9:0]          outputValues_15_leftMagnitude =
-    _outputValues_15_scaledMagnitude_T
-      ? 10'h0 - _outputValues_15_effectiveShift_T
-      : 10'h0;
-  wire [64:0]         outputValues_15_quotient =
-    outputValues_15_magnitude >> outputValues_15_rightShift;
-  wire [127:0]        _outputValues_15_restored_T =
-    {63'h0, outputValues_15_quotient} << outputValues_15_rightShift;
-  wire [64:0]         _outputValues_15_remainder_T =
-    outputValues_15_magnitude - _outputValues_15_restored_T[64:0];
-  wire [127:0]        _outputValues_15_halfway_T_4 =
-    128'h1
-    << (outputValues_15_rightShift == 6'h0 ? 6'h0 : outputValues_15_rightShift - 6'h1);
-  wire [190:0]        outputValues_15_scaledMagnitude =
-    outputValues_15_tooFarRight
-      ? 191'h0
-      : _outputValues_15_scaledMagnitude_T
-          ? {126'h0, outputValues_15_magnitude}
-            << ($signed(outputValues_15_leftMagnitude) > 10'sh3F
-                  ? 6'h3F
-                  : outputValues_15_leftMagnitude[5:0])
-          : {126'h0,
-             outputValues_15_quotient
-               + {64'h0,
-                  (|outputValues_15_rightShift)
-                    & (_outputValues_15_remainder_T > _outputValues_15_halfway_T_4[64:0]
-                       | _outputValues_15_remainder_T == _outputValues_15_halfway_T_4[64:0]
-                       & outputValues_15_quotient[0])}};
-  wire [190:0]        outputValues_15_signedResult =
-    outputValues_15_negative
-      ? 191'h0 - outputValues_15_scaledMagnitude
-      : outputValues_15_scaledMagnitude;
   reg  [5:0]          drainBeat;
   reg  [2:0]          drainToken;
   reg                 drainLastIssued;
@@ -10674,66 +9789,66 @@ module Linear_1(
   wire                advanceOutput = ~outputValid | io_out_ready;
   wire                issueOutputRead =
     (drainBank ? outputFull_1 : outputFull_0) & ~drainLastIssued & advanceOutput;
-  wire [9:0]          _GEN_104 = {4'h0, drainBeat};
+  wire [9:0]          _GEN_88 = {4'h0, drainBeat};
   always @(posedge clock) begin
-    automatic logic        _GEN_105 = loadBeat == 4'h0 & loadToken == 3'h0;
-    automatic logic        _GEN_106;
-    automatic logic        _GEN_107;
-    automatic logic        _GEN_108;
-    automatic logic        _GEN_109;
-    automatic logic        _GEN_110;
-    automatic logic [3:0]  _GEN_111;
-    automatic logic [4:0]  _GEN_112;
-    automatic logic        _GEN_113;
-    automatic logic [64:0] _GEN_114;
-    automatic logic [64:0] _GEN_115;
-    automatic logic [64:0] _GEN_116;
-    automatic logic [64:0] _GEN_117;
-    automatic logic [64:0] _GEN_118;
-    automatic logic [64:0] _GEN_119;
-    automatic logic [64:0] _GEN_120;
-    automatic logic [64:0] _GEN_121;
-    automatic logic [64:0] _GEN_122;
-    automatic logic [64:0] _GEN_123;
-    automatic logic [64:0] _GEN_124;
-    automatic logic [64:0] _GEN_125;
-    automatic logic [64:0] _GEN_126;
-    automatic logic [64:0] _GEN_127;
-    automatic logic [64:0] _GEN_128;
-    automatic logic [64:0] _GEN_129;
-    automatic logic        _GEN_130;
-    automatic logic        _GEN_131;
+    automatic logic        _GEN_89 = loadBeat == 4'h0 & loadToken == 3'h0;
+    automatic logic        _GEN_90;
+    automatic logic        _GEN_91;
+    automatic logic        _GEN_92;
+    automatic logic        _GEN_93;
+    automatic logic        _GEN_94;
+    automatic logic [3:0]  _GEN_95;
+    automatic logic [4:0]  _GEN_96;
+    automatic logic        _GEN_97;
+    automatic logic [64:0] _GEN_98;
+    automatic logic [64:0] _GEN_99;
+    automatic logic [64:0] _GEN_100;
+    automatic logic [64:0] _GEN_101;
+    automatic logic [64:0] _GEN_102;
+    automatic logic [64:0] _GEN_103;
+    automatic logic [64:0] _GEN_104;
+    automatic logic [64:0] _GEN_105;
+    automatic logic [64:0] _GEN_106;
+    automatic logic [64:0] _GEN_107;
+    automatic logic [64:0] _GEN_108;
+    automatic logic [64:0] _GEN_109;
+    automatic logic [64:0] _GEN_110;
+    automatic logic [64:0] _GEN_111;
+    automatic logic [64:0] _GEN_112;
+    automatic logic [64:0] _GEN_113;
+    automatic logic        _GEN_114;
+    automatic logic        _GEN_115;
     automatic logic        _outputMeta_last_T;
-    _GEN_106 = loadBeat == 4'hB;
-    _GEN_107 = {1'h0, loadToken} == loadChunkTokens - 4'h1;
-    _GEN_108 = inputMem_io_writeEn & _GEN_106 & _GEN_107 & ~loadBank;
-    _GEN_109 = inputMem_io_writeEn & _GEN_106 & _GEN_107 & loadBank;
-    _GEN_110 =
+    _GEN_90 = loadBeat == 4'hB;
+    _GEN_91 = {1'h0, loadToken} == loadChunkTokens - 4'h1;
+    _GEN_92 = inputMem_io_writeEn & _GEN_90 & _GEN_91 & ~loadBank;
+    _GEN_93 = inputMem_io_writeEn & _GEN_90 & _GEN_91 & loadBank;
+    _GEN_94 =
       state == 3'h0 & (computeBank ? inputFull_1 : inputFull_0)
       & ~(writeBank ? outputFull_1 : outputFull_0);
-    _GEN_111 = computeBank ? inputTokenCount_1 : inputTokenCount_0;
-    _GEN_112 = computeBank ? inputBaseToken_1 : inputBaseToken_0;
-    _GEN_113 = computeBank ? inputStart_1 : inputStart_0;
-    _GEN_114 = {{2{_biasMem_io_readData[31]}}, _biasMem_io_readData[31:0], 31'h0};
-    _GEN_115 = {{2{_biasMem_io_readData[63]}}, _biasMem_io_readData[63:32], 31'h0};
-    _GEN_116 = {{2{_biasMem_io_readData[95]}}, _biasMem_io_readData[95:64], 31'h0};
-    _GEN_117 = {{2{_biasMem_io_readData[127]}}, _biasMem_io_readData[127:96], 31'h0};
-    _GEN_118 = {{2{_biasMem_io_readData[159]}}, _biasMem_io_readData[159:128], 31'h0};
-    _GEN_119 = {{2{_biasMem_io_readData[191]}}, _biasMem_io_readData[191:160], 31'h0};
-    _GEN_120 = {{2{_biasMem_io_readData[223]}}, _biasMem_io_readData[223:192], 31'h0};
-    _GEN_121 = {{2{_biasMem_io_readData[255]}}, _biasMem_io_readData[255:224], 31'h0};
-    _GEN_122 = {{2{_biasMem_io_readData[287]}}, _biasMem_io_readData[287:256], 31'h0};
-    _GEN_123 = {{2{_biasMem_io_readData[319]}}, _biasMem_io_readData[319:288], 31'h0};
-    _GEN_124 = {{2{_biasMem_io_readData[351]}}, _biasMem_io_readData[351:320], 31'h0};
-    _GEN_125 = {{2{_biasMem_io_readData[383]}}, _biasMem_io_readData[383:352], 31'h0};
-    _GEN_126 = {{2{_biasMem_io_readData[415]}}, _biasMem_io_readData[415:384], 31'h0};
-    _GEN_127 = {{2{_biasMem_io_readData[447]}}, _biasMem_io_readData[447:416], 31'h0};
-    _GEN_128 = {{2{_biasMem_io_readData[479]}}, _biasMem_io_readData[479:448], 31'h0};
-    _GEN_129 = {{2{_biasMem_io_readData[511]}}, _biasMem_io_readData[511:480], 31'h0};
-    _GEN_130 =
+    _GEN_95 = computeBank ? inputTokenCount_1 : inputTokenCount_0;
+    _GEN_96 = computeBank ? inputBaseToken_1 : inputBaseToken_0;
+    _GEN_97 = computeBank ? inputStart_1 : inputStart_0;
+    _GEN_98 = {{2{_biasMem_io_readData[31]}}, _biasMem_io_readData[31:0], 31'h0};
+    _GEN_99 = {{2{_biasMem_io_readData[63]}}, _biasMem_io_readData[63:32], 31'h0};
+    _GEN_100 = {{2{_biasMem_io_readData[95]}}, _biasMem_io_readData[95:64], 31'h0};
+    _GEN_101 = {{2{_biasMem_io_readData[127]}}, _biasMem_io_readData[127:96], 31'h0};
+    _GEN_102 = {{2{_biasMem_io_readData[159]}}, _biasMem_io_readData[159:128], 31'h0};
+    _GEN_103 = {{2{_biasMem_io_readData[191]}}, _biasMem_io_readData[191:160], 31'h0};
+    _GEN_104 = {{2{_biasMem_io_readData[223]}}, _biasMem_io_readData[223:192], 31'h0};
+    _GEN_105 = {{2{_biasMem_io_readData[255]}}, _biasMem_io_readData[255:224], 31'h0};
+    _GEN_106 = {{2{_biasMem_io_readData[287]}}, _biasMem_io_readData[287:256], 31'h0};
+    _GEN_107 = {{2{_biasMem_io_readData[319]}}, _biasMem_io_readData[319:288], 31'h0};
+    _GEN_108 = {{2{_biasMem_io_readData[351]}}, _biasMem_io_readData[351:320], 31'h0};
+    _GEN_109 = {{2{_biasMem_io_readData[383]}}, _biasMem_io_readData[383:352], 31'h0};
+    _GEN_110 = {{2{_biasMem_io_readData[415]}}, _biasMem_io_readData[415:384], 31'h0};
+    _GEN_111 = {{2{_biasMem_io_readData[447]}}, _biasMem_io_readData[447:416], 31'h0};
+    _GEN_112 = {{2{_biasMem_io_readData[479]}}, _biasMem_io_readData[479:448], 31'h0};
+    _GEN_113 = {{2{_biasMem_io_readData[511]}}, _biasMem_io_readData[511:480], 31'h0};
+    _GEN_114 =
       allAccValid
       & (_accumulatorAdds_15_io_out_ready_T | _accumulatorAdds_15_io_out_ready_T_1);
-    _GEN_131 = state == 3'h4;
+    _GEN_115 = state == 3'h4;
     _outputMeta_last_T = drainBeat == 6'h2F;
     if (reset) begin
       computeBank <= 1'h0;
@@ -10762,121 +9877,136 @@ module Linear_1(
       completedOps <= 8'h0;
       writeToken <= 3'h0;
       REG <= 1'h0;
+      outputCmdValid_0 <= 1'h0;
+      outputCmdValid_1 <= 1'h0;
+      outputCmdValid_2 <= 1'h0;
+      outputCmdValid_3 <= 1'h0;
+      outputCmdValid_4 <= 1'h0;
+      writeFlushTimer <= 3'h0;
       drainBeat <= 6'h0;
       drainToken <= 3'h0;
       drainLastIssued <= 1'h0;
       outputValid <= 1'h0;
     end
     else begin
-      automatic logic       _GEN_132;
-      automatic logic       _GEN_133;
-      automatic logic       _GEN_134;
+      automatic logic       _GEN_116;
+      automatic logic       _GEN_117;
+      automatic logic       _GEN_118;
       automatic logic       scheduleAdvance;
-      automatic logic [3:0] _GEN_135 = computeTokens - 4'h1;
-      automatic logic       _GEN_136;
-      automatic logic       _GEN_137;
-      automatic logic       _GEN_138;
-      automatic logic       _GEN_139;
-      automatic logic       _GEN_140;
-      automatic logic       _GEN_141;
-      automatic logic       _GEN_142;
-      automatic logic       _GEN_143;
-      automatic logic       _GEN_144 =
+      automatic logic [3:0] _GEN_119 = computeTokens - 4'h1;
+      automatic logic       _GEN_120;
+      automatic logic       _GEN_121;
+      automatic logic       _GEN_122;
+      automatic logic       _GEN_123;
+      automatic logic       _GEN_124;
+      automatic logic       _GEN_125;
+      automatic logic       _GEN_126 = state == 3'h6;
+      automatic logic       _GEN_127 = _GEN_126 & writeFlushTimer[2];
+      automatic logic       _GEN_128;
+      automatic logic       _GEN_129 =
         io_out_ready & outputValid & outputMeta_last & drainLastIssued;
-      _GEN_132 = weightLoadCnt == 10'h23F;
-      _GEN_133 = biasLoadCnt == 6'h2F;
-      _GEN_134 = inputMem_io_writeEn & _GEN_106 & _GEN_107;
+      _GEN_116 = weightLoadCnt == 10'h23F;
+      _GEN_117 = biasLoadCnt == 6'h2F;
+      _GEN_118 = inputMem_io_writeEn & _GEN_90 & _GEN_91;
       scheduleAdvance =
         _accumulatorAdds_15_io_out_ready_T & advanceRead
         & (_GEN_17 >= computeTokens | _weightMem_io_readReady);
-      _GEN_136 = scheduleToken == _GEN_135[2:0];
-      _GEN_137 = rowCnt == 4'hB;
-      _GEN_138 = {1'h0, writeToken} == _GEN_135;
-      _GEN_139 = outBeat == 6'h2F;
-      _GEN_140 = outputMem_io_writeEn & _GEN_138 & _GEN_139;
-      _GEN_141 = outputMem_io_writeEn & _GEN_138;
-      _GEN_142 = ~_GEN_141 | _GEN_139;
-      _GEN_143 =
+      _GEN_120 = scheduleToken == _GEN_119[2:0];
+      _GEN_121 = rowCnt == 4'hB;
+      _GEN_122 = {1'h0, writeToken} == _GEN_119;
+      _GEN_123 = outBeat == 6'h2F;
+      _GEN_124 = outputRequantizers_requantizer_io_in_valid & _GEN_122;
+      _GEN_125 = ~_GEN_124 | _GEN_123;
+      _GEN_128 =
         {1'h0, drainToken} == (drainBank ? outputTokenCount_1 : outputTokenCount_0)
         - 4'h1;
-      computeBank <= _GEN_140 ^ computeBank;
+      computeBank <= _GEN_127 ^ computeBank;
       if (weightMem_io_writeEn)
-        weightLoadCnt <= _GEN_132 ? 10'h0 : weightLoadCnt + 10'h1;
-      weightLoaded <= weightMem_io_writeEn & _GEN_132 | weightLoaded;
+        weightLoadCnt <= _GEN_116 ? 10'h0 : weightLoadCnt + 10'h1;
+      weightLoaded <= weightMem_io_writeEn & _GEN_116 | weightLoaded;
       if (biasMem_io_writeEn)
-        biasLoadCnt <= _GEN_133 ? 6'h0 : biasLoadCnt + 6'h1;
-      biasLoaded <= biasMem_io_writeEn & _GEN_133 | biasLoaded;
+        biasLoadCnt <= _GEN_117 ? 6'h0 : biasLoadCnt + 6'h1;
+      biasLoaded <= biasMem_io_writeEn & _GEN_117 | biasLoaded;
       inputFull_0 <=
-        ~(outputMem_io_writeEn & _GEN_138 & _GEN_139 & ~computeBank)
-        & (_GEN_108 | inputFull_0);
+        ~(_GEN_126 & writeFlushTimer[2] & ~computeBank) & (_GEN_92 | inputFull_0);
       inputFull_1 <=
-        ~(outputMem_io_writeEn & _GEN_138 & _GEN_139 & computeBank)
-        & (_GEN_109 | inputFull_1);
+        ~(_GEN_126 & writeFlushTimer[2] & computeBank) & (_GEN_93 | inputFull_1);
       outputFull_0 <=
-        ~(_GEN_144 & ~drainBank)
-        & (outputMem_io_writeEn & _GEN_138 & _GEN_139 & ~writeBank | outputFull_0);
+        ~(_GEN_129 & ~drainBank)
+        & (_GEN_126 & writeFlushTimer[2] & ~writeBank | outputFull_0);
       outputFull_1 <=
-        ~(_GEN_144 & drainBank)
-        & (outputMem_io_writeEn & _GEN_138 & _GEN_139 & writeBank | outputFull_1);
-      loadBank <= _GEN_134 ^ loadBank;
-      writeBank <= _GEN_140 ^ writeBank;
-      drainBank <= _GEN_144 ^ drainBank;
+        ~(_GEN_129 & drainBank)
+        & (_GEN_126 & writeFlushTimer[2] & writeBank | outputFull_1);
+      loadBank <= _GEN_118 ^ loadBank;
+      writeBank <= _GEN_127 ^ writeBank;
+      drainBank <= _GEN_129 ^ drainBank;
       if (inputMem_io_writeEn)
-        loadBeat <= _GEN_106 ? 4'h0 : loadBeat + 4'h1;
-      if (inputMem_io_writeEn & _GEN_106)
-        loadToken <= _GEN_107 ? 3'h0 : loadToken + 3'h1;
-      if (_GEN_134) begin
+        loadBeat <= _GEN_90 ? 4'h0 : loadBeat + 4'h1;
+      if (inputMem_io_writeEn & _GEN_90)
+        loadToken <= _GEN_91 ? 3'h0 : loadToken + 3'h1;
+      if (_GEN_118) begin
         automatic logic [4:0] _nextLoadedTokens_T =
           loadedTokens + {1'h0, loadChunkTokens};
         automatic logic [4:0] _remainingTokens_T = 5'h10 - _nextLoadedTokens_T;
         loadedTokens <= _nextLoadedTokens_T;
         loadChunkTokens <= _remainingTokens_T > 5'h8 ? 4'h8 : _remainingTokens_T[3:0];
       end
-      if (_GEN_141)
-        state <= {2'h0, ~_GEN_139};
-      else if (_GEN_131)
+      if (_GEN_127)
+        state <= 3'h0;
+      else if (_GEN_124)
+        state <= _GEN_123 ? 3'h6 : 3'h1;
+      else if (_GEN_115)
         state <= {~outputGroup, 2'h1};
-      else if (_GEN_130 & {1'h0, completedOps} == {5'h0, computeTokens} * 9'h18 - 9'h1)
+      else if (_GEN_114 & {1'h0, completedOps} == {5'h0, computeTokens} * 9'h18 - 9'h1)
         state <= 3'h4;
-      else if (scheduleAdvance & _GEN_136 & inputGroup & _GEN_137)
+      else if (scheduleAdvance & _GEN_120 & inputGroup & _GEN_121)
         state <= 3'h3;
       else if (biasMem_io_readEn)
         state <= 3'h2;
-      else if (_GEN_110)
+      else if (_GEN_94)
         state <= 3'h1;
-      if (_GEN_142) begin
-        if (_GEN_110)
+      if (_GEN_125) begin
+        if (_GEN_94)
           outBeat <= 6'h0;
       end
       else
         outBeat <= outBeat + 6'h1;
-      outputGroup <= _GEN_142 & (~_GEN_131 | ~outputGroup) & ~_GEN_110 & outputGroup;
-      if (~(scheduleAdvance & _GEN_136 & inputGroup) | _GEN_137) begin
+      outputGroup <= _GEN_125 & (~_GEN_115 | ~outputGroup) & ~_GEN_94 & outputGroup;
+      if (~(scheduleAdvance & _GEN_120 & inputGroup) | _GEN_121) begin
         if (biasMem_io_readEn)
           rowCnt <= 4'h0;
       end
       else
         rowCnt <= rowCnt + 4'h1;
       inputGroup <=
-        scheduleAdvance & _GEN_136
+        scheduleAdvance & _GEN_120
           ? ~inputGroup & inputGroup - 1'h1
           : ~biasMem_io_readEn & inputGroup;
       if (scheduleAdvance)
-        scheduleToken <= _GEN_136 ? 3'h0 : scheduleToken + 3'h1;
+        scheduleToken <= _GEN_120 ? 3'h0 : scheduleToken + 3'h1;
       else if (biasMem_io_readEn)
         scheduleToken <= 3'h0;
       if (advanceRead)
         readValid <= issueRead;
-      if (_GEN_130)
+      if (_GEN_114)
         completedOps <= completedOps + 8'h1;
       else if (biasMem_io_readEn)
         completedOps <= 8'h0;
-      if (outputMem_io_writeEn)
-        writeToken <= _GEN_138 ? 3'h0 : writeToken + 3'h1;
-      else if (_GEN_131 & ~outputGroup | _GEN_110)
+      if (outputRequantizers_requantizer_io_in_valid)
+        writeToken <= _GEN_122 ? 3'h0 : writeToken + 3'h1;
+      else if (_GEN_115 & ~outputGroup | _GEN_94)
         writeToken <= 3'h0;
       REG <= biasMem_io_readEn;
-      if (_GEN_144) begin
+      outputCmdValid_0 <= outputRequantizers_requantizer_io_in_valid;
+      outputCmdValid_1 <= outputCmdValid_0;
+      outputCmdValid_2 <= outputCmdValid_1;
+      outputCmdValid_3 <= outputCmdValid_2;
+      outputCmdValid_4 <= outputCmdValid_3;
+      if (_GEN_126)
+        writeFlushTimer <= writeFlushTimer[2] ? 3'h0 : writeFlushTimer + 3'h1;
+      else if (outputRequantizers_requantizer_io_in_valid & _GEN_122 & _GEN_123)
+        writeFlushTimer <= 3'h0;
+      if (_GEN_129) begin
         drainBeat <= 6'h0;
         drainToken <= 3'h0;
       end
@@ -10884,42 +10014,42 @@ module Linear_1(
         if (issueOutputRead)
           drainBeat <= _outputMeta_last_T ? 6'h0 : drainBeat + 6'h1;
         if (issueOutputRead & _outputMeta_last_T)
-          drainToken <= _GEN_143 ? 3'h0 : drainToken + 3'h1;
+          drainToken <= _GEN_128 ? 3'h0 : drainToken + 3'h1;
       end
       drainLastIssued <=
-        ~_GEN_144 & (issueOutputRead & _outputMeta_last_T & _GEN_143 | drainLastIssued);
+        ~_GEN_129 & (issueOutputRead & _outputMeta_last_T & _GEN_128 | drainLastIssued);
       if (advanceOutput)
         outputValid <= issueOutputRead;
     end
-    if (_GEN_108) begin
+    if (_GEN_92) begin
       inputBaseToken_0 <= loadedTokens;
       inputTokenCount_0 <= loadChunkTokens;
     end
-    if (_GEN_109) begin
+    if (_GEN_93) begin
       inputBaseToken_1 <= loadedTokens;
       inputTokenCount_1 <= loadChunkTokens;
     end
-    if (inputMem_io_writeEn & _GEN_105 & ~loadBank)
+    if (inputMem_io_writeEn & _GEN_89 & ~loadBank)
       inputStart_0 <= io_in_bits_st;
-    if (inputMem_io_writeEn & _GEN_105 & loadBank)
+    if (inputMem_io_writeEn & _GEN_89 & loadBank)
       inputStart_1 <= io_in_bits_st;
-    if (_GEN_110 & ~writeBank) begin
-      outputBaseToken_0 <= _GEN_112;
-      outputTokenCount_0 <= _GEN_111;
-      outputStart_0 <= _GEN_113;
+    if (_GEN_94 & ~writeBank) begin
+      outputBaseToken_0 <= _GEN_96;
+      outputTokenCount_0 <= _GEN_95;
+      outputStart_0 <= _GEN_97;
     end
-    if (_GEN_110 & writeBank) begin
-      outputBaseToken_1 <= _GEN_112;
-      outputTokenCount_1 <= _GEN_111;
-      outputStart_1 <= _GEN_113;
+    if (_GEN_94 & writeBank) begin
+      outputBaseToken_1 <= _GEN_96;
+      outputTokenCount_1 <= _GEN_95;
+      outputStart_1 <= _GEN_97;
     end
     if (issueRead) begin
       readContext <= scheduleToken;
       readInputGroup <= inputGroup;
     end
-    if (_GEN_110)
-      computeTokens <= _GEN_111;
-    if (_GEN_130 & _accumulatorAdds_0_io_out_bits_tag == 3'h0) begin
+    if (_GEN_94)
+      computeTokens <= _GEN_95;
+    if (_GEN_114 & _accumulatorAdds_0_io_out_bits_tag == 3'h0) begin
       partials_0_0 <= _accumulatorAdds_0_io_out_bits_value;
       partials_0_1 <= _accumulatorAdds_1_io_out_bits_value;
       partials_0_2 <= _accumulatorAdds_2_io_out_bits_value;
@@ -10941,275 +10071,275 @@ module Linear_1(
       automatic logic         partials_0_0_negative;
       automatic logic [64:0]  partials_0_0_magnitude;
       automatic logic [64:0]  _partials_0_0_remainder_T;
-      automatic logic [190:0] _GEN_145;
+      automatic logic [190:0] _GEN_130;
       automatic logic [190:0] partials_0_0_signedResult;
       automatic logic         partials_0_1_negative;
       automatic logic [64:0]  partials_0_1_magnitude;
       automatic logic [64:0]  _partials_0_1_remainder_T;
-      automatic logic [190:0] _GEN_146;
+      automatic logic [190:0] _GEN_131;
       automatic logic [190:0] partials_0_1_signedResult;
       automatic logic         partials_0_2_negative;
       automatic logic [64:0]  partials_0_2_magnitude;
       automatic logic [64:0]  _partials_0_2_remainder_T;
-      automatic logic [190:0] _GEN_147;
+      automatic logic [190:0] _GEN_132;
       automatic logic [190:0] partials_0_2_signedResult;
       automatic logic         partials_0_3_negative;
       automatic logic [64:0]  partials_0_3_magnitude;
       automatic logic [64:0]  _partials_0_3_remainder_T;
-      automatic logic [190:0] _GEN_148;
+      automatic logic [190:0] _GEN_133;
       automatic logic [190:0] partials_0_3_signedResult;
       automatic logic         partials_0_4_negative;
       automatic logic [64:0]  partials_0_4_magnitude;
       automatic logic [64:0]  _partials_0_4_remainder_T;
-      automatic logic [190:0] _GEN_149;
+      automatic logic [190:0] _GEN_134;
       automatic logic [190:0] partials_0_4_signedResult;
       automatic logic         partials_0_5_negative;
       automatic logic [64:0]  partials_0_5_magnitude;
       automatic logic [64:0]  _partials_0_5_remainder_T;
-      automatic logic [190:0] _GEN_150;
+      automatic logic [190:0] _GEN_135;
       automatic logic [190:0] partials_0_5_signedResult;
       automatic logic         partials_0_6_negative;
       automatic logic [64:0]  partials_0_6_magnitude;
       automatic logic [64:0]  _partials_0_6_remainder_T;
-      automatic logic [190:0] _GEN_151;
+      automatic logic [190:0] _GEN_136;
       automatic logic [190:0] partials_0_6_signedResult;
       automatic logic         partials_0_7_negative;
       automatic logic [64:0]  partials_0_7_magnitude;
       automatic logic [64:0]  _partials_0_7_remainder_T;
-      automatic logic [190:0] _GEN_152;
+      automatic logic [190:0] _GEN_137;
       automatic logic [190:0] partials_0_7_signedResult;
       automatic logic         partials_0_8_negative;
       automatic logic [64:0]  partials_0_8_magnitude;
       automatic logic [64:0]  _partials_0_8_remainder_T;
-      automatic logic [190:0] _GEN_153;
+      automatic logic [190:0] _GEN_138;
       automatic logic [190:0] partials_0_8_signedResult;
       automatic logic         partials_0_9_negative;
       automatic logic [64:0]  partials_0_9_magnitude;
       automatic logic [64:0]  _partials_0_9_remainder_T;
-      automatic logic [190:0] _GEN_154;
+      automatic logic [190:0] _GEN_139;
       automatic logic [190:0] partials_0_9_signedResult;
       automatic logic         partials_0_10_negative;
       automatic logic [64:0]  partials_0_10_magnitude;
       automatic logic [64:0]  _partials_0_10_remainder_T;
-      automatic logic [190:0] _GEN_155;
+      automatic logic [190:0] _GEN_140;
       automatic logic [190:0] partials_0_10_signedResult;
       automatic logic         partials_0_11_negative;
       automatic logic [64:0]  partials_0_11_magnitude;
       automatic logic [64:0]  _partials_0_11_remainder_T;
-      automatic logic [190:0] _GEN_156;
+      automatic logic [190:0] _GEN_141;
       automatic logic [190:0] partials_0_11_signedResult;
       automatic logic         partials_0_12_negative;
       automatic logic [64:0]  partials_0_12_magnitude;
       automatic logic [64:0]  _partials_0_12_remainder_T;
-      automatic logic [190:0] _GEN_157;
+      automatic logic [190:0] _GEN_142;
       automatic logic [190:0] partials_0_12_signedResult;
       automatic logic         partials_0_13_negative;
       automatic logic [64:0]  partials_0_13_magnitude;
       automatic logic [64:0]  _partials_0_13_remainder_T;
-      automatic logic [190:0] _GEN_158;
+      automatic logic [190:0] _GEN_143;
       automatic logic [190:0] partials_0_13_signedResult;
       automatic logic         partials_0_14_negative;
       automatic logic [64:0]  partials_0_14_magnitude;
       automatic logic [64:0]  _partials_0_14_remainder_T;
-      automatic logic [190:0] _GEN_159;
+      automatic logic [190:0] _GEN_144;
       automatic logic [190:0] partials_0_14_signedResult;
       automatic logic         partials_0_15_negative;
       automatic logic [64:0]  partials_0_15_magnitude;
       automatic logic [64:0]  _partials_0_15_remainder_T;
-      automatic logic [190:0] _GEN_160;
+      automatic logic [190:0] _GEN_145;
       automatic logic [190:0] partials_0_15_signedResult;
-      partials_0_0_negative = $signed(_GEN_114) < 65'sh0;
-      partials_0_0_magnitude = partials_0_0_negative ? 65'h0 - _GEN_114 : _GEN_114;
+      partials_0_0_negative = $signed(_GEN_98) < 65'sh0;
+      partials_0_0_magnitude = partials_0_0_negative ? 65'h0 - _GEN_98 : _GEN_98;
       _partials_0_0_remainder_T =
         partials_0_0_magnitude - {partials_0_0_magnitude[64:31], 31'h0};
-      _GEN_145 =
+      _GEN_130 =
         {156'h0,
          {1'h0, partials_0_0_magnitude[64:31]}
            + {34'h0,
               _partials_0_0_remainder_T > 65'h40000000
                 | _partials_0_0_remainder_T == 65'h40000000
                 & partials_0_0_magnitude[31]}};
-      partials_0_0_signedResult = partials_0_0_negative ? 191'h0 - _GEN_145 : _GEN_145;
-      partials_0_1_negative = $signed(_GEN_115) < 65'sh0;
-      partials_0_1_magnitude = partials_0_1_negative ? 65'h0 - _GEN_115 : _GEN_115;
+      partials_0_0_signedResult = partials_0_0_negative ? 191'h0 - _GEN_130 : _GEN_130;
+      partials_0_1_negative = $signed(_GEN_99) < 65'sh0;
+      partials_0_1_magnitude = partials_0_1_negative ? 65'h0 - _GEN_99 : _GEN_99;
       _partials_0_1_remainder_T =
         partials_0_1_magnitude - {partials_0_1_magnitude[64:31], 31'h0};
-      _GEN_146 =
+      _GEN_131 =
         {156'h0,
          {1'h0, partials_0_1_magnitude[64:31]}
            + {34'h0,
               _partials_0_1_remainder_T > 65'h40000000
                 | _partials_0_1_remainder_T == 65'h40000000
                 & partials_0_1_magnitude[31]}};
-      partials_0_1_signedResult = partials_0_1_negative ? 191'h0 - _GEN_146 : _GEN_146;
-      partials_0_2_negative = $signed(_GEN_116) < 65'sh0;
-      partials_0_2_magnitude = partials_0_2_negative ? 65'h0 - _GEN_116 : _GEN_116;
+      partials_0_1_signedResult = partials_0_1_negative ? 191'h0 - _GEN_131 : _GEN_131;
+      partials_0_2_negative = $signed(_GEN_100) < 65'sh0;
+      partials_0_2_magnitude = partials_0_2_negative ? 65'h0 - _GEN_100 : _GEN_100;
       _partials_0_2_remainder_T =
         partials_0_2_magnitude - {partials_0_2_magnitude[64:31], 31'h0};
-      _GEN_147 =
+      _GEN_132 =
         {156'h0,
          {1'h0, partials_0_2_magnitude[64:31]}
            + {34'h0,
               _partials_0_2_remainder_T > 65'h40000000
                 | _partials_0_2_remainder_T == 65'h40000000
                 & partials_0_2_magnitude[31]}};
-      partials_0_2_signedResult = partials_0_2_negative ? 191'h0 - _GEN_147 : _GEN_147;
-      partials_0_3_negative = $signed(_GEN_117) < 65'sh0;
-      partials_0_3_magnitude = partials_0_3_negative ? 65'h0 - _GEN_117 : _GEN_117;
+      partials_0_2_signedResult = partials_0_2_negative ? 191'h0 - _GEN_132 : _GEN_132;
+      partials_0_3_negative = $signed(_GEN_101) < 65'sh0;
+      partials_0_3_magnitude = partials_0_3_negative ? 65'h0 - _GEN_101 : _GEN_101;
       _partials_0_3_remainder_T =
         partials_0_3_magnitude - {partials_0_3_magnitude[64:31], 31'h0};
-      _GEN_148 =
+      _GEN_133 =
         {156'h0,
          {1'h0, partials_0_3_magnitude[64:31]}
            + {34'h0,
               _partials_0_3_remainder_T > 65'h40000000
                 | _partials_0_3_remainder_T == 65'h40000000
                 & partials_0_3_magnitude[31]}};
-      partials_0_3_signedResult = partials_0_3_negative ? 191'h0 - _GEN_148 : _GEN_148;
-      partials_0_4_negative = $signed(_GEN_118) < 65'sh0;
-      partials_0_4_magnitude = partials_0_4_negative ? 65'h0 - _GEN_118 : _GEN_118;
+      partials_0_3_signedResult = partials_0_3_negative ? 191'h0 - _GEN_133 : _GEN_133;
+      partials_0_4_negative = $signed(_GEN_102) < 65'sh0;
+      partials_0_4_magnitude = partials_0_4_negative ? 65'h0 - _GEN_102 : _GEN_102;
       _partials_0_4_remainder_T =
         partials_0_4_magnitude - {partials_0_4_magnitude[64:31], 31'h0};
-      _GEN_149 =
+      _GEN_134 =
         {156'h0,
          {1'h0, partials_0_4_magnitude[64:31]}
            + {34'h0,
               _partials_0_4_remainder_T > 65'h40000000
                 | _partials_0_4_remainder_T == 65'h40000000
                 & partials_0_4_magnitude[31]}};
-      partials_0_4_signedResult = partials_0_4_negative ? 191'h0 - _GEN_149 : _GEN_149;
-      partials_0_5_negative = $signed(_GEN_119) < 65'sh0;
-      partials_0_5_magnitude = partials_0_5_negative ? 65'h0 - _GEN_119 : _GEN_119;
+      partials_0_4_signedResult = partials_0_4_negative ? 191'h0 - _GEN_134 : _GEN_134;
+      partials_0_5_negative = $signed(_GEN_103) < 65'sh0;
+      partials_0_5_magnitude = partials_0_5_negative ? 65'h0 - _GEN_103 : _GEN_103;
       _partials_0_5_remainder_T =
         partials_0_5_magnitude - {partials_0_5_magnitude[64:31], 31'h0};
-      _GEN_150 =
+      _GEN_135 =
         {156'h0,
          {1'h0, partials_0_5_magnitude[64:31]}
            + {34'h0,
               _partials_0_5_remainder_T > 65'h40000000
                 | _partials_0_5_remainder_T == 65'h40000000
                 & partials_0_5_magnitude[31]}};
-      partials_0_5_signedResult = partials_0_5_negative ? 191'h0 - _GEN_150 : _GEN_150;
-      partials_0_6_negative = $signed(_GEN_120) < 65'sh0;
-      partials_0_6_magnitude = partials_0_6_negative ? 65'h0 - _GEN_120 : _GEN_120;
+      partials_0_5_signedResult = partials_0_5_negative ? 191'h0 - _GEN_135 : _GEN_135;
+      partials_0_6_negative = $signed(_GEN_104) < 65'sh0;
+      partials_0_6_magnitude = partials_0_6_negative ? 65'h0 - _GEN_104 : _GEN_104;
       _partials_0_6_remainder_T =
         partials_0_6_magnitude - {partials_0_6_magnitude[64:31], 31'h0};
-      _GEN_151 =
+      _GEN_136 =
         {156'h0,
          {1'h0, partials_0_6_magnitude[64:31]}
            + {34'h0,
               _partials_0_6_remainder_T > 65'h40000000
                 | _partials_0_6_remainder_T == 65'h40000000
                 & partials_0_6_magnitude[31]}};
-      partials_0_6_signedResult = partials_0_6_negative ? 191'h0 - _GEN_151 : _GEN_151;
-      partials_0_7_negative = $signed(_GEN_121) < 65'sh0;
-      partials_0_7_magnitude = partials_0_7_negative ? 65'h0 - _GEN_121 : _GEN_121;
+      partials_0_6_signedResult = partials_0_6_negative ? 191'h0 - _GEN_136 : _GEN_136;
+      partials_0_7_negative = $signed(_GEN_105) < 65'sh0;
+      partials_0_7_magnitude = partials_0_7_negative ? 65'h0 - _GEN_105 : _GEN_105;
       _partials_0_7_remainder_T =
         partials_0_7_magnitude - {partials_0_7_magnitude[64:31], 31'h0};
-      _GEN_152 =
+      _GEN_137 =
         {156'h0,
          {1'h0, partials_0_7_magnitude[64:31]}
            + {34'h0,
               _partials_0_7_remainder_T > 65'h40000000
                 | _partials_0_7_remainder_T == 65'h40000000
                 & partials_0_7_magnitude[31]}};
-      partials_0_7_signedResult = partials_0_7_negative ? 191'h0 - _GEN_152 : _GEN_152;
-      partials_0_8_negative = $signed(_GEN_122) < 65'sh0;
-      partials_0_8_magnitude = partials_0_8_negative ? 65'h0 - _GEN_122 : _GEN_122;
+      partials_0_7_signedResult = partials_0_7_negative ? 191'h0 - _GEN_137 : _GEN_137;
+      partials_0_8_negative = $signed(_GEN_106) < 65'sh0;
+      partials_0_8_magnitude = partials_0_8_negative ? 65'h0 - _GEN_106 : _GEN_106;
       _partials_0_8_remainder_T =
         partials_0_8_magnitude - {partials_0_8_magnitude[64:31], 31'h0};
-      _GEN_153 =
+      _GEN_138 =
         {156'h0,
          {1'h0, partials_0_8_magnitude[64:31]}
            + {34'h0,
               _partials_0_8_remainder_T > 65'h40000000
                 | _partials_0_8_remainder_T == 65'h40000000
                 & partials_0_8_magnitude[31]}};
-      partials_0_8_signedResult = partials_0_8_negative ? 191'h0 - _GEN_153 : _GEN_153;
-      partials_0_9_negative = $signed(_GEN_123) < 65'sh0;
-      partials_0_9_magnitude = partials_0_9_negative ? 65'h0 - _GEN_123 : _GEN_123;
+      partials_0_8_signedResult = partials_0_8_negative ? 191'h0 - _GEN_138 : _GEN_138;
+      partials_0_9_negative = $signed(_GEN_107) < 65'sh0;
+      partials_0_9_magnitude = partials_0_9_negative ? 65'h0 - _GEN_107 : _GEN_107;
       _partials_0_9_remainder_T =
         partials_0_9_magnitude - {partials_0_9_magnitude[64:31], 31'h0};
-      _GEN_154 =
+      _GEN_139 =
         {156'h0,
          {1'h0, partials_0_9_magnitude[64:31]}
            + {34'h0,
               _partials_0_9_remainder_T > 65'h40000000
                 | _partials_0_9_remainder_T == 65'h40000000
                 & partials_0_9_magnitude[31]}};
-      partials_0_9_signedResult = partials_0_9_negative ? 191'h0 - _GEN_154 : _GEN_154;
-      partials_0_10_negative = $signed(_GEN_124) < 65'sh0;
-      partials_0_10_magnitude = partials_0_10_negative ? 65'h0 - _GEN_124 : _GEN_124;
+      partials_0_9_signedResult = partials_0_9_negative ? 191'h0 - _GEN_139 : _GEN_139;
+      partials_0_10_negative = $signed(_GEN_108) < 65'sh0;
+      partials_0_10_magnitude = partials_0_10_negative ? 65'h0 - _GEN_108 : _GEN_108;
       _partials_0_10_remainder_T =
         partials_0_10_magnitude - {partials_0_10_magnitude[64:31], 31'h0};
-      _GEN_155 =
+      _GEN_140 =
         {156'h0,
          {1'h0, partials_0_10_magnitude[64:31]}
            + {34'h0,
               _partials_0_10_remainder_T > 65'h40000000
                 | _partials_0_10_remainder_T == 65'h40000000
                 & partials_0_10_magnitude[31]}};
-      partials_0_10_signedResult = partials_0_10_negative ? 191'h0 - _GEN_155 : _GEN_155;
-      partials_0_11_negative = $signed(_GEN_125) < 65'sh0;
-      partials_0_11_magnitude = partials_0_11_negative ? 65'h0 - _GEN_125 : _GEN_125;
+      partials_0_10_signedResult = partials_0_10_negative ? 191'h0 - _GEN_140 : _GEN_140;
+      partials_0_11_negative = $signed(_GEN_109) < 65'sh0;
+      partials_0_11_magnitude = partials_0_11_negative ? 65'h0 - _GEN_109 : _GEN_109;
       _partials_0_11_remainder_T =
         partials_0_11_magnitude - {partials_0_11_magnitude[64:31], 31'h0};
-      _GEN_156 =
+      _GEN_141 =
         {156'h0,
          {1'h0, partials_0_11_magnitude[64:31]}
            + {34'h0,
               _partials_0_11_remainder_T > 65'h40000000
                 | _partials_0_11_remainder_T == 65'h40000000
                 & partials_0_11_magnitude[31]}};
-      partials_0_11_signedResult = partials_0_11_negative ? 191'h0 - _GEN_156 : _GEN_156;
-      partials_0_12_negative = $signed(_GEN_126) < 65'sh0;
-      partials_0_12_magnitude = partials_0_12_negative ? 65'h0 - _GEN_126 : _GEN_126;
+      partials_0_11_signedResult = partials_0_11_negative ? 191'h0 - _GEN_141 : _GEN_141;
+      partials_0_12_negative = $signed(_GEN_110) < 65'sh0;
+      partials_0_12_magnitude = partials_0_12_negative ? 65'h0 - _GEN_110 : _GEN_110;
       _partials_0_12_remainder_T =
         partials_0_12_magnitude - {partials_0_12_magnitude[64:31], 31'h0};
-      _GEN_157 =
+      _GEN_142 =
         {156'h0,
          {1'h0, partials_0_12_magnitude[64:31]}
            + {34'h0,
               _partials_0_12_remainder_T > 65'h40000000
                 | _partials_0_12_remainder_T == 65'h40000000
                 & partials_0_12_magnitude[31]}};
-      partials_0_12_signedResult = partials_0_12_negative ? 191'h0 - _GEN_157 : _GEN_157;
-      partials_0_13_negative = $signed(_GEN_127) < 65'sh0;
-      partials_0_13_magnitude = partials_0_13_negative ? 65'h0 - _GEN_127 : _GEN_127;
+      partials_0_12_signedResult = partials_0_12_negative ? 191'h0 - _GEN_142 : _GEN_142;
+      partials_0_13_negative = $signed(_GEN_111) < 65'sh0;
+      partials_0_13_magnitude = partials_0_13_negative ? 65'h0 - _GEN_111 : _GEN_111;
       _partials_0_13_remainder_T =
         partials_0_13_magnitude - {partials_0_13_magnitude[64:31], 31'h0};
-      _GEN_158 =
+      _GEN_143 =
         {156'h0,
          {1'h0, partials_0_13_magnitude[64:31]}
            + {34'h0,
               _partials_0_13_remainder_T > 65'h40000000
                 | _partials_0_13_remainder_T == 65'h40000000
                 & partials_0_13_magnitude[31]}};
-      partials_0_13_signedResult = partials_0_13_negative ? 191'h0 - _GEN_158 : _GEN_158;
-      partials_0_14_negative = $signed(_GEN_128) < 65'sh0;
-      partials_0_14_magnitude = partials_0_14_negative ? 65'h0 - _GEN_128 : _GEN_128;
+      partials_0_13_signedResult = partials_0_13_negative ? 191'h0 - _GEN_143 : _GEN_143;
+      partials_0_14_negative = $signed(_GEN_112) < 65'sh0;
+      partials_0_14_magnitude = partials_0_14_negative ? 65'h0 - _GEN_112 : _GEN_112;
       _partials_0_14_remainder_T =
         partials_0_14_magnitude - {partials_0_14_magnitude[64:31], 31'h0};
-      _GEN_159 =
+      _GEN_144 =
         {156'h0,
          {1'h0, partials_0_14_magnitude[64:31]}
            + {34'h0,
               _partials_0_14_remainder_T > 65'h40000000
                 | _partials_0_14_remainder_T == 65'h40000000
                 & partials_0_14_magnitude[31]}};
-      partials_0_14_signedResult = partials_0_14_negative ? 191'h0 - _GEN_159 : _GEN_159;
-      partials_0_15_negative = $signed(_GEN_129) < 65'sh0;
-      partials_0_15_magnitude = partials_0_15_negative ? 65'h0 - _GEN_129 : _GEN_129;
+      partials_0_14_signedResult = partials_0_14_negative ? 191'h0 - _GEN_144 : _GEN_144;
+      partials_0_15_negative = $signed(_GEN_113) < 65'sh0;
+      partials_0_15_magnitude = partials_0_15_negative ? 65'h0 - _GEN_113 : _GEN_113;
       _partials_0_15_remainder_T =
         partials_0_15_magnitude - {partials_0_15_magnitude[64:31], 31'h0};
-      _GEN_160 =
+      _GEN_145 =
         {156'h0,
          {1'h0, partials_0_15_magnitude[64:31]}
            + {34'h0,
               _partials_0_15_remainder_T > 65'h40000000
                 | _partials_0_15_remainder_T == 65'h40000000
                 & partials_0_15_magnitude[31]}};
-      partials_0_15_signedResult = partials_0_15_negative ? 191'h0 - _GEN_160 : _GEN_160;
+      partials_0_15_signedResult = partials_0_15_negative ? 191'h0 - _GEN_145 : _GEN_145;
       partials_0_0 <=
         $signed(partials_0_0_signedResult) > 191'sh7FFFFFFF
           ? 32'h7FFFFFFF
@@ -11307,7 +10437,7 @@ module Linear_1(
               ? 32'h80000000
               : partials_0_15_signedResult[31:0];
     end
-    if (_GEN_130 & _accumulatorAdds_0_io_out_bits_tag == 3'h1) begin
+    if (_GEN_114 & _accumulatorAdds_0_io_out_bits_tag == 3'h1) begin
       partials_1_0 <= _accumulatorAdds_0_io_out_bits_value;
       partials_1_1 <= _accumulatorAdds_1_io_out_bits_value;
       partials_1_2 <= _accumulatorAdds_2_io_out_bits_value;
@@ -11329,275 +10459,275 @@ module Linear_1(
       automatic logic         partials_1_0_negative;
       automatic logic [64:0]  partials_1_0_magnitude;
       automatic logic [64:0]  _partials_1_0_remainder_T;
-      automatic logic [190:0] _GEN_161;
+      automatic logic [190:0] _GEN_146;
       automatic logic [190:0] partials_1_0_signedResult;
       automatic logic         partials_1_1_negative;
       automatic logic [64:0]  partials_1_1_magnitude;
       automatic logic [64:0]  _partials_1_1_remainder_T;
-      automatic logic [190:0] _GEN_162;
+      automatic logic [190:0] _GEN_147;
       automatic logic [190:0] partials_1_1_signedResult;
       automatic logic         partials_1_2_negative;
       automatic logic [64:0]  partials_1_2_magnitude;
       automatic logic [64:0]  _partials_1_2_remainder_T;
-      automatic logic [190:0] _GEN_163;
+      automatic logic [190:0] _GEN_148;
       automatic logic [190:0] partials_1_2_signedResult;
       automatic logic         partials_1_3_negative;
       automatic logic [64:0]  partials_1_3_magnitude;
       automatic logic [64:0]  _partials_1_3_remainder_T;
-      automatic logic [190:0] _GEN_164;
+      automatic logic [190:0] _GEN_149;
       automatic logic [190:0] partials_1_3_signedResult;
       automatic logic         partials_1_4_negative;
       automatic logic [64:0]  partials_1_4_magnitude;
       automatic logic [64:0]  _partials_1_4_remainder_T;
-      automatic logic [190:0] _GEN_165;
+      automatic logic [190:0] _GEN_150;
       automatic logic [190:0] partials_1_4_signedResult;
       automatic logic         partials_1_5_negative;
       automatic logic [64:0]  partials_1_5_magnitude;
       automatic logic [64:0]  _partials_1_5_remainder_T;
-      automatic logic [190:0] _GEN_166;
+      automatic logic [190:0] _GEN_151;
       automatic logic [190:0] partials_1_5_signedResult;
       automatic logic         partials_1_6_negative;
       automatic logic [64:0]  partials_1_6_magnitude;
       automatic logic [64:0]  _partials_1_6_remainder_T;
-      automatic logic [190:0] _GEN_167;
+      automatic logic [190:0] _GEN_152;
       automatic logic [190:0] partials_1_6_signedResult;
       automatic logic         partials_1_7_negative;
       automatic logic [64:0]  partials_1_7_magnitude;
       automatic logic [64:0]  _partials_1_7_remainder_T;
-      automatic logic [190:0] _GEN_168;
+      automatic logic [190:0] _GEN_153;
       automatic logic [190:0] partials_1_7_signedResult;
       automatic logic         partials_1_8_negative;
       automatic logic [64:0]  partials_1_8_magnitude;
       automatic logic [64:0]  _partials_1_8_remainder_T;
-      automatic logic [190:0] _GEN_169;
+      automatic logic [190:0] _GEN_154;
       automatic logic [190:0] partials_1_8_signedResult;
       automatic logic         partials_1_9_negative;
       automatic logic [64:0]  partials_1_9_magnitude;
       automatic logic [64:0]  _partials_1_9_remainder_T;
-      automatic logic [190:0] _GEN_170;
+      automatic logic [190:0] _GEN_155;
       automatic logic [190:0] partials_1_9_signedResult;
       automatic logic         partials_1_10_negative;
       automatic logic [64:0]  partials_1_10_magnitude;
       automatic logic [64:0]  _partials_1_10_remainder_T;
-      automatic logic [190:0] _GEN_171;
+      automatic logic [190:0] _GEN_156;
       automatic logic [190:0] partials_1_10_signedResult;
       automatic logic         partials_1_11_negative;
       automatic logic [64:0]  partials_1_11_magnitude;
       automatic logic [64:0]  _partials_1_11_remainder_T;
-      automatic logic [190:0] _GEN_172;
+      automatic logic [190:0] _GEN_157;
       automatic logic [190:0] partials_1_11_signedResult;
       automatic logic         partials_1_12_negative;
       automatic logic [64:0]  partials_1_12_magnitude;
       automatic logic [64:0]  _partials_1_12_remainder_T;
-      automatic logic [190:0] _GEN_173;
+      automatic logic [190:0] _GEN_158;
       automatic logic [190:0] partials_1_12_signedResult;
       automatic logic         partials_1_13_negative;
       automatic logic [64:0]  partials_1_13_magnitude;
       automatic logic [64:0]  _partials_1_13_remainder_T;
-      automatic logic [190:0] _GEN_174;
+      automatic logic [190:0] _GEN_159;
       automatic logic [190:0] partials_1_13_signedResult;
       automatic logic         partials_1_14_negative;
       automatic logic [64:0]  partials_1_14_magnitude;
       automatic logic [64:0]  _partials_1_14_remainder_T;
-      automatic logic [190:0] _GEN_175;
+      automatic logic [190:0] _GEN_160;
       automatic logic [190:0] partials_1_14_signedResult;
       automatic logic         partials_1_15_negative;
       automatic logic [64:0]  partials_1_15_magnitude;
       automatic logic [64:0]  _partials_1_15_remainder_T;
-      automatic logic [190:0] _GEN_176;
+      automatic logic [190:0] _GEN_161;
       automatic logic [190:0] partials_1_15_signedResult;
-      partials_1_0_negative = $signed(_GEN_114) < 65'sh0;
-      partials_1_0_magnitude = partials_1_0_negative ? 65'h0 - _GEN_114 : _GEN_114;
+      partials_1_0_negative = $signed(_GEN_98) < 65'sh0;
+      partials_1_0_magnitude = partials_1_0_negative ? 65'h0 - _GEN_98 : _GEN_98;
       _partials_1_0_remainder_T =
         partials_1_0_magnitude - {partials_1_0_magnitude[64:31], 31'h0};
-      _GEN_161 =
+      _GEN_146 =
         {156'h0,
          {1'h0, partials_1_0_magnitude[64:31]}
            + {34'h0,
               _partials_1_0_remainder_T > 65'h40000000
                 | _partials_1_0_remainder_T == 65'h40000000
                 & partials_1_0_magnitude[31]}};
-      partials_1_0_signedResult = partials_1_0_negative ? 191'h0 - _GEN_161 : _GEN_161;
-      partials_1_1_negative = $signed(_GEN_115) < 65'sh0;
-      partials_1_1_magnitude = partials_1_1_negative ? 65'h0 - _GEN_115 : _GEN_115;
+      partials_1_0_signedResult = partials_1_0_negative ? 191'h0 - _GEN_146 : _GEN_146;
+      partials_1_1_negative = $signed(_GEN_99) < 65'sh0;
+      partials_1_1_magnitude = partials_1_1_negative ? 65'h0 - _GEN_99 : _GEN_99;
       _partials_1_1_remainder_T =
         partials_1_1_magnitude - {partials_1_1_magnitude[64:31], 31'h0};
-      _GEN_162 =
+      _GEN_147 =
         {156'h0,
          {1'h0, partials_1_1_magnitude[64:31]}
            + {34'h0,
               _partials_1_1_remainder_T > 65'h40000000
                 | _partials_1_1_remainder_T == 65'h40000000
                 & partials_1_1_magnitude[31]}};
-      partials_1_1_signedResult = partials_1_1_negative ? 191'h0 - _GEN_162 : _GEN_162;
-      partials_1_2_negative = $signed(_GEN_116) < 65'sh0;
-      partials_1_2_magnitude = partials_1_2_negative ? 65'h0 - _GEN_116 : _GEN_116;
+      partials_1_1_signedResult = partials_1_1_negative ? 191'h0 - _GEN_147 : _GEN_147;
+      partials_1_2_negative = $signed(_GEN_100) < 65'sh0;
+      partials_1_2_magnitude = partials_1_2_negative ? 65'h0 - _GEN_100 : _GEN_100;
       _partials_1_2_remainder_T =
         partials_1_2_magnitude - {partials_1_2_magnitude[64:31], 31'h0};
-      _GEN_163 =
+      _GEN_148 =
         {156'h0,
          {1'h0, partials_1_2_magnitude[64:31]}
            + {34'h0,
               _partials_1_2_remainder_T > 65'h40000000
                 | _partials_1_2_remainder_T == 65'h40000000
                 & partials_1_2_magnitude[31]}};
-      partials_1_2_signedResult = partials_1_2_negative ? 191'h0 - _GEN_163 : _GEN_163;
-      partials_1_3_negative = $signed(_GEN_117) < 65'sh0;
-      partials_1_3_magnitude = partials_1_3_negative ? 65'h0 - _GEN_117 : _GEN_117;
+      partials_1_2_signedResult = partials_1_2_negative ? 191'h0 - _GEN_148 : _GEN_148;
+      partials_1_3_negative = $signed(_GEN_101) < 65'sh0;
+      partials_1_3_magnitude = partials_1_3_negative ? 65'h0 - _GEN_101 : _GEN_101;
       _partials_1_3_remainder_T =
         partials_1_3_magnitude - {partials_1_3_magnitude[64:31], 31'h0};
-      _GEN_164 =
+      _GEN_149 =
         {156'h0,
          {1'h0, partials_1_3_magnitude[64:31]}
            + {34'h0,
               _partials_1_3_remainder_T > 65'h40000000
                 | _partials_1_3_remainder_T == 65'h40000000
                 & partials_1_3_magnitude[31]}};
-      partials_1_3_signedResult = partials_1_3_negative ? 191'h0 - _GEN_164 : _GEN_164;
-      partials_1_4_negative = $signed(_GEN_118) < 65'sh0;
-      partials_1_4_magnitude = partials_1_4_negative ? 65'h0 - _GEN_118 : _GEN_118;
+      partials_1_3_signedResult = partials_1_3_negative ? 191'h0 - _GEN_149 : _GEN_149;
+      partials_1_4_negative = $signed(_GEN_102) < 65'sh0;
+      partials_1_4_magnitude = partials_1_4_negative ? 65'h0 - _GEN_102 : _GEN_102;
       _partials_1_4_remainder_T =
         partials_1_4_magnitude - {partials_1_4_magnitude[64:31], 31'h0};
-      _GEN_165 =
+      _GEN_150 =
         {156'h0,
          {1'h0, partials_1_4_magnitude[64:31]}
            + {34'h0,
               _partials_1_4_remainder_T > 65'h40000000
                 | _partials_1_4_remainder_T == 65'h40000000
                 & partials_1_4_magnitude[31]}};
-      partials_1_4_signedResult = partials_1_4_negative ? 191'h0 - _GEN_165 : _GEN_165;
-      partials_1_5_negative = $signed(_GEN_119) < 65'sh0;
-      partials_1_5_magnitude = partials_1_5_negative ? 65'h0 - _GEN_119 : _GEN_119;
+      partials_1_4_signedResult = partials_1_4_negative ? 191'h0 - _GEN_150 : _GEN_150;
+      partials_1_5_negative = $signed(_GEN_103) < 65'sh0;
+      partials_1_5_magnitude = partials_1_5_negative ? 65'h0 - _GEN_103 : _GEN_103;
       _partials_1_5_remainder_T =
         partials_1_5_magnitude - {partials_1_5_magnitude[64:31], 31'h0};
-      _GEN_166 =
+      _GEN_151 =
         {156'h0,
          {1'h0, partials_1_5_magnitude[64:31]}
            + {34'h0,
               _partials_1_5_remainder_T > 65'h40000000
                 | _partials_1_5_remainder_T == 65'h40000000
                 & partials_1_5_magnitude[31]}};
-      partials_1_5_signedResult = partials_1_5_negative ? 191'h0 - _GEN_166 : _GEN_166;
-      partials_1_6_negative = $signed(_GEN_120) < 65'sh0;
-      partials_1_6_magnitude = partials_1_6_negative ? 65'h0 - _GEN_120 : _GEN_120;
+      partials_1_5_signedResult = partials_1_5_negative ? 191'h0 - _GEN_151 : _GEN_151;
+      partials_1_6_negative = $signed(_GEN_104) < 65'sh0;
+      partials_1_6_magnitude = partials_1_6_negative ? 65'h0 - _GEN_104 : _GEN_104;
       _partials_1_6_remainder_T =
         partials_1_6_magnitude - {partials_1_6_magnitude[64:31], 31'h0};
-      _GEN_167 =
+      _GEN_152 =
         {156'h0,
          {1'h0, partials_1_6_magnitude[64:31]}
            + {34'h0,
               _partials_1_6_remainder_T > 65'h40000000
                 | _partials_1_6_remainder_T == 65'h40000000
                 & partials_1_6_magnitude[31]}};
-      partials_1_6_signedResult = partials_1_6_negative ? 191'h0 - _GEN_167 : _GEN_167;
-      partials_1_7_negative = $signed(_GEN_121) < 65'sh0;
-      partials_1_7_magnitude = partials_1_7_negative ? 65'h0 - _GEN_121 : _GEN_121;
+      partials_1_6_signedResult = partials_1_6_negative ? 191'h0 - _GEN_152 : _GEN_152;
+      partials_1_7_negative = $signed(_GEN_105) < 65'sh0;
+      partials_1_7_magnitude = partials_1_7_negative ? 65'h0 - _GEN_105 : _GEN_105;
       _partials_1_7_remainder_T =
         partials_1_7_magnitude - {partials_1_7_magnitude[64:31], 31'h0};
-      _GEN_168 =
+      _GEN_153 =
         {156'h0,
          {1'h0, partials_1_7_magnitude[64:31]}
            + {34'h0,
               _partials_1_7_remainder_T > 65'h40000000
                 | _partials_1_7_remainder_T == 65'h40000000
                 & partials_1_7_magnitude[31]}};
-      partials_1_7_signedResult = partials_1_7_negative ? 191'h0 - _GEN_168 : _GEN_168;
-      partials_1_8_negative = $signed(_GEN_122) < 65'sh0;
-      partials_1_8_magnitude = partials_1_8_negative ? 65'h0 - _GEN_122 : _GEN_122;
+      partials_1_7_signedResult = partials_1_7_negative ? 191'h0 - _GEN_153 : _GEN_153;
+      partials_1_8_negative = $signed(_GEN_106) < 65'sh0;
+      partials_1_8_magnitude = partials_1_8_negative ? 65'h0 - _GEN_106 : _GEN_106;
       _partials_1_8_remainder_T =
         partials_1_8_magnitude - {partials_1_8_magnitude[64:31], 31'h0};
-      _GEN_169 =
+      _GEN_154 =
         {156'h0,
          {1'h0, partials_1_8_magnitude[64:31]}
            + {34'h0,
               _partials_1_8_remainder_T > 65'h40000000
                 | _partials_1_8_remainder_T == 65'h40000000
                 & partials_1_8_magnitude[31]}};
-      partials_1_8_signedResult = partials_1_8_negative ? 191'h0 - _GEN_169 : _GEN_169;
-      partials_1_9_negative = $signed(_GEN_123) < 65'sh0;
-      partials_1_9_magnitude = partials_1_9_negative ? 65'h0 - _GEN_123 : _GEN_123;
+      partials_1_8_signedResult = partials_1_8_negative ? 191'h0 - _GEN_154 : _GEN_154;
+      partials_1_9_negative = $signed(_GEN_107) < 65'sh0;
+      partials_1_9_magnitude = partials_1_9_negative ? 65'h0 - _GEN_107 : _GEN_107;
       _partials_1_9_remainder_T =
         partials_1_9_magnitude - {partials_1_9_magnitude[64:31], 31'h0};
-      _GEN_170 =
+      _GEN_155 =
         {156'h0,
          {1'h0, partials_1_9_magnitude[64:31]}
            + {34'h0,
               _partials_1_9_remainder_T > 65'h40000000
                 | _partials_1_9_remainder_T == 65'h40000000
                 & partials_1_9_magnitude[31]}};
-      partials_1_9_signedResult = partials_1_9_negative ? 191'h0 - _GEN_170 : _GEN_170;
-      partials_1_10_negative = $signed(_GEN_124) < 65'sh0;
-      partials_1_10_magnitude = partials_1_10_negative ? 65'h0 - _GEN_124 : _GEN_124;
+      partials_1_9_signedResult = partials_1_9_negative ? 191'h0 - _GEN_155 : _GEN_155;
+      partials_1_10_negative = $signed(_GEN_108) < 65'sh0;
+      partials_1_10_magnitude = partials_1_10_negative ? 65'h0 - _GEN_108 : _GEN_108;
       _partials_1_10_remainder_T =
         partials_1_10_magnitude - {partials_1_10_magnitude[64:31], 31'h0};
-      _GEN_171 =
+      _GEN_156 =
         {156'h0,
          {1'h0, partials_1_10_magnitude[64:31]}
            + {34'h0,
               _partials_1_10_remainder_T > 65'h40000000
                 | _partials_1_10_remainder_T == 65'h40000000
                 & partials_1_10_magnitude[31]}};
-      partials_1_10_signedResult = partials_1_10_negative ? 191'h0 - _GEN_171 : _GEN_171;
-      partials_1_11_negative = $signed(_GEN_125) < 65'sh0;
-      partials_1_11_magnitude = partials_1_11_negative ? 65'h0 - _GEN_125 : _GEN_125;
+      partials_1_10_signedResult = partials_1_10_negative ? 191'h0 - _GEN_156 : _GEN_156;
+      partials_1_11_negative = $signed(_GEN_109) < 65'sh0;
+      partials_1_11_magnitude = partials_1_11_negative ? 65'h0 - _GEN_109 : _GEN_109;
       _partials_1_11_remainder_T =
         partials_1_11_magnitude - {partials_1_11_magnitude[64:31], 31'h0};
-      _GEN_172 =
+      _GEN_157 =
         {156'h0,
          {1'h0, partials_1_11_magnitude[64:31]}
            + {34'h0,
               _partials_1_11_remainder_T > 65'h40000000
                 | _partials_1_11_remainder_T == 65'h40000000
                 & partials_1_11_magnitude[31]}};
-      partials_1_11_signedResult = partials_1_11_negative ? 191'h0 - _GEN_172 : _GEN_172;
-      partials_1_12_negative = $signed(_GEN_126) < 65'sh0;
-      partials_1_12_magnitude = partials_1_12_negative ? 65'h0 - _GEN_126 : _GEN_126;
+      partials_1_11_signedResult = partials_1_11_negative ? 191'h0 - _GEN_157 : _GEN_157;
+      partials_1_12_negative = $signed(_GEN_110) < 65'sh0;
+      partials_1_12_magnitude = partials_1_12_negative ? 65'h0 - _GEN_110 : _GEN_110;
       _partials_1_12_remainder_T =
         partials_1_12_magnitude - {partials_1_12_magnitude[64:31], 31'h0};
-      _GEN_173 =
+      _GEN_158 =
         {156'h0,
          {1'h0, partials_1_12_magnitude[64:31]}
            + {34'h0,
               _partials_1_12_remainder_T > 65'h40000000
                 | _partials_1_12_remainder_T == 65'h40000000
                 & partials_1_12_magnitude[31]}};
-      partials_1_12_signedResult = partials_1_12_negative ? 191'h0 - _GEN_173 : _GEN_173;
-      partials_1_13_negative = $signed(_GEN_127) < 65'sh0;
-      partials_1_13_magnitude = partials_1_13_negative ? 65'h0 - _GEN_127 : _GEN_127;
+      partials_1_12_signedResult = partials_1_12_negative ? 191'h0 - _GEN_158 : _GEN_158;
+      partials_1_13_negative = $signed(_GEN_111) < 65'sh0;
+      partials_1_13_magnitude = partials_1_13_negative ? 65'h0 - _GEN_111 : _GEN_111;
       _partials_1_13_remainder_T =
         partials_1_13_magnitude - {partials_1_13_magnitude[64:31], 31'h0};
-      _GEN_174 =
+      _GEN_159 =
         {156'h0,
          {1'h0, partials_1_13_magnitude[64:31]}
            + {34'h0,
               _partials_1_13_remainder_T > 65'h40000000
                 | _partials_1_13_remainder_T == 65'h40000000
                 & partials_1_13_magnitude[31]}};
-      partials_1_13_signedResult = partials_1_13_negative ? 191'h0 - _GEN_174 : _GEN_174;
-      partials_1_14_negative = $signed(_GEN_128) < 65'sh0;
-      partials_1_14_magnitude = partials_1_14_negative ? 65'h0 - _GEN_128 : _GEN_128;
+      partials_1_13_signedResult = partials_1_13_negative ? 191'h0 - _GEN_159 : _GEN_159;
+      partials_1_14_negative = $signed(_GEN_112) < 65'sh0;
+      partials_1_14_magnitude = partials_1_14_negative ? 65'h0 - _GEN_112 : _GEN_112;
       _partials_1_14_remainder_T =
         partials_1_14_magnitude - {partials_1_14_magnitude[64:31], 31'h0};
-      _GEN_175 =
+      _GEN_160 =
         {156'h0,
          {1'h0, partials_1_14_magnitude[64:31]}
            + {34'h0,
               _partials_1_14_remainder_T > 65'h40000000
                 | _partials_1_14_remainder_T == 65'h40000000
                 & partials_1_14_magnitude[31]}};
-      partials_1_14_signedResult = partials_1_14_negative ? 191'h0 - _GEN_175 : _GEN_175;
-      partials_1_15_negative = $signed(_GEN_129) < 65'sh0;
-      partials_1_15_magnitude = partials_1_15_negative ? 65'h0 - _GEN_129 : _GEN_129;
+      partials_1_14_signedResult = partials_1_14_negative ? 191'h0 - _GEN_160 : _GEN_160;
+      partials_1_15_negative = $signed(_GEN_113) < 65'sh0;
+      partials_1_15_magnitude = partials_1_15_negative ? 65'h0 - _GEN_113 : _GEN_113;
       _partials_1_15_remainder_T =
         partials_1_15_magnitude - {partials_1_15_magnitude[64:31], 31'h0};
-      _GEN_176 =
+      _GEN_161 =
         {156'h0,
          {1'h0, partials_1_15_magnitude[64:31]}
            + {34'h0,
               _partials_1_15_remainder_T > 65'h40000000
                 | _partials_1_15_remainder_T == 65'h40000000
                 & partials_1_15_magnitude[31]}};
-      partials_1_15_signedResult = partials_1_15_negative ? 191'h0 - _GEN_176 : _GEN_176;
+      partials_1_15_signedResult = partials_1_15_negative ? 191'h0 - _GEN_161 : _GEN_161;
       partials_1_0 <=
         $signed(partials_1_0_signedResult) > 191'sh7FFFFFFF
           ? 32'h7FFFFFFF
@@ -11695,7 +10825,7 @@ module Linear_1(
               ? 32'h80000000
               : partials_1_15_signedResult[31:0];
     end
-    if (_GEN_130 & _accumulatorAdds_0_io_out_bits_tag == 3'h2) begin
+    if (_GEN_114 & _accumulatorAdds_0_io_out_bits_tag == 3'h2) begin
       partials_2_0 <= _accumulatorAdds_0_io_out_bits_value;
       partials_2_1 <= _accumulatorAdds_1_io_out_bits_value;
       partials_2_2 <= _accumulatorAdds_2_io_out_bits_value;
@@ -11717,275 +10847,275 @@ module Linear_1(
       automatic logic         partials_2_0_negative;
       automatic logic [64:0]  partials_2_0_magnitude;
       automatic logic [64:0]  _partials_2_0_remainder_T;
-      automatic logic [190:0] _GEN_177;
+      automatic logic [190:0] _GEN_162;
       automatic logic [190:0] partials_2_0_signedResult;
       automatic logic         partials_2_1_negative;
       automatic logic [64:0]  partials_2_1_magnitude;
       automatic logic [64:0]  _partials_2_1_remainder_T;
-      automatic logic [190:0] _GEN_178;
+      automatic logic [190:0] _GEN_163;
       automatic logic [190:0] partials_2_1_signedResult;
       automatic logic         partials_2_2_negative;
       automatic logic [64:0]  partials_2_2_magnitude;
       automatic logic [64:0]  _partials_2_2_remainder_T;
-      automatic logic [190:0] _GEN_179;
+      automatic logic [190:0] _GEN_164;
       automatic logic [190:0] partials_2_2_signedResult;
       automatic logic         partials_2_3_negative;
       automatic logic [64:0]  partials_2_3_magnitude;
       automatic logic [64:0]  _partials_2_3_remainder_T;
-      automatic logic [190:0] _GEN_180;
+      automatic logic [190:0] _GEN_165;
       automatic logic [190:0] partials_2_3_signedResult;
       automatic logic         partials_2_4_negative;
       automatic logic [64:0]  partials_2_4_magnitude;
       automatic logic [64:0]  _partials_2_4_remainder_T;
-      automatic logic [190:0] _GEN_181;
+      automatic logic [190:0] _GEN_166;
       automatic logic [190:0] partials_2_4_signedResult;
       automatic logic         partials_2_5_negative;
       automatic logic [64:0]  partials_2_5_magnitude;
       automatic logic [64:0]  _partials_2_5_remainder_T;
-      automatic logic [190:0] _GEN_182;
+      automatic logic [190:0] _GEN_167;
       automatic logic [190:0] partials_2_5_signedResult;
       automatic logic         partials_2_6_negative;
       automatic logic [64:0]  partials_2_6_magnitude;
       automatic logic [64:0]  _partials_2_6_remainder_T;
-      automatic logic [190:0] _GEN_183;
+      automatic logic [190:0] _GEN_168;
       automatic logic [190:0] partials_2_6_signedResult;
       automatic logic         partials_2_7_negative;
       automatic logic [64:0]  partials_2_7_magnitude;
       automatic logic [64:0]  _partials_2_7_remainder_T;
-      automatic logic [190:0] _GEN_184;
+      automatic logic [190:0] _GEN_169;
       automatic logic [190:0] partials_2_7_signedResult;
       automatic logic         partials_2_8_negative;
       automatic logic [64:0]  partials_2_8_magnitude;
       automatic logic [64:0]  _partials_2_8_remainder_T;
-      automatic logic [190:0] _GEN_185;
+      automatic logic [190:0] _GEN_170;
       automatic logic [190:0] partials_2_8_signedResult;
       automatic logic         partials_2_9_negative;
       automatic logic [64:0]  partials_2_9_magnitude;
       automatic logic [64:0]  _partials_2_9_remainder_T;
-      automatic logic [190:0] _GEN_186;
+      automatic logic [190:0] _GEN_171;
       automatic logic [190:0] partials_2_9_signedResult;
       automatic logic         partials_2_10_negative;
       automatic logic [64:0]  partials_2_10_magnitude;
       automatic logic [64:0]  _partials_2_10_remainder_T;
-      automatic logic [190:0] _GEN_187;
+      automatic logic [190:0] _GEN_172;
       automatic logic [190:0] partials_2_10_signedResult;
       automatic logic         partials_2_11_negative;
       automatic logic [64:0]  partials_2_11_magnitude;
       automatic logic [64:0]  _partials_2_11_remainder_T;
-      automatic logic [190:0] _GEN_188;
+      automatic logic [190:0] _GEN_173;
       automatic logic [190:0] partials_2_11_signedResult;
       automatic logic         partials_2_12_negative;
       automatic logic [64:0]  partials_2_12_magnitude;
       automatic logic [64:0]  _partials_2_12_remainder_T;
-      automatic logic [190:0] _GEN_189;
+      automatic logic [190:0] _GEN_174;
       automatic logic [190:0] partials_2_12_signedResult;
       automatic logic         partials_2_13_negative;
       automatic logic [64:0]  partials_2_13_magnitude;
       automatic logic [64:0]  _partials_2_13_remainder_T;
-      automatic logic [190:0] _GEN_190;
+      automatic logic [190:0] _GEN_175;
       automatic logic [190:0] partials_2_13_signedResult;
       automatic logic         partials_2_14_negative;
       automatic logic [64:0]  partials_2_14_magnitude;
       automatic logic [64:0]  _partials_2_14_remainder_T;
-      automatic logic [190:0] _GEN_191;
+      automatic logic [190:0] _GEN_176;
       automatic logic [190:0] partials_2_14_signedResult;
       automatic logic         partials_2_15_negative;
       automatic logic [64:0]  partials_2_15_magnitude;
       automatic logic [64:0]  _partials_2_15_remainder_T;
-      automatic logic [190:0] _GEN_192;
+      automatic logic [190:0] _GEN_177;
       automatic logic [190:0] partials_2_15_signedResult;
-      partials_2_0_negative = $signed(_GEN_114) < 65'sh0;
-      partials_2_0_magnitude = partials_2_0_negative ? 65'h0 - _GEN_114 : _GEN_114;
+      partials_2_0_negative = $signed(_GEN_98) < 65'sh0;
+      partials_2_0_magnitude = partials_2_0_negative ? 65'h0 - _GEN_98 : _GEN_98;
       _partials_2_0_remainder_T =
         partials_2_0_magnitude - {partials_2_0_magnitude[64:31], 31'h0};
-      _GEN_177 =
+      _GEN_162 =
         {156'h0,
          {1'h0, partials_2_0_magnitude[64:31]}
            + {34'h0,
               _partials_2_0_remainder_T > 65'h40000000
                 | _partials_2_0_remainder_T == 65'h40000000
                 & partials_2_0_magnitude[31]}};
-      partials_2_0_signedResult = partials_2_0_negative ? 191'h0 - _GEN_177 : _GEN_177;
-      partials_2_1_negative = $signed(_GEN_115) < 65'sh0;
-      partials_2_1_magnitude = partials_2_1_negative ? 65'h0 - _GEN_115 : _GEN_115;
+      partials_2_0_signedResult = partials_2_0_negative ? 191'h0 - _GEN_162 : _GEN_162;
+      partials_2_1_negative = $signed(_GEN_99) < 65'sh0;
+      partials_2_1_magnitude = partials_2_1_negative ? 65'h0 - _GEN_99 : _GEN_99;
       _partials_2_1_remainder_T =
         partials_2_1_magnitude - {partials_2_1_magnitude[64:31], 31'h0};
-      _GEN_178 =
+      _GEN_163 =
         {156'h0,
          {1'h0, partials_2_1_magnitude[64:31]}
            + {34'h0,
               _partials_2_1_remainder_T > 65'h40000000
                 | _partials_2_1_remainder_T == 65'h40000000
                 & partials_2_1_magnitude[31]}};
-      partials_2_1_signedResult = partials_2_1_negative ? 191'h0 - _GEN_178 : _GEN_178;
-      partials_2_2_negative = $signed(_GEN_116) < 65'sh0;
-      partials_2_2_magnitude = partials_2_2_negative ? 65'h0 - _GEN_116 : _GEN_116;
+      partials_2_1_signedResult = partials_2_1_negative ? 191'h0 - _GEN_163 : _GEN_163;
+      partials_2_2_negative = $signed(_GEN_100) < 65'sh0;
+      partials_2_2_magnitude = partials_2_2_negative ? 65'h0 - _GEN_100 : _GEN_100;
       _partials_2_2_remainder_T =
         partials_2_2_magnitude - {partials_2_2_magnitude[64:31], 31'h0};
-      _GEN_179 =
+      _GEN_164 =
         {156'h0,
          {1'h0, partials_2_2_magnitude[64:31]}
            + {34'h0,
               _partials_2_2_remainder_T > 65'h40000000
                 | _partials_2_2_remainder_T == 65'h40000000
                 & partials_2_2_magnitude[31]}};
-      partials_2_2_signedResult = partials_2_2_negative ? 191'h0 - _GEN_179 : _GEN_179;
-      partials_2_3_negative = $signed(_GEN_117) < 65'sh0;
-      partials_2_3_magnitude = partials_2_3_negative ? 65'h0 - _GEN_117 : _GEN_117;
+      partials_2_2_signedResult = partials_2_2_negative ? 191'h0 - _GEN_164 : _GEN_164;
+      partials_2_3_negative = $signed(_GEN_101) < 65'sh0;
+      partials_2_3_magnitude = partials_2_3_negative ? 65'h0 - _GEN_101 : _GEN_101;
       _partials_2_3_remainder_T =
         partials_2_3_magnitude - {partials_2_3_magnitude[64:31], 31'h0};
-      _GEN_180 =
+      _GEN_165 =
         {156'h0,
          {1'h0, partials_2_3_magnitude[64:31]}
            + {34'h0,
               _partials_2_3_remainder_T > 65'h40000000
                 | _partials_2_3_remainder_T == 65'h40000000
                 & partials_2_3_magnitude[31]}};
-      partials_2_3_signedResult = partials_2_3_negative ? 191'h0 - _GEN_180 : _GEN_180;
-      partials_2_4_negative = $signed(_GEN_118) < 65'sh0;
-      partials_2_4_magnitude = partials_2_4_negative ? 65'h0 - _GEN_118 : _GEN_118;
+      partials_2_3_signedResult = partials_2_3_negative ? 191'h0 - _GEN_165 : _GEN_165;
+      partials_2_4_negative = $signed(_GEN_102) < 65'sh0;
+      partials_2_4_magnitude = partials_2_4_negative ? 65'h0 - _GEN_102 : _GEN_102;
       _partials_2_4_remainder_T =
         partials_2_4_magnitude - {partials_2_4_magnitude[64:31], 31'h0};
-      _GEN_181 =
+      _GEN_166 =
         {156'h0,
          {1'h0, partials_2_4_magnitude[64:31]}
            + {34'h0,
               _partials_2_4_remainder_T > 65'h40000000
                 | _partials_2_4_remainder_T == 65'h40000000
                 & partials_2_4_magnitude[31]}};
-      partials_2_4_signedResult = partials_2_4_negative ? 191'h0 - _GEN_181 : _GEN_181;
-      partials_2_5_negative = $signed(_GEN_119) < 65'sh0;
-      partials_2_5_magnitude = partials_2_5_negative ? 65'h0 - _GEN_119 : _GEN_119;
+      partials_2_4_signedResult = partials_2_4_negative ? 191'h0 - _GEN_166 : _GEN_166;
+      partials_2_5_negative = $signed(_GEN_103) < 65'sh0;
+      partials_2_5_magnitude = partials_2_5_negative ? 65'h0 - _GEN_103 : _GEN_103;
       _partials_2_5_remainder_T =
         partials_2_5_magnitude - {partials_2_5_magnitude[64:31], 31'h0};
-      _GEN_182 =
+      _GEN_167 =
         {156'h0,
          {1'h0, partials_2_5_magnitude[64:31]}
            + {34'h0,
               _partials_2_5_remainder_T > 65'h40000000
                 | _partials_2_5_remainder_T == 65'h40000000
                 & partials_2_5_magnitude[31]}};
-      partials_2_5_signedResult = partials_2_5_negative ? 191'h0 - _GEN_182 : _GEN_182;
-      partials_2_6_negative = $signed(_GEN_120) < 65'sh0;
-      partials_2_6_magnitude = partials_2_6_negative ? 65'h0 - _GEN_120 : _GEN_120;
+      partials_2_5_signedResult = partials_2_5_negative ? 191'h0 - _GEN_167 : _GEN_167;
+      partials_2_6_negative = $signed(_GEN_104) < 65'sh0;
+      partials_2_6_magnitude = partials_2_6_negative ? 65'h0 - _GEN_104 : _GEN_104;
       _partials_2_6_remainder_T =
         partials_2_6_magnitude - {partials_2_6_magnitude[64:31], 31'h0};
-      _GEN_183 =
+      _GEN_168 =
         {156'h0,
          {1'h0, partials_2_6_magnitude[64:31]}
            + {34'h0,
               _partials_2_6_remainder_T > 65'h40000000
                 | _partials_2_6_remainder_T == 65'h40000000
                 & partials_2_6_magnitude[31]}};
-      partials_2_6_signedResult = partials_2_6_negative ? 191'h0 - _GEN_183 : _GEN_183;
-      partials_2_7_negative = $signed(_GEN_121) < 65'sh0;
-      partials_2_7_magnitude = partials_2_7_negative ? 65'h0 - _GEN_121 : _GEN_121;
+      partials_2_6_signedResult = partials_2_6_negative ? 191'h0 - _GEN_168 : _GEN_168;
+      partials_2_7_negative = $signed(_GEN_105) < 65'sh0;
+      partials_2_7_magnitude = partials_2_7_negative ? 65'h0 - _GEN_105 : _GEN_105;
       _partials_2_7_remainder_T =
         partials_2_7_magnitude - {partials_2_7_magnitude[64:31], 31'h0};
-      _GEN_184 =
+      _GEN_169 =
         {156'h0,
          {1'h0, partials_2_7_magnitude[64:31]}
            + {34'h0,
               _partials_2_7_remainder_T > 65'h40000000
                 | _partials_2_7_remainder_T == 65'h40000000
                 & partials_2_7_magnitude[31]}};
-      partials_2_7_signedResult = partials_2_7_negative ? 191'h0 - _GEN_184 : _GEN_184;
-      partials_2_8_negative = $signed(_GEN_122) < 65'sh0;
-      partials_2_8_magnitude = partials_2_8_negative ? 65'h0 - _GEN_122 : _GEN_122;
+      partials_2_7_signedResult = partials_2_7_negative ? 191'h0 - _GEN_169 : _GEN_169;
+      partials_2_8_negative = $signed(_GEN_106) < 65'sh0;
+      partials_2_8_magnitude = partials_2_8_negative ? 65'h0 - _GEN_106 : _GEN_106;
       _partials_2_8_remainder_T =
         partials_2_8_magnitude - {partials_2_8_magnitude[64:31], 31'h0};
-      _GEN_185 =
+      _GEN_170 =
         {156'h0,
          {1'h0, partials_2_8_magnitude[64:31]}
            + {34'h0,
               _partials_2_8_remainder_T > 65'h40000000
                 | _partials_2_8_remainder_T == 65'h40000000
                 & partials_2_8_magnitude[31]}};
-      partials_2_8_signedResult = partials_2_8_negative ? 191'h0 - _GEN_185 : _GEN_185;
-      partials_2_9_negative = $signed(_GEN_123) < 65'sh0;
-      partials_2_9_magnitude = partials_2_9_negative ? 65'h0 - _GEN_123 : _GEN_123;
+      partials_2_8_signedResult = partials_2_8_negative ? 191'h0 - _GEN_170 : _GEN_170;
+      partials_2_9_negative = $signed(_GEN_107) < 65'sh0;
+      partials_2_9_magnitude = partials_2_9_negative ? 65'h0 - _GEN_107 : _GEN_107;
       _partials_2_9_remainder_T =
         partials_2_9_magnitude - {partials_2_9_magnitude[64:31], 31'h0};
-      _GEN_186 =
+      _GEN_171 =
         {156'h0,
          {1'h0, partials_2_9_magnitude[64:31]}
            + {34'h0,
               _partials_2_9_remainder_T > 65'h40000000
                 | _partials_2_9_remainder_T == 65'h40000000
                 & partials_2_9_magnitude[31]}};
-      partials_2_9_signedResult = partials_2_9_negative ? 191'h0 - _GEN_186 : _GEN_186;
-      partials_2_10_negative = $signed(_GEN_124) < 65'sh0;
-      partials_2_10_magnitude = partials_2_10_negative ? 65'h0 - _GEN_124 : _GEN_124;
+      partials_2_9_signedResult = partials_2_9_negative ? 191'h0 - _GEN_171 : _GEN_171;
+      partials_2_10_negative = $signed(_GEN_108) < 65'sh0;
+      partials_2_10_magnitude = partials_2_10_negative ? 65'h0 - _GEN_108 : _GEN_108;
       _partials_2_10_remainder_T =
         partials_2_10_magnitude - {partials_2_10_magnitude[64:31], 31'h0};
-      _GEN_187 =
+      _GEN_172 =
         {156'h0,
          {1'h0, partials_2_10_magnitude[64:31]}
            + {34'h0,
               _partials_2_10_remainder_T > 65'h40000000
                 | _partials_2_10_remainder_T == 65'h40000000
                 & partials_2_10_magnitude[31]}};
-      partials_2_10_signedResult = partials_2_10_negative ? 191'h0 - _GEN_187 : _GEN_187;
-      partials_2_11_negative = $signed(_GEN_125) < 65'sh0;
-      partials_2_11_magnitude = partials_2_11_negative ? 65'h0 - _GEN_125 : _GEN_125;
+      partials_2_10_signedResult = partials_2_10_negative ? 191'h0 - _GEN_172 : _GEN_172;
+      partials_2_11_negative = $signed(_GEN_109) < 65'sh0;
+      partials_2_11_magnitude = partials_2_11_negative ? 65'h0 - _GEN_109 : _GEN_109;
       _partials_2_11_remainder_T =
         partials_2_11_magnitude - {partials_2_11_magnitude[64:31], 31'h0};
-      _GEN_188 =
+      _GEN_173 =
         {156'h0,
          {1'h0, partials_2_11_magnitude[64:31]}
            + {34'h0,
               _partials_2_11_remainder_T > 65'h40000000
                 | _partials_2_11_remainder_T == 65'h40000000
                 & partials_2_11_magnitude[31]}};
-      partials_2_11_signedResult = partials_2_11_negative ? 191'h0 - _GEN_188 : _GEN_188;
-      partials_2_12_negative = $signed(_GEN_126) < 65'sh0;
-      partials_2_12_magnitude = partials_2_12_negative ? 65'h0 - _GEN_126 : _GEN_126;
+      partials_2_11_signedResult = partials_2_11_negative ? 191'h0 - _GEN_173 : _GEN_173;
+      partials_2_12_negative = $signed(_GEN_110) < 65'sh0;
+      partials_2_12_magnitude = partials_2_12_negative ? 65'h0 - _GEN_110 : _GEN_110;
       _partials_2_12_remainder_T =
         partials_2_12_magnitude - {partials_2_12_magnitude[64:31], 31'h0};
-      _GEN_189 =
+      _GEN_174 =
         {156'h0,
          {1'h0, partials_2_12_magnitude[64:31]}
            + {34'h0,
               _partials_2_12_remainder_T > 65'h40000000
                 | _partials_2_12_remainder_T == 65'h40000000
                 & partials_2_12_magnitude[31]}};
-      partials_2_12_signedResult = partials_2_12_negative ? 191'h0 - _GEN_189 : _GEN_189;
-      partials_2_13_negative = $signed(_GEN_127) < 65'sh0;
-      partials_2_13_magnitude = partials_2_13_negative ? 65'h0 - _GEN_127 : _GEN_127;
+      partials_2_12_signedResult = partials_2_12_negative ? 191'h0 - _GEN_174 : _GEN_174;
+      partials_2_13_negative = $signed(_GEN_111) < 65'sh0;
+      partials_2_13_magnitude = partials_2_13_negative ? 65'h0 - _GEN_111 : _GEN_111;
       _partials_2_13_remainder_T =
         partials_2_13_magnitude - {partials_2_13_magnitude[64:31], 31'h0};
-      _GEN_190 =
+      _GEN_175 =
         {156'h0,
          {1'h0, partials_2_13_magnitude[64:31]}
            + {34'h0,
               _partials_2_13_remainder_T > 65'h40000000
                 | _partials_2_13_remainder_T == 65'h40000000
                 & partials_2_13_magnitude[31]}};
-      partials_2_13_signedResult = partials_2_13_negative ? 191'h0 - _GEN_190 : _GEN_190;
-      partials_2_14_negative = $signed(_GEN_128) < 65'sh0;
-      partials_2_14_magnitude = partials_2_14_negative ? 65'h0 - _GEN_128 : _GEN_128;
+      partials_2_13_signedResult = partials_2_13_negative ? 191'h0 - _GEN_175 : _GEN_175;
+      partials_2_14_negative = $signed(_GEN_112) < 65'sh0;
+      partials_2_14_magnitude = partials_2_14_negative ? 65'h0 - _GEN_112 : _GEN_112;
       _partials_2_14_remainder_T =
         partials_2_14_magnitude - {partials_2_14_magnitude[64:31], 31'h0};
-      _GEN_191 =
+      _GEN_176 =
         {156'h0,
          {1'h0, partials_2_14_magnitude[64:31]}
            + {34'h0,
               _partials_2_14_remainder_T > 65'h40000000
                 | _partials_2_14_remainder_T == 65'h40000000
                 & partials_2_14_magnitude[31]}};
-      partials_2_14_signedResult = partials_2_14_negative ? 191'h0 - _GEN_191 : _GEN_191;
-      partials_2_15_negative = $signed(_GEN_129) < 65'sh0;
-      partials_2_15_magnitude = partials_2_15_negative ? 65'h0 - _GEN_129 : _GEN_129;
+      partials_2_14_signedResult = partials_2_14_negative ? 191'h0 - _GEN_176 : _GEN_176;
+      partials_2_15_negative = $signed(_GEN_113) < 65'sh0;
+      partials_2_15_magnitude = partials_2_15_negative ? 65'h0 - _GEN_113 : _GEN_113;
       _partials_2_15_remainder_T =
         partials_2_15_magnitude - {partials_2_15_magnitude[64:31], 31'h0};
-      _GEN_192 =
+      _GEN_177 =
         {156'h0,
          {1'h0, partials_2_15_magnitude[64:31]}
            + {34'h0,
               _partials_2_15_remainder_T > 65'h40000000
                 | _partials_2_15_remainder_T == 65'h40000000
                 & partials_2_15_magnitude[31]}};
-      partials_2_15_signedResult = partials_2_15_negative ? 191'h0 - _GEN_192 : _GEN_192;
+      partials_2_15_signedResult = partials_2_15_negative ? 191'h0 - _GEN_177 : _GEN_177;
       partials_2_0 <=
         $signed(partials_2_0_signedResult) > 191'sh7FFFFFFF
           ? 32'h7FFFFFFF
@@ -12083,7 +11213,7 @@ module Linear_1(
               ? 32'h80000000
               : partials_2_15_signedResult[31:0];
     end
-    if (_GEN_130 & _accumulatorAdds_0_io_out_bits_tag == 3'h3) begin
+    if (_GEN_114 & _accumulatorAdds_0_io_out_bits_tag == 3'h3) begin
       partials_3_0 <= _accumulatorAdds_0_io_out_bits_value;
       partials_3_1 <= _accumulatorAdds_1_io_out_bits_value;
       partials_3_2 <= _accumulatorAdds_2_io_out_bits_value;
@@ -12105,275 +11235,275 @@ module Linear_1(
       automatic logic         partials_3_0_negative;
       automatic logic [64:0]  partials_3_0_magnitude;
       automatic logic [64:0]  _partials_3_0_remainder_T;
-      automatic logic [190:0] _GEN_193;
+      automatic logic [190:0] _GEN_178;
       automatic logic [190:0] partials_3_0_signedResult;
       automatic logic         partials_3_1_negative;
       automatic logic [64:0]  partials_3_1_magnitude;
       automatic logic [64:0]  _partials_3_1_remainder_T;
-      automatic logic [190:0] _GEN_194;
+      automatic logic [190:0] _GEN_179;
       automatic logic [190:0] partials_3_1_signedResult;
       automatic logic         partials_3_2_negative;
       automatic logic [64:0]  partials_3_2_magnitude;
       automatic logic [64:0]  _partials_3_2_remainder_T;
-      automatic logic [190:0] _GEN_195;
+      automatic logic [190:0] _GEN_180;
       automatic logic [190:0] partials_3_2_signedResult;
       automatic logic         partials_3_3_negative;
       automatic logic [64:0]  partials_3_3_magnitude;
       automatic logic [64:0]  _partials_3_3_remainder_T;
-      automatic logic [190:0] _GEN_196;
+      automatic logic [190:0] _GEN_181;
       automatic logic [190:0] partials_3_3_signedResult;
       automatic logic         partials_3_4_negative;
       automatic logic [64:0]  partials_3_4_magnitude;
       automatic logic [64:0]  _partials_3_4_remainder_T;
-      automatic logic [190:0] _GEN_197;
+      automatic logic [190:0] _GEN_182;
       automatic logic [190:0] partials_3_4_signedResult;
       automatic logic         partials_3_5_negative;
       automatic logic [64:0]  partials_3_5_magnitude;
       automatic logic [64:0]  _partials_3_5_remainder_T;
-      automatic logic [190:0] _GEN_198;
+      automatic logic [190:0] _GEN_183;
       automatic logic [190:0] partials_3_5_signedResult;
       automatic logic         partials_3_6_negative;
       automatic logic [64:0]  partials_3_6_magnitude;
       automatic logic [64:0]  _partials_3_6_remainder_T;
-      automatic logic [190:0] _GEN_199;
+      automatic logic [190:0] _GEN_184;
       automatic logic [190:0] partials_3_6_signedResult;
       automatic logic         partials_3_7_negative;
       automatic logic [64:0]  partials_3_7_magnitude;
       automatic logic [64:0]  _partials_3_7_remainder_T;
-      automatic logic [190:0] _GEN_200;
+      automatic logic [190:0] _GEN_185;
       automatic logic [190:0] partials_3_7_signedResult;
       automatic logic         partials_3_8_negative;
       automatic logic [64:0]  partials_3_8_magnitude;
       automatic logic [64:0]  _partials_3_8_remainder_T;
-      automatic logic [190:0] _GEN_201;
+      automatic logic [190:0] _GEN_186;
       automatic logic [190:0] partials_3_8_signedResult;
       automatic logic         partials_3_9_negative;
       automatic logic [64:0]  partials_3_9_magnitude;
       automatic logic [64:0]  _partials_3_9_remainder_T;
-      automatic logic [190:0] _GEN_202;
+      automatic logic [190:0] _GEN_187;
       automatic logic [190:0] partials_3_9_signedResult;
       automatic logic         partials_3_10_negative;
       automatic logic [64:0]  partials_3_10_magnitude;
       automatic logic [64:0]  _partials_3_10_remainder_T;
-      automatic logic [190:0] _GEN_203;
+      automatic logic [190:0] _GEN_188;
       automatic logic [190:0] partials_3_10_signedResult;
       automatic logic         partials_3_11_negative;
       automatic logic [64:0]  partials_3_11_magnitude;
       automatic logic [64:0]  _partials_3_11_remainder_T;
-      automatic logic [190:0] _GEN_204;
+      automatic logic [190:0] _GEN_189;
       automatic logic [190:0] partials_3_11_signedResult;
       automatic logic         partials_3_12_negative;
       automatic logic [64:0]  partials_3_12_magnitude;
       automatic logic [64:0]  _partials_3_12_remainder_T;
-      automatic logic [190:0] _GEN_205;
+      automatic logic [190:0] _GEN_190;
       automatic logic [190:0] partials_3_12_signedResult;
       automatic logic         partials_3_13_negative;
       automatic logic [64:0]  partials_3_13_magnitude;
       automatic logic [64:0]  _partials_3_13_remainder_T;
-      automatic logic [190:0] _GEN_206;
+      automatic logic [190:0] _GEN_191;
       automatic logic [190:0] partials_3_13_signedResult;
       automatic logic         partials_3_14_negative;
       automatic logic [64:0]  partials_3_14_magnitude;
       automatic logic [64:0]  _partials_3_14_remainder_T;
-      automatic logic [190:0] _GEN_207;
+      automatic logic [190:0] _GEN_192;
       automatic logic [190:0] partials_3_14_signedResult;
       automatic logic         partials_3_15_negative;
       automatic logic [64:0]  partials_3_15_magnitude;
       automatic logic [64:0]  _partials_3_15_remainder_T;
-      automatic logic [190:0] _GEN_208;
+      automatic logic [190:0] _GEN_193;
       automatic logic [190:0] partials_3_15_signedResult;
-      partials_3_0_negative = $signed(_GEN_114) < 65'sh0;
-      partials_3_0_magnitude = partials_3_0_negative ? 65'h0 - _GEN_114 : _GEN_114;
+      partials_3_0_negative = $signed(_GEN_98) < 65'sh0;
+      partials_3_0_magnitude = partials_3_0_negative ? 65'h0 - _GEN_98 : _GEN_98;
       _partials_3_0_remainder_T =
         partials_3_0_magnitude - {partials_3_0_magnitude[64:31], 31'h0};
-      _GEN_193 =
+      _GEN_178 =
         {156'h0,
          {1'h0, partials_3_0_magnitude[64:31]}
            + {34'h0,
               _partials_3_0_remainder_T > 65'h40000000
                 | _partials_3_0_remainder_T == 65'h40000000
                 & partials_3_0_magnitude[31]}};
-      partials_3_0_signedResult = partials_3_0_negative ? 191'h0 - _GEN_193 : _GEN_193;
-      partials_3_1_negative = $signed(_GEN_115) < 65'sh0;
-      partials_3_1_magnitude = partials_3_1_negative ? 65'h0 - _GEN_115 : _GEN_115;
+      partials_3_0_signedResult = partials_3_0_negative ? 191'h0 - _GEN_178 : _GEN_178;
+      partials_3_1_negative = $signed(_GEN_99) < 65'sh0;
+      partials_3_1_magnitude = partials_3_1_negative ? 65'h0 - _GEN_99 : _GEN_99;
       _partials_3_1_remainder_T =
         partials_3_1_magnitude - {partials_3_1_magnitude[64:31], 31'h0};
-      _GEN_194 =
+      _GEN_179 =
         {156'h0,
          {1'h0, partials_3_1_magnitude[64:31]}
            + {34'h0,
               _partials_3_1_remainder_T > 65'h40000000
                 | _partials_3_1_remainder_T == 65'h40000000
                 & partials_3_1_magnitude[31]}};
-      partials_3_1_signedResult = partials_3_1_negative ? 191'h0 - _GEN_194 : _GEN_194;
-      partials_3_2_negative = $signed(_GEN_116) < 65'sh0;
-      partials_3_2_magnitude = partials_3_2_negative ? 65'h0 - _GEN_116 : _GEN_116;
+      partials_3_1_signedResult = partials_3_1_negative ? 191'h0 - _GEN_179 : _GEN_179;
+      partials_3_2_negative = $signed(_GEN_100) < 65'sh0;
+      partials_3_2_magnitude = partials_3_2_negative ? 65'h0 - _GEN_100 : _GEN_100;
       _partials_3_2_remainder_T =
         partials_3_2_magnitude - {partials_3_2_magnitude[64:31], 31'h0};
-      _GEN_195 =
+      _GEN_180 =
         {156'h0,
          {1'h0, partials_3_2_magnitude[64:31]}
            + {34'h0,
               _partials_3_2_remainder_T > 65'h40000000
                 | _partials_3_2_remainder_T == 65'h40000000
                 & partials_3_2_magnitude[31]}};
-      partials_3_2_signedResult = partials_3_2_negative ? 191'h0 - _GEN_195 : _GEN_195;
-      partials_3_3_negative = $signed(_GEN_117) < 65'sh0;
-      partials_3_3_magnitude = partials_3_3_negative ? 65'h0 - _GEN_117 : _GEN_117;
+      partials_3_2_signedResult = partials_3_2_negative ? 191'h0 - _GEN_180 : _GEN_180;
+      partials_3_3_negative = $signed(_GEN_101) < 65'sh0;
+      partials_3_3_magnitude = partials_3_3_negative ? 65'h0 - _GEN_101 : _GEN_101;
       _partials_3_3_remainder_T =
         partials_3_3_magnitude - {partials_3_3_magnitude[64:31], 31'h0};
-      _GEN_196 =
+      _GEN_181 =
         {156'h0,
          {1'h0, partials_3_3_magnitude[64:31]}
            + {34'h0,
               _partials_3_3_remainder_T > 65'h40000000
                 | _partials_3_3_remainder_T == 65'h40000000
                 & partials_3_3_magnitude[31]}};
-      partials_3_3_signedResult = partials_3_3_negative ? 191'h0 - _GEN_196 : _GEN_196;
-      partials_3_4_negative = $signed(_GEN_118) < 65'sh0;
-      partials_3_4_magnitude = partials_3_4_negative ? 65'h0 - _GEN_118 : _GEN_118;
+      partials_3_3_signedResult = partials_3_3_negative ? 191'h0 - _GEN_181 : _GEN_181;
+      partials_3_4_negative = $signed(_GEN_102) < 65'sh0;
+      partials_3_4_magnitude = partials_3_4_negative ? 65'h0 - _GEN_102 : _GEN_102;
       _partials_3_4_remainder_T =
         partials_3_4_magnitude - {partials_3_4_magnitude[64:31], 31'h0};
-      _GEN_197 =
+      _GEN_182 =
         {156'h0,
          {1'h0, partials_3_4_magnitude[64:31]}
            + {34'h0,
               _partials_3_4_remainder_T > 65'h40000000
                 | _partials_3_4_remainder_T == 65'h40000000
                 & partials_3_4_magnitude[31]}};
-      partials_3_4_signedResult = partials_3_4_negative ? 191'h0 - _GEN_197 : _GEN_197;
-      partials_3_5_negative = $signed(_GEN_119) < 65'sh0;
-      partials_3_5_magnitude = partials_3_5_negative ? 65'h0 - _GEN_119 : _GEN_119;
+      partials_3_4_signedResult = partials_3_4_negative ? 191'h0 - _GEN_182 : _GEN_182;
+      partials_3_5_negative = $signed(_GEN_103) < 65'sh0;
+      partials_3_5_magnitude = partials_3_5_negative ? 65'h0 - _GEN_103 : _GEN_103;
       _partials_3_5_remainder_T =
         partials_3_5_magnitude - {partials_3_5_magnitude[64:31], 31'h0};
-      _GEN_198 =
+      _GEN_183 =
         {156'h0,
          {1'h0, partials_3_5_magnitude[64:31]}
            + {34'h0,
               _partials_3_5_remainder_T > 65'h40000000
                 | _partials_3_5_remainder_T == 65'h40000000
                 & partials_3_5_magnitude[31]}};
-      partials_3_5_signedResult = partials_3_5_negative ? 191'h0 - _GEN_198 : _GEN_198;
-      partials_3_6_negative = $signed(_GEN_120) < 65'sh0;
-      partials_3_6_magnitude = partials_3_6_negative ? 65'h0 - _GEN_120 : _GEN_120;
+      partials_3_5_signedResult = partials_3_5_negative ? 191'h0 - _GEN_183 : _GEN_183;
+      partials_3_6_negative = $signed(_GEN_104) < 65'sh0;
+      partials_3_6_magnitude = partials_3_6_negative ? 65'h0 - _GEN_104 : _GEN_104;
       _partials_3_6_remainder_T =
         partials_3_6_magnitude - {partials_3_6_magnitude[64:31], 31'h0};
-      _GEN_199 =
+      _GEN_184 =
         {156'h0,
          {1'h0, partials_3_6_magnitude[64:31]}
            + {34'h0,
               _partials_3_6_remainder_T > 65'h40000000
                 | _partials_3_6_remainder_T == 65'h40000000
                 & partials_3_6_magnitude[31]}};
-      partials_3_6_signedResult = partials_3_6_negative ? 191'h0 - _GEN_199 : _GEN_199;
-      partials_3_7_negative = $signed(_GEN_121) < 65'sh0;
-      partials_3_7_magnitude = partials_3_7_negative ? 65'h0 - _GEN_121 : _GEN_121;
+      partials_3_6_signedResult = partials_3_6_negative ? 191'h0 - _GEN_184 : _GEN_184;
+      partials_3_7_negative = $signed(_GEN_105) < 65'sh0;
+      partials_3_7_magnitude = partials_3_7_negative ? 65'h0 - _GEN_105 : _GEN_105;
       _partials_3_7_remainder_T =
         partials_3_7_magnitude - {partials_3_7_magnitude[64:31], 31'h0};
-      _GEN_200 =
+      _GEN_185 =
         {156'h0,
          {1'h0, partials_3_7_magnitude[64:31]}
            + {34'h0,
               _partials_3_7_remainder_T > 65'h40000000
                 | _partials_3_7_remainder_T == 65'h40000000
                 & partials_3_7_magnitude[31]}};
-      partials_3_7_signedResult = partials_3_7_negative ? 191'h0 - _GEN_200 : _GEN_200;
-      partials_3_8_negative = $signed(_GEN_122) < 65'sh0;
-      partials_3_8_magnitude = partials_3_8_negative ? 65'h0 - _GEN_122 : _GEN_122;
+      partials_3_7_signedResult = partials_3_7_negative ? 191'h0 - _GEN_185 : _GEN_185;
+      partials_3_8_negative = $signed(_GEN_106) < 65'sh0;
+      partials_3_8_magnitude = partials_3_8_negative ? 65'h0 - _GEN_106 : _GEN_106;
       _partials_3_8_remainder_T =
         partials_3_8_magnitude - {partials_3_8_magnitude[64:31], 31'h0};
-      _GEN_201 =
+      _GEN_186 =
         {156'h0,
          {1'h0, partials_3_8_magnitude[64:31]}
            + {34'h0,
               _partials_3_8_remainder_T > 65'h40000000
                 | _partials_3_8_remainder_T == 65'h40000000
                 & partials_3_8_magnitude[31]}};
-      partials_3_8_signedResult = partials_3_8_negative ? 191'h0 - _GEN_201 : _GEN_201;
-      partials_3_9_negative = $signed(_GEN_123) < 65'sh0;
-      partials_3_9_magnitude = partials_3_9_negative ? 65'h0 - _GEN_123 : _GEN_123;
+      partials_3_8_signedResult = partials_3_8_negative ? 191'h0 - _GEN_186 : _GEN_186;
+      partials_3_9_negative = $signed(_GEN_107) < 65'sh0;
+      partials_3_9_magnitude = partials_3_9_negative ? 65'h0 - _GEN_107 : _GEN_107;
       _partials_3_9_remainder_T =
         partials_3_9_magnitude - {partials_3_9_magnitude[64:31], 31'h0};
-      _GEN_202 =
+      _GEN_187 =
         {156'h0,
          {1'h0, partials_3_9_magnitude[64:31]}
            + {34'h0,
               _partials_3_9_remainder_T > 65'h40000000
                 | _partials_3_9_remainder_T == 65'h40000000
                 & partials_3_9_magnitude[31]}};
-      partials_3_9_signedResult = partials_3_9_negative ? 191'h0 - _GEN_202 : _GEN_202;
-      partials_3_10_negative = $signed(_GEN_124) < 65'sh0;
-      partials_3_10_magnitude = partials_3_10_negative ? 65'h0 - _GEN_124 : _GEN_124;
+      partials_3_9_signedResult = partials_3_9_negative ? 191'h0 - _GEN_187 : _GEN_187;
+      partials_3_10_negative = $signed(_GEN_108) < 65'sh0;
+      partials_3_10_magnitude = partials_3_10_negative ? 65'h0 - _GEN_108 : _GEN_108;
       _partials_3_10_remainder_T =
         partials_3_10_magnitude - {partials_3_10_magnitude[64:31], 31'h0};
-      _GEN_203 =
+      _GEN_188 =
         {156'h0,
          {1'h0, partials_3_10_magnitude[64:31]}
            + {34'h0,
               _partials_3_10_remainder_T > 65'h40000000
                 | _partials_3_10_remainder_T == 65'h40000000
                 & partials_3_10_magnitude[31]}};
-      partials_3_10_signedResult = partials_3_10_negative ? 191'h0 - _GEN_203 : _GEN_203;
-      partials_3_11_negative = $signed(_GEN_125) < 65'sh0;
-      partials_3_11_magnitude = partials_3_11_negative ? 65'h0 - _GEN_125 : _GEN_125;
+      partials_3_10_signedResult = partials_3_10_negative ? 191'h0 - _GEN_188 : _GEN_188;
+      partials_3_11_negative = $signed(_GEN_109) < 65'sh0;
+      partials_3_11_magnitude = partials_3_11_negative ? 65'h0 - _GEN_109 : _GEN_109;
       _partials_3_11_remainder_T =
         partials_3_11_magnitude - {partials_3_11_magnitude[64:31], 31'h0};
-      _GEN_204 =
+      _GEN_189 =
         {156'h0,
          {1'h0, partials_3_11_magnitude[64:31]}
            + {34'h0,
               _partials_3_11_remainder_T > 65'h40000000
                 | _partials_3_11_remainder_T == 65'h40000000
                 & partials_3_11_magnitude[31]}};
-      partials_3_11_signedResult = partials_3_11_negative ? 191'h0 - _GEN_204 : _GEN_204;
-      partials_3_12_negative = $signed(_GEN_126) < 65'sh0;
-      partials_3_12_magnitude = partials_3_12_negative ? 65'h0 - _GEN_126 : _GEN_126;
+      partials_3_11_signedResult = partials_3_11_negative ? 191'h0 - _GEN_189 : _GEN_189;
+      partials_3_12_negative = $signed(_GEN_110) < 65'sh0;
+      partials_3_12_magnitude = partials_3_12_negative ? 65'h0 - _GEN_110 : _GEN_110;
       _partials_3_12_remainder_T =
         partials_3_12_magnitude - {partials_3_12_magnitude[64:31], 31'h0};
-      _GEN_205 =
+      _GEN_190 =
         {156'h0,
          {1'h0, partials_3_12_magnitude[64:31]}
            + {34'h0,
               _partials_3_12_remainder_T > 65'h40000000
                 | _partials_3_12_remainder_T == 65'h40000000
                 & partials_3_12_magnitude[31]}};
-      partials_3_12_signedResult = partials_3_12_negative ? 191'h0 - _GEN_205 : _GEN_205;
-      partials_3_13_negative = $signed(_GEN_127) < 65'sh0;
-      partials_3_13_magnitude = partials_3_13_negative ? 65'h0 - _GEN_127 : _GEN_127;
+      partials_3_12_signedResult = partials_3_12_negative ? 191'h0 - _GEN_190 : _GEN_190;
+      partials_3_13_negative = $signed(_GEN_111) < 65'sh0;
+      partials_3_13_magnitude = partials_3_13_negative ? 65'h0 - _GEN_111 : _GEN_111;
       _partials_3_13_remainder_T =
         partials_3_13_magnitude - {partials_3_13_magnitude[64:31], 31'h0};
-      _GEN_206 =
+      _GEN_191 =
         {156'h0,
          {1'h0, partials_3_13_magnitude[64:31]}
            + {34'h0,
               _partials_3_13_remainder_T > 65'h40000000
                 | _partials_3_13_remainder_T == 65'h40000000
                 & partials_3_13_magnitude[31]}};
-      partials_3_13_signedResult = partials_3_13_negative ? 191'h0 - _GEN_206 : _GEN_206;
-      partials_3_14_negative = $signed(_GEN_128) < 65'sh0;
-      partials_3_14_magnitude = partials_3_14_negative ? 65'h0 - _GEN_128 : _GEN_128;
+      partials_3_13_signedResult = partials_3_13_negative ? 191'h0 - _GEN_191 : _GEN_191;
+      partials_3_14_negative = $signed(_GEN_112) < 65'sh0;
+      partials_3_14_magnitude = partials_3_14_negative ? 65'h0 - _GEN_112 : _GEN_112;
       _partials_3_14_remainder_T =
         partials_3_14_magnitude - {partials_3_14_magnitude[64:31], 31'h0};
-      _GEN_207 =
+      _GEN_192 =
         {156'h0,
          {1'h0, partials_3_14_magnitude[64:31]}
            + {34'h0,
               _partials_3_14_remainder_T > 65'h40000000
                 | _partials_3_14_remainder_T == 65'h40000000
                 & partials_3_14_magnitude[31]}};
-      partials_3_14_signedResult = partials_3_14_negative ? 191'h0 - _GEN_207 : _GEN_207;
-      partials_3_15_negative = $signed(_GEN_129) < 65'sh0;
-      partials_3_15_magnitude = partials_3_15_negative ? 65'h0 - _GEN_129 : _GEN_129;
+      partials_3_14_signedResult = partials_3_14_negative ? 191'h0 - _GEN_192 : _GEN_192;
+      partials_3_15_negative = $signed(_GEN_113) < 65'sh0;
+      partials_3_15_magnitude = partials_3_15_negative ? 65'h0 - _GEN_113 : _GEN_113;
       _partials_3_15_remainder_T =
         partials_3_15_magnitude - {partials_3_15_magnitude[64:31], 31'h0};
-      _GEN_208 =
+      _GEN_193 =
         {156'h0,
          {1'h0, partials_3_15_magnitude[64:31]}
            + {34'h0,
               _partials_3_15_remainder_T > 65'h40000000
                 | _partials_3_15_remainder_T == 65'h40000000
                 & partials_3_15_magnitude[31]}};
-      partials_3_15_signedResult = partials_3_15_negative ? 191'h0 - _GEN_208 : _GEN_208;
+      partials_3_15_signedResult = partials_3_15_negative ? 191'h0 - _GEN_193 : _GEN_193;
       partials_3_0 <=
         $signed(partials_3_0_signedResult) > 191'sh7FFFFFFF
           ? 32'h7FFFFFFF
@@ -12471,7 +11601,7 @@ module Linear_1(
               ? 32'h80000000
               : partials_3_15_signedResult[31:0];
     end
-    if (_GEN_130 & _accumulatorAdds_0_io_out_bits_tag == 3'h4) begin
+    if (_GEN_114 & _accumulatorAdds_0_io_out_bits_tag == 3'h4) begin
       partials_4_0 <= _accumulatorAdds_0_io_out_bits_value;
       partials_4_1 <= _accumulatorAdds_1_io_out_bits_value;
       partials_4_2 <= _accumulatorAdds_2_io_out_bits_value;
@@ -12493,275 +11623,275 @@ module Linear_1(
       automatic logic         partials_4_0_negative;
       automatic logic [64:0]  partials_4_0_magnitude;
       automatic logic [64:0]  _partials_4_0_remainder_T;
-      automatic logic [190:0] _GEN_209;
+      automatic logic [190:0] _GEN_194;
       automatic logic [190:0] partials_4_0_signedResult;
       automatic logic         partials_4_1_negative;
       automatic logic [64:0]  partials_4_1_magnitude;
       automatic logic [64:0]  _partials_4_1_remainder_T;
-      automatic logic [190:0] _GEN_210;
+      automatic logic [190:0] _GEN_195;
       automatic logic [190:0] partials_4_1_signedResult;
       automatic logic         partials_4_2_negative;
       automatic logic [64:0]  partials_4_2_magnitude;
       automatic logic [64:0]  _partials_4_2_remainder_T;
-      automatic logic [190:0] _GEN_211;
+      automatic logic [190:0] _GEN_196;
       automatic logic [190:0] partials_4_2_signedResult;
       automatic logic         partials_4_3_negative;
       automatic logic [64:0]  partials_4_3_magnitude;
       automatic logic [64:0]  _partials_4_3_remainder_T;
-      automatic logic [190:0] _GEN_212;
+      automatic logic [190:0] _GEN_197;
       automatic logic [190:0] partials_4_3_signedResult;
       automatic logic         partials_4_4_negative;
       automatic logic [64:0]  partials_4_4_magnitude;
       automatic logic [64:0]  _partials_4_4_remainder_T;
-      automatic logic [190:0] _GEN_213;
+      automatic logic [190:0] _GEN_198;
       automatic logic [190:0] partials_4_4_signedResult;
       automatic logic         partials_4_5_negative;
       automatic logic [64:0]  partials_4_5_magnitude;
       automatic logic [64:0]  _partials_4_5_remainder_T;
-      automatic logic [190:0] _GEN_214;
+      automatic logic [190:0] _GEN_199;
       automatic logic [190:0] partials_4_5_signedResult;
       automatic logic         partials_4_6_negative;
       automatic logic [64:0]  partials_4_6_magnitude;
       automatic logic [64:0]  _partials_4_6_remainder_T;
-      automatic logic [190:0] _GEN_215;
+      automatic logic [190:0] _GEN_200;
       automatic logic [190:0] partials_4_6_signedResult;
       automatic logic         partials_4_7_negative;
       automatic logic [64:0]  partials_4_7_magnitude;
       automatic logic [64:0]  _partials_4_7_remainder_T;
-      automatic logic [190:0] _GEN_216;
+      automatic logic [190:0] _GEN_201;
       automatic logic [190:0] partials_4_7_signedResult;
       automatic logic         partials_4_8_negative;
       automatic logic [64:0]  partials_4_8_magnitude;
       automatic logic [64:0]  _partials_4_8_remainder_T;
-      automatic logic [190:0] _GEN_217;
+      automatic logic [190:0] _GEN_202;
       automatic logic [190:0] partials_4_8_signedResult;
       automatic logic         partials_4_9_negative;
       automatic logic [64:0]  partials_4_9_magnitude;
       automatic logic [64:0]  _partials_4_9_remainder_T;
-      automatic logic [190:0] _GEN_218;
+      automatic logic [190:0] _GEN_203;
       automatic logic [190:0] partials_4_9_signedResult;
       automatic logic         partials_4_10_negative;
       automatic logic [64:0]  partials_4_10_magnitude;
       automatic logic [64:0]  _partials_4_10_remainder_T;
-      automatic logic [190:0] _GEN_219;
+      automatic logic [190:0] _GEN_204;
       automatic logic [190:0] partials_4_10_signedResult;
       automatic logic         partials_4_11_negative;
       automatic logic [64:0]  partials_4_11_magnitude;
       automatic logic [64:0]  _partials_4_11_remainder_T;
-      automatic logic [190:0] _GEN_220;
+      automatic logic [190:0] _GEN_205;
       automatic logic [190:0] partials_4_11_signedResult;
       automatic logic         partials_4_12_negative;
       automatic logic [64:0]  partials_4_12_magnitude;
       automatic logic [64:0]  _partials_4_12_remainder_T;
-      automatic logic [190:0] _GEN_221;
+      automatic logic [190:0] _GEN_206;
       automatic logic [190:0] partials_4_12_signedResult;
       automatic logic         partials_4_13_negative;
       automatic logic [64:0]  partials_4_13_magnitude;
       automatic logic [64:0]  _partials_4_13_remainder_T;
-      automatic logic [190:0] _GEN_222;
+      automatic logic [190:0] _GEN_207;
       automatic logic [190:0] partials_4_13_signedResult;
       automatic logic         partials_4_14_negative;
       automatic logic [64:0]  partials_4_14_magnitude;
       automatic logic [64:0]  _partials_4_14_remainder_T;
-      automatic logic [190:0] _GEN_223;
+      automatic logic [190:0] _GEN_208;
       automatic logic [190:0] partials_4_14_signedResult;
       automatic logic         partials_4_15_negative;
       automatic logic [64:0]  partials_4_15_magnitude;
       automatic logic [64:0]  _partials_4_15_remainder_T;
-      automatic logic [190:0] _GEN_224;
+      automatic logic [190:0] _GEN_209;
       automatic logic [190:0] partials_4_15_signedResult;
-      partials_4_0_negative = $signed(_GEN_114) < 65'sh0;
-      partials_4_0_magnitude = partials_4_0_negative ? 65'h0 - _GEN_114 : _GEN_114;
+      partials_4_0_negative = $signed(_GEN_98) < 65'sh0;
+      partials_4_0_magnitude = partials_4_0_negative ? 65'h0 - _GEN_98 : _GEN_98;
       _partials_4_0_remainder_T =
         partials_4_0_magnitude - {partials_4_0_magnitude[64:31], 31'h0};
-      _GEN_209 =
+      _GEN_194 =
         {156'h0,
          {1'h0, partials_4_0_magnitude[64:31]}
            + {34'h0,
               _partials_4_0_remainder_T > 65'h40000000
                 | _partials_4_0_remainder_T == 65'h40000000
                 & partials_4_0_magnitude[31]}};
-      partials_4_0_signedResult = partials_4_0_negative ? 191'h0 - _GEN_209 : _GEN_209;
-      partials_4_1_negative = $signed(_GEN_115) < 65'sh0;
-      partials_4_1_magnitude = partials_4_1_negative ? 65'h0 - _GEN_115 : _GEN_115;
+      partials_4_0_signedResult = partials_4_0_negative ? 191'h0 - _GEN_194 : _GEN_194;
+      partials_4_1_negative = $signed(_GEN_99) < 65'sh0;
+      partials_4_1_magnitude = partials_4_1_negative ? 65'h0 - _GEN_99 : _GEN_99;
       _partials_4_1_remainder_T =
         partials_4_1_magnitude - {partials_4_1_magnitude[64:31], 31'h0};
-      _GEN_210 =
+      _GEN_195 =
         {156'h0,
          {1'h0, partials_4_1_magnitude[64:31]}
            + {34'h0,
               _partials_4_1_remainder_T > 65'h40000000
                 | _partials_4_1_remainder_T == 65'h40000000
                 & partials_4_1_magnitude[31]}};
-      partials_4_1_signedResult = partials_4_1_negative ? 191'h0 - _GEN_210 : _GEN_210;
-      partials_4_2_negative = $signed(_GEN_116) < 65'sh0;
-      partials_4_2_magnitude = partials_4_2_negative ? 65'h0 - _GEN_116 : _GEN_116;
+      partials_4_1_signedResult = partials_4_1_negative ? 191'h0 - _GEN_195 : _GEN_195;
+      partials_4_2_negative = $signed(_GEN_100) < 65'sh0;
+      partials_4_2_magnitude = partials_4_2_negative ? 65'h0 - _GEN_100 : _GEN_100;
       _partials_4_2_remainder_T =
         partials_4_2_magnitude - {partials_4_2_magnitude[64:31], 31'h0};
-      _GEN_211 =
+      _GEN_196 =
         {156'h0,
          {1'h0, partials_4_2_magnitude[64:31]}
            + {34'h0,
               _partials_4_2_remainder_T > 65'h40000000
                 | _partials_4_2_remainder_T == 65'h40000000
                 & partials_4_2_magnitude[31]}};
-      partials_4_2_signedResult = partials_4_2_negative ? 191'h0 - _GEN_211 : _GEN_211;
-      partials_4_3_negative = $signed(_GEN_117) < 65'sh0;
-      partials_4_3_magnitude = partials_4_3_negative ? 65'h0 - _GEN_117 : _GEN_117;
+      partials_4_2_signedResult = partials_4_2_negative ? 191'h0 - _GEN_196 : _GEN_196;
+      partials_4_3_negative = $signed(_GEN_101) < 65'sh0;
+      partials_4_3_magnitude = partials_4_3_negative ? 65'h0 - _GEN_101 : _GEN_101;
       _partials_4_3_remainder_T =
         partials_4_3_magnitude - {partials_4_3_magnitude[64:31], 31'h0};
-      _GEN_212 =
+      _GEN_197 =
         {156'h0,
          {1'h0, partials_4_3_magnitude[64:31]}
            + {34'h0,
               _partials_4_3_remainder_T > 65'h40000000
                 | _partials_4_3_remainder_T == 65'h40000000
                 & partials_4_3_magnitude[31]}};
-      partials_4_3_signedResult = partials_4_3_negative ? 191'h0 - _GEN_212 : _GEN_212;
-      partials_4_4_negative = $signed(_GEN_118) < 65'sh0;
-      partials_4_4_magnitude = partials_4_4_negative ? 65'h0 - _GEN_118 : _GEN_118;
+      partials_4_3_signedResult = partials_4_3_negative ? 191'h0 - _GEN_197 : _GEN_197;
+      partials_4_4_negative = $signed(_GEN_102) < 65'sh0;
+      partials_4_4_magnitude = partials_4_4_negative ? 65'h0 - _GEN_102 : _GEN_102;
       _partials_4_4_remainder_T =
         partials_4_4_magnitude - {partials_4_4_magnitude[64:31], 31'h0};
-      _GEN_213 =
+      _GEN_198 =
         {156'h0,
          {1'h0, partials_4_4_magnitude[64:31]}
            + {34'h0,
               _partials_4_4_remainder_T > 65'h40000000
                 | _partials_4_4_remainder_T == 65'h40000000
                 & partials_4_4_magnitude[31]}};
-      partials_4_4_signedResult = partials_4_4_negative ? 191'h0 - _GEN_213 : _GEN_213;
-      partials_4_5_negative = $signed(_GEN_119) < 65'sh0;
-      partials_4_5_magnitude = partials_4_5_negative ? 65'h0 - _GEN_119 : _GEN_119;
+      partials_4_4_signedResult = partials_4_4_negative ? 191'h0 - _GEN_198 : _GEN_198;
+      partials_4_5_negative = $signed(_GEN_103) < 65'sh0;
+      partials_4_5_magnitude = partials_4_5_negative ? 65'h0 - _GEN_103 : _GEN_103;
       _partials_4_5_remainder_T =
         partials_4_5_magnitude - {partials_4_5_magnitude[64:31], 31'h0};
-      _GEN_214 =
+      _GEN_199 =
         {156'h0,
          {1'h0, partials_4_5_magnitude[64:31]}
            + {34'h0,
               _partials_4_5_remainder_T > 65'h40000000
                 | _partials_4_5_remainder_T == 65'h40000000
                 & partials_4_5_magnitude[31]}};
-      partials_4_5_signedResult = partials_4_5_negative ? 191'h0 - _GEN_214 : _GEN_214;
-      partials_4_6_negative = $signed(_GEN_120) < 65'sh0;
-      partials_4_6_magnitude = partials_4_6_negative ? 65'h0 - _GEN_120 : _GEN_120;
+      partials_4_5_signedResult = partials_4_5_negative ? 191'h0 - _GEN_199 : _GEN_199;
+      partials_4_6_negative = $signed(_GEN_104) < 65'sh0;
+      partials_4_6_magnitude = partials_4_6_negative ? 65'h0 - _GEN_104 : _GEN_104;
       _partials_4_6_remainder_T =
         partials_4_6_magnitude - {partials_4_6_magnitude[64:31], 31'h0};
-      _GEN_215 =
+      _GEN_200 =
         {156'h0,
          {1'h0, partials_4_6_magnitude[64:31]}
            + {34'h0,
               _partials_4_6_remainder_T > 65'h40000000
                 | _partials_4_6_remainder_T == 65'h40000000
                 & partials_4_6_magnitude[31]}};
-      partials_4_6_signedResult = partials_4_6_negative ? 191'h0 - _GEN_215 : _GEN_215;
-      partials_4_7_negative = $signed(_GEN_121) < 65'sh0;
-      partials_4_7_magnitude = partials_4_7_negative ? 65'h0 - _GEN_121 : _GEN_121;
+      partials_4_6_signedResult = partials_4_6_negative ? 191'h0 - _GEN_200 : _GEN_200;
+      partials_4_7_negative = $signed(_GEN_105) < 65'sh0;
+      partials_4_7_magnitude = partials_4_7_negative ? 65'h0 - _GEN_105 : _GEN_105;
       _partials_4_7_remainder_T =
         partials_4_7_magnitude - {partials_4_7_magnitude[64:31], 31'h0};
-      _GEN_216 =
+      _GEN_201 =
         {156'h0,
          {1'h0, partials_4_7_magnitude[64:31]}
            + {34'h0,
               _partials_4_7_remainder_T > 65'h40000000
                 | _partials_4_7_remainder_T == 65'h40000000
                 & partials_4_7_magnitude[31]}};
-      partials_4_7_signedResult = partials_4_7_negative ? 191'h0 - _GEN_216 : _GEN_216;
-      partials_4_8_negative = $signed(_GEN_122) < 65'sh0;
-      partials_4_8_magnitude = partials_4_8_negative ? 65'h0 - _GEN_122 : _GEN_122;
+      partials_4_7_signedResult = partials_4_7_negative ? 191'h0 - _GEN_201 : _GEN_201;
+      partials_4_8_negative = $signed(_GEN_106) < 65'sh0;
+      partials_4_8_magnitude = partials_4_8_negative ? 65'h0 - _GEN_106 : _GEN_106;
       _partials_4_8_remainder_T =
         partials_4_8_magnitude - {partials_4_8_magnitude[64:31], 31'h0};
-      _GEN_217 =
+      _GEN_202 =
         {156'h0,
          {1'h0, partials_4_8_magnitude[64:31]}
            + {34'h0,
               _partials_4_8_remainder_T > 65'h40000000
                 | _partials_4_8_remainder_T == 65'h40000000
                 & partials_4_8_magnitude[31]}};
-      partials_4_8_signedResult = partials_4_8_negative ? 191'h0 - _GEN_217 : _GEN_217;
-      partials_4_9_negative = $signed(_GEN_123) < 65'sh0;
-      partials_4_9_magnitude = partials_4_9_negative ? 65'h0 - _GEN_123 : _GEN_123;
+      partials_4_8_signedResult = partials_4_8_negative ? 191'h0 - _GEN_202 : _GEN_202;
+      partials_4_9_negative = $signed(_GEN_107) < 65'sh0;
+      partials_4_9_magnitude = partials_4_9_negative ? 65'h0 - _GEN_107 : _GEN_107;
       _partials_4_9_remainder_T =
         partials_4_9_magnitude - {partials_4_9_magnitude[64:31], 31'h0};
-      _GEN_218 =
+      _GEN_203 =
         {156'h0,
          {1'h0, partials_4_9_magnitude[64:31]}
            + {34'h0,
               _partials_4_9_remainder_T > 65'h40000000
                 | _partials_4_9_remainder_T == 65'h40000000
                 & partials_4_9_magnitude[31]}};
-      partials_4_9_signedResult = partials_4_9_negative ? 191'h0 - _GEN_218 : _GEN_218;
-      partials_4_10_negative = $signed(_GEN_124) < 65'sh0;
-      partials_4_10_magnitude = partials_4_10_negative ? 65'h0 - _GEN_124 : _GEN_124;
+      partials_4_9_signedResult = partials_4_9_negative ? 191'h0 - _GEN_203 : _GEN_203;
+      partials_4_10_negative = $signed(_GEN_108) < 65'sh0;
+      partials_4_10_magnitude = partials_4_10_negative ? 65'h0 - _GEN_108 : _GEN_108;
       _partials_4_10_remainder_T =
         partials_4_10_magnitude - {partials_4_10_magnitude[64:31], 31'h0};
-      _GEN_219 =
+      _GEN_204 =
         {156'h0,
          {1'h0, partials_4_10_magnitude[64:31]}
            + {34'h0,
               _partials_4_10_remainder_T > 65'h40000000
                 | _partials_4_10_remainder_T == 65'h40000000
                 & partials_4_10_magnitude[31]}};
-      partials_4_10_signedResult = partials_4_10_negative ? 191'h0 - _GEN_219 : _GEN_219;
-      partials_4_11_negative = $signed(_GEN_125) < 65'sh0;
-      partials_4_11_magnitude = partials_4_11_negative ? 65'h0 - _GEN_125 : _GEN_125;
+      partials_4_10_signedResult = partials_4_10_negative ? 191'h0 - _GEN_204 : _GEN_204;
+      partials_4_11_negative = $signed(_GEN_109) < 65'sh0;
+      partials_4_11_magnitude = partials_4_11_negative ? 65'h0 - _GEN_109 : _GEN_109;
       _partials_4_11_remainder_T =
         partials_4_11_magnitude - {partials_4_11_magnitude[64:31], 31'h0};
-      _GEN_220 =
+      _GEN_205 =
         {156'h0,
          {1'h0, partials_4_11_magnitude[64:31]}
            + {34'h0,
               _partials_4_11_remainder_T > 65'h40000000
                 | _partials_4_11_remainder_T == 65'h40000000
                 & partials_4_11_magnitude[31]}};
-      partials_4_11_signedResult = partials_4_11_negative ? 191'h0 - _GEN_220 : _GEN_220;
-      partials_4_12_negative = $signed(_GEN_126) < 65'sh0;
-      partials_4_12_magnitude = partials_4_12_negative ? 65'h0 - _GEN_126 : _GEN_126;
+      partials_4_11_signedResult = partials_4_11_negative ? 191'h0 - _GEN_205 : _GEN_205;
+      partials_4_12_negative = $signed(_GEN_110) < 65'sh0;
+      partials_4_12_magnitude = partials_4_12_negative ? 65'h0 - _GEN_110 : _GEN_110;
       _partials_4_12_remainder_T =
         partials_4_12_magnitude - {partials_4_12_magnitude[64:31], 31'h0};
-      _GEN_221 =
+      _GEN_206 =
         {156'h0,
          {1'h0, partials_4_12_magnitude[64:31]}
            + {34'h0,
               _partials_4_12_remainder_T > 65'h40000000
                 | _partials_4_12_remainder_T == 65'h40000000
                 & partials_4_12_magnitude[31]}};
-      partials_4_12_signedResult = partials_4_12_negative ? 191'h0 - _GEN_221 : _GEN_221;
-      partials_4_13_negative = $signed(_GEN_127) < 65'sh0;
-      partials_4_13_magnitude = partials_4_13_negative ? 65'h0 - _GEN_127 : _GEN_127;
+      partials_4_12_signedResult = partials_4_12_negative ? 191'h0 - _GEN_206 : _GEN_206;
+      partials_4_13_negative = $signed(_GEN_111) < 65'sh0;
+      partials_4_13_magnitude = partials_4_13_negative ? 65'h0 - _GEN_111 : _GEN_111;
       _partials_4_13_remainder_T =
         partials_4_13_magnitude - {partials_4_13_magnitude[64:31], 31'h0};
-      _GEN_222 =
+      _GEN_207 =
         {156'h0,
          {1'h0, partials_4_13_magnitude[64:31]}
            + {34'h0,
               _partials_4_13_remainder_T > 65'h40000000
                 | _partials_4_13_remainder_T == 65'h40000000
                 & partials_4_13_magnitude[31]}};
-      partials_4_13_signedResult = partials_4_13_negative ? 191'h0 - _GEN_222 : _GEN_222;
-      partials_4_14_negative = $signed(_GEN_128) < 65'sh0;
-      partials_4_14_magnitude = partials_4_14_negative ? 65'h0 - _GEN_128 : _GEN_128;
+      partials_4_13_signedResult = partials_4_13_negative ? 191'h0 - _GEN_207 : _GEN_207;
+      partials_4_14_negative = $signed(_GEN_112) < 65'sh0;
+      partials_4_14_magnitude = partials_4_14_negative ? 65'h0 - _GEN_112 : _GEN_112;
       _partials_4_14_remainder_T =
         partials_4_14_magnitude - {partials_4_14_magnitude[64:31], 31'h0};
-      _GEN_223 =
+      _GEN_208 =
         {156'h0,
          {1'h0, partials_4_14_magnitude[64:31]}
            + {34'h0,
               _partials_4_14_remainder_T > 65'h40000000
                 | _partials_4_14_remainder_T == 65'h40000000
                 & partials_4_14_magnitude[31]}};
-      partials_4_14_signedResult = partials_4_14_negative ? 191'h0 - _GEN_223 : _GEN_223;
-      partials_4_15_negative = $signed(_GEN_129) < 65'sh0;
-      partials_4_15_magnitude = partials_4_15_negative ? 65'h0 - _GEN_129 : _GEN_129;
+      partials_4_14_signedResult = partials_4_14_negative ? 191'h0 - _GEN_208 : _GEN_208;
+      partials_4_15_negative = $signed(_GEN_113) < 65'sh0;
+      partials_4_15_magnitude = partials_4_15_negative ? 65'h0 - _GEN_113 : _GEN_113;
       _partials_4_15_remainder_T =
         partials_4_15_magnitude - {partials_4_15_magnitude[64:31], 31'h0};
-      _GEN_224 =
+      _GEN_209 =
         {156'h0,
          {1'h0, partials_4_15_magnitude[64:31]}
            + {34'h0,
               _partials_4_15_remainder_T > 65'h40000000
                 | _partials_4_15_remainder_T == 65'h40000000
                 & partials_4_15_magnitude[31]}};
-      partials_4_15_signedResult = partials_4_15_negative ? 191'h0 - _GEN_224 : _GEN_224;
+      partials_4_15_signedResult = partials_4_15_negative ? 191'h0 - _GEN_209 : _GEN_209;
       partials_4_0 <=
         $signed(partials_4_0_signedResult) > 191'sh7FFFFFFF
           ? 32'h7FFFFFFF
@@ -12859,7 +11989,7 @@ module Linear_1(
               ? 32'h80000000
               : partials_4_15_signedResult[31:0];
     end
-    if (_GEN_130 & _accumulatorAdds_0_io_out_bits_tag == 3'h5) begin
+    if (_GEN_114 & _accumulatorAdds_0_io_out_bits_tag == 3'h5) begin
       partials_5_0 <= _accumulatorAdds_0_io_out_bits_value;
       partials_5_1 <= _accumulatorAdds_1_io_out_bits_value;
       partials_5_2 <= _accumulatorAdds_2_io_out_bits_value;
@@ -12881,275 +12011,275 @@ module Linear_1(
       automatic logic         partials_5_0_negative;
       automatic logic [64:0]  partials_5_0_magnitude;
       automatic logic [64:0]  _partials_5_0_remainder_T;
-      automatic logic [190:0] _GEN_225;
+      automatic logic [190:0] _GEN_210;
       automatic logic [190:0] partials_5_0_signedResult;
       automatic logic         partials_5_1_negative;
       automatic logic [64:0]  partials_5_1_magnitude;
       automatic logic [64:0]  _partials_5_1_remainder_T;
-      automatic logic [190:0] _GEN_226;
+      automatic logic [190:0] _GEN_211;
       automatic logic [190:0] partials_5_1_signedResult;
       automatic logic         partials_5_2_negative;
       automatic logic [64:0]  partials_5_2_magnitude;
       automatic logic [64:0]  _partials_5_2_remainder_T;
-      automatic logic [190:0] _GEN_227;
+      automatic logic [190:0] _GEN_212;
       automatic logic [190:0] partials_5_2_signedResult;
       automatic logic         partials_5_3_negative;
       automatic logic [64:0]  partials_5_3_magnitude;
       automatic logic [64:0]  _partials_5_3_remainder_T;
-      automatic logic [190:0] _GEN_228;
+      automatic logic [190:0] _GEN_213;
       automatic logic [190:0] partials_5_3_signedResult;
       automatic logic         partials_5_4_negative;
       automatic logic [64:0]  partials_5_4_magnitude;
       automatic logic [64:0]  _partials_5_4_remainder_T;
-      automatic logic [190:0] _GEN_229;
+      automatic logic [190:0] _GEN_214;
       automatic logic [190:0] partials_5_4_signedResult;
       automatic logic         partials_5_5_negative;
       automatic logic [64:0]  partials_5_5_magnitude;
       automatic logic [64:0]  _partials_5_5_remainder_T;
-      automatic logic [190:0] _GEN_230;
+      automatic logic [190:0] _GEN_215;
       automatic logic [190:0] partials_5_5_signedResult;
       automatic logic         partials_5_6_negative;
       automatic logic [64:0]  partials_5_6_magnitude;
       automatic logic [64:0]  _partials_5_6_remainder_T;
-      automatic logic [190:0] _GEN_231;
+      automatic logic [190:0] _GEN_216;
       automatic logic [190:0] partials_5_6_signedResult;
       automatic logic         partials_5_7_negative;
       automatic logic [64:0]  partials_5_7_magnitude;
       automatic logic [64:0]  _partials_5_7_remainder_T;
-      automatic logic [190:0] _GEN_232;
+      automatic logic [190:0] _GEN_217;
       automatic logic [190:0] partials_5_7_signedResult;
       automatic logic         partials_5_8_negative;
       automatic logic [64:0]  partials_5_8_magnitude;
       automatic logic [64:0]  _partials_5_8_remainder_T;
-      automatic logic [190:0] _GEN_233;
+      automatic logic [190:0] _GEN_218;
       automatic logic [190:0] partials_5_8_signedResult;
       automatic logic         partials_5_9_negative;
       automatic logic [64:0]  partials_5_9_magnitude;
       automatic logic [64:0]  _partials_5_9_remainder_T;
-      automatic logic [190:0] _GEN_234;
+      automatic logic [190:0] _GEN_219;
       automatic logic [190:0] partials_5_9_signedResult;
       automatic logic         partials_5_10_negative;
       automatic logic [64:0]  partials_5_10_magnitude;
       automatic logic [64:0]  _partials_5_10_remainder_T;
-      automatic logic [190:0] _GEN_235;
+      automatic logic [190:0] _GEN_220;
       automatic logic [190:0] partials_5_10_signedResult;
       automatic logic         partials_5_11_negative;
       automatic logic [64:0]  partials_5_11_magnitude;
       automatic logic [64:0]  _partials_5_11_remainder_T;
-      automatic logic [190:0] _GEN_236;
+      automatic logic [190:0] _GEN_221;
       automatic logic [190:0] partials_5_11_signedResult;
       automatic logic         partials_5_12_negative;
       automatic logic [64:0]  partials_5_12_magnitude;
       automatic logic [64:0]  _partials_5_12_remainder_T;
-      automatic logic [190:0] _GEN_237;
+      automatic logic [190:0] _GEN_222;
       automatic logic [190:0] partials_5_12_signedResult;
       automatic logic         partials_5_13_negative;
       automatic logic [64:0]  partials_5_13_magnitude;
       automatic logic [64:0]  _partials_5_13_remainder_T;
-      automatic logic [190:0] _GEN_238;
+      automatic logic [190:0] _GEN_223;
       automatic logic [190:0] partials_5_13_signedResult;
       automatic logic         partials_5_14_negative;
       automatic logic [64:0]  partials_5_14_magnitude;
       automatic logic [64:0]  _partials_5_14_remainder_T;
-      automatic logic [190:0] _GEN_239;
+      automatic logic [190:0] _GEN_224;
       automatic logic [190:0] partials_5_14_signedResult;
       automatic logic         partials_5_15_negative;
       automatic logic [64:0]  partials_5_15_magnitude;
       automatic logic [64:0]  _partials_5_15_remainder_T;
-      automatic logic [190:0] _GEN_240;
+      automatic logic [190:0] _GEN_225;
       automatic logic [190:0] partials_5_15_signedResult;
-      partials_5_0_negative = $signed(_GEN_114) < 65'sh0;
-      partials_5_0_magnitude = partials_5_0_negative ? 65'h0 - _GEN_114 : _GEN_114;
+      partials_5_0_negative = $signed(_GEN_98) < 65'sh0;
+      partials_5_0_magnitude = partials_5_0_negative ? 65'h0 - _GEN_98 : _GEN_98;
       _partials_5_0_remainder_T =
         partials_5_0_magnitude - {partials_5_0_magnitude[64:31], 31'h0};
-      _GEN_225 =
+      _GEN_210 =
         {156'h0,
          {1'h0, partials_5_0_magnitude[64:31]}
            + {34'h0,
               _partials_5_0_remainder_T > 65'h40000000
                 | _partials_5_0_remainder_T == 65'h40000000
                 & partials_5_0_magnitude[31]}};
-      partials_5_0_signedResult = partials_5_0_negative ? 191'h0 - _GEN_225 : _GEN_225;
-      partials_5_1_negative = $signed(_GEN_115) < 65'sh0;
-      partials_5_1_magnitude = partials_5_1_negative ? 65'h0 - _GEN_115 : _GEN_115;
+      partials_5_0_signedResult = partials_5_0_negative ? 191'h0 - _GEN_210 : _GEN_210;
+      partials_5_1_negative = $signed(_GEN_99) < 65'sh0;
+      partials_5_1_magnitude = partials_5_1_negative ? 65'h0 - _GEN_99 : _GEN_99;
       _partials_5_1_remainder_T =
         partials_5_1_magnitude - {partials_5_1_magnitude[64:31], 31'h0};
-      _GEN_226 =
+      _GEN_211 =
         {156'h0,
          {1'h0, partials_5_1_magnitude[64:31]}
            + {34'h0,
               _partials_5_1_remainder_T > 65'h40000000
                 | _partials_5_1_remainder_T == 65'h40000000
                 & partials_5_1_magnitude[31]}};
-      partials_5_1_signedResult = partials_5_1_negative ? 191'h0 - _GEN_226 : _GEN_226;
-      partials_5_2_negative = $signed(_GEN_116) < 65'sh0;
-      partials_5_2_magnitude = partials_5_2_negative ? 65'h0 - _GEN_116 : _GEN_116;
+      partials_5_1_signedResult = partials_5_1_negative ? 191'h0 - _GEN_211 : _GEN_211;
+      partials_5_2_negative = $signed(_GEN_100) < 65'sh0;
+      partials_5_2_magnitude = partials_5_2_negative ? 65'h0 - _GEN_100 : _GEN_100;
       _partials_5_2_remainder_T =
         partials_5_2_magnitude - {partials_5_2_magnitude[64:31], 31'h0};
-      _GEN_227 =
+      _GEN_212 =
         {156'h0,
          {1'h0, partials_5_2_magnitude[64:31]}
            + {34'h0,
               _partials_5_2_remainder_T > 65'h40000000
                 | _partials_5_2_remainder_T == 65'h40000000
                 & partials_5_2_magnitude[31]}};
-      partials_5_2_signedResult = partials_5_2_negative ? 191'h0 - _GEN_227 : _GEN_227;
-      partials_5_3_negative = $signed(_GEN_117) < 65'sh0;
-      partials_5_3_magnitude = partials_5_3_negative ? 65'h0 - _GEN_117 : _GEN_117;
+      partials_5_2_signedResult = partials_5_2_negative ? 191'h0 - _GEN_212 : _GEN_212;
+      partials_5_3_negative = $signed(_GEN_101) < 65'sh0;
+      partials_5_3_magnitude = partials_5_3_negative ? 65'h0 - _GEN_101 : _GEN_101;
       _partials_5_3_remainder_T =
         partials_5_3_magnitude - {partials_5_3_magnitude[64:31], 31'h0};
-      _GEN_228 =
+      _GEN_213 =
         {156'h0,
          {1'h0, partials_5_3_magnitude[64:31]}
            + {34'h0,
               _partials_5_3_remainder_T > 65'h40000000
                 | _partials_5_3_remainder_T == 65'h40000000
                 & partials_5_3_magnitude[31]}};
-      partials_5_3_signedResult = partials_5_3_negative ? 191'h0 - _GEN_228 : _GEN_228;
-      partials_5_4_negative = $signed(_GEN_118) < 65'sh0;
-      partials_5_4_magnitude = partials_5_4_negative ? 65'h0 - _GEN_118 : _GEN_118;
+      partials_5_3_signedResult = partials_5_3_negative ? 191'h0 - _GEN_213 : _GEN_213;
+      partials_5_4_negative = $signed(_GEN_102) < 65'sh0;
+      partials_5_4_magnitude = partials_5_4_negative ? 65'h0 - _GEN_102 : _GEN_102;
       _partials_5_4_remainder_T =
         partials_5_4_magnitude - {partials_5_4_magnitude[64:31], 31'h0};
-      _GEN_229 =
+      _GEN_214 =
         {156'h0,
          {1'h0, partials_5_4_magnitude[64:31]}
            + {34'h0,
               _partials_5_4_remainder_T > 65'h40000000
                 | _partials_5_4_remainder_T == 65'h40000000
                 & partials_5_4_magnitude[31]}};
-      partials_5_4_signedResult = partials_5_4_negative ? 191'h0 - _GEN_229 : _GEN_229;
-      partials_5_5_negative = $signed(_GEN_119) < 65'sh0;
-      partials_5_5_magnitude = partials_5_5_negative ? 65'h0 - _GEN_119 : _GEN_119;
+      partials_5_4_signedResult = partials_5_4_negative ? 191'h0 - _GEN_214 : _GEN_214;
+      partials_5_5_negative = $signed(_GEN_103) < 65'sh0;
+      partials_5_5_magnitude = partials_5_5_negative ? 65'h0 - _GEN_103 : _GEN_103;
       _partials_5_5_remainder_T =
         partials_5_5_magnitude - {partials_5_5_magnitude[64:31], 31'h0};
-      _GEN_230 =
+      _GEN_215 =
         {156'h0,
          {1'h0, partials_5_5_magnitude[64:31]}
            + {34'h0,
               _partials_5_5_remainder_T > 65'h40000000
                 | _partials_5_5_remainder_T == 65'h40000000
                 & partials_5_5_magnitude[31]}};
-      partials_5_5_signedResult = partials_5_5_negative ? 191'h0 - _GEN_230 : _GEN_230;
-      partials_5_6_negative = $signed(_GEN_120) < 65'sh0;
-      partials_5_6_magnitude = partials_5_6_negative ? 65'h0 - _GEN_120 : _GEN_120;
+      partials_5_5_signedResult = partials_5_5_negative ? 191'h0 - _GEN_215 : _GEN_215;
+      partials_5_6_negative = $signed(_GEN_104) < 65'sh0;
+      partials_5_6_magnitude = partials_5_6_negative ? 65'h0 - _GEN_104 : _GEN_104;
       _partials_5_6_remainder_T =
         partials_5_6_magnitude - {partials_5_6_magnitude[64:31], 31'h0};
-      _GEN_231 =
+      _GEN_216 =
         {156'h0,
          {1'h0, partials_5_6_magnitude[64:31]}
            + {34'h0,
               _partials_5_6_remainder_T > 65'h40000000
                 | _partials_5_6_remainder_T == 65'h40000000
                 & partials_5_6_magnitude[31]}};
-      partials_5_6_signedResult = partials_5_6_negative ? 191'h0 - _GEN_231 : _GEN_231;
-      partials_5_7_negative = $signed(_GEN_121) < 65'sh0;
-      partials_5_7_magnitude = partials_5_7_negative ? 65'h0 - _GEN_121 : _GEN_121;
+      partials_5_6_signedResult = partials_5_6_negative ? 191'h0 - _GEN_216 : _GEN_216;
+      partials_5_7_negative = $signed(_GEN_105) < 65'sh0;
+      partials_5_7_magnitude = partials_5_7_negative ? 65'h0 - _GEN_105 : _GEN_105;
       _partials_5_7_remainder_T =
         partials_5_7_magnitude - {partials_5_7_magnitude[64:31], 31'h0};
-      _GEN_232 =
+      _GEN_217 =
         {156'h0,
          {1'h0, partials_5_7_magnitude[64:31]}
            + {34'h0,
               _partials_5_7_remainder_T > 65'h40000000
                 | _partials_5_7_remainder_T == 65'h40000000
                 & partials_5_7_magnitude[31]}};
-      partials_5_7_signedResult = partials_5_7_negative ? 191'h0 - _GEN_232 : _GEN_232;
-      partials_5_8_negative = $signed(_GEN_122) < 65'sh0;
-      partials_5_8_magnitude = partials_5_8_negative ? 65'h0 - _GEN_122 : _GEN_122;
+      partials_5_7_signedResult = partials_5_7_negative ? 191'h0 - _GEN_217 : _GEN_217;
+      partials_5_8_negative = $signed(_GEN_106) < 65'sh0;
+      partials_5_8_magnitude = partials_5_8_negative ? 65'h0 - _GEN_106 : _GEN_106;
       _partials_5_8_remainder_T =
         partials_5_8_magnitude - {partials_5_8_magnitude[64:31], 31'h0};
-      _GEN_233 =
+      _GEN_218 =
         {156'h0,
          {1'h0, partials_5_8_magnitude[64:31]}
            + {34'h0,
               _partials_5_8_remainder_T > 65'h40000000
                 | _partials_5_8_remainder_T == 65'h40000000
                 & partials_5_8_magnitude[31]}};
-      partials_5_8_signedResult = partials_5_8_negative ? 191'h0 - _GEN_233 : _GEN_233;
-      partials_5_9_negative = $signed(_GEN_123) < 65'sh0;
-      partials_5_9_magnitude = partials_5_9_negative ? 65'h0 - _GEN_123 : _GEN_123;
+      partials_5_8_signedResult = partials_5_8_negative ? 191'h0 - _GEN_218 : _GEN_218;
+      partials_5_9_negative = $signed(_GEN_107) < 65'sh0;
+      partials_5_9_magnitude = partials_5_9_negative ? 65'h0 - _GEN_107 : _GEN_107;
       _partials_5_9_remainder_T =
         partials_5_9_magnitude - {partials_5_9_magnitude[64:31], 31'h0};
-      _GEN_234 =
+      _GEN_219 =
         {156'h0,
          {1'h0, partials_5_9_magnitude[64:31]}
            + {34'h0,
               _partials_5_9_remainder_T > 65'h40000000
                 | _partials_5_9_remainder_T == 65'h40000000
                 & partials_5_9_magnitude[31]}};
-      partials_5_9_signedResult = partials_5_9_negative ? 191'h0 - _GEN_234 : _GEN_234;
-      partials_5_10_negative = $signed(_GEN_124) < 65'sh0;
-      partials_5_10_magnitude = partials_5_10_negative ? 65'h0 - _GEN_124 : _GEN_124;
+      partials_5_9_signedResult = partials_5_9_negative ? 191'h0 - _GEN_219 : _GEN_219;
+      partials_5_10_negative = $signed(_GEN_108) < 65'sh0;
+      partials_5_10_magnitude = partials_5_10_negative ? 65'h0 - _GEN_108 : _GEN_108;
       _partials_5_10_remainder_T =
         partials_5_10_magnitude - {partials_5_10_magnitude[64:31], 31'h0};
-      _GEN_235 =
+      _GEN_220 =
         {156'h0,
          {1'h0, partials_5_10_magnitude[64:31]}
            + {34'h0,
               _partials_5_10_remainder_T > 65'h40000000
                 | _partials_5_10_remainder_T == 65'h40000000
                 & partials_5_10_magnitude[31]}};
-      partials_5_10_signedResult = partials_5_10_negative ? 191'h0 - _GEN_235 : _GEN_235;
-      partials_5_11_negative = $signed(_GEN_125) < 65'sh0;
-      partials_5_11_magnitude = partials_5_11_negative ? 65'h0 - _GEN_125 : _GEN_125;
+      partials_5_10_signedResult = partials_5_10_negative ? 191'h0 - _GEN_220 : _GEN_220;
+      partials_5_11_negative = $signed(_GEN_109) < 65'sh0;
+      partials_5_11_magnitude = partials_5_11_negative ? 65'h0 - _GEN_109 : _GEN_109;
       _partials_5_11_remainder_T =
         partials_5_11_magnitude - {partials_5_11_magnitude[64:31], 31'h0};
-      _GEN_236 =
+      _GEN_221 =
         {156'h0,
          {1'h0, partials_5_11_magnitude[64:31]}
            + {34'h0,
               _partials_5_11_remainder_T > 65'h40000000
                 | _partials_5_11_remainder_T == 65'h40000000
                 & partials_5_11_magnitude[31]}};
-      partials_5_11_signedResult = partials_5_11_negative ? 191'h0 - _GEN_236 : _GEN_236;
-      partials_5_12_negative = $signed(_GEN_126) < 65'sh0;
-      partials_5_12_magnitude = partials_5_12_negative ? 65'h0 - _GEN_126 : _GEN_126;
+      partials_5_11_signedResult = partials_5_11_negative ? 191'h0 - _GEN_221 : _GEN_221;
+      partials_5_12_negative = $signed(_GEN_110) < 65'sh0;
+      partials_5_12_magnitude = partials_5_12_negative ? 65'h0 - _GEN_110 : _GEN_110;
       _partials_5_12_remainder_T =
         partials_5_12_magnitude - {partials_5_12_magnitude[64:31], 31'h0};
-      _GEN_237 =
+      _GEN_222 =
         {156'h0,
          {1'h0, partials_5_12_magnitude[64:31]}
            + {34'h0,
               _partials_5_12_remainder_T > 65'h40000000
                 | _partials_5_12_remainder_T == 65'h40000000
                 & partials_5_12_magnitude[31]}};
-      partials_5_12_signedResult = partials_5_12_negative ? 191'h0 - _GEN_237 : _GEN_237;
-      partials_5_13_negative = $signed(_GEN_127) < 65'sh0;
-      partials_5_13_magnitude = partials_5_13_negative ? 65'h0 - _GEN_127 : _GEN_127;
+      partials_5_12_signedResult = partials_5_12_negative ? 191'h0 - _GEN_222 : _GEN_222;
+      partials_5_13_negative = $signed(_GEN_111) < 65'sh0;
+      partials_5_13_magnitude = partials_5_13_negative ? 65'h0 - _GEN_111 : _GEN_111;
       _partials_5_13_remainder_T =
         partials_5_13_magnitude - {partials_5_13_magnitude[64:31], 31'h0};
-      _GEN_238 =
+      _GEN_223 =
         {156'h0,
          {1'h0, partials_5_13_magnitude[64:31]}
            + {34'h0,
               _partials_5_13_remainder_T > 65'h40000000
                 | _partials_5_13_remainder_T == 65'h40000000
                 & partials_5_13_magnitude[31]}};
-      partials_5_13_signedResult = partials_5_13_negative ? 191'h0 - _GEN_238 : _GEN_238;
-      partials_5_14_negative = $signed(_GEN_128) < 65'sh0;
-      partials_5_14_magnitude = partials_5_14_negative ? 65'h0 - _GEN_128 : _GEN_128;
+      partials_5_13_signedResult = partials_5_13_negative ? 191'h0 - _GEN_223 : _GEN_223;
+      partials_5_14_negative = $signed(_GEN_112) < 65'sh0;
+      partials_5_14_magnitude = partials_5_14_negative ? 65'h0 - _GEN_112 : _GEN_112;
       _partials_5_14_remainder_T =
         partials_5_14_magnitude - {partials_5_14_magnitude[64:31], 31'h0};
-      _GEN_239 =
+      _GEN_224 =
         {156'h0,
          {1'h0, partials_5_14_magnitude[64:31]}
            + {34'h0,
               _partials_5_14_remainder_T > 65'h40000000
                 | _partials_5_14_remainder_T == 65'h40000000
                 & partials_5_14_magnitude[31]}};
-      partials_5_14_signedResult = partials_5_14_negative ? 191'h0 - _GEN_239 : _GEN_239;
-      partials_5_15_negative = $signed(_GEN_129) < 65'sh0;
-      partials_5_15_magnitude = partials_5_15_negative ? 65'h0 - _GEN_129 : _GEN_129;
+      partials_5_14_signedResult = partials_5_14_negative ? 191'h0 - _GEN_224 : _GEN_224;
+      partials_5_15_negative = $signed(_GEN_113) < 65'sh0;
+      partials_5_15_magnitude = partials_5_15_negative ? 65'h0 - _GEN_113 : _GEN_113;
       _partials_5_15_remainder_T =
         partials_5_15_magnitude - {partials_5_15_magnitude[64:31], 31'h0};
-      _GEN_240 =
+      _GEN_225 =
         {156'h0,
          {1'h0, partials_5_15_magnitude[64:31]}
            + {34'h0,
               _partials_5_15_remainder_T > 65'h40000000
                 | _partials_5_15_remainder_T == 65'h40000000
                 & partials_5_15_magnitude[31]}};
-      partials_5_15_signedResult = partials_5_15_negative ? 191'h0 - _GEN_240 : _GEN_240;
+      partials_5_15_signedResult = partials_5_15_negative ? 191'h0 - _GEN_225 : _GEN_225;
       partials_5_0 <=
         $signed(partials_5_0_signedResult) > 191'sh7FFFFFFF
           ? 32'h7FFFFFFF
@@ -13247,7 +12377,7 @@ module Linear_1(
               ? 32'h80000000
               : partials_5_15_signedResult[31:0];
     end
-    if (_GEN_130 & _accumulatorAdds_0_io_out_bits_tag == 3'h6) begin
+    if (_GEN_114 & _accumulatorAdds_0_io_out_bits_tag == 3'h6) begin
       partials_6_0 <= _accumulatorAdds_0_io_out_bits_value;
       partials_6_1 <= _accumulatorAdds_1_io_out_bits_value;
       partials_6_2 <= _accumulatorAdds_2_io_out_bits_value;
@@ -13269,275 +12399,275 @@ module Linear_1(
       automatic logic         partials_6_0_negative;
       automatic logic [64:0]  partials_6_0_magnitude;
       automatic logic [64:0]  _partials_6_0_remainder_T;
-      automatic logic [190:0] _GEN_241;
+      automatic logic [190:0] _GEN_226;
       automatic logic [190:0] partials_6_0_signedResult;
       automatic logic         partials_6_1_negative;
       automatic logic [64:0]  partials_6_1_magnitude;
       automatic logic [64:0]  _partials_6_1_remainder_T;
-      automatic logic [190:0] _GEN_242;
+      automatic logic [190:0] _GEN_227;
       automatic logic [190:0] partials_6_1_signedResult;
       automatic logic         partials_6_2_negative;
       automatic logic [64:0]  partials_6_2_magnitude;
       automatic logic [64:0]  _partials_6_2_remainder_T;
-      automatic logic [190:0] _GEN_243;
+      automatic logic [190:0] _GEN_228;
       automatic logic [190:0] partials_6_2_signedResult;
       automatic logic         partials_6_3_negative;
       automatic logic [64:0]  partials_6_3_magnitude;
       automatic logic [64:0]  _partials_6_3_remainder_T;
-      automatic logic [190:0] _GEN_244;
+      automatic logic [190:0] _GEN_229;
       automatic logic [190:0] partials_6_3_signedResult;
       automatic logic         partials_6_4_negative;
       automatic logic [64:0]  partials_6_4_magnitude;
       automatic logic [64:0]  _partials_6_4_remainder_T;
-      automatic logic [190:0] _GEN_245;
+      automatic logic [190:0] _GEN_230;
       automatic logic [190:0] partials_6_4_signedResult;
       automatic logic         partials_6_5_negative;
       automatic logic [64:0]  partials_6_5_magnitude;
       automatic logic [64:0]  _partials_6_5_remainder_T;
-      automatic logic [190:0] _GEN_246;
+      automatic logic [190:0] _GEN_231;
       automatic logic [190:0] partials_6_5_signedResult;
       automatic logic         partials_6_6_negative;
       automatic logic [64:0]  partials_6_6_magnitude;
       automatic logic [64:0]  _partials_6_6_remainder_T;
-      automatic logic [190:0] _GEN_247;
+      automatic logic [190:0] _GEN_232;
       automatic logic [190:0] partials_6_6_signedResult;
       automatic logic         partials_6_7_negative;
       automatic logic [64:0]  partials_6_7_magnitude;
       automatic logic [64:0]  _partials_6_7_remainder_T;
-      automatic logic [190:0] _GEN_248;
+      automatic logic [190:0] _GEN_233;
       automatic logic [190:0] partials_6_7_signedResult;
       automatic logic         partials_6_8_negative;
       automatic logic [64:0]  partials_6_8_magnitude;
       automatic logic [64:0]  _partials_6_8_remainder_T;
-      automatic logic [190:0] _GEN_249;
+      automatic logic [190:0] _GEN_234;
       automatic logic [190:0] partials_6_8_signedResult;
       automatic logic         partials_6_9_negative;
       automatic logic [64:0]  partials_6_9_magnitude;
       automatic logic [64:0]  _partials_6_9_remainder_T;
-      automatic logic [190:0] _GEN_250;
+      automatic logic [190:0] _GEN_235;
       automatic logic [190:0] partials_6_9_signedResult;
       automatic logic         partials_6_10_negative;
       automatic logic [64:0]  partials_6_10_magnitude;
       automatic logic [64:0]  _partials_6_10_remainder_T;
-      automatic logic [190:0] _GEN_251;
+      automatic logic [190:0] _GEN_236;
       automatic logic [190:0] partials_6_10_signedResult;
       automatic logic         partials_6_11_negative;
       automatic logic [64:0]  partials_6_11_magnitude;
       automatic logic [64:0]  _partials_6_11_remainder_T;
-      automatic logic [190:0] _GEN_252;
+      automatic logic [190:0] _GEN_237;
       automatic logic [190:0] partials_6_11_signedResult;
       automatic logic         partials_6_12_negative;
       automatic logic [64:0]  partials_6_12_magnitude;
       automatic logic [64:0]  _partials_6_12_remainder_T;
-      automatic logic [190:0] _GEN_253;
+      automatic logic [190:0] _GEN_238;
       automatic logic [190:0] partials_6_12_signedResult;
       automatic logic         partials_6_13_negative;
       automatic logic [64:0]  partials_6_13_magnitude;
       automatic logic [64:0]  _partials_6_13_remainder_T;
-      automatic logic [190:0] _GEN_254;
+      automatic logic [190:0] _GEN_239;
       automatic logic [190:0] partials_6_13_signedResult;
       automatic logic         partials_6_14_negative;
       automatic logic [64:0]  partials_6_14_magnitude;
       automatic logic [64:0]  _partials_6_14_remainder_T;
-      automatic logic [190:0] _GEN_255;
+      automatic logic [190:0] _GEN_240;
       automatic logic [190:0] partials_6_14_signedResult;
       automatic logic         partials_6_15_negative;
       automatic logic [64:0]  partials_6_15_magnitude;
       automatic logic [64:0]  _partials_6_15_remainder_T;
-      automatic logic [190:0] _GEN_256;
+      automatic logic [190:0] _GEN_241;
       automatic logic [190:0] partials_6_15_signedResult;
-      partials_6_0_negative = $signed(_GEN_114) < 65'sh0;
-      partials_6_0_magnitude = partials_6_0_negative ? 65'h0 - _GEN_114 : _GEN_114;
+      partials_6_0_negative = $signed(_GEN_98) < 65'sh0;
+      partials_6_0_magnitude = partials_6_0_negative ? 65'h0 - _GEN_98 : _GEN_98;
       _partials_6_0_remainder_T =
         partials_6_0_magnitude - {partials_6_0_magnitude[64:31], 31'h0};
-      _GEN_241 =
+      _GEN_226 =
         {156'h0,
          {1'h0, partials_6_0_magnitude[64:31]}
            + {34'h0,
               _partials_6_0_remainder_T > 65'h40000000
                 | _partials_6_0_remainder_T == 65'h40000000
                 & partials_6_0_magnitude[31]}};
-      partials_6_0_signedResult = partials_6_0_negative ? 191'h0 - _GEN_241 : _GEN_241;
-      partials_6_1_negative = $signed(_GEN_115) < 65'sh0;
-      partials_6_1_magnitude = partials_6_1_negative ? 65'h0 - _GEN_115 : _GEN_115;
+      partials_6_0_signedResult = partials_6_0_negative ? 191'h0 - _GEN_226 : _GEN_226;
+      partials_6_1_negative = $signed(_GEN_99) < 65'sh0;
+      partials_6_1_magnitude = partials_6_1_negative ? 65'h0 - _GEN_99 : _GEN_99;
       _partials_6_1_remainder_T =
         partials_6_1_magnitude - {partials_6_1_magnitude[64:31], 31'h0};
-      _GEN_242 =
+      _GEN_227 =
         {156'h0,
          {1'h0, partials_6_1_magnitude[64:31]}
            + {34'h0,
               _partials_6_1_remainder_T > 65'h40000000
                 | _partials_6_1_remainder_T == 65'h40000000
                 & partials_6_1_magnitude[31]}};
-      partials_6_1_signedResult = partials_6_1_negative ? 191'h0 - _GEN_242 : _GEN_242;
-      partials_6_2_negative = $signed(_GEN_116) < 65'sh0;
-      partials_6_2_magnitude = partials_6_2_negative ? 65'h0 - _GEN_116 : _GEN_116;
+      partials_6_1_signedResult = partials_6_1_negative ? 191'h0 - _GEN_227 : _GEN_227;
+      partials_6_2_negative = $signed(_GEN_100) < 65'sh0;
+      partials_6_2_magnitude = partials_6_2_negative ? 65'h0 - _GEN_100 : _GEN_100;
       _partials_6_2_remainder_T =
         partials_6_2_magnitude - {partials_6_2_magnitude[64:31], 31'h0};
-      _GEN_243 =
+      _GEN_228 =
         {156'h0,
          {1'h0, partials_6_2_magnitude[64:31]}
            + {34'h0,
               _partials_6_2_remainder_T > 65'h40000000
                 | _partials_6_2_remainder_T == 65'h40000000
                 & partials_6_2_magnitude[31]}};
-      partials_6_2_signedResult = partials_6_2_negative ? 191'h0 - _GEN_243 : _GEN_243;
-      partials_6_3_negative = $signed(_GEN_117) < 65'sh0;
-      partials_6_3_magnitude = partials_6_3_negative ? 65'h0 - _GEN_117 : _GEN_117;
+      partials_6_2_signedResult = partials_6_2_negative ? 191'h0 - _GEN_228 : _GEN_228;
+      partials_6_3_negative = $signed(_GEN_101) < 65'sh0;
+      partials_6_3_magnitude = partials_6_3_negative ? 65'h0 - _GEN_101 : _GEN_101;
       _partials_6_3_remainder_T =
         partials_6_3_magnitude - {partials_6_3_magnitude[64:31], 31'h0};
-      _GEN_244 =
+      _GEN_229 =
         {156'h0,
          {1'h0, partials_6_3_magnitude[64:31]}
            + {34'h0,
               _partials_6_3_remainder_T > 65'h40000000
                 | _partials_6_3_remainder_T == 65'h40000000
                 & partials_6_3_magnitude[31]}};
-      partials_6_3_signedResult = partials_6_3_negative ? 191'h0 - _GEN_244 : _GEN_244;
-      partials_6_4_negative = $signed(_GEN_118) < 65'sh0;
-      partials_6_4_magnitude = partials_6_4_negative ? 65'h0 - _GEN_118 : _GEN_118;
+      partials_6_3_signedResult = partials_6_3_negative ? 191'h0 - _GEN_229 : _GEN_229;
+      partials_6_4_negative = $signed(_GEN_102) < 65'sh0;
+      partials_6_4_magnitude = partials_6_4_negative ? 65'h0 - _GEN_102 : _GEN_102;
       _partials_6_4_remainder_T =
         partials_6_4_magnitude - {partials_6_4_magnitude[64:31], 31'h0};
-      _GEN_245 =
+      _GEN_230 =
         {156'h0,
          {1'h0, partials_6_4_magnitude[64:31]}
            + {34'h0,
               _partials_6_4_remainder_T > 65'h40000000
                 | _partials_6_4_remainder_T == 65'h40000000
                 & partials_6_4_magnitude[31]}};
-      partials_6_4_signedResult = partials_6_4_negative ? 191'h0 - _GEN_245 : _GEN_245;
-      partials_6_5_negative = $signed(_GEN_119) < 65'sh0;
-      partials_6_5_magnitude = partials_6_5_negative ? 65'h0 - _GEN_119 : _GEN_119;
+      partials_6_4_signedResult = partials_6_4_negative ? 191'h0 - _GEN_230 : _GEN_230;
+      partials_6_5_negative = $signed(_GEN_103) < 65'sh0;
+      partials_6_5_magnitude = partials_6_5_negative ? 65'h0 - _GEN_103 : _GEN_103;
       _partials_6_5_remainder_T =
         partials_6_5_magnitude - {partials_6_5_magnitude[64:31], 31'h0};
-      _GEN_246 =
+      _GEN_231 =
         {156'h0,
          {1'h0, partials_6_5_magnitude[64:31]}
            + {34'h0,
               _partials_6_5_remainder_T > 65'h40000000
                 | _partials_6_5_remainder_T == 65'h40000000
                 & partials_6_5_magnitude[31]}};
-      partials_6_5_signedResult = partials_6_5_negative ? 191'h0 - _GEN_246 : _GEN_246;
-      partials_6_6_negative = $signed(_GEN_120) < 65'sh0;
-      partials_6_6_magnitude = partials_6_6_negative ? 65'h0 - _GEN_120 : _GEN_120;
+      partials_6_5_signedResult = partials_6_5_negative ? 191'h0 - _GEN_231 : _GEN_231;
+      partials_6_6_negative = $signed(_GEN_104) < 65'sh0;
+      partials_6_6_magnitude = partials_6_6_negative ? 65'h0 - _GEN_104 : _GEN_104;
       _partials_6_6_remainder_T =
         partials_6_6_magnitude - {partials_6_6_magnitude[64:31], 31'h0};
-      _GEN_247 =
+      _GEN_232 =
         {156'h0,
          {1'h0, partials_6_6_magnitude[64:31]}
            + {34'h0,
               _partials_6_6_remainder_T > 65'h40000000
                 | _partials_6_6_remainder_T == 65'h40000000
                 & partials_6_6_magnitude[31]}};
-      partials_6_6_signedResult = partials_6_6_negative ? 191'h0 - _GEN_247 : _GEN_247;
-      partials_6_7_negative = $signed(_GEN_121) < 65'sh0;
-      partials_6_7_magnitude = partials_6_7_negative ? 65'h0 - _GEN_121 : _GEN_121;
+      partials_6_6_signedResult = partials_6_6_negative ? 191'h0 - _GEN_232 : _GEN_232;
+      partials_6_7_negative = $signed(_GEN_105) < 65'sh0;
+      partials_6_7_magnitude = partials_6_7_negative ? 65'h0 - _GEN_105 : _GEN_105;
       _partials_6_7_remainder_T =
         partials_6_7_magnitude - {partials_6_7_magnitude[64:31], 31'h0};
-      _GEN_248 =
+      _GEN_233 =
         {156'h0,
          {1'h0, partials_6_7_magnitude[64:31]}
            + {34'h0,
               _partials_6_7_remainder_T > 65'h40000000
                 | _partials_6_7_remainder_T == 65'h40000000
                 & partials_6_7_magnitude[31]}};
-      partials_6_7_signedResult = partials_6_7_negative ? 191'h0 - _GEN_248 : _GEN_248;
-      partials_6_8_negative = $signed(_GEN_122) < 65'sh0;
-      partials_6_8_magnitude = partials_6_8_negative ? 65'h0 - _GEN_122 : _GEN_122;
+      partials_6_7_signedResult = partials_6_7_negative ? 191'h0 - _GEN_233 : _GEN_233;
+      partials_6_8_negative = $signed(_GEN_106) < 65'sh0;
+      partials_6_8_magnitude = partials_6_8_negative ? 65'h0 - _GEN_106 : _GEN_106;
       _partials_6_8_remainder_T =
         partials_6_8_magnitude - {partials_6_8_magnitude[64:31], 31'h0};
-      _GEN_249 =
+      _GEN_234 =
         {156'h0,
          {1'h0, partials_6_8_magnitude[64:31]}
            + {34'h0,
               _partials_6_8_remainder_T > 65'h40000000
                 | _partials_6_8_remainder_T == 65'h40000000
                 & partials_6_8_magnitude[31]}};
-      partials_6_8_signedResult = partials_6_8_negative ? 191'h0 - _GEN_249 : _GEN_249;
-      partials_6_9_negative = $signed(_GEN_123) < 65'sh0;
-      partials_6_9_magnitude = partials_6_9_negative ? 65'h0 - _GEN_123 : _GEN_123;
+      partials_6_8_signedResult = partials_6_8_negative ? 191'h0 - _GEN_234 : _GEN_234;
+      partials_6_9_negative = $signed(_GEN_107) < 65'sh0;
+      partials_6_9_magnitude = partials_6_9_negative ? 65'h0 - _GEN_107 : _GEN_107;
       _partials_6_9_remainder_T =
         partials_6_9_magnitude - {partials_6_9_magnitude[64:31], 31'h0};
-      _GEN_250 =
+      _GEN_235 =
         {156'h0,
          {1'h0, partials_6_9_magnitude[64:31]}
            + {34'h0,
               _partials_6_9_remainder_T > 65'h40000000
                 | _partials_6_9_remainder_T == 65'h40000000
                 & partials_6_9_magnitude[31]}};
-      partials_6_9_signedResult = partials_6_9_negative ? 191'h0 - _GEN_250 : _GEN_250;
-      partials_6_10_negative = $signed(_GEN_124) < 65'sh0;
-      partials_6_10_magnitude = partials_6_10_negative ? 65'h0 - _GEN_124 : _GEN_124;
+      partials_6_9_signedResult = partials_6_9_negative ? 191'h0 - _GEN_235 : _GEN_235;
+      partials_6_10_negative = $signed(_GEN_108) < 65'sh0;
+      partials_6_10_magnitude = partials_6_10_negative ? 65'h0 - _GEN_108 : _GEN_108;
       _partials_6_10_remainder_T =
         partials_6_10_magnitude - {partials_6_10_magnitude[64:31], 31'h0};
-      _GEN_251 =
+      _GEN_236 =
         {156'h0,
          {1'h0, partials_6_10_magnitude[64:31]}
            + {34'h0,
               _partials_6_10_remainder_T > 65'h40000000
                 | _partials_6_10_remainder_T == 65'h40000000
                 & partials_6_10_magnitude[31]}};
-      partials_6_10_signedResult = partials_6_10_negative ? 191'h0 - _GEN_251 : _GEN_251;
-      partials_6_11_negative = $signed(_GEN_125) < 65'sh0;
-      partials_6_11_magnitude = partials_6_11_negative ? 65'h0 - _GEN_125 : _GEN_125;
+      partials_6_10_signedResult = partials_6_10_negative ? 191'h0 - _GEN_236 : _GEN_236;
+      partials_6_11_negative = $signed(_GEN_109) < 65'sh0;
+      partials_6_11_magnitude = partials_6_11_negative ? 65'h0 - _GEN_109 : _GEN_109;
       _partials_6_11_remainder_T =
         partials_6_11_magnitude - {partials_6_11_magnitude[64:31], 31'h0};
-      _GEN_252 =
+      _GEN_237 =
         {156'h0,
          {1'h0, partials_6_11_magnitude[64:31]}
            + {34'h0,
               _partials_6_11_remainder_T > 65'h40000000
                 | _partials_6_11_remainder_T == 65'h40000000
                 & partials_6_11_magnitude[31]}};
-      partials_6_11_signedResult = partials_6_11_negative ? 191'h0 - _GEN_252 : _GEN_252;
-      partials_6_12_negative = $signed(_GEN_126) < 65'sh0;
-      partials_6_12_magnitude = partials_6_12_negative ? 65'h0 - _GEN_126 : _GEN_126;
+      partials_6_11_signedResult = partials_6_11_negative ? 191'h0 - _GEN_237 : _GEN_237;
+      partials_6_12_negative = $signed(_GEN_110) < 65'sh0;
+      partials_6_12_magnitude = partials_6_12_negative ? 65'h0 - _GEN_110 : _GEN_110;
       _partials_6_12_remainder_T =
         partials_6_12_magnitude - {partials_6_12_magnitude[64:31], 31'h0};
-      _GEN_253 =
+      _GEN_238 =
         {156'h0,
          {1'h0, partials_6_12_magnitude[64:31]}
            + {34'h0,
               _partials_6_12_remainder_T > 65'h40000000
                 | _partials_6_12_remainder_T == 65'h40000000
                 & partials_6_12_magnitude[31]}};
-      partials_6_12_signedResult = partials_6_12_negative ? 191'h0 - _GEN_253 : _GEN_253;
-      partials_6_13_negative = $signed(_GEN_127) < 65'sh0;
-      partials_6_13_magnitude = partials_6_13_negative ? 65'h0 - _GEN_127 : _GEN_127;
+      partials_6_12_signedResult = partials_6_12_negative ? 191'h0 - _GEN_238 : _GEN_238;
+      partials_6_13_negative = $signed(_GEN_111) < 65'sh0;
+      partials_6_13_magnitude = partials_6_13_negative ? 65'h0 - _GEN_111 : _GEN_111;
       _partials_6_13_remainder_T =
         partials_6_13_magnitude - {partials_6_13_magnitude[64:31], 31'h0};
-      _GEN_254 =
+      _GEN_239 =
         {156'h0,
          {1'h0, partials_6_13_magnitude[64:31]}
            + {34'h0,
               _partials_6_13_remainder_T > 65'h40000000
                 | _partials_6_13_remainder_T == 65'h40000000
                 & partials_6_13_magnitude[31]}};
-      partials_6_13_signedResult = partials_6_13_negative ? 191'h0 - _GEN_254 : _GEN_254;
-      partials_6_14_negative = $signed(_GEN_128) < 65'sh0;
-      partials_6_14_magnitude = partials_6_14_negative ? 65'h0 - _GEN_128 : _GEN_128;
+      partials_6_13_signedResult = partials_6_13_negative ? 191'h0 - _GEN_239 : _GEN_239;
+      partials_6_14_negative = $signed(_GEN_112) < 65'sh0;
+      partials_6_14_magnitude = partials_6_14_negative ? 65'h0 - _GEN_112 : _GEN_112;
       _partials_6_14_remainder_T =
         partials_6_14_magnitude - {partials_6_14_magnitude[64:31], 31'h0};
-      _GEN_255 =
+      _GEN_240 =
         {156'h0,
          {1'h0, partials_6_14_magnitude[64:31]}
            + {34'h0,
               _partials_6_14_remainder_T > 65'h40000000
                 | _partials_6_14_remainder_T == 65'h40000000
                 & partials_6_14_magnitude[31]}};
-      partials_6_14_signedResult = partials_6_14_negative ? 191'h0 - _GEN_255 : _GEN_255;
-      partials_6_15_negative = $signed(_GEN_129) < 65'sh0;
-      partials_6_15_magnitude = partials_6_15_negative ? 65'h0 - _GEN_129 : _GEN_129;
+      partials_6_14_signedResult = partials_6_14_negative ? 191'h0 - _GEN_240 : _GEN_240;
+      partials_6_15_negative = $signed(_GEN_113) < 65'sh0;
+      partials_6_15_magnitude = partials_6_15_negative ? 65'h0 - _GEN_113 : _GEN_113;
       _partials_6_15_remainder_T =
         partials_6_15_magnitude - {partials_6_15_magnitude[64:31], 31'h0};
-      _GEN_256 =
+      _GEN_241 =
         {156'h0,
          {1'h0, partials_6_15_magnitude[64:31]}
            + {34'h0,
               _partials_6_15_remainder_T > 65'h40000000
                 | _partials_6_15_remainder_T == 65'h40000000
                 & partials_6_15_magnitude[31]}};
-      partials_6_15_signedResult = partials_6_15_negative ? 191'h0 - _GEN_256 : _GEN_256;
+      partials_6_15_signedResult = partials_6_15_negative ? 191'h0 - _GEN_241 : _GEN_241;
       partials_6_0 <=
         $signed(partials_6_0_signedResult) > 191'sh7FFFFFFF
           ? 32'h7FFFFFFF
@@ -13635,7 +12765,7 @@ module Linear_1(
               ? 32'h80000000
               : partials_6_15_signedResult[31:0];
     end
-    if (_GEN_130 & (&_accumulatorAdds_0_io_out_bits_tag)) begin
+    if (_GEN_114 & (&_accumulatorAdds_0_io_out_bits_tag)) begin
       partials_7_0 <= _accumulatorAdds_0_io_out_bits_value;
       partials_7_1 <= _accumulatorAdds_1_io_out_bits_value;
       partials_7_2 <= _accumulatorAdds_2_io_out_bits_value;
@@ -13657,275 +12787,275 @@ module Linear_1(
       automatic logic         partials_7_0_negative;
       automatic logic [64:0]  partials_7_0_magnitude;
       automatic logic [64:0]  _partials_7_0_remainder_T;
-      automatic logic [190:0] _GEN_257;
+      automatic logic [190:0] _GEN_242;
       automatic logic [190:0] partials_7_0_signedResult;
       automatic logic         partials_7_1_negative;
       automatic logic [64:0]  partials_7_1_magnitude;
       automatic logic [64:0]  _partials_7_1_remainder_T;
-      automatic logic [190:0] _GEN_258;
+      automatic logic [190:0] _GEN_243;
       automatic logic [190:0] partials_7_1_signedResult;
       automatic logic         partials_7_2_negative;
       automatic logic [64:0]  partials_7_2_magnitude;
       automatic logic [64:0]  _partials_7_2_remainder_T;
-      automatic logic [190:0] _GEN_259;
+      automatic logic [190:0] _GEN_244;
       automatic logic [190:0] partials_7_2_signedResult;
       automatic logic         partials_7_3_negative;
       automatic logic [64:0]  partials_7_3_magnitude;
       automatic logic [64:0]  _partials_7_3_remainder_T;
-      automatic logic [190:0] _GEN_260;
+      automatic logic [190:0] _GEN_245;
       automatic logic [190:0] partials_7_3_signedResult;
       automatic logic         partials_7_4_negative;
       automatic logic [64:0]  partials_7_4_magnitude;
       automatic logic [64:0]  _partials_7_4_remainder_T;
-      automatic logic [190:0] _GEN_261;
+      automatic logic [190:0] _GEN_246;
       automatic logic [190:0] partials_7_4_signedResult;
       automatic logic         partials_7_5_negative;
       automatic logic [64:0]  partials_7_5_magnitude;
       automatic logic [64:0]  _partials_7_5_remainder_T;
-      automatic logic [190:0] _GEN_262;
+      automatic logic [190:0] _GEN_247;
       automatic logic [190:0] partials_7_5_signedResult;
       automatic logic         partials_7_6_negative;
       automatic logic [64:0]  partials_7_6_magnitude;
       automatic logic [64:0]  _partials_7_6_remainder_T;
-      automatic logic [190:0] _GEN_263;
+      automatic logic [190:0] _GEN_248;
       automatic logic [190:0] partials_7_6_signedResult;
       automatic logic         partials_7_7_negative;
       automatic logic [64:0]  partials_7_7_magnitude;
       automatic logic [64:0]  _partials_7_7_remainder_T;
-      automatic logic [190:0] _GEN_264;
+      automatic logic [190:0] _GEN_249;
       automatic logic [190:0] partials_7_7_signedResult;
       automatic logic         partials_7_8_negative;
       automatic logic [64:0]  partials_7_8_magnitude;
       automatic logic [64:0]  _partials_7_8_remainder_T;
-      automatic logic [190:0] _GEN_265;
+      automatic logic [190:0] _GEN_250;
       automatic logic [190:0] partials_7_8_signedResult;
       automatic logic         partials_7_9_negative;
       automatic logic [64:0]  partials_7_9_magnitude;
       automatic logic [64:0]  _partials_7_9_remainder_T;
-      automatic logic [190:0] _GEN_266;
+      automatic logic [190:0] _GEN_251;
       automatic logic [190:0] partials_7_9_signedResult;
       automatic logic         partials_7_10_negative;
       automatic logic [64:0]  partials_7_10_magnitude;
       automatic logic [64:0]  _partials_7_10_remainder_T;
-      automatic logic [190:0] _GEN_267;
+      automatic logic [190:0] _GEN_252;
       automatic logic [190:0] partials_7_10_signedResult;
       automatic logic         partials_7_11_negative;
       automatic logic [64:0]  partials_7_11_magnitude;
       automatic logic [64:0]  _partials_7_11_remainder_T;
-      automatic logic [190:0] _GEN_268;
+      automatic logic [190:0] _GEN_253;
       automatic logic [190:0] partials_7_11_signedResult;
       automatic logic         partials_7_12_negative;
       automatic logic [64:0]  partials_7_12_magnitude;
       automatic logic [64:0]  _partials_7_12_remainder_T;
-      automatic logic [190:0] _GEN_269;
+      automatic logic [190:0] _GEN_254;
       automatic logic [190:0] partials_7_12_signedResult;
       automatic logic         partials_7_13_negative;
       automatic logic [64:0]  partials_7_13_magnitude;
       automatic logic [64:0]  _partials_7_13_remainder_T;
-      automatic logic [190:0] _GEN_270;
+      automatic logic [190:0] _GEN_255;
       automatic logic [190:0] partials_7_13_signedResult;
       automatic logic         partials_7_14_negative;
       automatic logic [64:0]  partials_7_14_magnitude;
       automatic logic [64:0]  _partials_7_14_remainder_T;
-      automatic logic [190:0] _GEN_271;
+      automatic logic [190:0] _GEN_256;
       automatic logic [190:0] partials_7_14_signedResult;
       automatic logic         partials_7_15_negative;
       automatic logic [64:0]  partials_7_15_magnitude;
       automatic logic [64:0]  _partials_7_15_remainder_T;
-      automatic logic [190:0] _GEN_272;
+      automatic logic [190:0] _GEN_257;
       automatic logic [190:0] partials_7_15_signedResult;
-      partials_7_0_negative = $signed(_GEN_114) < 65'sh0;
-      partials_7_0_magnitude = partials_7_0_negative ? 65'h0 - _GEN_114 : _GEN_114;
+      partials_7_0_negative = $signed(_GEN_98) < 65'sh0;
+      partials_7_0_magnitude = partials_7_0_negative ? 65'h0 - _GEN_98 : _GEN_98;
       _partials_7_0_remainder_T =
         partials_7_0_magnitude - {partials_7_0_magnitude[64:31], 31'h0};
-      _GEN_257 =
+      _GEN_242 =
         {156'h0,
          {1'h0, partials_7_0_magnitude[64:31]}
            + {34'h0,
               _partials_7_0_remainder_T > 65'h40000000
                 | _partials_7_0_remainder_T == 65'h40000000
                 & partials_7_0_magnitude[31]}};
-      partials_7_0_signedResult = partials_7_0_negative ? 191'h0 - _GEN_257 : _GEN_257;
-      partials_7_1_negative = $signed(_GEN_115) < 65'sh0;
-      partials_7_1_magnitude = partials_7_1_negative ? 65'h0 - _GEN_115 : _GEN_115;
+      partials_7_0_signedResult = partials_7_0_negative ? 191'h0 - _GEN_242 : _GEN_242;
+      partials_7_1_negative = $signed(_GEN_99) < 65'sh0;
+      partials_7_1_magnitude = partials_7_1_negative ? 65'h0 - _GEN_99 : _GEN_99;
       _partials_7_1_remainder_T =
         partials_7_1_magnitude - {partials_7_1_magnitude[64:31], 31'h0};
-      _GEN_258 =
+      _GEN_243 =
         {156'h0,
          {1'h0, partials_7_1_magnitude[64:31]}
            + {34'h0,
               _partials_7_1_remainder_T > 65'h40000000
                 | _partials_7_1_remainder_T == 65'h40000000
                 & partials_7_1_magnitude[31]}};
-      partials_7_1_signedResult = partials_7_1_negative ? 191'h0 - _GEN_258 : _GEN_258;
-      partials_7_2_negative = $signed(_GEN_116) < 65'sh0;
-      partials_7_2_magnitude = partials_7_2_negative ? 65'h0 - _GEN_116 : _GEN_116;
+      partials_7_1_signedResult = partials_7_1_negative ? 191'h0 - _GEN_243 : _GEN_243;
+      partials_7_2_negative = $signed(_GEN_100) < 65'sh0;
+      partials_7_2_magnitude = partials_7_2_negative ? 65'h0 - _GEN_100 : _GEN_100;
       _partials_7_2_remainder_T =
         partials_7_2_magnitude - {partials_7_2_magnitude[64:31], 31'h0};
-      _GEN_259 =
+      _GEN_244 =
         {156'h0,
          {1'h0, partials_7_2_magnitude[64:31]}
            + {34'h0,
               _partials_7_2_remainder_T > 65'h40000000
                 | _partials_7_2_remainder_T == 65'h40000000
                 & partials_7_2_magnitude[31]}};
-      partials_7_2_signedResult = partials_7_2_negative ? 191'h0 - _GEN_259 : _GEN_259;
-      partials_7_3_negative = $signed(_GEN_117) < 65'sh0;
-      partials_7_3_magnitude = partials_7_3_negative ? 65'h0 - _GEN_117 : _GEN_117;
+      partials_7_2_signedResult = partials_7_2_negative ? 191'h0 - _GEN_244 : _GEN_244;
+      partials_7_3_negative = $signed(_GEN_101) < 65'sh0;
+      partials_7_3_magnitude = partials_7_3_negative ? 65'h0 - _GEN_101 : _GEN_101;
       _partials_7_3_remainder_T =
         partials_7_3_magnitude - {partials_7_3_magnitude[64:31], 31'h0};
-      _GEN_260 =
+      _GEN_245 =
         {156'h0,
          {1'h0, partials_7_3_magnitude[64:31]}
            + {34'h0,
               _partials_7_3_remainder_T > 65'h40000000
                 | _partials_7_3_remainder_T == 65'h40000000
                 & partials_7_3_magnitude[31]}};
-      partials_7_3_signedResult = partials_7_3_negative ? 191'h0 - _GEN_260 : _GEN_260;
-      partials_7_4_negative = $signed(_GEN_118) < 65'sh0;
-      partials_7_4_magnitude = partials_7_4_negative ? 65'h0 - _GEN_118 : _GEN_118;
+      partials_7_3_signedResult = partials_7_3_negative ? 191'h0 - _GEN_245 : _GEN_245;
+      partials_7_4_negative = $signed(_GEN_102) < 65'sh0;
+      partials_7_4_magnitude = partials_7_4_negative ? 65'h0 - _GEN_102 : _GEN_102;
       _partials_7_4_remainder_T =
         partials_7_4_magnitude - {partials_7_4_magnitude[64:31], 31'h0};
-      _GEN_261 =
+      _GEN_246 =
         {156'h0,
          {1'h0, partials_7_4_magnitude[64:31]}
            + {34'h0,
               _partials_7_4_remainder_T > 65'h40000000
                 | _partials_7_4_remainder_T == 65'h40000000
                 & partials_7_4_magnitude[31]}};
-      partials_7_4_signedResult = partials_7_4_negative ? 191'h0 - _GEN_261 : _GEN_261;
-      partials_7_5_negative = $signed(_GEN_119) < 65'sh0;
-      partials_7_5_magnitude = partials_7_5_negative ? 65'h0 - _GEN_119 : _GEN_119;
+      partials_7_4_signedResult = partials_7_4_negative ? 191'h0 - _GEN_246 : _GEN_246;
+      partials_7_5_negative = $signed(_GEN_103) < 65'sh0;
+      partials_7_5_magnitude = partials_7_5_negative ? 65'h0 - _GEN_103 : _GEN_103;
       _partials_7_5_remainder_T =
         partials_7_5_magnitude - {partials_7_5_magnitude[64:31], 31'h0};
-      _GEN_262 =
+      _GEN_247 =
         {156'h0,
          {1'h0, partials_7_5_magnitude[64:31]}
            + {34'h0,
               _partials_7_5_remainder_T > 65'h40000000
                 | _partials_7_5_remainder_T == 65'h40000000
                 & partials_7_5_magnitude[31]}};
-      partials_7_5_signedResult = partials_7_5_negative ? 191'h0 - _GEN_262 : _GEN_262;
-      partials_7_6_negative = $signed(_GEN_120) < 65'sh0;
-      partials_7_6_magnitude = partials_7_6_negative ? 65'h0 - _GEN_120 : _GEN_120;
+      partials_7_5_signedResult = partials_7_5_negative ? 191'h0 - _GEN_247 : _GEN_247;
+      partials_7_6_negative = $signed(_GEN_104) < 65'sh0;
+      partials_7_6_magnitude = partials_7_6_negative ? 65'h0 - _GEN_104 : _GEN_104;
       _partials_7_6_remainder_T =
         partials_7_6_magnitude - {partials_7_6_magnitude[64:31], 31'h0};
-      _GEN_263 =
+      _GEN_248 =
         {156'h0,
          {1'h0, partials_7_6_magnitude[64:31]}
            + {34'h0,
               _partials_7_6_remainder_T > 65'h40000000
                 | _partials_7_6_remainder_T == 65'h40000000
                 & partials_7_6_magnitude[31]}};
-      partials_7_6_signedResult = partials_7_6_negative ? 191'h0 - _GEN_263 : _GEN_263;
-      partials_7_7_negative = $signed(_GEN_121) < 65'sh0;
-      partials_7_7_magnitude = partials_7_7_negative ? 65'h0 - _GEN_121 : _GEN_121;
+      partials_7_6_signedResult = partials_7_6_negative ? 191'h0 - _GEN_248 : _GEN_248;
+      partials_7_7_negative = $signed(_GEN_105) < 65'sh0;
+      partials_7_7_magnitude = partials_7_7_negative ? 65'h0 - _GEN_105 : _GEN_105;
       _partials_7_7_remainder_T =
         partials_7_7_magnitude - {partials_7_7_magnitude[64:31], 31'h0};
-      _GEN_264 =
+      _GEN_249 =
         {156'h0,
          {1'h0, partials_7_7_magnitude[64:31]}
            + {34'h0,
               _partials_7_7_remainder_T > 65'h40000000
                 | _partials_7_7_remainder_T == 65'h40000000
                 & partials_7_7_magnitude[31]}};
-      partials_7_7_signedResult = partials_7_7_negative ? 191'h0 - _GEN_264 : _GEN_264;
-      partials_7_8_negative = $signed(_GEN_122) < 65'sh0;
-      partials_7_8_magnitude = partials_7_8_negative ? 65'h0 - _GEN_122 : _GEN_122;
+      partials_7_7_signedResult = partials_7_7_negative ? 191'h0 - _GEN_249 : _GEN_249;
+      partials_7_8_negative = $signed(_GEN_106) < 65'sh0;
+      partials_7_8_magnitude = partials_7_8_negative ? 65'h0 - _GEN_106 : _GEN_106;
       _partials_7_8_remainder_T =
         partials_7_8_magnitude - {partials_7_8_magnitude[64:31], 31'h0};
-      _GEN_265 =
+      _GEN_250 =
         {156'h0,
          {1'h0, partials_7_8_magnitude[64:31]}
            + {34'h0,
               _partials_7_8_remainder_T > 65'h40000000
                 | _partials_7_8_remainder_T == 65'h40000000
                 & partials_7_8_magnitude[31]}};
-      partials_7_8_signedResult = partials_7_8_negative ? 191'h0 - _GEN_265 : _GEN_265;
-      partials_7_9_negative = $signed(_GEN_123) < 65'sh0;
-      partials_7_9_magnitude = partials_7_9_negative ? 65'h0 - _GEN_123 : _GEN_123;
+      partials_7_8_signedResult = partials_7_8_negative ? 191'h0 - _GEN_250 : _GEN_250;
+      partials_7_9_negative = $signed(_GEN_107) < 65'sh0;
+      partials_7_9_magnitude = partials_7_9_negative ? 65'h0 - _GEN_107 : _GEN_107;
       _partials_7_9_remainder_T =
         partials_7_9_magnitude - {partials_7_9_magnitude[64:31], 31'h0};
-      _GEN_266 =
+      _GEN_251 =
         {156'h0,
          {1'h0, partials_7_9_magnitude[64:31]}
            + {34'h0,
               _partials_7_9_remainder_T > 65'h40000000
                 | _partials_7_9_remainder_T == 65'h40000000
                 & partials_7_9_magnitude[31]}};
-      partials_7_9_signedResult = partials_7_9_negative ? 191'h0 - _GEN_266 : _GEN_266;
-      partials_7_10_negative = $signed(_GEN_124) < 65'sh0;
-      partials_7_10_magnitude = partials_7_10_negative ? 65'h0 - _GEN_124 : _GEN_124;
+      partials_7_9_signedResult = partials_7_9_negative ? 191'h0 - _GEN_251 : _GEN_251;
+      partials_7_10_negative = $signed(_GEN_108) < 65'sh0;
+      partials_7_10_magnitude = partials_7_10_negative ? 65'h0 - _GEN_108 : _GEN_108;
       _partials_7_10_remainder_T =
         partials_7_10_magnitude - {partials_7_10_magnitude[64:31], 31'h0};
-      _GEN_267 =
+      _GEN_252 =
         {156'h0,
          {1'h0, partials_7_10_magnitude[64:31]}
            + {34'h0,
               _partials_7_10_remainder_T > 65'h40000000
                 | _partials_7_10_remainder_T == 65'h40000000
                 & partials_7_10_magnitude[31]}};
-      partials_7_10_signedResult = partials_7_10_negative ? 191'h0 - _GEN_267 : _GEN_267;
-      partials_7_11_negative = $signed(_GEN_125) < 65'sh0;
-      partials_7_11_magnitude = partials_7_11_negative ? 65'h0 - _GEN_125 : _GEN_125;
+      partials_7_10_signedResult = partials_7_10_negative ? 191'h0 - _GEN_252 : _GEN_252;
+      partials_7_11_negative = $signed(_GEN_109) < 65'sh0;
+      partials_7_11_magnitude = partials_7_11_negative ? 65'h0 - _GEN_109 : _GEN_109;
       _partials_7_11_remainder_T =
         partials_7_11_magnitude - {partials_7_11_magnitude[64:31], 31'h0};
-      _GEN_268 =
+      _GEN_253 =
         {156'h0,
          {1'h0, partials_7_11_magnitude[64:31]}
            + {34'h0,
               _partials_7_11_remainder_T > 65'h40000000
                 | _partials_7_11_remainder_T == 65'h40000000
                 & partials_7_11_magnitude[31]}};
-      partials_7_11_signedResult = partials_7_11_negative ? 191'h0 - _GEN_268 : _GEN_268;
-      partials_7_12_negative = $signed(_GEN_126) < 65'sh0;
-      partials_7_12_magnitude = partials_7_12_negative ? 65'h0 - _GEN_126 : _GEN_126;
+      partials_7_11_signedResult = partials_7_11_negative ? 191'h0 - _GEN_253 : _GEN_253;
+      partials_7_12_negative = $signed(_GEN_110) < 65'sh0;
+      partials_7_12_magnitude = partials_7_12_negative ? 65'h0 - _GEN_110 : _GEN_110;
       _partials_7_12_remainder_T =
         partials_7_12_magnitude - {partials_7_12_magnitude[64:31], 31'h0};
-      _GEN_269 =
+      _GEN_254 =
         {156'h0,
          {1'h0, partials_7_12_magnitude[64:31]}
            + {34'h0,
               _partials_7_12_remainder_T > 65'h40000000
                 | _partials_7_12_remainder_T == 65'h40000000
                 & partials_7_12_magnitude[31]}};
-      partials_7_12_signedResult = partials_7_12_negative ? 191'h0 - _GEN_269 : _GEN_269;
-      partials_7_13_negative = $signed(_GEN_127) < 65'sh0;
-      partials_7_13_magnitude = partials_7_13_negative ? 65'h0 - _GEN_127 : _GEN_127;
+      partials_7_12_signedResult = partials_7_12_negative ? 191'h0 - _GEN_254 : _GEN_254;
+      partials_7_13_negative = $signed(_GEN_111) < 65'sh0;
+      partials_7_13_magnitude = partials_7_13_negative ? 65'h0 - _GEN_111 : _GEN_111;
       _partials_7_13_remainder_T =
         partials_7_13_magnitude - {partials_7_13_magnitude[64:31], 31'h0};
-      _GEN_270 =
+      _GEN_255 =
         {156'h0,
          {1'h0, partials_7_13_magnitude[64:31]}
            + {34'h0,
               _partials_7_13_remainder_T > 65'h40000000
                 | _partials_7_13_remainder_T == 65'h40000000
                 & partials_7_13_magnitude[31]}};
-      partials_7_13_signedResult = partials_7_13_negative ? 191'h0 - _GEN_270 : _GEN_270;
-      partials_7_14_negative = $signed(_GEN_128) < 65'sh0;
-      partials_7_14_magnitude = partials_7_14_negative ? 65'h0 - _GEN_128 : _GEN_128;
+      partials_7_13_signedResult = partials_7_13_negative ? 191'h0 - _GEN_255 : _GEN_255;
+      partials_7_14_negative = $signed(_GEN_112) < 65'sh0;
+      partials_7_14_magnitude = partials_7_14_negative ? 65'h0 - _GEN_112 : _GEN_112;
       _partials_7_14_remainder_T =
         partials_7_14_magnitude - {partials_7_14_magnitude[64:31], 31'h0};
-      _GEN_271 =
+      _GEN_256 =
         {156'h0,
          {1'h0, partials_7_14_magnitude[64:31]}
            + {34'h0,
               _partials_7_14_remainder_T > 65'h40000000
                 | _partials_7_14_remainder_T == 65'h40000000
                 & partials_7_14_magnitude[31]}};
-      partials_7_14_signedResult = partials_7_14_negative ? 191'h0 - _GEN_271 : _GEN_271;
-      partials_7_15_negative = $signed(_GEN_129) < 65'sh0;
-      partials_7_15_magnitude = partials_7_15_negative ? 65'h0 - _GEN_129 : _GEN_129;
+      partials_7_14_signedResult = partials_7_14_negative ? 191'h0 - _GEN_256 : _GEN_256;
+      partials_7_15_negative = $signed(_GEN_113) < 65'sh0;
+      partials_7_15_magnitude = partials_7_15_negative ? 65'h0 - _GEN_113 : _GEN_113;
       _partials_7_15_remainder_T =
         partials_7_15_magnitude - {partials_7_15_magnitude[64:31], 31'h0};
-      _GEN_272 =
+      _GEN_257 =
         {156'h0,
          {1'h0, partials_7_15_magnitude[64:31]}
            + {34'h0,
               _partials_7_15_remainder_T > 65'h40000000
                 | _partials_7_15_remainder_T == 65'h40000000
                 & partials_7_15_magnitude[31]}};
-      partials_7_15_signedResult = partials_7_15_negative ? 191'h0 - _GEN_272 : _GEN_272;
+      partials_7_15_signedResult = partials_7_15_negative ? 191'h0 - _GEN_257 : _GEN_257;
       partials_7_0 <=
         $signed(partials_7_0_signedResult) > 191'sh7FFFFFFF
           ? 32'h7FFFFFFF
@@ -14023,7 +13153,7 @@ module Linear_1(
               ? 32'h80000000
               : partials_7_15_signedResult[31:0];
     end
-    if (_GEN_131) begin
+    if (_GEN_115) begin
       beatValues_0_0 <= partials_0_0;
       beatValues_0_1 <= partials_0_1;
       beatValues_0_2 <= partials_0_2;
@@ -14283,13 +13413,21 @@ module Linear_1(
       beatValues_7_14 <= 32'h0;
       beatValues_7_15 <= 32'h0;
     end
+    outputCmdAddr_0 <=
+      outputRequantizers_requantizer_io_in_valid
+        ? {9'h0, writeBank} * 10'h180 + {1'h0, {6'h0, writeToken} * 9'h30} + _GEN_18
+        : 10'h0;
+    outputCmdAddr_1 <= outputCmdAddr_0;
+    outputCmdAddr_2 <= outputCmdAddr_1;
+    outputCmdAddr_3 <= outputCmdAddr_2;
+    outputCmdAddr_4 <= outputCmdAddr_3;
     if (issueOutputRead) begin
       automatic logic [4:0] _outputMeta_addr_T =
         (drainBank ? outputBaseToken_1 : outputBaseToken_0) + {2'h0, drainToken};
       outputMeta_st <=
         (drainBank ? outputStart_1 : outputStart_0) & _outputMeta_addr_T == 5'h0
         & drainBeat == 6'h0;
-      outputMeta_addr <= {5'h0, _outputMeta_addr_T} * 10'h30 + _GEN_104;
+      outputMeta_addr <= {5'h0, _outputMeta_addr_T} * 10'h30 + _GEN_88;
       outputMeta_last <= _outputMeta_last_T;
     end
   end // always @(posedge)
@@ -14309,93 +13447,28 @@ module Linear_1(
   PhysicalSimpleDualPortMemory_14 outputMem (
     .clock        (clock),
     .reset        (reset),
-    .io_writeEn   (outputMem_io_writeEn),
-    .io_writeAddr
-      ({9'h0, writeBank} * 10'h180 + {1'h0, {6'h0, writeToken} * 9'h30} + _GEN_18),
+    .io_writeEn   (outputCmdValid_4),
+    .io_writeAddr (outputCmdAddr_4),
     .io_writeData
-      ({$signed(outputValues_15_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_15_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_15_signedResult[7:0],
-        $signed(outputValues_14_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_14_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_14_signedResult[7:0],
-        $signed(outputValues_13_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_13_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_13_signedResult[7:0],
-        $signed(outputValues_12_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_12_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_12_signedResult[7:0],
-        $signed(outputValues_11_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_11_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_11_signedResult[7:0],
-        $signed(outputValues_10_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_10_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_10_signedResult[7:0],
-        $signed(outputValues_9_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_9_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_9_signedResult[7:0],
-        $signed(outputValues_8_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_8_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_8_signedResult[7:0],
-        $signed(outputValues_7_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_7_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_7_signedResult[7:0],
-        $signed(outputValues_6_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_6_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_6_signedResult[7:0],
-        $signed(outputValues_5_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_5_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_5_signedResult[7:0],
-        $signed(outputValues_4_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_4_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_4_signedResult[7:0],
-        $signed(outputValues_3_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_3_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_3_signedResult[7:0],
-        $signed(outputValues_2_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_2_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_2_signedResult[7:0],
-        $signed(outputValues_1_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_1_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_1_signedResult[7:0],
-        $signed(outputValues_0_signedResult) > 191'sh7F
-          ? 8'h7F
-          : $signed(outputValues_0_signedResult) < -191'sh80
-              ? 8'h80
-              : outputValues_0_signedResult[7:0]}),
+      ({_outputRequantizers_requantizer_15_io_out_bits,
+        _outputRequantizers_requantizer_14_io_out_bits,
+        _outputRequantizers_requantizer_13_io_out_bits,
+        _outputRequantizers_requantizer_12_io_out_bits,
+        _outputRequantizers_requantizer_11_io_out_bits,
+        _outputRequantizers_requantizer_10_io_out_bits,
+        _outputRequantizers_requantizer_9_io_out_bits,
+        _outputRequantizers_requantizer_8_io_out_bits,
+        _outputRequantizers_requantizer_7_io_out_bits,
+        _outputRequantizers_requantizer_6_io_out_bits,
+        _outputRequantizers_requantizer_5_io_out_bits,
+        _outputRequantizers_requantizer_4_io_out_bits,
+        _outputRequantizers_requantizer_3_io_out_bits,
+        _outputRequantizers_requantizer_2_io_out_bits,
+        _outputRequantizers_requantizer_1_io_out_bits,
+        _outputRequantizers_requantizer_io_out_bits}),
     .io_readEn    (issueOutputRead),
     .io_readAddr
-      ({9'h0, drainBank} * 10'h180 + {1'h0, {6'h0, drainToken} * 9'h30} + _GEN_104),
+      ({9'h0, drainBank} * 10'h180 + {1'h0, {6'h0, drainToken} * 9'h30} + _GEN_88),
     .io_readData  (io_out_bits_data)
   );
   WeightTileCache_1 weightMem (
@@ -28101,6 +27174,278 @@ module Linear_1(
     .io_out_valid      (_accumulatorAdds_15_io_out_valid),
     .io_out_bits_value (_accumulatorAdds_15_io_out_bits_value),
     .io_out_bits_tag   (/* unused */)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_41[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_35] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_35]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_39[8], _GEN_39}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_1 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_42[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_58] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_58]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_59[8], _GEN_59}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_1_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_2 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_43[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_60] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_60]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_61[8], _GEN_61}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_2_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_3 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_44[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_62] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_62]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_63[8], _GEN_63}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_3_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_4 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_45[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_64] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_64]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_65[8], _GEN_65}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_4_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_5 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_46[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_66] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_66]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_67[8], _GEN_67}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_5_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_6 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_47[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_68] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_68]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_69[8], _GEN_69}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_6_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_7 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_48[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_70] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_70]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_71[8], _GEN_71}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_7_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_8 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_49[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_72] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_72]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_73[8], _GEN_73}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_8_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_9 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_50[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_74] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_74]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_75[8], _GEN_75}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_9_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_10 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_51[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_76] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_76]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_77[8], _GEN_77}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_10_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_11 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_52[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_78] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_78]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_79[8], _GEN_79}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_11_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_12 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_53[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_80] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_80]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_81[8], _GEN_81}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_12_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_13 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_54[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_82] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_82]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_83[8], _GEN_83}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_13_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_14 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_55[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_84] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_84]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_85[8], _GEN_85}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_14_io_out_bits)
+  );
+  LinearOutputRequantizer outputRequantizers_requantizer_15 (
+    .clock                      (clock),
+    .reset                      (reset),
+    .io_in_valid                (outputRequantizers_requantizer_io_in_valid),
+    .io_in_bits_value           (_GEN_56[writeToken]),
+    .io_in_bits_channelScale
+      (_GEN_36[_GEN_86] == 32'h0 ? 32'h80000000 : _GEN_36[_GEN_86]),
+    .io_in_bits_activationScale
+      (_outputRequantizers_activationMultiplier_T_15
+         ? 32'h80000000
+         : io_scale_activationScale),
+    .io_in_bits_outputScale
+      (_outputRequantizers_outputMultiplier_T_15 ? 32'h80000000 : io_scale_outScale),
+    .io_in_bits_binaryShift     (_GEN_40 + {_GEN_87[8], _GEN_87}),
+    .io_out_valid               (/* unused */),
+    .io_out_bits                (_outputRequantizers_requantizer_15_io_out_bits)
   );
   assign io_weight_ready = io_weight_ready_0;
   assign io_bias_ready = io_bias_ready_0;

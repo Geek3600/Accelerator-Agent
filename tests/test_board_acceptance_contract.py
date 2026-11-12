@@ -2124,6 +2124,65 @@ class ExactBoardAcceptanceContractTest(TestCase):
             self.assertEqual(check["worker_record_count"], 1)
             self.assertEqual(check["map_semantic_checkpoint_chunk_count"], 1)
 
+    def test_exact_identity_v2_accepts_framework_coverage_overlay_for_reduce(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            identity_path, _, identity, _ = _case(Path(temp_dir))
+            _, ledger_path, _ = _promote_identity_to_v2_with_selector_coverage(
+                identity_path, identity
+            )
+            ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+            complete = ledger["complete_coverage"]
+            reduced_objects = complete["reviewed_object_ids"][:1]
+            reduced_sources = complete["reviewed_source_ids"][:2]
+            agent = "exact_board_interface_selector_reduce_000_agent"
+            worker_path = ledger_path.parent / "selector_reduce_000.json"
+            worker_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "spatialaccagent.stage_worker_record.v0",
+                        "agent": agent,
+                        "output": {"status": "pass", "findings": []},
+                        "framework_coverage_overlay": {
+                            "object_ids": reduced_objects,
+                            "source_ids": reduced_sources,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            ledger["worker_records"].append(
+                {
+                    "phase": "reduce",
+                    "agent": agent,
+                    "path": str(worker_path),
+                    "sha256": sha256_file(worker_path),
+                    "reviewed_object_count": len(reduced_objects),
+                    "reviewed_source_count": len(reduced_sources),
+                    "reviewed_object_ids_sha256": canonical_contract_sha256(
+                        sorted(reduced_objects)
+                    ),
+                    "reviewed_source_ids_sha256": canonical_contract_sha256(
+                        sorted(reduced_sources)
+                    ),
+                }
+            )
+            ledger_path.write_text(json.dumps(ledger), encoding="utf-8")
+            identity = json.loads(identity_path.read_text(encoding="utf-8"))
+            identity["discovery_provenance"]["progressive_selector_coverage"][
+                "sha256"
+            ] = sha256_file(ledger_path)
+            identity_path.write_text(json.dumps(identity), encoding="utf-8")
+
+            report = validate_exact_board_identity(identity_path)
+            self.assertEqual(report["status"], "pass", report["blockers"])
+            check = next(
+                row
+                for row in report["checks"]
+                if row["name"] == "progressive_selector_full_coverage"
+            )
+            self.assertEqual(check["status"], "pass", check["blockers"])
+            self.assertEqual(check["worker_record_count"], 2)
+
     def test_exact_identity_v2_selector_coverage_fails_closed_on_stale_evidence(self) -> None:
         with TemporaryDirectory() as temp_dir:
             for name in (

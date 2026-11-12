@@ -1597,6 +1597,9 @@ module IntegerAttention(
   wire         _outputProjection_io_in_ready;
   wire         _outputProjection_io_out_valid;
   wire         _outputProjection_io_out_bits_last;
+  wire         _reciprocalDivider_io_in_ready;
+  wire         _reciprocalDivider_io_out_valid;
+  wire [31:0]  _reciprocalDivider_io_out_bits;
   wire [511:0] _contextMemory_io_readData;
   wire [511:0] _vMemory_io_readData;
   wire [511:0] _kMemory_io_readData;
@@ -1604,12 +1607,15 @@ module IntegerAttention(
   reg  [511:0] qCollectReg;
   reg  [511:0] kCollectReg;
   reg  [511:0] vCollectReg;
-  reg  [3:0]   state;
+  reg  [4:0]   state;
   reg  [3:0]   collectToken;
   reg  [3:0]   row;
   reg  [3:0]   head;
   reg  [3:0]   key;
   reg  [3:0]   projectHead;
+  reg  [3:0]   projectRowsFed;
+  reg  [3:0]   drainRow;
+  reg  [3:0]   groupStartRow;
   reg  [15:0]  tokenReady;
   reg          collectionClosed;
   reg  [511:0] qHeadReg;
@@ -1713,6 +1719,41 @@ module IntegerAttention(
   reg  [31:0]  contextAcc_63;
   reg  [3:0]   valueToken;
   reg  [511:0] projectWord;
+  reg  [31:0]  maximumScoreReg;
+  reg          softmaxKeyAllowed_0;
+  reg          softmaxKeyAllowed_1;
+  reg          softmaxKeyAllowed_2;
+  reg          softmaxKeyAllowed_3;
+  reg          softmaxKeyAllowed_4;
+  reg          softmaxKeyAllowed_5;
+  reg          softmaxKeyAllowed_6;
+  reg          softmaxKeyAllowed_7;
+  reg          softmaxKeyAllowed_8;
+  reg          softmaxKeyAllowed_9;
+  reg          softmaxKeyAllowed_10;
+  reg          softmaxKeyAllowed_11;
+  reg          softmaxKeyAllowed_12;
+  reg          softmaxKeyAllowed_13;
+  reg          softmaxKeyAllowed_14;
+  reg          softmaxKeyAllowed_15;
+  reg  [16:0]  softmaxExpReg_0;
+  reg  [16:0]  softmaxExpReg_1;
+  reg  [16:0]  softmaxExpReg_2;
+  reg  [16:0]  softmaxExpReg_3;
+  reg  [16:0]  softmaxExpReg_4;
+  reg  [16:0]  softmaxExpReg_5;
+  reg  [16:0]  softmaxExpReg_6;
+  reg  [16:0]  softmaxExpReg_7;
+  reg  [16:0]  softmaxExpReg_8;
+  reg  [16:0]  softmaxExpReg_9;
+  reg  [16:0]  softmaxExpReg_10;
+  reg  [16:0]  softmaxExpReg_11;
+  reg  [16:0]  softmaxExpReg_12;
+  reg  [16:0]  softmaxExpReg_13;
+  reg  [16:0]  softmaxExpReg_14;
+  reg  [16:0]  softmaxExpReg_15;
+  reg  [20:0]  safeExpSumReg;
+  reg  [31:0]  reciprocalQ31Reg;
   reg  [4:0]   seqLimit;
   wire         finalHeadBeat = io_in_bits_addr == 7'h7;
   wire         _GEN = io_in_bits_addr[2:0] == 3'h0;
@@ -4733,9 +4774,12 @@ module IntegerAttention(
                            : _GEN_7
                                ? io_in_bits_data[143:136]
                                : _GEN ? io_in_bits_data[135:128] : vCollectReg[7:0]};
-  wire         kMemory_io_readEn = state == 4'h1;
+  wire         kMemory_io_readEn = state == 5'h1;
   wire [7:0]   _outputProjection_io_in_bits_addr_T = {4'h0, row} * 8'hC;
   wire [7:0]   _GEN_449 = {4'h0, head};
+  wire         reciprocalDivider_io_in_valid = state == 5'h6;
+  wire         reciprocalDivider_io_out_ready = state == 5'h7;
+  wire         vMemory_io_readEn = state == 5'h9;
   wire [24:0]  _rounded_T_1 =
     contextAcc_0[31:7]
     + {24'h0, contextAcc_0[6:0] > 7'h40 | contextAcc_0[6:0] == 7'h40 & contextAcc_0[7]};
@@ -4982,140 +5026,399 @@ module IntegerAttention(
     contextAcc_63[31:7]
     + {24'h0,
        contextAcc_63[6:0] > 7'h40 | contextAcc_63[6:0] == 7'h40 & contextAcc_63[7]};
-  wire         contextMemory_io_writeEn = state == 4'h8;
-  wire         outputProjection_io_in_valid = state == 4'hB;
+  wire         contextMemory_io_writeEn = state == 5'hC;
+  wire         contextMemory_io_readEn = state == 5'hD;
+  wire         outputProjection_io_in_valid = state == 5'hF;
   always @(posedge clock) begin
-    automatic logic [15:0] _dotProducts_T =
+    automatic logic [255:0][16:0] _GEN_450 =
+      '{17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h0,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h1,
+        17'h2,
+        17'h2,
+        17'h2,
+        17'h2,
+        17'h2,
+        17'h2,
+        17'h2,
+        17'h2,
+        17'h3,
+        17'h3,
+        17'h3,
+        17'h3,
+        17'h3,
+        17'h4,
+        17'h4,
+        17'h4,
+        17'h4,
+        17'h5,
+        17'h5,
+        17'h5,
+        17'h6,
+        17'h6,
+        17'h6,
+        17'h7,
+        17'h7,
+        17'h8,
+        17'h8,
+        17'h9,
+        17'h9,
+        17'hA,
+        17'hA,
+        17'hB,
+        17'hC,
+        17'hD,
+        17'hD,
+        17'hE,
+        17'hF,
+        17'h10,
+        17'h11,
+        17'h12,
+        17'h13,
+        17'h15,
+        17'h16,
+        17'h17,
+        17'h19,
+        17'h1B,
+        17'h1C,
+        17'h1E,
+        17'h20,
+        17'h22,
+        17'h24,
+        17'h27,
+        17'h29,
+        17'h2C,
+        17'h2F,
+        17'h32,
+        17'h35,
+        17'h38,
+        17'h3C,
+        17'h40,
+        17'h44,
+        17'h48,
+        17'h4D,
+        17'h52,
+        17'h57,
+        17'h5D,
+        17'h63,
+        17'h69,
+        17'h70,
+        17'h77,
+        17'h7F,
+        17'h87,
+        17'h8F,
+        17'h99,
+        17'hA2,
+        17'hAD,
+        17'hB8,
+        17'hC4,
+        17'hD1,
+        17'hDE,
+        17'hEC,
+        17'hFC,
+        17'h10C,
+        17'h11D,
+        17'h12F,
+        17'h143,
+        17'h158,
+        17'h16E,
+        17'h186,
+        17'h19F,
+        17'h1BA,
+        17'h1D6,
+        17'h1F4,
+        17'h215,
+        17'h237,
+        17'h25C,
+        17'h282,
+        17'h2AC,
+        17'h2D8,
+        17'h307,
+        17'h339,
+        17'h36E,
+        17'h3A7,
+        17'h3E3,
+        17'h423,
+        17'h468,
+        17'h4B0,
+        17'h4FE,
+        17'h550,
+        17'h5A8,
+        17'h605,
+        17'h669,
+        17'h6D2,
+        17'h743,
+        17'h7BB,
+        17'h83B,
+        17'h8C3,
+        17'h953,
+        17'h9ED,
+        17'hA91,
+        17'hB3F,
+        17'hBF9,
+        17'hCBF,
+        17'hD91,
+        17'hE71,
+        17'hF60,
+        17'h105E,
+        17'h116C,
+        17'h128B,
+        17'h13BE,
+        17'h1504,
+        17'h165E,
+        17'h17D0,
+        17'h1959,
+        17'h1AFB,
+        17'h1CB9,
+        17'h1E93,
+        17'h208C,
+        17'h22A5,
+        17'h24E1,
+        17'h2742,
+        17'h29CA,
+        17'h2C7C,
+        17'h2F5B,
+        17'h3269,
+        17'h35A9,
+        17'h391F,
+        17'h3CCE,
+        17'h40BA,
+        17'h44E7,
+        17'h4958,
+        17'h4E13,
+        17'h531C,
+        17'h5879,
+        17'h5E2D,
+        17'h6440,
+        17'h6AB7,
+        17'h7199,
+        17'h78ED,
+        17'h80BA,
+        17'h8907,
+        17'h91DD,
+        17'h9B46,
+        17'hA549,
+        17'hAFF2,
+        17'hBB4B,
+        17'hC75F,
+        17'hD43B,
+        17'hE1EB,
+        17'hF07D,
+        17'h10000};
+    automatic logic               _GEN_451;
+    automatic logic [15:0]        _dotProducts_T =
       {{8{qHeadReg[7]}}, qHeadReg[7:0]} * {{8{kHeadReg[7]}}, kHeadReg[7:0]};
-    automatic logic [15:0] _dotProducts_T_1 =
+    automatic logic [15:0]        _dotProducts_T_1 =
       {{8{qHeadReg[15]}}, qHeadReg[15:8]} * {{8{kHeadReg[15]}}, kHeadReg[15:8]};
-    automatic logic [15:0] _dotProducts_T_2 =
+    automatic logic [15:0]        _dotProducts_T_2 =
       {{8{qHeadReg[23]}}, qHeadReg[23:16]} * {{8{kHeadReg[23]}}, kHeadReg[23:16]};
-    automatic logic [15:0] _dotProducts_T_3 =
+    automatic logic [15:0]        _dotProducts_T_3 =
       {{8{qHeadReg[31]}}, qHeadReg[31:24]} * {{8{kHeadReg[31]}}, kHeadReg[31:24]};
-    automatic logic [15:0] _dotProducts_T_4 =
+    automatic logic [15:0]        _dotProducts_T_4 =
       {{8{qHeadReg[39]}}, qHeadReg[39:32]} * {{8{kHeadReg[39]}}, kHeadReg[39:32]};
-    automatic logic [15:0] _dotProducts_T_5 =
+    automatic logic [15:0]        _dotProducts_T_5 =
       {{8{qHeadReg[47]}}, qHeadReg[47:40]} * {{8{kHeadReg[47]}}, kHeadReg[47:40]};
-    automatic logic [15:0] _dotProducts_T_6 =
+    automatic logic [15:0]        _dotProducts_T_6 =
       {{8{qHeadReg[55]}}, qHeadReg[55:48]} * {{8{kHeadReg[55]}}, kHeadReg[55:48]};
-    automatic logic [15:0] _dotProducts_T_7 =
+    automatic logic [15:0]        _dotProducts_T_7 =
       {{8{qHeadReg[63]}}, qHeadReg[63:56]} * {{8{kHeadReg[63]}}, kHeadReg[63:56]};
-    automatic logic [15:0] _dotProducts_T_8 =
+    automatic logic [15:0]        _dotProducts_T_8 =
       {{8{qHeadReg[71]}}, qHeadReg[71:64]} * {{8{kHeadReg[71]}}, kHeadReg[71:64]};
-    automatic logic [15:0] _dotProducts_T_9 =
+    automatic logic [15:0]        _dotProducts_T_9 =
       {{8{qHeadReg[79]}}, qHeadReg[79:72]} * {{8{kHeadReg[79]}}, kHeadReg[79:72]};
-    automatic logic [15:0] _dotProducts_T_10 =
+    automatic logic [15:0]        _dotProducts_T_10 =
       {{8{qHeadReg[87]}}, qHeadReg[87:80]} * {{8{kHeadReg[87]}}, kHeadReg[87:80]};
-    automatic logic [15:0] _dotProducts_T_11 =
+    automatic logic [15:0]        _dotProducts_T_11 =
       {{8{qHeadReg[95]}}, qHeadReg[95:88]} * {{8{kHeadReg[95]}}, kHeadReg[95:88]};
-    automatic logic [15:0] _dotProducts_T_12 =
+    automatic logic [15:0]        _dotProducts_T_12 =
       {{8{qHeadReg[103]}}, qHeadReg[103:96]} * {{8{kHeadReg[103]}}, kHeadReg[103:96]};
-    automatic logic [15:0] _dotProducts_T_13 =
+    automatic logic [15:0]        _dotProducts_T_13 =
       {{8{qHeadReg[111]}}, qHeadReg[111:104]} * {{8{kHeadReg[111]}}, kHeadReg[111:104]};
-    automatic logic [15:0] _dotProducts_T_14 =
+    automatic logic [15:0]        _dotProducts_T_14 =
       {{8{qHeadReg[119]}}, qHeadReg[119:112]} * {{8{kHeadReg[119]}}, kHeadReg[119:112]};
-    automatic logic [15:0] _dotProducts_T_15 =
+    automatic logic [15:0]        _dotProducts_T_15 =
       {{8{qHeadReg[127]}}, qHeadReg[127:120]} * {{8{kHeadReg[127]}}, kHeadReg[127:120]};
-    automatic logic [15:0] _dotProducts_T_16 =
+    automatic logic [15:0]        _dotProducts_T_16 =
       {{8{qHeadReg[135]}}, qHeadReg[135:128]} * {{8{kHeadReg[135]}}, kHeadReg[135:128]};
-    automatic logic [15:0] _dotProducts_T_17 =
+    automatic logic [15:0]        _dotProducts_T_17 =
       {{8{qHeadReg[143]}}, qHeadReg[143:136]} * {{8{kHeadReg[143]}}, kHeadReg[143:136]};
-    automatic logic [15:0] _dotProducts_T_18 =
+    automatic logic [15:0]        _dotProducts_T_18 =
       {{8{qHeadReg[151]}}, qHeadReg[151:144]} * {{8{kHeadReg[151]}}, kHeadReg[151:144]};
-    automatic logic [15:0] _dotProducts_T_19 =
+    automatic logic [15:0]        _dotProducts_T_19 =
       {{8{qHeadReg[159]}}, qHeadReg[159:152]} * {{8{kHeadReg[159]}}, kHeadReg[159:152]};
-    automatic logic [15:0] _dotProducts_T_20 =
+    automatic logic [15:0]        _dotProducts_T_20 =
       {{8{qHeadReg[167]}}, qHeadReg[167:160]} * {{8{kHeadReg[167]}}, kHeadReg[167:160]};
-    automatic logic [15:0] _dotProducts_T_21 =
+    automatic logic [15:0]        _dotProducts_T_21 =
       {{8{qHeadReg[175]}}, qHeadReg[175:168]} * {{8{kHeadReg[175]}}, kHeadReg[175:168]};
-    automatic logic [15:0] _dotProducts_T_22 =
+    automatic logic [15:0]        _dotProducts_T_22 =
       {{8{qHeadReg[183]}}, qHeadReg[183:176]} * {{8{kHeadReg[183]}}, kHeadReg[183:176]};
-    automatic logic [15:0] _dotProducts_T_23 =
+    automatic logic [15:0]        _dotProducts_T_23 =
       {{8{qHeadReg[191]}}, qHeadReg[191:184]} * {{8{kHeadReg[191]}}, kHeadReg[191:184]};
-    automatic logic [15:0] _dotProducts_T_24 =
+    automatic logic [15:0]        _dotProducts_T_24 =
       {{8{qHeadReg[199]}}, qHeadReg[199:192]} * {{8{kHeadReg[199]}}, kHeadReg[199:192]};
-    automatic logic [15:0] _dotProducts_T_25 =
+    automatic logic [15:0]        _dotProducts_T_25 =
       {{8{qHeadReg[207]}}, qHeadReg[207:200]} * {{8{kHeadReg[207]}}, kHeadReg[207:200]};
-    automatic logic [15:0] _dotProducts_T_26 =
+    automatic logic [15:0]        _dotProducts_T_26 =
       {{8{qHeadReg[215]}}, qHeadReg[215:208]} * {{8{kHeadReg[215]}}, kHeadReg[215:208]};
-    automatic logic [15:0] _dotProducts_T_27 =
+    automatic logic [15:0]        _dotProducts_T_27 =
       {{8{qHeadReg[223]}}, qHeadReg[223:216]} * {{8{kHeadReg[223]}}, kHeadReg[223:216]};
-    automatic logic [15:0] _dotProducts_T_28 =
+    automatic logic [15:0]        _dotProducts_T_28 =
       {{8{qHeadReg[231]}}, qHeadReg[231:224]} * {{8{kHeadReg[231]}}, kHeadReg[231:224]};
-    automatic logic [15:0] _dotProducts_T_29 =
+    automatic logic [15:0]        _dotProducts_T_29 =
       {{8{qHeadReg[239]}}, qHeadReg[239:232]} * {{8{kHeadReg[239]}}, kHeadReg[239:232]};
-    automatic logic [15:0] _dotProducts_T_30 =
+    automatic logic [15:0]        _dotProducts_T_30 =
       {{8{qHeadReg[247]}}, qHeadReg[247:240]} * {{8{kHeadReg[247]}}, kHeadReg[247:240]};
-    automatic logic [15:0] _dotProducts_T_31 =
+    automatic logic [15:0]        _dotProducts_T_31 =
       {{8{qHeadReg[255]}}, qHeadReg[255:248]} * {{8{kHeadReg[255]}}, kHeadReg[255:248]};
-    automatic logic [15:0] _dotProducts_T_32 =
+    automatic logic [15:0]        _dotProducts_T_32 =
       {{8{qHeadReg[263]}}, qHeadReg[263:256]} * {{8{kHeadReg[263]}}, kHeadReg[263:256]};
-    automatic logic [15:0] _dotProducts_T_33 =
+    automatic logic [15:0]        _dotProducts_T_33 =
       {{8{qHeadReg[271]}}, qHeadReg[271:264]} * {{8{kHeadReg[271]}}, kHeadReg[271:264]};
-    automatic logic [15:0] _dotProducts_T_34 =
+    automatic logic [15:0]        _dotProducts_T_34 =
       {{8{qHeadReg[279]}}, qHeadReg[279:272]} * {{8{kHeadReg[279]}}, kHeadReg[279:272]};
-    automatic logic [15:0] _dotProducts_T_35 =
+    automatic logic [15:0]        _dotProducts_T_35 =
       {{8{qHeadReg[287]}}, qHeadReg[287:280]} * {{8{kHeadReg[287]}}, kHeadReg[287:280]};
-    automatic logic [15:0] _dotProducts_T_36 =
+    automatic logic [15:0]        _dotProducts_T_36 =
       {{8{qHeadReg[295]}}, qHeadReg[295:288]} * {{8{kHeadReg[295]}}, kHeadReg[295:288]};
-    automatic logic [15:0] _dotProducts_T_37 =
+    automatic logic [15:0]        _dotProducts_T_37 =
       {{8{qHeadReg[303]}}, qHeadReg[303:296]} * {{8{kHeadReg[303]}}, kHeadReg[303:296]};
-    automatic logic [15:0] _dotProducts_T_38 =
+    automatic logic [15:0]        _dotProducts_T_38 =
       {{8{qHeadReg[311]}}, qHeadReg[311:304]} * {{8{kHeadReg[311]}}, kHeadReg[311:304]};
-    automatic logic [15:0] _dotProducts_T_39 =
+    automatic logic [15:0]        _dotProducts_T_39 =
       {{8{qHeadReg[319]}}, qHeadReg[319:312]} * {{8{kHeadReg[319]}}, kHeadReg[319:312]};
-    automatic logic [15:0] _dotProducts_T_40 =
+    automatic logic [15:0]        _dotProducts_T_40 =
       {{8{qHeadReg[327]}}, qHeadReg[327:320]} * {{8{kHeadReg[327]}}, kHeadReg[327:320]};
-    automatic logic [15:0] _dotProducts_T_41 =
+    automatic logic [15:0]        _dotProducts_T_41 =
       {{8{qHeadReg[335]}}, qHeadReg[335:328]} * {{8{kHeadReg[335]}}, kHeadReg[335:328]};
-    automatic logic [15:0] _dotProducts_T_42 =
+    automatic logic [15:0]        _dotProducts_T_42 =
       {{8{qHeadReg[343]}}, qHeadReg[343:336]} * {{8{kHeadReg[343]}}, kHeadReg[343:336]};
-    automatic logic [15:0] _dotProducts_T_43 =
+    automatic logic [15:0]        _dotProducts_T_43 =
       {{8{qHeadReg[351]}}, qHeadReg[351:344]} * {{8{kHeadReg[351]}}, kHeadReg[351:344]};
-    automatic logic [15:0] _dotProducts_T_44 =
+    automatic logic [15:0]        _dotProducts_T_44 =
       {{8{qHeadReg[359]}}, qHeadReg[359:352]} * {{8{kHeadReg[359]}}, kHeadReg[359:352]};
-    automatic logic [15:0] _dotProducts_T_45 =
+    automatic logic [15:0]        _dotProducts_T_45 =
       {{8{qHeadReg[367]}}, qHeadReg[367:360]} * {{8{kHeadReg[367]}}, kHeadReg[367:360]};
-    automatic logic [15:0] _dotProducts_T_46 =
+    automatic logic [15:0]        _dotProducts_T_46 =
       {{8{qHeadReg[375]}}, qHeadReg[375:368]} * {{8{kHeadReg[375]}}, kHeadReg[375:368]};
-    automatic logic [15:0] _dotProducts_T_47 =
+    automatic logic [15:0]        _dotProducts_T_47 =
       {{8{qHeadReg[383]}}, qHeadReg[383:376]} * {{8{kHeadReg[383]}}, kHeadReg[383:376]};
-    automatic logic [15:0] _dotProducts_T_48 =
+    automatic logic [15:0]        _dotProducts_T_48 =
       {{8{qHeadReg[391]}}, qHeadReg[391:384]} * {{8{kHeadReg[391]}}, kHeadReg[391:384]};
-    automatic logic [15:0] _dotProducts_T_49 =
+    automatic logic [15:0]        _dotProducts_T_49 =
       {{8{qHeadReg[399]}}, qHeadReg[399:392]} * {{8{kHeadReg[399]}}, kHeadReg[399:392]};
-    automatic logic [15:0] _dotProducts_T_50 =
+    automatic logic [15:0]        _dotProducts_T_50 =
       {{8{qHeadReg[407]}}, qHeadReg[407:400]} * {{8{kHeadReg[407]}}, kHeadReg[407:400]};
-    automatic logic [15:0] _dotProducts_T_51 =
+    automatic logic [15:0]        _dotProducts_T_51 =
       {{8{qHeadReg[415]}}, qHeadReg[415:408]} * {{8{kHeadReg[415]}}, kHeadReg[415:408]};
-    automatic logic [15:0] _dotProducts_T_52 =
+    automatic logic [15:0]        _dotProducts_T_52 =
       {{8{qHeadReg[423]}}, qHeadReg[423:416]} * {{8{kHeadReg[423]}}, kHeadReg[423:416]};
-    automatic logic [15:0] _dotProducts_T_53 =
+    automatic logic [15:0]        _dotProducts_T_53 =
       {{8{qHeadReg[431]}}, qHeadReg[431:424]} * {{8{kHeadReg[431]}}, kHeadReg[431:424]};
-    automatic logic [15:0] _dotProducts_T_54 =
+    automatic logic [15:0]        _dotProducts_T_54 =
       {{8{qHeadReg[439]}}, qHeadReg[439:432]} * {{8{kHeadReg[439]}}, kHeadReg[439:432]};
-    automatic logic [15:0] _dotProducts_T_55 =
+    automatic logic [15:0]        _dotProducts_T_55 =
       {{8{qHeadReg[447]}}, qHeadReg[447:440]} * {{8{kHeadReg[447]}}, kHeadReg[447:440]};
-    automatic logic [15:0] _dotProducts_T_56 =
+    automatic logic [15:0]        _dotProducts_T_56 =
       {{8{qHeadReg[455]}}, qHeadReg[455:448]} * {{8{kHeadReg[455]}}, kHeadReg[455:448]};
-    automatic logic [15:0] _dotProducts_T_57 =
+    automatic logic [15:0]        _dotProducts_T_57 =
       {{8{qHeadReg[463]}}, qHeadReg[463:456]} * {{8{kHeadReg[463]}}, kHeadReg[463:456]};
-    automatic logic [15:0] _dotProducts_T_58 =
+    automatic logic [15:0]        _dotProducts_T_58 =
       {{8{qHeadReg[471]}}, qHeadReg[471:464]} * {{8{kHeadReg[471]}}, kHeadReg[471:464]};
-    automatic logic [15:0] _dotProducts_T_59 =
+    automatic logic [15:0]        _dotProducts_T_59 =
       {{8{qHeadReg[479]}}, qHeadReg[479:472]} * {{8{kHeadReg[479]}}, kHeadReg[479:472]};
-    automatic logic [15:0] _dotProducts_T_60 =
+    automatic logic [15:0]        _dotProducts_T_60 =
       {{8{qHeadReg[487]}}, qHeadReg[487:480]} * {{8{kHeadReg[487]}}, kHeadReg[487:480]};
-    automatic logic [15:0] _dotProducts_T_61 =
+    automatic logic [15:0]        _dotProducts_T_61 =
       {{8{qHeadReg[495]}}, qHeadReg[495:488]} * {{8{kHeadReg[495]}}, kHeadReg[495:488]};
-    automatic logic [15:0] _dotProducts_T_62 =
+    automatic logic [15:0]        _dotProducts_T_62 =
       {{8{qHeadReg[503]}}, qHeadReg[503:496]} * {{8{kHeadReg[503]}}, kHeadReg[503:496]};
-    automatic logic [15:0] _dotProducts_T_63 =
+    automatic logic [15:0]        _dotProducts_T_63 =
       {{8{qHeadReg[511]}}, qHeadReg[511:504]} * {{8{kHeadReg[511]}}, kHeadReg[511:504]};
-    automatic logic [16:0] _GEN_450 =
+    automatic logic [16:0]        _GEN_452 =
       {_dotProducts_T_1[15], _dotProducts_T_1} + {_dotProducts_T[15], _dotProducts_T};
-    automatic logic [31:0] _dot_T_186 =
+    automatic logic [31:0]        _dot_T_186 =
       {{16{_dotProducts_T_63[15]}}, _dotProducts_T_63}
       + {{16{_dotProducts_T_62[15]}}, _dotProducts_T_62}
       + {{16{_dotProducts_T_61[15]}}, _dotProducts_T_61}
@@ -5177,106 +5480,359 @@ module IntegerAttention(
       + {{16{_dotProducts_T_5[15]}}, _dotProducts_T_5}
       + {{16{_dotProducts_T_4[15]}}, _dotProducts_T_4}
       + {{16{_dotProducts_T_3[15]}}, _dotProducts_T_3}
-      + {{16{_dotProducts_T_2[15]}}, _dotProducts_T_2} + {{15{_GEN_450[16]}}, _GEN_450};
-    automatic logic        _GEN_451;
-    automatic logic [31:0] _scores_T_1;
-    automatic logic        _GEN_452;
-    automatic logic        _GEN_453;
-    _GEN_451 = state == 4'h3;
+      + {{16{_dotProducts_T_2[15]}}, _dotProducts_T_2} + {{15{_GEN_452[16]}}, _GEN_452};
+    automatic logic               _GEN_453;
+    automatic logic [31:0]        _scores_T_1;
+    automatic logic               _keyAllowed_T_61 = io_mask == 16'h0;
+    automatic logic               keyAllowed_0;
+    automatic logic               keyAllowed_1;
+    automatic logic               keyAllowed_2;
+    automatic logic               keyAllowed_3;
+    automatic logic               keyAllowed_4;
+    automatic logic               keyAllowed_5;
+    automatic logic               keyAllowed_6;
+    automatic logic               keyAllowed_7;
+    automatic logic               keyAllowed_8;
+    automatic logic               keyAllowed_9;
+    automatic logic               keyAllowed_10;
+    automatic logic               keyAllowed_11;
+    automatic logic               keyAllowed_12;
+    automatic logic               keyAllowed_13;
+    automatic logic               keyAllowed_14;
+    automatic logic               keyAllowed_15;
+    automatic logic               _GEN_454;
+    automatic logic [31:0]        _expValuesComb_difference_T =
+      maximumScoreReg - scores_0;
+    automatic logic [27:0]        expValuesComb_difference =
+      softmaxKeyAllowed_0 ? _expValuesComb_difference_T[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_0;
+    automatic logic [31:0]        _expValuesComb_difference_T_4 =
+      maximumScoreReg - scores_1;
+    automatic logic [27:0]        expValuesComb_difference_1 =
+      softmaxKeyAllowed_1 ? _expValuesComb_difference_T_4[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_1;
+    automatic logic [31:0]        _expValuesComb_difference_T_8 =
+      maximumScoreReg - scores_2;
+    automatic logic [27:0]        expValuesComb_difference_2 =
+      softmaxKeyAllowed_2 ? _expValuesComb_difference_T_8[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_2;
+    automatic logic [31:0]        _expValuesComb_difference_T_12 =
+      maximumScoreReg - scores_3;
+    automatic logic [27:0]        expValuesComb_difference_3 =
+      softmaxKeyAllowed_3 ? _expValuesComb_difference_T_12[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_3;
+    automatic logic [31:0]        _expValuesComb_difference_T_16 =
+      maximumScoreReg - scores_4;
+    automatic logic [27:0]        expValuesComb_difference_4 =
+      softmaxKeyAllowed_4 ? _expValuesComb_difference_T_16[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_4;
+    automatic logic [31:0]        _expValuesComb_difference_T_20 =
+      maximumScoreReg - scores_5;
+    automatic logic [27:0]        expValuesComb_difference_5 =
+      softmaxKeyAllowed_5 ? _expValuesComb_difference_T_20[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_5;
+    automatic logic [31:0]        _expValuesComb_difference_T_24 =
+      maximumScoreReg - scores_6;
+    automatic logic [27:0]        expValuesComb_difference_6 =
+      softmaxKeyAllowed_6 ? _expValuesComb_difference_T_24[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_6;
+    automatic logic [31:0]        _expValuesComb_difference_T_28 =
+      maximumScoreReg - scores_7;
+    automatic logic [27:0]        expValuesComb_difference_7 =
+      softmaxKeyAllowed_7 ? _expValuesComb_difference_T_28[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_7;
+    automatic logic [31:0]        _expValuesComb_difference_T_32 =
+      maximumScoreReg - scores_8;
+    automatic logic [27:0]        expValuesComb_difference_8 =
+      softmaxKeyAllowed_8 ? _expValuesComb_difference_T_32[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_8;
+    automatic logic [31:0]        _expValuesComb_difference_T_36 =
+      maximumScoreReg - scores_9;
+    automatic logic [27:0]        expValuesComb_difference_9 =
+      softmaxKeyAllowed_9 ? _expValuesComb_difference_T_36[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_9;
+    automatic logic [31:0]        _expValuesComb_difference_T_40 =
+      maximumScoreReg - scores_10;
+    automatic logic [27:0]        expValuesComb_difference_10 =
+      softmaxKeyAllowed_10 ? _expValuesComb_difference_T_40[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_10;
+    automatic logic [31:0]        _expValuesComb_difference_T_44 =
+      maximumScoreReg - scores_11;
+    automatic logic [27:0]        expValuesComb_difference_11 =
+      softmaxKeyAllowed_11 ? _expValuesComb_difference_T_44[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_11;
+    automatic logic [31:0]        _expValuesComb_difference_T_48 =
+      maximumScoreReg - scores_12;
+    automatic logic [27:0]        expValuesComb_difference_12 =
+      softmaxKeyAllowed_12 ? _expValuesComb_difference_T_48[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_12;
+    automatic logic [31:0]        _expValuesComb_difference_T_52 =
+      maximumScoreReg - scores_13;
+    automatic logic [27:0]        expValuesComb_difference_13 =
+      softmaxKeyAllowed_13 ? _expValuesComb_difference_T_52[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_13;
+    automatic logic [31:0]        _expValuesComb_difference_T_56 =
+      maximumScoreReg - scores_14;
+    automatic logic [27:0]        expValuesComb_difference_14 =
+      softmaxKeyAllowed_14 ? _expValuesComb_difference_T_56[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_14;
+    automatic logic [31:0]        _expValuesComb_difference_T_60 =
+      maximumScoreReg - scores_15;
+    automatic logic [27:0]        expValuesComb_difference_15 =
+      softmaxKeyAllowed_15 ? _expValuesComb_difference_T_60[31:4] : 28'h0;
+    automatic logic [16:0]        expValuesComb_15;
+    automatic logic               _GEN_455;
+    automatic logic               _GEN_456;
+    automatic logic               _GEN_457;
+    automatic logic               _GEN_458;
+    automatic logic               _GEN_459;
+    automatic logic               _GEN_460;
+    _GEN_451 = state == 5'h2;
+    _GEN_453 = state == 5'h3;
     _scores_T_1 = {{3{_dot_T_186[31]}}, _dot_T_186[31:3]};
-    _GEN_452 = state == 4'h4;
-    _GEN_453 = state == 4'h7;
+    keyAllowed_0 = _keyAllowed_T_61 | io_mask[0];
+    keyAllowed_1 = (|row) & (_keyAllowed_T_61 | io_mask[1]);
+    keyAllowed_2 = (|(row[3:1])) & (_keyAllowed_T_61 | io_mask[2]);
+    keyAllowed_3 = row > 4'h2 & (_keyAllowed_T_61 | io_mask[3]);
+    keyAllowed_4 = (|(row[3:2])) & (_keyAllowed_T_61 | io_mask[4]);
+    keyAllowed_5 = row > 4'h4 & (_keyAllowed_T_61 | io_mask[5]);
+    keyAllowed_6 = row > 4'h5 & (_keyAllowed_T_61 | io_mask[6]);
+    keyAllowed_7 = row > 4'h6 & (_keyAllowed_T_61 | io_mask[7]);
+    keyAllowed_8 = row[3] & (_keyAllowed_T_61 | io_mask[8]);
+    keyAllowed_9 = row > 4'h8 & (_keyAllowed_T_61 | io_mask[9]);
+    keyAllowed_10 = row > 4'h9 & (_keyAllowed_T_61 | io_mask[10]);
+    keyAllowed_11 = row > 4'hA & (_keyAllowed_T_61 | io_mask[11]);
+    keyAllowed_12 = row > 4'hB & (_keyAllowed_T_61 | io_mask[12]);
+    keyAllowed_13 = row > 4'hC & (_keyAllowed_T_61 | io_mask[13]);
+    keyAllowed_14 = row > 4'hD & (_keyAllowed_T_61 | io_mask[14]);
+    keyAllowed_15 = (&row) & (_keyAllowed_T_61 | io_mask[15]);
+    _GEN_454 = state == 5'h4;
+    expValuesComb_0 =
+      softmaxKeyAllowed_0
+        ? _GEN_450[(|(expValuesComb_difference[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference[7:0]]
+        : 17'h0;
+    expValuesComb_1 =
+      softmaxKeyAllowed_1
+        ? _GEN_450[(|(expValuesComb_difference_1[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_1[7:0]]
+        : 17'h0;
+    expValuesComb_2 =
+      softmaxKeyAllowed_2
+        ? _GEN_450[(|(expValuesComb_difference_2[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_2[7:0]]
+        : 17'h0;
+    expValuesComb_3 =
+      softmaxKeyAllowed_3
+        ? _GEN_450[(|(expValuesComb_difference_3[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_3[7:0]]
+        : 17'h0;
+    expValuesComb_4 =
+      softmaxKeyAllowed_4
+        ? _GEN_450[(|(expValuesComb_difference_4[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_4[7:0]]
+        : 17'h0;
+    expValuesComb_5 =
+      softmaxKeyAllowed_5
+        ? _GEN_450[(|(expValuesComb_difference_5[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_5[7:0]]
+        : 17'h0;
+    expValuesComb_6 =
+      softmaxKeyAllowed_6
+        ? _GEN_450[(|(expValuesComb_difference_6[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_6[7:0]]
+        : 17'h0;
+    expValuesComb_7 =
+      softmaxKeyAllowed_7
+        ? _GEN_450[(|(expValuesComb_difference_7[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_7[7:0]]
+        : 17'h0;
+    expValuesComb_8 =
+      softmaxKeyAllowed_8
+        ? _GEN_450[(|(expValuesComb_difference_8[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_8[7:0]]
+        : 17'h0;
+    expValuesComb_9 =
+      softmaxKeyAllowed_9
+        ? _GEN_450[(|(expValuesComb_difference_9[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_9[7:0]]
+        : 17'h0;
+    expValuesComb_10 =
+      softmaxKeyAllowed_10
+        ? _GEN_450[(|(expValuesComb_difference_10[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_10[7:0]]
+        : 17'h0;
+    expValuesComb_11 =
+      softmaxKeyAllowed_11
+        ? _GEN_450[(|(expValuesComb_difference_11[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_11[7:0]]
+        : 17'h0;
+    expValuesComb_12 =
+      softmaxKeyAllowed_12
+        ? _GEN_450[(|(expValuesComb_difference_12[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_12[7:0]]
+        : 17'h0;
+    expValuesComb_13 =
+      softmaxKeyAllowed_13
+        ? _GEN_450[(|(expValuesComb_difference_13[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_13[7:0]]
+        : 17'h0;
+    expValuesComb_14 =
+      softmaxKeyAllowed_14
+        ? _GEN_450[(|(expValuesComb_difference_14[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_14[7:0]]
+        : 17'h0;
+    expValuesComb_15 =
+      softmaxKeyAllowed_15
+        ? _GEN_450[(|(expValuesComb_difference_15[27:8]))
+                     ? 8'hFF
+                     : expValuesComb_difference_15[7:0]]
+        : 17'h0;
+    _GEN_455 = state == 5'h5;
+    _GEN_456 = reciprocalDivider_io_out_ready & _reciprocalDivider_io_out_valid;
+    _GEN_457 = state == 5'h8;
+    _GEN_458 = state == 5'hA;
+    _GEN_459 = state == 5'hB;
+    _GEN_460 = state == 5'hE;
     if (reset) begin
       qCollectReg <= 512'h0;
       kCollectReg <= 512'h0;
       vCollectReg <= 512'h0;
-      state <= 4'h0;
+      state <= 5'h0;
       collectToken <= 4'h0;
       row <= 4'h0;
       head <= 4'h0;
       key <= 4'h0;
       projectHead <= 4'h0;
+      projectRowsFed <= 4'h0;
+      drainRow <= 4'h0;
+      groupStartRow <= 4'h0;
       tokenReady <= 16'h0;
       collectionClosed <= 1'h0;
       valueToken <= 4'h0;
+      maximumScoreReg <= 32'h80000000;
+      safeExpSumReg <= 21'h1;
       seqLimit <= 5'h10;
     end
     else begin
       automatic logic        _activeSeq_T_3 =
         io_cfgValid & (|io_cfg_seqlen) & io_cfg_seqlen < 5'h11;
+      automatic logic [4:0]  activeSeq = _activeSeq_T_3 ? io_cfg_seqlen : seqLimit;
+      automatic logic [4:0]  _GEN_461 = {1'h0, groupStartRow};
+      automatic logic [4:0]  _remainingRows_T = activeSeq - _GEN_461;
+      automatic logic [3:0]  targetGroupTokens =
+        (|(_remainingRows_T[4:3])) ? 4'h8 : _remainingRows_T[3:0];
+      automatic logic [4:0]  nextGroupStart = _GEN_461 + {1'h0, targetGroupTokens};
       automatic logic        tokenDone;
-      automatic logic [4:0]  _GEN_454 =
-        (_activeSeq_T_3 ? io_cfg_seqlen : seqLimit) - 5'h1;
-      automatic logic        _GEN_455;
-      automatic logic [15:0] _GEN_456 = tokenReady >> row;
-      automatic logic        _GEN_457;
-      automatic logic        _GEN_458;
-      automatic logic        _GEN_459;
-      automatic logic        _GEN_460;
-      automatic logic        _outputProjection_io_in_bits_last_T;
-      automatic logic        _GEN_461;
-      automatic logic        _GEN_462 =
-        io_out_ready & _outputProjection_io_out_valid & _outputProjection_io_out_bits_last
-        & state == 4'hC;
-      automatic logic        _GEN_463;
+      automatic logic        _GEN_462;
+      automatic logic [15:0] _GEN_463 = tokenReady >> row;
       automatic logic        _GEN_464;
-      automatic logic [30:0] _tokenReady_T_2 = 31'h1 << row;
+      automatic logic        _GEN_465;
+      automatic logic        _GEN_466;
+      automatic logic        _GEN_467;
+      automatic logic        _outputProjection_io_in_bits_last_T;
+      automatic logic        _GEN_468;
+      automatic logic        _GEN_469;
+      automatic logic        _GEN_470 =
+        io_out_ready & _outputProjection_io_out_valid & _outputProjection_io_out_bits_last
+        & state == 5'h10;
+      automatic logic        _GEN_471;
+      automatic logic        _GEN_472 = nextGroupStart >= activeSeq;
+      automatic logic        _GEN_473;
+      automatic logic [3:0]  _GEN_474;
+      automatic logic [30:0] _tokenReady_T_2 = 31'h1 << drainRow;
       automatic logic [30:0] _tokenReady_T = 31'h1 << collectToken;
       tokenDone = _tokenDone_T & io_in_bits_last;
-      _GEN_455 = {1'h0, collectToken} == _GEN_454;
-      _GEN_457 = state == 4'h0 & _GEN_456[0];
-      _GEN_458 = key == row;
-      _GEN_459 = valueToken == row;
-      _GEN_460 = head == 4'hB;
+      _GEN_462 = {1'h0, collectToken} == activeSeq - 5'h1;
+      _GEN_464 = state == 5'h0 & _GEN_463[0];
+      _GEN_465 = key == row;
+      _GEN_466 = valueToken == row;
+      _GEN_467 = head == 4'hB;
       _outputProjection_io_in_bits_last_T = projectHead == 4'hB;
-      _GEN_461 = _outputProjection_io_in_ready & outputProjection_io_in_valid;
-      _GEN_463 = {1'h0, row} == _GEN_454;
-      _GEN_464 = _GEN_462 & _GEN_463;
+      _GEN_468 = _outputProjection_io_in_ready & outputProjection_io_in_valid;
+      _GEN_469 = projectRowsFed == targetGroupTokens - 4'h1;
+      _GEN_471 = {1'h0, drainRow} + 5'h1 == nextGroupStart;
+      _GEN_473 = _GEN_470 & _GEN_471 & _GEN_472;
+      _GEN_474 = _GEN_472 ? 4'h0 : nextGroupStart[3:0];
       if (_tokenDone_T) begin
         qCollectReg <= qMemory_io_writeData;
         kCollectReg <= kMemory_io_writeData;
         vCollectReg <= vMemory_io_writeData;
       end
-      if (_GEN_462) begin
-        state <= 4'h0;
-        row <= _GEN_463 ? 4'h0 : row + 4'h1;
+      if (_GEN_470 & _GEN_471) begin
+        state <= 5'h0;
+        row <= _GEN_474;
+        projectRowsFed <= 4'h0;
+        groupStartRow <= _GEN_474;
       end
-      else if (_GEN_461)
-        state <= _outputProjection_io_in_bits_last_T ? 4'hC : 4'h9;
       else begin
-        automatic logic [3:0]       _GEN_465;
-        automatic logic [15:0][3:0] _GEN_466;
-        _GEN_465 = _GEN_457 ? 4'h1 : state;
-        _GEN_466 =
-          {{_GEN_465},
-           {_GEN_465},
-           {_GEN_465},
-           {_GEN_465},
-           {_GEN_465},
-           {4'hB},
-           {4'hA},
-           {{_GEN_460, 3'h1}},
-           {_GEN_459 ? 4'h8 : 4'h5},
-           {4'h7},
-           {4'h6},
-           {4'h5},
-           {_GEN_458 ? 4'h4 : 4'h1},
-           {4'h3},
-           {4'h2},
-           {_GEN_465}};
-        state <= _GEN_466[state];
+        automatic logic _GEN_475;
+        _GEN_475 = _GEN_468 & _outputProjection_io_in_bits_last_T;
+        if (_GEN_468)
+          state <= _outputProjection_io_in_bits_last_T ? {_GEN_469, 4'h0} : 5'hD;
+        else if (_GEN_460)
+          state <= 5'hF;
+        else if (contextMemory_io_readEn)
+          state <= 5'hE;
+        else if (contextMemory_io_writeEn)
+          state <= _GEN_467 ? 5'hD : 5'h1;
+        else if (_GEN_459)
+          state <= _GEN_466 ? 5'hC : 5'h9;
+        else if (_GEN_458)
+          state <= 5'hB;
+        else if (vMemory_io_readEn)
+          state <= 5'hA;
+        else if (_GEN_457)
+          state <= 5'h9;
+        else if (_GEN_456)
+          state <= 5'h8;
+        else if (reciprocalDivider_io_in_valid & _reciprocalDivider_io_in_ready)
+          state <= 5'h7;
+        else if (_GEN_455)
+          state <= 5'h6;
+        else if (_GEN_454)
+          state <= 5'h5;
+        else if (_GEN_453)
+          state <= _GEN_465 ? 5'h4 : 5'h1;
+        else if (_GEN_451)
+          state <= 5'h3;
+        else if (kMemory_io_readEn)
+          state <= 5'h2;
+        else if (_GEN_464)
+          state <= 5'h1;
+        if (~_GEN_475 | _GEN_469) begin
+        end
+        else
+          row <= row + 4'h1;
+        if (_GEN_475)
+          projectRowsFed <= _GEN_469 ? 4'h0 : projectRowsFed + 4'h1;
       end
-      if (_GEN_464)
+      if (_GEN_473)
         collectToken <= 4'h0;
-      else if (~tokenDone | _GEN_455) begin
+      else if (~tokenDone | _GEN_462) begin
       end
       else
         collectToken <= collectToken + 4'h1;
-      if (~contextMemory_io_writeEn | _GEN_460) begin
-        if (_GEN_457)
+      if (~contextMemory_io_writeEn | _GEN_467) begin
+        if (_GEN_464)
           head <= 4'h0;
-        if (~_GEN_451 | _GEN_458) begin
-          if (_GEN_457)
+        if (~_GEN_453 | _GEN_465) begin
+          if (_GEN_464)
             key <= 4'h0;
         end
         else
@@ -5286,975 +5842,341 @@ module IntegerAttention(
         head <= head + 4'h1;
         key <= 4'h0;
       end
-      if (~_GEN_461 | _outputProjection_io_in_bits_last_T) begin
-        if (contextMemory_io_writeEn & _GEN_460)
-          projectHead <= 4'h0;
-      end
-      else
-        projectHead <= projectHead + 4'h1;
+      if (_GEN_468)
+        projectHead <= _outputProjection_io_in_bits_last_T ? 4'h0 : projectHead + 4'h1;
+      else if (contextMemory_io_writeEn & _GEN_467)
+        projectHead <= 4'h0;
+      if (_GEN_470)
+        drainRow <= _GEN_471 ? _GEN_474 : drainRow + 4'h1;
+      else if (_GEN_468 & _outputProjection_io_in_bits_last_T & _GEN_469)
+        drainRow <= groupStartRow;
       tokenReady <=
-        _GEN_462
+        _GEN_470
           ? ~(_tokenReady_T_2[15:0]) & tokenReady
           : {16{tokenDone}} & _tokenReady_T[15:0] | tokenReady;
-      collectionClosed <= ~_GEN_464 & (tokenDone & _GEN_455 | collectionClosed);
-      if (~_GEN_453 | _GEN_459) begin
-        if (_GEN_452)
+      collectionClosed <= ~_GEN_473 & (tokenDone & _GEN_462 | collectionClosed);
+      if (~_GEN_459 | _GEN_466) begin
+        if (_GEN_457)
           valueToken <= 4'h0;
       end
       else
         valueToken <= valueToken + 4'h1;
+      if (_GEN_454) begin
+        automatic logic [31:0] maskedScores_0;
+        automatic logic [31:0] maskedScores_1;
+        automatic logic [31:0] maskedScores_2;
+        automatic logic [31:0] maskedScores_3;
+        automatic logic [31:0] maskedScores_4;
+        automatic logic [31:0] maskedScores_5;
+        automatic logic [31:0] maskedScores_6;
+        automatic logic [31:0] maskedScores_7;
+        automatic logic [31:0] maskedScores_8;
+        automatic logic [31:0] maskedScores_9;
+        automatic logic [31:0] maskedScores_10;
+        automatic logic [31:0] maskedScores_11;
+        automatic logic [31:0] maskedScores_12;
+        automatic logic [31:0] maskedScores_13;
+        automatic logic [31:0] maskedScores_14;
+        automatic logic [31:0] maskedScores_15;
+        automatic logic [31:0] _maximumScore_T_1;
+        automatic logic [31:0] _maximumScore_T_3;
+        automatic logic [31:0] _maximumScore_T_5;
+        automatic logic [31:0] _maximumScore_T_7;
+        automatic logic [31:0] _maximumScore_T_9;
+        automatic logic [31:0] _maximumScore_T_11;
+        automatic logic [31:0] _maximumScore_T_13;
+        automatic logic [31:0] _maximumScore_T_15;
+        automatic logic [31:0] _maximumScore_T_17;
+        automatic logic [31:0] _maximumScore_T_19;
+        automatic logic [31:0] _maximumScore_T_21;
+        automatic logic [31:0] _maximumScore_T_23;
+        automatic logic [31:0] _maximumScore_T_25;
+        automatic logic [31:0] _maximumScore_T_27;
+        maskedScores_0 = keyAllowed_0 ? scores_0 : 32'h80000000;
+        maskedScores_1 = keyAllowed_1 ? scores_1 : 32'h80000000;
+        maskedScores_2 = keyAllowed_2 ? scores_2 : 32'h80000000;
+        maskedScores_3 = keyAllowed_3 ? scores_3 : 32'h80000000;
+        maskedScores_4 = keyAllowed_4 ? scores_4 : 32'h80000000;
+        maskedScores_5 = keyAllowed_5 ? scores_5 : 32'h80000000;
+        maskedScores_6 = keyAllowed_6 ? scores_6 : 32'h80000000;
+        maskedScores_7 = keyAllowed_7 ? scores_7 : 32'h80000000;
+        maskedScores_8 = keyAllowed_8 ? scores_8 : 32'h80000000;
+        maskedScores_9 = keyAllowed_9 ? scores_9 : 32'h80000000;
+        maskedScores_10 = keyAllowed_10 ? scores_10 : 32'h80000000;
+        maskedScores_11 = keyAllowed_11 ? scores_11 : 32'h80000000;
+        maskedScores_12 = keyAllowed_12 ? scores_12 : 32'h80000000;
+        maskedScores_13 = keyAllowed_13 ? scores_13 : 32'h80000000;
+        maskedScores_14 = keyAllowed_14 ? scores_14 : 32'h80000000;
+        maskedScores_15 = keyAllowed_15 ? scores_15 : 32'h80000000;
+        _maximumScore_T_1 =
+          $signed(maskedScores_0) > $signed(maskedScores_1)
+            ? maskedScores_0
+            : maskedScores_1;
+        _maximumScore_T_3 =
+          $signed(maskedScores_2) > $signed(maskedScores_3)
+            ? maskedScores_2
+            : maskedScores_3;
+        _maximumScore_T_5 =
+          $signed(maskedScores_4) > $signed(maskedScores_5)
+            ? maskedScores_4
+            : maskedScores_5;
+        _maximumScore_T_7 =
+          $signed(maskedScores_6) > $signed(maskedScores_7)
+            ? maskedScores_6
+            : maskedScores_7;
+        _maximumScore_T_9 =
+          $signed(maskedScores_8) > $signed(maskedScores_9)
+            ? maskedScores_8
+            : maskedScores_9;
+        _maximumScore_T_11 =
+          $signed(maskedScores_10) > $signed(maskedScores_11)
+            ? maskedScores_10
+            : maskedScores_11;
+        _maximumScore_T_13 =
+          $signed(maskedScores_12) > $signed(maskedScores_13)
+            ? maskedScores_12
+            : maskedScores_13;
+        _maximumScore_T_15 =
+          $signed(maskedScores_14) > $signed(maskedScores_15)
+            ? maskedScores_14
+            : maskedScores_15;
+        _maximumScore_T_17 =
+          $signed(_maximumScore_T_1) > $signed(_maximumScore_T_3)
+            ? _maximumScore_T_1
+            : _maximumScore_T_3;
+        _maximumScore_T_19 =
+          $signed(_maximumScore_T_5) > $signed(_maximumScore_T_7)
+            ? _maximumScore_T_5
+            : _maximumScore_T_7;
+        _maximumScore_T_21 =
+          $signed(_maximumScore_T_9) > $signed(_maximumScore_T_11)
+            ? _maximumScore_T_9
+            : _maximumScore_T_11;
+        _maximumScore_T_23 =
+          $signed(_maximumScore_T_13) > $signed(_maximumScore_T_15)
+            ? _maximumScore_T_13
+            : _maximumScore_T_15;
+        _maximumScore_T_25 =
+          $signed(_maximumScore_T_17) > $signed(_maximumScore_T_19)
+            ? _maximumScore_T_17
+            : _maximumScore_T_19;
+        _maximumScore_T_27 =
+          $signed(_maximumScore_T_21) > $signed(_maximumScore_T_23)
+            ? _maximumScore_T_21
+            : _maximumScore_T_23;
+        maximumScoreReg <=
+          $signed(_maximumScore_T_25) > $signed(_maximumScore_T_27)
+            ? _maximumScore_T_25
+            : _maximumScore_T_27;
+      end
+      if (_GEN_455) begin
+        automatic logic [20:0] _expSumComb_T_44;
+        _expSumComb_T_44 =
+          {3'h0, {1'h0, expValuesComb_1} + {1'h0, expValuesComb_0}}
+          + {3'h0, {1'h0, expValuesComb_3} + {1'h0, expValuesComb_2}}
+          + {3'h0, {1'h0, expValuesComb_5} + {1'h0, expValuesComb_4}}
+          + {3'h0, {1'h0, expValuesComb_7} + {1'h0, expValuesComb_6}}
+          + {3'h0, {1'h0, expValuesComb_9} + {1'h0, expValuesComb_8}}
+          + {3'h0, {1'h0, expValuesComb_11} + {1'h0, expValuesComb_10}}
+          + {3'h0, {1'h0, expValuesComb_13} + {1'h0, expValuesComb_12}}
+          + {3'h0, {1'h0, expValuesComb_15} + {1'h0, expValuesComb_14}};
+        safeExpSumReg <= _expSumComb_T_44 == 21'h0 ? 21'h1 : _expSumComb_T_44;
+      end
       if (_activeSeq_T_3)
         seqLimit <= io_cfg_seqlen;
     end
-    if (state == 4'h2) begin
+    if (_GEN_451) begin
       qHeadReg <= _qMemory_io_readData;
       kHeadReg <= _kMemory_io_readData;
     end
-    if (state == 4'h6)
+    if (_GEN_458)
       vHeadReg <= _vMemory_io_readData;
-    if (_GEN_451 & key == 4'h0)
+    if (_GEN_453 & key == 4'h0)
       scores_0 <= _scores_T_1;
-    if (_GEN_451 & key == 4'h1)
+    if (_GEN_453 & key == 4'h1)
       scores_1 <= _scores_T_1;
-    if (_GEN_451 & key == 4'h2)
+    if (_GEN_453 & key == 4'h2)
       scores_2 <= _scores_T_1;
-    if (_GEN_451 & key == 4'h3)
+    if (_GEN_453 & key == 4'h3)
       scores_3 <= _scores_T_1;
-    if (_GEN_451 & key == 4'h4)
+    if (_GEN_453 & key == 4'h4)
       scores_4 <= _scores_T_1;
-    if (_GEN_451 & key == 4'h5)
+    if (_GEN_453 & key == 4'h5)
       scores_5 <= _scores_T_1;
-    if (_GEN_451 & key == 4'h6)
+    if (_GEN_453 & key == 4'h6)
       scores_6 <= _scores_T_1;
-    if (_GEN_451 & key == 4'h7)
+    if (_GEN_453 & key == 4'h7)
       scores_7 <= _scores_T_1;
-    if (_GEN_451 & key == 4'h8)
+    if (_GEN_453 & key == 4'h8)
       scores_8 <= _scores_T_1;
-    if (_GEN_451 & key == 4'h9)
+    if (_GEN_453 & key == 4'h9)
       scores_9 <= _scores_T_1;
-    if (_GEN_451 & key == 4'hA)
+    if (_GEN_453 & key == 4'hA)
       scores_10 <= _scores_T_1;
-    if (_GEN_451 & key == 4'hB)
+    if (_GEN_453 & key == 4'hB)
       scores_11 <= _scores_T_1;
-    if (_GEN_451 & key == 4'hC)
+    if (_GEN_453 & key == 4'hC)
       scores_12 <= _scores_T_1;
-    if (_GEN_451 & key == 4'hD)
+    if (_GEN_453 & key == 4'hD)
       scores_13 <= _scores_T_1;
-    if (_GEN_451 & key == 4'hE)
+    if (_GEN_453 & key == 4'hE)
       scores_14 <= _scores_T_1;
-    if (_GEN_451 & (&key))
+    if (_GEN_453 & (&key))
       scores_15 <= _scores_T_1;
-    if (_GEN_452) begin
-      automatic logic [255:0][16:0] _GEN_467 =
-        '{17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h0,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h1,
-          17'h2,
-          17'h2,
-          17'h2,
-          17'h2,
-          17'h2,
-          17'h2,
-          17'h2,
-          17'h2,
-          17'h3,
-          17'h3,
-          17'h3,
-          17'h3,
-          17'h3,
-          17'h4,
-          17'h4,
-          17'h4,
-          17'h4,
-          17'h5,
-          17'h5,
-          17'h5,
-          17'h6,
-          17'h6,
-          17'h6,
-          17'h7,
-          17'h7,
-          17'h8,
-          17'h8,
-          17'h9,
-          17'h9,
-          17'hA,
-          17'hA,
-          17'hB,
-          17'hC,
-          17'hD,
-          17'hD,
-          17'hE,
-          17'hF,
-          17'h10,
-          17'h11,
-          17'h12,
-          17'h13,
-          17'h15,
-          17'h16,
-          17'h17,
-          17'h19,
-          17'h1B,
-          17'h1C,
-          17'h1E,
-          17'h20,
-          17'h22,
-          17'h24,
-          17'h27,
-          17'h29,
-          17'h2C,
-          17'h2F,
-          17'h32,
-          17'h35,
-          17'h38,
-          17'h3C,
-          17'h40,
-          17'h44,
-          17'h48,
-          17'h4D,
-          17'h52,
-          17'h57,
-          17'h5D,
-          17'h63,
-          17'h69,
-          17'h70,
-          17'h77,
-          17'h7F,
-          17'h87,
-          17'h8F,
-          17'h99,
-          17'hA2,
-          17'hAD,
-          17'hB8,
-          17'hC4,
-          17'hD1,
-          17'hDE,
-          17'hEC,
-          17'hFC,
-          17'h10C,
-          17'h11D,
-          17'h12F,
-          17'h143,
-          17'h158,
-          17'h16E,
-          17'h186,
-          17'h19F,
-          17'h1BA,
-          17'h1D6,
-          17'h1F4,
-          17'h215,
-          17'h237,
-          17'h25C,
-          17'h282,
-          17'h2AC,
-          17'h2D8,
-          17'h307,
-          17'h339,
-          17'h36E,
-          17'h3A7,
-          17'h3E3,
-          17'h423,
-          17'h468,
-          17'h4B0,
-          17'h4FE,
-          17'h550,
-          17'h5A8,
-          17'h605,
-          17'h669,
-          17'h6D2,
-          17'h743,
-          17'h7BB,
-          17'h83B,
-          17'h8C3,
-          17'h953,
-          17'h9ED,
-          17'hA91,
-          17'hB3F,
-          17'hBF9,
-          17'hCBF,
-          17'hD91,
-          17'hE71,
-          17'hF60,
-          17'h105E,
-          17'h116C,
-          17'h128B,
-          17'h13BE,
-          17'h1504,
-          17'h165E,
-          17'h17D0,
-          17'h1959,
-          17'h1AFB,
-          17'h1CB9,
-          17'h1E93,
-          17'h208C,
-          17'h22A5,
-          17'h24E1,
-          17'h2742,
-          17'h29CA,
-          17'h2C7C,
-          17'h2F5B,
-          17'h3269,
-          17'h35A9,
-          17'h391F,
-          17'h3CCE,
-          17'h40BA,
-          17'h44E7,
-          17'h4958,
-          17'h4E13,
-          17'h531C,
-          17'h5879,
-          17'h5E2D,
-          17'h6440,
-          17'h6AB7,
-          17'h7199,
-          17'h78ED,
-          17'h80BA,
-          17'h8907,
-          17'h91DD,
-          17'h9B46,
-          17'hA549,
-          17'hAFF2,
-          17'hBB4B,
-          17'hC75F,
-          17'hD43B,
-          17'hE1EB,
-          17'hF07D,
-          17'h10000};
-      automatic logic               _keyAllowed_T_61 = io_mask == 16'h0;
-      automatic logic               keyAllowed_0 = _keyAllowed_T_61 | io_mask[0];
-      automatic logic               keyAllowed_1 =
-        (|row) & (_keyAllowed_T_61 | io_mask[1]);
-      automatic logic               keyAllowed_2 =
-        (|(row[3:1])) & (_keyAllowed_T_61 | io_mask[2]);
-      automatic logic               _probabilities_3_T = row > 4'h2;
-      automatic logic               keyAllowed_3 =
-        _probabilities_3_T & (_keyAllowed_T_61 | io_mask[3]);
-      automatic logic               keyAllowed_4 =
-        (|(row[3:2])) & (_keyAllowed_T_61 | io_mask[4]);
-      automatic logic               _probabilities_5_T = row > 4'h4;
-      automatic logic               keyAllowed_5 =
-        _probabilities_5_T & (_keyAllowed_T_61 | io_mask[5]);
-      automatic logic               _probabilities_6_T = row > 4'h5;
-      automatic logic               keyAllowed_6 =
-        _probabilities_6_T & (_keyAllowed_T_61 | io_mask[6]);
-      automatic logic               _probabilities_7_T = row > 4'h6;
-      automatic logic               keyAllowed_7 =
-        _probabilities_7_T & (_keyAllowed_T_61 | io_mask[7]);
-      automatic logic               keyAllowed_8 =
-        row[3] & (_keyAllowed_T_61 | io_mask[8]);
-      automatic logic               _probabilities_9_T = row > 4'h8;
-      automatic logic               keyAllowed_9 =
-        _probabilities_9_T & (_keyAllowed_T_61 | io_mask[9]);
-      automatic logic               _probabilities_10_T = row > 4'h9;
-      automatic logic               keyAllowed_10 =
-        _probabilities_10_T & (_keyAllowed_T_61 | io_mask[10]);
-      automatic logic               _probabilities_11_T = row > 4'hA;
-      automatic logic               keyAllowed_11 =
-        _probabilities_11_T & (_keyAllowed_T_61 | io_mask[11]);
-      automatic logic               _probabilities_12_T = row > 4'hB;
-      automatic logic               keyAllowed_12 =
-        _probabilities_12_T & (_keyAllowed_T_61 | io_mask[12]);
-      automatic logic               _probabilities_13_T = row > 4'hC;
-      automatic logic               keyAllowed_13 =
-        _probabilities_13_T & (_keyAllowed_T_61 | io_mask[13]);
-      automatic logic               _probabilities_14_T = row > 4'hD;
-      automatic logic               keyAllowed_14 =
-        _probabilities_14_T & (_keyAllowed_T_61 | io_mask[14]);
-      automatic logic               keyAllowed_15 =
-        (&row) & (_keyAllowed_T_61 | io_mask[15]);
-      automatic logic [31:0]        maskedScores_0 =
-        keyAllowed_0 ? scores_0 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_1 =
-        keyAllowed_1 ? scores_1 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_2 =
-        keyAllowed_2 ? scores_2 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_3 =
-        keyAllowed_3 ? scores_3 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_4 =
-        keyAllowed_4 ? scores_4 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_5 =
-        keyAllowed_5 ? scores_5 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_6 =
-        keyAllowed_6 ? scores_6 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_7 =
-        keyAllowed_7 ? scores_7 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_8 =
-        keyAllowed_8 ? scores_8 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_9 =
-        keyAllowed_9 ? scores_9 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_10 =
-        keyAllowed_10 ? scores_10 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_11 =
-        keyAllowed_11 ? scores_11 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_12 =
-        keyAllowed_12 ? scores_12 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_13 =
-        keyAllowed_13 ? scores_13 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_14 =
-        keyAllowed_14 ? scores_14 : 32'h80000000;
-      automatic logic [31:0]        maskedScores_15 =
-        keyAllowed_15 ? scores_15 : 32'h80000000;
-      automatic logic [31:0]        _maximumScore_T_1 =
-        $signed(maskedScores_0) > $signed(maskedScores_1)
-          ? maskedScores_0
-          : maskedScores_1;
-      automatic logic [31:0]        _maximumScore_T_3 =
-        $signed(_maximumScore_T_1) > $signed(maskedScores_2)
-          ? _maximumScore_T_1
-          : maskedScores_2;
-      automatic logic [31:0]        _maximumScore_T_5 =
-        $signed(_maximumScore_T_3) > $signed(maskedScores_3)
-          ? _maximumScore_T_3
-          : maskedScores_3;
-      automatic logic [31:0]        _maximumScore_T_7 =
-        $signed(_maximumScore_T_5) > $signed(maskedScores_4)
-          ? _maximumScore_T_5
-          : maskedScores_4;
-      automatic logic [31:0]        _maximumScore_T_9 =
-        $signed(_maximumScore_T_7) > $signed(maskedScores_5)
-          ? _maximumScore_T_7
-          : maskedScores_5;
-      automatic logic [31:0]        _maximumScore_T_11 =
-        $signed(_maximumScore_T_9) > $signed(maskedScores_6)
-          ? _maximumScore_T_9
-          : maskedScores_6;
-      automatic logic [31:0]        _maximumScore_T_13 =
-        $signed(_maximumScore_T_11) > $signed(maskedScores_7)
-          ? _maximumScore_T_11
-          : maskedScores_7;
-      automatic logic [31:0]        _maximumScore_T_15 =
-        $signed(_maximumScore_T_13) > $signed(maskedScores_8)
-          ? _maximumScore_T_13
-          : maskedScores_8;
-      automatic logic [31:0]        _maximumScore_T_17 =
-        $signed(_maximumScore_T_15) > $signed(maskedScores_9)
-          ? _maximumScore_T_15
-          : maskedScores_9;
-      automatic logic [31:0]        _maximumScore_T_19 =
-        $signed(_maximumScore_T_17) > $signed(maskedScores_10)
-          ? _maximumScore_T_17
-          : maskedScores_10;
-      automatic logic [31:0]        _maximumScore_T_21 =
-        $signed(_maximumScore_T_19) > $signed(maskedScores_11)
-          ? _maximumScore_T_19
-          : maskedScores_11;
-      automatic logic [31:0]        _maximumScore_T_23 =
-        $signed(_maximumScore_T_21) > $signed(maskedScores_12)
-          ? _maximumScore_T_21
-          : maskedScores_12;
-      automatic logic [31:0]        _maximumScore_T_25 =
-        $signed(_maximumScore_T_23) > $signed(maskedScores_13)
-          ? _maximumScore_T_23
-          : maskedScores_13;
-      automatic logic [31:0]        _maximumScore_T_27 =
-        $signed(_maximumScore_T_25) > $signed(maskedScores_14)
-          ? _maximumScore_T_25
-          : maskedScores_14;
-      automatic logic [31:0]        maximumScore =
-        $signed(_maximumScore_T_27) > $signed(maskedScores_15)
-          ? _maximumScore_T_27
-          : maskedScores_15;
-      automatic logic [31:0]        _expValues_difference_T = maximumScore - scores_0;
-      automatic logic [27:0]        expValues_difference =
-        keyAllowed_0 ? _expValues_difference_T[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_0 =
-        keyAllowed_0
-          ? _GEN_467[(|(expValues_difference[27:8])) ? 8'hFF : expValues_difference[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_4 = maximumScore - scores_1;
-      automatic logic [27:0]        expValues_difference_1 =
-        keyAllowed_1 ? _expValues_difference_T_4[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_1 =
-        keyAllowed_1
-          ? _GEN_467[(|(expValues_difference_1[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_1[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_8 = maximumScore - scores_2;
-      automatic logic [27:0]        expValues_difference_2 =
-        keyAllowed_2 ? _expValues_difference_T_8[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_2 =
-        keyAllowed_2
-          ? _GEN_467[(|(expValues_difference_2[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_2[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_12 = maximumScore - scores_3;
-      automatic logic [27:0]        expValues_difference_3 =
-        keyAllowed_3 ? _expValues_difference_T_12[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_3 =
-        keyAllowed_3
-          ? _GEN_467[(|(expValues_difference_3[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_3[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_16 = maximumScore - scores_4;
-      automatic logic [27:0]        expValues_difference_4 =
-        keyAllowed_4 ? _expValues_difference_T_16[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_4 =
-        keyAllowed_4
-          ? _GEN_467[(|(expValues_difference_4[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_4[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_20 = maximumScore - scores_5;
-      automatic logic [27:0]        expValues_difference_5 =
-        keyAllowed_5 ? _expValues_difference_T_20[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_5 =
-        keyAllowed_5
-          ? _GEN_467[(|(expValues_difference_5[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_5[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_24 = maximumScore - scores_6;
-      automatic logic [27:0]        expValues_difference_6 =
-        keyAllowed_6 ? _expValues_difference_T_24[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_6 =
-        keyAllowed_6
-          ? _GEN_467[(|(expValues_difference_6[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_6[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_28 = maximumScore - scores_7;
-      automatic logic [27:0]        expValues_difference_7 =
-        keyAllowed_7 ? _expValues_difference_T_28[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_7 =
-        keyAllowed_7
-          ? _GEN_467[(|(expValues_difference_7[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_7[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_32 = maximumScore - scores_8;
-      automatic logic [27:0]        expValues_difference_8 =
-        keyAllowed_8 ? _expValues_difference_T_32[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_8 =
-        keyAllowed_8
-          ? _GEN_467[(|(expValues_difference_8[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_8[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_36 = maximumScore - scores_9;
-      automatic logic [27:0]        expValues_difference_9 =
-        keyAllowed_9 ? _expValues_difference_T_36[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_9 =
-        keyAllowed_9
-          ? _GEN_467[(|(expValues_difference_9[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_9[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_40 = maximumScore - scores_10;
-      automatic logic [27:0]        expValues_difference_10 =
-        keyAllowed_10 ? _expValues_difference_T_40[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_10 =
-        keyAllowed_10
-          ? _GEN_467[(|(expValues_difference_10[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_10[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_44 = maximumScore - scores_11;
-      automatic logic [27:0]        expValues_difference_11 =
-        keyAllowed_11 ? _expValues_difference_T_44[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_11 =
-        keyAllowed_11
-          ? _GEN_467[(|(expValues_difference_11[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_11[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_48 = maximumScore - scores_12;
-      automatic logic [27:0]        expValues_difference_12 =
-        keyAllowed_12 ? _expValues_difference_T_48[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_12 =
-        keyAllowed_12
-          ? _GEN_467[(|(expValues_difference_12[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_12[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_52 = maximumScore - scores_13;
-      automatic logic [27:0]        expValues_difference_13 =
-        keyAllowed_13 ? _expValues_difference_T_52[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_13 =
-        keyAllowed_13
-          ? _GEN_467[(|(expValues_difference_13[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_13[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_56 = maximumScore - scores_14;
-      automatic logic [27:0]        expValues_difference_14 =
-        keyAllowed_14 ? _expValues_difference_T_56[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_14 =
-        keyAllowed_14
-          ? _GEN_467[(|(expValues_difference_14[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_14[7:0]]
-          : 17'h0;
-      automatic logic [31:0]        _expValues_difference_T_60 = maximumScore - scores_15;
-      automatic logic [27:0]        expValues_difference_15 =
-        keyAllowed_15 ? _expValues_difference_T_60[31:4] : 28'h0;
-      automatic logic [16:0]        expValues_15 =
-        keyAllowed_15
-          ? _GEN_467[(|(expValues_difference_15[27:8]))
-                       ? 8'hFF
-                       : expValues_difference_15[7:0]]
-          : 17'h0;
-      automatic logic [20:0]        _expSum_T_44 =
-        {4'h0, expValues_15} + {4'h0, expValues_14} + {4'h0, expValues_13}
-        + {4'h0, expValues_12} + {4'h0, expValues_11} + {4'h0, expValues_10}
-        + {4'h0, expValues_9} + {4'h0, expValues_8} + {4'h0, expValues_7}
-        + {4'h0, expValues_6} + {4'h0, expValues_5} + {4'h0, expValues_4}
-        + {4'h0, expValues_3} + {4'h0, expValues_2}
-        + {3'h0, {1'h0, expValues_1} + {1'h0, expValues_0}};
-      automatic logic [20:0]        safeExpSum =
-        _expSum_T_44 == 21'h0 ? 21'h1 : _expSum_T_44;
-      automatic logic [21:0]        reciprocalQ31_denominatorWide = {1'h0, safeExpSum};
-      automatic logic               reciprocalQ31_takeQuotientBit =
-        reciprocalQ31_denominatorWide < 22'h2;
-      automatic logic [20:0]        reciprocalQ31_nextRemainder =
-        reciprocalQ31_takeQuotientBit ? 21'h1 - safeExpSum : 21'h1;
-      automatic logic               reciprocalQ31_quotientBits_30 =
-        {reciprocalQ31_nextRemainder, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_468 = {reciprocalQ31_nextRemainder[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_1 =
-        reciprocalQ31_quotientBits_30 ? _GEN_468 - safeExpSum : _GEN_468;
-      automatic logic               reciprocalQ31_quotientBits_29 =
-        {reciprocalQ31_nextRemainder_1, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_469 =
-        {reciprocalQ31_nextRemainder_1[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_2 =
-        reciprocalQ31_quotientBits_29 ? _GEN_469 - safeExpSum : _GEN_469;
-      automatic logic               reciprocalQ31_quotientBits_28 =
-        {reciprocalQ31_nextRemainder_2, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_470 =
-        {reciprocalQ31_nextRemainder_2[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_3 =
-        reciprocalQ31_quotientBits_28 ? _GEN_470 - safeExpSum : _GEN_470;
-      automatic logic               reciprocalQ31_quotientBits_27 =
-        {reciprocalQ31_nextRemainder_3, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_471 =
-        {reciprocalQ31_nextRemainder_3[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_4 =
-        reciprocalQ31_quotientBits_27 ? _GEN_471 - safeExpSum : _GEN_471;
-      automatic logic               reciprocalQ31_quotientBits_26 =
-        {reciprocalQ31_nextRemainder_4, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_472 =
-        {reciprocalQ31_nextRemainder_4[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_5 =
-        reciprocalQ31_quotientBits_26 ? _GEN_472 - safeExpSum : _GEN_472;
-      automatic logic               reciprocalQ31_quotientBits_25 =
-        {reciprocalQ31_nextRemainder_5, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_473 =
-        {reciprocalQ31_nextRemainder_5[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_6 =
-        reciprocalQ31_quotientBits_25 ? _GEN_473 - safeExpSum : _GEN_473;
-      automatic logic               reciprocalQ31_quotientBits_24 =
-        {reciprocalQ31_nextRemainder_6, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_474 =
-        {reciprocalQ31_nextRemainder_6[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_7 =
-        reciprocalQ31_quotientBits_24 ? _GEN_474 - safeExpSum : _GEN_474;
-      automatic logic               reciprocalQ31_quotientBits_23 =
-        {reciprocalQ31_nextRemainder_7, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_475 =
-        {reciprocalQ31_nextRemainder_7[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_8 =
-        reciprocalQ31_quotientBits_23 ? _GEN_475 - safeExpSum : _GEN_475;
-      automatic logic               reciprocalQ31_quotientBits_22 =
-        {reciprocalQ31_nextRemainder_8, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_476 =
-        {reciprocalQ31_nextRemainder_8[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_9 =
-        reciprocalQ31_quotientBits_22 ? _GEN_476 - safeExpSum : _GEN_476;
-      automatic logic               reciprocalQ31_quotientBits_21 =
-        {reciprocalQ31_nextRemainder_9, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_477 =
-        {reciprocalQ31_nextRemainder_9[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_10 =
-        reciprocalQ31_quotientBits_21 ? _GEN_477 - safeExpSum : _GEN_477;
-      automatic logic               reciprocalQ31_quotientBits_20 =
-        {reciprocalQ31_nextRemainder_10, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_478 =
-        {reciprocalQ31_nextRemainder_10[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_11 =
-        reciprocalQ31_quotientBits_20 ? _GEN_478 - safeExpSum : _GEN_478;
-      automatic logic               reciprocalQ31_quotientBits_19 =
-        {reciprocalQ31_nextRemainder_11, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_479 =
-        {reciprocalQ31_nextRemainder_11[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_12 =
-        reciprocalQ31_quotientBits_19 ? _GEN_479 - safeExpSum : _GEN_479;
-      automatic logic               reciprocalQ31_quotientBits_18 =
-        {reciprocalQ31_nextRemainder_12, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_480 =
-        {reciprocalQ31_nextRemainder_12[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_13 =
-        reciprocalQ31_quotientBits_18 ? _GEN_480 - safeExpSum : _GEN_480;
-      automatic logic               reciprocalQ31_quotientBits_17 =
-        {reciprocalQ31_nextRemainder_13, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_481 =
-        {reciprocalQ31_nextRemainder_13[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_14 =
-        reciprocalQ31_quotientBits_17 ? _GEN_481 - safeExpSum : _GEN_481;
-      automatic logic               reciprocalQ31_quotientBits_16 =
-        {reciprocalQ31_nextRemainder_14, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_482 =
-        {reciprocalQ31_nextRemainder_14[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_15 =
-        reciprocalQ31_quotientBits_16 ? _GEN_482 - safeExpSum : _GEN_482;
-      automatic logic               reciprocalQ31_quotientBits_15 =
-        {reciprocalQ31_nextRemainder_15, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_483 =
-        {reciprocalQ31_nextRemainder_15[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_16 =
-        reciprocalQ31_quotientBits_15 ? _GEN_483 - safeExpSum : _GEN_483;
-      automatic logic               reciprocalQ31_quotientBits_14 =
-        {reciprocalQ31_nextRemainder_16, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_484 =
-        {reciprocalQ31_nextRemainder_16[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_17 =
-        reciprocalQ31_quotientBits_14 ? _GEN_484 - safeExpSum : _GEN_484;
-      automatic logic               reciprocalQ31_quotientBits_13 =
-        {reciprocalQ31_nextRemainder_17, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_485 =
-        {reciprocalQ31_nextRemainder_17[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_18 =
-        reciprocalQ31_quotientBits_13 ? _GEN_485 - safeExpSum : _GEN_485;
-      automatic logic               reciprocalQ31_quotientBits_12 =
-        {reciprocalQ31_nextRemainder_18, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_486 =
-        {reciprocalQ31_nextRemainder_18[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_19 =
-        reciprocalQ31_quotientBits_12 ? _GEN_486 - safeExpSum : _GEN_486;
-      automatic logic               reciprocalQ31_quotientBits_11 =
-        {reciprocalQ31_nextRemainder_19, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_487 =
-        {reciprocalQ31_nextRemainder_19[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_20 =
-        reciprocalQ31_quotientBits_11 ? _GEN_487 - safeExpSum : _GEN_487;
-      automatic logic               reciprocalQ31_quotientBits_10 =
-        {reciprocalQ31_nextRemainder_20, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_488 =
-        {reciprocalQ31_nextRemainder_20[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_21 =
-        reciprocalQ31_quotientBits_10 ? _GEN_488 - safeExpSum : _GEN_488;
-      automatic logic               reciprocalQ31_quotientBits_9 =
-        {reciprocalQ31_nextRemainder_21, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_489 =
-        {reciprocalQ31_nextRemainder_21[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_22 =
-        reciprocalQ31_quotientBits_9 ? _GEN_489 - safeExpSum : _GEN_489;
-      automatic logic               reciprocalQ31_quotientBits_8 =
-        {reciprocalQ31_nextRemainder_22, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_490 =
-        {reciprocalQ31_nextRemainder_22[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_23 =
-        reciprocalQ31_quotientBits_8 ? _GEN_490 - safeExpSum : _GEN_490;
-      automatic logic               reciprocalQ31_quotientBits_7 =
-        {reciprocalQ31_nextRemainder_23, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_491 =
-        {reciprocalQ31_nextRemainder_23[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_24 =
-        reciprocalQ31_quotientBits_7 ? _GEN_491 - safeExpSum : _GEN_491;
-      automatic logic               reciprocalQ31_quotientBits_6 =
-        {reciprocalQ31_nextRemainder_24, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_492 =
-        {reciprocalQ31_nextRemainder_24[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_25 =
-        reciprocalQ31_quotientBits_6 ? _GEN_492 - safeExpSum : _GEN_492;
-      automatic logic               reciprocalQ31_quotientBits_5 =
-        {reciprocalQ31_nextRemainder_25, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_493 =
-        {reciprocalQ31_nextRemainder_25[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_26 =
-        reciprocalQ31_quotientBits_5 ? _GEN_493 - safeExpSum : _GEN_493;
-      automatic logic               reciprocalQ31_quotientBits_4 =
-        {reciprocalQ31_nextRemainder_26, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_494 =
-        {reciprocalQ31_nextRemainder_26[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_27 =
-        reciprocalQ31_quotientBits_4 ? _GEN_494 - safeExpSum : _GEN_494;
-      automatic logic               reciprocalQ31_quotientBits_3 =
-        {reciprocalQ31_nextRemainder_27, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_495 =
-        {reciprocalQ31_nextRemainder_27[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_28 =
-        reciprocalQ31_quotientBits_3 ? _GEN_495 - safeExpSum : _GEN_495;
-      automatic logic               reciprocalQ31_quotientBits_2 =
-        {reciprocalQ31_nextRemainder_28, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_496 =
-        {reciprocalQ31_nextRemainder_28[19:0], 1'h0};
-      automatic logic [20:0]        reciprocalQ31_nextRemainder_29 =
-        reciprocalQ31_quotientBits_2 ? _GEN_496 - safeExpSum : _GEN_496;
-      automatic logic               reciprocalQ31_quotientBits_1 =
-        {reciprocalQ31_nextRemainder_29, 1'h0} >= reciprocalQ31_denominatorWide;
-      automatic logic [20:0]        _GEN_497 =
-        {reciprocalQ31_nextRemainder_29[19:0], 1'h0};
-      automatic logic [48:0]        _GEN_498 =
-        {17'h0,
-         safeExpSum == 21'h0
-           ? 32'hFFFFFFFF
-           : {reciprocalQ31_takeQuotientBit,
-              reciprocalQ31_quotientBits_30,
-              reciprocalQ31_quotientBits_29,
-              reciprocalQ31_quotientBits_28,
-              reciprocalQ31_quotientBits_27,
-              reciprocalQ31_quotientBits_26,
-              reciprocalQ31_quotientBits_25,
-              reciprocalQ31_quotientBits_24,
-              reciprocalQ31_quotientBits_23,
-              reciprocalQ31_quotientBits_22,
-              reciprocalQ31_quotientBits_21,
-              reciprocalQ31_quotientBits_20,
-              reciprocalQ31_quotientBits_19,
-              reciprocalQ31_quotientBits_18,
-              reciprocalQ31_quotientBits_17,
-              reciprocalQ31_quotientBits_16,
-              reciprocalQ31_quotientBits_15,
-              reciprocalQ31_quotientBits_14,
-              reciprocalQ31_quotientBits_13,
-              reciprocalQ31_quotientBits_12,
-              reciprocalQ31_quotientBits_11,
-              reciprocalQ31_quotientBits_10,
-              reciprocalQ31_quotientBits_9,
-              reciprocalQ31_quotientBits_8,
-              reciprocalQ31_quotientBits_7,
-              reciprocalQ31_quotientBits_6,
-              reciprocalQ31_quotientBits_5,
-              reciprocalQ31_quotientBits_4,
-              reciprocalQ31_quotientBits_3,
-              reciprocalQ31_quotientBits_2,
-              reciprocalQ31_quotientBits_1,
-              {reciprocalQ31_quotientBits_1 ? _GEN_497 - safeExpSum : _GEN_497,
-               1'h0} >= reciprocalQ31_denominatorWide}};
-      automatic logic [48:0]        product = {32'h0, expValues_0} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded =
+    if (_GEN_457) begin
+      automatic logic [48:0] _GEN_476 = {17'h0, reciprocalQ31Reg};
+      automatic logic [48:0] product = {32'h0, softmaxExpReg_0} * _GEN_476;
+      automatic logic [25:0] probabilityRounded =
         {1'h0, product[48:24]}
         + {25'h0, product[23:0] > 24'h800000 | product[23:0] == 24'h800000 & product[24]};
-      automatic logic [48:0]        product_1 = {32'h0, expValues_1} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_1 =
+      automatic logic [48:0] product_1 = {32'h0, softmaxExpReg_1} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_1 =
         {1'h0, product_1[48:24]}
         + {25'h0,
            product_1[23:0] > 24'h800000 | product_1[23:0] == 24'h800000 & product_1[24]};
-      automatic logic [48:0]        product_2 = {32'h0, expValues_2} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_2 =
+      automatic logic [48:0] product_2 = {32'h0, softmaxExpReg_2} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_2 =
         {1'h0, product_2[48:24]}
         + {25'h0,
            product_2[23:0] > 24'h800000 | product_2[23:0] == 24'h800000 & product_2[24]};
-      automatic logic [48:0]        product_3 = {32'h0, expValues_3} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_3 =
+      automatic logic [48:0] product_3 = {32'h0, softmaxExpReg_3} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_3 =
         {1'h0, product_3[48:24]}
         + {25'h0,
            product_3[23:0] > 24'h800000 | product_3[23:0] == 24'h800000 & product_3[24]};
-      automatic logic [48:0]        product_4 = {32'h0, expValues_4} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_4 =
+      automatic logic [48:0] product_4 = {32'h0, softmaxExpReg_4} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_4 =
         {1'h0, product_4[48:24]}
         + {25'h0,
            product_4[23:0] > 24'h800000 | product_4[23:0] == 24'h800000 & product_4[24]};
-      automatic logic [48:0]        product_5 = {32'h0, expValues_5} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_5 =
+      automatic logic [48:0] product_5 = {32'h0, softmaxExpReg_5} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_5 =
         {1'h0, product_5[48:24]}
         + {25'h0,
            product_5[23:0] > 24'h800000 | product_5[23:0] == 24'h800000 & product_5[24]};
-      automatic logic [48:0]        product_6 = {32'h0, expValues_6} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_6 =
+      automatic logic [48:0] product_6 = {32'h0, softmaxExpReg_6} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_6 =
         {1'h0, product_6[48:24]}
         + {25'h0,
            product_6[23:0] > 24'h800000 | product_6[23:0] == 24'h800000 & product_6[24]};
-      automatic logic [48:0]        product_7 = {32'h0, expValues_7} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_7 =
+      automatic logic [48:0] product_7 = {32'h0, softmaxExpReg_7} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_7 =
         {1'h0, product_7[48:24]}
         + {25'h0,
            product_7[23:0] > 24'h800000 | product_7[23:0] == 24'h800000 & product_7[24]};
-      automatic logic [48:0]        product_8 = {32'h0, expValues_8} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_8 =
+      automatic logic [48:0] product_8 = {32'h0, softmaxExpReg_8} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_8 =
         {1'h0, product_8[48:24]}
         + {25'h0,
            product_8[23:0] > 24'h800000 | product_8[23:0] == 24'h800000 & product_8[24]};
-      automatic logic [48:0]        product_9 = {32'h0, expValues_9} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_9 =
+      automatic logic [48:0] product_9 = {32'h0, softmaxExpReg_9} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_9 =
         {1'h0, product_9[48:24]}
         + {25'h0,
            product_9[23:0] > 24'h800000 | product_9[23:0] == 24'h800000 & product_9[24]};
-      automatic logic [48:0]        product_10 = {32'h0, expValues_10} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_10 =
+      automatic logic [48:0] product_10 = {32'h0, softmaxExpReg_10} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_10 =
         {1'h0, product_10[48:24]}
         + {25'h0,
            product_10[23:0] > 24'h800000 | product_10[23:0] == 24'h800000
              & product_10[24]};
-      automatic logic [48:0]        product_11 = {32'h0, expValues_11} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_11 =
+      automatic logic [48:0] product_11 = {32'h0, softmaxExpReg_11} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_11 =
         {1'h0, product_11[48:24]}
         + {25'h0,
            product_11[23:0] > 24'h800000 | product_11[23:0] == 24'h800000
              & product_11[24]};
-      automatic logic [48:0]        product_12 = {32'h0, expValues_12} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_12 =
+      automatic logic [48:0] product_12 = {32'h0, softmaxExpReg_12} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_12 =
         {1'h0, product_12[48:24]}
         + {25'h0,
            product_12[23:0] > 24'h800000 | product_12[23:0] == 24'h800000
              & product_12[24]};
-      automatic logic [48:0]        product_13 = {32'h0, expValues_13} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_13 =
+      automatic logic [48:0] product_13 = {32'h0, softmaxExpReg_13} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_13 =
         {1'h0, product_13[48:24]}
         + {25'h0,
            product_13[23:0] > 24'h800000 | product_13[23:0] == 24'h800000
              & product_13[24]};
-      automatic logic [48:0]        product_14 = {32'h0, expValues_14} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_14 =
+      automatic logic [48:0] product_14 = {32'h0, softmaxExpReg_14} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_14 =
         {1'h0, product_14[48:24]}
         + {25'h0,
            product_14[23:0] > 24'h800000 | product_14[23:0] == 24'h800000
              & product_14[24]};
-      automatic logic [48:0]        product_15 = {32'h0, expValues_15} * _GEN_498;
-      automatic logic [25:0]        probabilityRounded_15 =
+      automatic logic [48:0] product_15 = {32'h0, softmaxExpReg_15} * _GEN_476;
+      automatic logic [25:0] probabilityRounded_15 =
         {1'h0, product_15[48:24]}
         + {25'h0,
            product_15[23:0] > 24'h800000 | product_15[23:0] == 24'h800000
              & product_15[24]};
-      probabilities_0 <= (|(probabilityRounded[25:7])) ? 8'h7F : probabilityRounded[7:0];
+      probabilities_0 <=
+        softmaxKeyAllowed_0
+          ? ((|(probabilityRounded[25:7])) ? 8'h7F : probabilityRounded[7:0])
+          : 8'h0;
       probabilities_1 <=
-        (|row)
+        softmaxKeyAllowed_1
           ? ((|(probabilityRounded_1[25:7])) ? 8'h7F : probabilityRounded_1[7:0])
           : 8'h0;
       probabilities_2 <=
-        (|(row[3:1]))
+        softmaxKeyAllowed_2
           ? ((|(probabilityRounded_2[25:7])) ? 8'h7F : probabilityRounded_2[7:0])
           : 8'h0;
       probabilities_3 <=
-        _probabilities_3_T
+        softmaxKeyAllowed_3
           ? ((|(probabilityRounded_3[25:7])) ? 8'h7F : probabilityRounded_3[7:0])
           : 8'h0;
       probabilities_4 <=
-        (|(row[3:2]))
+        softmaxKeyAllowed_4
           ? ((|(probabilityRounded_4[25:7])) ? 8'h7F : probabilityRounded_4[7:0])
           : 8'h0;
       probabilities_5 <=
-        _probabilities_5_T
+        softmaxKeyAllowed_5
           ? ((|(probabilityRounded_5[25:7])) ? 8'h7F : probabilityRounded_5[7:0])
           : 8'h0;
       probabilities_6 <=
-        _probabilities_6_T
+        softmaxKeyAllowed_6
           ? ((|(probabilityRounded_6[25:7])) ? 8'h7F : probabilityRounded_6[7:0])
           : 8'h0;
       probabilities_7 <=
-        _probabilities_7_T
+        softmaxKeyAllowed_7
           ? ((|(probabilityRounded_7[25:7])) ? 8'h7F : probabilityRounded_7[7:0])
           : 8'h0;
       probabilities_8 <=
-        row[3]
+        softmaxKeyAllowed_8
           ? ((|(probabilityRounded_8[25:7])) ? 8'h7F : probabilityRounded_8[7:0])
           : 8'h0;
       probabilities_9 <=
-        _probabilities_9_T
+        softmaxKeyAllowed_9
           ? ((|(probabilityRounded_9[25:7])) ? 8'h7F : probabilityRounded_9[7:0])
           : 8'h0;
       probabilities_10 <=
-        _probabilities_10_T
+        softmaxKeyAllowed_10
           ? ((|(probabilityRounded_10[25:7])) ? 8'h7F : probabilityRounded_10[7:0])
           : 8'h0;
       probabilities_11 <=
-        _probabilities_11_T
+        softmaxKeyAllowed_11
           ? ((|(probabilityRounded_11[25:7])) ? 8'h7F : probabilityRounded_11[7:0])
           : 8'h0;
       probabilities_12 <=
-        _probabilities_12_T
+        softmaxKeyAllowed_12
           ? ((|(probabilityRounded_12[25:7])) ? 8'h7F : probabilityRounded_12[7:0])
           : 8'h0;
       probabilities_13 <=
-        _probabilities_13_T
+        softmaxKeyAllowed_13
           ? ((|(probabilityRounded_13[25:7])) ? 8'h7F : probabilityRounded_13[7:0])
           : 8'h0;
       probabilities_14 <=
-        _probabilities_14_T
+        softmaxKeyAllowed_14
           ? ((|(probabilityRounded_14[25:7])) ? 8'h7F : probabilityRounded_14[7:0])
           : 8'h0;
       probabilities_15 <=
-        (&row)
+        softmaxKeyAllowed_15
           ? ((|(probabilityRounded_15[25:7])) ? 8'h7F : probabilityRounded_15[7:0])
           : 8'h0;
     end
-    if (_GEN_453) begin
-      automatic logic [15:0][7:0] _GEN_499 =
+    if (_GEN_459) begin
+      automatic logic [15:0][7:0] _GEN_477 =
         {{probabilities_15},
          {probabilities_14},
          {probabilities_13},
@@ -6271,136 +6193,136 @@ module IntegerAttention(
          {probabilities_2},
          {probabilities_1},
          {probabilities_0}};
-      automatic logic [7:0]       _GEN_500 = _GEN_499[valueToken];
-      automatic logic [15:0]      _GEN_501 = {{8{_GEN_500[7]}}, _GEN_500};
+      automatic logic [7:0]       _GEN_478 = _GEN_477[valueToken];
+      automatic logic [15:0]      _GEN_479 = {{8{_GEN_478[7]}}, _GEN_478};
       automatic logic [15:0]      product_16 =
-        {{8{vHeadReg[7]}}, vHeadReg[7:0]} * _GEN_501;
+        {{8{vHeadReg[7]}}, vHeadReg[7:0]} * _GEN_479;
       automatic logic [15:0]      product_17 =
-        {{8{vHeadReg[15]}}, vHeadReg[15:8]} * _GEN_501;
+        {{8{vHeadReg[15]}}, vHeadReg[15:8]} * _GEN_479;
       automatic logic [15:0]      product_18 =
-        {{8{vHeadReg[23]}}, vHeadReg[23:16]} * _GEN_501;
+        {{8{vHeadReg[23]}}, vHeadReg[23:16]} * _GEN_479;
       automatic logic [15:0]      product_19 =
-        {{8{vHeadReg[31]}}, vHeadReg[31:24]} * _GEN_501;
+        {{8{vHeadReg[31]}}, vHeadReg[31:24]} * _GEN_479;
       automatic logic [15:0]      product_20 =
-        {{8{vHeadReg[39]}}, vHeadReg[39:32]} * _GEN_501;
+        {{8{vHeadReg[39]}}, vHeadReg[39:32]} * _GEN_479;
       automatic logic [15:0]      product_21 =
-        {{8{vHeadReg[47]}}, vHeadReg[47:40]} * _GEN_501;
+        {{8{vHeadReg[47]}}, vHeadReg[47:40]} * _GEN_479;
       automatic logic [15:0]      product_22 =
-        {{8{vHeadReg[55]}}, vHeadReg[55:48]} * _GEN_501;
+        {{8{vHeadReg[55]}}, vHeadReg[55:48]} * _GEN_479;
       automatic logic [15:0]      product_23 =
-        {{8{vHeadReg[63]}}, vHeadReg[63:56]} * _GEN_501;
+        {{8{vHeadReg[63]}}, vHeadReg[63:56]} * _GEN_479;
       automatic logic [15:0]      product_24 =
-        {{8{vHeadReg[71]}}, vHeadReg[71:64]} * _GEN_501;
+        {{8{vHeadReg[71]}}, vHeadReg[71:64]} * _GEN_479;
       automatic logic [15:0]      product_25 =
-        {{8{vHeadReg[79]}}, vHeadReg[79:72]} * _GEN_501;
+        {{8{vHeadReg[79]}}, vHeadReg[79:72]} * _GEN_479;
       automatic logic [15:0]      product_26 =
-        {{8{vHeadReg[87]}}, vHeadReg[87:80]} * _GEN_501;
+        {{8{vHeadReg[87]}}, vHeadReg[87:80]} * _GEN_479;
       automatic logic [15:0]      product_27 =
-        {{8{vHeadReg[95]}}, vHeadReg[95:88]} * _GEN_501;
+        {{8{vHeadReg[95]}}, vHeadReg[95:88]} * _GEN_479;
       automatic logic [15:0]      product_28 =
-        {{8{vHeadReg[103]}}, vHeadReg[103:96]} * _GEN_501;
+        {{8{vHeadReg[103]}}, vHeadReg[103:96]} * _GEN_479;
       automatic logic [15:0]      product_29 =
-        {{8{vHeadReg[111]}}, vHeadReg[111:104]} * _GEN_501;
+        {{8{vHeadReg[111]}}, vHeadReg[111:104]} * _GEN_479;
       automatic logic [15:0]      product_30 =
-        {{8{vHeadReg[119]}}, vHeadReg[119:112]} * _GEN_501;
+        {{8{vHeadReg[119]}}, vHeadReg[119:112]} * _GEN_479;
       automatic logic [15:0]      product_31 =
-        {{8{vHeadReg[127]}}, vHeadReg[127:120]} * _GEN_501;
+        {{8{vHeadReg[127]}}, vHeadReg[127:120]} * _GEN_479;
       automatic logic [15:0]      product_32 =
-        {{8{vHeadReg[135]}}, vHeadReg[135:128]} * _GEN_501;
+        {{8{vHeadReg[135]}}, vHeadReg[135:128]} * _GEN_479;
       automatic logic [15:0]      product_33 =
-        {{8{vHeadReg[143]}}, vHeadReg[143:136]} * _GEN_501;
+        {{8{vHeadReg[143]}}, vHeadReg[143:136]} * _GEN_479;
       automatic logic [15:0]      product_34 =
-        {{8{vHeadReg[151]}}, vHeadReg[151:144]} * _GEN_501;
+        {{8{vHeadReg[151]}}, vHeadReg[151:144]} * _GEN_479;
       automatic logic [15:0]      product_35 =
-        {{8{vHeadReg[159]}}, vHeadReg[159:152]} * _GEN_501;
+        {{8{vHeadReg[159]}}, vHeadReg[159:152]} * _GEN_479;
       automatic logic [15:0]      product_36 =
-        {{8{vHeadReg[167]}}, vHeadReg[167:160]} * _GEN_501;
+        {{8{vHeadReg[167]}}, vHeadReg[167:160]} * _GEN_479;
       automatic logic [15:0]      product_37 =
-        {{8{vHeadReg[175]}}, vHeadReg[175:168]} * _GEN_501;
+        {{8{vHeadReg[175]}}, vHeadReg[175:168]} * _GEN_479;
       automatic logic [15:0]      product_38 =
-        {{8{vHeadReg[183]}}, vHeadReg[183:176]} * _GEN_501;
+        {{8{vHeadReg[183]}}, vHeadReg[183:176]} * _GEN_479;
       automatic logic [15:0]      product_39 =
-        {{8{vHeadReg[191]}}, vHeadReg[191:184]} * _GEN_501;
+        {{8{vHeadReg[191]}}, vHeadReg[191:184]} * _GEN_479;
       automatic logic [15:0]      product_40 =
-        {{8{vHeadReg[199]}}, vHeadReg[199:192]} * _GEN_501;
+        {{8{vHeadReg[199]}}, vHeadReg[199:192]} * _GEN_479;
       automatic logic [15:0]      product_41 =
-        {{8{vHeadReg[207]}}, vHeadReg[207:200]} * _GEN_501;
+        {{8{vHeadReg[207]}}, vHeadReg[207:200]} * _GEN_479;
       automatic logic [15:0]      product_42 =
-        {{8{vHeadReg[215]}}, vHeadReg[215:208]} * _GEN_501;
+        {{8{vHeadReg[215]}}, vHeadReg[215:208]} * _GEN_479;
       automatic logic [15:0]      product_43 =
-        {{8{vHeadReg[223]}}, vHeadReg[223:216]} * _GEN_501;
+        {{8{vHeadReg[223]}}, vHeadReg[223:216]} * _GEN_479;
       automatic logic [15:0]      product_44 =
-        {{8{vHeadReg[231]}}, vHeadReg[231:224]} * _GEN_501;
+        {{8{vHeadReg[231]}}, vHeadReg[231:224]} * _GEN_479;
       automatic logic [15:0]      product_45 =
-        {{8{vHeadReg[239]}}, vHeadReg[239:232]} * _GEN_501;
+        {{8{vHeadReg[239]}}, vHeadReg[239:232]} * _GEN_479;
       automatic logic [15:0]      product_46 =
-        {{8{vHeadReg[247]}}, vHeadReg[247:240]} * _GEN_501;
+        {{8{vHeadReg[247]}}, vHeadReg[247:240]} * _GEN_479;
       automatic logic [15:0]      product_47 =
-        {{8{vHeadReg[255]}}, vHeadReg[255:248]} * _GEN_501;
+        {{8{vHeadReg[255]}}, vHeadReg[255:248]} * _GEN_479;
       automatic logic [15:0]      product_48 =
-        {{8{vHeadReg[263]}}, vHeadReg[263:256]} * _GEN_501;
+        {{8{vHeadReg[263]}}, vHeadReg[263:256]} * _GEN_479;
       automatic logic [15:0]      product_49 =
-        {{8{vHeadReg[271]}}, vHeadReg[271:264]} * _GEN_501;
+        {{8{vHeadReg[271]}}, vHeadReg[271:264]} * _GEN_479;
       automatic logic [15:0]      product_50 =
-        {{8{vHeadReg[279]}}, vHeadReg[279:272]} * _GEN_501;
+        {{8{vHeadReg[279]}}, vHeadReg[279:272]} * _GEN_479;
       automatic logic [15:0]      product_51 =
-        {{8{vHeadReg[287]}}, vHeadReg[287:280]} * _GEN_501;
+        {{8{vHeadReg[287]}}, vHeadReg[287:280]} * _GEN_479;
       automatic logic [15:0]      product_52 =
-        {{8{vHeadReg[295]}}, vHeadReg[295:288]} * _GEN_501;
+        {{8{vHeadReg[295]}}, vHeadReg[295:288]} * _GEN_479;
       automatic logic [15:0]      product_53 =
-        {{8{vHeadReg[303]}}, vHeadReg[303:296]} * _GEN_501;
+        {{8{vHeadReg[303]}}, vHeadReg[303:296]} * _GEN_479;
       automatic logic [15:0]      product_54 =
-        {{8{vHeadReg[311]}}, vHeadReg[311:304]} * _GEN_501;
+        {{8{vHeadReg[311]}}, vHeadReg[311:304]} * _GEN_479;
       automatic logic [15:0]      product_55 =
-        {{8{vHeadReg[319]}}, vHeadReg[319:312]} * _GEN_501;
+        {{8{vHeadReg[319]}}, vHeadReg[319:312]} * _GEN_479;
       automatic logic [15:0]      product_56 =
-        {{8{vHeadReg[327]}}, vHeadReg[327:320]} * _GEN_501;
+        {{8{vHeadReg[327]}}, vHeadReg[327:320]} * _GEN_479;
       automatic logic [15:0]      product_57 =
-        {{8{vHeadReg[335]}}, vHeadReg[335:328]} * _GEN_501;
+        {{8{vHeadReg[335]}}, vHeadReg[335:328]} * _GEN_479;
       automatic logic [15:0]      product_58 =
-        {{8{vHeadReg[343]}}, vHeadReg[343:336]} * _GEN_501;
+        {{8{vHeadReg[343]}}, vHeadReg[343:336]} * _GEN_479;
       automatic logic [15:0]      product_59 =
-        {{8{vHeadReg[351]}}, vHeadReg[351:344]} * _GEN_501;
+        {{8{vHeadReg[351]}}, vHeadReg[351:344]} * _GEN_479;
       automatic logic [15:0]      product_60 =
-        {{8{vHeadReg[359]}}, vHeadReg[359:352]} * _GEN_501;
+        {{8{vHeadReg[359]}}, vHeadReg[359:352]} * _GEN_479;
       automatic logic [15:0]      product_61 =
-        {{8{vHeadReg[367]}}, vHeadReg[367:360]} * _GEN_501;
+        {{8{vHeadReg[367]}}, vHeadReg[367:360]} * _GEN_479;
       automatic logic [15:0]      product_62 =
-        {{8{vHeadReg[375]}}, vHeadReg[375:368]} * _GEN_501;
+        {{8{vHeadReg[375]}}, vHeadReg[375:368]} * _GEN_479;
       automatic logic [15:0]      product_63 =
-        {{8{vHeadReg[383]}}, vHeadReg[383:376]} * _GEN_501;
+        {{8{vHeadReg[383]}}, vHeadReg[383:376]} * _GEN_479;
       automatic logic [15:0]      product_64 =
-        {{8{vHeadReg[391]}}, vHeadReg[391:384]} * _GEN_501;
+        {{8{vHeadReg[391]}}, vHeadReg[391:384]} * _GEN_479;
       automatic logic [15:0]      product_65 =
-        {{8{vHeadReg[399]}}, vHeadReg[399:392]} * _GEN_501;
+        {{8{vHeadReg[399]}}, vHeadReg[399:392]} * _GEN_479;
       automatic logic [15:0]      product_66 =
-        {{8{vHeadReg[407]}}, vHeadReg[407:400]} * _GEN_501;
+        {{8{vHeadReg[407]}}, vHeadReg[407:400]} * _GEN_479;
       automatic logic [15:0]      product_67 =
-        {{8{vHeadReg[415]}}, vHeadReg[415:408]} * _GEN_501;
+        {{8{vHeadReg[415]}}, vHeadReg[415:408]} * _GEN_479;
       automatic logic [15:0]      product_68 =
-        {{8{vHeadReg[423]}}, vHeadReg[423:416]} * _GEN_501;
+        {{8{vHeadReg[423]}}, vHeadReg[423:416]} * _GEN_479;
       automatic logic [15:0]      product_69 =
-        {{8{vHeadReg[431]}}, vHeadReg[431:424]} * _GEN_501;
+        {{8{vHeadReg[431]}}, vHeadReg[431:424]} * _GEN_479;
       automatic logic [15:0]      product_70 =
-        {{8{vHeadReg[439]}}, vHeadReg[439:432]} * _GEN_501;
+        {{8{vHeadReg[439]}}, vHeadReg[439:432]} * _GEN_479;
       automatic logic [15:0]      product_71 =
-        {{8{vHeadReg[447]}}, vHeadReg[447:440]} * _GEN_501;
+        {{8{vHeadReg[447]}}, vHeadReg[447:440]} * _GEN_479;
       automatic logic [15:0]      product_72 =
-        {{8{vHeadReg[455]}}, vHeadReg[455:448]} * _GEN_501;
+        {{8{vHeadReg[455]}}, vHeadReg[455:448]} * _GEN_479;
       automatic logic [15:0]      product_73 =
-        {{8{vHeadReg[463]}}, vHeadReg[463:456]} * _GEN_501;
+        {{8{vHeadReg[463]}}, vHeadReg[463:456]} * _GEN_479;
       automatic logic [15:0]      product_74 =
-        {{8{vHeadReg[471]}}, vHeadReg[471:464]} * _GEN_501;
+        {{8{vHeadReg[471]}}, vHeadReg[471:464]} * _GEN_479;
       automatic logic [15:0]      product_75 =
-        {{8{vHeadReg[479]}}, vHeadReg[479:472]} * _GEN_501;
+        {{8{vHeadReg[479]}}, vHeadReg[479:472]} * _GEN_479;
       automatic logic [15:0]      product_76 =
-        {{8{vHeadReg[487]}}, vHeadReg[487:480]} * _GEN_501;
+        {{8{vHeadReg[487]}}, vHeadReg[487:480]} * _GEN_479;
       automatic logic [15:0]      product_77 =
-        {{8{vHeadReg[495]}}, vHeadReg[495:488]} * _GEN_501;
+        {{8{vHeadReg[495]}}, vHeadReg[495:488]} * _GEN_479;
       automatic logic [15:0]      product_78 =
-        {{8{vHeadReg[503]}}, vHeadReg[503:496]} * _GEN_501;
+        {{8{vHeadReg[503]}}, vHeadReg[503:496]} * _GEN_479;
       automatic logic [15:0]      product_79 =
-        {{8{vHeadReg[511]}}, vHeadReg[511:504]} * _GEN_501;
+        {{8{vHeadReg[511]}}, vHeadReg[511:504]} * _GEN_479;
       contextAcc_0 <= {{16{product_16[15]}}, product_16} + contextAcc_0;
       contextAcc_1 <= {{16{product_17[15]}}, product_17} + contextAcc_1;
       contextAcc_2 <= {{16{product_18[15]}}, product_18} + contextAcc_2;
@@ -6466,7 +6388,7 @@ module IntegerAttention(
       contextAcc_62 <= {{16{product_78[15]}}, product_78} + contextAcc_62;
       contextAcc_63 <= {{16{product_79[15]}}, product_79} + contextAcc_63;
     end
-    else if (_GEN_452) begin
+    else if (_GEN_457) begin
       contextAcc_0 <= 32'h0;
       contextAcc_1 <= 32'h0;
       contextAcc_2 <= 32'h0;
@@ -6532,8 +6454,46 @@ module IntegerAttention(
       contextAcc_62 <= 32'h0;
       contextAcc_63 <= 32'h0;
     end
-    if (state == 4'hA)
+    if (_GEN_460)
       projectWord <= _contextMemory_io_readData;
+    if (_GEN_454) begin
+      softmaxKeyAllowed_0 <= keyAllowed_0;
+      softmaxKeyAllowed_1 <= keyAllowed_1;
+      softmaxKeyAllowed_2 <= keyAllowed_2;
+      softmaxKeyAllowed_3 <= keyAllowed_3;
+      softmaxKeyAllowed_4 <= keyAllowed_4;
+      softmaxKeyAllowed_5 <= keyAllowed_5;
+      softmaxKeyAllowed_6 <= keyAllowed_6;
+      softmaxKeyAllowed_7 <= keyAllowed_7;
+      softmaxKeyAllowed_8 <= keyAllowed_8;
+      softmaxKeyAllowed_9 <= keyAllowed_9;
+      softmaxKeyAllowed_10 <= keyAllowed_10;
+      softmaxKeyAllowed_11 <= keyAllowed_11;
+      softmaxKeyAllowed_12 <= keyAllowed_12;
+      softmaxKeyAllowed_13 <= keyAllowed_13;
+      softmaxKeyAllowed_14 <= keyAllowed_14;
+      softmaxKeyAllowed_15 <= keyAllowed_15;
+    end
+    if (_GEN_455) begin
+      softmaxExpReg_0 <= expValuesComb_0;
+      softmaxExpReg_1 <= expValuesComb_1;
+      softmaxExpReg_2 <= expValuesComb_2;
+      softmaxExpReg_3 <= expValuesComb_3;
+      softmaxExpReg_4 <= expValuesComb_4;
+      softmaxExpReg_5 <= expValuesComb_5;
+      softmaxExpReg_6 <= expValuesComb_6;
+      softmaxExpReg_7 <= expValuesComb_7;
+      softmaxExpReg_8 <= expValuesComb_8;
+      softmaxExpReg_9 <= expValuesComb_9;
+      softmaxExpReg_10 <= expValuesComb_10;
+      softmaxExpReg_11 <= expValuesComb_11;
+      softmaxExpReg_12 <= expValuesComb_12;
+      softmaxExpReg_13 <= expValuesComb_13;
+      softmaxExpReg_14 <= expValuesComb_14;
+      softmaxExpReg_15 <= expValuesComb_15;
+    end
+    if (_GEN_456)
+      reciprocalQ31Reg <= _reciprocalDivider_io_out_bits;
   end // always @(posedge)
   PhysicalSimpleDualPortMemory_9 qMemory (
     .clock        (clock),
@@ -6561,7 +6521,7 @@ module IntegerAttention(
     .io_writeEn   (_tokenDone_T & finalHeadBeat),
     .io_writeAddr (_vMemory_io_writeAddr_T + _GEN_448),
     .io_writeData (vMemory_io_writeData),
-    .io_readEn    (state == 4'h5),
+    .io_readEn    (vMemory_io_readEn),
     .io_readAddr  ({4'h0, valueToken} * 8'hC + _GEN_449),
     .io_readData  (_vMemory_io_readData)
   );
@@ -6763,9 +6723,19 @@ module IntegerAttention(
         $signed(_rounded_T_1) > 25'sh7F
           ? 8'h7F
           : $signed(_rounded_T_1) < -25'sh80 ? 8'h80 : _rounded_T_1[7:0]}),
-    .io_readEn    (state == 4'h9),
+    .io_readEn    (contextMemory_io_readEn),
     .io_readAddr  (_outputProjection_io_in_bits_addr_T + {4'h0, projectHead}),
     .io_readData  (_contextMemory_io_readData)
+  );
+  PhysicalFixedDivider_1 reciprocalDivider (
+    .clock                  (clock),
+    .reset                  (reset),
+    .io_in_ready            (_reciprocalDivider_io_in_ready),
+    .io_in_valid            (reciprocalDivider_io_in_valid),
+    .io_in_bits_denominator (safeExpSumReg),
+    .io_out_ready           (reciprocalDivider_io_out_ready),
+    .io_out_valid           (_reciprocalDivider_io_out_valid),
+    .io_out_bits            (_reciprocalDivider_io_out_bits)
   );
   Linear_1 outputProjection (
     .clock                               (clock),

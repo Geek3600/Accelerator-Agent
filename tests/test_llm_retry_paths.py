@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import http.client
 import json
 import os
 import tempfile
@@ -11,9 +12,91 @@ from unittest.mock import patch
 
 from accagent.framework import stage_input, stage_llm, stage_team
 from accagent.framework.llm_config import LlmCfg, resolve_llm_cfg
+from accagent.framework.llm_io import response_text
 
 
 class LlmRetryPathTests(unittest.TestCase):
+    def test_complete_schema_output_with_trailing_text_skips_schema_repair_loop(self) -> None:
+        custom_schema = {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "file_edits": {"type": "array"},
+            },
+            "required": ["status", "file_edits"],
+        }
+        response = '{"status":"blocked","file_edits":[]} trailing model commentary'
+        cfg = LlmCfg(model="test-model", endpoint="https://example.invalid", api_key="key", stream=True)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                patch.dict(os.environ, {"SPATIALACC_LLM_AUTO_COMPACT_RETRY": "0"}),
+                patch.object(stage_llm, "resolved_llm_cfg", return_value=cfg),
+                patch.object(stage_llm, "call_llm_with_retry", return_value=(response, [])) as call,
+            ):
+                record = stage_llm.run_stage_agent(
+                    agent="implementation_agent",
+                    stage="repair_execution",
+                    task="return a bounded repair decision",
+                    inputs={"current_evidence": "real compile report"},
+                    out_dir=Path(tmp),
+                    fallback_summary="requires LLM analysis",
+                    output_schema=custom_schema,
+                )
+
+        self.assertEqual(record["output"], {"status": "blocked", "file_edits": []})
+        self.assertEqual(call.call_count, 1)
+        self.assertNotIn("schema_repair_attempts", record)
+
+    def test_empty_provider_text_retries_original_task_without_schema_repair(self) -> None:
+        replies = iter(["", " \n", '{"status":"ready_to_apply","file_edits":[]}'])
+        cfg = LlmCfg(model="test-model", endpoint="https://example.invalid", api_key="key", stream=True)
+
+        def provider_call(*args, **kwargs):
+            return response_text({"output_text": next(replies)})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                patch.object(stage_llm, "resolved_llm_cfg", return_value=cfg),
+                patch.object(stage_llm, "call_llm", side_effect=provider_call) as call,
+                patch.object(stage_llm, "retry_sleep_seconds", return_value=0.0),
+                patch.object(stage_llm.time, "sleep"),
+                patch.dict(os.environ, {"SPATIALACC_LLM_TRANSIENT_RETRY_UNBOUNDED": "1"}),
+            ):
+                record = stage_llm.run_stage_agent(
+                    agent="implementation_agent",
+                    stage="repair_execution",
+                    task="repair using the complete original source and current compiler report",
+                    inputs={"current_source": "module current; endmodule", "current_error": "width mismatch"},
+                    out_dir=Path(tmp),
+                    fallback_summary="requires LLM analysis",
+                    output_schema={
+                        "type": "object",
+                        "properties": {"status": {"type": "string"}, "file_edits": {"type": "array"}},
+                        "required": ["status", "file_edits"],
+                    },
+                )
+
+        self.assertEqual(record["output"]["status"], "ready_to_apply")
+        self.assertEqual(call.call_count, 3)
+        self.assertEqual(len(record["retry_errors"]), 2)
+        self.assertNotIn("schema_repair_attempts", record)
+        self.assertEqual(len({args.args[3] for args in call.call_args_list}), 1)
+        self.assertEqual(len({args.args[4] for args in call.call_args_list}), 1)
+
+    def test_repeated_weight_catalog_and_manifest_compaction_preserves_rows(self) -> None:
+        catalog = {"path": "/catalog", "sha256": "a", "value": {"tensors": [
+            {"name": "layer.0.weight", "layer_index": 0, "shape": [4, 4]}
+        ]}}
+        compact_catalog = stage_llm.compact_transformer_block_weight_catalog(catalog)
+        self.assertEqual(compact_catalog["value"]["tensors"]["row_count"], 1)
+        self.assertEqual(stage_llm.compact_transformer_block_weight_catalog(compact_catalog), compact_catalog)
+        manifest = {"path": "/manifest", "sha256": "b", "value": {
+            "layer_segments": [{"layer_index": 0, "stage_segments": []}]
+        }}
+        compact_manifest = stage_llm.compact_full_weight_image_manifest(manifest)
+        self.assertEqual(stage_llm.compact_full_weight_image_manifest(compact_manifest), compact_manifest)
+
     def test_implementation_retry_preserves_all_sources_and_task_specific_validation(self) -> None:
         inputs = {
             "requirements": {"weight_storage": "DDR active/shadow PREFETCH_REQUIREMENT"},
@@ -144,6 +227,218 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertLess(
             prompt.index("<adapter_repair_priority_context>\n"),
             prompt.index("<compact_inputs>\n"),
+        )
+
+    def test_large_backend_source_uses_hash_bound_diagnostic_windows(self) -> None:
+        filler = "".join(
+            f"  logic [31:0] scale_value_{index} = 32'h{(index * 2654435761) & 0xffffffff:08x};\n"
+            for index in range(18_000)
+        )
+        source_text = (
+            "module app_shell_9p_cnn_core_0_1(input logic c0_ddr4_s_axi_arready,\n"
+            "  output logic c0_ddr4_s_axi_arvalid, output logic [36:0] c0_ddr4_s_axi_araddr);\n"
+            + "  logic filler_header;\n" * 90
+            + filler
+            + "GPT2PreLNBlock kernel_inst (\n"
+            + "  logic tile_request_valid;\n"
+            + "  assign tile_request_valid = 1'b0;\n"
+            + "  .io_tile_0_request_valid(),\n"
+            + "  .io_tile_0_request_bits_ddrWordAddress(),\n"
+            + "  assign c0_ddr4_s_axi_araddr = 37'b0;\n"
+            + "  assign c0_ddr4_s_axi_arvalid = 1'b0;\n"
+            + "endmodule\n"
+        )
+        source = {
+            "path": "current-adapter.sv",
+            "sha256": hashlib.sha256(source_text.encode()).hexdigest(),
+            "content": source_text,
+        }
+        prompt = stage_llm.compact_retry_prompt(
+            "backend_compute_slot_repair_agent",
+            "backend_board",
+            "Repair the current adapter using the tool diagnostic.",
+            {
+                "source_snapshot": source,
+                "immutable_compute_slot_abi": {"required_ports": []},
+                "generated_top_interface": {
+                    "path": "GeneratedAxiDdrTop.sv",
+                    "sha256": "b" * 64,
+                    "module_header": "module GeneratedAxiDdrTop(input clock);",
+                },
+                "weight_stream_contract": {"stage_segments": []},
+                "exact_board_loader_source_context": {"status": "not_needed", "sources": []},
+                "failure_diagnostics": [
+                    "verification/rtl/cnn_core.sv scheduler ties c0_ddr4_s_axi_arvalid and "
+                    "c0_ddr4_s_axi_araddr low while tile request ports are disconnected"
+                ],
+            },
+            {"type": "object", "properties": {"file_edits": {"type": "array"}}},
+        )
+
+        priority_block = prompt.split(
+            "<adapter_repair_priority_context>\n", 1
+        )[1].split("\n</adapter_repair_priority_context>", 1)[0]
+        priority = json.loads(priority_block)
+        view = priority[0]["value"]["source_view"]
+        visible_source = "".join(window["content"] for window in view["windows"])
+        self.assertEqual(view["encoding"], "diagnostic_source_windows_v1")
+        self.assertEqual(view["full_source_sha256"], source["sha256"])
+        self.assertIn("assign c0_ddr4_s_axi_arvalid = 1'b0;", visible_source)
+        self.assertIn(".io_tile_0_request_bits_ddrWordAddress()", visible_source)
+        self.assertIn("GPT2PreLNBlock kernel_inst (", visible_source)
+        self.assertNotIn("deadbeef", visible_source)
+        self.assertLess(len(prompt), 80_000)
+
+    def test_ddr_tile_request_diagnostic_includes_axi_owner_and_response_windows(self) -> None:
+        filler = "".join(
+            f"  logic unrelated_{hashlib.sha256(str(index).encode()).hexdigest()};\n"
+            for index in range(2_400)
+        )
+        source_text = (
+            "module app_shell_9p_cnn_core_0_1;\n"
+            + filler
+            + "  logic [2:0] tile_owner;\n"
+            + "  always_ff @(posedge clk) begin\n"
+            + "    if (c0_ddr4_s_axi_arvalid && c0_ddr4_s_axi_arready) begin\n"
+            + "      tile_owner <= selected_tile;\n"
+            + "    end\n"
+            + "  end\n"
+            + "  assign io_ddrTileRequest_ready = tile_read_ready;\n"
+            + "  assign io_tile_0_request_valid = tile_read_valid;\n"
+            + "  assign io_tile_0_request_bits_ddrWordAddress = tile_read_address;\n"
+            + "  assign io_ddrTileResponse_valid = c0_ddr4_s_axi_rvalid && tile_owner == 0;\n"
+            + "  assign io_ddrTileResponse_bits_data = c0_ddr4_s_axi_rdata;\n"
+            + "  assign c0_ddr4_s_axi_rready = io_ddrTileResponse_ready;\n"
+            + "endmodule\n"
+        )
+        source = {
+            "path": "current-adapter.sv",
+            "sha256": hashlib.sha256(source_text.encode()).hexdigest(),
+            "content": source_text,
+        }
+        prompt = stage_llm.compact_retry_prompt(
+            "backend_compute_slot_repair_agent",
+            "backend_board",
+            "Repair the current DDR tile request connection using the tool diagnostic.",
+            {
+                "source_snapshot": source,
+                "immutable_compute_slot_abi": {"required_ports": []},
+                "generated_top_interface": {
+                    "path": "GeneratedAxiDdrTop.sv",
+                    "sha256": "b" * 64,
+                    "module_header": "module GeneratedAxiDdrTop(input clock);",
+                },
+                "weight_stream_contract": {"stage_segments": []},
+                "exact_board_loader_source_context": {"status": "not_needed", "sources": []},
+                "failure_diagnostics": [
+                    "direct DDR tile service io_ddrTileRequest_ready is disconnected"
+                ],
+            },
+            {"type": "object", "properties": {"file_edits": {"type": "array"}}},
+        )
+
+        priority_block = prompt.split(
+            "<adapter_repair_priority_context>\n", 1
+        )[1].split("\n</adapter_repair_priority_context>", 1)[0]
+        priority = json.loads(priority_block)
+        view = priority[0]["value"]["source_view"]
+        visible_source = "".join(window["content"] for window in view["windows"])
+
+        self.assertEqual(view["full_source_sha256"], source["sha256"])
+        for required in (
+            "logic [2:0] tile_owner;",
+            "tile_owner <= selected_tile;",
+            "c0_ddr4_s_axi_arvalid && c0_ddr4_s_axi_arready",
+            "io_ddrTileRequest_ready = tile_read_ready",
+            "io_tile_0_request_bits_ddrWordAddress = tile_read_address",
+            "io_ddrTileResponse_valid = c0_ddr4_s_axi_rvalid",
+            "io_ddrTileResponse_bits_data = c0_ddr4_s_axi_rdata",
+            "c0_ddr4_s_axi_rready = io_ddrTileResponse_ready",
+        ):
+            self.assertIn(required, visible_source)
+        self.assertLess(len(prompt), 80_000)
+
+    def test_board_source_index_keeps_hash_bound_paths_for_compile_manifest_generation(self) -> None:
+        identity_rows = []
+        compile_rows = []
+        hash_rows = []
+        for index in range(4):
+            source_id = f"sample-source:{index}"
+            local_path = f"/run/verification/sample_project_sources/{index}.sv"
+            remote_path = f"/board/export/sources/{index}.sv"
+            digest = hashlib.sha256(source_id.encode()).hexdigest()
+            identity_rows.append({
+                "source_id": source_id,
+                "path": local_path,
+                "local_path": local_path,
+                "local_sha256": digest,
+                "sha256": digest,
+                "role": "simulation_source",
+                "language": "SystemVerilog",
+                "declared_modules": [f"board_module_{index}"],
+                "dependencies": [],
+            })
+            compile_rows.append({
+                "source_id": source_id,
+                "compile_order": index,
+                "file_type": "SystemVerilog",
+                "language": "SystemVerilog",
+                "remote_path": remote_path,
+                "sha256": digest,
+                "library": "work",
+            })
+            hash_rows.append({
+                "source_id": source_id,
+                "path": remote_path,
+                "sha256": digest,
+                "role": "simulation_source",
+            })
+
+        index = stage_llm._shared_board_source_index(
+            {
+                "selected_simulation_source_closure": {"source_files": identity_rows},
+                "source_hashes": hash_rows,
+            },
+            {
+                "schema_version": "spatialaccagent.vivado_vcs_compile_authority.v1",
+                "compile_sources": compile_rows,
+            },
+        )
+        compact = stage_llm._compact_shared_board_source_index_for_generation(index)
+        identity_projection = {
+            "value": {
+                "selected_simulation_source_closure": {"source_files": []},
+                "source_hashes": [],
+            }
+        }
+        compile_projection = {"value": {}}
+        stage_llm._apply_shared_board_source_index(
+            identity_projection,
+            compile_projection,
+            {
+                "selected_simulation_source_closure": {"source_files": identity_rows},
+                "source_hashes": hash_rows,
+            },
+            {"compile_sources": compile_rows},
+            compact,
+        )
+
+        self.assertEqual(compact["row_count"], 4)
+        self.assertEqual(compact["path_prefixes"], index["path_prefixes"])
+        for column in ("local_path", "remote_path", "sha256"):
+            self.assertIn(column, compact["column_order"])
+        self.assertIn("source_hashes", compact["views"])
+        self.assertEqual(
+            identity_projection["value"]["source_hashes"]["view"],
+            "source_hashes",
+        )
+        self.assertIn("local_path", compact["views"]["identity_source_files"]["columns"])
+        self.assertIn("remote_path", compact["views"]["compile_sources"]["columns"])
+        self.assertIn("sha256", compact["views"]["source_hashes"]["columns"])
+        self.assertTrue(
+            compact["omitted_path_and_owner_alias_contract"][
+                "source_paths_and_hashes_are_recoverable_from_shared_columns"
+            ]
         )
 
     def _transient_then_success(self) -> list[object]:
@@ -445,6 +740,28 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertFalse(stage_llm.transient_llm_error(invalid_token))
         self.assertFalse(stage_llm.transient_llm_error(denied))
 
+    def test_retry_backoff_caps_before_extreme_attempt_overflow(self) -> None:
+        upstream_error = urllib.error.HTTPError(
+            "https://example.invalid", 502, "Bad Gateway", None, None
+        )
+        rate_limited = urllib.error.HTTPError(
+            "https://example.invalid", 429, "Too Many Requests", None, None
+        )
+        with patch.dict(
+            os.environ,
+            {
+                "SPATIALACC_LLM_RETRY_BASE_SEC": "8",
+                "SPATIALACC_LLM_RETRY_MAX_SEC": "90",
+            },
+        ):
+            huge_attempt = 10**10000
+            self.assertEqual(
+                stage_llm.retry_sleep_seconds(upstream_error, huge_attempt), 90.0
+            )
+            self.assertEqual(
+                stage_llm.retry_sleep_seconds(rate_limited, huge_attempt), 90.0
+            )
+
     def test_stage_llm_switches_gateway_failure_to_fallback_and_recovers(self) -> None:
         gateway_timeout = urllib.error.HTTPError(
             "https://primary.invalid/v1/responses", 524, "origin timeout", None, None
@@ -496,6 +813,35 @@ class LlmRetryPathTests(unittest.TestCase):
                 "https://primary.invalid/v1/responses",
             ],
         )
+
+    def test_incomplete_http_response_retries_request_without_restarting_stage(self) -> None:
+        error = http.client.IncompleteRead(b"partial response", 100)
+        self.assertTrue(stage_llm.transient_llm_error(error))
+        with (
+            patch.object(stage_llm, "call_llm", side_effect=[error, '{"ok":true}']) as request,
+            patch.object(stage_llm, "retry_sleep_seconds", return_value=0.0),
+            patch.object(stage_llm.time, "sleep"),
+        ):
+            text, errors = stage_llm.call_llm_with_retry(
+                "https://example.invalid", "key", "model", "prompt", "schema", {}, 1,
+                attempts=2,
+            )
+        self.assertEqual(text, '{"ok":true}')
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(len(errors), 1)
+
+    def test_incomplete_http_response_retries_team_decomposer_request(self) -> None:
+        error = http.client.IncompleteRead(b"partial response", 100)
+        with (
+            patch.object(stage_team, "read_response_text", side_effect=[error, '{"ok":true}']) as request,
+            patch.object(stage_team, "retry_sleep_seconds", return_value=0.0),
+            patch.object(stage_team.time, "sleep"),
+            patch.object(stage_team, "llm_inflight_slot", return_value=nullcontext()),
+        ):
+            text, errors = stage_team.post_decomposer_json(object(), 1, "team_decomposition_json", True)
+        self.assertEqual(text, '{"ok":true}')
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(len(errors), 1)
 
     def test_gateway_errors_retry_within_team_decomposition(self) -> None:
         def http_error(code: int, reason: str) -> urllib.error.HTTPError:
@@ -1201,6 +1547,402 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertEqual(call.call_count, 1)
         sleep.assert_not_called()
 
+    def test_exact_board_context_window_projection_preserves_ordered_abi_authority(self) -> None:
+        source_ids = ["sample-source:a", "sample-source:b", "sample-source:c"]
+        file_bindings = [
+            {"gate": "case_single_layer_functional", "path": f"/evidence/{index}", "sha256": f"{index:064x}"}
+            for index in range(40)
+        ]
+        compact_inputs = {
+            "agent": "exact_board_integration_generation_agent",
+            "stage": "repair_execution",
+            "verification_capability_repair_package": {
+                "generation_phase_contract": {
+                    "status": "generation_required_before_probe"
+                },
+                "exact_board_integration_repair_context": {
+                    "status": "ready",
+                    "required_binding_manifest": "/run/board/manifest.json",
+                    "adaptive_design_inputs": {
+                        "shared_board_source_index": {
+                            "views": {"source_ids": {"values": source_ids}}
+                        },
+                        "exact_board_source_identity": {
+                            "path": "/run/identity.json",
+                            "sha256": "a" * 64,
+                            "value": {
+                                "schema_version": "identity.v1",
+                                "status": "ready",
+                                "top_module": "board_top",
+                                "wrapper_top_module": "board_top",
+                                "exact_user_sample_wrapper": True,
+                                "axi_interfaces": [{"name": "ddr", "data_width_bits": 512}],
+                                "compute_slot_abi": {
+                                    "status": "ready",
+                                    "required_ports": [
+                                        {"name": "clock", "direction": "input", "width_bits": 1}
+                                    ],
+                                    "replacement_boundary": {
+                                        "retained_source_ids": [source_ids[0], source_ids[2]]
+                                    },
+                                },
+                                "discovery_selected_source_ids": [source_ids[2], source_ids[0]],
+                                "source_hashes": [
+                                    {"source_id": source_id, "sha256": "b" * 64}
+                                    for source_id in source_ids
+                                ],
+                            },
+                        },
+                        "single_layer_promotion_certificate": {
+                            "path": "/run/certificate.json",
+                            "sha256": "c" * 64,
+                            "value": {
+                                "schema_version": "certificate.v1",
+                                "status": "pass",
+                                "level_id": "single_layer",
+                                "required_gates": ["case_single_layer_functional"],
+                                "evidence_binding": {
+                                    "binding_sha256": "d" * 64,
+                                    "file_bindings": file_bindings,
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+
+        projected = stage_llm._compact_exact_board_context_window_retry_inputs(
+            compact_inputs
+        )
+        package = projected["verification_capability_repair_package"]
+        adaptive = package["exact_board_integration_repair_context"]["adaptive_design_inputs"]
+        identity = adaptive["exact_board_source_identity"]["value"]
+        index = adaptive["shared_board_source_index"]["views"]["source_ids"]["values"]
+        selected = identity["discovery_selected_source_ids"]
+        retained = identity["compute_slot_abi"]["replacement_boundary"]["retained_source_ids"]
+
+        self.assertEqual(
+            [index[position] for position in selected["indices"]],
+            [source_ids[2], source_ids[0]],
+        )
+        self.assertEqual(
+            [index[position] for position in retained["indices"]],
+            [source_ids[0], source_ids[2]],
+        )
+        self.assertEqual(identity["compute_slot_abi"]["required_ports"][0]["name"], "clock")
+        self.assertEqual(identity["axi_interfaces"][0]["data_width_bits"], 512)
+        certificate = adaptive["single_layer_promotion_certificate"]["value"]
+        self.assertEqual(certificate["status"], "pass")
+        self.assertEqual(certificate["evidence_binding"]["file_binding_count"], 40)
+        self.assertEqual(
+            adaptive["single_layer_promotion_certificate"]["sha256"], "c" * 64
+        )
+        self.assertLess(
+            len(json.dumps(projected, separators=(",", ":"))),
+            len(json.dumps(compact_inputs, separators=(",", ":"))),
+        )
+
+    def test_exact_board_context_window_projection_covers_preflight_repairs(self) -> None:
+        source_ids = ["sample-source:a", "sample-source:b", "sample-source:c"]
+        source_hashes = [
+            {"source_id": f"sample-source:{index}", "sha256": f"{index:064x}"}
+            for index in range(256)
+        ]
+        file_bindings = [
+            {
+                "gate": "case_single_layer_functional",
+                "path": f"/evidence/{index}",
+                "sha256": f"{index:064x}",
+            }
+            for index in range(96)
+        ]
+        editable_source = "module app_shell_9p_cnn_core_0_1; endmodule\n"
+        compact_inputs = {
+            "agent": "exact_board_integration_generation_agent",
+            "stage": "repair_execution",
+            "verification_capability_repair_package": {
+                "generation_phase_contract": {
+                    "status": "repair_deterministic_preflight",
+                    "current_preflight_feedback_ready": True,
+                },
+                "current_board_preflight_feedback": {
+                    "status": "ready",
+                    "blockers": ["adapter module does not match compute-slot ABI"],
+                },
+                "exact_board_integration_repair_context": {
+                    "status": "ready",
+                    "required_binding_manifest": "/run/board/manifest.json",
+                    "source_snapshot": {
+                        "path": "/run/board/adapter.sv",
+                        "sha256": "a" * 64,
+                        "content": editable_source,
+                    },
+                    "adaptive_design_inputs": {
+                        "shared_board_source_index": {
+                            "views": {"source_ids": {"values": source_ids}}
+                        },
+                        "exact_board_source_identity": {
+                            "path": "/run/identity.json",
+                            "sha256": "b" * 64,
+                            "value": {
+                                "schema_version": "identity.v1",
+                                "status": "ready",
+                                "top_module": "board_top",
+                                "wrapper_top_module": "board_top",
+                                "exact_user_sample_wrapper": True,
+                                "axi_interfaces": [{"name": "ddr", "data_width_bits": 512}],
+                                "compute_slot_abi": {
+                                    "status": "ready",
+                                    "required_ports": [
+                                        {"name": "clock", "direction": "input", "width_bits": 1}
+                                    ],
+                                    "replacement_boundary": {
+                                        "retained_source_ids": [source_ids[0], source_ids[2]]
+                                    },
+                                },
+                                "discovery_selected_source_ids": [source_ids[2], source_ids[0]],
+                                "source_hashes": source_hashes,
+                            },
+                        },
+                        "single_layer_promotion_certificate": {
+                            "path": "/run/certificate.json",
+                            "sha256": "c" * 64,
+                            "value": {
+                                "schema_version": "certificate.v1",
+                                "status": "pass",
+                                "level_id": "single_layer",
+                                "required_gates": ["case_single_layer_functional"],
+                                "evidence_binding": {
+                                    "binding_sha256": "d" * 64,
+                                    "file_bindings": file_bindings,
+                                },
+                            },
+                        },
+                        "debug_observability_authority": {"value": {"unused": True}},
+                    },
+                },
+            },
+        }
+
+        projected = stage_llm._compact_exact_board_context_window_retry_inputs(
+            compact_inputs
+        )
+        package = projected["verification_capability_repair_package"]
+        context = package["exact_board_integration_repair_context"]
+        adaptive = context["adaptive_design_inputs"]
+        identity = adaptive["exact_board_source_identity"]["value"]
+
+        self.assertEqual(
+            package["current_board_preflight_feedback"],
+            compact_inputs["verification_capability_repair_package"][
+                "current_board_preflight_feedback"
+            ],
+        )
+        self.assertEqual(context["required_binding_manifest"], "/run/board/manifest.json")
+        self.assertEqual(context["source_snapshot"]["content"], editable_source)
+        self.assertEqual(identity["compute_slot_abi"]["required_ports"][0]["name"], "clock")
+        source_index = adaptive["shared_board_source_index"]["views"]["source_ids"]["values"]
+        self.assertEqual(
+            [source_index[position] for position in identity["discovery_selected_source_ids"]["indices"]],
+            [source_ids[2], source_ids[0]],
+        )
+        certificate = adaptive["single_layer_promotion_certificate"]["value"]
+        self.assertEqual(certificate["evidence_binding"]["file_binding_count"], 96)
+        self.assertNotIn("debug_observability_authority", adaptive)
+        self.assertLess(
+            len(json.dumps(projected, separators=(",", ":"))),
+            len(json.dumps(compact_inputs, separators=(",", ":"))),
+        )
+
+    def test_exact_board_context_window_projection_covers_current_vcs_repairs(self) -> None:
+        source_ids = [f"sample-source:{index}" for index in range(12)]
+        source_hashes = [
+            {"source_id": f"sample-source:{index}", "sha256": f"{index:064x}"}
+            for index in range(256)
+        ]
+        file_bindings = [
+            {
+                "gate": "case_single_layer_functional",
+                "path": f"/evidence/{index}",
+                "sha256": f"{index:064x}",
+            }
+            for index in range(96)
+        ]
+        adapter_source = "module current_adapter;\n@@KERNEL_STREAM_WIRES@@\nendmodule\n"
+        vcs_feedback = {
+            "status": "fail",
+            "diagnosis": {
+                "status": "needs_repair",
+                "first_real_error_context": "Syntax error at @@KERNEL_STREAM_WIRES@@",
+            },
+        }
+        compact_inputs = {
+            "agent": "exact_board_integration_generation_agent",
+            "stage": "repair_execution",
+            "verification_capability_repair_package": {
+                "generation_phase_contract": {
+                    "status": "repair_existing_board_sources",
+                    "current_vcs_feedback_ready": True,
+                },
+                "current_board_vcs_feedback": vcs_feedback,
+                "exact_board_integration_repair_context": {
+                    "status": "ready",
+                    "required_binding_manifest": "/run/board/manifest.json",
+                    "source_snapshot": {
+                        "path": "/run/board/compute_slot_adapter.sv",
+                        "sha256": "a" * 64,
+                        "content": adapter_source,
+                    },
+                    "adaptive_design_inputs": {
+                        "shared_board_source_index": {
+                            "views": {"source_ids": {"values": source_ids}}
+                        },
+                        "exact_board_source_identity": {
+                            "path": "/run/identity.json",
+                            "sha256": "b" * 64,
+                            "value": {
+                                "schema_version": "identity.v1",
+                                "status": "ready",
+                                "top_module": "board_top",
+                                "wrapper_top_module": "board_top",
+                                "exact_user_sample_wrapper": True,
+                                "axi_interfaces": [{"name": "ddr", "data_width_bits": 512}],
+                                "compute_slot_abi": {
+                                    "status": "ready",
+                                    "required_ports": [
+                                        {"name": "cfg_done", "direction": "output", "width_bits": 1}
+                                    ],
+                                    "replacement_boundary": {
+                                        "retained_source_ids": source_ids[:4]
+                                    },
+                                },
+                                "discovery_selected_source_ids": source_ids[3:8],
+                                "source_hashes": source_hashes,
+                            },
+                        },
+                        "single_layer_promotion_certificate": {
+                            "path": "/run/certificate.json",
+                            "sha256": "c" * 64,
+                            "value": {
+                                "schema_version": "certificate.v1",
+                                "status": "pass",
+                                "level_id": "single_layer",
+                                "required_gates": ["case_single_layer_functional"],
+                                "evidence_binding": {
+                                    "binding_sha256": "d" * 64,
+                                    "file_bindings": file_bindings,
+                                },
+                            },
+                        },
+                        "debug_observability_authority": {"value": {"unused": True}},
+                    },
+                },
+            },
+        }
+
+        projected = stage_llm._compact_exact_board_context_window_retry_inputs(
+            compact_inputs
+        )
+        package = projected["verification_capability_repair_package"]
+        context = package["exact_board_integration_repair_context"]
+        adaptive = context["adaptive_design_inputs"]
+        identity = adaptive["exact_board_source_identity"]["value"]
+
+        self.assertEqual(package["current_board_vcs_feedback"], vcs_feedback)
+        self.assertEqual(context["source_snapshot"]["content"], adapter_source)
+        self.assertEqual(
+            identity["compute_slot_abi"]["required_ports"][0]["name"],
+            "cfg_done",
+        )
+        self.assertEqual(
+            identity["source_hashes"]["row_count"],
+            len(source_hashes),
+        )
+        self.assertTrue(
+            identity["source_hashes"]["full_hash_bound_rows_remain_on_disk"]
+        )
+        self.assertNotIn("debug_observability_authority", adaptive)
+        self.assertEqual(
+            context["context_window_retry_projection"]["trigger"],
+            "provider_rejected_prior_compact_request_for_context_window",
+        )
+        self.assertLess(
+            len(json.dumps(projected, separators=(",", ":"))),
+            len(json.dumps(compact_inputs, separators=(",", ":"))),
+        )
+
+    def test_exact_board_second_level_compaction_runs_only_after_compact_context_rejection(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "file_edits": {"type": "array"},
+            },
+            "required": ["status", "file_edits"],
+        }
+        context_error = RuntimeError("HTTP 400: Context window is full")
+        prompts = ["proactive", "compact-retry", "second-level"]
+        inputs = {
+            "verification_capability_repair_package": {
+                "generation_phase_contract": {
+                    "status": "generation_required_before_probe"
+                },
+                "exact_board_integration_repair_context": {
+                    "status": "ready",
+                    "required_binding_manifest": "/run/board/manifest.json",
+                },
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                patch.object(
+                    stage_llm,
+                    "resolved_llm_cfg",
+                    return_value=LlmCfg(
+                        model="test-model",
+                        endpoint="https://example.invalid",
+                        api_key="key",
+                        stream=False,
+                    ),
+                ),
+                patch.object(
+                    stage_llm,
+                    "build_stage_agent_prompt_inputs",
+                    return_value=({}, False, {}),
+                ),
+                patch.object(
+                    stage_llm,
+                    "compact_retry_prompt",
+                    side_effect=prompts,
+                ) as compact_prompt,
+                patch.object(
+                    stage_llm,
+                    "call_llm_with_retry",
+                    side_effect=[
+                        context_error,
+                        context_error,
+                        ('{"status":"ready_to_apply","file_edits":[]}', []),
+                    ],
+                ) as call,
+            ):
+                record = stage_llm.run_stage_agent(
+                    agent="exact_board_integration_generation_agent",
+                    stage="repair_execution",
+                    task="Generate the connected exact-board adapter.",
+                    inputs=inputs,
+                    out_dir=Path(tmp),
+                    fallback_summary="fallback",
+                    output_schema=schema,
+                )
+
+        self.assertEqual(record["output"]["status"], "ready_to_apply")
+        self.assertEqual(call.call_count, 3)
+        self.assertEqual(compact_prompt.call_count, 3)
+        self.assertTrue(compact_prompt.call_args.kwargs["context_window_retry"])
+        self.assertIn("context_window_retry_request_path", record)
+
     def test_incomplete_stream_without_output_is_retried(self) -> None:
         incomplete = ValueError(
             "streaming LLM response returned no output text; "
@@ -1729,6 +2471,56 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertEqual(call.call_count, 2)
         self.assertIn("context_length_exceeded", record["compact_retry_after_error"])
 
+    def test_context_window_is_full_enters_compact_retry(self) -> None:
+        custom_schema = {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "summary": {"type": "string"},
+            },
+            "required": ["status", "summary"],
+        }
+        context_error = RuntimeError(
+            "HTTP Error 400: {\"message\":\"Context window is full. Reduce conversation history.\"}"
+        )
+        compact_output = '{"status":"retry","summary":"compacted"}'
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                patch.object(
+                    stage_llm,
+                    "resolved_llm_cfg",
+                    return_value=LlmCfg(
+                        model="test-model",
+                        endpoint="https://example.invalid",
+                        api_key="key",
+                        stream=True,
+                    ),
+                ),
+                patch.object(
+                    stage_llm,
+                    "call_llm_with_retry",
+                    side_effect=[context_error, (compact_output, [])],
+                ) as call,
+            ):
+                record = stage_llm.run_stage_agent(
+                    agent="flow_controller_agent",
+                    stage="flow_orchestration",
+                    task="route the current stage result",
+                    inputs={
+                        "recent_stage_summary": {
+                            "status": "incomplete",
+                            "errors": ["ungrounded role"] * 12,
+                        }
+                    },
+                    out_dir=Path(tmp),
+                    fallback_summary="fallback",
+                    output_schema=custom_schema,
+                )
+
+        self.assertEqual(record["output"]["status"], "retry")
+        self.assertEqual(call.call_count, 2)
+        self.assertIn("Context window is full", record["compact_retry_after_error"])
+
     def test_stage_agent_retries_schema_repair_serially_until_valid(self) -> None:
         custom_schema = {
             "type": "object",
@@ -1793,6 +2585,103 @@ class LlmRetryPathTests(unittest.TestCase):
             ["invalid", "pass"],
         )
         self.assertTrue(repair_artifacts_exist)
+
+    def test_exact_board_schema_repair_uses_compact_current_evidence(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "enum": ["ready_to_apply", "blocked"]},
+                "file_edits": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string"},
+                            "operation": {"type": "string"},
+                            "content": {"type": "string"},
+                            "rationale": {"type": "string"},
+                        },
+                        "required": ["path", "operation", "content", "rationale"],
+                    },
+                },
+            },
+            "required": ["status", "file_edits"],
+        }
+        invalid = json.dumps(
+            {
+                "status": "ready_to_apply",
+                "file_edits": [{"path": "adapter.sv", "operation": "replace_text"}],
+            }
+        )
+        valid = json.dumps(
+            {
+                "status": "ready_to_apply",
+                "file_edits": [
+                    {
+                        "path": "adapter.sv",
+                        "operation": "replace_text",
+                        "content": "",
+                        "rationale": "repair the observed compute-slot ABI mismatch",
+                    }
+                ],
+            }
+        )
+        package = {
+            "generation_phase_contract": {
+                "status": "repair_deterministic_preflight",
+                "current_preflight_feedback_ready": True,
+            },
+            "current_board_preflight_feedback": {
+                "status": "ready",
+                "blockers": ["current compute-slot module ABI mismatch"],
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                patch.object(
+                    stage_llm,
+                    "resolved_llm_cfg",
+                    return_value=LlmCfg(
+                        model="test-model",
+                        endpoint="https://example.invalid",
+                        api_key="key",
+                        stream=True,
+                    ),
+                ),
+                patch.object(
+                    stage_llm,
+                    "compact_retry_prompt",
+                    side_effect=["INITIAL_COMPACT_REQUEST", "COMPACT_SCHEMA_CONTEXT"],
+                ) as compact,
+                patch.object(
+                    stage_llm,
+                    "call_llm_with_retry",
+                    side_effect=[(invalid, []), (valid, [])],
+                ) as call,
+            ):
+                record = stage_llm.run_stage_agent(
+                    agent="exact_board_integration_generation_agent",
+                    stage="repair_execution",
+                    task="repair the current exact-board preflight failure",
+                    inputs={"verification_capability_repair_package": package},
+                    out_dir=Path(tmp),
+                    fallback_summary="fallback",
+                    output_schema=schema,
+                )
+
+        repair_call_prompt = call.call_args_list[1].args[3]
+        self.assertEqual(record["output"]["status"], "ready_to_apply")
+        self.assertIn("COMPACT_SCHEMA_CONTEXT", repair_call_prompt)
+        self.assertIn("exact_board_integration_generation_agent.file_edits[0].content is required", repair_call_prompt)
+        schema_compaction = compact.call_args_list[-1]
+        self.assertIn(
+            "current compute-slot module ABI mismatch",
+            schema_compaction.args[3]["verification_capability_repair_package"][
+                "current_board_preflight_feedback"
+            ]["blockers"],
+        )
+        self.assertIs(schema_compaction.kwargs.get("context_window_retry"), True)
 
     def test_stage_agent_repair_names_missing_root_field_placement(self) -> None:
         custom_schema = {
@@ -2507,6 +3396,159 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertNotIn("content", rows["/run/old_board_report.txt"])
         self.assertEqual(rows["/run/old_board_report.txt"]["content_chars"], len(unrelated_content))
 
+    def test_operator_leaf_capability_repair_bounds_oversized_json_contracts(self) -> None:
+        manifest_path = (
+            "/run/verification/semantic_testbench/semantic_testbench_manifest.json"
+            "#operator_leaf_closure_execution_projection"
+        )
+        requirements_path = (
+            "/run/verification/semantic_testbench/dut_weight_binding_requirements.json"
+            "#operator_leaf_closure_requirements_projection"
+        )
+        stage_contract = {
+            "stage_id": "stage_00_linear",
+            "op": "linear",
+            "status": "pass",
+            "numeric_contract": {"input_bits": 8, "weight_bits": 4},
+            "input_vectors": [
+                {"path": "/run/input.memh", "sha256": "a" * 64, "shape": [1, 8]}
+            ],
+            "expected_output": {
+                "path": "/run/output.memh",
+                "sha256": "b" * 64,
+                "shape": [1, 8],
+            },
+            "real_weight_stream": {
+                "path": "/run/weight.memh",
+                "sha256": "c" * 64,
+                "word_count": 128,
+                "targets": [
+                    {
+                        "target_id": "weight_0",
+                        "source_tensor_hashes": ["d" * 64],
+                        "scale_payload": {"values": list(range(5000))},
+                    }
+                ],
+            },
+        }
+        manifest = {
+            "schema_version": "test.manifest.v1",
+            "status": "incomplete",
+            "accelerator_scope": "transformer_blocks_only",
+            "blockers": ["weight hashes are not bound"],
+            "real_weight_source": {"source_checkpoint_sha256": "e" * 64},
+            "numeric_policy": "W4A8",
+            "numeric_comparison_policy": {"atol": 0, "rtol": 0},
+            "numeric_comparison_resolution": {"resolved": True},
+            "random_input": {"path": "/run/input.memh", "sha256": "a" * 64},
+            "reference_manifest": "/run/reference.json",
+            "reference_manifest_sha256": "f" * 64,
+            "dut_weight_binding_requirements": "/run/requirements.json",
+            "dut_weight_binding_requirements_sha256": "1" * 64,
+            "stage_contracts": [stage_contract],
+            "single_layer": {"unneeded_large_payload": "x" * 100_000},
+        }
+        requirements = {
+            "schema_version": "test.requirements.v1",
+            "status": "ready",
+            "accelerator_scope": "transformer_blocks_only",
+            "source_checkpoint_sha256": "e" * 64,
+            "source_reference_sha256": "f" * 64,
+            "numeric_policy_sha256": "2" * 64,
+            "stage_requirements": [
+                {"stage_id": "stage_00_linear", "required_tensors": ["d" * 64]}
+            ],
+            "connected_weight_stream_contract": {
+                "schema_version": "test.stream.v1",
+                "status": "ready",
+                "path": "/run/full-model-stream.json",
+                "sha256": "3" * 64,
+                "contract_sha256": "4" * 64,
+                "word_bits": 512,
+                "word_count": 2_000_000,
+                "stage_order": ["stage_00_linear"],
+                "stage_segments": [{"stage_id": "stage_00_linear", "payload": "x" * 10_600_000}],
+            },
+        }
+        package = {
+            "schema_version": "spatialaccagent.verification_capability_repair_package.v1",
+            "verification_scope": "operator_leaf_closure",
+            "repair_kind": "independent_golden_reference",
+            "capability_probe": {"status": "fail"},
+            "repair_source_bundle": {
+                "schema_version": "spatialaccagent.repair_source_bundle.v1",
+                "documents": [
+                    {
+                        "path": manifest_path,
+                        "source_path": manifest_path.split("#", 1)[0],
+                        "source_sha256": "5" * 64,
+                        "projection": True,
+                        "content": json.dumps(manifest),
+                    },
+                    {
+                        "path": requirements_path,
+                        "source_path": requirements_path.split("#", 1)[0],
+                        "source_sha256": "6" * 64,
+                        "projection": True,
+                        "content": json.dumps(requirements),
+                    },
+                ],
+            },
+        }
+        self.assertGreater(
+            sum(len(row["content"]) for row in package["repair_source_bundle"]["documents"]),
+            10 * 1024 * 1024,
+        )
+
+        prompt = stage_llm.compact_retry_prompt(
+            "verification_capability_repair_agent",
+            "repair_execution",
+            "Repair the missing operator-leaf semantic capability.",
+            {"verification_capability_repair_package": package},
+            {
+                "type": "object",
+                "properties": {"status": {"type": "string"}, "file_edits": {"type": "array"}},
+            },
+        )
+        compact_block = prompt.split("<compact_inputs>\n", 1)[1].split(
+            "\n</compact_inputs>", 1
+        )[0]
+        compact_package = json.loads(compact_block)[
+            "verification_capability_repair_package"
+        ]
+        compact_rows = {
+            row["path"]: row
+            for row in compact_package["repair_source_bundle"]["documents"]
+        }
+        compact_manifest = compact_rows[manifest_path]["json_content"]
+        compact_requirements = compact_rows[requirements_path]["json_content"]
+        compact_stage = compact_manifest["stage_contracts"][0]
+        self.assertEqual(compact_stage["stage_id"], "stage_00_linear")
+        self.assertEqual(compact_stage["input_vectors"][0]["sha256"], "a" * 64)
+        self.assertEqual(compact_stage["expected_output"]["sha256"], "b" * 64)
+        self.assertEqual(
+            compact_stage["real_weight_stream"]["targets"][0]["source_tensor_hashes"],
+            ["d" * 64],
+        )
+        self.assertEqual(
+            compact_stage["real_weight_stream"]["targets"][0]["scale_payload"][
+                "values"
+            ]["item_count"],
+            5000,
+        )
+        self.assertEqual(
+            compact_requirements["stage_requirements"][0]["stage_id"],
+            "stage_00_linear",
+        )
+        self.assertEqual(
+            compact_requirements["omitted_connected_weight_stream_contract"][
+                "sha256"
+            ],
+            "3" * 64,
+        )
+        self.assertNotIn("single_layer", compact_manifest)
+        self.assertLess(len(prompt.encode("utf-8")), 10 * 1024 * 1024)
+
     def test_semantic_harness_sources_survive_retry_compaction(self) -> None:
         source_text = "class Attention extends Module {\n" + "  val io = IO(new Bundle {})\n" + "}\n"
         package = {
@@ -3197,6 +4239,17 @@ class LlmRetryPathTests(unittest.TestCase):
         command_text = adaptive["vivado_vcs_compile_authority"]["value"]["export_contexts"][0]["command_text"]
         self.assertIn("@source:sample-source:one", command_text)
 
+        retry_compact = stage_llm.compact_exact_board_integration_context(compact)
+        retry_adaptive = retry_compact["adaptive_design_inputs"]
+        self.assertEqual(
+            retry_adaptive["shared_board_source_index"],
+            adaptive["shared_board_source_index"],
+        )
+        self.assertEqual(
+            retry_adaptive["vivado_vcs_compile_authority"]["value"]["compile_sources"],
+            adaptive["vivado_vcs_compile_authority"]["value"]["compile_sources"],
+        )
+
     def test_frozen_compute_slot_compaction_reuses_identity_source_index(self) -> None:
         source_rows = [
             {
@@ -3742,6 +4795,35 @@ class LlmRetryPathTests(unittest.TestCase):
         documents = compact["repair_source_bundle"]["documents"]
         self.assertEqual(documents[0]["content"], lifecycle_source)
         self.assertNotIn("content", documents[1])
+
+    def test_exact_board_compaction_preserves_selected_kernel_compile_authority(self) -> None:
+        authority = {
+            "sha256": "d" * 64,
+            "value": {
+                "status": "ready",
+                "top_module": "CertifiedKernel",
+                "source_files": [{"path": "/run/CertifiedKernel.sv", "sha256": "e" * 64}],
+                "module_declaration": "module CertifiedKernel(input clock);",
+            },
+        }
+        context = {"adaptive_design_inputs": {"stage2_vcs_compile_authority": authority}}
+        compact = stage_llm.compact_exact_board_integration_context(context)
+        for projected in (compact, stage_llm.compact_exact_board_integration_context(compact)):
+            self.assertEqual(
+                projected["adaptive_design_inputs"]["stage2_vcs_compile_authority"], authority
+            )
+        authority["value"]["module_declaration"] = (
+            "module CertifiedKernel(\ninput clock\n);\n" + "// generated logic\n" * 5000
+            + "endmodule\n"
+        )
+        compact = stage_llm.compact_exact_board_integration_context(context)
+        selected = compact["adaptive_design_inputs"]["stage2_vcs_compile_authority"]
+        self.assertEqual(selected["value"]["source_files"], authority["value"]["source_files"])
+        self.assertIn("interface_contract", selected["value"]["module_declaration"])
+        self.assertEqual(
+            stage_llm.compact_exact_board_integration_context(compact)
+            ["adaptive_design_inputs"]["stage2_vcs_compile_authority"], selected
+        )
 
     def test_exact_board_compaction_keeps_lifecycle_generation_authority(self) -> None:
         authority = {
@@ -4761,6 +5843,253 @@ class LlmRetryPathTests(unittest.TestCase):
             stage_llm.exact_board_compact_request_errors(materialized_compact), []
         )
 
+    def test_preflight_manifest_authority_is_independent_of_process_cwd(self) -> None:
+        workspace = Path(__file__).resolve().parents[1]
+        relative_manifest = "accagent/test-fixtures/dut_weight_binding_manifest.json"
+        manifest = workspace / relative_manifest
+        compact_inputs = {
+            "verification_capability_repair_package": {
+                "generation_phase_contract": {
+                    "status": "repair_deterministic_preflight"
+                },
+                "exact_board_integration_repair_context": {
+                    "status": "ready",
+                    "required_binding_manifest": str(manifest),
+                },
+                "current_board_preflight_feedback": {"status": "ready"},
+                "repair_source_bundle": {
+                    "editable_contract": {
+                        "allowed_exact_files": [relative_manifest],
+                        "board_manifest_rewrite_authority": {
+                            "target_file": {"path": relative_manifest}
+                        },
+                        "current_board_source_files": [],
+                    },
+                    "documents": [],
+                },
+            }
+        }
+
+        original_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            try:
+                os.chdir(temp_dir)
+                errors = stage_llm.exact_board_compact_request_errors(compact_inputs)
+            finally:
+                os.chdir(original_cwd)
+
+        self.assertNotIn(
+            "deterministic-preflight repair target differs from the authorized binding manifest",
+            errors,
+        )
+        self.assertNotIn(
+            "deterministic-preflight repair manifest is outside exact editable-file authority",
+            errors,
+        )
+
+    def test_preflight_target_mismatch_reports_both_binding_paths(self) -> None:
+        workspace = Path(__file__).resolve().parents[1]
+        manifest = "accagent/test-fixtures/dut_weight_binding_manifest.json"
+        wrong_target = "accagent/test-fixtures/other_manifest.json"
+        compact_inputs = {
+            "verification_capability_repair_package": {
+                "generation_phase_contract": {
+                    "status": "repair_deterministic_preflight"
+                },
+                "exact_board_integration_repair_context": {
+                    "status": "ready",
+                    "required_binding_manifest": str(workspace / manifest),
+                },
+                "current_board_preflight_feedback": {"status": "ready"},
+                "repair_source_bundle": {
+                    "editable_contract": {
+                        "allowed_exact_files": [manifest],
+                        "board_manifest_rewrite_authority": {
+                            "target_file": {"path": wrong_target}
+                        },
+                        "current_board_source_files": [],
+                    },
+                    "documents": [],
+                },
+            }
+        }
+
+        errors = stage_llm.exact_board_compact_request_errors(compact_inputs)
+
+        self.assertIn(
+            "deterministic-preflight repair target differs from the authorized binding manifest",
+            errors,
+        )
+        self.assertTrue(
+            any(
+                error.startswith(
+                    f"deterministic-preflight binding path mismatch: target={wrong_target!r}"
+                )
+                for error in errors
+            )
+        )
+        self.assertIn(f"manifest={str(workspace / manifest)!r}", errors[-2])
+
+    def test_manifest_role_preflight_projection_keeps_rewrite_target_identity(self) -> None:
+        workspace = Path(__file__).resolve().parents[1]
+        manifest = "accagent/test-fixtures/dut_weight_binding_manifest.json"
+        target = {"path": manifest, "sha256": "a" * 64, "bytes": 42}
+        package = {
+            "exact_board_integration_repair_context": {
+                "required_binding_manifest": str(workspace / manifest)
+            },
+            "current_board_preflight_feedback": {
+                "preflight": {
+                    "value": {
+                        "exact_board_preflight": {
+                            "checks": [
+                                {
+                                    "name": "simulation_compile_source_set",
+                                    "status": "fail",
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "materialization_failure_projection": {
+                "unscoped_blockers": [
+                    "simulation.source_replacements generated_role compute-slot adapter module ABI mismatch"
+                ]
+            },
+            "repair_source_bundle": {
+                "editable_contract": {
+                    "allowed_exact_files": [manifest],
+                    "current_board_manifest_file": {
+                        "path": manifest,
+                        "sha256": "a" * 64,
+                        "bytes": 42,
+                    },
+                    "board_manifest_rewrite_authority": {
+                        "target_file": target,
+                        "expanded_source_authority": {"large": "omitted"},
+                    },
+                },
+                "documents": [],
+            },
+        }
+
+        compact = stage_llm.compact_board_preflight_repair_package(package)
+        editable = compact["repair_source_bundle"]["editable_contract"]
+        self.assertEqual(
+            editable["board_manifest_rewrite_authority"]["target_file"],
+            target,
+        )
+        inputs = {
+            "verification_capability_repair_package": {
+                **compact,
+                "generation_phase_contract": {
+                    "status": "repair_deterministic_preflight"
+                },
+                "current_board_preflight_feedback": {"status": "ready"},
+            }
+        }
+        errors = stage_llm.exact_board_compact_request_errors(inputs)
+        self.assertNotIn(
+            "deterministic-preflight repair target differs from the authorized binding manifest",
+            errors,
+        )
+
+    def test_compact_retry_restores_manifest_target_only_from_same_authority(self) -> None:
+        workspace = Path(__file__).resolve().parents[1]
+        manifest = "accagent/test-fixtures/dut_weight_binding_manifest.json"
+        target = {"path": manifest, "sha256": "b" * 64, "bytes": 51}
+        original_package = {
+            "generation_phase_contract": {
+                "status": "repair_deterministic_preflight"
+            },
+            "exact_board_integration_repair_context": {
+                "required_binding_manifest": str(workspace / manifest)
+            },
+            "repair_source_bundle": {
+                "editable_contract": {
+                    "allowed_exact_files": [manifest],
+                    "current_board_manifest_file": copy.deepcopy(target),
+                    "board_manifest_rewrite_authority": {
+                        "target_file": {
+                            "$ref": (
+                                "#/verification_capability_repair_package/"
+                                "repair_source_bundle/editable_contract/"
+                                "current_board_manifest_file"
+                            )
+                        }
+                    },
+                }
+            },
+        }
+        compact_package = json.loads(json.dumps(original_package))
+        compact_package["repair_source_bundle"]["editable_contract"][
+            "board_manifest_rewrite_authority"
+        ] = {
+            "target_file": {
+                "$ref": (
+                    "#/verification_capability_repair_package/"
+                    "repair_source_bundle/editable_contract/"
+                    "current_board_manifest_file"
+                )
+            }
+        }
+        compact_package["repair_source_bundle"]["editable_contract"][
+            "current_board_manifest_file"
+        ] = copy.deepcopy(target)
+        compact_package["current_board_preflight_feedback"] = {"status": "ready"}
+        compact_inputs = {
+            "verification_capability_repair_package": compact_package
+        }
+        original_inputs = {
+            "verification_capability_repair_package": original_package
+        }
+
+        restored = stage_llm.restore_exact_board_manifest_target(
+            compact_inputs, original_inputs
+        )
+
+        self.assertEqual(
+            restored["verification_capability_repair_package"][
+                "repair_source_bundle"
+            ]["editable_contract"]["board_manifest_rewrite_authority"][
+                "target_file"
+            ],
+            target,
+        )
+        compact_package["repair_source_bundle"]["editable_contract"][
+            "board_manifest_rewrite_authority"
+        ] = {}
+        compact_package["repair_source_bundle"]["editable_contract"][
+            "current_board_manifest_file"
+        ]["sha256"] = "c" * 64
+        mismatched = stage_llm.restore_exact_board_manifest_target(
+            {"verification_capability_repair_package": compact_package},
+            original_inputs,
+        )
+        self.assertNotIn(
+            "target_file",
+            mismatched["verification_capability_repair_package"][
+                "repair_source_bundle"
+            ]["editable_contract"]["board_manifest_rewrite_authority"],
+        )
+        compact_package["repair_source_bundle"]["editable_contract"][
+            "current_board_manifest_file"
+        ] = copy.deepcopy(target)
+        compact_package["repair_source_bundle"]["editable_contract"][
+            "allowed_exact_files"
+        ] = ["accagent/test-fixtures/other.json"]
+        denied = stage_llm.restore_exact_board_manifest_target(
+            {"verification_capability_repair_package": compact_package},
+            original_inputs,
+        )
+        self.assertNotIn(
+            "target_file",
+            denied["verification_capability_repair_package"][
+                "repair_source_bundle"
+            ]["editable_contract"]["board_manifest_rewrite_authority"],
+        )
+
     def test_post_vcs_board_compaction_keeps_only_current_repair_inputs(self) -> None:
         testbench = (
             "module dynamic_board_tb;\n"
@@ -5419,6 +6748,163 @@ class LlmRetryPathTests(unittest.TestCase):
         self.assertNotIn("compact_retry_request_path", record)
         self.assertIn("KEEP_CURRENT_CAUSAL_CONTEXT", call.call_args.args[3])
 
+    def test_manifest_role_abi_preflight_compaction_keeps_authority_and_drops_rtl_bodies(self) -> None:
+        blocker = (
+            "board_preflight: simulation.source_replacements[0] is not a valid "
+            "compute-slot adapter replacement; generated_role='testbench'; "
+            "the replacement does not preserve the compute-slot module ABI"
+        )
+        source_hash = "a" * 64
+        package = {
+            "generation_phase_contract": {"status": "repair_deterministic_preflight"},
+            "current_board_preflight_feedback": {
+                "preflight": {
+                    "value": {
+                        "exact_board_preflight": {
+                            "checks": [
+                                {
+                                    "name": "simulation_compile_source_set",
+                                    "status": "fail",
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "materialization_failure_projection": {
+                "unscoped_blockers": [blocker]
+            },
+            "exact_board_integration_repair_context": {
+                "required_binding_manifest": "/run/generated/memory/binding.json",
+                "immutable_architecture_mechanisms": {"weights_in_ddr": True},
+                "adaptive_design_inputs": {
+                    "exact_board_source_identity": {
+                        "value": {"compute_slot_abi": {"required_ports": [{"name": "clock"}]}}
+                    },
+                    "debug_observability_authority": {"value": "x" * 20_000},
+                    "vivado_vcs_compile_authority": {"value": "x" * 20_000},
+                    "single_layer_promotion_certificate": {
+                        "path": "/run/certificate.json",
+                        "sha256": source_hash,
+                        "value": {
+                            "artifact_id": "single-layer",
+                            "status": "pass",
+                            "evidence_contract_fingerprint": source_hash,
+                            "evidence_binding": {"large": "x" * 20_000},
+                        },
+                    },
+                    "kernel_binding_design_inputs": {
+                        "current_generator_sources": [
+                            {
+                                "path": "/run/GeneratedTop.scala",
+                                "sha256": source_hash,
+                                "content": "source body" * 20_000,
+                                "declared_modules": ["GeneratedTop"],
+                            }
+                        ],
+                        "certified_top_sources": [
+                            {
+                                "path": "/run/Kernel.sv",
+                                "sha256": source_hash,
+                                "content": "generated RTL" * 20_000,
+                                "interface_contract": {"module": "Kernel"},
+                            }
+                        ],
+                    },
+                },
+            },
+            "current_repair_agent_disposition": {
+                "executable_actions": [{"id": "regenerate-everything"}]
+            },
+            "repair_source_bundle": {
+                "editable_contract": {
+                    "read_only_template_sources": ["/repo/templates/Attention.scala"]
+                },
+                "documents": [
+                    {
+                        "path": "/repo/templates/Attention.scala",
+                        "bytes": 20_000,
+                        "sha256": source_hash,
+                        "content": "shared template" * 2_000,
+                    },
+                    {
+                        "path": "/run/generated/memory/binding.json",
+                        "sha256": "b" * 64,
+                        "json_content": {"board_simulation_preflight_plan": {}},
+                    },
+                ],
+            },
+        }
+
+        compact = stage_llm.compact_board_preflight_repair_package(package)
+        context = compact["exact_board_integration_repair_context"]
+        adaptive = context["adaptive_design_inputs"]
+        kernel = adaptive["kernel_binding_design_inputs"]
+
+        self.assertEqual(
+            context["manifest_only_repair_contract"]["edit_target"],
+            "/run/generated/memory/binding.json",
+        )
+        self.assertEqual(
+            adaptive["exact_board_source_identity"]["value"]["compute_slot_abi"]["required_ports"],
+            [{"name": "clock"}],
+        )
+        self.assertEqual(adaptive["single_layer_promotion_certificate"]["sha256"], source_hash)
+        self.assertNotIn("evidence_binding", adaptive["single_layer_promotion_certificate"]["value"])
+        self.assertNotIn("content", kernel["current_generator_sources"][0])
+        self.assertEqual(kernel["current_generator_sources"][0]["sha256"], source_hash)
+        self.assertEqual(
+            kernel["certified_top_sources"][0]["interface_contract"],
+            {"module": "Kernel"},
+        )
+        self.assertNotIn("debug_observability_authority", adaptive)
+        self.assertNotIn("vivado_vcs_compile_authority", adaptive)
+        self.assertNotIn("executable_actions", compact["current_repair_agent_disposition"])
+        self.assertIn(blocker, compact["materialization_failure_projection"]["unscoped_blockers"])
+        bundle = compact["repair_source_bundle"]
+        self.assertEqual(
+            [row["path"] for row in bundle["documents"]],
+            ["/run/generated/memory/binding.json"],
+        )
+        self.assertEqual(
+            bundle["manifest_repair_omitted_read_only_template_sources"][0]["sha256"],
+            source_hash,
+        )
+
+    def test_non_manifest_preflight_failure_keeps_full_repair_context(self) -> None:
+        source = {"content": "generated source body", "sha256": "a" * 64}
+        package = {
+            "generation_phase_contract": {"status": "repair_deterministic_preflight"},
+            "current_board_preflight_feedback": {
+                "preflight": {
+                    "value": {
+                        "exact_board_preflight": {
+                            "checks": [{"name": "generated_rtl_evidence", "status": "fail"}]
+                        }
+                    }
+                }
+            },
+            "materialization_failure_projection": {
+                "unscoped_blockers": ["generated RTL hash does not match"]
+            },
+            "exact_board_integration_repair_context": {
+                "adaptive_design_inputs": {
+                    "kernel_binding_design_inputs": {
+                        "current_generator_sources": [source]
+                    }
+                }
+            },
+        }
+
+        compact = stage_llm.compact_board_preflight_repair_package(package)
+
+        self.assertEqual(
+            compact["exact_board_integration_repair_context"]["adaptive_design_inputs"][
+                "kernel_binding_design_inputs"
+            ]["current_generator_sources"][0]["content"],
+            source["content"],
+        )
+
     def test_rejected_exact_board_transaction_never_reuses_agent_cache(self) -> None:
         custom_schema = {
             "type": "object",
@@ -5568,6 +7054,51 @@ class LlmRetryPathTests(unittest.TestCase):
                 {"verification_capability_repair_package": compact_again}
             ),
             [],
+        )
+
+    def test_post_vcs_board_repair_accepts_hash_bound_source_projection(self) -> None:
+        source_path = "/run/generated/board_integration/app_shell.sv"
+        source_sha = hashlib.sha256(b"complete board source on disk\n").hexdigest()
+        package = {
+            "generation_phase_contract": {
+                "status": "repair_existing_board_sources",
+                "current_vcs_feedback_ready": True,
+            },
+            "current_board_vcs_feedback": {"status": "ready"},
+            "repair_source_bundle": {
+                "editable_contract": {
+                    "current_board_source_files": [
+                        {"path": source_path, "sha256": source_sha}
+                    ]
+                },
+                "documents": [
+                    {
+                        "path": source_path,
+                        "sha256": source_sha,
+                        "content_projection": {
+                            "source_sha256": source_sha,
+                            "full_hash_bound_source_remains_on_disk": True,
+                            "editable": False,
+                            "interface_contract": {"module": "app_shell"},
+                        },
+                    }
+                ],
+            },
+        }
+
+        compact_inputs = {
+            "verification_capability_repair_package": package
+        }
+        self.assertEqual(
+            stage_llm.exact_board_compact_request_errors(compact_inputs), []
+        )
+
+        package["repair_source_bundle"]["documents"][0]["content_projection"][
+            "source_sha256"
+        ] = "0" * 64
+        self.assertIn(
+            "post-VCS projected board source hash differs: " + source_path,
+            stage_llm.exact_board_compact_request_errors(compact_inputs),
         )
 
     def test_semantic_rtl_compaction_does_not_require_board_manifest(self) -> None:
@@ -5997,6 +7528,135 @@ class LlmRetryPathTests(unittest.TestCase):
             bound,
         )
 
+    def test_board_identity_prompt_keeps_port_direction_rows_explicit(self) -> None:
+        required_ports = [
+            {"name": "status", "direction": "output", "port_id": "pin:status", "width_bits": 1},
+            {"name": "cfg_done", "direction": "input", "port_id": "pin:cfg_done", "width_bits": 1},
+            {"name": "cfg_data", "direction": "input", "port_id": "pin:cfg_data", "width_bits": 704},
+        ]
+        port_bindings = [
+            {
+                "accelerator_port": row["name"],
+                "direction": row["direction"],
+                "port_id": row["port_id"],
+                "width_bits": row["width_bits"],
+            }
+            for row in required_ports
+        ]
+        classifications = [
+            {"name": row["name"], "direction": row["direction"], "classification": "control"}
+            for row in required_ports
+        ]
+        nested_classifications = [
+            {
+                **row,
+                "classification": "physical_pin",
+                "semantic_role": "Nested compute-slot ABI copy",
+            }
+            for row in classifications
+        ]
+        identity_artifact = {
+            "path": "/run/identity.json",
+            "sha256": "f" * 64,
+            "value": {
+                "schema_version": "spatialaccagent.board_source_identity.v1",
+                "status": "pass",
+                "timing_contract": {},
+                "axi_interfaces": [],
+                "compute_slot_abi": {
+                    "required_ports": required_ports,
+                    "port_bindings": port_bindings,
+                    "control_abi": {"port_classifications": nested_classifications},
+                },
+                "control_abi": {"port_classifications": classifications},
+            },
+        }
+        compact = stage_llm.compact_board_source_identity(
+            identity_artifact
+        )
+        identity = compact["value"]
+
+        self.assertEqual(identity["compute_slot_abi"]["required_ports"], required_ports)
+        self.assertEqual(identity["compute_slot_abi"]["port_bindings"], port_bindings)
+        self.assertEqual(
+            identity["compute_slot_abi"]["control_abi"]["port_classifications"],
+            nested_classifications,
+        )
+        self.assertEqual(identity["control_abi"]["port_classifications"], classifications)
+        self.assertTrue(compact["compaction_policy"]["abi_port_and_control_rows_remain_explicit"])
+
+        context = {
+            "status": "ready",
+            "adaptive_design_inputs": {"exact_board_source_identity": identity_artifact},
+        }
+        package = {
+            "generation_phase_contract": {"status": "generation_required_before_probe"},
+            "exact_board_integration_repair_context": context,
+        }
+        compact_package = stage_llm.compact_verification_capability_repair_package(package)
+        compact_inputs = stage_llm._compact_exact_board_generation_kernel_inputs(
+            {"verification_capability_repair_package": compact_package}
+        )
+        compact_inputs = stage_llm._compact_exact_board_context_window_retry_inputs(
+            compact_inputs
+        )
+        final_identity = compact_inputs["verification_capability_repair_package"][
+            "exact_board_integration_repair_context"
+        ]["adaptive_design_inputs"]["exact_board_source_identity"]["value"]
+        self.assertEqual(final_identity["compute_slot_abi"]["required_ports"], required_ports)
+        self.assertEqual(final_identity["compute_slot_abi"]["port_bindings"], port_bindings)
+        self.assertEqual(
+            final_identity["compute_slot_abi"]["control_abi"]["port_classifications"],
+            nested_classifications,
+        )
+        self.assertEqual(final_identity["control_abi"]["port_classifications"], classifications)
+
+        precompressed = copy.deepcopy(identity_artifact)
+        precompressed_value = precompressed["value"]
+        precompressed_slot = precompressed_value["compute_slot_abi"]
+        precompressed_slot["required_ports"] = stage_llm._lossless_columnar_rows(
+            required_ports
+        )
+        precompressed_slot["port_bindings"] = {
+            "$ref": (
+                "#/verification_capability_repair_package/exact_board_integration_repair_context/"
+                "adaptive_design_inputs/exact_board_source_identity/value/compute_slot_abi/required_ports"
+            ),
+            "field_aliases": {"accelerator_port": "name"},
+            "selected_fields": [
+                "accelerator_port",
+                "direction",
+                "port_id",
+                "width_bits",
+            ],
+        }
+        precompressed_slot["control_abi"]["port_classifications"] = (
+            stage_llm._lossless_columnar_rows(nested_classifications)
+        )
+        precompressed_value["control_abi"]["port_classifications"] = (
+            stage_llm._lossless_columnar_rows(classifications)
+        )
+        precompressed_result = stage_llm.compact_board_source_identity(precompressed)
+        precompressed_identity = precompressed_result["value"]
+        self.assertEqual(
+            precompressed_identity["compute_slot_abi"]["required_ports"],
+            required_ports,
+        )
+        self.assertEqual(
+            precompressed_identity["compute_slot_abi"]["port_bindings"],
+            port_bindings,
+        )
+        self.assertEqual(
+            precompressed_identity["compute_slot_abi"]["control_abi"][
+                "port_classifications"
+            ],
+            nested_classifications,
+        )
+        self.assertEqual(
+            precompressed_identity["control_abi"]["port_classifications"],
+            classifications,
+        )
+
     def test_compact_retry_keeps_fixture_top_and_other_hdl_headers(self) -> None:
         top_source = "module dynamic_fixture_top(input logic clk); endmodule\n"
         child_source = (
@@ -6096,6 +7756,74 @@ class LlmRetryPathTests(unittest.TestCase):
 
         self.assertEqual(documents[0]["content"], wrapper_source)
         self.assertNotIn("content", documents[1])
+
+    def test_exact_duplicate_documents_use_hash_bound_refs(self) -> None:
+        manifest_path = "/run/generated/memory/dut_weight_binding_manifest.json"
+        manifest_hash = "a" * 64
+        manifest_content = json.dumps(
+            {"schema_version": "test.v1", "weights": [1, 2, 3]},
+            separators=(",", ":"),
+        )
+        document = {
+            "path": manifest_path,
+            "sha256": manifest_hash,
+            "content": manifest_content,
+            "content_preservation": "complete JSON content required",
+        }
+
+        compact = stage_llm.compact_verification_capability_repair_package(
+            {
+                "repair_source_bundle": {
+                    "documents": [dict(document), dict(document)]
+                }
+            }
+        )
+        documents = compact["repair_source_bundle"]["documents"]
+
+        self.assertEqual(len(documents), 2)
+        self.assertEqual(compact["repair_source_bundle"]["document_count"], 2)
+        self.assertEqual(documents[0]["path"], manifest_path)
+        self.assertEqual(documents[0]["sha256"], manifest_hash)
+        self.assertEqual(documents[1]["path"], manifest_path)
+        self.assertEqual(documents[1]["sha256"], manifest_hash)
+        self.assertEqual(
+            documents[1]["$ref"],
+            "#/verification_capability_repair_package/repair_source_bundle/documents/0",
+        )
+        self.assertTrue(
+            compact["repair_source_bundle"]["compaction_policy"][
+                "identical_document_content_uses_resolvable_json_pointer_aliases"
+            ]
+        )
+
+    def test_repeated_nested_prompt_subtrees_are_losslessly_referenced(self) -> None:
+        port_groups = [
+            {"direction": "input", "name": f"port_{index}", "width": 32}
+            for index in range(16)
+        ]
+        source = {
+            "first_contract": {"ordered_port_groups": port_groups},
+            "second_contract": {"ordered_port_groups": copy.deepcopy(port_groups)},
+        }
+
+        compact = stage_llm._intern_lossless_json_subtrees(source)
+        reference = compact["second_contract"]["ordered_port_groups"]
+
+        self.assertEqual(
+            reference,
+            {
+                "$ref": (
+                    "#/verification_capability_repair_package/"
+                    "first_contract/ordered_port_groups"
+                )
+            },
+        )
+        found, resolved = stage_llm._json_pointer_lookup(
+            {"verification_capability_repair_package": compact},
+            reference["$ref"],
+        )
+        self.assertTrue(found)
+        self.assertEqual(resolved, port_groups)
 
     def test_single_layer_compaction_keeps_complete_generation_authority(self) -> None:
         paths = {

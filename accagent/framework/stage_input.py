@@ -31,12 +31,16 @@ from accagent.framework.llm_io import (
     read_response_text,
     reroute_request,
     repair_prompt,
-    response_payload,
     responses_request_headers,
+    structured_output_payload,
     validate_schema,
 )
 from accagent.framework.model_config_extractor import ConfigError, normalize
 from accagent.framework.numeric_policy import canonical_dtype, resolve_numeric_policy
+from accagent.framework.verification_evidence_contract import (
+    COMPILE_ONLY_POLICY,
+    active_verification_policy,
+)
 from accagent.framework.stage_input_common import (
     DEFAULT_TEMPLATE_DIR,
     DEFAULT_BOARD_MATERIALS_DIR,
@@ -725,10 +729,12 @@ def stage0_llm_request(
     text_verbosity: str | None,
     max_output_tokens: int | None,
     stream: bool,
+    wire_api: str = "responses",
 ) -> urllib.request.Request:
-    """Build a Stage-0 request for one concrete Responses transport."""
+    """Build a Stage-0 structured request for the configured provider API."""
 
-    payload = response_payload(
+    payload = structured_output_payload(
+        wire_api,
         model,
         STAGE0_SYSTEM,
         prompt,
@@ -917,6 +923,7 @@ def llm_json(name: str, prompt: str, schema: dict[str, Any], candidate: dict[str
             text_verbosity=llm.text_verbosity,
             max_output_tokens=llm.max_output_tokens,
             stream=use_stream,
+            wire_api=llm.wire_api,
         )
 
     try:
@@ -1004,14 +1011,24 @@ def task_qor_targets(task_text: str) -> dict[str, Any]:
                 return float(match.group(1)) * unit_scale
         return None
 
-    clock_mhz = target_number(
-        [r"(?:achieved\s+)?clock(?:\s+frequency)?[^.;:]{0,80}?(?:at\s+least|>=|no\s+less\s+than)\s*(\d+(?:\.\d+)?)\s*mhz"]
-    )
-    if clock_mhz is None:
-        clock_mhz = target_number(
-            [r"(?:achieved\s+)?clock(?:\s+frequency)?[^.;:]{0,80}?(?:at\s+least|>=|no\s+less\s+than)\s*(\d+(?:\.\d+)?)\s*ghz"],
-            unit_scale=1000.0,
+    run_local_timing = bool(
+        re.search(
+            r"(?:existing[- ]design|run[- ]local)[^.;:]{0,160}(?:timing|critical[- ]path)"
+            r"|(?:timing|critical[- ]path)[^.;:]{0,160}(?:existing[- ]design|run[- ]local)",
+            text,
+            re.IGNORECASE,
         )
+    )
+    clock_mhz = None
+    if not run_local_timing:
+        clock_mhz = target_number(
+            [r"(?:achieved\s+)?clock(?:\s+frequency)?[^.;:]{0,80}?(?:at\s+least|>=|no\s+less\s+than)\s*(\d+(?:\.\d+)?)\s*mhz"]
+        )
+        if clock_mhz is None:
+            clock_mhz = target_number(
+                [r"(?:achieved\s+)?clock(?:\s+frequency)?[^.;:]{0,80}?(?:at\s+least|>=|no\s+less\s+than)\s*(\d+(?:\.\d+)?)\s*ghz"],
+                unit_scale=1000.0,
+            )
 
     performance = target_number(
         [
@@ -1076,6 +1093,64 @@ def current_task_qor_targets(run_dir: Path, fallback: dict[str, Any]) -> dict[st
         return task_qor_targets(task.read_text(encoding="utf-8"))
     except (OSError, ValueError, KeyError, TypeError):
         return fallback
+
+
+def task_timing_optimization_request(task_text: str) -> dict[str, Any]:
+    """Extract a run-local timing objective without feeding it into initial DSE."""
+
+    text = " ".join(str(task_text or "").split())
+    timing_target_envelope = re.search(
+        r"(\d+(?:\.\d+)?)\s*(mhz|ghz)\s+timing[- ]target(?:\s+envelope)?",
+        text,
+        re.IGNORECASE,
+    )
+    run_local_scope = re.search(
+        r"(?:existing[- ]design|run[- ]local)[^.;:]{0,160}(?:timing|critical[- ]path)"
+        r"|(?:timing|critical[- ]path)[^.;:]{0,160}(?:existing[- ]design|run[- ]local)",
+        text,
+        re.IGNORECASE,
+    ) or timing_target_envelope
+    if not run_local_scope:
+        return {}
+
+    targets = task_qor_targets(task_text)
+    clock_mhz = targets.get("clock_frequency_mhz")
+    if clock_mhz is None and timing_target_envelope:
+        clock_mhz = float(timing_target_envelope.group(1)) * (
+            1000.0 if timing_target_envelope.group(2).lower() == "ghz" else 1.0
+        )
+    if clock_mhz is None:
+        match = re.search(
+            r"(?:(?:fmax|maximum\s+(?:clock\s+)?frequency)|"
+            r"(?:achieved\s+)?clock(?:\s+frequency)?)[^.;:]{0,100}?"
+            r"(?:of\s+)?(?:at\s+least|>=|no\s+less\s+than)\s*"
+            r"(\d+(?:\.\d+)?)\s*(mhz|ghz)",
+            text,
+            re.IGNORECASE,
+        )
+        if match:
+            clock_mhz = float(match.group(1)) * (1000.0 if match.group(2).lower() == "ghz" else 1.0)
+    if not isinstance(clock_mhz, (int, float)) or clock_mhz <= 0:
+        return {}
+    return {
+        "scope": "existing_design_timing",
+        "clock_frequency_mhz": float(clock_mhz),
+        "source": "task_spec",
+    }
+
+
+def current_task_timing_optimization_request(run_dir: Path) -> dict[str, Any]:
+    """Read the current task's explicit post-design timing objective."""
+
+    prepared = run_dir / "input" / "prepared_inputs.json"
+    if not prepared.is_file():
+        return {}
+    try:
+        manifest = json.loads(prepared.read_text(encoding="utf-8"))
+        task = Path(manifest["source_specs"]["task_spec"])
+        return task_timing_optimization_request(task.read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
 
 
 def task_qor_hard_constraints(targets: dict[str, Any]) -> list[str]:
@@ -1342,6 +1417,7 @@ def prepare_model_config(task_text: str, source_path: Path, fallback: dict[str, 
 
 
 def prepare_task_card(task_text: str, model_config: dict[str, Any], out_dir: Path) -> dict[str, Any]:
+    verification_policy = active_verification_policy()
     fallback = {
         "schema_version": "spatialaccagent.task_card.v0",
         "target_model": model_config.get("model_type"),
@@ -1357,15 +1433,20 @@ def prepare_task_card(task_text: str, model_config: dict[str, Any], out_dir: Pat
         inputs={
             "human_task_spec": task_text,
             "hardware_model_facts": model_config,
+            "active_verification_policy": verification_policy,
         },
         output_schema=TASK_CARD_SCHEMA,
         rules=[
             "The task card is the handoff from the human request to the chip-design team.",
             "The top-level object is the task card itself.",
             "Do not wrap the task card in a task_card, result, or output field.",
-            "The run target is a complete accelerator through board execution, not a partial simulation-only run.",
-            "Required outputs should include generated accelerator code, tool evidence, bitstream evidence, and board-valid output evidence when applicable.",
-            "Acceptance policy should reflect no-deadlock and valid-output requirements unless the task explicitly asks for bit-exact numeric matching.",
+            "Preserve the complete accelerator architecture, target-model workload, numeric policy, exact board interfaces, and explicit timing/resource objectives from the task.",
+            "The active_verification_policy is the current run's authoritative verification gate; preserve it explicitly in acceptance_policy and do not reinterpret historical board-runnable descriptions as stricter acceptance gates.",
+            (
+                "For vcs_compile_only, require real current-source VCS compilation, elaboration and linking at the existing hierarchy levels. Runtime simulation, numerical comparison, no-deadlock/output evidence, bitstream generation and board execution are not prerequisites for this policy. Include implementation, bitstream or board outputs only when the current human task explicitly requests them; board-runnable describes the intended hardware and interfaces. Preserve required real synthesis and timing optimization."
+                if verification_policy == COMPILE_ONLY_POLICY
+                else "For full_semantic_simulation, preserve the real runtime, real-weight, no-deadlock and valid-output obligations of the existing verification policy. Require bit-exact matching, implementation, bitstream or board execution only when requested by the current task and applicable policy."
+            ),
         ],
     )
     return llm_json("task_card_agent", prompt, TASK_CARD_SCHEMA, fallback, out_dir)

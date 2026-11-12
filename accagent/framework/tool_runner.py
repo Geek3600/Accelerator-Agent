@@ -656,7 +656,8 @@ def run_tool(tool: dict[str, Any], repo_root: Path, out_dir: Path, enabled: bool
     command, argv, cwd, tool_env = tool_command(tool)
     execution = tool.get("execution") if isinstance(tool.get("execution"), dict) else {}
     try:
-        effective_timeout_sec = int(execution.get("timeout_sec") or timeout_sec)
+        configured_timeout = execution.get("timeout_sec")
+        effective_timeout_sec = int(timeout_sec if configured_timeout is None else configured_timeout)
     except (TypeError, ValueError):
         effective_timeout_sec = timeout_sec
     started = time.monotonic()

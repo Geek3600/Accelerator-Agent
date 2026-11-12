@@ -110,7 +110,10 @@ def module_path_from_weight_suffixes(suffixes: Any) -> str:
     return ".".join(common)
 
 
-def semantic_capture_plan(semantic_adapter: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def semantic_capture_plan(
+    semantic_adapter: dict[str, Any],
+    available_module_paths: set[str] | None = None,
+) -> dict[str, dict[str, Any]]:
     """Return adapter-bound model captures required by semantic stages."""
 
     semantic_stages = semantic_adapter.get("semantic_stages", {})
@@ -152,12 +155,15 @@ def semantic_capture_plan(semantic_adapter: dict[str, Any]) -> dict[str, dict[st
     for record, values in sorted(requirements.items()):
         module_path = aliases.get(record)
         if module_path is None:
-            candidates = inferred_paths.get(record, set())
-            if len(candidates) > 1:
-                raise ValueError(
-                    f"semantic record {record} has conflicting inferred capture module paths"
-                )
-            module_path = next(iter(candidates), record)
+            if available_module_paths is not None and record in available_module_paths:
+                module_path = record
+            else:
+                candidates = inferred_paths.get(record, set())
+                if len(candidates) > 1:
+                    raise ValueError(
+                        f"semantic record {record} has conflicting inferred capture module paths"
+                    )
+                module_path = next(iter(candidates), record)
         if not isinstance(module_path, str) or not module_path:
             raise ValueError(
                 f"reference capture module path is invalid for semantic record {record}"
@@ -230,7 +236,6 @@ def capture_real_model(
         or accelerator_weight_catalog.get("scope_coverage_complete") is not True
     ):
         raise ValueError("complete transformer-block weight catalog is not ready")
-    capture_plan = semantic_capture_plan(semantic_adapter)
     pipeline_ops = {
         str(stage.get("op") or "")
         for stage in pipeline_plan.get("stages", [])
@@ -251,7 +256,7 @@ def capture_real_model(
     model = AutoModelForCausalLM.from_pretrained(
         snapshot,
         local_files_only=True,
-        dtype=torch.float32,
+        torch_dtype=torch.float32,
         low_cpu_mem_usage=True,
     )
     model.eval()
@@ -264,6 +269,10 @@ def capture_real_model(
             f"accelerator={target_layer_count} model={len(layers)}"
         )
     first_layer = layers[0]
+    capture_plan = semantic_capture_plan(
+        semantic_adapter,
+        available_module_paths=set(dict(first_layer.named_modules())),
+    )
     hidden_size = int(model.config.hidden_size)
     generator = torch.Generator(device="cpu").manual_seed(seed)
     random_input = torch.randn((1, target_seq, hidden_size), generator=generator, dtype=torch.float32)

@@ -15,6 +15,10 @@ from accagent.framework.flow_action_handoff import (
     mark_stage6_flow_handoff_consumed,
     validate_stage6_flow_handoff,
 )
+from accagent.framework.experiment_profile import (
+    active_profile as active_accord_experiment_profile,
+    without_guided_repair_context,
+)
 from accagent.framework.board_backtrack_evidence import (
     board_to_lower_layer_contradiction_from_diagnosis,
 )
@@ -32,6 +36,7 @@ from accagent.framework.stage_entry import run_sacg_stage
 from accagent.framework.stage_llm import llm_enforce, run_stage_agent
 from accagent.framework.stage_team import run_design_team, team_summary
 from accagent.framework.trace_identity import targeted_trace_env
+from accagent.framework.verification_evidence_contract import COMPILE_ONLY_POLICY
 
 
 TOUCHED_CONSTRAINTS = [
@@ -58,6 +63,28 @@ HIERARCHICAL_DEBUG_LAYERS = {
 BOARD_LOWER_LAYER_RECHECK_LEDGER_SCHEMA_VERSION = (
     "spatialaccagent.board_lower_layer_recheck_ledger.v1"
 )
+
+
+def stage6_acceptance_prompt_rule() -> str:
+    policy = (
+        os.environ.get("SPATIALACC_VERIFICATION_POLICY", COMPILE_ONLY_POLICY).strip()
+        or COMPILE_ONLY_POLICY
+    )
+    if policy == "full_semantic_simulation":
+        return (
+            "The active Stage-6 acceptance policy is full_semantic_simulation. Compilation alone is not a pass: "
+            "run the exact current simulation gates and require their declared runtime evidence before advancing. "
+            "Do not downgrade the policy or treat compile-only certificates as runtime evidence. "
+        )
+    if policy == COMPILE_ONLY_POLICY:
+        return (
+            "Compilation success is the only Stage-6 acceptance criterion under the active compile-only policy; "
+            "do not infer functional simulation correctness or advance until the selected VCS compile gates pass. "
+        )
+    return (
+        f"Follow the active Stage-6 verification policy {policy!r} exactly; do not substitute compile-only "
+        "acceptance or infer evidence that the selected policy does not require. "
+    )
 
 
 def sha256_file(path: Path) -> str:
@@ -1881,6 +1908,11 @@ def flow_handoff_repair_actions(
         "boundary_trace_rerun",
         "contract_boundary_trace",
     }
+    control_retry_action_types = {
+        "framework_retry",
+        "current_stage_retry",
+        "retry_current_stage",
+    }
     preflight_tool_roles = {
         "artifact_hash_check",
         "sacg_validate",
@@ -1923,6 +1955,9 @@ def flow_handoff_repair_actions(
             "targeted_replay" in requested_roles
             and any("boundary_trace" in artifact for artifact in produced_artifacts)
         )
+        if action_type in control_retry_action_types:
+            preflight_actions.append(copy.deepcopy(action))
+            continue
         if action_type in preflight_action_types or is_sacg_preflight:
             preflight_actions.append(copy.deepcopy(action))
             continue
@@ -3372,6 +3407,7 @@ def build_repair_plan(
     run_dir: Path,
     flow_controller_handoff: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    experiment_profile = active_accord_experiment_profile()
     verification = read_json(artifact_path(state, "artifact.stage6.verification_result"))
     case_adapter = case_adapter_for_state(state, run_dir)
     verification = enrich_verification_with_tool_reports(verification, run_dir, case_adapter)
@@ -3403,6 +3439,11 @@ def build_repair_plan(
             verification,
             trace_paths=replay_reports,
         )["failure_localization"]
+    if experiment_profile == "B2":
+        debug_localization = None
+        verification = without_guided_repair_context(verification)
+        diagnosis = without_guided_repair_context(diagnosis)
+        flow_controller_handoff = None
     repair_loop = build_repair_loop_report(
         verification_result=verification,
         debug_localization=debug_localization or {},
@@ -3413,6 +3454,7 @@ def build_repair_plan(
         else {}
     )
     flow_handoff_actions: list[dict[str, Any]] | None = None
+    flow_handoff_control_only = False
     if flow_controller_handoff is not None:
         handoff_errors = validate_stage6_flow_handoff(flow_controller_handoff, run_dir)
         if handoff_errors:
@@ -3426,7 +3468,12 @@ def build_repair_plan(
             repair_loop,
         )
         if not flow_handoff_actions:
-            raise ValueError("validated Stage-6 flow-controller handoff has no routable actions")
+            # A same-stage framework retry may contain only SACG preflight
+            # actions. The top-level controller has already applied that
+            # retry by re-entering Stage 6, so derive repair actions from the
+            # current verification evidence instead of failing the stage.
+            flow_handoff_actions = None
+            flow_handoff_control_only = True
     prior_execution_feedback = prior_repair_execution_feedback(
         state,
         run_dir,
@@ -3521,11 +3568,19 @@ def build_repair_plan(
     if flow_controller_handoff is not None:
         diagnostics["flow_controller_handoff"] = copy.deepcopy(flow_controller_handoff)
         diagnostics["flow_controller_handoff_routing"] = {
-            "status": "routed",
+            "status": (
+                "control_only_replanned_from_live_evidence"
+                if flow_handoff_control_only
+                else "routed"
+            ),
             "repair_action_count": len(flow_handoff_actions or []),
-            "policy": "validated handoff actions take precedence over stale inferred repair actions",
+            "policy": (
+                "control-only retry was consumed; repair actions were rebuilt from current verification evidence"
+                if flow_handoff_control_only
+                else "validated handoff actions take precedence over stale inferred repair actions"
+            ),
         }
-    return {
+    plan = {
         "schema_version": "spatialaccagent.repair_plan.v0",
         "stage": "repair",
         "status": "ready" if not failures else "needs_repair",
@@ -3544,6 +3599,12 @@ def build_repair_plan(
         "repair_routing_priority": repair_routing_priority,
         "note": "Failing checkers are classified; not_run real tools are evidence gaps, not automatic repair failures.",
     }
+    if experiment_profile != "ACCORD":
+        plan["experiment_profile"] = {
+            "name": experiment_profile,
+            "disabled_mechanisms": ["CCTG-guided localization and repair scope"],
+        }
+    return plan
 
 
 def validation_llm_team_mode() -> str:
@@ -5036,7 +5097,12 @@ def plan_repair(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 else ""
             )
             repair_task = (
-                ('Make the bounded-repair decision directly from the current VCS compile failures and SACG/CCTG evidence. Compilation success is the only Stage-6 acceptance criterion under the active compile-only policy; do not infer functional simulation correctness or advance until the selected VCS compile gates pass. ')
+                (
+                    'Make the bounded-repair decision directly from the current VCS compile failures and SACG evidence. '
+                    if active_accord_experiment_profile() == "B2"
+                    else 'Make the bounded-repair decision directly from the current VCS compile failures and SACG/CCTG evidence. '
+                )
+                + stage6_acceptance_prompt_rule()
             )
             repair_task += (
                 "Respect the hierarchical repair loop: if lower layers already passed and the current layer failed, "

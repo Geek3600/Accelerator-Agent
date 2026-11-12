@@ -535,10 +535,23 @@ def validate_binding(op: str, bound: dict[str, dict[str, Any]], shape: dict[str,
     q_heads = value_of(bound, "num_q_heads", shape.get("num_q_heads"))
     kv_heads = value_of(bound, "num_kv_heads", shape.get("num_kv_heads"))
     head_dim = value_of(bound, "head_dim", shape.get("head_dim"))
+    projection_width = value_of(
+        bound,
+        "attention_projection_size",
+        shape.get("attention_projection_size"),
+    )
     lanes = value_of(bound, "lanes", None)
     has_attention_shape = "num_q_heads" in bound and "head_dim" in bound
-    if has_attention_shape and all(isinstance(value, int) for value in [hidden, q_heads, head_dim]) and hidden != q_heads * head_dim:
-        errors.append(f"{op}: hidden_size={hidden} does not equal num_q_heads*head_dim={q_heads * head_dim}")
+    if (
+        has_attention_shape
+        and isinstance(projection_width, int)
+        and all(isinstance(value, int) for value in [q_heads, head_dim])
+        and projection_width != q_heads * head_dim
+    ):
+        errors.append(
+            f"{op}: attention_projection_size={projection_width} "
+            f"does not equal num_q_heads*head_dim={q_heads * head_dim}"
+        )
     if "num_q_heads" in bound and "num_kv_heads" in bound and isinstance(q_heads, int) and isinstance(kv_heads, int) and kv_heads and q_heads % kv_heads != 0:
         errors.append(f"{op}: num_q_heads={q_heads} is not divisible by num_kv_heads={kv_heads}")
     if isinstance(lanes, int):

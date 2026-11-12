@@ -3,7 +3,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
-from accagent.framework.stage_pipeline import PipelinePlanningError, build_pipeline_plan, normalize_attention_contract, board_axi_contract
+from accagent.framework.stage_pipeline import (
+    PipelinePlanningError,
+    board_axi_contract,
+    build_pipeline_plan,
+    normalize_attention_contract,
+    symbolic_latency,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -182,6 +188,27 @@ def state_for(family: str, temp_dir: Path) -> dict:
 
 
 class SemanticPipelinePlanTest(TestCase):
+    def test_symbolic_latency_keeps_semantic_features_out_of_base_cost_model(self) -> None:
+        result = symbolic_latency(
+            {"latency_kind": "self_attention", "latency_features": ["multi_query", "sliding_window"]},
+            {"target_max_seq_len": 16, "hidden_size": 1152, "intermediate_size": 6912,
+             "head_dim": 256, "num_q_heads": 4},
+            {"bound_params": {"lanes": {"status": "bound", "value": 8}}},
+        )
+
+        self.assertEqual(result["cycles"], (16 * 1152 + 16 * 16 * 4 * 256) // 8)
+        self.assertEqual(result["formula_inputs"]["latency_features"], ["multi_query", "sliding_window"])
+        self.assertEqual(result["formula_inputs"]["unmodelled_latency_features"], ["multi_query", "sliding_window"])
+
+    def test_symbolic_latency_accepts_legacy_compound_kind(self) -> None:
+        result = symbolic_latency(
+            {"latency_kind": "self_attention_mqa_sliding"},
+            {"target_max_seq_len": 16, "hidden_size": 1152, "intermediate_size": 6912,
+             "head_dim": 256, "num_q_heads": 4},
+            {"bound_params": {"lanes": {"status": "bound", "value": 8}}},
+        )
+        self.assertEqual(result["formula_inputs"]["base_latency_kind"], "self_attention")
+
     def test_board_axi_accepts_explicitly_extracted_channel_prefix(self) -> None:
         with TemporaryDirectory() as temp:
             state = state_for("gpt2", Path(temp))

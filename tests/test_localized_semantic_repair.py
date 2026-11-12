@@ -14,21 +14,154 @@ from accagent.framework.stage_repair import (
     build_repair_actions,
     build_repair_workflow,
     reconcile_repair_workflow_with_llm,
+    stage6_acceptance_prompt_rule,
 )
+from accagent.framework.trace_identity import targeted_trace_env
 from accagent.framework.stage_repair_execute import authorize_localized_semantic_repair_bundle
 from accagent.framework.stage_repair_execute import (
     broad_semantic_phase_requested,
     capability_repair_source_bundle,
+    capability_scope_prompt_rules,
     compact_localized_semantic_report_documents,
     leaf_observation_followup,
     localized_template_instrumentation_already_collected,
     localized_template_instrumentation_allowed,
     localized_template_instrumentation_requested,
+    repair_source_bundle,
     semantic_harness_validation_output,
 )
 
 
 class LocalizedSemanticRepairTest(TestCase):
+    def test_stage6_repair_prompt_obeys_full_runtime_policy(self) -> None:
+        with patch.dict(os.environ, {"SPATIALACC_VERIFICATION_POLICY": "full_semantic_simulation"}):
+            acceptance_rule = stage6_acceptance_prompt_rule()
+            board_rules = capability_scope_prompt_rules("board_axi_ddr_closure")
+
+        self.assertIn("full_semantic_simulation", acceptance_rule)
+        self.assertIn("Compilation alone is not a pass", acceptance_rule)
+        self.assertIn("full_semantic_simulation", " ".join(board_rules))
+        self.assertIn("compile-only is not an acceptable result", " ".join(board_rules))
+        self.assertIn("DDR input, weight, and output activity", " ".join(board_rules))
+
+    def test_stage6_repair_prompt_keeps_compile_only_policy_explicit(self) -> None:
+        with patch.dict(os.environ, {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}):
+            acceptance_rule = stage6_acceptance_prompt_rule()
+            board_rules = capability_scope_prompt_rules("board_axi_ddr_closure")
+
+        self.assertIn("only Stage-6 acceptance criterion", acceptance_rule)
+        self.assertIn("active policy is vcs_compile_only", " ".join(board_rules))
+
+    def test_capability_bundle_preserves_explicit_bounded_template_repair(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            generated_root = (
+                run_dir
+                / "generated/chisel/src/main/scala/spatialaccagent/templates"
+            )
+            generated_root.mkdir(parents=True)
+            generated_norm = generated_root / "Norm.scala"
+            generated_norm.write_bytes(
+                (Path.cwd() / "accagent/framework/templates/operator_chisel/Norm.scala").read_bytes()
+            )
+            generated_common = generated_root / "Common.scala"
+            generated_common.write_bytes(
+                (Path.cwd() / "accagent/framework/templates/operator_chisel/Common.scala").read_bytes()
+            )
+            persistent_norm = (
+                Path.cwd() / "accagent/framework/templates/operator_chisel/Norm.scala"
+            ).resolve()
+            persistent_common = (
+                Path.cwd() / "accagent/framework/templates/operator_chisel/Common.scala"
+            ).resolve()
+            approved = [str(persistent_norm), str(generated_norm)]
+            source_bundle = {
+                "documents": [
+                    {"path": str(persistent_norm), "content": persistent_norm.read_text(encoding="utf-8")},
+                    {"path": str(persistent_common), "content": persistent_common.read_text(encoding="utf-8")},
+                    {"path": str(generated_norm), "content": generated_norm.read_text(encoding="utf-8")},
+                    {"path": str(generated_common), "content": generated_common.read_text(encoding="utf-8")},
+                ],
+                "editable_contract": {
+                    "bounded_template_repair_approved": True,
+                    "semantic_template_repair_approved": False,
+                    "approved_bounded_template_repair_exact_files": approved,
+                    "read_only_template_sources": [
+                        str(persistent_norm),
+                        str(persistent_common),
+                        str(generated_norm),
+                        str(generated_common),
+                    ],
+                },
+            }
+            with patch.dict(
+                os.environ,
+                {
+                    "SPATIALACC_APPROVE_BOUNDED_TEMPLATE_REPAIR": "1",
+                    "SPATIALACC_APPROVE_SEMANTIC_TEMPLATE_REPAIR": "0",
+                },
+            ):
+                bundle = capability_repair_source_bundle(
+                    source_bundle, run_dir, run_dir / "repair_execution"
+                )
+
+        editable = bundle["editable_contract"]
+        self.assertTrue(editable["bounded_template_repair_approved"])
+        self.assertFalse(editable["semantic_template_repair_approved"])
+        self.assertEqual(
+            {str(Path(path).resolve()) for path in editable["approved_bounded_template_repair_exact_files"]},
+            {str(Path(path).resolve()) for path in approved},
+        )
+        read_only = {str(Path(path).resolve()) for path in editable["read_only_template_sources"]}
+        self.assertNotIn(str(generated_norm.resolve()), read_only)
+        self.assertIn(str(generated_common.resolve()), read_only)
+
+    def test_bounded_template_repair_exact_file_environment_limits_authority(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir)
+            template_dir = run_dir / "template_library"
+            generated_dir = (
+                run_dir
+                / "generated/chisel/src/main/scala/spatialaccagent/templates"
+            )
+            template_dir.mkdir(parents=True)
+            generated_dir.mkdir(parents=True)
+            persistent_norm = template_dir / "Norm.scala"
+            persistent_common = template_dir / "Common.scala"
+            generated_norm = generated_dir / "Norm.scala"
+            generated_common = generated_dir / "Common.scala"
+            for path in (persistent_norm, persistent_common, generated_norm, generated_common):
+                path.write_text("class Template\n", encoding="utf-8")
+            library_path = run_dir / "template_library.json"
+            library_path.write_text(
+                json.dumps({
+                    "template_dir": str(template_dir),
+                    "source_files": ["Norm.scala", "Common.scala"],
+                }),
+                encoding="utf-8",
+            )
+            state = {
+                "artifacts": [{
+                    "id": "artifact.input.template_library",
+                    "path": str(library_path),
+                }]
+            }
+            allowlist = str(generated_norm)
+            with patch.dict(
+                os.environ,
+                {
+                    "SPATIALACC_APPROVE_BOUNDED_TEMPLATE_REPAIR": "1",
+                    "SPATIALACC_BOUNDED_TEMPLATE_REPAIR_EXACT_FILES": allowlist,
+                },
+            ):
+                bundle = repair_source_bundle(state, run_dir, run_dir / "repair_execution")
+
+        editable = bundle["editable_contract"]
+        self.assertEqual(
+            {str(Path(path).resolve()) for path in editable["approved_bounded_template_repair_exact_files"]},
+            {str(generated_norm.resolve())},
+        )
+
     def test_functional_observations_survive_localized_prompt_compaction(self) -> None:
         trace = {
             "stage_id": "stage_primary", "module": "ArbitraryHarness",
@@ -163,11 +296,17 @@ class LocalizedSemanticRepairTest(TestCase):
             })
             compact_documents = {document["path"]: document for document in compact["repair_source_bundle"]["documents"]}
             self.assertEqual(compact_documents[str(template)]["content"], documents[str(template)])
-            for path in [
-                f"{requirements_path}#operator_leaf_closure_requirements_projection",
-                f"{binding_path}#operator_leaf_closure_binding_projection",
-            ]:
-                self.assertEqual(compact_documents[path]["json_content"], json.loads(documents[path]))
+            compact_requirements = compact_documents[
+                f"{requirements_path}#operator_leaf_closure_requirements_projection"
+            ]["json_content"]
+            self.assertEqual(compact_requirements["stage_requirements"], [{"stage_id": stage_ids[0]}])
+            self.assertEqual(compact_requirements["agent_manifest_schema"], requirements["agent_manifest_schema"])
+            self.assertEqual(compact_requirements["stream_metadata_contract"], requirements["stream_metadata_contract"])
+            binding_projection_path = f"{binding_path}#operator_leaf_closure_binding_projection"
+            self.assertEqual(
+                compact_documents[binding_projection_path]["json_content"],
+                json.loads(documents[binding_projection_path]),
+            )
             harness_source = scala_root / "semantic_harness/SemanticHarnesses.scala"
             harness_source.parent.mkdir()
             harness_source.write_text(
@@ -1494,7 +1633,7 @@ class LocalizedSemanticRepairTest(TestCase):
                         "execution_input": {
                             "schema_version": "spatialaccagent.targeted_leaf_trace_execution_input.v3",
                             "stage_id": stage_id,
-                            "trace_env": trace_env,
+                            "trace_env": targeted_trace_env(trace_env),
                             "semantic_input_fingerprint_sha256": fingerprint,
                         },
                         "input": {"testbench_contract": {"sha256": "c" * 64}},

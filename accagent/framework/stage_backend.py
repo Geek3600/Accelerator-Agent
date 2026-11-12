@@ -700,9 +700,11 @@ def builtin_backend_tool(role: str, run_dir: Path, protocols: list[dict[str, Any
         fpga_part = str(first_nonblank(ip_closure.get("fpga_part"), ""))
         parameter_binding = read_json_if_exists(run_dir / "parameter_binding" / "parameter_binding.json")
         global_params = parameter_binding.get("global_params", {}) if isinstance(parameter_binding.get("global_params"), dict) else {}
+        timing_request = read_json_if_exists(run_dir / "backend_board" / "optimization_request.json")
         clock_target_mhz = first_nonblank(
             global_params.get("clock_target_mhz"),
             os.environ.get("SPATIALACC_CLOCK_TARGET_MHZ"),
+            timing_request.get("clock_frequency_mhz"),
         )
         if not clock_target_mhz:
             # A synthesis timing constraint is still needed when achieved
@@ -747,7 +749,9 @@ def builtin_backend_tool(role: str, run_dir: Path, protocols: list[dict[str, Any
             "kind": "app_shell_runtime_bitstream",
             "scope": "remote",
             "command": " ".join(argv),
-            "execution": {"argv": argv, "cwd": str(Path.cwd()), "env": protocol_env_for_vivado(protocols), "timeout_sec": None},
+            # Vivado can outlive the generic tool budget; interrupting its SSH
+            # client leaves a live remote run and causes duplicate synthesis.
+            "execution": {"argv": argv, "cwd": str(Path.cwd()), "env": protocol_env_for_vivado(protocols), "timeout_sec": 0},
             "script_exists": script.exists(),
             "required": True,
             "required_group": None,
@@ -1844,6 +1848,7 @@ def repair_generated_compute_slot_adapter(
             "Only the supplied source_snapshot.path may be edited; do not edit external sample-project sources, wrappers, contracts, or certificates.",
             "For an ABI direction or width mismatch, correct only the incompatible declaration and any illegal driver on that same port; do not replace the implementation or change other interfaces.",
             "For a real compiler diagnostic naming a nonexistent generated-top port, correct the instance's named-port bindings using the exact supplied generated_top_interface.module_header. This syntax/interface repair does not require proving runtime weight routing or generating simulation outputs.",
+            "Never add generated_top_interface ports to an instance whose module type differs from generated_top_interface.module. If the current source contains a certified kernel instance with another module type, preserve its ABI and connect the ports only at the correct generated-top instance or wrapper boundary.",
             "For missing generated-top weight routing, use generated_top_interface.module_header, weight_stream_contract, and exact_board_loader_source_context when its status is pass. Trace the supplied loader/control source into the adapter and connect only source-evidenced active stage targets to exact compatible generated-top ports; preserve word ranges, ordering, widths, and decoupled valid/ready behavior. Do not assume AXI read data is a weight stream unless the supplied source proves that route, and do not change the weight contract.",
             "Treat exact_board_loader_source_context sources as hash-verified, read-only evidence for the supplied board's real configuration, load, AXI, and control behavior. Do not copy model-specific constants into the adapter; if a complete route still cannot be proven, identify the exact missing signal or transfer fact rather than saying no source context was supplied.",
             "This is a design repair, not only an audit of the old implementation. A connection missing in source_snapshot is the defect to implement, not by itself a reason to remain blocked. Use the supplied ABI, generated-top ports, and weight contracts to create the missing bounded glue. Acceptance is successful real-tool compilation and synthesis; runtime weight loading, output capture, and numerical verification are not prerequisites.",
@@ -2001,20 +2006,52 @@ def apply_requested_qor_scope(plan: dict[str, Any], request: dict[str, Any]) -> 
         return
     requested_clock = _qor_number(request.get("clock_frequency_mhz"))
     measured_clock = _qor_number(plan.get("qor", {}).get("clock_frequency_mhz"))
-    if (requested_clock and requested_clock > 0 and measured_clock and measured_clock > 0
-            and optimization.get("decision") in {"pass", "llm_required"}):
+    if requested_clock and requested_clock > 0:
         optimization["targets"] = {**optimization.get("targets", {}), "clock_frequency_mhz": requested_clock}
+        stop_at_clock_target = request.get("stop_at_clock_target") is True
+        if stop_at_clock_target:
+            optimization["deferred_qor_misses"] = [
+                item for item in optimization.get("misses", [])
+                if item.get("metric") == "performance_tokens_per_second"
+            ]
         misses = [item for item in optimization.get("misses", [])
-                  if item.get("metric") != "clock_frequency_mhz"]
-        if measured_clock < requested_clock:
+                  if item.get("metric") != "clock_frequency_mhz"
+                  and not (stop_at_clock_target and item.get("metric") == "performance_tokens_per_second")]
+        if measured_clock is not None and measured_clock < requested_clock:
             misses.append({"metric": "clock_frequency_mhz", "ratio": requested_clock / measured_clock,
                            "comparison": ">"})
         optimization["misses"] = misses
-        optimization["decision"] = "llm_required" if misses else "pass"
-        optimization["status"] = "needs_optimization" if misses else "pass"
-        optimization["reason"] = "Current QoR checked against the explicit existing-design clock target"
+        if measured_clock is not None and measured_clock < requested_clock:
+            optimization.update(
+                decision="local_optimization",
+                status="needs_optimization",
+                reason="Explicit run-local clock target takes priority until the current critical path is repaired",
+                next_stage="stage6.verification",
+                preserve_existing_hardware=True,
+            )
+            return
+        if measured_clock is not None:
+            remaining_misses = optimization.get("misses", [])
+            stoppable_decisions = {"pass", "llm_required"}
+            if stop_at_clock_target:
+                stoppable_decisions.update({"local_optimization", "dse_backtrack"})
+            if not remaining_misses and optimization.get("decision") in stoppable_decisions:
+                optimization.update(decision="pass", status="pass", misses=[], next_stage=None)
+            elif optimization.get("decision") == "llm_required":
+                optimization.update(
+                    decision="local_optimization",
+                    status="needs_optimization",
+                    reason="Explicit run-local timing scope preserves the existing design while resolving the remaining QoR miss",
+                    next_stage="stage6.verification",
+                    preserve_existing_hardware=True,
+                )
+                return
+            optimization["reason"] = "Current QoR checked against the explicit existing-design clock target"
+            return
+        # A missing Fmax measurement still needs the normal backend tool path.
+        return
     # A satisfied goal stops optimization; missing measurements still need tools.
-    if optimization.get("decision") != "llm_required":
+    if optimization.get("decision") not in {"llm_required", "local_optimization"}:
         return
     optimization.update(
         decision="local_optimization",
@@ -2763,6 +2800,7 @@ def build_app_shell_integration_contract(
         shell.get("project_path"),
         shell.get("shell_project_path"),
         shell.get("reference_vivado_project"),
+        shell.get("sample_vivado_project"),
         board.get("vivado_project_path"),
         board.get("project_path"),
         sample_project.get("source_path"),
@@ -3895,11 +3933,17 @@ def compiled_cycle_followup(source_state: Path, run_dir: Path, out_dir: Path) ->
     qor.update(source_schedule_diagnosis=diagnosis, performance_tokens_per_second=None,
                performance_estimation_error=error, optimization_request=request,
                targets={"clock_frequency_mhz": request.get("clock_frequency_mhz")})
-    if context and diagnosis.get("blocker_kind") == "noncompleting_hardware_schedule":
+    if diagnosis.get("blocker_kind") == "noncompleting_hardware_schedule":
         repair = repair_timing_sources(run_dir, out_dir, qor, analysis_context=context)
     else:
-        repair = {"status": "cycle_analysis_pending", "blockers": [error],
-                  "retry_summary": "Retry current compiled-source cycle analysis; keep the existing design and Stage7 scope"}
+        qor["performance_estimation"] = {
+            "status": "unavailable",
+            "reason": "current-source cycle analysis is incomplete; backend timing/implementation may still proceed",
+            "cycles_are_estimated": True,
+            "rtl_cycles_measured": False,
+        }
+        write_json(out_dir / "qor" / "qor_metrics.json", qor)
+        return None
     return timing_repair_followup(source_state, out_dir, {
         "timing_source_repair": repair, "qor": qor,
         "qor_optimization": {"decision": "local_optimization", "targets": qor["targets"]},
@@ -3915,6 +3959,14 @@ def plan_backend_board(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     plan_path = out_dir / "backend_board_plan.json"
     state_path = out_dir / "sacg_state.json"
     report_path = out_dir / "backend_board_report.json"
+
+    optimization_request_path = out_dir / "optimization_request.json"
+    if not read_json_if_exists(optimization_request_path):
+        from accagent.framework.stage_input import current_task_timing_optimization_request
+
+        task_timing_request = current_task_timing_optimization_request(run_dir)
+        if task_timing_request:
+            write_json(optimization_request_path, task_timing_request)
 
     source_data = read_json(source_state)
     applications = list((out_dir / "timing_optimization").glob("*/application.json"))
@@ -3993,17 +4045,6 @@ def plan_backend_board(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     )
     request = read_json_if_exists(out_dir / "optimization_request.json")
     apply_requested_qor_scope(plan, request)
-    if (request.get("scope") == "existing_design_timing"
-            and plan.get("qor", {}).get("performance_estimation_error")
-            and plan.get("qor_optimization", {}).get("decision") != "local_optimization"):
-        # Missing analytical context or an API failure is a same-stage retry,
-        # not a reason to rediscover the board or regenerate the accelerator.
-        plan["timing_source_repair"] = {
-            "status": "cycle_analysis_pending",
-            "retry_summary": "Retry source-cycle calibration for the existing synthesis; preserve hardware and flow scope",
-            "blockers": [plan["qor"]["performance_estimation_error"]],
-        }
-        return timing_repair_followup(source_state, out_dir, plan, tool_results)
     backend_package = generate_backend_package(run_dir, source_data, plan)
     plan["backend_package"] = backend_package
     plan["validated_stage6_selection"] = validated_stage6_selection(
@@ -4021,7 +4062,9 @@ def plan_backend_board(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                     "Route the current synthesis QoR miss. Choose exactly one of "
                     "local_optimization or dse_backtrack. Do not estimate or invent QoR; "
                     "use only the supplied current Vivado reports and explicitly labeled cycle estimates. "
-                    "The throughput target, not the synthesis clock constraint, determines success."
+                    "Honor optimization_request as a separate run-local achieved-Fmax target when present; "
+                    "do not confuse it with the Vivado synthesis clock constraint. Throughput targets "
+                    "remain separate and must still be pursued after the requested timing target is met."
                 ),
                 inputs={
                     "backend_qor_decision_packet": backend_qor_decision_packet(plan),

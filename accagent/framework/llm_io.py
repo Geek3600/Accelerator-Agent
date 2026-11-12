@@ -8,6 +8,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import urllib.error
 import urllib.request
 import uuid
@@ -28,9 +29,11 @@ Do not include markdown, code fences, comments, or any text outside the JSON obj
 """
 
 
-def block(name: str, value: Any) -> str:
+def block(name: str, value: Any, *, compact_json: bool = False) -> str:
     if isinstance(value, str):
         text = value
+    elif compact_json:
+        text = json.dumps(value, separators=(",", ":"), sort_keys=True)
     else:
         text = json.dumps(value, indent=2, sort_keys=True)
     return f"<{name}>\n{text}\n</{name}>"
@@ -42,6 +45,7 @@ def build_prompt(
     inputs: dict[str, Any],
     output_schema: dict[str, Any],
     rules: list[str] | None = None,
+    compact_json_blocks: set[str] | tuple[str, ...] = (),
 ) -> str:
     parts = [
         block("agent", agent),
@@ -50,7 +54,7 @@ def build_prompt(
     if rules:
         parts.append(block("rules", "\n".join(f"{i + 1}. {rule}" for i, rule in enumerate(rules))))
     for name, value in inputs.items():
-        parts.append(block(name, value))
+        parts.append(block(name, value, compact_json=name in compact_json_blocks))
     parts.extend(
         [
             block("output_schema", output_schema),
@@ -111,6 +115,101 @@ def response_payload(
     return payload
 
 
+def chat_completion_payload(
+    model: str,
+    system: str,
+    prompt: str,
+    schema_name: str,
+    schema: dict[str, Any],
+    *,
+    temperature: float = 0.0,
+    strict: bool = True,
+    max_output_tokens: int | None = None,
+    stream: bool = False,
+) -> dict[str, Any]:
+    """Build the equivalent structured-output request for Chat Completions."""
+
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": safe_schema_name(schema_name),
+                "strict": strict,
+                "schema": schema,
+            },
+        },
+        "temperature": temperature,
+    }
+    if max_output_tokens is not None and max_output_tokens > 0:
+        payload["max_tokens"] = max_output_tokens
+    if stream:
+        payload["stream"] = True
+    return payload
+
+
+def structured_output_payload(
+    wire_api: str,
+    model: str,
+    system: str,
+    prompt: str,
+    schema_name: str,
+    schema: dict[str, Any],
+    *,
+    temperature: float = 0.0,
+    strict: bool = True,
+    store: bool = False,
+    reasoning_effort: str | None = None,
+    text_verbosity: str | None = None,
+    max_output_tokens: int | None = None,
+    stream: bool = False,
+) -> dict[str, Any]:
+    """Build a structured-output request for the selected provider protocol."""
+
+    normalized_api = wire_api.strip().lower().replace("_", "/")
+    if normalized_api in {"anthropic/messages", "messages"}:
+        payload: dict[str, Any] = {
+            "model": model,
+            "system": system,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_output_tokens if max_output_tokens and max_output_tokens > 0 else 8192,
+            "temperature": temperature,
+        }
+        if stream:
+            payload["stream"] = True
+        return payload
+    if normalized_api in {"chat/completions", "chat/completion"}:
+        return chat_completion_payload(
+            model,
+            system,
+            prompt,
+            schema_name,
+            schema,
+            temperature=temperature,
+            strict=strict,
+            max_output_tokens=max_output_tokens,
+            stream=stream,
+        )
+    return response_payload(
+        model,
+        system,
+        prompt,
+        schema_name,
+        schema,
+        temperature=temperature,
+        strict=strict,
+        store=store,
+        reasoning_effort=reasoning_effort,
+        text_verbosity=text_verbosity,
+        max_output_tokens=max_output_tokens,
+        stream=stream,
+    )
+
+
 def responses_request_headers(api_key: str, stream: bool) -> dict[str, str]:
     """Build headers accepted by the active Codex Responses route."""
 
@@ -121,6 +220,21 @@ def responses_request_headers(api_key: str, stream: bool) -> dict[str, str]:
         "Connection": "close",
         "User-Agent": RESPONSES_USER_AGENT,
     }
+
+
+def request_headers(wire_api: str, api_key: str, stream: bool) -> dict[str, str]:
+    """Build headers for the selected LLM wire protocol."""
+
+    normalized_api = wire_api.strip().lower().replace("_", "/")
+    if normalized_api in {"anthropic/messages", "messages"}:
+        return {
+            "Authorization": f"Bearer {api_key}",
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream" if stream else "application/json",
+            "Connection": "close",
+        }
+    return responses_request_headers(api_key, stream)
 
 
 def _message_content_texts(value: Any) -> list[str]:
@@ -169,10 +283,18 @@ class ResponseIncompleteError(ValueError):
         reason = details.get("reason") if isinstance(details, dict) else ""
         self.reason = str(reason or "unknown")
         self.response_id = str(response.get("id") or "")
+        usage = response.get("usage")
+        self.usage = usage if isinstance(usage, dict) else {}
+        diagnostic_usage = {name: self.usage[name] for name in ("input_tokens", "output_tokens")
+                            if type(self.usage.get(name)) is int}
+        output_details = self.usage.get("output_tokens_details")
+        if isinstance(output_details, dict) and type(output_details.get("reasoning_tokens")) is int:
+            diagnostic_usage["reasoning_tokens"] = output_details["reasoning_tokens"]
+        diagnostic = f" usage={json.dumps(diagnostic_usage, sort_keys=True)}" if diagnostic_usage else ""
         identity = f" response_id={self.response_id}" if self.response_id else ""
         super().__init__(
             "LLM response incomplete"
-            f" reason={self.reason}{identity}"
+            f" reason={self.reason}{identity}{diagnostic}"
         )
 
 
@@ -210,13 +332,21 @@ def response_text(body: dict[str, Any]) -> str:
         texts.extend(_message_content_texts(body.get("content", [])))
     if not texts:
         texts.extend(_choice_texts(body))
-    if not texts:
+    if not texts or not any(text.strip() for text in texts):
         raise ValueError("LLM returned no output text")
     return "\n".join(texts)
 
 
 def _event_text(event: dict[str, Any]) -> str:
     event_type = str(event.get("type") or "")
+    delta = event.get("delta")
+    if (
+        event_type == "content_block_delta"
+        and isinstance(delta, dict)
+        and delta.get("type") == "text_delta"
+        and isinstance(delta.get("text"), str)
+    ):
+        return delta["text"]
     if event_type == "response.output_text.delta" and isinstance(event.get("delta"), str):
         return event["delta"]
     if event_type == "response.output_text.done" and isinstance(event.get("text"), str):
@@ -257,7 +387,11 @@ def response_stream_text(res: Any) -> str:
         if len(event_summaries) < 12:
             keys = ",".join(sorted(str(key) for key in event.keys())[:8])
             event_summaries.append(f"{event_type or '<no-type>'}[{keys}]")
-        if event_type == "response.output_text.delta" and isinstance(event.get("delta"), str):
+        if event_type == "content_block_delta":
+            text = _event_text(event)
+            if text:
+                delta_texts.append(text)
+        elif event_type == "response.output_text.delta" and isinstance(event.get("delta"), str):
             delta_texts.append(event["delta"])
         elif event_type == "response.output_text.done" and isinstance(event.get("text"), str):
             done_text = event["text"]
@@ -273,13 +407,15 @@ def response_stream_text(res: Any) -> str:
             text = _event_text(event)
             if text:
                 generic_texts.append(text)
-    if delta_texts:
+    if completed_response is not None and str(completed_response.get("status") or "") == "incomplete":
+        raise ResponseIncompleteError(completed_response)
+    if delta_texts and any(text.strip() for text in delta_texts):
         return "".join(delta_texts)
-    if done_text:
+    if done_text.strip():
         return done_text
     if completed_response is not None:
         return response_text(completed_response)
-    if generic_texts:
+    if generic_texts and any(text.strip() for text in generic_texts):
         return "".join(generic_texts)
     summary = "; ".join(event_summaries) if event_summaries else "no data events"
     raise ValueError(f"streaming LLM response returned no output text; events={summary}")
@@ -414,7 +550,9 @@ def _curl_direct_http1_response_text(
     return response_text(_response_json(body.decode("utf-8"), "HTTP"))
 
 
-def read_response_text(req: urllib.request.Request, timeout_sec: int, stream: bool) -> str:
+def _read_response_text_once(
+    req: urllib.request.Request, timeout_sec: int, stream: bool
+) -> str:
     if resolved_llm_cfg().http_transport == "curl_direct_http1":
         return _curl_direct_http1_response_text(req, timeout_sec, stream)
     try:
@@ -432,6 +570,76 @@ def read_response_text(req: urllib.request.Request, timeout_sec: int, stream: bo
             message = f"{message}; response_body={detail[:4000]}"
         raise urllib.error.HTTPError(exc.url, exc.code, message, exc.headers, None) from exc
     return response_text(body)
+
+
+def _request_without_unsupported_temperature(
+    req: urllib.request.Request,
+) -> urllib.request.Request | None:
+    body = req.data
+    if isinstance(body, str):
+        body = body.encode("utf-8")
+    if not isinstance(body, bytes):
+        return None
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or "temperature" not in payload:
+        return None
+    payload.pop("temperature")
+    return urllib.request.Request(
+        req.full_url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=dict(req.header_items()),
+        method=req.get_method(),
+    )
+
+
+def _request_with_json_object_response_format(
+    req: urllib.request.Request,
+) -> urllib.request.Request | None:
+    body = req.data
+    if isinstance(body, str):
+        body = body.encode("utf-8")
+    if not isinstance(body, bytes):
+        return None
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    response_format = payload.get("response_format")
+    if not isinstance(response_format, dict) or response_format.get("type") != "json_schema":
+        return None
+    payload["response_format"] = {"type": "json_object"}
+    return urllib.request.Request(
+        req.full_url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=dict(req.header_items()),
+        method=req.get_method(),
+    )
+
+
+def read_response_text(req: urllib.request.Request, timeout_sec: int, stream: bool) -> str:
+    try:
+        return _read_response_text_once(req, timeout_sec, stream)
+    except urllib.error.HTTPError as exc:
+        error_text = str(exc).lower()
+        if "does not support non-default temperature" in error_text:
+            retry_req = _request_without_unsupported_temperature(req)
+            if retry_req is not None:
+                return _read_response_text_once(retry_req, timeout_sec, stream)
+        if exc.code == 400 and "response_format type is unavailable" in error_text:
+            retry_req = _request_with_json_object_response_format(req)
+            if retry_req is not None:
+                print(
+                    "[stage:llm] provider rejected json_schema; retrying once with json_object",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return _read_response_text_once(retry_req, timeout_sec, stream)
+        raise
 
 
 def reroute_request(
@@ -454,11 +662,20 @@ def reroute_request(
 def parse_json_object(text: str) -> dict[str, Any]:
     try:
         data = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-        if not match:
-            raise
-        data = json.loads(match.group(0))
+    except json.JSONDecodeError as original_error:
+        start = text.find("{")
+        if start >= 0:
+            try:
+                data, _ = json.JSONDecoder().raw_decode(text, start)
+            except json.JSONDecodeError:
+                data = None
+        else:
+            data = None
+        if data is None:
+            match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+            if not match:
+                raise original_error
+            data = json.loads(match.group(0))
     if not isinstance(data, dict):
         raise ValueError("LLM output is not a JSON object")
     return data

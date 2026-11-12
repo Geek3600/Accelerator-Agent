@@ -67,13 +67,33 @@ class ComputeSlotAdapterGeneratorTest(unittest.TestCase):
         self.assertEqual(adapter_generator._module_port_directions(source),
                          {"data": "input", "valid": "input", "id": "output"})
 
+    def test_board_abi_selects_contracted_module_after_helper_modules(self) -> None:
+        source = (
+            "module scale_config_store(input wire cfg_done); endmodule\n"
+            "module cnn_core(input wire [511:0] c0_ddr4_s_axi_rdata, "
+            "output wire c0_ddr4_s_axi_rready); endmodule\n"
+        )
+        self.assertEqual(
+            _module_port_names(source, "cnn_core"),
+            {"c0_ddr4_s_axi_rdata", "c0_ddr4_s_axi_rready"},
+        )
+        self.assertEqual(
+            adapter_generator._module_port_widths(source, "cnn_core"),
+            {"c0_ddr4_s_axi_rdata": 512, "c0_ddr4_s_axi_rready": 1},
+        )
+        self.assertEqual(
+            adapter_generator._module_port_directions(source, "cnn_core"),
+            {"c0_ddr4_s_axi_rdata": "input", "c0_ddr4_s_axi_rready": "output"},
+        )
+
     def test_direct_ddr_adapter_bypasses_legacy_harness_and_rejects_tieoff(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             contract, source, top, out, manifest = [root / x for x in
                 ("contract.json", "slot.sv", "top.sv", "out.sv", "manifest.json")]
             contract.write_text(json.dumps({"integration_target": {
-                "replacement_module_identity": "Slot"}}))
+                "replacement_module_identity": "Slot"}, "generated_core": {
+                "params": {"cache_refill_data_width_bits": 512}}}))
             top.write_text("module Core(\ninput io_ddrTileRequest_ready,\n"
                            "output io_ddrTileRequest_valid,\ninput io_ddrTileResponse_valid,\n"
                            "output io_ddrTileResponse_ready\n); endmodule")
@@ -82,7 +102,9 @@ class ComputeSlotAdapterGeneratorTest(unittest.TestCase):
                     ".io_ddrTileResponse_valid(response_valid));\nendmodule")
             source.write_text(good)
             with patch.object(adapter_generator, "_current_board_scheduler_source", return_value=source), \
-                patch.object(adapter_generator, "_validate_current_board_scheduler_abi", return_value={}):
+                patch.object(adapter_generator, "_validate_current_board_scheduler_abi", return_value={
+                    "axi_data_bits": 512,
+                }):
                 result = generate(contract, source, top, out, manifest)
                 self.assertEqual(result["adapter_mode"], "direct_contract_adapter")
                 self.assertEqual(out.read_text(), good)
@@ -94,6 +116,38 @@ class ComputeSlotAdapterGeneratorTest(unittest.TestCase):
                 source.write_text(wildcard)
                 self.assertEqual(generate(contract, source, top, out, manifest)["status"], "ready")
                 source.write_text(good.replace("(request_ready)", "(1'b0)"))
+                with self.assertRaisesRegex(ValueError, "disconnected or tied low"):
+                    generate(contract, source, top, out, manifest)
+
+    def test_generated_top_handshake_must_be_connected_on_that_instance(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            contract, source, top, out, manifest = [root / x for x in
+                ("contract.json", "slot.sv", "top.sv", "out.sv", "manifest.json")]
+            contract.write_text(json.dumps({"integration_target": {
+                "replacement_module_identity": "Slot"}, "generated_core": {
+                "params": {"cache_refill_data_width_bits": 512}}}))
+            top.write_text(
+                "module GeneratedAxiDdrTop(input clock, input reset, "
+                "input io_ddrTileRequest_ready, output io_ddrTileRequest_valid, "
+                "input io_ddrTileResponse_valid, output io_ddrTileResponse_ready); "
+                "endmodule\n"
+            )
+            source.write_text(
+                "module Slot(input clock, input reset);\n"
+                "wire request_ready, response_valid;\n"
+                "GeneratedAcceleratorTop u_kernel("
+                ".io_ddrTileRequest_ready(request_ready),"
+                ".io_ddrTileResponse_valid(response_valid));\n"
+                "GeneratedAxiDdrTop u_generated(\n"
+                "  .clock(clock), .reset(reset)\n"
+                ");\n"
+                "endmodule\n"
+            )
+            with patch.object(adapter_generator, "_current_board_scheduler_source", return_value=source), \
+                patch.object(adapter_generator, "_validate_current_board_scheduler_abi", return_value={
+                    "axi_data_bits": 512,
+                }):
                 with self.assertRaisesRegex(ValueError, "disconnected or tied low"):
                     generate(contract, source, top, out, manifest)
 

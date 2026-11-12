@@ -1,26 +1,558 @@
 {
-  "approval_required_for": [],
-  "completed_subtasks": 0,
+  "approval_required_for": [
+    "Any change to authoritative runtime address/control or board/deployment assumptions; ambiguous integration target choices require bounded approval rather than guessed names.",
+    "Any change to memory layout, data order, numeric policy, model dimensions, or major trusted-template behavior. No such change is requested by this review.",
+    "Any proposed architecture or pipeline change, including removal or relocation of normalization or residual boundaries.",
+    "Any proposed change to accelerator architecture, pipeline, memory layout, numeric policy, major templates, model/source contracts, or board/runtime assumptions; no such change is currently proposed.",
+    "Any proposed change to architecture, pipeline, memory layout, packing/data order, numeric policy, or major trusted-template structure."
+  ],
+  "completed_subtasks": 4,
   "decomposition_source": "llm",
   "errors": [],
   "event_log_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_gpt61_20261020/template_selection/team/event_log.jsonl",
-  "executable_actions": [],
+  "executable_actions": [
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "template_binding_static_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "evidence_and_trust_reconciliation",
+      "consumes": [
+        "artifact.stage2.template_selection.cross_layer_trace",
+        "artifact.stage2.template_selection.parameter_bindings",
+        "artifact.stage2.template_selection.checker_results",
+        "artifact.stage2.template_selection.template_source_checks",
+        "artifact.input.target_board_profile",
+        "artifact.input.field_evidence",
+        "artifact.input.task_card",
+        "artifact.input.numeric_policy",
+        "state_summary.sacg_memory_truth"
+      ],
+      "id": "board_trace.reconcile_candidate_for_gate",
+      "on_failure": "Keep rejected artifacts quarantined. Route any actual board/numeric contradiction to this specialist and any projection-width legality or incomplete-team issue to the responsible specialist through the aggregate gate. Localize the failed constraint; do not change source facts, waive checks, or promote downstream.",
+      "produces": [
+        "board_runtime_trace_review.json",
+        "candidate-specific static-check results",
+        "candidate-versus-rejected-artifact reconciliation record for template_selection.cross_layer_gate_engineer"
+      ],
+      "rationale": "Give template_selection.cross_layer_gate_engineer a checker-grounded review of this candidate while preserving the two active barriers on rejected artifacts. This action validates provenance and bindings; it does not change model dimensions or template architecture.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "sacg_static_check",
+        "template_binding_static_check",
+        "stage_artifact_trust_barrier_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "sacg_static_check",
+        "template_binding_static_check"
+      ],
+      "action_type": "downstream_obligation_handoff",
+      "consumes": [
+        "board_runtime_trace_review.json",
+        "artifact.stage2.template_selection.stage_gate_policy",
+        "artifact.stage2.template_selection.parameter_bindings",
+        "artifact.input.target_board_profile",
+        "artifact.input.field_evidence",
+        "artifact.input.task_card",
+        "artifact.input.sample_project_index",
+        "artifact.input.tool_protocols",
+        "action_grounding_registry.verification_execution_policy"
+      ],
+      "id": "board_trace.preserve_downstream_contract",
+      "on_failure": "Return the ledger to the aggregate gate for bounded correction. Preserve authoritative values and explicit not_run statuses. Do not turn missing later-stage artifacts into Stage-2 hardware failures; block only a concrete current binding/trace contradiction.",
+      "produces": [
+        "downstream_implementation_obligations.json",
+        "handoff to template_selection.cross_layer_gate_engineer identifying DSE, memory/runtime, verification, and backend owners"
+      ],
+      "rationale": "Record deferred implementation and deployment responsibilities without requiring ungenerated drivers, wrappers, or tool results at Stage 2. The aggregate tool can package the ledger using existing registered roles; later owners execute it at their stages.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "team_aggregate",
+        "sacg_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "model_config_check",
+        "template_coverage_check",
+        "template_binding_static_check",
+        "sacg_reference_check"
+      ],
+      "action_type": "evidence_handoff",
+      "consumes": [
+        "artifact.input.model_config",
+        "artifact.input.case_adapter",
+        "artifact.stage2.template_selection.operator_sequence",
+        "artifact.stage2.template_selection.selected_templates",
+        "artifact.stage2.template_selection.parameter_bindings",
+        "artifact.stage2.template_selection.attention_semantics",
+        "artifact.stage2.template_selection.template_source_checks",
+        "artifact.stage2.template_selection.checker_results"
+      ],
+      "id": "operator_attention.publish_current_candidate_review",
+      "on_failure": "Return a bounded contradiction with current source hash, affected interface, and violated constraint to the binding engineer. Do not change model dimensions, instantiate replacement RTL, or reuse rejected evidence.",
+      "produces": [
+        "operator_attention_coverage_review.json",
+        "attention_dimension_contract_review.json",
+        "handoff to template_selection.template_binding_engineer",
+        "handoff to template_selection.cross_layer_gate_engineer"
+      ],
+      "rationale": "Materialize the specialist review against the supplied current candidate and named constraints; distinguish valid projection dimensions from the rejected equality assumption without modifying templates or model facts.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "team_aggregate",
+        "model_config_check",
+        "template_coverage_check",
+        "template_binding_static_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "template_coverage_check",
+        "template_binding_static_check",
+        "stage_artifact_trust_barrier_check",
+        "sacg_memory_check"
+      ],
+      "action_type": "conditional_trust_reconciliation",
+      "consumes": [
+        "operator_attention_coverage_review.json",
+        "attention_dimension_contract_review.json",
+        "artifact.stage2.template_selection",
+        "state_summary.sacg_memory_truth",
+        "all required template-selection specialist outputs"
+      ],
+      "id": "operator_attention.reconcile_candidate_trust_at_aggregate_promotion",
+      "on_failure": "Keep both barriers active and downstream consumption blocked; return the exact failed checker or incomplete specialist handoff to the cross-layer gate engineer. Do not relabel rejected transitions as validated.",
+      "produces": [
+        "current-candidate aggregate acceptance record",
+        "candidate-identity-bound promotion or blocked disposition",
+        "explicit disposition of contamination_barrier.0001 and contamination_barrier.0002",
+        "updated SACG trust ledger"
+      ],
+      "rationale": "Address both active contamination barriers explicitly while separating acceptance of the refined candidate from downstream trust promotion, which belongs to the aggregate evidence gate.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "team_aggregate",
+        "stage_artifact_trust_barrier",
+        "sacg_memory_update"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "numeric_policy_check",
+        "parameter_binding_static_check",
+        "template_binding_static_check",
+        "artifact_hash_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "sacg_constraint_review",
+      "consumes": [
+        "artifact.stage2.template_selection",
+        "artifact.input.numeric_policy",
+        "artifact.input.model_config",
+        "artifact.input.design_space",
+        "artifact.input.template_metadata",
+        "artifact.input.template_library",
+        "sacg_memory_truth.active_contamination_barriers"
+      ],
+      "id": "template_selection.verify_candidate_binding_and_trust_closure",
+      "on_failure": "Report the exact failed binding, source/hash, domain, or trust-barrier finding. Do not promote or allow downstream consumption of a rejected-transition artifact; request a bounded candidate-identity or binding review rather than changing template internals or selecting an architecture.",
+      "produces": [
+        "template_parameter_provenance_review.json",
+        "trusted_source_closure_review.json",
+        "candidate_bound_domain_contract.json"
+      ],
+      "rationale": "Package the candidate's explicit bindings, hash-bound source closure, mandatory FPGA-IP evidence, and deferred physical-domain status for the downstream gate. Recheck candidate artifact identity against active SACG trust barriers; do not edit templates, numeric policy, or architecture.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "numeric_policy_check",
+        "parameter_binding_static_check",
+        "template_binding_static_check",
+        "artifact_hash_check",
+        "stage_artifact_trust_barrier"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "llm_io_quality_check",
+        "template_binding_static_check",
+        "sacg_static_check"
+      ],
+      "action_type": "evidence_completion",
+      "consumes": [
+        "artifact.stage2.template_selection",
+        "current candidate checker evidence and source hashes",
+        "subtask.role_assignment",
+        "team_context.collaboration_contract",
+        "all three required specialist review packages and completion records"
+      ],
+      "id": "stage2.complete_specialist_aggregation",
+      "on_failure": "Keep the unified disposition incomplete for missing, interrupted, fallback, or identity-mismatched reports. Request only the affected specialist's bounded completion. Route any concrete current contradiction to its responsible specialist and named constraint; do not generate RTL.",
+      "produces": [
+        "current-candidate-bound specialist completion manifest",
+        "integrated specialist findings for cross_layer_gate_engineer",
+        "template_selection_gate_decision.json"
+      ],
+      "rationale": "The auditor must integrate completed specialist findings rather than infer successful reviews from deterministic candidate checks. Handoff owner: template_selection stage controller; consumer: team_aggregate.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "team_aggregate",
+        "llm_io_quality_check"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "artifact_hash_check",
+        "template_binding_static_check",
+        "sacg_static_check",
+        "sacg_memory_check",
+        "stage_artifact_trust_barrier_check",
+        "human_boundary_check",
+        "llm_io_quality_check"
+      ],
+      "action_type": "framework_managed_trust_reconciliation",
+      "consumes": [
+        "template_selection_gate_decision.json",
+        "current-candidate-bound specialist completion manifest",
+        "artifact.stage2.template_selection",
+        "current candidate checker evidence and source hashes",
+        "state_summary.sacg_memory_truth",
+        "candidate_stage_artifact.stage_gate_policy"
+      ],
+      "id": "stage2.reconcile_candidate_trust",
+      "on_failure": "Do not promote or permit downstream consumption. Preserve contamination_barrier.0001 and contamination_barrier.0002, retain all listed rejected transitions as debug-only, and return the precise identity, checker, or authorization failure to the stage controller. Do not assert barrier closure.",
+      "produces": [
+        "stage2_trust_and_provenance_ledger.json",
+        "framework promotion or rejection record bound to current candidate identity",
+        "checker-grounded SACG memory disposition"
+      ],
+      "rationale": "After successful specialist aggregation, bind the accepted candidate separately from rejected transitions and enforce both active barriers. Handoff owner: template_selection stage controller; downstream consumer: next-stage controller only after accepted promotion.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "tool_roles": [
+        "artifact_hash_check",
+        "stage_artifact_trust_barrier",
+        "sacg_validate",
+        "sacg_memory_update"
+      ]
+    },
+    {
+      "acceptance_checkers": [
+        "verification_plan_static_check",
+        "hierarchical_verification_plan_check",
+        "human_boundary_check",
+        "stage_artifact_trust_barrier_check"
+      ],
+      "action_type": "downstream_contract_handoff",
+      "consumes": [
+        "template_selection_gate_decision.json",
+        "stage2_trust_and_provenance_ledger.json",
+        "candidate_stage_artifact.stage_gate_policy",
+        "action_grounding_registry.verification_execution_policy",
+        "artifact.input.sample_project_index",
+        "artifact.input.numeric_policy",
+        "artifact.input.human_agent_boundary"
+      ],
+      "id": "stage2.publish_downstream_obligations",
+      "on_failure": "Return the obligation ledger for bounded correction. Do not convert missing future execution evidence into a current hardware failure or consume unpromoted Stage-2 artifacts.",
+      "produces": [
+        "stage2_repair_and_downstream_obligations.json"
+      ],
+      "rationale": "Separate future implementation and verification work from accepted Stage-2 facts without requiring a second audit of unchanged current-source evidence. Consumer: next-stage controller after accepted promotion.",
+      "requires_approval": false,
+      "stage": "template_selection",
+      "targeted_replay_plan": {
+        "acceptance": "Successful real current-source VCS compilation, elaboration, and linking at each layer; do not run the simulation executable or require runtime weights, golden comparisons, traces, or numerical correctness.",
+        "execution_status": "not_run; downstream obligation only",
+        "failure_loop": "Tool compiler output -> CCTG/contract-guided localization -> bounded authorized repair -> rerun the failed layer. Do not skip a failed layer or proceed to backend synthesis before required certificates pass.",
+        "physical_selection": "Stage 4 selects concrete lanes and compute-array dimensions from the validated candidate domains.",
+        "scope_and_identity": "Preserve Transformer-block scope, numeric policy, data order, memory/runtime contracts, and exact board-wrapper identity; obtain approval for protected contract changes.",
+        "verification_order": [
+          "case_leaf_functional in existing VCS compile-only mode",
+          "case_single_layer_functional in existing VCS compile-only mode after leaf acceptance",
+          "case_vcs_functional_sim in existing VCS compile-only mode using exact currently discovered sample-project wrapper and simulation sources after connected-kernel acceptance"
+        ]
+      },
+      "tool_roles": [
+        "team_aggregate",
+        "verification_plan_static_check",
+        "human_boundary_check"
+      ]
+    }
+  ],
+  "execution_groups": [
+    0,
+    1
+  ],
   "llm_io_metrics": {
-    "executable_action_count": 0,
-    "max_duration_sec": 0.0,
-    "max_prompt_bytes": 0,
-    "result_count": 0,
+    "executable_action_count": 8,
+    "max_duration_sec": 53.125540468026884,
+    "max_prompt_bytes": 85498,
+    "result_count": 4,
     "subtasks_without_executable_actions": [],
-    "total_duration_sec": 0.0,
-    "total_prompt_bytes": 0
+    "total_duration_sec": 195.27965019200929,
+    "total_prompt_bytes": 340056
   },
-  "observations": [],
+  "observations": [
+    "All six supplied candidate checker results pass without errors or warnings, including template_parameter_binding_check and cross_layer_trace_check. The candidate has explicit trace entries for all five constraints in this specialist's scope. No concrete current board/runtime contradiction is visible.",
+    "Numeric bindings substantively distinguish 4-bit weights, 8-bit activations/input/output, and 32-bit accumulators with integer_mode=true. Model dimensions and normalization epsilon are explicitly sourced rather than supplied through constructor defaults. These bindings establish selection intent, not numerical execution evidence.",
+    "lanes, compute_array_rows, and compute_array_cols remain candidate_bound with null concrete values. The supplied stage policy permits this deferral to Stage 4; memory/numeric compatibility must remain attached to the domain rather than being replaced by an implicit default.",
+    "Memory, runtime, deployment, and input-consistency trace entries expose fact keys rather than authoritative values. In particular, control_base/ctrl_base, output_abs/output_address, and image_path/ddr_image_default cannot be independently compared from this slice. This limits independent review depth but does not contradict the supplied passing cross-layer checker.",
+    "The state_summary SACG truth reports two active contamination barriers and zero open retry/backtrack requests. Empty auxiliary memory objects do not demonstrate that those barriers were closed. Rejected transitions remain planning/debug evidence only.",
+    "The barriers record earlier failures involving hidden_size=1152 versus num_q_heads*head_dim=1024, and one incomplete specialist result. The current candidate reports passing binding checks with those dimensions. Unequal residual and projected attention widths alone do not establish that the current templates require equality; reconciliation belongs to the binding specialist and aggregate gate, without changing model facts.",
+    "No validated lower-layer certificates are supplied. Real VCS compilation, elaboration, and linking are not_run in this review and remain later bottom-up execution obligations, not template-selection prerequisites.",
+    "Transformer blocks are the complete DUT scope. Embedding/tokenization, final model norm, LM head/logits, and sampling must remain outside DUT implementation and weight-coverage boundaries.",
+    "The supplied operator_sequence contains exactly 11 covered operators: rms_norm_input, self_attention, rms_norm_post_attention, residual_add_1, rms_norm_pre_ffn, mlp_gate_proj, mlp_up_proj, activation_mul, mlp_down_proj, rms_norm_post_ffn, residual_add_2. Post-attention normalization precedes the first residual addition; post-FFN normalization precedes the second. No missing operator or required adapter is reported.",
+    "Coverage maps four normalization sites to Norm.scala, two residual additions to Residual.scala, attention to Attention.scala, gate/up/down projections to FFN.scala, and activation_mul to Elementwise.scala. The three FFN entries are semantic coverage within the trusted gated-MLP template, not a requirement to instantiate three complete FFNs.",
+    "DecoderBlock.scala supplies the selected block wrapper. Its current source/interface check passes at SHA-256 ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785. Wrapper and attention required constructor parameters are explicitly bound or validly candidate_bound, with no reported missing or illegal parameters.",
+    "The model-derived dimensional contract is residual width 1152; Q projection 1152 to 4*256=1024; K and V projections each 1152 to 1*256=256; grouped attention output width 1024; output projection 1024 to 1152 before residual addition. Thus hidden_size need not equal num_q_heads*head_dim. FFN gate/up widths are 1152 to 6912, activation/multiplication operates at 6912, and down projection restores 1152.",
+    "Current evidence binds QKV and RoPE instantiation to DecoderBlock.scala at SHA-256 ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785; GQA group size 4 to QKVProjection.scala at SHA-256 3ca84ba8f25c4f151d9bba237fbf61f1c2ca64b572dc02a1e570e8649a546bc1; and outputProjection = Module(new Linear(p.outLinear)) to Attention.scala at SHA-256 c3e8bfc0ab0c1c8d4421bb0fe03272f4ea420df3f0e710b6a3c4154843593a7e. The source/interface and parameter checks report pass. The visible source patterns establish component coverage, not an independently reproduced port-by-port derivation; no supplied current interface record contradicts the projection contract.",
+    "Softmax and causal-mask coverage are selected and hash-bound; causal=true and sequence length 16 are explicitly bound. KV-cache is designated model-derived not_required. Its absence is not missing required coverage, and this review does not expand scope to autoregressive cache behavior.",
+    "All six supplied deterministic checker_results pass, including attention expansion, source/interface, complete-directory mandatory FPGA-IP binding, and cross-layer trace checks. Numeric bindings preserve 8-bit activations, 4-bit weights, 32-bit accumulation, integer_mode=true, and normalization epsilon 1e-6. No current data-order, transfer-unit, memory, runtime, or deployment contradiction is supplied; trace presence is not board integration certification.",
+    "The populated state_summary.sacg_memory_truth records two active contamination barriers and zero open retries/backtracks. Those barriers protect against downstream consumption of rejected selections carrying the historical equality rejection and an incomplete team result. They remain active until authorized promotion; their historical reasons do not independently establish a contradiction in this passing current candidate.",
+    "Concrete lanes and compute-array dimensions remain Stage-4 DSE decisions, not Stage-2 omissions. Hardware VCS compilation, elaboration, and linking are not_run in the supplied evidence and are later bottom-up verification obligations, not prerequisites for this template-selection decision. No hardware pass is claimed.",
+    "The accelerator boundary remains Transformer blocks only. Embedding/tokenization, final model normalization, LM head/logits, and sampling are excluded from DUT implementation, weight coverage, and acceptance boundaries.",
+    "Candidate bindings explicitly record activation/input/output widths 8, weight width 4, accumulator width 32, integer mode true, norm epsilon 1e-6, and model dimensions including hidden_size 1152, intermediate_size 6912, 4 query heads, 1 KV head, head_dim 256, and sequence length 16. Numeric and parameter-binding checker results pass.",
+    "All selected template source/interface records report present source files, matching constructor metadata, no missing required parameters, and passing status. The mandatory_fpga_ip_binding_check passes; attention-semantic expansion and cross-layer trace checks also pass. No unsupported bindings or required adapters are reported.",
+    "The historical hidden_size versus num_q_heads*head_dim concern is visible as 1152 versus 1024. The current supplied candidate has passing binding and source/interface checks, and the supplied evidence does not establish that this equality is required by the current template contract. Do not reinstate the historical rejection without a concrete current-contract contradiction.",
+    "lanes, compute_array_rows, and compute_array_cols are marked candidate_bound with null values, not implicitly defaulted or concretely selected. The parameter checker passes; keep concrete selection with the later DSE authority.",
+    "SACG memory truth lists active barriers for rejected transitions .0001 and .0006, including prior dimensional and incomplete-read failures. Downstream must not consume artifacts from those rejected transitions as validated inputs. The supplied candidate has passing checker results, but its transition/hash identity relative to those rejected artifacts must be verified before downstream consumption.",
+    "The operator sequence covers Transformer-block work. No embedding/tokenization, final norm, LM head/logits, or sampling work is added to the DUT scope.",
+    "The substantive state_summary.sacg_memory_truth records exactly two active contamination barriers and zero open retry or backtrack requests. The empty duplicate memory objects supply no contrary disposition.",
+    "contamination_barrier.0001 covers the listed rejected dimensional-binding transitions; contamination_barrier.0002 additionally records transition.0006's interrupted specialist review. Neither barrier is cleared by this review, and neither historical reason independently proves a contradiction in the current candidate.",
+    "All six supplied candidate checker results pass without errors or warnings. Coverage is 11/11 operators with a block wrapper, no missing operators, no required adapters, and no unsupported bindings.",
+    "Selected-source/interface checks pass with source hashes. Attention coverage includes Q/K/V projection, RoPE, GQA mapping, softmax, output projection, and causal masking; KV cache is explicitly not required. The mandatory FPGA-IP checker passes under the supplied current-source gate policy.",
+    "The current bindings retain hidden_size=1152, num_q_heads=4, head_dim=256, and num_kv_heads=1. The historical equality assertion must not be reapplied merely because 1152 differs from 1024: current parameter checks pass, and no supplied current-source evidence contradicts them.",
+    "Numeric widths are independently bound to 4-bit weights, 8-bit activations, and 32-bit accumulation. Numeric, memory, runtime, deployment, and input-consistency traces are present and pass. No concrete current data-order, memory-layout, runtime, or board contradiction is supplied.",
+    "Candidate-bound lanes and compute-array dimensions are deferred to Stage 4 by policy, not missing Stage-2 bindings.",
+    "No current specialist review packages or successful completion records for all three required specialists are supplied. This is a team-review completeness gap, not a claim that detailed template or board facts are absent.",
+    "No hardware verification pass is claimed. There are no live lower-layer certificates; future verification acceptance is real current-source VCS compilation, elaboration, and linking only, without executing simulation."
+  ],
   "parallel_execution": true,
-  "proposed_actions": [],
-  "risks": [],
+  "proposed_actions": [
+    "Hand board_runtime_trace_review.json and downstream_implementation_obligations.json to template_selection.cross_layer_gate_engineer; preserve this specialist's scoped acceptance rather than interpreting it as board readiness.",
+    "At aggregate promotion, explicitly distinguish this checked candidate from rejected transitions and reconcile both active contamination barriers. Do not silently clear barriers or reuse rejected artifacts.",
+    "Carry authoritative memory-system, transfer-unit, packing/data-order, address/control, device, image-path, board, and shell facts into later contracts with field-evidence citations. Compare aliases by resolved value and meaning, not merely by key presence.",
+    "Retain Stage 4 as the sole concrete DSE selection authority. Check selected lane and array values against the validated domain, numeric widths, packing/alignment, and board-memory limits without changing layout.",
+    "Preserve later exact user-sample wrapper/source discovery, runtime ABI mapping, Vivado synthesis/implementation, timing/resource closure, and deployment obligations separately from current selection acceptance.",
+    "For future verification execution, require current-source real VCS compile/elaboration/link certificates in leaf, connected-kernel, then exact-board-wrapper order before backend synthesis. Do not run the simulation executable or add runtime loading, golden comparisons, traces, or numerical correctness as acceptance conditions.",
+    "Hand off the coverage review and dimensional-contract disposition to template_selection.template_binding_engineer and template_selection.cross_layer_gate_engineer; preserve the model dimensions without imposing an unsupported equality invariant.",
+    "After all required specialist outputs and aggregate checks pass, promote only the current candidate identity and explicitly reconcile both contamination barriers. Keep rejected transition artifacts quarantined.",
+    "Carry unchanged numeric policy, ordering, transfer units, memory/runtime constraints, and exact sample-project board interface identity into downstream planning. Later verification must use existing compile-only VCS tools in leaf, connected-kernel, then exact-board order without simulator execution or numerical acceptance prerequisites.",
+    "Hand the passing binding and source-closure evidence to template_selection.cross_layer_gate_engineer, while preserving the distinction between the current candidate and artifacts from rejected transitions.",
+    "Keep physical-domain values deferred; do not select lanes or compute-array dimensions in this review.",
+    "Have the template_selection stage controller collect all three required specialist packages without silently substituting this auditor's reasoning for their responsibilities.",
+    "After complete specialist integration, recommend ready with risks=[] if canonical checks pass and no concrete current contradiction remains.",
+    "Record both barriers and every listed rejected transition as debug-only provenance; authorize downstream consumption only through a separate framework-accepted current candidate identity.",
+    "Carry physical DSE selection, generated code, bottom-up compile-only VCS certificates, synthesis, and exact sample-project board integration as downstream obligations rather than Stage-2 blockers.",
+    "Keep the accelerator boundary at Transformer blocks only; exclude embedding/tokenization, final model norm, LM head/logits, and sampling."
+  ],
+  "risks": [
+    "Required specialist integration is incomplete under the collaboration contract and constraint.source.evidence: the stage controller must supply all three completed, non-fallback, current-candidate-bound reviews before this auditor can issue the unified ready recommendation."
+  ],
+  "role_assignments": [
+    {
+      "agent": "operator_attention_engineer",
+      "role": "model and attention integration engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "model_config_check",
+            "template_coverage_check",
+            "template_binding_static_check"
+          ],
+          "consumes": [
+            "Model config and case adapter",
+            "Current candidate operator and attention records",
+            "Current template source/interface evidence"
+          ],
+          "downstream_consumers": [
+            "template_selection.template_binding_engineer",
+            "template_selection.cross_layer_gate_engineer",
+            "template_coverage_check",
+            "template_binding_static_check"
+          ],
+          "produces": [
+            "Operator-attention coverage review",
+            "Attention dimensional contract and contradiction disposition"
+          ]
+        },
+        "decision_authority": [
+          "Recommend semantic acceptance or a bounded blocker.",
+          "Request authoritative source inspection only where a specific current evidence question remains.",
+          "Do not modify templates or model parameters."
+        ],
+        "mission": "Review this candidate's operator and attention contracts without reusing rejected selections as validated inputs.",
+        "out_of_scope": [
+          "Imposing hidden_size=num_q_heads*head_dim without a current template requirement",
+          "Replacing missing coverage with new RTL",
+          "Requiring later verification evidence for Stage 2"
+        ],
+        "primary_responsibilities": [
+          "Match each model operator and wrapper to trusted selected or embedded coverage.",
+          "Review Q/K/V, RoPE, GQA group size 4, softmax, output projection, causal mask, and the model-derived not-required KV-cache designation.",
+          "Explain the residual width 1152 and projected query width 1024 using current source/interface evidence rather than an assumed equality invariant.",
+          "Report concrete contradictions with source hash, interface, and violated constraint, or explicitly report none."
+        ]
+      },
+      "subtask_id": "template_selection.operator_attention_engineer"
+    },
+    {
+      "agent": "template_binding_engineer",
+      "role": "numeric and trusted-template binding engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "numeric_policy_check",
+            "parameter_binding_static_check",
+            "template_binding_static_check",
+            "artifact_hash_check"
+          ],
+          "consumes": [
+            "Numeric policy, template library/metadata, and design space",
+            "Candidate parameter/source records and six deterministic checker results",
+            "Semantic engineer dimensional findings when available"
+          ],
+          "downstream_consumers": [
+            "template_selection.cross_layer_gate_engineer",
+            "parameter_binding_static_check",
+            "template_binding_static_check"
+          ],
+          "produces": [
+            "Parameter provenance and source-closure review",
+            "Deferred physical-domain contract",
+            "Bounded binding contradiction list"
+          ]
+        },
+        "decision_authority": [
+          "Classify bindings as explicit, legally candidate-bound, or blocked.",
+          "Identify required approved repairs; do not execute template or policy edits."
+        ],
+        "mission": "Review the current candidate's explicit bindings using supplied passing checks and hash-bound source records.",
+        "out_of_scope": [
+          "HardFloat, SyncReadMem, or simulation-only substitutions",
+          "Concrete lanes/array selection",
+          "New generated RTL or synthesis requirements"
+        ],
+        "primary_responsibilities": [
+          "Verify activation/input/output widths 8, weight width 4, accumulator width 32, integer mode, norm epsilon, and model dimensions trace to authoritative inputs.",
+          "Check required parameters against constructor/interface records and reject implicit defaults where authoritative values exist.",
+          "Reuse complete-directory mandatory FPGA-IP check evidence; inspect further only for a concrete contradiction.",
+          "Verify lanes and compute-array dimensions are deferred only through Stage-2-validated candidate domains, not missing or implicitly defaulted parameters.",
+          "Assess the historical dimensional concern against current template contracts without presuming either legality or failure."
+        ]
+      },
+      "subtask_id": "template_selection.template_binding_engineer"
+    },
+    {
+      "agent": "board_trace_engineer",
+      "role": "memory and runtime contract engineer",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "sacg_static_check",
+            "template_binding_static_check"
+          ],
+          "consumes": [
+            "Board profile and field evidence",
+            "Candidate cross-layer trace and parameter bindings"
+          ],
+          "downstream_consumers": [
+            "template_selection.cross_layer_gate_engineer",
+            "sacg_static_check",
+            "template_binding_static_check"
+          ],
+          "produces": [
+            "Cross-layer board/runtime trace review",
+            "Downstream implementation obligation ledger"
+          ]
+        },
+        "decision_authority": [
+          "Recommend acceptance of the current trace or cite a concrete missing/conflicting constraint.",
+          "Do not alter memory layout or runtime assumptions."
+        ],
+        "mission": "Review the candidate's cross-layer trace against authoritative board and field evidence.",
+        "out_of_scope": [
+          "Requiring ungenerated runtime drivers or board wrappers",
+          "Requiring simulation, synthesis, or board results",
+          "Changing source facts to fit templates"
+        ],
+        "primary_responsibilities": [
+          "Check traced facts are consistent with their authoritative values, not merely present by key.",
+          "Review memory and numeric constraints on deferred lane domains.",
+          "Verify runtime address/control and deployment assumptions are preserved without silently changing data order or layout.",
+          "List future exact-board-wrapper and implementation obligations separately from Stage-2 blockers."
+        ]
+      },
+      "subtask_id": "template_selection.board_trace_engineer"
+    },
+    {
+      "agent": "cross_layer_gate_engineer",
+      "role": "SACG evidence and repair-boundary auditor",
+      "role_assignment": {
+        "collaboration_interfaces": {
+          "acceptance_checkers": [
+            "sacg_static_check",
+            "template_binding_static_check",
+            "sacg_memory_check",
+            "stage_artifact_trust_barrier_check",
+            "human_boundary_check",
+            "llm_io_quality_check"
+          ],
+          "consumes": [
+            "All three specialist review packages",
+            "Current candidate checker evidence and hashes",
+            "SACG memory truth and Stage-2 gate policy"
+          ],
+          "downstream_consumers": [
+            "template_selection stage controller",
+            "team_aggregate",
+            "stage_artifact_trust_barrier",
+            "sacg_validate",
+            "next-stage controller after accepted promotion"
+          ],
+          "produces": [
+            "Unified Stage-2 gate decision",
+            "Trust-barrier disposition and provenance ledger",
+            "Bounded repair or downstream obligation ledger"
+          ]
+        },
+        "decision_authority": [
+          "Recommend ready, blocked, or incomplete.",
+          "Request bounded repair or framework-managed trust reconciliation.",
+          "Do not invent active retry/backtrack requests or clear barriers by assertion."
+        ],
+        "mission": "Produce a single evidence-grounded gate decision after all parallel specialists complete.",
+        "out_of_scope": [
+          "Requiring second future audits for already accepted current-source facts",
+          "Promoting rejected artifacts",
+          "Changing model, numeric, source, or board contracts without approval"
+        ],
+        "primary_responsibilities": [
+          "Require complete specialist outputs; an interrupted or incomplete report is not successful review.",
+          "Use sacg_memory_truth: two active contamination barriers and zero open retry/backtrack requests.",
+          "Keep rejected transition artifacts debug-only; establish current candidate/source identity and checker evidence before recommending downstream use.",
+          "Reconcile dimensional findings with current source evidence rather than repeating the historical equality assumption.",
+          "If all deterministic checks pass and no concrete current contradiction remains, recommend ready with risks=[]; keep later simulation, synthesis, generated code, and board integration in downstream obligations.",
+          "If blocked, name the violated constraint and bounded repair/approval owner without generating RTL."
+        ]
+      },
+      "subtask_id": "template_selection.cross_layer_gate_engineer"
+    }
+  ],
   "schema_version": "spatialaccagent.team_aggregate.v0",
+  "split_reason": "Operator/attention semantics, numeric/source binding, and board/runtime traceability admit independent specialist review followed by a single evidence gate. All six supplied deterministic checks pass; these current hash-bound facts should be reused rather than subjected to later-stage simulation or synthesis prerequisites. SACG memory truth nevertheless identifies two active contamination barriers, with no open retry or backtrack requests. Review must distinguish the current candidate from rejected artifacts and resolve whether the recorded 1152 versus 4*256 dimensional concern has any concrete current-source basis, without assuming that model width must equal projected attention width or changing trusted templates to force equality.",
   "stage": "template_selection",
-  "status": "running",
+  "status": "ready",
   "subtask_count": 4,
   "used_fallback_count": 0
 }

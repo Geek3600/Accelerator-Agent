@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,107 @@ TOOL_ENVIRONMENT_CONTRACT_VERSION = "spatialaccagent.tool_environment_identity.v
 PROMOTION_CERTIFICATE_SCHEMA_VERSION = "spatialaccagent.stage7_promotion_certificate.v2"
 PROMOTION_EVIDENCE_BINDING_SCHEMA_VERSION = "spatialaccagent.stage7_promotion_evidence_binding.v3"
 COMPILE_ONLY_POLICY = "vcs_compile_only"
+FULL_SEMANTIC_POLICY = "full_semantic_simulation"
+
+
+def resolve_revalidation_gates(
+    invalidated_evidence: Any,
+    *,
+    available_gates: list[str] | tuple[str, ...] | set[str] | None = None,
+) -> dict[str, Any]:
+    """Derive targeted gates from production evidence invalidation records.
+
+    Evidence producers may name a gate directly (``gate``/``gate_name``), or
+    publish a dependency closure under ``required_gates`` or
+    ``depends_on_gates``.  The resolver follows those declared relationships
+    and never invents a case-specific gate.  ``available_gates`` is an
+    optional execution-plan filter; an unavailable declared gate is reported as
+    a blocker instead of being silently dropped.
+
+    This small pure function is used by revalidation planners and is safe to
+    call from experiment tooling because it does not inspect or mutate files.
+    """
+
+    rows: list[dict[str, Any]]
+    if isinstance(invalidated_evidence, dict):
+        candidate = invalidated_evidence.get("invalidated_evidence")
+        if candidate is None:
+            candidate = invalidated_evidence.get("evidence")
+        rows = [row for row in (candidate if isinstance(candidate, list) else [invalidated_evidence]) if isinstance(row, dict)]
+    elif isinstance(invalidated_evidence, list):
+        rows = [row for row in invalidated_evidence if isinstance(row, dict)]
+    else:
+        rows = []
+
+    declared: dict[str, set[str]] = {}
+    queue: list[str] = []
+    evidence_ids: list[str] = []
+
+    def add_gate(value: Any) -> None:
+        gate = str(value or "").strip()
+        if gate and gate not in declared:
+            declared[gate] = set()
+            queue.append(gate)
+
+    for row in rows:
+        evidence_id = str(row.get("evidence_id") or row.get("id") or "").strip()
+        if evidence_id and evidence_id not in evidence_ids:
+            evidence_ids.append(evidence_id)
+        for key in ("gate", "gate_name", "provider_gate", "targeted_gate"):
+            add_gate(row.get(key))
+        for key in ("required_gates", "depends_on_gates", "dependency_closure"):
+            values = row.get(key, [])
+            if isinstance(values, str):
+                values = [values]
+            if isinstance(values, list):
+                for value in values:
+                    add_gate(value)
+
+    # Collect declared gate dependencies without assuming a global stage order.
+    for row in rows:
+        names = []
+        for key in ("gate", "gate_name", "provider_gate", "targeted_gate"):
+            value = str(row.get(key) or "").strip()
+            if value:
+                names.append(value)
+        dependencies = row.get("depends_on_gates", row.get("dependency_closure", []))
+        if isinstance(dependencies, str):
+            dependencies = [dependencies]
+        for name in names:
+            declared.setdefault(name, set()).update(
+                str(value).strip() for value in dependencies or [] if str(value).strip()
+            )
+    while queue:
+        gate = queue.pop(0)
+        for dependency in sorted(declared.get(gate, set())):
+            if dependency not in declared:
+                declared[dependency] = set()
+                queue.append(dependency)
+
+    all_gates = sorted(declared)
+    available = {str(value).strip() for value in (available_gates or []) if str(value).strip()}
+    missing = sorted(gate for gate in all_gates if available and gate not in available)
+    return {
+        "schema_version": "spatialaccagent.revalidation_gate_resolution.v1",
+        "status": "pass" if all_gates and not missing else ("empty" if not all_gates else "blocked"),
+        "invalidated_evidence_ids": evidence_ids,
+        "targeted_gates": [gate for gate in all_gates if gate not in missing],
+        "declared_gate_dependencies": {
+            gate: sorted(declared[gate]) for gate in all_gates
+        },
+        "unavailable_declared_gates": missing,
+        "source": "production_evidence_invalidation",
+    }
+
+
+def active_verification_policy() -> str:
+    value = str(os.environ.get("SPATIALACC_VERIFICATION_POLICY", "")).strip() or COMPILE_ONLY_POLICY
+    if value not in {COMPILE_ONLY_POLICY, FULL_SEMANTIC_POLICY}:
+        raise ValueError(
+            f"unsupported SPATIALACC_VERIFICATION_POLICY {value!r}; expected "
+            f"{COMPILE_ONLY_POLICY!r} or {FULL_SEMANTIC_POLICY!r}"
+        )
+    return value
 
 
 
@@ -165,15 +267,23 @@ def compile_log_errors(path: Path) -> list[str]:
     return matches[:10]
 
 
-def evidence_contract_for_level(level_id: str) -> dict[str, Any]:
-    return {
+def evidence_contract_for_level(level_id: str, policy: str | None = None) -> dict[str, Any]:
+    selected_policy = policy or active_verification_policy()
+    contract = {
         "version": EVIDENCE_CONTRACT_VERSION,
         "level_id": level_id,
-        "validation_policy": COMPILE_ONLY_POLICY,
+        "validation_policy": selected_policy,
         "vcs_compile_and_elaboration_required": True,
-        "simulation_execution_required": False,
-        "functional_semantics_claimed": False,
+        "simulation_execution_required": selected_policy == FULL_SEMANTIC_POLICY,
+        "functional_semantics_claimed": selected_policy == FULL_SEMANTIC_POLICY,
     }
+    if selected_policy == FULL_SEMANTIC_POLICY:
+        contract["real_weight_runtime_evidence_required"] = True
+        if level_id in {"multilayer_pipeline_functional", "axi_ddr_functional"}:
+            contract["runtime_progress_and_pipeline_overlap_required"] = True
+        if level_id == "axi_ddr_functional":
+            contract["exact_board_axi_ddr_and_nonzero_transfer_evidence_required"] = True
+    return contract
 
 
 def certificate_contract_fingerprint(level_id: str, required_gates: list[str]) -> str:
@@ -192,6 +302,8 @@ def selector_contract_matches_certificate(
 ) -> bool:
     expected = evidence_contract_for_level(level_id)
     return selector_contract == expected or (
+        active_verification_policy() == COMPILE_ONLY_POLICY
+        and
         certificate.get("validation_policy") == COMPILE_ONLY_POLICY
         and certificate.get("functional_semantics_claimed") is False
         and certificate.get("evidence_contract") == expected
@@ -377,6 +489,11 @@ def certificate_contract_errors(
     if payload.get("schema_version") != PROMOTION_CERTIFICATE_SCHEMA_VERSION:
         errors.append("promotion certificate schema is not current")
     expected_contract = evidence_contract_for_level(level_id)
+    expected_policy = active_verification_policy()
+    if payload.get("validation_policy") != expected_policy:
+        errors.append(f"promotion certificate validation policy is not current ({expected_policy})")
+    if payload.get("functional_semantics_claimed") is not (expected_policy == FULL_SEMANTIC_POLICY):
+        errors.append("promotion certificate functional-semantics claim does not match the active policy")
     if payload.get("evidence_contract") != expected_contract:
         errors.append(f"evidence contract is not current version {EVIDENCE_CONTRACT_VERSION}")
     expected_fingerprint = certificate_contract_fingerprint(level_id, required_gates)
@@ -480,12 +597,13 @@ def semantic_evidence_report_errors(path: Path, level_id: str) -> list[str]:
         contracts = {}
     if report.get("evidence_contract") != expected and contracts.get(level_id) != expected:
         errors.append("VCS evidence report does not bind the current evidence contract")
-    if report.get("validation_policy") != COMPILE_ONLY_POLICY:
-        errors.append("VCS evidence report does not use the current verification standard")
+    policy = active_verification_policy()
+    if report.get("validation_policy") != policy:
+        errors.append(f"VCS evidence report does not use the current verification standard ({policy})")
     evidence = report.get("compile_evidence", {})
     if not isinstance(evidence, dict):
         evidence = {}
-    compile_result = evidence.get("compile", {})
+    compile_result = evidence.get("compile", report.get("compile", {}))
     if not isinstance(compile_result, dict):
         compile_result = {}
     if report.get("status") != "pass" or evidence.get("status") != "pass":
@@ -506,4 +624,38 @@ def semantic_evidence_report_errors(path: Path, level_id: str) -> list[str]:
             errors.append(f"VCS compile log hash does not match: {log_path}")
         elif compile_log_errors(log_path):
             errors.append(f"VCS compile log contains errors: {log_path}")
+    if policy == FULL_SEMANTIC_POLICY:
+        if report.get("hardware_validation_status") != "runtime_pass":
+            errors.append("exact-board VCS runtime did not pass")
+        if report.get("simulation_skipped") is not False:
+            errors.append("exact-board VCS simulation was skipped")
+        run = report.get("run", {}) if isinstance(report.get("run"), dict) else {}
+        if run.get("status") != "pass":
+            errors.append("exact-board VCS runtime result is not pass")
+        if report.get("required_outputs_copied") is not True or report.get("progress_event_log_valid") is not True:
+            errors.append("required runtime outputs or progress-event evidence are missing")
+        outputs = report.get("outputs", {}) if isinstance(report.get("outputs"), dict) else {}
+        required_outputs = {
+            "progress_event_log",
+            "runtime_loader_report",
+            "pipeline_overlap_report",
+            "elaborated_hierarchy_report",
+        }
+        missing_outputs = sorted(
+            name for name in required_outputs
+            if not isinstance(outputs.get(name), dict) or outputs[name].get("copied") is not True
+        )
+        if missing_outputs:
+            errors.append(f"required exact-board runtime evidence is missing: {missing_outputs}")
+        executed_manifest = Path(str(report.get("executed_manifest") or ""))
+        if not executed_manifest.is_file():
+            errors.append("executed exact-board runtime manifest is missing")
+        else:
+            executed = read_json_object(executed_manifest)
+            if (
+                executed.get("status") != "pass"
+                or executed.get("executed_validation_policy") != FULL_SEMANTIC_POLICY
+                or not executed.get("dynamic_evidence_records")
+            ):
+                errors.append("executed exact-board runtime manifest is incomplete")
     return errors

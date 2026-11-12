@@ -120,6 +120,12 @@ class ToolRunnerFreshnessTest(TestCase):
             self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["summary"], "second")
 
     def test_zero_tool_budget_runs_without_outer_wall_clock_timeout(self) -> None:
+        self._assert_unbounded_tool_budget(0, None)
+
+    def test_explicit_zero_tool_budget_overrides_bounded_default(self) -> None:
+        self._assert_unbounded_tool_budget(7200, 0)
+
+    def _assert_unbounded_tool_budget(self, default_timeout, tool_timeout) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             logs = root / "logs"
@@ -131,17 +137,25 @@ class ToolRunnerFreshnessTest(TestCase):
                     "argv": [str(Path(sys.executable).resolve()), "-c", "pass"],
                     "cwd": str(root),
                     "env": {},
+                    "timeout_sec": tool_timeout,
                 },
                 "script_exists": True,
                 "required": True,
             }
 
             with patch("accagent.framework.tool_runner.subprocess.run", wraps=__import__("subprocess").run) as run:
-                result = run_tool(tool, root, logs, True, 0, False)
+                result = run_tool(tool, root, logs, True, default_timeout, False)
 
             self.assertEqual(result["status"], "pass")
             self.assertTrue(result["wall_clock_timeout_unbounded"])
             self.assertIsNone(run.call_args.kwargs["timeout"])
+
+    def test_backend_vivado_does_not_inherit_generic_tool_timeout(self) -> None:
+        from accagent.framework.stage_backend import builtin_backend_tool
+
+        with TemporaryDirectory() as temp_dir:
+            tool = builtin_backend_tool("app_shell_runtime_bitstream", Path(temp_dir), [])
+        self.assertEqual(tool["execution"]["timeout_sec"], 0)
 
     def test_stale_produced_report_cannot_contradict_current_failure(self) -> None:
         with TemporaryDirectory() as temp_dir:

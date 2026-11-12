@@ -8,6 +8,7 @@ responsible for choosing and validating the executable repair workflow.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 from pathlib import Path
@@ -48,6 +49,15 @@ def canonical_sha256(value: Any) -> str:
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def source_state_sha256(path: Path) -> str:
+    opener = gzip.open if path.suffix == ".gz" else Path.open
+    digest = hashlib.sha256()
+    with opener(path, "rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
@@ -114,7 +124,7 @@ def source_sacg_identity(event: dict[str, Any], run_dir: Path) -> tuple[Path | N
     state_path = resolve_run_path(run_dir, event.get("sacg_state"))
     if state_path is None or not state_path.is_file():
         return None, ""
-    return state_path, sha256_file(state_path)
+    return state_path, source_state_sha256(state_path)
 
 
 def flow_controller_record(event: dict[str, Any], run_dir: Path) -> tuple[Path | None, dict[str, Any]]:
@@ -153,12 +163,18 @@ def event_candidate(
         event_index = int(event.get("flow_event_index"))
     except (TypeError, ValueError):
         return None, ["flow event has no numeric index"]
+    identities = event.get("source_identities", {})
+    expected_state_sha256 = (
+        str(identities.get("source_sacg_state_sha256") or "")
+        if isinstance(identities, dict)
+        else ""
+    )
+    if expected_state_sha256 and expected_state_sha256 != current_sacg_sha256:
+        return None, []
     source_state_path, source_state_sha256 = source_sacg_identity(event, run_dir)
     if source_state_sha256 != current_sacg_sha256:
         return None, []
-    identities = event.get("source_identities", {})
     if isinstance(identities, dict):
-        expected_state_sha256 = str(identities.get("source_sacg_state_sha256") or "")
         if expected_state_sha256 and expected_state_sha256 != source_state_sha256:
             return None, ["flow event source SACG identity is stale"]
     result_path, result_record = flow_controller_record(event, run_dir)
@@ -360,7 +376,7 @@ def validate_stage6_flow_handoff(handoff: Any, run_dir: Path) -> list[str]:
     event_path = resolve_run_path(run_dir, event.get("path"))
     if source_path is None or event_path is None:
         return ["flow-controller handoff binding escaped the run directory"]
-    if sha256_file(source_path) != source.get("sha256") or sha256_file(event_path) != event.get("sha256"):
+    if source_state_sha256(source_path) != source.get("sha256") or sha256_file(event_path) != event.get("sha256"):
         return ["flow-controller handoff source evidence changed after selection"]
     record = read_json_if_exists(resolve_run_path(run_dir, result.get("path")) or Path())
     if canonical_sha256(normalized_llm_record(record)) != result.get("sha256"):

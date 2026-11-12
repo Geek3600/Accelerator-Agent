@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from accagent.framework.source_cycle_analysis import (
     MAX_EMITTED_RTL_SOURCE_BYTES,
+    _chisel_class_index,
     _cycle_analysis_prompt_sources,
     analysis_path,
     ensure_source_cycle_analysis,
@@ -21,6 +22,36 @@ from scripts.synthesis import case_stage7_metrics as metrics
 
 
 class SourceCycleAnalysisTest(unittest.TestCase):
+    def test_chisel_class_index_keeps_module_instances_in_declaring_scope(self) -> None:
+        source = """class FloatingAttention extends Module {
+  val softmax = Module(new Softmax(p.softmax))
+}
+class IntegerAttention extends Module {
+  val divider = Module(new IntegerDivider(p.width))
+}
+class Attention extends Module {
+  if (p.integerMode) {
+    val core = Module(new IntegerAttention(p))
+  } else {
+    val core = Module(new FloatingAttention(p))
+  }
+}
+"""
+        scopes = {entry["class"]: entry for entry in _chisel_class_index({"Attention.scala": source})}
+
+        self.assertEqual(
+            [item["module"] for item in scopes["FloatingAttention"]["module_instantiations"]],
+            ["Softmax"],
+        )
+        self.assertEqual(
+            [item["module"] for item in scopes["IntegerAttention"]["module_instantiations"]],
+            ["IntegerDivider"],
+        )
+        self.assertEqual(
+            [item["module"] for item in scopes["Attention"]["module_instantiations"]],
+            ["IntegerAttention", "FloatingAttention"],
+        )
+
     def test_prompt_keeps_design_sources_and_indexes_expanded_rtl(self) -> None:
         sources = {
             "generated/chisel/src/main/scala/templates/Linear.scala": "class Linear {}\n",
@@ -208,6 +239,8 @@ class SourceCycleAnalysisTest(unittest.TestCase):
             self.assertIn("generated/chisel/src/main/scala/Design.scala", inputs["sources"])
             self.assertTrue(any("exact current branch and guard" in rule
                                 for rule in agent.call_args.kwargs["prompt_rules"]))
+            self.assertTrue(any("Use chisel_class_index" in rule
+                                for rule in agent.call_args.kwargs["prompt_rules"]))
 
     def test_explicit_double_buffer_prefetch_uses_no_stall_handoff_assumption(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -219,6 +252,11 @@ class SourceCycleAnalysisTest(unittest.TestCase):
             self.assertTrue(any("assume inter-layer weight handoff is zero" in rule for rule in rules))
             self.assertTrue(any("not a measured whole-system result" in rule for rule in rules))
             self.assertTrue(agent.call_args.kwargs["inputs"]["schedule_policy"]["runtime_constants_preloaded"])
+            self.assertIn(
+                "one accepted top-level io.start per model-layer pass",
+                agent.call_args.kwargs["inputs"]["schedule_policy"]["layer_start_contract"],
+            )
+            self.assertTrue(any("rather than requiring external controller RTL" in rule for rule in rules))
             self.assertTrue(any("nominal analytical precondition" in rule for rule in rules))
             self.assertTrue(any("driver of the block's final io_out port" in rule for rule in rules))
             evidence = agent.call_args.kwargs["inputs"]["synthesis_evidence"]
@@ -307,6 +345,48 @@ class SourceCycleAnalysisTest(unittest.TestCase):
             self.assertEqual(context["workload"]["processed_tokens"], 2)
             self.assertEqual(context["workload"]["model_layers"], 3)
             self.assertEqual(context["workload"]["axi_data_width_bits"], 512)
+
+    def test_cycle_context_accepts_recovered_synthesis_with_verified_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.make_sources(root)
+            report = root / "backend_board/case_diagnostics/app_shell_runtime_vivado.json"
+            synthesis = json.loads(report.read_text(encoding="utf-8"))
+            synthesis["collect_only"] = True
+            report.write_text(json.dumps(synthesis), encoding="utf-8")
+
+            context = source_context(root)
+
+        self.assertEqual(context["synthesis_source_archive_sha256"], synthesis["synthesis_source_archive_sha256"])
+
+    def test_matching_compiled_cycle_analysis_is_promoted_without_another_llm_call(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            result = self.make_sources(root)
+            synthesis_report = json.loads(
+                (root / "backend_board/case_diagnostics/app_shell_runtime_vivado.json").read_text(encoding="utf-8")
+            )
+            compile_context = source_context(root)
+            compile_context.update(
+                synthesis_source_archive_sha256=None,
+                compiled_source_snapshot_sha256="compile-snapshot",
+                compile_evidence={"status": "ready", "validation_policy": "vcs_compile_only"},
+            )
+            with patch("accagent.framework.dse_timing_calibration.compiled_source_context", return_value=compile_context), patch(
+                "accagent.framework.stage_llm.run_stage_agent", return_value=result
+            ):
+                compiled_path = ensure_source_cycle_analysis(root, context_override=compile_context)
+            with patch("accagent.framework.dse_timing_calibration.compiled_source_context", return_value=compile_context), patch(
+                "accagent.framework.stage_llm.run_stage_agent", side_effect=AssertionError("analysis should be reused")
+            ):
+                synthesis_path = ensure_source_cycle_analysis(root)
+            compiled = json.loads(compiled_path.read_text(encoding="utf-8"))
+            synthesis = json.loads(synthesis_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(synthesis["status"], "pass")
+        self.assertEqual(synthesis["latency_cycles"], compiled["latency_cycles"])
+        self.assertEqual(synthesis["synthesis_source_archive_sha256"], synthesis_report["synthesis_source_archive_sha256"])
+        self.assertEqual(synthesis["analysis_reuse"]["kind"], "matching_compiled_source_analysis")
 
     def test_rejects_source_archive_newer_than_latest_synthesis_report(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

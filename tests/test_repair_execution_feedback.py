@@ -11,6 +11,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from accagent.framework.stage_llm import _compact_backend_adapter_source_snapshot
 from accagent.framework.stage_repair_execute import (
     current_compiler_module_interfaces,
     capability_agent_consumed_materialization_feedback,
@@ -20,6 +21,8 @@ from accagent.framework.stage_repair_execute import (
     post_validation_materialization_feedback,
     repair_step_checkpoint,
     board_integration_prompt_rules,
+    board_preflight_repair_actionable,
+    rejected_file_edits_for_agent_retry,
     repair_loop_disposition,
     record_exact_board_rerun_agent_handoff,
     resume_prior_resource_failed_validation,
@@ -34,6 +37,106 @@ from accagent.framework.stage_repair_execute import (
 
 
 class RepairExecutionFeedbackTest(unittest.TestCase):
+    def test_backend_adapter_projection_keeps_generated_module_instance_identity(self) -> None:
+        lines = [f"// pad_{index:04d} " + ("x" * 80) for index in range(1200)]
+        lines[0] = "module compute_slot_adapter;"
+        lines[100] = "  logic k_cfgValid;"
+        lines[587] = "  GeneratedAcceleratorTop u_accel ("
+        lines[588] = "    .io_in_valid(input_valid),"
+        lines[589] = "    .io_cfg_seqlen(cfg_seqlen),"
+        lines[590] = "    .io_ddrTileRequest_ready(tile_ready),"
+        lines[591] = "    .io_axiRead_ready(axi_ready),"
+        lines[592] = "    .io_out_ready(output_ready),"
+        lines[593] = "    .io_qkvScale_channelScale_0(qkv_cs[0]),"
+        lines[594] = "    .io_qkvScale_channelScale_1(qkv_cs[1]),"
+        lines[595] = "  );"
+        lines[-1] = "endmodule"
+        source = "\n".join(lines) + "\n"
+        snapshot = {
+            "path": "/run/generated/board_integration/adapter.sv",
+            "sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+            "content": source,
+        }
+        inputs = {
+            "source_snapshot": snapshot,
+            "generated_top_interface": {"module": "GeneratedAxiDdrTop"},
+            "failure_diagnostics": {
+                "message": "direct compute-slot adapter does not instantiate the current generated top"
+            },
+        }
+
+        _compact_backend_adapter_source_snapshot(inputs, max_source_bytes=64_000)
+
+        view = snapshot["source_view"]
+        self.assertEqual(view["generated_top_module"], "GeneratedAxiDdrTop")
+        self.assertEqual(view["generated_top_instance_lines"], [])
+        self.assertEqual(
+            view["candidate_generated_instance_lines"],
+            [{"line": 588, "module_type": "GeneratedAcceleratorTop", "instance_name": "u_accel"}],
+        )
+        visible_source = "".join(row["content"] for row in view["windows"])
+        self.assertIn("GeneratedAcceleratorTop u_accel (", visible_source)
+        self.assertIn(".io_cfg_seqlen(cfg_seqlen),", visible_source)
+        self.assertIn(".io_axiRead_ready(axi_ready),", visible_source)
+        self.assertIn("logic k_cfgValid;", visible_source)
+        self.assertNotIn(".io_qkvScale_channelScale_0(qkv_cs[0]),", visible_source)
+
+    def test_rejected_text_anchor_returns_exact_whitespace_candidate(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "adapter.sv"
+            source.write_text("module adapter;\n  reg [2:0] tile_owner;\nendmodule\n")
+            result = rejected_file_edits_for_agent_retry(
+                [
+                    {
+                        "path": str(source),
+                        "operation": "replace_text",
+                        "text_replacements": [
+                            {
+                                "old_text": "   reg [2:0] tile_owner;",
+                                "new_text": "   logic [2:0] tile_owner;",
+                            }
+                        ],
+                    }
+                ]
+            )
+
+            self.assertEqual(
+                result[0]["anchor_diagnostics"][0]["whitespace_normalized_candidates"],
+                [{"start_line": 2, "source_text": "  reg [2:0] tile_owner;"}],
+            )
+            self.assertEqual(
+                source.read_text(),
+                "module adapter;\n  reg [2:0] tile_owner;\nendmodule\n",
+            )
+
+    def test_existing_board_source_with_current_preflight_blockers_uses_repair_route(self) -> None:
+        feedback = {
+            "status": "ready",
+            "blockers": ["compute-slot module ABI mismatch"],
+        }
+
+        self.assertTrue(
+            board_preflight_repair_actionable(
+                board_integration_repair=True,
+                generated_sources=["generated/board_integration/adapter.sv"],
+                current_preflight_feedback=feedback,
+            )
+        )
+        self.assertFalse(
+            board_preflight_repair_actionable(
+                board_integration_repair=True,
+                generated_sources=[],
+                current_preflight_feedback=feedback,
+            )
+        )
+        self.assertFalse(
+            board_preflight_repair_actionable(
+                board_integration_repair=True,
+                generated_sources=["generated/board_integration/adapter.sv"],
+                current_preflight_feedback={"status": "ready", "blockers": []},
+            )
+        )
+
     def test_compiler_port_failure_receives_only_current_module_header(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -54,6 +157,1005 @@ class RepairExecutionFeedbackTest(unittest.TestCase):
             self.assertNotIn("endmodule", rows[0]["module_header"])
             source.write_text(source.read_text().replace("cfgLength", "changed"))
             self.assertEqual(current_compiler_module_interfaces(root, feedback), [])
+
+    def test_current_sample_slot_declaration_is_hash_bound_to_selected_cell(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_id = "sample-source:physical-slot"
+            cell_id = "vivado:cell:current-slot"
+            source = root / "verification/board_interface/sample_slot.v"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "module sample_slot (\n"
+                "  clk,\n"
+                "  cfg_done,\n"
+                "  ddr_ready\n"
+                ");\n"
+                "input wire clk;\n"
+                "output wire cfg_done;\n"
+                "input wire ddr_ready;\n"
+                "endmodule\n"
+            )
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            identity_path = root / "verification/board_interface/board_source_identity.json"
+            identity_path.write_text(
+                json.dumps(
+                    {
+                        "status": "pass",
+                        "exact_user_sample_wrapper": True,
+                        "compute_slot_abi": {
+                            "selected_cell_id": cell_id,
+                            "slot_module": "sample_slot",
+                            "replacement_module_identity": "sample_slot",
+                            "replacement_boundary": {
+                                "source_module_evidence": [
+                                    {
+                                        "source_id": source_id,
+                                        "source_sha256": source_hash,
+                                        "declared_modules": ["sample_slot"],
+                                    }
+                                ]
+                            },
+                        },
+                        "materialized_sources": [
+                            {
+                                "source_id": source_id,
+                                "local_path": str(source),
+                                "sha256": source_hash,
+                                "local_sha256": source_hash,
+                                "hashes_match": True,
+                                "owner_cell_ids": [cell_id],
+                            }
+                        ],
+                    }
+                )
+            )
+            feedback = {
+                "diagnosis": {
+                    "value": {
+                        "failure_class": "vcs_compile_failure",
+                        "failure_evidence": {},
+                    }
+                },
+                "runner_report": {
+                    "value": {"compile": {"status": "fail", "returncode": 1}}
+                },
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            declaration = next(
+                row for row in rows
+                if row.get("authority")
+                == "current_hash_bound_sample_project_compute_slot"
+            )
+            self.assertEqual(declaration["source_id"], source_id)
+            self.assertEqual(declaration["sha256"], source_hash)
+            self.assertEqual(declaration["selected_cell_id"], cell_id)
+            self.assertIn("6: input wire clk;", declaration["module_declaration"])
+            self.assertIn("7: output wire cfg_done;", declaration["module_declaration"])
+            self.assertIn("8: input wire ddr_ready;", declaration["module_declaration"])
+
+            source.write_text(source.read_text().replace("cfg_done", "cfg_ready"))
+            stale_rows = current_compiler_module_interfaces(root, feedback)
+            self.assertFalse(
+                any(
+                    row.get("authority")
+                    == "current_hash_bound_sample_project_compute_slot"
+                    for row in stale_rows
+                )
+            )
+
+    def test_library_qualified_compiler_failure_resolves_current_generated_top(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            adapter = root / "generated/board_integration/compute_slot_adapter.sv"
+            generated_top = root / "generated/chisel/vivado/GeneratedAxiDdrTop.sv"
+            adapter.parent.mkdir(parents=True)
+            generated_top.parent.mkdir(parents=True)
+            adapter.write_text(
+                "module adapter;\n"
+                "GeneratedAxiDdrTop generated_top (\n"
+                "  .*\n"
+                ");\nendmodule\n"
+            )
+            generated_top.write_text(
+                "module GeneratedAxiDdrTop(\n"
+                "  input [5:0] io_cfgSeqlen,\n"
+                "  input io_cfgPrefill,\n"
+                "  output io_done\n"
+                ");\nendmodule\n"
+            )
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [
+                {
+                    "path": str(adapter), "role": "compute_slot_adapter",
+                    "source_id": "generated:adapter", "declared_modules": ["adapter"],
+                    "sha256": hashlib.sha256(adapter.read_bytes()).hexdigest(),
+                },
+                {
+                    "path": str(generated_top), "role": "generated_accelerator",
+                    "source_id": "generated:top", "declared_modules": ["GeneratedAxiDdrTop"],
+                    "sha256": hashlib.sha256(generated_top.read_bytes()).hexdigest(),
+                },
+            ]}))
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[IIPCNDI] Identifier not declared\n"
+                "../sources/compute_slot_adapter.sv, 2\n"
+                "  identifier 'io_cfgPrefill' bound by .* wildcard specification to an input port is not defined\n"
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            feedback = {"diagnosis": {"value": {"failure_evidence": {
+                "compile_log_path": str(compile_log),
+                "compile_log_sha256": compile_log_hash,
+                "first_real_error_context": (
+                    "In instance 'generated_top' of 'XIL_DEFAULTLIB.GeneratedAxiDdrTop', "
+                    "identifier 'io_cfgPrefill' bound by .* wildcard specification is not defined"
+                )
+            }, "failure_class": "vcs_compile_failure"}}, "runner_report": {"value": {
+                "compile": {"status": "fail", "returncode": 1},
+                "compile_evidence": {"log_path": str(compile_log), "log_sha256": compile_log_hash},
+            }}}
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            top_interface = next(row for row in rows if row.get("module") == "GeneratedAxiDdrTop")
+            self.assertIn("input io_cfgPrefill", top_interface["module_header"])
+
+    def test_large_current_generated_top_uses_lossless_compact_port_contract(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            adapter = root / "generated/board_integration/compute_slot_adapter.sv"
+            generated_top = root / "generated/chisel/vivado/GeneratedAxiDdrTop.sv"
+            adapter.parent.mkdir(parents=True)
+            generated_top.parent.mkdir(parents=True)
+            adapter.write_text(
+                "module adapter;\n"
+                "GeneratedAxiDdrTop generated_top (.*);\n"
+                "endmodule\n"
+            )
+            ports = "\n".join(
+                f"  input [31:0] io_scale_{index}," for index in range(3000)
+            )
+            generated_top.write_text(
+                f"module GeneratedAxiDdrTop(\n{ports}\n  input io_done\n);\nendmodule\n"
+            )
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [
+                {
+                    "path": str(adapter), "role": "compute_slot_adapter",
+                    "source_id": "generated:adapter", "declared_modules": ["adapter"],
+                    "sha256": hashlib.sha256(adapter.read_bytes()).hexdigest(),
+                },
+                {
+                    "path": str(generated_top), "role": "generated_accelerator",
+                    "source_id": "generated:top", "declared_modules": ["GeneratedAxiDdrTop"],
+                    "sha256": hashlib.sha256(generated_top.read_bytes()).hexdigest(),
+                },
+            ]}))
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[IIPCNDI] Identifier not declared\n"
+                "../sources/compute_slot_adapter.sv, 2\n"
+                "  identifier 'io_cfgPrefill' bound by .* wildcard specification to an input port is not defined\n"
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            feedback = {"diagnosis": {"value": {"failure_evidence": {
+                "compile_log_path": str(compile_log),
+                "compile_log_sha256": compile_log_hash,
+                "first_real_error_context": (
+                    "In instance 'generated_top' of 'XIL_DEFAULTLIB.GeneratedAxiDdrTop'"
+                )
+            }, "failure_class": "vcs_compile_failure"}}, "runner_report": {"value": {
+                "compile": {"status": "fail", "returncode": 1},
+                "compile_evidence": {"log_path": str(compile_log), "log_sha256": compile_log_hash},
+            }}}
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            contract = next(
+                row["module_interface_contract"]
+                for row in rows
+                if row.get("module") == "GeneratedAxiDdrTop"
+            )
+            self.assertEqual(contract["module"], "GeneratedAxiDdrTop")
+            self.assertEqual(contract["port_count"], 3001)
+            self.assertLess(len(contract["ordered_port_groups"]), 10)
+            self.assertEqual(contract["ordered_port_groups"][0]["first_index"], 0)
+            self.assertEqual(contract["ordered_port_groups"][0]["last_index"], 2999)
+
+    def test_compile_failure_exposes_only_hash_bound_generated_source_excerpt(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "generated/board_integration/rtl/adapter.sv"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "module adapter(input logic clk);\n"
+                "logic rd_owner_q;\n"
+                "assign rsp_valid = rd_owner_q && tile_pick_q;\n"
+                "endmodule\n"
+            )
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[IND] Identifier not declared\n"
+                "../sources/adapter.sv, 3\n"
+                "  Identifier 'tile_pick_q' has not been declared yet.\n"
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [{
+                "path": str(source), "role": "compute_slot_adapter",
+                "source_id": "board-generated:compute_slot_adapter.test",
+                "declared_modules": ["adapter"], "sha256": source_hash,
+            }]}))
+            feedback = {
+                "diagnosis": {"value": {
+                    "failure_class": "vcs_compile_failure",
+                    "failure_evidence": {
+                        "compile_log_path": str(compile_log),
+                        "compile_log_sha256": compile_log_hash,
+                    },
+                }},
+                "runner_report": {"value": {
+                    "compile": {"status": "fail", "returncode": 1},
+                    "compile_evidence": {
+                        "log_path": str(compile_log),
+                        "log_sha256": compile_log_hash,
+                    },
+                }},
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            excerpt = rows[0]["compile_failure_source_excerpt"]
+            self.assertEqual(excerpt["path"], str(source))
+            self.assertEqual(excerpt["sha256"], source_hash)
+            self.assertIn("assign rsp_valid = rd_owner_q && tile_pick_q;", excerpt["source_lines"])
+            self.assertEqual(excerpt["diagnostic_line"], 3)
+            source.write_text(source.read_text().replace("tile_pick_q", "changed"))
+            self.assertEqual(current_compiler_module_interfaces(root, feedback), [])
+
+    def test_elaboration_failure_exposes_hash_bound_generated_testbench_excerpt(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "generated/board_integration/board_sim_tb.sv"
+            source.parent.mkdir(parents=True)
+            lines = ["// generated compile-only testbench"] * 58
+            lines[0] = "module board_sim_tb;"
+            lines[56] = "  app_shell_9p_wrapper dut (.*);"
+            lines[57] = "endmodule"
+            source.write_text("\n".join(lines) + "\n")
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[URMI] Unresolved modules\n"
+                "../sources/board_sim_tb.sv, 57\n"
+                "  Module definition of above instance is not found in the design.\n"
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [{
+                "path": str(source), "role": "testbench",
+                "source_id": "board-generated:testbench.test",
+                "declared_modules": ["board_sim_tb"], "sha256": source_hash,
+            }]}))
+            feedback = {
+                "diagnosis": {"value": {
+                    "failure_class": "vcs_elaboration_failure",
+                    "failure_evidence": {
+                        "compile_log_path": str(compile_log),
+                        "compile_log_sha256": compile_log_hash,
+                    },
+                }},
+                "runner_report": {"value": {
+                    "compile": {"status": "fail", "returncode": 1},
+                    "compile_evidence": {
+                        "log_path": str(compile_log),
+                        "log_sha256": compile_log_hash,
+                    },
+                }},
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            excerpt = next(
+                row["compile_failure_source_excerpt"]
+                for row in rows
+                if "compile_failure_source_excerpt" in row
+            )
+            self.assertEqual(excerpt["path"], str(source))
+            self.assertEqual(excerpt["sha256"], source_hash)
+            self.assertEqual(excerpt["role"], "testbench")
+            self.assertIn("app_shell_9p_wrapper dut (.*);", excerpt["source_lines"])
+            source.write_text(source.read_text().replace("app_shell_9p_wrapper", "changed"))
+            self.assertEqual(current_compiler_module_interfaces(root, feedback), [])
+
+    def test_compile_excerpt_keeps_large_causal_lines_but_not_unrelated_neighbors(self) -> None:
+        for causal in (False, True):
+            with self.subTest(causal=causal), TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                source = root / "generated/board_integration/adapter.sv"
+                source.parent.mkdir(parents=True)
+                lines = ["// padding"] * 110
+                lines[0] = "module adapter;"
+                lines[9] = "assign result = late_signal;"
+                lines[79] = "wire late_signal = enable;"
+                large_line = "assign other = " + "other_signal | " * 1000
+                large_line += "late_signal;" if causal else "other_signal;"
+                lines[80] = large_line
+                lines[-1] = "endmodule"
+                source.write_text("\n".join(lines) + "\n")
+                source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+                log = root / "compile.log"
+                log.write_text(
+                    "Error-[IND] Identifier not declared\n"
+                    "../sources/adapter.sv, 10\n"
+                    "  Identifier 'late_signal' has not been declared yet.\n"
+                )
+                manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+                manifest.parent.mkdir(parents=True)
+                manifest.write_text(json.dumps({"source_files": [{
+                    "path": str(source), "role": "compute_slot_adapter",
+                    "source_id": "generated:adapter", "declared_modules": ["adapter"],
+                    "sha256": source_hash,
+                }]}))
+                feedback = {
+                    "diagnosis": {"value": {
+                        "failure_class": "vcs_compile_failure",
+                        "failure_evidence": {
+                            "compile_log_path": str(log),
+                            "compile_log_sha256": hashlib.sha256(log.read_bytes()).hexdigest(),
+                        },
+                    }},
+                    "runner_report": {"value": {
+                        "compile": {"status": "fail", "returncode": 1},
+                    }},
+                }
+
+                rows = current_compiler_module_interfaces(root, feedback)
+
+                excerpt = rows[0]["compile_failure_source_excerpt"]
+                self.assertIn(lines[9], excerpt["source_lines"])
+                self.assertIn(lines[79], excerpt["source_lines"])
+                self.assertEqual(large_line in excerpt["source_lines"], causal)
+                self.assertEqual(excerpt["sha256"], source_hash)
+                self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), source_hash)
+
+    def test_mixed_port_error_projects_oversized_generated_port_rows(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "generated/board_integration/adapter.sv"
+            source.parent.mkdir(parents=True)
+            lines = ["// filler"] * 90
+            lines[7] = "module adapter;"
+            lines[30] = "  GeneratedTop u_top ("
+            lines[31] = "    .clock(clk),"
+            lines[32] = "    .reset(rst),"
+            huge_row = "    .scale_0(x),\\n    .scale_1(y)," + ("\\n    .scale_n(z)," * 8000)
+            lines[63] = huge_row
+            lines[-1] = "endmodule"
+            source.write_text("\n".join(lines) + "\n")
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            log = root / "compile.log"
+            log.write_text(
+                "Error-[MPC] Mixed port connection is not allowed\n"
+                "../sources/adapter.sv, 64\n"
+                "  The two types of module port connections, by ordered list and by name, shall not be mixed.\n"
+            )
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [{
+                "path": str(source), "role": "compute_slot_adapter",
+                "source_id": "generated:adapter", "declared_modules": ["adapter"],
+                "sha256": source_hash,
+            }]}))
+            feedback = {
+                "diagnosis": {"value": {"failure_class": "vcs_compile_failure", "failure_evidence": {
+                    "compile_log_path": str(log),
+                    "compile_log_sha256": hashlib.sha256(log.read_bytes()).hexdigest(),
+                }}},
+                "runner_report": {"value": {"compile": {"status": "fail", "returncode": 1}}},
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            excerpt = rows[0]["compile_failure_source_excerpt"]
+            self.assertEqual(excerpt["sha256"], source_hash)
+            self.assertIn("GeneratedTop u_top (", excerpt["source_lines"])
+            self.assertNotIn(huge_row, excerpt["source_lines"])
+            projection = next(row for row in excerpt["source_line_projections"] if row["line"] == 64)
+            self.assertEqual(projection["byte_length"], len(huge_row.encode("utf-8")))
+            self.assertEqual(projection["sha256"], hashlib.sha256(huge_row.encode("utf-8")).hexdigest())
+            self.assertIn(".scale_0(x)", projection["prefix"])
+            self.assertEqual(projection["literal_backslash_n_count"], 8001)
+
+    def test_behavioral_lhs_failure_includes_hash_bound_signal_declarations_and_references(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "generated/board_integration/rtl/adapter.sv"
+            source.parent.mkdir(parents=True)
+            lines = [f"// filler {number}" for number in range(1, 90)]
+            lines[2] = "wire [2:0] tile_owner;"
+            lines[57] = "always_ff @(posedge clk) tile_owner <= 3'b0;"
+            source.write_text("\n".join(lines) + "\n")
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[IBLHS-NT] Illegal behavioral left hand side\n"
+                "../sources/adapter.sv, 58\n"
+                "  Net type cannot be used on the left side of this assignment.\n"
+                "  The offending expression is : tile_owner\n"
+                "  Source info: tile_owner <= 3'b0;\n"
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [{
+                "path": str(source), "role": "compute_slot_adapter",
+                "source_id": "board-generated:compute_slot_adapter.test",
+                "declared_modules": ["adapter"], "sha256": source_hash,
+            }]}))
+            feedback = {
+                "diagnosis": {"value": {
+                    "failure_class": "vcs_compile_failure",
+                    "failure_evidence": {
+                        "compile_log_path": str(compile_log),
+                        "compile_log_sha256": compile_log_hash,
+                    },
+                }},
+                "runner_report": {"value": {
+                    "compile": {"status": "fail", "returncode": 1},
+                }},
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            excerpt = rows[0]["compile_failure_source_excerpt"]
+            self.assertEqual(excerpt["diagnostic_symbols"], ["tile_owner"])
+            self.assertIn("3: wire [2:0] tile_owner;", excerpt["source_lines"])
+            self.assertIn(
+                "58: always_ff @(posedge clk) tile_owner <= 3'b0;",
+                excerpt["source_lines"],
+            )
+
+    def test_long_named_port_instance_excerpt_includes_late_connections(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "generated/board_integration/compute_slot_adapter.sv"
+            source.parent.mkdir(parents=True)
+            lines = ["module adapter;", "GPT2PreLNBlock kernel_inst ("]
+            lines.extend(f"  // generated scale port {number}" for number in range(18_500))
+            lines.extend([
+                "  .io_tile_0_request_ready(tile0_ready),",
+                "  .io_tile_1_request_ready(tile1_ready),",
+                "  .io_tile_2_request_ready(tile2_ready),",
+                "  .io_tile_3_request_ready(tile3_ready),",
+                "  .io_ddrTileRequest_ready(ddr_ready),",
+                "  .io_ddrTileRequest_valid(req_valid)",
+                ");",
+                "endmodule",
+            ])
+            source.write_text("\n".join(lines) + "\n")
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[UPIMI-E] Undefined port in module instantiation\n"
+                "../sources/compute_slot_adapter.sv, 2\n"
+                '  Port "io_ddrTileRequest_ready" is not defined in module \'GPT2PreLNBlock\'\n'
+                "Error-[UPIMI-E] Undefined port in module instantiation\n"
+                "../sources/compute_slot_adapter.sv, 2\n"
+                '  Port "io_ddrTileRequest_valid" is not defined in module \'GPT2PreLNBlock\'\n'
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [{
+                "path": str(source), "role": "compute_slot_adapter",
+                "source_id": "generated:compute_slot_adapter",
+                "declared_modules": ["adapter"], "sha256": source_hash,
+            }]}))
+            feedback = {
+                "diagnosis": {"value": {
+                    "failure_class": "vcs_compile_failure",
+                    "failure_evidence": {
+                        "compile_log_path": str(compile_log),
+                        "compile_log_sha256": compile_log_hash,
+                    },
+                }},
+                "runner_report": {"value": {
+                    "compile": {"status": "fail", "returncode": 1},
+                    "compile_evidence": {
+                        "log_path": str(compile_log),
+                        "log_sha256": compile_log_hash,
+                    },
+                }},
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            self.assertEqual(len(rows), 1)
+            excerpt = rows[0]["compile_failure_source_excerpt"]
+            self.assertEqual(excerpt["diagnostic_line"], 2)
+            self.assertEqual(
+                excerpt["diagnostic_ports"],
+                ["io_ddrTileRequest_ready", "io_ddrTileRequest_valid"],
+            )
+            self.assertIn("2: GPT2PreLNBlock kernel_inst (", excerpt["source_lines"])
+            self.assertIn(".io_ddrTileRequest_ready(ddr_ready)", excerpt["source_lines"])
+            self.assertIn(".io_ddrTileRequest_valid(req_valid)", excerpt["source_lines"])
+            for tile in range(4):
+                self.assertIn(f".io_tile_{tile}_request_ready(tile{tile}_ready)", excerpt["source_lines"])
+            self.assertLess(len(excerpt["source_lines"].splitlines()), 100)
+
+    def test_wildcard_binding_failure_includes_existing_tile_and_config_context(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "generated/board_integration/app_shell.sv"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "module adapter;\n"
+                "wire [703:0] cfg_data;\n"
+                "wire cfg_data_valid;\n"
+                "wire [2:0] tile_owner;\n"
+                "wire io_tile_0_request_valid;\n"
+                "assign c0_ddr4_s_axi_arvalid = io_tile_0_request_valid;\n"
+                "wire io_in_valid;\n"
+                "wire io_out_valid;\n"
+                "wire [127:0] io_out_bits_data;\n"
+                "assign c0_ddr4_s_axi_awvalid = io_out_valid;\n"
+                "assign c0_ddr4_s_axi_wdata = io_out_bits_data;\n"
+                "assign io_in_valid = c0_ddr4_s_axi_rvalid;\n"
+                "assign io_out_ready = c0_ddr4_s_axi_wready;\n"
+                "CertifiedKernel generated_top (\n"
+                "  .io_cfgSeqlen(seqlen),\n"
+                "  .*\n"
+                ");\n"
+                "logic [31:0] mlp_gate_scale_storage [0:7];\n"
+                "always_ff @(posedge clk) begin\n"
+                "  if (cfg_data_valid) begin\n"
+                "    mlp_gate_scale_storage[0] <= cfg_data[31:0];\n"
+                "  end\n"
+                "end\n"
+                "endmodule\n"
+            )
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[IIPCNDI] Identifier not declared\n"
+                "../sources/app_shell.sv, 7\n"
+                "  identifier 'io_cfgPrefill' bound by .* wildcard specification to an input port is not defined or imported in the scope.\n"
+                "Error-[IIPCNDO] Identifier not declared\n"
+                "../sources/app_shell.sv, 7\n"
+                "  identifier 'io_ddrTileRequest_valid' bound by .* wildcard\n"
+                "  specification to an output port is not defined or imported in the scope.\n"
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [{
+                "path": str(source), "role": "compute_slot_adapter",
+                "source_id": "generated:app_shell",
+                "declared_modules": ["adapter"], "sha256": source_hash,
+            }]}))
+            feedback = {
+                "diagnosis": {"value": {
+                    "failure_class": "vcs_compile_failure",
+                    "failure_evidence": {
+                        "compile_log_path": str(compile_log),
+                        "compile_log_sha256": compile_log_hash,
+                    },
+                }},
+                "runner_report": {"value": {
+                    "compile": {"status": "fail", "returncode": 1},
+                    "compile_evidence": {
+                        "log_path": str(compile_log),
+                        "log_sha256": compile_log_hash,
+                    },
+                }},
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            excerpt = rows[0]["compile_failure_source_excerpt"]
+            self.assertEqual(
+                excerpt["diagnostic_symbols"],
+                ["io_cfgPrefill", "io_ddrTileRequest_valid"],
+            )
+            self.assertIn("2: wire [703:0] cfg_data;", excerpt["source_lines"])
+            self.assertIn("4: wire [2:0] tile_owner;", excerpt["source_lines"])
+            self.assertIn(
+                "6: assign c0_ddr4_s_axi_arvalid = io_tile_0_request_valid;",
+                excerpt["source_lines"],
+            )
+            self.assertIn(
+                "10: assign c0_ddr4_s_axi_awvalid = io_out_valid;",
+                excerpt["source_lines"],
+            )
+            self.assertIn(
+                "11: assign c0_ddr4_s_axi_wdata = io_out_bits_data;",
+                excerpt["source_lines"],
+            )
+            self.assertIn(
+                "12: assign io_in_valid = c0_ddr4_s_axi_rvalid;",
+                excerpt["source_lines"],
+            )
+            self.assertIn(
+                "13: assign io_out_ready = c0_ddr4_s_axi_wready;",
+                excerpt["source_lines"],
+            )
+            self.assertIn("16:   .*", excerpt["source_lines"])
+            self.assertIn(
+                "logic [31:0] mlp_gate_scale_storage [0:7];",
+                excerpt["source_lines"],
+            )
+            self.assertIn(
+                "mlp_gate_scale_storage[0] <= cfg_data[31:0];",
+                excerpt["source_lines"],
+            )
+
+    def test_axi_wildcard_failure_includes_ddr_tile_and_stream_routes(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "generated/board_integration/app_shell.sv"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "module app_shell(input logic [511:0] c0_ddr4_s_axi_rdata, "
+                "output logic c0_ddr4_s_axi_arvalid);\n"
+                "wire c0_ddr4_s_axi_rvalid;\n"
+                "wire c0_ddr4_s_axi_wready;\n"
+                "wire [511:0] c0_ddr4_s_axi_wdata;\n"
+                "wire io_tile_0_request_valid;\n"
+                "wire io_tile_0_response_ready;\n"
+                "wire tile_owner;\n"
+                "wire io_in_valid;\n"
+                "wire [127:0] io_in_bits_data;\n"
+                "wire io_out_valid;\n"
+                "wire io_out_ready;\n"
+                "wire [127:0] io_out_bits_data;\n"
+                "assign c0_ddr4_s_axi_arvalid = io_tile_0_request_valid;\n"
+                "assign io_in_valid = c0_ddr4_s_axi_rvalid;\n"
+                "assign io_in_bits_data = c0_ddr4_s_axi_rdata[127:0];\n"
+                "assign io_out_ready = c0_ddr4_s_axi_wready;\n"
+                "assign c0_ddr4_s_axi_wdata = {{384{1'b0}}, io_out_bits_data};\n"
+                "GeneratedAxiDdrTop generated_top (.*);\n"
+                "endmodule\n"
+            )
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            top = root / "generated/chisel/GeneratedAxiDdrTop.sv"
+            top.parent.mkdir(parents=True)
+            top.write_text(
+                "module GeneratedAxiDdrTop(\n"
+                " input io_axiReadValid,\n"
+                " output io_axiReadReady,\n"
+                " input [127:0] io_axiReadData,\n"
+                " output io_axiWriteValid,\n"
+                " input io_axiWriteReady,\n"
+                " output [127:0] io_axiWriteData\n"
+                ");\nendmodule\n"
+            )
+            top_hash = hashlib.sha256(top.read_bytes()).hexdigest()
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[IIPCNDI] Identifier not declared\n"
+                "../sources/app_shell.sv, 17\n"
+                "  In instance 'generated_top' of 'XIL_DEFAULTLIB.GeneratedAxiDdrTop',\n"
+                "  identifier 'io_axiReadValid' bound by .* wildcard specification to an input port is not defined.\n"
+                "Error-[IIPCNDO] Identifier not declared\n"
+                "../sources/app_shell.sv, 17\n"
+                "  In instance 'generated_top' of 'XIL_DEFAULTLIB.GeneratedAxiDdrTop',\n"
+                "  identifier 'io_axiWriteReady' bound by .* wildcard specification to an input port is not defined.\n"
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [
+                {
+                    "path": str(source), "role": "compute_slot_adapter",
+                    "source_id": "generated:app_shell",
+                    "declared_modules": ["app_shell"], "sha256": source_hash,
+                },
+                {
+                    "path": str(top), "role": "generated_kernel",
+                    "source_id": "generated:axi_top",
+                    "declared_modules": ["GeneratedAxiDdrTop"], "sha256": top_hash,
+                },
+            ]}))
+            feedback = {
+                "diagnosis": {"value": {
+                    "failure_class": "vcs_compile_failure",
+                    "failure_evidence": {
+                        "first_real_error_context": "In instance 'generated_top' of 'XIL_DEFAULTLIB.GeneratedAxiDdrTop'",
+                        "compile_log_path": str(compile_log),
+                        "compile_log_sha256": compile_log_hash,
+                    },
+                }},
+                "runner_report": {"value": {
+                    "compile": {"status": "fail", "returncode": 1},
+                    "compile_evidence": {
+                        "log_path": str(compile_log),
+                        "log_sha256": compile_log_hash,
+                    },
+                }},
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            excerpt = next(
+                row["compile_failure_source_excerpt"]
+                for row in rows
+                if "compile_failure_source_excerpt" in row
+            )
+            self.assertEqual(
+                excerpt["diagnostic_symbols"],
+                ["io_axiReadValid", "io_axiWriteReady"],
+            )
+            for route in [
+                "c0_ddr4_s_axi_arvalid = io_tile_0_request_valid",
+                "io_in_valid = c0_ddr4_s_axi_rvalid",
+                "io_in_bits_data = c0_ddr4_s_axi_rdata[127:0]",
+                "io_out_ready = c0_ddr4_s_axi_wready",
+                "c0_ddr4_s_axi_wdata = {{384{1'b0}}, io_out_bits_data}",
+            ]:
+                self.assertIn(route, excerpt["source_lines"])
+            top_interface = next(row for row in rows if row.get("module") == "GeneratedAxiDdrTop")
+            self.assertEqual(top_interface["sha256"], top_hash)
+            self.assertIn("input io_axiReadValid", top_interface["module_header"])
+
+    def test_width_mismatch_projects_weight_family_and_ddr_routes(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "generated/board_integration/app_shell.sv"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "module app_shell;\n"
+                "wire c0_ddr4_s_axi_rvalid;\n"
+                "wire [511:0] c0_ddr4_s_axi_rdata;\n"
+                "wire [36:0] c0_ddr4_s_axi_araddr;\n"
+                "wire io_qkvWeight_bits_addr;\n"
+                "wire [127:0] io_qkvWeight_bits_data;\n"
+                "wire io_qkvWeight_valid;\n"
+                "wire [10:0] io_in_bits_addr;\n"
+                "assign io_qkvWeight_bits_addr = c0_ddr4_s_axi_araddr[0];\n"
+                "assign io_qkvWeight_bits_data = c0_ddr4_s_axi_rdata[127:0];\n"
+                "assign io_qkvWeight_valid = c0_ddr4_s_axi_rvalid;\n"
+                "assign io_in_bits_addr = c0_ddr4_s_axi_araddr[10:0];\n"
+                "GeneratedAxiDdrTop generated_top (.*);\n"
+                "endmodule\n"
+            )
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            top = root / "generated/chisel/GeneratedAxiDdrTop.sv"
+            top.parent.mkdir(parents=True)
+            top.write_text(
+                "module GeneratedAxiDdrTop(\n"
+                " input [10:0] io_qkvWeight_bits_addr,\n"
+                " input [127:0] io_qkvWeight_bits_data,\n"
+                " input io_qkvWeight_valid\n"
+                ");\nendmodule\n"
+            )
+            top_hash = hashlib.sha256(top.read_bytes()).hexdigest()
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[IPCWM] Implicit port connection width mismatch\n"
+                "../sources/app_shell.sv, 13\n"
+                "The following 1-bit expression is connected to 11-bit port \"io_qkvWeight_bits_addr\" of module \"GeneratedAxiDdrTop\".\n"
+                "Expression: io_qkvWeight_bits_addr\n"
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [
+                {
+                    "path": str(source), "role": "compute_slot_adapter",
+                    "source_id": "generated:app_shell",
+                    "declared_modules": ["app_shell"], "sha256": source_hash,
+                },
+                {
+                    "path": str(top), "role": "generated_kernel",
+                    "source_id": "generated:axi_top",
+                    "declared_modules": ["GeneratedAxiDdrTop"], "sha256": top_hash,
+                },
+            ]}))
+            feedback = {
+                "diagnosis": {"value": {
+                    "failure_class": "vcs_compile_failure",
+                    "failure_evidence": {
+                        "first_real_error_context": "In instance 'generated_top' of 'XIL_DEFAULTLIB.GeneratedAxiDdrTop'",
+                        "compile_log_path": str(compile_log),
+                        "compile_log_sha256": compile_log_hash,
+                    },
+                }},
+                "runner_report": {"value": {
+                    "compile": {"status": "fail", "returncode": 1},
+                    "compile_evidence": {
+                        "log_path": str(compile_log),
+                        "log_sha256": compile_log_hash,
+                    },
+                }},
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            excerpt = next(
+                row["compile_failure_source_excerpt"]
+                for row in rows
+                if "compile_failure_source_excerpt" in row
+            )
+            self.assertEqual(excerpt["diagnostic_ports"], ["io_qkvWeight_bits_addr"])
+            self.assertEqual(excerpt["diagnostic_symbols"], ["io_qkvWeight_bits_addr"])
+            for route in [
+                "io_qkvWeight_bits_addr = c0_ddr4_s_axi_araddr[0]",
+                "io_qkvWeight_bits_data = c0_ddr4_s_axi_rdata[127:0]",
+                "io_qkvWeight_valid = c0_ddr4_s_axi_rvalid",
+                "io_in_bits_addr = c0_ddr4_s_axi_araddr[10:0]",
+            ]:
+                self.assertIn(route, excerpt["source_lines"])
+            top_interface = next(row for row in rows if row.get("module") == "GeneratedAxiDdrTop")
+            self.assertEqual(top_interface["sha256"], top_hash)
+            self.assertIn("input [10:0] io_qkvWeight_bits_addr", top_interface["module_header"])
+
+    def test_unexpanded_marker_excerpt_reaches_kernel_instance_and_module_end(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "generated/board_integration/compute_slot_adapter.sv"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "module adapter;\n"
+                "wire request_valid;\n"
+                "@@KERNEL_STREAM_WIRES@@\n"
+                + "\n".join(f"// adapter context {index}" for index in range(40))
+                + "\nCertifiedKernel certified_connected_kernel (.*);\nendmodule\n"
+            )
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[SE] Syntax error\n"
+                '"../sources/compute_slot_adapter.sv", 3: token is \'@\'\n'
+                "  @@KERNEL_STREAM_WIRES@@\n"
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [{
+                "path": str(source), "role": "compute_slot_adapter",
+                "source_id": "generated:compute_slot_adapter",
+                "declared_modules": ["adapter"], "sha256": source_hash,
+            }]}))
+            feedback = {
+                "diagnosis": {"value": {
+                    "failure_class": "vcs_compile_failure",
+                    "failure_evidence": {
+                        "compile_log_path": str(compile_log),
+                        "compile_log_sha256": compile_log_hash,
+                    },
+                }},
+                "runner_report": {"value": {
+                    "compile": {"status": "fail", "returncode": 1},
+                    "compile_evidence": {
+                        "log_path": str(compile_log),
+                        "log_sha256": compile_log_hash,
+                    },
+                }},
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            excerpt = rows[0]["compile_failure_source_excerpt"]
+            self.assertIn("@@KERNEL_STREAM_WIRES@@", excerpt["source_lines"])
+            self.assertIn("CertifiedKernel certified_connected_kernel (.*);", excerpt["source_lines"])
+            self.assertIn("endmodule", excerpt["source_lines"])
+
+    def test_small_marker_failed_adapter_includes_complete_hash_bound_source(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "generated/board_integration/compute_slot_adapter.sv"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "module adapter;\n"
+                "wire cfg_ready;\n"
+                "@@KERNEL_STREAM_WIRES@@\n"
+                + "\n".join(f"wire context_{index};" for index in range(80))
+                + "\nCertifiedKernel certified_connected_kernel (.*);\nendmodule\n"
+            )
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[SE] Syntax error\n"
+                '"../sources/compute_slot_adapter.sv", 3: token is \'@\'\n'
+                "  @@KERNEL_STREAM_WIRES@@\n"
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [{
+                "path": str(source), "role": "compute_slot_adapter",
+                "source_id": "generated:compute_slot_adapter",
+                "declared_modules": ["adapter"], "sha256": source_hash,
+            }]}))
+            feedback = {
+                "diagnosis": {"value": {
+                    "failure_class": "vcs_compile_failure",
+                    "failure_evidence": {
+                        "compile_log_path": str(compile_log),
+                        "compile_log_sha256": compile_log_hash,
+                    },
+                }},
+                "runner_report": {"value": {
+                    "compile": {"status": "fail", "returncode": 1},
+                    "compile_evidence": {
+                        "log_path": str(compile_log),
+                        "log_sha256": compile_log_hash,
+                    },
+                }},
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            excerpt = next(row["compile_failure_source_excerpt"] for row in rows)
+            self.assertEqual(excerpt["sha256"], source_hash)
+            self.assertIn("wire context_79;", excerpt["source_lines"])
+            self.assertIn("CertifiedKernel certified_connected_kernel (.*);", excerpt["source_lines"])
+            self.assertEqual(
+                len(excerpt["source_lines"].splitlines()),
+                len(source.read_text().splitlines()),
+            )
+
+    def test_compile_driver_conflict_exposes_declaration_and_every_driver(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "generated/board_integration/rtl/adapter.sv"
+            source.parent.mkdir(parents=True)
+            lines = [f"line_{number}" for number in range(1, 70)]
+            lines[9] = "logic [36:0] ddr_axi_base_q;"
+            lines[34] = "always_ff @(posedge clk) begin : cfg_driver"
+            lines[55] = "always_ff @(posedge clk) begin : reset_driver"
+            source.write_text("\n".join(lines) + "\n")
+            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            compile_log = root / "vcs_compile.log"
+            compile_log.write_text(
+                "Error-[ICPD] Illegal combination of drivers\n"
+                "../sources/adapter.sv, 10\n"
+                "  Variable ddr_axi_base_q has multiple procedural drivers.\n"
+                "  The first driver is at \"../sources/adapter.sv\",\n"
+                "  56: always_ff\n"
+                "  The second driver is at \"../sources/adapter.sv\",\n"
+                "  35: always_ff\n"
+            )
+            compile_log_hash = hashlib.sha256(compile_log.read_bytes()).hexdigest()
+            manifest = root / "verification/board_simulation/board_simulation_manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"source_files": [{
+                "path": str(source), "role": "compute_slot_adapter",
+                "source_id": "board-generated:compute_slot_adapter.test",
+                "declared_modules": ["adapter"], "sha256": source_hash,
+            }]}))
+            feedback = {
+                "diagnosis": {"value": {
+                    "failure_class": "vcs_compile_failure",
+                    "failure_evidence": {
+                        "compile_log_path": str(compile_log),
+                        "compile_log_sha256": compile_log_hash,
+                    },
+                }},
+                "runner_report": {"value": {
+                    "compile": {"status": "fail", "returncode": 1},
+                }},
+            }
+
+            rows = current_compiler_module_interfaces(root, feedback)
+
+            excerpts = [row["compile_failure_source_excerpt"] for row in rows]
+            self.assertEqual(
+                {excerpt["diagnostic_line"] for excerpt in excerpts}, {10, 35, 56}
+            )
+            self.assertTrue(all(excerpt["sha256"] == source_hash for excerpt in excerpts))
+            self.assertTrue(any("cfg_driver" in excerpt["source_lines"] for excerpt in excerpts))
+            self.assertTrue(any("reset_driver" in excerpt["source_lines"] for excerpt in excerpts))
 
     def test_failed_exact_board_rerun_refreshes_diagnosis_before_handoff(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -779,6 +1881,46 @@ class RepairExecutionFeedbackTest(unittest.TestCase):
             ["checkpoint_adapter_diagnosis"],
         )
 
+    def test_waiting_frontier_ignores_reworded_blockers_without_new_evidence(self) -> None:
+        report = {
+            "status": "incomplete",
+            "step_results": [
+                {
+                    "step_id": "repair_step.00",
+                    "scope": "verification_capability_repair",
+                    "result": {
+                        "status": "llm_waiting_for_current_evidence",
+                        "repair_kind": "semantic_loader_harness_binding",
+                        "summary": "the DUT template blocks a truthful harness",
+                        "framework_action_required": False,
+                        "required_capabilities": [],
+                        "target_modules": ["case_semantic_testbench"],
+                        "blocked_reasons": [
+                            "source /run/generated/templates/Norm.scala sha256=" + "a" * 64
+                        ],
+                    },
+                }
+            ],
+        }
+
+        first = repair_loop_disposition(report)
+        result = report["step_results"][0]["result"]
+        result["summary"] = "same source issue, described differently"
+        result["blocked_reasons"] = [
+            "current source /run/generated/templates/Norm.scala still has hash " + "a" * 64
+        ]
+        repeated = repair_loop_disposition(
+            report,
+            prior_failure_frontiers=first["observed_failure_frontiers"],
+        )
+
+        self.assertEqual(first["status"], "continue")
+        self.assertEqual(repeated["status"], "blocked")
+        self.assertEqual(
+            repeated["no_progress_waiting_decisions"],
+            ["semantic_loader_harness_binding"],
+        )
+
     def test_unchanged_failure_without_new_observation_blocks(self) -> None:
         result = repair_loop_disposition(
             {
@@ -1295,6 +2437,10 @@ class RepairExecutionFeedbackTest(unittest.TestCase):
         self.assertIn("never use old signal values as current evidence", rules)
         self.assertIn("Runtime observation is optional", rules)
         self.assertIn("validation_mode exactly to compute_slot_axi", rules)
+        self.assertIn("generated VCS testbench must instantiate the generated adapter", rules)
+        self.assertIn("a generated testbench when the current diagnostic points into it", rules)
+        self.assertIn("compile_failure_source_excerpt", rules)
+        self.assertIn("An interface-only projection without that current compile-failure excerpt", rules)
 
 
 if __name__ == "__main__":

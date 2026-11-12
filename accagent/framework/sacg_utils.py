@@ -45,7 +45,15 @@ def copy_state(src: Path, dst: Path) -> dict[str, Any]:
 
 
 def run_dir_from_state(path: Path) -> Path:
-    return path.resolve().parents[1]
+    resolved = path.resolve()
+    run_markers = (
+        Path("input/prepared_inputs.json"),
+        Path("agent/agent_run_report.json"),
+    )
+    for parent in resolved.parents:
+        if any((parent / marker).is_file() for marker in run_markers):
+            return parent
+    return resolved.parents[1]
 
 
 def safe_id(text: str) -> str:

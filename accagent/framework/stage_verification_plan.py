@@ -2790,6 +2790,18 @@ def build_stage5_action_materialization_coverage(
                 "errors": errors,
             }
         )
+    if not planner_actions:
+        artifacts_ready = bool(materialized) and all(
+            isinstance(artifact, dict) and artifact.get("status") in {"ready", "pass"}
+            for artifact in materialized.values()
+        )
+        return {
+            "schema_version": "spatialaccagent.stage5_action_materialization_coverage.v0",
+            "status": "ready" if artifacts_ready else "incomplete",
+            "errors": [] if artifacts_ready else ["no planner actions and materialized artifacts are not all ready"],
+            "actions": [],
+            "fulfillment": "no_stage5_refinement_required" if artifacts_ready else None,
+        }
     prior_errors = [error for row in rows for error in row.get("errors", [])]
     for action in promotion_actions:
         action_type = str(action.get("action_type") or "verification_contract_promotion").strip().lower()
@@ -3715,6 +3727,7 @@ def plan_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             ("design_team", design_team),
         ],
         case_adapter,
+        team.get("subtask_plan") if isinstance(team.get("subtask_plan"), dict) else None,
     )
     llm_quality = build_quality_report(rows_from_stage_records(llm, team))
     write_json(action_audit_path, action_audit)

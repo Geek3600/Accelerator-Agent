@@ -152,8 +152,35 @@ def storage_dtype_for_bits(preferred: str, bits: int) -> str:
     return candidate
 
 
+def materialized_source_dtype(binding: dict[str, Any], fallback: str) -> str:
+    """Resolve the saved reference tensor dtype separately from deployed storage."""
+
+    raw = str(binding.get("dtype") or "").strip().lower().removeprefix("torch.")
+    aliases = {
+        "float16": "fp16",
+        "fp16": "fp16",
+        "half": "fp16",
+        "float32": "fp32",
+        "fp32": "fp32",
+        "bfloat16": "bf16",
+        "bf16": "bf16",
+    }
+    if not raw:
+        return fallback
+    if raw not in aliases:
+        raise ValueError(f"unsupported materialized checkpoint tensor dtype: {raw}")
+    return aliases[raw]
+
+
+def source_dtype_for_bindings(bindings: list[dict[str, Any]], fallback: str) -> str:
+    resolved = {materialized_source_dtype(row, fallback) for row in bindings}
+    if len(resolved) > 1:
+        raise ValueError(f"stage weight sources have mixed materialized dtypes: {sorted(resolved)}")
+    return next(iter(resolved), fallback)
+
+
 def conversion_contract(source_dtype: str, storage_dtype: str) -> dict[str, Any]:
-    if storage_dtype in {"int4", "int8", "int32"} and source_dtype in {"fp16", "fp32"}:
+    if storage_dtype in {"int4", "int8", "int32"} and source_dtype in {"fp16", "fp32", "bf16"}:
         return {
             "kind": "symmetric_signed_quantization",
             "source_dtype": source_dtype,
@@ -342,6 +369,7 @@ def resolve_explicit_layout(
     if not isinstance(rows, list):
         raise ValueError(f"{stage.get('stage_id')}: explicit weight_layout.targets is malformed")
     targets: list[dict[str, Any]] = []
+    source_dtype = source_dtype_for_bindings(list(by_suffix.values()), weight_dtype)
     for row in rows:
         if not isinstance(row, dict):
             raise ValueError(f"{stage.get('stage_id')}: explicit weight target is not an object")
@@ -363,7 +391,7 @@ def resolve_explicit_layout(
                     sources=sources,
                     in_lanes=in_lanes,
                     out_lanes=out_lanes,
-                    source_dtype=weight_dtype,
+                    source_dtype=source_dtype,
                     storage_dtype=storage,
                     transpose_source=bool(row.get("transpose_source", False)),
                     array_rows=array_rows,
@@ -378,7 +406,7 @@ def resolve_explicit_layout(
                     port_role=str(row.get("dut_port_role")),
                     sources=sources,
                     elements_per_write=bound_int(stage, str(row.get("elements_per_write_param") or "lanes")),
-                    source_dtype=weight_dtype,
+                    source_dtype=source_dtype,
                     storage_dtype=storage,
                 )
             )
@@ -395,6 +423,7 @@ def canonical_targets(
     acc_dtype: str,
 ) -> tuple[list[dict[str, Any]], str]:
     by_suffix = {str(row.get("parameter_suffix")): row for row in bindings}
+    source_dtype = source_dtype_for_bindings(bindings, weight_dtype)
     explicit = resolve_explicit_layout(stage, stage_semantics, by_suffix, weight_dtype, acc_dtype)
     if explicit is not None:
         return explicit, "model_semantic_adapter.weight_layout"
@@ -415,7 +444,7 @@ def canonical_targets(
                 port_role="weight",
                 sources=bindings,
                 elements_per_write=lanes,
-                source_dtype=weight_dtype,
+                source_dtype=source_dtype,
                 storage_dtype=storage_dtype,
             )
         ], "canonical_semantic_op_layout.v1"
@@ -438,7 +467,7 @@ def canonical_targets(
                 port_role="weight",
                 sources=[roles["bias"]],
                 elements_per_write=lanes,
-                source_dtype=weight_dtype,
+                source_dtype=source_dtype,
                 storage_dtype=storage_dtype,
             ),
             vector_target(
@@ -447,7 +476,7 @@ def canonical_targets(
                 port_role="weight",
                 sources=[roles["weight"]],
                 elements_per_write=lanes,
-                source_dtype=weight_dtype,
+                source_dtype=source_dtype,
                 storage_dtype=storage_dtype,
             ),
         ], "canonical_semantic_op_layout.v1"
@@ -462,7 +491,7 @@ def canonical_targets(
                 sources=bindings,
                 in_lanes=lanes,
                 out_lanes=lanes,
-                source_dtype=weight_dtype,
+                source_dtype=source_dtype,
                 storage_dtype=weight_dtype,
                 array_rows=array_rows,
                 array_cols=array_cols,
@@ -501,7 +530,7 @@ def canonical_targets(
                 sources=qkv_weights,
                 in_lanes=lanes,
                 out_lanes=lanes,
-                source_dtype=weight_dtype,
+                source_dtype=source_dtype,
                 storage_dtype=weight_dtype,
                 transpose_source=transpose_source,
                 array_rows=qkv_array_rows,
@@ -518,8 +547,33 @@ def canonical_targets(
                     port_role="qkv_bias",
                     sources=qkv_biases,
                     elements_per_write=lanes,
-                    source_dtype=weight_dtype,
+                    source_dtype=source_dtype,
                     storage_dtype=acc_dtype,
+                )
+            )
+        for norm_name, port_role in (
+            ("q_norm", "weight_q_norm"),
+            ("k_norm", "weight_k_norm"),
+        ):
+            norm_weight = roles.get((norm_name, "weight"))
+            if norm_weight is None:
+                continue
+            # QKVProjectionParams defaults qkvElemsPerBeat to eight; the
+            # generated QKNorm loader consumes one such INT8/FP element beat.
+            elements_per_write = bound_int(stage, "qkv_elems_per_beat", 8)
+            norm_storage_dtype = storage_dtype_for_bits(
+                acc_dtype,
+                bound_int(stage, "elem_bits", 8),
+            )
+            targets.append(
+                vector_target(
+                    target_id=f"attention.{norm_name}.weight",
+                    target_kind="norm_scale_vector",
+                    port_role=port_role,
+                    sources=[norm_weight],
+                    elements_per_write=elements_per_write,
+                    source_dtype=source_dtype,
+                    storage_dtype=norm_storage_dtype,
                 )
             )
         targets.append(
@@ -529,7 +583,7 @@ def canonical_targets(
                 sources=[out_weight],
                 in_lanes=bound_int(stage, "head_dim"),
                 out_lanes=lanes,
-                source_dtype=weight_dtype,
+                source_dtype=source_dtype,
                 storage_dtype=weight_dtype,
                 transpose_source=transpose_source,
                 array_rows=out_array_rows,
@@ -544,7 +598,7 @@ def canonical_targets(
                     port_role="out_proj_bias",
                     sources=[out_bias],
                     elements_per_write=lanes,
-                    source_dtype=weight_dtype,
+                    source_dtype=source_dtype,
                     storage_dtype=acc_dtype,
                 )
             )
@@ -570,7 +624,7 @@ def canonical_targets(
                 sources=[roles["weight"]],
                 in_lanes=lanes,
                 out_lanes=lanes,
-                source_dtype=weight_dtype,
+                source_dtype=source_dtype,
                 storage_dtype=weight_dtype,
                 transpose_source=True,
                 array_rows=array_rows,
@@ -582,7 +636,7 @@ def canonical_targets(
                 port_role=bias_role,
                 sources=[roles["bias"]],
                 elements_per_write=lanes,
-                source_dtype=weight_dtype,
+                source_dtype=source_dtype,
                 storage_dtype=acc_dtype,
             ),
         ], "canonical_semantic_op_layout.v1"
@@ -694,6 +748,8 @@ def load_target_tensor(binding: dict[str, Any], source_dtype: str) -> Any:
         return tensor.to(torch.float16)
     if source_dtype == "fp32":
         return tensor.to(torch.float32)
+    if source_dtype == "bf16":
+        return tensor.to(torch.bfloat16)
     raise ValueError(f"unsupported source tensor dtype: {source_dtype}")
 
 

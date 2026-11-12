@@ -18,6 +18,7 @@ from accagent.framework.flow_action_handoff import (
     consumption_path,
     pending_stage6_flow_handoff,
 )
+from accagent.framework.experiment_profile import active_profile as active_accord_experiment_profile
 from accagent.framework.sacg_utils import artifact_path, run_dir_from_state, write_json
 from accagent.framework.stage_repair import plan_repair
 from accagent.framework.stage_repair_execute import (
@@ -33,6 +34,7 @@ from accagent.framework.stage_verification import (
 )
 from accagent.framework.verification_evidence_contract import (
     COMPILE_ONLY_POLICY,
+    active_verification_policy,
 )
 from accagent.framework.verification_evidence_contract import (
     certificate_contract_errors,
@@ -196,7 +198,8 @@ def validated_scope_certificate(state: dict[str, Any], scope: str) -> dict[str, 
         return None
     if payload.get("status") != "pass":
         return None
-    if (scope == "single_layer_closure" and payload.get("validation_policy") == COMPILE_ONLY_POLICY
+    if (active_verification_policy() == COMPILE_ONLY_POLICY
+            and scope == "single_layer_closure" and payload.get("validation_policy") == COMPILE_ONLY_POLICY
             and stage2_compile_only_authority(path.resolve().parents[2]).get("status") != "ready"):
         # Certificates may bind staged copies while the board compile consumes
         # current generated originals. Recompile a changed kernel before board
@@ -211,11 +214,12 @@ def validated_scope_certificate(state: dict[str, Any], scope: str) -> dict[str, 
     required_gates = [str(gate) for gate in selector_spec.get("required_gates", []) if str(gate)]
     certificate_run_dir = path.resolve().parents[2]
     case_adapter = case_adapter_for_state(state, certificate_run_dir)
-    compile_only_gates = compile_only_required_gates_by_level(case_adapter).get(
-        level_id, required_gates
-    )
-    if not certificate_contract_errors(payload, level_id, compile_only_gates):
-        required_gates = compile_only_gates
+    if active_verification_policy() == COMPILE_ONLY_POLICY:
+        compile_only_gates = compile_only_required_gates_by_level(case_adapter).get(
+            level_id, required_gates
+        )
+        if not certificate_contract_errors(payload, level_id, compile_only_gates):
+            required_gates = compile_only_gates
     if not selector_contract_matches_certificate(
         selector_spec.get("evidence_contract"), payload, level_id
     ):
@@ -408,17 +412,26 @@ def run_stage6_verification(
         materialization = (finalize_dut_weight_binding_manifest(
             run_dir, run_dir / "repair_execution", require_board=True)
             if authority.get("status") == "ready" else {"status": "not_required"})
-        checkpoint_preparation = {
-            "status": "pass",
-            "summary": "native simulation checkpoint skipped by VCS compile-only policy",
-            "env": {
-                "SPATIALACC_CHECKPOINT_REQUIRED": "0",
-                "SPATIALACC_CHECKPOINT_REQUEST": "",
-                "SPATIALACC_FAST_REPLAY": "0",
-            },
-            "remote_tool_must_not_start": False,
-            "binding_materialization": materialization,
-        }
+        if active_verification_policy() == COMPILE_ONLY_POLICY:
+            checkpoint_preparation = {
+                "status": "pass",
+                "summary": "native simulation checkpoint skipped by VCS compile-only policy",
+                "env": {
+                    "SPATIALACC_CHECKPOINT_REQUIRED": "0",
+                    "SPATIALACC_CHECKPOINT_REQUEST": "",
+                    "SPATIALACC_FAST_REPLAY": "0",
+                },
+                "remote_tool_must_not_start": False,
+                "binding_materialization": materialization,
+            }
+        else:
+            checkpoint_preparation = {
+                "status": "pass",
+                "summary": "full exact-board VCS runtime policy remains active",
+                "env": {},
+                "remote_tool_must_not_start": False,
+                "binding_materialization": materialization,
+            }
 
     with stage6_scope_env(
         active_scope,
@@ -559,6 +572,10 @@ def repair_execution_has_new_real_tool_evidence(report: dict[str, Any]) -> bool:
 
 def repair_execution_requires_fresh_agent_planning(report: dict[str, Any]) -> bool:
     """Route unresolved Agent-owned capabilities through fresh Stage 6 evidence."""
+
+    # A repeated no-progress decision contains no new evidence for another
+    # planning call. Replan only when a step names an upstream producer that
+    # can supply a missing capability.
 
     for row in report.get("step_results", []):
         result = row.get("result", {}) if isinstance(row, dict) else {}
@@ -783,7 +800,18 @@ def _debug_loop(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
 
     def plan_stage6_repair(verification_state: Path, iteration: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
         nonlocal pending_flow_handoff
-        handoff = pending_flow_handoff if pending_flow_handoff.get("status") == "ready" else None
+        handoff = (
+            pending_flow_handoff
+            if pending_flow_handoff.get("status") == "ready"
+            and active_accord_experiment_profile() != "B2"
+            else None
+        )
+        if pending_flow_handoff.get("status") == "ready" and handoff is None:
+            iteration["flow_controller_handoff"] = {
+                "status": "ignored_by_ablation",
+                "profile": "B2",
+                "reason": "replan from current tool evidence without dependency-guided routing",
+            }
         repair_path, repair_report = plan_repair(
             ns(
                 sacg_state=verification_state,

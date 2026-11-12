@@ -772,6 +772,11 @@ def classify_manifest_runner_failure(
 
     if compile_result.get("status") != "pass":
         nested_class = str(compile_result.get("failure_class") or "")
+        if (
+            nested_class == "vcs_elaboration_output_missing"
+            and compile_result.get("returncode") == 0
+        ):
+            return "vcs_execution_environment_failure", "execution_environment_retry"
         if nested_class in TRANSPORT_FAILURE_CLASSES:
             return "remote_transport_failure", "remote_transport_retry"
         if nested_class == "remote_tool_poll_budget_exhausted":
@@ -1006,6 +1011,7 @@ def analyze_manifest_board(run_dir: Path) -> dict[str, Any]:
     binding_path = run_dir / "generated" / "memory" / "dut_weight_binding_manifest.json"
     identity_path = run_dir / "verification" / "board_interface" / "board_source_identity.json"
     runner = read_json(runner_path)
+    board_manifest = read_optional_json(board_manifest_path)
     compile_evidence = runner.get("compile_evidence", {}) if isinstance(runner.get("compile_evidence"), dict) else {}
     compile_result = runner.get("compile", {}) if isinstance(runner.get("compile"), dict) else {}
     compile_log_path = Path(str(compile_evidence.get("log_path") or runner.get("compile_log") or ""))
@@ -1020,6 +1026,18 @@ def analyze_manifest_board(run_dir: Path) -> dict[str, Any]:
         errors.append("VCS compile log hash mismatch")
     compile_text = read_optional_text(compile_log_path)
     first_error = first_real_error(compile_text) or first_real_error("", runner.get("errors"))
+    failure_source_ids = related_source_ids(compile_text, board_manifest)
+    failure_source_rows = [
+        row
+        for row in source_rows(board_manifest)
+        if str(row.get("source_id") or "") in failure_source_ids
+        and isinstance(row.get("path"), str)
+    ]
+    affected_source_paths = ordered_strings(
+        [str(row["path"]) for row in failure_source_rows]
+    )
+    sacg_state_path = run_dir / "verification" / "sacg_state.json"
+    sacg_state_sha256 = sha256_file(sacg_state_path) if sacg_state_path.is_file() else None
     compile_log_valid = (
         compile_log_path.is_file()
         and compile_evidence.get("log_sha256") == sha256_file(compile_log_path)
@@ -1035,6 +1053,10 @@ def analyze_manifest_board(run_dir: Path) -> dict[str, Any]:
         "compile": compile_result,
         "first_real_error": first_error,
         "first_real_error_context": real_error_context(compile_text) if errors else "",
+        "failure_source_ids": failure_source_ids,
+        "affected_source_paths": affected_source_paths,
+        "sacg_state_path": str(sacg_state_path) if sacg_state_sha256 else None,
+        "sacg_state_sha256": sacg_state_sha256,
         "log_tail": log_tail(compile_text) if errors else "",
         "compile_log_path": str(compile_log_path),
         "compile_log_sha256": compile_evidence.get("log_sha256"),
@@ -1052,10 +1074,20 @@ def analyze_manifest_board(run_dir: Path) -> dict[str, Any]:
         "measured_cycles": None,
         "measurement_kind": "optional_rtl_simulation_not_run",
         "failure_class": failure_class,
+        "failure_domain": (
+            "compile_time"
+            if failure_class in {"vcs_compile_failure", "vcs_elaboration_failure"}
+            else None
+        ),
         "root_cause_class": failure_class,
         "repair_scope": repair_scope,
         "runner_phase": runner.get("phase"),
         "first_real_error": first_error,
+        "failure_source_ids": failure_source_ids,
+        "affected_source_paths": affected_source_paths,
+        "source_file": affected_source_paths[0] if len(affected_source_paths) == 1 else None,
+        "sacg_state_path": str(sacg_state_path) if sacg_state_sha256 else None,
+        "sacg_state_sha256": sacg_state_sha256,
         "failure_evidence": failure_evidence,
         "summary": (
             "exact-board VCS compilation and elaboration passed; runtime diagnosis skipped"
